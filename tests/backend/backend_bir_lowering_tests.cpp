@@ -1244,6 +1244,48 @@ c4c::codegen::lir::LirModule make_local_string_literal_char_compare_ladder_zero_
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_local_string_literal_char_compare_ladder_zero_return_module_with_renamed_entry_temps() {
+  auto module = make_local_string_literal_char_compare_ladder_zero_return_module();
+  auto& entry = module.functions.front().blocks.front();
+  auto* base_gep = std::get_if<c4c::codegen::lir::LirGepOp>(&entry.insts[0]);
+  auto* store = std::get_if<c4c::codegen::lir::LirStoreOp>(&entry.insts[1]);
+  auto* load_ptr = std::get_if<c4c::codegen::lir::LirLoadOp>(&entry.insts[2]);
+  auto* index_cast = std::get_if<c4c::codegen::lir::LirCastOp>(&entry.insts[3]);
+  auto* elem_gep = std::get_if<c4c::codegen::lir::LirGepOp>(&entry.insts[4]);
+  auto* elem_load = std::get_if<c4c::codegen::lir::LirLoadOp>(&entry.insts[5]);
+  auto* sext = std::get_if<c4c::codegen::lir::LirCastOp>(&entry.insts[6]);
+  auto* cmp = std::get_if<c4c::codegen::lir::LirCmpOp>(&entry.insts[7]);
+  auto* zext = std::get_if<c4c::codegen::lir::LirCastOp>(&entry.insts[8]);
+  auto* branch_cmp = std::get_if<c4c::codegen::lir::LirCmpOp>(&entry.insts[9]);
+  auto* cond_br = std::get_if<c4c::codegen::lir::LirCondBr>(&entry.terminator);
+  if (base_gep == nullptr || store == nullptr || load_ptr == nullptr || index_cast == nullptr ||
+      elem_gep == nullptr || elem_load == nullptr || sext == nullptr || cmp == nullptr ||
+      zext == nullptr || branch_cmp == nullptr || cond_br == nullptr) {
+    return module;
+  }
+
+  base_gep->result = "%s0";
+  store->val = "%s0";
+  load_ptr->result = "%s1";
+  index_cast->result = "%s2";
+  elem_gep->result = "%s3";
+  elem_gep->ptr = "%s1";
+  elem_gep->indices = {"i64 %s2"};
+  elem_load->result = "%s4";
+  elem_load->ptr = "%s3";
+  sext->result = "%s5";
+  sext->operand = "%s4";
+  cmp->result = "%s6";
+  cmp->lhs = "%s5";
+  zext->result = "%s7";
+  zext->operand = "%s6";
+  branch_cmp->result = "%s8";
+  branch_cmp->lhs = "%s7";
+  cond_br->cond_name = "%s8";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_local_i32_array_two_slot_sum_sub_three_module() {
   using namespace c4c::codegen::lir;
 
@@ -6561,6 +6603,27 @@ void test_bir_lowering_accepts_local_string_literal_char_compare_ladder_zero_ret
                   "the lowered local string-literal char-compare ladder module should normalize the bounded `00058.c` source route to a single immediate zero return");
 }
 
+void test_bir_lowering_accepts_local_string_literal_char_compare_ladder_zero_return_module_with_renamed_entry_temps() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_local_string_literal_char_compare_ladder_zero_return_module_with_renamed_entry_temps());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded local string-literal char-compare ladder slice even when the entry SSA temp names no longer match the legacy rendered-text fixture");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered renamed-temp local string-literal char-compare ladder module should still collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered renamed-temp local string-literal char-compare ladder module should preserve the shared constant-return normalization");
+}
+
 void test_bir_lowering_accepts_global_x_y_pointer_compare_zero_return_module() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_global_x_y_pointer_compare_zero_return_module());
@@ -9852,6 +9915,8 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(
       test_bir_lowering_accepts_local_shifted_enum_constant_compare_store_load_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_string_literal_char_compare_ladder_zero_return_module);
+  RUN_TEST(
+      test_bir_lowering_accepts_local_string_literal_char_compare_ladder_zero_return_module_with_renamed_entry_temps);
   RUN_TEST(test_bir_lowering_accepts_global_x_y_pointer_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_single_global_i32_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_anonymous_struct_field_compare_zero_return_module);

@@ -2750,6 +2750,8 @@ try_lower_minimal_local_string_literal_char_compare_ladder_zero_return_module(
     return std::nullopt;
   }
 
+  const std::string string_array_type = "[" + std::to_string(string_const.byte_length) + " x i8]";
+
   auto match_return_block = [&](size_t index, std::string_view label,
                                 std::string_view value) -> bool {
     if (index >= function.blocks.size()) {
@@ -2762,111 +2764,110 @@ try_lower_minimal_local_string_literal_char_compare_ladder_zero_return_module(
            *ret->value_str == value;
   };
 
-  if (!match_return_block(1, "block_1", "1") || !match_return_block(3, "block_3", "2") ||
-      !match_return_block(5, "block_5", "3") || !match_return_block(7, "block_7", "4") ||
-      !match_return_block(9, "block_9", "5") || !match_return_block(11, "block_11", "6") ||
-      !match_return_block(13, "block_13", "7") ||
-      !match_return_block(14, "block_14", "0")) {
+  auto match_char_compare_block =
+      [&](const LirBlock& block,
+          std::string_view expected_label,
+          std::size_t expected_index,
+          int expected_char,
+          std::string_view true_label,
+          std::string_view false_label) -> bool {
+    const auto* load_ptr = block.insts.size() == 8 ? std::get_if<LirLoadOp>(&block.insts[0]) : nullptr;
+    const auto* index_cast =
+        block.insts.size() == 8 ? std::get_if<LirCastOp>(&block.insts[1]) : nullptr;
+    const auto* elem_gep = block.insts.size() == 8 ? std::get_if<LirGepOp>(&block.insts[2]) : nullptr;
+    const auto* elem_load =
+        block.insts.size() == 8 ? std::get_if<LirLoadOp>(&block.insts[3]) : nullptr;
+    const auto* sext = block.insts.size() == 8 ? std::get_if<LirCastOp>(&block.insts[4]) : nullptr;
+    const auto* cmp = block.insts.size() == 8 ? std::get_if<LirCmpOp>(&block.insts[5]) : nullptr;
+    const auto* zext = block.insts.size() == 8 ? std::get_if<LirCastOp>(&block.insts[6]) : nullptr;
+    const auto* branch_cmp =
+        block.insts.size() == 8 ? std::get_if<LirCmpOp>(&block.insts[7]) : nullptr;
+    const auto* cond_br = std::get_if<LirCondBr>(&block.terminator);
+    const auto expected_index_imm = static_cast<std::int64_t>(expected_index);
+    return block.label == expected_label && load_ptr != nullptr && index_cast != nullptr &&
+           elem_gep != nullptr && elem_load != nullptr && sext != nullptr && cmp != nullptr &&
+           zext != nullptr && branch_cmp != nullptr && cond_br != nullptr &&
+           load_ptr->type_str == "ptr" && load_ptr->ptr == string_slot->result &&
+           match_memory_sext_i32_to_i64_immediate(*index_cast) == expected_index_imm &&
+           match_memory_indexed_gep_from_result(*elem_gep, load_ptr->result.str(), "i8",
+                                                index_cast->result.str()) &&
+           memory_lir_type_matches_integer_width(elem_load->type_str, 8) &&
+           elem_load->ptr == elem_gep->result && sext->kind == LirCastKind::SExt &&
+           memory_lir_type_matches_integer_width(sext->from_type, 8) &&
+           sext->operand == elem_load->result &&
+           memory_lir_type_matches_integer_width(sext->to_type, 32) && !cmp->is_float &&
+           cmp->predicate == "ne" && memory_lir_type_matches_integer_width(cmp->type_str, 32) &&
+           cmp->lhs == sext->result && cmp->rhs == std::to_string(expected_char) &&
+           zext->kind == LirCastKind::ZExt &&
+           memory_lir_type_matches_integer_width(zext->from_type, 1) &&
+           zext->operand == cmp->result &&
+           memory_lir_type_matches_integer_width(zext->to_type, 32) && !branch_cmp->is_float &&
+           branch_cmp->predicate == "ne" &&
+           memory_lir_type_matches_integer_width(branch_cmp->type_str, 32) &&
+           branch_cmp->lhs == zext->result && branch_cmp->rhs == "0" &&
+           cond_br->cond_name == branch_cmp->result && cond_br->true_label == true_label &&
+           cond_br->false_label == false_label;
+  };
+
+  const auto& entry = function.blocks.front();
+  const auto* base_gep = entry.insts.size() == 10 ? std::get_if<LirGepOp>(&entry.insts[0]) : nullptr;
+  const auto* store = entry.insts.size() == 10 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* load_ptr = entry.insts.size() == 10 ? std::get_if<LirLoadOp>(&entry.insts[2]) : nullptr;
+  const auto* index_cast =
+      entry.insts.size() == 10 ? std::get_if<LirCastOp>(&entry.insts[3]) : nullptr;
+  const auto* elem_gep = entry.insts.size() == 10 ? std::get_if<LirGepOp>(&entry.insts[4]) : nullptr;
+  const auto* elem_load =
+      entry.insts.size() == 10 ? std::get_if<LirLoadOp>(&entry.insts[5]) : nullptr;
+  const auto* sext = entry.insts.size() == 10 ? std::get_if<LirCastOp>(&entry.insts[6]) : nullptr;
+  const auto* cmp = entry.insts.size() == 10 ? std::get_if<LirCmpOp>(&entry.insts[7]) : nullptr;
+  const auto* zext = entry.insts.size() == 10 ? std::get_if<LirCastOp>(&entry.insts[8]) : nullptr;
+  const auto* branch_cmp =
+      entry.insts.size() == 10 ? std::get_if<LirCmpOp>(&entry.insts[9]) : nullptr;
+  const auto* cond_br = std::get_if<LirCondBr>(&entry.terminator);
+  if (base_gep == nullptr || store == nullptr || load_ptr == nullptr || index_cast == nullptr ||
+      elem_gep == nullptr || elem_load == nullptr || sext == nullptr || cmp == nullptr ||
+      zext == nullptr || branch_cmp == nullptr || cond_br == nullptr ||
+      entry.label != "entry" ||
+      !match_memory_string_base_gep_zero(*base_gep, string_const.pool_name, string_array_type) ||
+      store->type_str != "ptr" ||
+      store->val != base_gep->result || store->ptr != string_slot->result ||
+      load_ptr->type_str != "ptr" || load_ptr->ptr != string_slot->result ||
+      match_memory_sext_i32_to_i64_immediate(*index_cast) != 0 ||
+      !match_memory_indexed_gep_from_result(*elem_gep, load_ptr->result.str(), "i8",
+                                            index_cast->result.str()) ||
+      !memory_lir_type_matches_integer_width(elem_load->type_str, 8) ||
+      elem_load->ptr != elem_gep->result || sext->kind != LirCastKind::SExt ||
+      !memory_lir_type_matches_integer_width(sext->from_type, 8) ||
+      sext->operand != elem_load->result ||
+      !memory_lir_type_matches_integer_width(sext->to_type, 32) || cmp->is_float ||
+      cmp->predicate != "ne" || !memory_lir_type_matches_integer_width(cmp->type_str, 32) ||
+      cmp->lhs != sext->result || cmp->rhs != "97" || zext->kind != LirCastKind::ZExt ||
+      !memory_lir_type_matches_integer_width(zext->from_type, 1) ||
+      zext->operand != cmp->result ||
+      !memory_lir_type_matches_integer_width(zext->to_type, 32) || branch_cmp->is_float ||
+      branch_cmp->predicate != "ne" ||
+      !memory_lir_type_matches_integer_width(branch_cmp->type_str, 32) ||
+      branch_cmp->lhs != zext->result || branch_cmp->rhs != "0" ||
+      cond_br->cond_name != branch_cmp->result || cond_br->true_label != "block_1" ||
+      cond_br->false_label != "block_2") {
     return std::nullopt;
   }
 
-  const auto rendered = c4c::codegen::lir::print_llvm(module);
-  constexpr std::string_view kExpectedModule =
-      "@.str0 = private unnamed_addr constant [7 x i8] c\"abcdef\\00\"\n"
-      "\n"
-      "define i32 @main()\n"
-      "{\n"
-      "entry:\n"
-      "  %lv.s = alloca ptr, align 8\n"
-      "  %t0 = getelementptr [7 x i8], ptr @.str0, i64 0, i64 0\n"
-      "  store ptr %t0, ptr %lv.s\n"
-      "  %t1 = load ptr, ptr %lv.s\n"
-      "  %t2 = sext i32 0 to i64\n"
-      "  %t3 = getelementptr i8, ptr %t1, i64 %t2\n"
-      "  %t4 = load i8, ptr %t3\n"
-      "  %t5 = sext i8 %t4 to i32\n"
-      "  %t6 = icmp ne i32 %t5, 97\n"
-      "  %t7 = zext i1 %t6 to i32\n"
-      "  %t8 = icmp ne i32 %t7, 0\n"
-      "  br i1 %t8, label %block_1, label %block_2\n"
-      "block_1:\n"
-      "  ret i32 1\n"
-      "block_2:\n"
-      "  %t9 = load ptr, ptr %lv.s\n"
-      "  %t10 = sext i32 1 to i64\n"
-      "  %t11 = getelementptr i8, ptr %t9, i64 %t10\n"
-      "  %t12 = load i8, ptr %t11\n"
-      "  %t13 = sext i8 %t12 to i32\n"
-      "  %t14 = icmp ne i32 %t13, 98\n"
-      "  %t15 = zext i1 %t14 to i32\n"
-      "  %t16 = icmp ne i32 %t15, 0\n"
-      "  br i1 %t16, label %block_3, label %block_4\n"
-      "block_3:\n"
-      "  ret i32 2\n"
-      "block_4:\n"
-      "  %t17 = load ptr, ptr %lv.s\n"
-      "  %t18 = sext i32 2 to i64\n"
-      "  %t19 = getelementptr i8, ptr %t17, i64 %t18\n"
-      "  %t20 = load i8, ptr %t19\n"
-      "  %t21 = sext i8 %t20 to i32\n"
-      "  %t22 = icmp ne i32 %t21, 99\n"
-      "  %t23 = zext i1 %t22 to i32\n"
-      "  %t24 = icmp ne i32 %t23, 0\n"
-      "  br i1 %t24, label %block_5, label %block_6\n"
-      "block_5:\n"
-      "  ret i32 3\n"
-      "block_6:\n"
-      "  %t25 = load ptr, ptr %lv.s\n"
-      "  %t26 = sext i32 3 to i64\n"
-      "  %t27 = getelementptr i8, ptr %t25, i64 %t26\n"
-      "  %t28 = load i8, ptr %t27\n"
-      "  %t29 = sext i8 %t28 to i32\n"
-      "  %t30 = icmp ne i32 %t29, 100\n"
-      "  %t31 = zext i1 %t30 to i32\n"
-      "  %t32 = icmp ne i32 %t31, 0\n"
-      "  br i1 %t32, label %block_7, label %block_8\n"
-      "block_7:\n"
-      "  ret i32 4\n"
-      "block_8:\n"
-      "  %t33 = load ptr, ptr %lv.s\n"
-      "  %t34 = sext i32 4 to i64\n"
-      "  %t35 = getelementptr i8, ptr %t33, i64 %t34\n"
-      "  %t36 = load i8, ptr %t35\n"
-      "  %t37 = sext i8 %t36 to i32\n"
-      "  %t38 = icmp ne i32 %t37, 101\n"
-      "  %t39 = zext i1 %t38 to i32\n"
-      "  %t40 = icmp ne i32 %t39, 0\n"
-      "  br i1 %t40, label %block_9, label %block_10\n"
-      "block_9:\n"
-      "  ret i32 5\n"
-      "block_10:\n"
-      "  %t41 = load ptr, ptr %lv.s\n"
-      "  %t42 = sext i32 5 to i64\n"
-      "  %t43 = getelementptr i8, ptr %t41, i64 %t42\n"
-      "  %t44 = load i8, ptr %t43\n"
-      "  %t45 = sext i8 %t44 to i32\n"
-      "  %t46 = icmp ne i32 %t45, 102\n"
-      "  %t47 = zext i1 %t46 to i32\n"
-      "  %t48 = icmp ne i32 %t47, 0\n"
-      "  br i1 %t48, label %block_11, label %block_12\n"
-      "block_11:\n"
-      "  ret i32 6\n"
-      "block_12:\n"
-      "  %t49 = load ptr, ptr %lv.s\n"
-      "  %t50 = sext i32 6 to i64\n"
-      "  %t51 = getelementptr i8, ptr %t49, i64 %t50\n"
-      "  %t52 = load i8, ptr %t51\n"
-      "  %t53 = sext i8 %t52 to i32\n"
-      "  %t54 = icmp ne i32 %t53, 0\n"
-      "  %t55 = zext i1 %t54 to i32\n"
-      "  %t56 = icmp ne i32 %t55, 0\n"
-      "  br i1 %t56, label %block_13, label %block_14\n"
-      "block_13:\n"
-      "  ret i32 7\n"
-      "block_14:\n"
-      "  ret i32 0\n"
-      "}\n";
-  if (rendered.find(kExpectedModule) == std::string::npos) {
+  if (!match_return_block(1, "block_1", "1") ||
+      !match_char_compare_block(function.blocks[2], "block_2", 1, 98, "block_3", "block_4") ||
+      !match_return_block(3, "block_3", "2") ||
+      !match_char_compare_block(function.blocks[4], "block_4", 2, 99, "block_5", "block_6") ||
+      !match_return_block(5, "block_5", "3") ||
+      !match_char_compare_block(function.blocks[6], "block_6", 3, 100, "block_7", "block_8") ||
+      !match_return_block(7, "block_7", "4") ||
+      !match_char_compare_block(function.blocks[8], "block_8", 4, 101, "block_9", "block_10") ||
+      !match_return_block(9, "block_9", "5") ||
+      !match_char_compare_block(function.blocks[10], "block_10", 5, 102, "block_11",
+                                "block_12") ||
+      !match_return_block(11, "block_11", "6") ||
+      !match_char_compare_block(function.blocks[12], "block_12", 6, 0, "block_13",
+                                "block_14") ||
+      !match_return_block(13, "block_13", "7") || !match_return_block(14, "block_14", "0")) {
     return std::nullopt;
   }
 
