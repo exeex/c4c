@@ -9490,6 +9490,43 @@ void test_x86_peephole_coalesces_single_stack_spill_direct_movslq_reload() {
                       "x86 peephole should drop the direct movslq trampoline reload after coalescing a bounded stack-spill case");
 }
 
+void test_x86_peephole_keeps_stack_spill_trampoline_when_fallthrough_uses_rax() {
+  const std::string input =
+      ".text\n"
+      "main:\n"
+      "  movq %r9, %rax\n"
+      "  addq $8, %rax\n"
+      "  movq %rax, -8(%rbp)\n"
+      "  cmpq %rsi, %rdi\n"
+      "  jne .Ltrampoline\n"
+      "  addq %rax, %r11\n"
+      "  ret\n"
+      ".Ltrampoline:\n"
+      "  movq -8(%rbp), %r9\n"
+      "  jmp .Lloop\n"
+      ".Lloop:\n"
+      "  movq %r9, %rax\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_contains(optimized, "  movq %r9, %rax\n",
+                  "x86 peephole should keep the predecessor copy into %rax parked when the branch fallthrough still consumes %rax");
+  expect_contains(optimized, "  addq $8, %rax\n",
+                  "x86 peephole should keep the predecessor update on %rax when fallthrough safety is not proven");
+  expect_contains(optimized, "  movq %rax, -8(%rbp)\n",
+                  "x86 peephole should keep the bounded stack spill parked when the fallthrough path still needs %rax");
+  expect_contains(optimized, "  jne .Ltrampoline\n",
+                  "x86 peephole should keep branching through the trampoline when the fallthrough path still references %rax");
+  expect_contains(optimized, "  movq -8(%rbp), %r9\n",
+                  "x86 peephole should keep the trampoline reload parked when the bounded stack-spill rewrite is unsafe");
+  expect_contains(optimized, "  addq %rax, %r11\n",
+                  "x86 peephole should preserve the fallthrough-side %rax consumer that blocks stack-spill coalescing");
+  expect_not_contains(optimized, "  addq $8, %r9\n",
+                      "x86 peephole should not retarget the predecessor update onto the loop-carried register when fallthrough still needs %rax");
+  expect_not_contains(optimized, "  jne .Lloop\n",
+                      "x86 peephole should not bypass the trampoline when fallthrough safety fails for a stack-spill rewrite");
+}
+
 void test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole() {
   const auto rendered = c4c::backend::x86::emit_module(make_minimal_countdown_loop_bir_module());
 
@@ -9959,6 +9996,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_peephole_coalesces_single_stack_spill_direct_reload);
   RUN_TEST(test_x86_peephole_coalesces_single_stack_spill_movslq_trampoline_copy);
   RUN_TEST(test_x86_peephole_coalesces_single_stack_spill_direct_movslq_reload);
+  RUN_TEST(test_x86_peephole_keeps_stack_spill_trampoline_when_fallthrough_uses_rax);
   RUN_TEST(test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);

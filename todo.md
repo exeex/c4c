@@ -9,19 +9,17 @@ Source Plan: plan.md
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
   first live optimization round
 - immediate target:
-  evaluate whether the remaining bounded stack-load family needs one more
-  explicit safety regression or should stay parked behind the current
-  predecessor-store and fallthrough rules
-  - keep the next rewrite scope limited to one explicit reload/copy-back form
-    or one explicit negative/safety case instead of widening into generic spill
-    coalescing
+  evaluate the next translated peephole integration candidate outside the
+  currently parked stack-load family
+  - keep the stack-load remainder parked until a new slice can prove another
+    explicit predecessor-store or fallthrough rule instead of widening the
+    matcher ad hoc
 
 ## Next Slice
 
-- decide whether to add one explicit non-coalescing regression for stack-load
-  trampolines whose predecessor-store or fallthrough usage violates the current
-  `%rax`/`%eax` bounded rules, or to park the rest of the stack-load family for
-  now
+- keep the remaining stack-load family intentionally parked behind the current
+  `%rax`/`%eax` predecessor-store and fallthrough rules unless a future slice
+  proves one more explicit safe shape
 - keep `frame_compact.cpp` parked until dead-store and callee-save translated
   passes are live enough for frame shrinking to be meaningful
 - continue evaluating which remaining translated peephole units can be compiled
@@ -100,6 +98,17 @@ Source Plan: plan.md
   pre-existing typed LIR validation coverage before it can serve as a narrow
   harness for the new direct-`movslq` regression, so this slice again uses the
   standalone backend test filter/subset plus the full-suite regression guard
+- this iteration deliberately adds a negative regression instead of widening
+  stack-load matching again: the live x86 peephole must keep the spill,
+  reload, and trampoline branch parked when the branch fallthrough still
+  consumes `%rax` after the bounded predecessor spill
+- the new stack-load safety regression passed on the existing implementation,
+  confirming the current fallthrough guard already enforces that `%rax`/`%eax`
+  boundary
+- the first full-suite rerun picked up one extra unrelated failure in
+  `cpp_typedef_owned_functional_cast_perf`; rerunning that test in isolation
+  passed, and a second full-suite rerun returned to the monotonic baseline
+  count
 
 ## Recently Completed
 
@@ -190,5 +199,12 @@ Source Plan: plan.md
 - added a direct regression test that proves the live x86 peephole now rewrites
   that bounded direct `movslq` stack-spill trampoline onto the loop-carried
   register and drops the now-dead spill and direct trampoline reload
+- added a direct regression test that proves the live x86 peephole keeps a
+  bounded stack-spill trampoline parked when the branch fallthrough still
+  consumes `%rax`, locking in the current fallthrough-safety boundary instead
+  of widening the matcher
 - rebuilt and reran the full ctest suite with monotonic results:
   `183` failures before, `181` failures after, no newly failing tests
+- rebuilt and reran the full ctest suite for this test-only safety slice with
+  monotonic results: `181` failures before, `181` failures after, no newly
+  failing tests
