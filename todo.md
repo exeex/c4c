@@ -10,9 +10,9 @@ Source Plan: plan.md
   `emit.cpp` after the repeated `printf` immediate direct-LIR route moved into
   `src/backend/x86/codegen/direct_printf.cpp`
 - immediate target:
-  identify the next bounded top-level ownership transfer that can move out of
-  `emit.cpp` after the first direct `printf` sibling seam joined the existing
-  direct global and variadic helper files
+  continue the direct `printf` sibling lane by moving the bounded local-buffer
+  `strcpy`/`printf` direct-LIR route out of `emit.cpp` and into
+  `src/backend/x86/codegen/direct_printf.cpp`
   - keep translated `variadic.cpp` itself parked until `X86Codegen` grows the
     state/method surface it still references
   - keep `frame_compact.cpp` parked until a future iteration can prove a real
@@ -24,9 +24,11 @@ Source Plan: plan.md
   transfer that can compile cleanly against the current transitional headers
   after `direct_printf.cpp` joins `direct_variadic.cpp` and
   `direct_globals.cpp` as another reachable Step 4 sibling seam
-- check whether one additional bounded string/printf route can move behind the
-  new dedicated direct sibling file next without widening unrelated
-  direct-emitter helpers or forcing shared string utility exports
+- after the local-buffer `strcpy`/`printf` seam, check whether the remaining
+  bounded string/printf routes (`counted_printf_ternary_loop` or the simpler
+  `string_literal_char` helper) can move behind `direct_printf.cpp` next
+  without widening unrelated direct-emitter helpers or forcing shared string
+  utility exports
 - keep translated `variadic.cpp` parked until a future iteration can expose
   the missing `X86Codegen` state/method surface intentionally instead of
   compiling placeholder member bodies by accident
@@ -43,6 +45,20 @@ Source Plan: plan.md
 - this plan was activated by explicit user priority override
 - idea 44 remains open as the parked shared-BIR cleanup and legacy-matcher
   consolidation lane
+- this iteration extends the direct-printf sibling seam one bounded step
+  further: the local-buffer `strcpy` plus one-byte-offset `printf` direct-LIR
+  route now lives in `src/backend/x86/codegen/direct_printf.cpp` instead of
+  `emit.cpp`
+- added a focused backend regression that calls the new direct `printf` helper
+  seam explicitly so the Step 4 ownership move stays observable apart from the
+  broader native-path dispatcher coverage
+- focused checks passed:
+  `./build/backend_bir_tests test_x86_direct_printf_helper_accepts_local_buffer_string_copy_printf_slice`
+  plus the existing minimal/source-like local-buffer native-path regressions
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
+  monotonic against `test_fail_before.log`; the regression guard reported
+  `2723` passed / `181` failed before and after with no newly failing tests
+  and the existing `backend_bir_tests` `>30s` timeout warning unchanged
 - this iteration extends Step 4 with the first dedicated direct-printf sibling
   seam: the bounded repeated `printf` immediate direct-LIR route now lives in
   `src/backend/x86/codegen/direct_printf.cpp` instead of `emit.cpp`

@@ -260,6 +260,60 @@ c4c::codegen::lir::LirModule make_supported_x86_source_like_repeated_printf_imme
   return module;
 }
 
+c4c::codegen::lir::LirModule make_supported_x86_source_like_local_buffer_string_copy_printf_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "abcdef", 7});
+  module.string_pool.push_back(LirStringConst{"@.str1", "%s\n", 4});
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "stdin",
+      {},
+      false,
+      false,
+      "external ",
+      "global ",
+      "ptr",
+      "",
+      8,
+      true,
+  });
+  module.extern_decls.push_back(LirExternDecl{"strcpy", "ptr", "ptr"});
+  module.extern_decls.push_back(LirExternDecl{"printf", "i32", "i32"});
+  module.extern_decls.push_back(LirExternDecl{"puts", "i32", "i32"});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.buf", "[10 x i8]", "", 1});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[10 x i8]", "%lv.buf", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(
+      LirGepOp{"%t1", "[7 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCallOp{"%t2", "ptr", "@strcpy", "(ptr, ptr)", "ptr %t0, ptr %t1"});
+  entry.insts.push_back(
+      LirGepOp{"%t3", "[4 x i8]", "@.str1", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(
+      LirGepOp{"%t4", "[10 x i8]", "%lv.buf", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t5", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t6", "i8", "%t4", false, {"i64 %t5"}});
+  entry.insts.push_back(LirCallOp{"%t7", "i32", "@printf", "(ptr, ...)", "ptr %t3, ptr %t6"});
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_supported_x86_variadic_sum2_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -699,6 +753,23 @@ void test_x86_direct_printf_helper_accepts_repeated_printf_immediates_slice() {
                   "the direct x86 printf helper seam should still lower the first bounded printf payload through the integer register path");
   expect_contains(*rendered, "mov rsi, 2",
                   "the direct x86 printf helper seam should still lower the second bounded printf payload through the integer register path");
+}
+
+void test_x86_direct_printf_helper_accepts_local_buffer_string_copy_printf_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_source_like_local_buffer_string_copy_printf_lir_module(),
+      c4c::backend::Target::X86_64);
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_local_buffer_string_copy_printf_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 printf helper seam should accept the bounded local-buffer copy/printf slice after ownership moves out of emit.cpp");
+  expect_contains(*rendered, ".asciz \"abcdef\"",
+                  "the direct x86 printf helper seam should still materialize the copy-source bytes after the Step 4 ownership move");
+  expect_contains(*rendered, "call strcpy",
+                  "the direct x86 printf helper seam should still lower the bounded stack-buffer copy through the native libc call path");
+  expect_contains(*rendered, "lea rsi, [rsp + 9]",
+                  "the direct x86 printf helper seam should still preserve the one-byte stack-buffer offset passed to printf");
 }
 
 void test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly() {
@@ -2063,6 +2134,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_try_emit_prepared_lir_module_accepts_variadic_double_bytes_runtime_slice);
   RUN_TEST(test_x86_direct_variadic_helper_accepts_variadic_sum2_runtime_slice);
   RUN_TEST(test_x86_direct_printf_helper_accepts_repeated_printf_immediates_slice);
+  RUN_TEST(test_x86_direct_printf_helper_accepts_local_buffer_string_copy_printf_slice);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_accepts_pointer_phi_join_modules);
   RUN_TEST(test_x86_public_bir_emitter_delegates_direct_bir_route_to_shared_backend);
