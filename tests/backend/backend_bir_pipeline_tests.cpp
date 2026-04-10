@@ -48,6 +48,42 @@ c4c::codegen::lir::LirModule make_unsupported_local_array_gep_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_supported_x86_void_direct_call_return_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+
+  LirFunction helper;
+  helper.name = "voidfn";
+  helper.signature_text = "define void @voidfn()\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.terminator = LirRet{std::nullopt, "void"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"", "void", "@voidfn", "", ""});
+  main_entry.terminator = LirRet{std::string("0"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_pointer_phi_join_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -907,6 +943,21 @@ void test_x86_direct_printf_helper_accepts_string_literal_char_slice() {
                   "the direct x86 printf helper seam should still address the private string pool label on the native x86 path");
   expect_contains(*rendered, "movsx eax, byte ptr [rax + 1]",
                   "the direct x86 printf helper seam should still lower the indexed char load through the native byte-load path");
+}
+
+void test_x86_direct_void_helper_accepts_void_direct_call_return_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_void_direct_call_return_lir_module(), c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_minimal_void_helper_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 void helper seam should accept the bounded helper-call-plus-immediate-return slice after ownership moves out of emit.cpp");
+  expect_contains(*rendered, ".globl voidfn",
+                  "the direct x86 void helper seam should still emit the helper definition after the Step 4 ownership move");
+  expect_contains(*rendered, "voidfn:\n  ret\n",
+                  "the direct x86 void helper seam should still lower the bounded helper body to a bare return");
+  expect_contains(*rendered, "main:\n  call voidfn\n  mov eax, 0\n  ret\n",
+                  "the direct x86 void helper seam should still lower the bounded helper call and immediate return on the native x86 path");
 }
 
 void test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly() {
@@ -2274,6 +2325,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_direct_printf_helper_accepts_local_buffer_string_copy_printf_slice);
   RUN_TEST(test_x86_direct_printf_helper_accepts_counted_printf_ternary_loop_slice);
   RUN_TEST(test_x86_direct_printf_helper_accepts_string_literal_char_slice);
+  RUN_TEST(test_x86_direct_void_helper_accepts_void_direct_call_return_slice);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_accepts_pointer_phi_join_modules);
   RUN_TEST(test_x86_public_bir_emitter_delegates_direct_bir_route_to_shared_backend);

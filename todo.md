@@ -13,9 +13,11 @@ Source Plan: plan.md
 - immediate target:
   continue Step 4 after the bounded `string_literal_char` direct-LIR route
   moved out of `emit.cpp` and into `src/backend/x86/codegen/direct_printf.cpp`
-  by identifying the next ownership seam that still compiles cleanly against
-  the current transitional helpers without widening unrelated x86 emitter
-  support
+  by moving the bounded prepared-LIR `void` direct-call routes
+  (`voidfn`, `voidfn(); return imm;`, and the main-only extern-void call plus
+  immediate return shape) into a new sibling seam that still compiles cleanly
+  against the current transitional helpers without widening unrelated x86
+  emitter support
   - keep translated `variadic.cpp` itself parked until `X86Codegen` grows the
     state/method surface it still references
   - keep `frame_compact.cpp` parked until a future iteration can prove a real
@@ -29,8 +31,13 @@ Source Plan: plan.md
   `direct_globals.cpp` as another reachable Step 4 sibling seam
 - with the repeated `printf`, local-buffer `strcpy`/`printf`, counted ternary
   loop, and `string_literal_char` routes now behind `direct_printf.cpp`,
-  inspect the remaining prepared-LIR x86 seams in `emit.cpp` for the next
-  similarly small ownership move instead of widening shared helper exports
+  continue with the prepared-LIR call/helper routes in `emit.cpp`, starting
+  with the bounded `void` helper/call ownership seam before considering the
+  larger integer helper-call cluster
+- after the bounded `void` seam now lives in `src/backend/x86/codegen/direct_void.cpp`,
+  continue Step 4 with the neighboring prepared-LIR integer helper-call routes
+  (`param_slot_add`, zero-arg extern call, local-arg helper call, and the
+  two-arg helper variants) instead of widening unrelated x86 emitter support
 - keep translated `variadic.cpp` parked until a future iteration can expose
   the missing `X86Codegen` state/method surface intentionally instead of
   compiling placeholder member bodies by accident
@@ -47,6 +54,24 @@ Source Plan: plan.md
 - this plan was activated by explicit user priority override
 - idea 44 remains open as the parked shared-BIR cleanup and legacy-matcher
   consolidation lane
+- this iteration extends Step 4 with another bounded prepared-LIR sibling seam:
+  the x86 `void` helper/call direct-LIR routes now live in
+  `src/backend/x86/codegen/direct_void.cpp` instead of `emit.cpp`
+- the moved seam covers the helper-only `voidfn` body, the two-function
+  `voidfn(); return imm;` slice, and the main-only extern-void call plus
+  immediate return shape without widening the surrounding integer helper-call
+  ownership surface yet
+- added a focused backend regression that calls the new direct `void` helper
+  seam explicitly so the Step 4 ownership move stays observable apart from the
+  broader prepared-LIR dispatcher coverage
+- focused checks passed:
+  `./build/backend_bir_tests test_x86_direct_void_helper_accepts_void_direct_call_return_slice`
+  plus the existing `00080` helper-only, helper-call, and main-only direct
+  x86 emitter regressions
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
+  monotonic against `test_fail_before.log`; the regression guard reported
+  `1217` passed / `181` failed before versus `2723` passed / `181` failed
+  after, with no newly failing tests
 - this iteration extends the direct-printf sibling seam one bounded step
   further: the `string_literal_char` direct-LIR route now lives in
   `src/backend/x86/codegen/direct_printf.cpp` instead of `emit.cpp`

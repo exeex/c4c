@@ -426,6 +426,12 @@ std::optional<std::string> try_emit_minimal_counted_printf_ternary_loop_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_string_literal_char_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_void_helper_call_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_void_return_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_void_extern_call_return_imm_module(
+    const c4c::codegen::lir::LirModule& module);
 c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
     const c4c::backend::LivenessInput& liveness_input);
 
