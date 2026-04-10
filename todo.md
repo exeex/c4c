@@ -36,8 +36,11 @@ Source Plan: plan.md
   larger integer helper-call cluster
 - after the bounded `void` seam now lives in `src/backend/x86/codegen/direct_void.cpp`,
   continue Step 4 with the neighboring prepared-LIR integer helper-call routes
-  (`param_slot_add`, zero-arg extern call, local-arg helper call, and the
-  two-arg helper variants) instead of widening unrelated x86 emitter support
+  in bounded sub-slices instead of widening unrelated x86 emitter support
+- after the bounded `param_slot_add` plus zero-arg extern/declared-call routes
+  now live in `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 with
+  the remaining prepared-LIR integer helper-call routes there: the single-local
+  helper call first, then the two-arg helper variants
 - keep translated `variadic.cpp` parked until a future iteration can expose
   the missing `X86Codegen` state/method surface intentionally instead of
   compiling placeholder member bodies by accident
@@ -57,6 +60,22 @@ Source Plan: plan.md
 - this iteration extends Step 4 with another bounded prepared-LIR sibling seam:
   the x86 `void` helper/call direct-LIR routes now live in
   `src/backend/x86/codegen/direct_void.cpp` instead of `emit.cpp`
+- this iteration starts the neighboring integer helper-call cluster with a new
+  bounded sibling seam: the x86 prepared-LIR `param_slot_add` route plus the
+  zero-arg extern/declared-call route now live in
+  `src/backend/x86/codegen/direct_calls.cpp` instead of `emit.cpp`
+- added a focused backend regression that calls the new direct call-helper seam
+  explicitly so the Step 4 ownership move stays observable apart from the
+  broader prepared-LIR dispatcher coverage
+- focused checks passed:
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_param_slot_add_slice`
+  plus `test_x86_direct_emitter_lowers_minimal_param_slot_add_slice` and
+  `test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice`
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
+  monotonic against `test_fail_before.log`; the regression guard reported
+  `1217` passed / `181` failed before versus `2723` passed / `181` failed
+  after, with no newly failing tests and the existing `backend_bir_tests`
+  `>30s` warning unchanged
 - the moved seam covers the helper-only `voidfn` body, the two-function
   `voidfn(); return imm;` slice, and the main-only extern-void call plus
   immediate return shape without widening the surrounding integer helper-call

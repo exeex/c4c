@@ -84,6 +84,47 @@ c4c::codegen::lir::LirModule make_supported_x86_void_direct_call_return_lir_modu
   return module;
 }
 
+c4c::codegen::lir::LirModule make_supported_x86_param_slot_add_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction helper;
+  helper.name = "add_one";
+  helper.signature_text = "define i32 @add_one(i32 %p.x)\n";
+  helper.entry = LirBlockId{0};
+  helper.alloca_insts.push_back(LirAllocaOp{"%lv.param.x", "i32", "", 4});
+  helper.alloca_insts.push_back(LirStoreOp{"i32", "%p.x", "%lv.param.x"});
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.param.x"});
+  helper_entry.insts.push_back(LirBinOp{"%t1", LirBinaryOpcode::Add, "i32", "%t0", "1"});
+  helper_entry.insts.push_back(LirStoreOp{"i32", "%t1", "%lv.param.x"});
+  helper_entry.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.param.x"});
+  helper_entry.terminator = LirRet{std::string("%t2"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"%t0", "i32", "@add_one", "(i32)", "i32 5"});
+  main_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_pointer_phi_join_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -958,6 +999,21 @@ void test_x86_direct_void_helper_accepts_void_direct_call_return_slice() {
                   "the direct x86 void helper seam should still lower the bounded helper body to a bare return");
   expect_contains(*rendered, "main:\n  call voidfn\n  mov eax, 0\n  ret\n",
                   "the direct x86 void helper seam should still lower the bounded helper call and immediate return on the native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_param_slot_add_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_param_slot_add_lir_module(), c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_minimal_param_slot_add_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded param-slot add slice after ownership moves out of emit.cpp");
+  expect_contains(*rendered, ".globl add_one",
+                  "the direct x86 call helper seam should still emit the helper definition after the Step 4 ownership move");
+  expect_contains(*rendered, "add_one:\n  mov eax, edi\n  add eax, 1\n  ret\n",
+                  "the direct x86 call helper seam should still lower the bounded helper add body on the native x86 path");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  call add_one\n  ret\n",
+                  "the direct x86 call helper seam should still lower the bounded entry call through the native x86 path");
 }
 
 void test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly() {
@@ -2326,6 +2382,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_direct_printf_helper_accepts_counted_printf_ternary_loop_slice);
   RUN_TEST(test_x86_direct_printf_helper_accepts_string_literal_char_slice);
   RUN_TEST(test_x86_direct_void_helper_accepts_void_direct_call_return_slice);
+  RUN_TEST(test_x86_direct_call_helper_accepts_param_slot_add_slice);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_accepts_pointer_phi_join_modules);
   RUN_TEST(test_x86_public_bir_emitter_delegates_direct_bir_route_to_shared_backend);
