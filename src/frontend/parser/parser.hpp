@@ -165,6 +165,7 @@ class Parser {
     std::unordered_map<std::string, TypeSpec> var_types;
     std::string last_resolved_typedef;
     int template_arg_expr_depth = 0;
+    size_t token_mutation_count = 0;
   };
 
   // RAII guard that saves parser state on construction and restores it on
@@ -211,6 +212,11 @@ class Parser {
   // ── core parser state ─────────────────────────────────────────────────────
   // Token stream + cursor are the parser's single source of truth.
   std::vector<Token> tokens_;
+  struct TokenMutation {
+    int pos = -1;
+    Token token;
+  };
+  std::vector<TokenMutation> token_mutations_;
   int pos_;
   Arena& arena_;
   SourceProfile source_profile_;

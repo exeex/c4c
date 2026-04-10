@@ -1238,6 +1238,7 @@ bool Parser::parse_greater_than_in_template_list(bool consume_last_token) {
 
     if (check(TokenKind::GreaterGreater)) {
         // Consume one > and leave the second > in the token stream.
+        token_mutations_.push_back({pos_, tokens_[pos_]});
         tokens_[pos_].kind = TokenKind::Greater;
         tokens_[pos_].lexeme = ">";
         return true;
@@ -1245,6 +1246,7 @@ bool Parser::parse_greater_than_in_template_list(bool consume_last_token) {
 
     if (check(TokenKind::GreaterEqual)) {
         // Consume one > and leave = in the token stream.
+        token_mutations_.push_back({pos_, tokens_[pos_]});
         tokens_[pos_].kind = TokenKind::Assign;
         tokens_[pos_].lexeme = "=";
         return true;
@@ -1252,6 +1254,7 @@ bool Parser::parse_greater_than_in_template_list(bool consume_last_token) {
 
     if (check(TokenKind::GreaterGreaterAssign)) {
         // Consume one > and leave >= in the token stream.
+        token_mutations_.push_back({pos_, tokens_[pos_]});
         tokens_[pos_].kind = TokenKind::GreaterEqual;
         tokens_[pos_].lexeme = ">=";
         return true;

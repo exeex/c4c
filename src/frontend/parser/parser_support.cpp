@@ -16,6 +16,7 @@ Parser::ParserSnapshot Parser::save_state() const {
     snap.var_types            = var_types_;
     snap.last_resolved_typedef = last_resolved_typedef_;
     snap.template_arg_expr_depth = template_arg_expr_depth_;
+    snap.token_mutation_count = token_mutations_.size();
     return snap;
 }
 
@@ -27,6 +28,11 @@ void Parser::restore_state(const ParserSnapshot& snap) {
     var_types_             = snap.var_types;
     last_resolved_typedef_ = snap.last_resolved_typedef;
     template_arg_expr_depth_ = snap.template_arg_expr_depth;
+    while (token_mutations_.size() > snap.token_mutation_count) {
+        const TokenMutation& mutation = token_mutations_.back();
+        tokens_[mutation.pos] = mutation.token;
+        token_mutations_.pop_back();
+    }
 }
 
 

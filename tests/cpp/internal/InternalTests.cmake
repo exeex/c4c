@@ -753,6 +753,16 @@ set_tests_properties(cpp_parse_keyword_not_eq_operator_dump PROPERTIES
 )
 
 add_test(
+  NAME cpp_parse_namespace_trailing_return_nested_variadic_alias_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/namespace_trailing_return_nested_variadic_alias_parse.cpp"
+)
+set_tests_properties(cpp_parse_namespace_trailing_return_nested_variadic_alias_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Function\\(eastl::f\\)"
+  FAIL_REGULAR_EXPRESSION "expected=RBRACE got='<eof>'"
+)
+
+add_test(
   NAME cpp_lex_keyword_bitand_tokens
   COMMAND c4cll --lex-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_bitand_parse.cpp"
 )

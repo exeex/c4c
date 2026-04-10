@@ -6,30 +6,40 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: keep `eastl_type_traits_simple.cpp` as the active EASTL frontier, but
-  treat the next remaining workflow mismatch as the bounded `remove_cv`
-  trait-follow-up rather than the now-fixed inherited `is_enum` path.
-- Iteration focus: record that the old `eastl_type_traits_simple.cpp` runtime
-  frontier is now closed, keep the passing standalone workflow as the active
-  acceptance check, and park the newly reduced direct `remove_cv_t<const ...>`
-  / `remove_cv_t<volatile ...>` standalone repro as a follow-up rather than
-  silently expanding this slice.
-- Iteration target: preserve the passing `eastl_type_traits_simple_workflow`,
-  update the EASTL inventory from `RUNTIME_MISMATCH` to `PASS`, and note the
-  remaining manual direct-`remove_cv_t` repro as the next optional trait-family
-  follow-up if EASTL type-trait work resumes.
-- Reduced repro: the manual standalone EASTL source
-  `tests/cpp/eastl/eastl_remove_cv_runtime.cpp` still exposes direct
-  `remove_cv_t<const unsigned int>`,
-  `remove_cv_t<volatile unsigned int>`, and
-  `remove_cv_t<const volatile unsigned int>` first-use mismatches, but that
-  broader direct repro is now separate from the runbook's original
-  `eastl_type_traits_simple.cpp` acceptance frontier.
-- Current blocker: none for the active runbook target; the remaining direct
-  `remove_cv_t` manual repro is deferred follow-up work.
+- Step 4 follow-up: keep the restored EASTL baseline documented now that
+  `cpp_eastl_utility_parse_recipe` and
+  `cpp_eastl_memory_uses_allocator_parse_recipe` both pass again.
+- Iteration focus: record the parser root cause and leave the next EASTL slice
+  explicit rather than silently expanding into a new subsystem.
+- Iteration target: preserve the repaired parse-only and canonical state for
+  `eastl_utility_simple.cpp` and
+  `eastl_memory_uses_allocator_frontier.cpp`, then return to the next smallest
+  remaining EASTL frontier only after the updated baseline is committed.
+- Reduced repro: the focused internal regression
+  `tests/cpp/internal/parse_only_case/namespace_trailing_return_nested_variadic_alias_parse.cpp`
+  captures the generic parser bug behind the old `EASTL/iterator.h`
+  `ssize(const C&) -> ...` failure.
+- Current blocker: none for this slice; the shared trailing-return EOF parser
+  regression is fixed.
 
 ## Completed
 
+- Added focused parse-only coverage in
+  `tests/cpp/internal/parse_only_case/namespace_trailing_return_nested_variadic_alias_parse.cpp`
+  so namespace-scoped trailing-return types with nested alias-template
+  arguments stay covered as a standalone generic repro.
+- Fixed speculative parser rollback to restore `>>` / `>=` / `>>=` token
+  mutations created while splitting template-close tokens, preventing tentative
+  parses from leaking modified token streams into later real parses.
+- Re-ran the focused regression plus the two EASTL parse recipes and confirmed
+  `cpp_parse_namespace_trailing_return_nested_variadic_alias_dump`,
+  `cpp_eastl_utility_parse_recipe`, and
+  `cpp_eastl_memory_uses_allocator_parse_recipe` now pass.
+- Confirmed `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_utility_simple.cpp`
+  and
+  `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp`
+  both complete again, so the README inventory can return those cases to
+  `PASS`.
 - Added focused runtime coverage in
   `tests/cpp/internal/postive_case/template_builtin_is_enum_inherited_value_runtime.cpp`
   so inherited `integral_constant<bool, __is_enum(T)>::value` lookups stay
