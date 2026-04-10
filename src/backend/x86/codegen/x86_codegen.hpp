@@ -405,6 +405,8 @@ std::optional<std::string> try_emit_minimal_scalar_global_load_module(
 std::string emit_minimal_extern_scalar_global_load_slice_asm(std::string_view target_triple,
                                                              std::string_view function_name,
                                                              std::string_view global_name);
+std::optional<std::string> try_emit_minimal_extern_scalar_global_load_module(
+    const c4c::backend::bir::Module& module);
 std::string emit_minimal_scalar_global_store_reload_slice_asm(std::string_view target_triple,
                                                               std::string_view function_name,
                                                               std::string_view global_name,

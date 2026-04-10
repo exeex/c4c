@@ -58,6 +58,32 @@ Source Plan: plan.md
   `cmake --build build -j8 --target backend_shared_util_tests`,
   `./build/backend_shared_util_tests`, and
   `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- this iteration moved the bounded direct-BIR extern scalar global-load
+  matcher/dispatch out of `src/backend/x86/codegen/emit.cpp` into
+  `src/backend/x86/codegen/globals.cpp` through the new
+  `try_emit_minimal_extern_scalar_global_load_module(...)` helper
+- added focused shared-util coverage that calls the new globals-owner helper
+  directly and checks that it keeps the extern unresolved while emitting the
+  expected RIP-relative load sequence
+- focused checks passed:
+  `cmake --build build -j8 --target backend_shared_util_tests backend_bir_tests`,
+  `./build/backend_shared_util_tests`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_direct_bir_minimal_extern_scalar_global_load_end_to_end`, and
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_load_end_to_end`
+- broad validation note:
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log 2>&1`
+  completed, but the stored `test_fail_before.log` baseline is stale for the
+  current tree shape (`1398` tests before versus `3376` after), so the
+  monotonic guard reported one apparent new failure
+- verified the reported delta is pre-existing and unrelated to this x86 globals
+  slice:
+  `cpp_eastl_memory_uses_allocator_parse_recipe` fails on both the patched
+  tree and a clean `HEAD` worktree because
+  `ref/EASTL/include/EASTL/internal/memory_uses_allocator.h` is absent from
+  the current workspace inventory
+- follow-up validation debt:
+  regenerate a matched current-tree full-suite baseline before using the
+  monotonic regression guard as a hard gate again
 - the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
   monotonic against `test_fail_before.log`; the regression guard reported
   `1217` passed / `181` failed before versus `2723` passed / `181` failed
