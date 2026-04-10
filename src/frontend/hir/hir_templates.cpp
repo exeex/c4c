@@ -98,6 +98,7 @@ bool matches_trait_family(const std::string& name, const char* suffix) {
          name.compare(name.size() - std::strlen(suffix) - 2, 2, "::") == 0;
 }
 
+[[deprecated("prefer structured TemplateArgRef access over debug-ref collection")]]
 std::vector<std::string> collect_template_arg_debug_refs(const TypeSpec& ts) {
   std::vector<std::string> refs;
   refs.reserve(ts.tpl_struct_args.size);
@@ -107,6 +108,7 @@ std::vector<std::string> collect_template_arg_debug_refs(const TypeSpec& ts) {
   return refs;
 }
 
+[[deprecated("prefer assign_template_arg_refs_from_hir_args or typed TemplateArgRef writes")]]
 void assign_template_arg_debug_refs(TypeSpec* ts,
                                     const std::vector<std::string>& refs) {
   if (!ts) return;

@@ -51,6 +51,11 @@ Source Plan: plan.md
   HIR helper, keep trimming the helper's fallback seams, especially
   `parse_builtin_typespec_text(...)` decode and the remaining debug-ref-only
   recovery path for typed args that still lack concrete payload.
+- Warning probe now marks HIR string-fallback helpers as deprecated. Current
+  build output points at the remaining hot spots in
+  `hir_templates.cpp`: two typed-to-string fallback calls inside the new
+  materializer helper, plus the `resolve_struct_member_typedef_type(...)`
+  fallback branch that still collects and reassigns debug refs.
 
 ## Completed
 
@@ -140,3 +145,8 @@ Source Plan: plan.md
   [hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp)
   behind a dedicated HIR helper so the string-backed and typed-backed entry
   points now share one core implementation for pack/default/binding materialization.
+- Marked the main HIR string-fallback helpers as `[[deprecated]]` so build
+  warnings now surface the remaining migration stragglers:
+  string-backed `materialize_template_args(...)`,
+  `collect_template_arg_debug_refs(...)`, and
+  `assign_template_arg_debug_refs(...)`.
