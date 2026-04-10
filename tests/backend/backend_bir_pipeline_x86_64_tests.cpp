@@ -1015,7 +1015,9 @@ c4c::codegen::lir::LirModule make_local_paired_single_field_struct_compare_sub_z
   return module;
 }
 
-c4c::codegen::lir::LirModule make_local_enum_constant_compare_store_load_zero_return_module() {
+c4c::codegen::lir::LirModule
+make_local_enum_constant_compare_store_load_zero_return_module(int second_enum_constant,
+                                                               int third_enum_constant) {
   using namespace c4c::codegen::lir;
 
   LirModule module;
@@ -1048,7 +1050,12 @@ c4c::codegen::lir::LirModule make_local_enum_constant_compare_store_load_zero_re
   LirBlock block2;
   block2.id = LirBlockId{2};
   block2.label = "block_2";
-  block2.insts.push_back(LirCmpOp{"%t3", false, "ne", "i32", "1", "1"});
+  block2.insts.push_back(LirCmpOp{"%t3",
+                                  false,
+                                  "ne",
+                                  "i32",
+                                  std::to_string(second_enum_constant),
+                                  std::to_string(second_enum_constant)});
   block2.insts.push_back(LirCastOp{"%t4", LirCastKind::ZExt, "i1", "%t3", "i32"});
   block2.insts.push_back(LirCmpOp{"%t5", false, "ne", "i32", "%t4", "0"});
   block2.terminator = LirCondBr{"%t5", "block_3", "block_4"};
@@ -1063,7 +1070,12 @@ c4c::codegen::lir::LirModule make_local_enum_constant_compare_store_load_zero_re
   LirBlock block4;
   block4.id = LirBlockId{4};
   block4.label = "block_4";
-  block4.insts.push_back(LirCmpOp{"%t6", false, "ne", "i32", "2", "2"});
+  block4.insts.push_back(LirCmpOp{"%t6",
+                                  false,
+                                  "ne",
+                                  "i32",
+                                  std::to_string(third_enum_constant),
+                                  std::to_string(third_enum_constant)});
   block4.insts.push_back(LirCastOp{"%t7", LirCastKind::ZExt, "i1", "%t6", "i32"});
   block4.insts.push_back(LirCmpOp{"%t8", false, "ne", "i32", "%t7", "0"});
   block4.terminator = LirCondBr{"%t8", "block_5", "block_6"};
@@ -6985,8 +6997,8 @@ void test_backend_bir_pipeline_drives_x86_lir_local_paired_single_field_struct_c
 
 void test_backend_bir_pipeline_drives_x86_lir_local_enum_constant_compare_store_load_zero_through_bir_end_to_end() {
   const auto lowered =
-      c4c::backend::try_lower_to_bir(
-          make_local_enum_constant_compare_store_load_zero_return_module());
+      c4c::backend::try_lower_to_bir(make_local_enum_constant_compare_store_load_zero_return_module(
+          1, 2));
   expect_true(lowered.has_value(),
               "x86 LIR local enum-constant compare/store-load input should lower into direct BIR before native x86 emission");
   if (!lowered.has_value()) {
@@ -6999,7 +7011,7 @@ void test_backend_bir_pipeline_drives_x86_lir_local_enum_constant_compare_store_
 
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{
-          make_local_enum_constant_compare_store_load_zero_return_module()},
+          make_local_enum_constant_compare_store_load_zero_return_module(1, 2)},
       make_bir_pipeline_options(c4c::backend::Target::X86_64));
 
   expect_contains(rendered, ".globl main",
@@ -7008,6 +7020,33 @@ void test_backend_bir_pipeline_drives_x86_lir_local_enum_constant_compare_store_
                   "x86 LIR local enum-constant compare/store-load input should preserve the folded zero return after bounded shared lowering");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR local enum-constant compare/store-load input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_shifted_local_enum_constant_compare_store_load_zero_through_bir_end_to_end() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_local_enum_constant_compare_store_load_zero_return_module(
+          2, 3));
+  expect_true(lowered.has_value(),
+              "x86 LIR shifted local enum-constant compare/store-load input should lower into direct BIR before native x86 emission");
+  if (!lowered.has_value()) {
+    return;
+  }
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty(),
+              "x86 LIR shifted local enum-constant compare/store-load lowering should collapse the bounded `00055.c` source slice to one constant-return BIR block");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_local_enum_constant_compare_store_load_zero_return_module(2, 3)},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "x86 LIR shifted local enum-constant compare/store-load input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR shifted local enum-constant compare/store-load input should preserve the folded zero return after bounded shared lowering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR shifted local enum-constant compare/store-load input should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_x86_lir_global_x_y_pointer_compare_zero_through_bir_end_to_end() {
@@ -8352,6 +8391,8 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_single_field_struct_store_load_zero_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_paired_single_field_struct_compare_sub_zero_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_enum_constant_compare_store_load_zero_through_bir_end_to_end);
+  RUN_TEST(
+      test_backend_bir_pipeline_drives_x86_lir_shifted_local_enum_constant_compare_store_load_zero_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_global_x_y_pointer_compare_zero_through_bir_end_to_end);
   RUN_TEST(
       test_backend_bir_pipeline_drives_x86_lir_global_anonymous_struct_field_compare_zero_through_bir_end_to_end);

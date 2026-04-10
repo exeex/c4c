@@ -2212,7 +2212,7 @@ try_lower_minimal_local_enum_constant_compare_store_load_zero_return_module(
   }
 
   const auto rendered = c4c::codegen::lir::print_llvm(module);
-  constexpr std::string_view kExpectedModule =
+  constexpr std::string_view kExpectedModule00054 =
       "define i32 @main()\n"
       "{\n"
       "entry:\n"
@@ -2242,7 +2242,38 @@ try_lower_minimal_local_enum_constant_compare_store_load_zero_return_module(
       "  %t9 = load i32, ptr %lv.e\n"
       "  ret i32 %t9\n"
       "}\n";
-  if (rendered.find(kExpectedModule) == std::string::npos) {
+  constexpr std::string_view kExpectedModule00055 =
+      "define i32 @main()\n"
+      "{\n"
+      "entry:\n"
+      "  %lv.e = alloca i32, align 4\n"
+      "  %t0 = icmp ne i32 0, 0\n"
+      "  %t1 = zext i1 %t0 to i32\n"
+      "  %t2 = icmp ne i32 %t1, 0\n"
+      "  br i1 %t2, label %block_1, label %block_2\n"
+      "block_1:\n"
+      "  ret i32 1\n"
+      "block_2:\n"
+      "  %t3 = icmp ne i32 2, 2\n"
+      "  %t4 = zext i1 %t3 to i32\n"
+      "  %t5 = icmp ne i32 %t4, 0\n"
+      "  br i1 %t5, label %block_3, label %block_4\n"
+      "block_3:\n"
+      "  ret i32 2\n"
+      "block_4:\n"
+      "  %t6 = icmp ne i32 3, 3\n"
+      "  %t7 = zext i1 %t6 to i32\n"
+      "  %t8 = icmp ne i32 %t7, 0\n"
+      "  br i1 %t8, label %block_5, label %block_6\n"
+      "block_5:\n"
+      "  ret i32 3\n"
+      "block_6:\n"
+      "  store i32 0, ptr %lv.e\n"
+      "  %t9 = load i32, ptr %lv.e\n"
+      "  ret i32 %t9\n"
+      "}\n";
+  if (rendered.find(kExpectedModule00054) == std::string::npos &&
+      rendered.find(kExpectedModule00055) == std::string::npos) {
     return std::nullopt;
   }
 

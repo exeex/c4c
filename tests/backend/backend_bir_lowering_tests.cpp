@@ -1017,7 +1017,9 @@ c4c::codegen::lir::LirModule make_local_paired_single_field_struct_compare_sub_z
   return module;
 }
 
-c4c::codegen::lir::LirModule make_local_enum_constant_compare_store_load_zero_return_module() {
+c4c::codegen::lir::LirModule
+make_local_enum_constant_compare_store_load_zero_return_module(int second_enum_constant,
+                                                               int third_enum_constant) {
   using namespace c4c::codegen::lir;
 
   LirModule module;
@@ -1050,7 +1052,12 @@ c4c::codegen::lir::LirModule make_local_enum_constant_compare_store_load_zero_re
   LirBlock block2;
   block2.id = LirBlockId{2};
   block2.label = "block_2";
-  block2.insts.push_back(LirCmpOp{"%t3", false, "ne", "i32", "1", "1"});
+  block2.insts.push_back(LirCmpOp{"%t3",
+                                  false,
+                                  "ne",
+                                  "i32",
+                                  std::to_string(second_enum_constant),
+                                  std::to_string(second_enum_constant)});
   block2.insts.push_back(LirCastOp{"%t4", LirCastKind::ZExt, "i1", "%t3", "i32"});
   block2.insts.push_back(LirCmpOp{"%t5", false, "ne", "i32", "%t4", "0"});
   block2.terminator = LirCondBr{"%t5", "block_3", "block_4"};
@@ -1065,7 +1072,12 @@ c4c::codegen::lir::LirModule make_local_enum_constant_compare_store_load_zero_re
   LirBlock block4;
   block4.id = LirBlockId{4};
   block4.label = "block_4";
-  block4.insts.push_back(LirCmpOp{"%t6", false, "ne", "i32", "2", "2"});
+  block4.insts.push_back(LirCmpOp{"%t6",
+                                  false,
+                                  "ne",
+                                  "i32",
+                                  std::to_string(third_enum_constant),
+                                  std::to_string(third_enum_constant)});
   block4.insts.push_back(LirCastOp{"%t7", LirCastKind::ZExt, "i1", "%t6", "i32"});
   block4.insts.push_back(LirCmpOp{"%t8", false, "ne", "i32", "%t7", "0"});
   block4.terminator = LirCondBr{"%t8", "block_5", "block_6"};
@@ -5702,8 +5714,8 @@ void test_bir_lowering_accepts_local_paired_single_field_struct_compare_sub_zero
 
 void test_bir_lowering_accepts_local_enum_constant_compare_store_load_zero_return_module() {
   const auto lowered =
-      c4c::backend::try_lower_to_bir(
-          make_local_enum_constant_compare_store_load_zero_return_module());
+      c4c::backend::try_lower_to_bir(make_local_enum_constant_compare_store_load_zero_return_module(
+          1, 2));
   expect_true(lowered.has_value(),
               "BIR lowering should accept the bounded local enum-constant compare/store-load slice through the shared constant-return contract");
   if (!lowered.has_value()) {
@@ -5720,6 +5732,28 @@ void test_bir_lowering_accepts_local_enum_constant_compare_store_load_zero_retur
   const auto rendered = c4c::backend::bir::print(*lowered);
   expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
                   "the lowered local enum-constant compare/store-load module should normalize the bounded `00054.c` source route to a single immediate zero return");
+}
+
+void test_bir_lowering_accepts_local_shifted_enum_constant_compare_store_load_zero_return_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_local_enum_constant_compare_store_load_zero_return_module(
+          2, 3));
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the adjacent shifted local enum-constant compare/store-load slice through the shared constant-return contract");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered shifted local enum-constant compare/store-load module should collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered local enum-constant compare/store-load module should also normalize the bounded `00055.c` source route to a single immediate zero return");
 }
 
 void test_bir_lowering_accepts_global_x_y_pointer_compare_zero_return_module() {
@@ -8816,6 +8850,8 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_local_single_field_struct_store_load_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_paired_single_field_struct_compare_sub_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_enum_constant_compare_store_load_zero_return_module);
+  RUN_TEST(
+      test_bir_lowering_accepts_local_shifted_enum_constant_compare_store_load_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_x_y_pointer_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_anonymous_struct_field_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_named_two_field_struct_designated_init_compare_zero_return_module);
