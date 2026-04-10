@@ -717,6 +717,52 @@ Follow-on note:
   so the next iteration should shift back to LIR helper extraction before
   returning to the remaining frontend seams
 
+## 2026-04-10 Step 4 Seventeenth Extraction Slice
+
+The post-sixteenth hotspot order still left `stmt_emitter_call.cpp` in the
+remaining lead pack, so this slice targeted the generic call-argument
+preparation family instead of moving back into HIR.
+
+Executed the call-argument preparation split:
+
+- moved `callee_needs_va_list_by_value_copy`,
+  `apply_default_arg_promotion`, `prepare_call_arg`,
+  `prepare_amd64_variadic_aggregate_arg`, and `prepare_call_args` into the
+  new `src/codegen/lir/stmt_emitter_call_args.cpp`
+- kept `stmt_emitter_call.cpp` focused on AMD64 `va_arg`, call-target
+  resolution, and final call emission
+- added `tests/c/internal/positive_case/ok_call_variadic_aggregate_runtime.c`
+  as focused runtime coverage for fixed by-value aggregate calls, default
+  variadic promotions, and variadic aggregate lowering
+
+Measured result:
+
+- compiling the pre-split `src/codegen/lir/stmt_emitter_call.cpp` from `HEAD`
+  on the direct optimized command took `3.227s`
+- the direct post-split `src/codegen/lir/stmt_emitter_call.cpp` rerun took
+  `2.931s`
+- the new `src/codegen/lir/stmt_emitter_call_args.cpp` compiles in `2.807s`
+- this means the slice did demonstrate a single-TU compile-time win for the
+  main hotspot TU, reducing `stmt_emitter_call.cpp` by `0.296s` (about
+  `9.2%`) on the direct comparison
+
+Validation result:
+
+- focused coverage passed:
+  `positive_sema_ok_call_variadic_aggregate_runtime_c`,
+  `positive_sema_ok_fn_returns_variadic_fn_ptr_c`,
+  `backend_lir_aarch64_variadic_pair_ir`, and
+  `backend_runtime_variadic_pair_second`
+- full-suite regression guard passed with `3330/3330` tests passing before and
+  `3335/3335` after, with no new failures
+
+Follow-on note:
+
+- rerun the refreshed optimized hotspot order before choosing the next slice;
+  if `stmt_emitter_call.cpp` still leads, the remaining call-target
+  resolution or AMD64 `va_arg` seam is the next obvious LIR candidate,
+  otherwise the plan should move back to the measured top frontend TU
+
 ## Non-Goals
 
 - no backend architecture work

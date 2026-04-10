@@ -6,9 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: inspect `src/codegen/lir/stmt_emitter_call.cpp` as the immediate
-  fallback hotspot now that the remaining non-binary expression payload family
-  has been extracted from `src/codegen/lir/stmt_emitter_expr.cpp`.
+- Step 5: refresh the optimized hotspot order after the
+  `stmt_emitter_call.cpp` call-argument split, then choose whether the next
+  extraction should stay in the remaining call-lowering families or move back
+  to the leading frontend TU.
 
 ## Completed
 
@@ -434,9 +435,10 @@ Source Plan: plan.md
 ## Next Slice
 
 - Measure the refreshed optimized hotspot order now that
-  `src/codegen/lir/stmt_emitter_expr.cpp` has been reduced again.
-- Inspect `src/codegen/lir/stmt_emitter_call.cpp` next unless the refreshed
-  ranking unexpectedly leaves another frontend TU ahead of it.
+  `src/codegen/lir/stmt_emitter_call.cpp` has been reduced again.
+- If the ranking still leaves `stmt_emitter_call.cpp` in the lead, inspect
+  the remaining call-target-resolution or AMD64 `va_arg` seam next; otherwise
+  move back to the measured top frontend TU.
 
 ## Blockers
 
@@ -582,3 +584,31 @@ Source Plan: plan.md
   optimized command took 3.471s, the post-split
   `src/codegen/lir/stmt_emitter_expr.cpp` took 2.332s, and the new
   `src/codegen/lir/stmt_emitter_expr_misc.cpp` compiled in 2.839s.
+- The latest full-suite rerun passes 3335/3335 tests, and the monotonic
+  regression guard remains green.
+- The seventeenth extraction slice reduced
+  `src/codegen/lir/stmt_emitter_call.cpp` from 3.227s to 2.931s on the direct
+  optimized compile command, so this call-argument helper split counts as a
+  measured hotspot reduction for that TU.
+- Added `tests/c/internal/positive_case/ok_call_variadic_aggregate_runtime.c`
+  as focused runtime coverage for fixed by-value aggregate calls, default
+  variadic promotions, and variadic aggregate lowering.
+- Executed the seventeenth Step 4 slice by moving the generic call-argument
+  preparation cluster (`callee_needs_va_list_by_value_copy`,
+  `apply_default_arg_promotion`, `prepare_call_arg`,
+  `prepare_amd64_variadic_aggregate_arg`, and `prepare_call_args`) out of
+  `src/codegen/lir/stmt_emitter_call.cpp` into the new
+  `src/codegen/lir/stmt_emitter_call_args.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `positive_sema_ok_call_variadic_aggregate_runtime_c`,
+  `positive_sema_ok_fn_returns_variadic_fn_ptr_c`,
+  `backend_lir_aarch64_variadic_pair_ir`, and
+  `backend_runtime_variadic_pair_second`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard
+  passed with 3330/3330 tests passing before and 3335/3335 after, with no new
+  failures.
+- Recorded the seventeenth before/after extraction measurement: compiling the
+  pre-split `src/codegen/lir/stmt_emitter_call.cpp` from `HEAD` on the direct
+  optimized command took 3.227s, the post-split
+  `src/codegen/lir/stmt_emitter_call.cpp` took 2.931s, and the new
+  `src/codegen/lir/stmt_emitter_call_args.cpp` compiled in 2.807s.
