@@ -8,8 +8,9 @@ Source Plan: plan.md
 
 - Step 1: Stabilize alias-template argument mapping
 - Current slice: extend Step 1 coverage from concrete-type alias packs to
-  defaulted or reordered alias-template pack applications without widening
-  into broader template-pack specialization work
+  parser-side alias argument-ref preservation for transformed member-typedef
+  outputs, while treating dependent-`typename` alias bodies as a follow-on
+  blocker if they discard owner context before alias application
 
 ## Pending Items
 
@@ -28,6 +29,9 @@ Source Plan: plan.md
 - Tightened alias-template substitution bookkeeping for pack parameters and
   prevented `_t` owner-recovery heuristics from overriding already-concrete
   aliased types.
+- Preserved substituted deferred-template arg refs without empty-pack
+  placeholder slots and routed alias member-typedef owner resolution through
+  transformed owner args when explicit owner metadata survives parsing.
 
 ## Notes
 
@@ -36,6 +40,17 @@ Source Plan: plan.md
 - First targeted coverage should exercise alias expansion where one alias
   parameter is a type pack and the aliased target needs the expanded pack
   preserved, not flattened to a single positional binding.
+- This iteration is focused on alias member-typedef resolution using the
+  transformed target arguments rather than the original alias call-site
+  arguments.
+- A narrower blocker was confirmed while probing reordered/defaulted
+  member-typedef aliases: `parse_dependent_typename_specifier()` currently
+  collapses dependent `Owner<...>::type` spellings to the primary template's
+  member typedef (for example `Head`) at alias registration time, so the owner
+  and transformed argument refs are lost before alias substitution runs.
+- Landed prep work in `parser_types_base.cpp` keeps transformed owner arg refs
+  aligned with substitution and avoids reintroducing empty-pack placeholder
+  slots in deferred template arg refs.
 - A separate pack-specialization issue still exists for direct variadic class
   template specialization selection; keep that out of this Step 1 alias slice
   unless it becomes required for the next targeted alias regression.

@@ -1135,16 +1135,176 @@ TypeSpec Parser::parse_base_type() {
                             } else {
                             // Substitute alias params in the aliased type.
                                 ts = ati.aliased_type;
+                                auto split_template_arg_refs =
+                                    [&](const std::string& refs)
+                                    -> std::vector<std::string> {
+                                        std::vector<std::string> parts;
+                                        if (refs.empty()) return parts;
+                                        size_t start = 0;
+                                        int angle_depth = 0;
+                                        int paren_depth = 0;
+                                        int bracket_depth = 0;
+                                        int brace_depth = 0;
+                                        for (size_t i = 0; i < refs.size(); ++i) {
+                                            const char ch = refs[i];
+                                            switch (ch) {
+                                                case '<': ++angle_depth; break;
+                                                case '>':
+                                                    if (angle_depth > 0) --angle_depth;
+                                                    break;
+                                                case '(':
+                                                    ++paren_depth;
+                                                    break;
+                                                case ')':
+                                                    if (paren_depth > 0) --paren_depth;
+                                                    break;
+                                                case '[':
+                                                    ++bracket_depth;
+                                                    break;
+                                                case ']':
+                                                    if (bracket_depth > 0) --bracket_depth;
+                                                    break;
+                                                case '{':
+                                                    ++brace_depth;
+                                                    break;
+                                                case '}':
+                                                    if (brace_depth > 0) --brace_depth;
+                                                    break;
+                                                case ',':
+                                                    if (angle_depth == 0 &&
+                                                        paren_depth == 0 &&
+                                                        bracket_depth == 0 &&
+                                                        brace_depth == 0) {
+                                                        parts.push_back(
+                                                            refs.substr(start, i - start));
+                                                        start = i + 1;
+                                                    }
+                                                    break;
+                                                default:
+                                                    break;
+                                            }
+                                        }
+                                        parts.push_back(refs.substr(start));
+                                        return parts;
+                                    };
+                                auto substitute_template_arg_refs =
+                                    [&](const char* refs_text) -> std::string {
+                                        if (!refs_text || !refs_text[0]) return {};
+                                        const auto old_parts =
+                                            split_template_arg_refs(refs_text);
+                                        std::string updated_refs;
+                                        bool first_part = true;
+                                        for (const auto& old_part : old_parts) {
+                                            std::string substituted = old_part;
+                                            auto s_it = subst.find(old_part);
+                                            if (s_it != subst.end())
+                                                substituted = s_it->second;
+                                            if (substituted.empty()) continue;
+                                            if (!first_part) updated_refs += ",";
+                                            updated_refs += substituted;
+                                            first_part = false;
+                                        }
+                                        return updated_refs;
+                                    };
+                                auto parse_template_arg_ref =
+                                    [&](const std::string& ref,
+                                        ParsedTemplateArg* out) -> bool {
+                                        if (!out || ref.empty()) return false;
+                                        ParsedTemplateArg parsed{};
+                                        char* end = nullptr;
+                                        const long long numeric =
+                                            std::strtoll(ref.c_str(), &end, 10);
+                                        if (end && *end == '\0') {
+                                            parsed.is_value = true;
+                                            parsed.value = numeric;
+                                            *out = parsed;
+                                            return true;
+                                        }
+                                        parsed.is_value = false;
+                                        if (ref[0] == '@') {
+                                            const size_t sep = ref.find(':', 1);
+                                            if (sep == std::string::npos) return false;
+                                            parsed.type.array_size = -1;
+                                            parsed.type.inner_rank = -1;
+                                            parsed.type.base = TB_STRUCT;
+                                            const std::string origin =
+                                                ref.substr(1, sep - 1);
+                                            const std::string nested_refs =
+                                                ref.substr(sep + 1);
+                                            parsed.type.tag =
+                                                arena_.strdup(origin.c_str());
+                                            parsed.type.tpl_struct_origin =
+                                                parsed.type.tag;
+                                            parsed.type.tpl_struct_arg_refs =
+                                                arena_.strdup(nested_refs.c_str());
+                                            *out = parsed;
+                                            return true;
+                                        }
+                                        auto tit = typedef_types_.find(ref);
+                                        if (tit != typedef_types_.end()) {
+                                            parsed.type = tit->second;
+                                            *out = parsed;
+                                            return true;
+                                        }
+                                        if (parse_mangled_type_suffix(ref, &parsed.type) ||
+                                            parse_builtin_typespec_text(ref, &parsed.type)) {
+                                            *out = parsed;
+                                            return true;
+                                        }
+                                        parsed.type.array_size = -1;
+                                        parsed.type.inner_rank = -1;
+                                        parsed.type.base = TB_STRUCT;
+                                        parsed.type.tag = arena_.strdup(ref.c_str());
+                                        *out = parsed;
+                                        return true;
+                                    };
+                                auto build_transformed_owner_args =
+                                    [&](const std::string& owner_name,
+                                        std::vector<ParsedTemplateArg>* out_args)
+                                    -> bool {
+                                        if (!out_args) return false;
+                                        out_args->clear();
+                                        if (!ts.tpl_struct_origin ||
+                                            !ts.tpl_struct_arg_refs ||
+                                            owner_name != ts.tpl_struct_origin) {
+                                            for (const auto& arg : resolved_alias_args) {
+                                                ParsedTemplateArg actual = arg;
+                                                out_args->push_back(actual);
+                                            }
+                                            return true;
+                                        }
+                                        const std::string updated_refs =
+                                            substitute_template_arg_refs(
+                                                ts.tpl_struct_arg_refs);
+                                        if (updated_refs.empty()) return false;
+                                        const auto parts =
+                                            split_template_arg_refs(updated_refs);
+                                        for (const auto& part : parts) {
+                                            ParsedTemplateArg actual{};
+                                            if (!parse_template_arg_ref(part, &actual))
+                                                return false;
+                                            out_args->push_back(actual);
+                                        }
+                                        return true;
+                                    };
                                 auto resolve_alias_member_type =
                                     [&](const std::string& owner_name,
                                         const std::string& member_name) -> bool {
                                         if (owner_name.empty() || member_name.empty())
                                             return false;
+                                        const std::string owner_lookup_name =
+                                            (ts.tpl_struct_origin &&
+                                             ts.deferred_member_type_name &&
+                                             member_name == ts.deferred_member_type_name)
+                                                ? std::string(ts.tpl_struct_origin)
+                                                : owner_name;
                                         const Node* primary_tpl =
-                                            find_template_struct_primary(owner_name);
+                                            find_template_struct_primary(
+                                                owner_lookup_name);
                                         if (!primary_tpl) {
                                             const std::string resolved_owner =
-                                                resolve_visible_type_name(owner_name);
+                                                resolve_visible_type_name(
+                                                    owner_lookup_name);
                                             if (!resolved_owner.empty())
                                                 primary_tpl =
                                                     find_template_struct_primary(
@@ -1154,7 +1314,7 @@ TypeSpec Parser::parse_base_type() {
                                             const std::string canonical_owner =
                                                 canonical_name_in_context(
                                                     current_namespace_context_id(),
-                                                    owner_name);
+                                                    owner_lookup_name);
                                             primary_tpl =
                                                 find_template_struct_primary(
                                                     canonical_owner);
@@ -1162,13 +1322,9 @@ TypeSpec Parser::parse_base_type() {
                                         if (!primary_tpl) return false;
 
                                         std::vector<ParsedTemplateArg> actual_args;
-                                        actual_args.reserve(
-                                            resolved_alias_args.size());
-                                        for (const auto& arg :
-                                             resolved_alias_args) {
-                                            ParsedTemplateArg actual = arg;
-                                            actual_args.push_back(actual);
-                                        }
+                                        if (!build_transformed_owner_args(
+                                                owner_lookup_name, &actual_args))
+                                            return false;
 
                                         std::vector<std::pair<std::string, TypeSpec>> type_bindings;
                                         std::vector<std::pair<std::string, long long>> nttp_bindings;
@@ -1176,7 +1332,8 @@ TypeSpec Parser::parse_base_type() {
                                             find_template_struct_specializations(primary_tpl);
                                         if (!specializations) {
                                             auto it =
-                                                template_struct_specializations_.find(owner_name);
+                                                template_struct_specializations_.find(
+                                                    owner_lookup_name);
                                             if (it != template_struct_specializations_.end())
                                                 specializations = &it->second;
                                         }
@@ -1344,6 +1501,17 @@ TypeSpec Parser::parse_base_type() {
                                         resolved_alias_member =
                                             apply_unary_alias_transform(owner_name, member_name) ||
                                             resolve_alias_member_type(owner_name, member_name);
+                                    if (!resolved_alias_member &&
+                                        ts.deferred_member_type_name &&
+                                        ((ts.tpl_struct_origin &&
+                                          ts.tpl_struct_origin[0]) ||
+                                         (ts.tag && ts.tag[0]))) {
+                                        // Preserve explicit aliased `Owner<...>::type`
+                                        // spellings for later HIR resolution instead of
+                                        // replacing them with alias-name-derived `_t`
+                                        // heuristics.
+                                        resolved_alias_member = true;
+                                    }
                                     const bool can_try_derived_alias_member =
                                         (ts.base == TB_TYPEDEF && ts.tag) ||
                                         ts.base == TB_STRUCT ||
@@ -1398,27 +1566,15 @@ TypeSpec Parser::parse_base_type() {
                                     }
                                 }
                                 if (ts.tpl_struct_arg_refs) {
-                                    std::string old_refs = ts.tpl_struct_arg_refs;
-                                    std::string new_refs;
-                                    std::istringstream ss(old_refs);
-                                    std::string part;
-                                    bool first = true;
-                                    while (std::getline(ss, part, ',')) {
-                                        if (!first) new_refs += ",";
-                                        first = false;
-                                        auto s_it = subst.find(part);
-                                        if (s_it != subst.end())
-                                            new_refs += s_it->second;
-                                        else
-                                            new_refs += part;
-                                    }
+                                    const std::string new_refs =
+                                        substitute_template_arg_refs(
+                                            ts.tpl_struct_arg_refs);
                                     ts.tpl_struct_arg_refs = arena_.strdup(new_refs.c_str());
                                     // Update tag (mangled name) to reflect substituted args.
                                     if (ts.tpl_struct_origin) {
                                         std::string new_tag = ts.tpl_struct_origin;
-                                        std::istringstream ss2(new_refs);
-                                        std::string p2;
-                                        while (std::getline(ss2, p2, ',')) {
+                                        for (const auto& p2 :
+                                             split_template_arg_refs(new_refs)) {
                                         new_tag += "_";
                                         new_tag += p2;
                                         }
@@ -2377,6 +2533,34 @@ TypeSpec Parser::parse_base_type() {
                     pos_ + 1 < static_cast<int>(tokens_.size()) &&
                     tokens_[pos_ + 1].kind == TokenKind::Identifier) {
                     std::string member = tokens_[pos_ + 1].lexeme;
+                    bool has_dependent_template_args = false;
+                    if (ts.tpl_struct_origin && ts.tpl_struct_arg_refs &&
+                        ts.tpl_struct_arg_refs[0]) {
+                        std::string refs = ts.tpl_struct_arg_refs;
+                        size_t start = 0;
+                        while (start <= refs.size()) {
+                            size_t comma = refs.find(',', start);
+                            std::string part = refs.substr(
+                                start,
+                                comma == std::string::npos
+                                    ? std::string::npos
+                                    : comma - start);
+                            if (!part.empty() &&
+                                (is_template_scope_type_param(part) ||
+                                 typedef_types_.count(part) > 0)) {
+                                has_dependent_template_args = true;
+                                break;
+                            }
+                            if (comma == std::string::npos) break;
+                            start = comma + 1;
+                        }
+                    }
+                    if (has_dependent_template_args) {
+                        consume(); // ::
+                        consume(); // member
+                        ts.deferred_member_type_name = arena_.strdup(member.c_str());
+                        return ts;
+                    }
                     TypeSpec resolved{};
                     if (lookup_struct_member_typedef_recursive(ts.tag, member, &resolved)) {
                         consume(); // ::
