@@ -13,22 +13,59 @@ Source Plan: plan.md
   parked translated owner frontier without widening into the still-blocked
   prologue/runtime-owner cutover
 - immediate target:
-  use the landed `src/backend/x86/codegen/memory.cpp` normalization slice to
-  decide whether the next shippable owner-path step is bounded hidden-state
-  surfacing for `reg_assignments` or whether a different parked owner offers a
-  better frontier without widening into the still-parked prologue/runtime
-  surface
+  keep the landed `src/backend/x86/codegen/memory.cpp` reg-assignment surface
+  shippable after proving the minimal shared-state exposure does not break the
+  public x86 header boundary, then use the now-clean compile probe to expose
+  the next post-parser blocker tier before considering real build wiring
 
 ## Next Slice
 
-- evaluate whether exposing the minimal `reg_assignments` surface needed by
-  `src/backend/x86/codegen/memory.cpp` is still a bounded Step 3 move or
-  whether that crosses too far into the parked prologue/runtime owner state
-- if the `reg_assignments` surfacing is too coupled, probe the next translated
-  owner that primarily rides the already-real shared `state` / `out` hooks
-  instead of the hidden register-assignment map
+- use the now-passing `src/backend/x86/codegen/memory.cpp` syntax probe to
+  decide whether the next bounded move is temporary target wiring for
+  `memory.cpp` itself or a different parked owner that can expose a cleaner
+  next blocker tier without widening into translated prologue ownership
+- if `memory.cpp` target wiring surfaces linker-only gaps in already-shared
+  helper/state seams, treat those as the next Step 3 frontier; if it instead
+  pulls in parked prologue/runtime state, leave `memory.cpp` out of the build
+  and pivot to a different owner that stays on the shared helper lane
 
 ## Current Iteration Notes
+
+- this iteration confirms the minimal `reg_assignments` exposure needed by the
+  parked translated memory owner is still a bounded Step 3 move without
+  widening into the parked translated prologue owner: the public x86 header
+  now carries only shared register-assignment indices, not heavy regalloc type
+  ownership, while `src/backend/x86/codegen/memory.cpp` now reads that bounded
+  state through `X86CodegenState::assigned_reg_index`
+- header-boundary note:
+  an initial attempt to expose full `PhysReg` state through
+  `src/backend/x86/codegen/x86_codegen.hpp` pulled in `regalloc.hpp` and broke
+  the existing `backend_header_boundary_tests` completeness contract, so this
+  slice intentionally narrowed back to raw register indices to keep the public
+  x86 header lightweight
+- direct compile-probe result after the reg-assignment slice:
+  `clang++ -std=gnu++17 -fsyntax-only ... src/backend/x86/codegen/memory.cpp`
+  now passes with the same include surface used by the real build, so the
+  parked translated memory owner is past both the stale translated syntax tier
+  and the first hidden register-assignment barrier
+- implementation note:
+  `src/backend/x86/codegen/shared_call_support.cpp` now preserves the shared
+  translated register-assignment index map across state copies/moves, and
+  `tests/backend/backend_shared_util_tests.cpp` now pins both the
+  declaration-level memory owner surface and the new bounded register-index
+  lookup contract
+- focused validation passed:
+  `cmake --preset default`,
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_memory_owner_surface`,
+  `./build/backend_shared_util_tests translated_reg_assignments`, and
+  `./build/backend_shared_util_tests translated_shared_call_support`
+- broader build validation passed:
+  `cmake --build --preset default -j8`
+- broad validation note:
+  full-suite monotonic guard remains deferred because this slice only advances
+  shared header/state coverage plus a parked owner compile-probe boundary; it
+  does not yet wire `memory.cpp` into the active runtime x86 path
 
 - this iteration lands the bounded translated memory-owner normalization slice
   without wiring `src/backend/x86/codegen/memory.cpp` into the active x86

@@ -1,4 +1,5 @@
 #include "x86_codegen.hpp"
+#include "../../regalloc.hpp"
 
 #include <string>
 
@@ -30,6 +31,7 @@ X86CodegenState::X86CodegenState(const X86CodegenState& other)
       f128_direct_slots(other.f128_direct_slots),
       asm_lines(other.asm_lines),
       slots(other.slots),
+      reg_assignment_indices(other.reg_assignment_indices),
       allocas(other.allocas),
       over_aligned_allocas(other.over_aligned_allocas),
       f128_load_sources(other.f128_load_sources) {}
@@ -42,6 +44,7 @@ X86CodegenState& X86CodegenState::operator=(const X86CodegenState& other) {
   f128_direct_slots = other.f128_direct_slots;
   asm_lines = other.asm_lines;
   slots = other.slots;
+  reg_assignment_indices = other.reg_assignment_indices;
   allocas = other.allocas;
   over_aligned_allocas = other.over_aligned_allocas;
   f128_load_sources = other.f128_load_sources;
@@ -55,6 +58,7 @@ X86CodegenState::X86CodegenState(X86CodegenState&& other) noexcept
       f128_direct_slots(std::move(other.f128_direct_slots)),
       asm_lines(std::move(other.asm_lines)),
       slots(std::move(other.slots)),
+      reg_assignment_indices(std::move(other.reg_assignment_indices)),
       allocas(std::move(other.allocas)),
       over_aligned_allocas(std::move(other.over_aligned_allocas)),
       f128_load_sources(std::move(other.f128_load_sources)) {}
@@ -67,6 +71,7 @@ X86CodegenState& X86CodegenState::operator=(X86CodegenState&& other) noexcept {
   f128_direct_slots = std::move(other.f128_direct_slots);
   asm_lines = std::move(other.asm_lines);
   slots = std::move(other.slots);
+  reg_assignment_indices = std::move(other.reg_assignment_indices);
   allocas = std::move(other.allocas);
   over_aligned_allocas = std::move(other.over_aligned_allocas);
   f128_load_sources = std::move(other.f128_load_sources);
@@ -125,6 +130,14 @@ void X86CodegenState::emit(const std::string& asm_line) { asm_lines.push_back(as
 std::optional<StackSlot> X86CodegenState::get_slot(std::uint32_t value_id) const {
   const auto it = slots.find(value_id);
   if (it == slots.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+std::optional<std::uint8_t> X86CodegenState::assigned_reg_index(std::uint32_t value_id) const {
+  const auto it = reg_assignment_indices.find(value_id);
+  if (it == reg_assignment_indices.end()) {
     return std::nullopt;
   }
   return it->second;

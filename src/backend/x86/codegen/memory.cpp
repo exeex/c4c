@@ -1,4 +1,5 @@
 #include "x86_codegen.hpp"
+#include "../../regalloc.hpp"
 
 namespace c4c::backend::x86 {
 
@@ -104,8 +105,8 @@ void X86Codegen::emit_typed_load_from_slot_impl(const char* instr, StackSlot slo
 void X86Codegen::emit_save_acc_impl() { this->state.emit("    movq %rax, %rdx"); }
 
 void X86Codegen::emit_load_ptr_from_slot_impl(StackSlot slot, std::uint32_t val_id) {
-  if (const auto it = this->reg_assignments.find(val_id); it != this->reg_assignments.end()) {
-    this->state.emit(std::string("    movq %") + phys_reg_name(it->second) + ", %rcx");
+  if (const auto reg = this->state.assigned_reg_index(val_id)) {
+    this->state.emit(std::string("    movq %") + phys_reg_name(c4c::backend::PhysReg{*reg}) + ", %rcx");
   } else {
     this->state.out.emit_instr_rbp_reg("    movq", slot.raw, "rcx");
   }
@@ -139,8 +140,8 @@ void X86Codegen::emit_alloca_addr_to(const char* reg, std::uint32_t val_id, std:
 void X86Codegen::emit_slot_addr_to_secondary_impl(StackSlot slot, bool is_alloca, std::uint32_t val_id) {
   if (is_alloca) {
     this->emit_alloca_addr_to("rcx", val_id, slot.raw);
-  } else if (const auto it = this->reg_assignments.find(val_id); it != this->reg_assignments.end()) {
-    this->state.emit(std::string("    movq %") + phys_reg_name(it->second) + ", %rcx");
+  } else if (const auto reg = this->state.assigned_reg_index(val_id)) {
+    this->state.emit(std::string("    movq %") + phys_reg_name(c4c::backend::PhysReg{*reg}) + ", %rcx");
   } else {
     this->state.out.emit_instr_rbp_reg("    movq", slot.raw, "rcx");
   }
@@ -153,8 +154,8 @@ void X86Codegen::emit_gep_direct_const_impl(StackSlot slot, std::int64_t offset)
 }
 
 void X86Codegen::emit_gep_indirect_const_impl(StackSlot slot, std::int64_t offset, std::uint32_t val_id) {
-  if (const auto it = this->reg_assignments.find(val_id); it != this->reg_assignments.end()) {
-    this->state.emit(std::string("    movq %") + phys_reg_name(it->second) + ", %rax");
+  if (const auto reg = this->state.assigned_reg_index(val_id)) {
+    this->state.emit(std::string("    movq %") + phys_reg_name(c4c::backend::PhysReg{*reg}) + ", %rax");
   } else {
     this->state.out.emit_instr_rbp_reg("    movq", slot.raw, "rax");
   }
@@ -189,8 +190,8 @@ void X86Codegen::emit_align_acc_impl(std::size_t align) {
 void X86Codegen::emit_memcpy_load_dest_addr_impl(StackSlot slot, bool is_alloca, std::uint32_t val_id) {
   if (is_alloca) {
     this->emit_alloca_addr_to("rdi", val_id, slot.raw);
-  } else if (const auto it = this->reg_assignments.find(val_id); it != this->reg_assignments.end()) {
-    this->state.emit(std::string("    movq %") + phys_reg_name(it->second) + ", %rdi");
+  } else if (const auto reg = this->state.assigned_reg_index(val_id)) {
+    this->state.emit(std::string("    movq %") + phys_reg_name(c4c::backend::PhysReg{*reg}) + ", %rdi");
   } else {
     this->state.out.emit_instr_rbp_reg("    movq", slot.raw, "rdi");
   }
@@ -199,8 +200,8 @@ void X86Codegen::emit_memcpy_load_dest_addr_impl(StackSlot slot, bool is_alloca,
 void X86Codegen::emit_memcpy_load_src_addr_impl(StackSlot slot, bool is_alloca, std::uint32_t val_id) {
   if (is_alloca) {
     this->emit_alloca_addr_to("rsi", val_id, slot.raw);
-  } else if (const auto it = this->reg_assignments.find(val_id); it != this->reg_assignments.end()) {
-    this->state.emit(std::string("    movq %") + phys_reg_name(it->second) + ", %rsi");
+  } else if (const auto reg = this->state.assigned_reg_index(val_id)) {
+    this->state.emit(std::string("    movq %") + phys_reg_name(c4c::backend::PhysReg{*reg}) + ", %rsi");
   } else {
     this->state.out.emit_instr_rbp_reg("    movq", slot.raw, "rsi");
   }

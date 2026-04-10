@@ -331,6 +331,7 @@ void test_x86_translated_shared_call_support_tracks_real_state_and_output() {
 void test_x86_codegen_header_exports_translated_memory_owner_surface() {
   using AddressSpace = c4c::backend::x86::AddressSpace;
   using X86Codegen = c4c::backend::x86::X86Codegen;
+  using X86CodegenState = c4c::backend::x86::X86CodegenState;
 
   auto emit_store = &X86Codegen::emit_store_impl;
   auto emit_load = &X86Codegen::emit_load_impl;
@@ -354,6 +355,7 @@ void test_x86_codegen_header_exports_translated_memory_owner_surface() {
   auto emit_seg_load_symbol = &X86Codegen::emit_seg_load_symbol_impl;
   auto emit_seg_store = &X86Codegen::emit_seg_store_impl;
   auto emit_seg_store_symbol = &X86Codegen::emit_seg_store_symbol_impl;
+  auto state_assigned_reg_index = &X86CodegenState::assigned_reg_index;
 
   expect_true(emit_store != nullptr && emit_load != nullptr &&
                   emit_store_with_const_offset != nullptr &&
@@ -372,11 +374,23 @@ void test_x86_codegen_header_exports_translated_memory_owner_surface() {
                   emit_memcpy_load_src_addr != nullptr &&
                   emit_alloca_aligned_addr != nullptr &&
                   emit_alloca_aligned_addr_to_acc != nullptr &&
+                  state_assigned_reg_index != nullptr &&
                   emit_seg_load != nullptr && emit_seg_load_symbol != nullptr &&
                   emit_seg_store != nullptr && emit_seg_store_symbol != nullptr &&
                   AddressSpace::Default != AddressSpace::SegFs &&
                   AddressSpace::SegFs != AddressSpace::SegGs,
               "x86 translated memory-owner surface should stay declaration-reachable through x86_codegen while memory.cpp advances from stale syntax and missing helper glue toward the next owner-state blocker tier");
+}
+
+void test_x86_codegen_state_tracks_translated_reg_assignments() {
+  c4c::backend::x86::X86CodegenState state;
+  state.reg_assignment_indices.emplace(41, 14);
+
+  const auto assigned = state.assigned_reg_index(41);
+  const auto missing = state.assigned_reg_index(99);
+
+  expect_true(assigned.has_value() && *assigned == 14 && !missing.has_value(),
+              "shared x86 translated state should expose bounded register-assignment lookup for parked owner files");
 }
 
 void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {
@@ -4362,6 +4376,7 @@ int main(int argc, char* argv[]) {
   test_x86_codegen_header_exports_translated_call_owner_surface();
   test_x86_translated_shared_call_support_tracks_real_state_and_output();
   test_x86_codegen_header_exports_translated_memory_owner_surface();
+  test_x86_codegen_state_tracks_translated_reg_assignments();
   test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
   test_x86_translated_regalloc_pruning_helpers_match_shared_contract();

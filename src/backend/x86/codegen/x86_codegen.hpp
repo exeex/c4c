@@ -146,6 +146,7 @@ struct X86CodegenState {
   std::unordered_set<std::uint32_t> f128_direct_slots;
   std::vector<std::string> asm_lines;
   std::unordered_map<std::uint32_t, StackSlot> slots;
+  std::unordered_map<std::uint32_t, std::uint8_t> reg_assignment_indices;
   std::unordered_set<std::uint32_t> allocas;
   std::unordered_map<std::uint32_t, std::size_t> over_aligned_allocas;
   std::unordered_map<std::uint32_t, std::uint32_t> f128_load_sources;
@@ -159,6 +160,7 @@ struct X86CodegenState {
 
   void emit(const std::string& asm_line);
   std::optional<StackSlot> get_slot(std::uint32_t value_id) const;
+  std::optional<std::uint8_t> assigned_reg_index(std::uint32_t value_id) const;
   bool is_alloca(std::uint32_t value_id) const;
   std::optional<SlotAddr> resolve_slot_addr(std::uint32_t value_id) const;
   void track_f128_load(std::uint32_t dest_id, std::uint32_t ptr_id, std::int64_t offset);
