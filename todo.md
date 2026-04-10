@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: preserve the twentieth extraction slice findings and hand off the
-  refreshed direct-TU comparison, which now moves `hir_templates.cpp` ahead
-  of the reduced `hir_expr.cpp`.
+- Step 5: preserve the twenty-first extraction slice findings and hand off
+  the refreshed direct-TU comparison, which keeps the reduced
+  `hir_templates.cpp` ahead of the remaining frontend leaders.
 
 ## Completed
 
@@ -459,9 +459,10 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Move to `src/frontend/hir/hir_templates.cpp` next, because the refreshed
-  direct comparison now leaves it ahead of `hir_stmt.cpp`, the reduced AMD64
-  `va_arg` TU, and the reduced `hir_expr.cpp`.
+- Stay in `src/frontend/hir/hir_templates.cpp` next, because the refreshed
+  direct comparison still leaves the reduced TU at 3.416s ahead of
+  `hir_stmt.cpp` at 3.159s, the reduced AMD64 `va_arg` TU at 3.076s, and the
+  reduced `hir_expr.cpp` at 2.667s.
 
 ## Blockers
 
@@ -478,7 +479,7 @@ Source Plan: plan.md
 - Step 2 is complete: the top-five hotspot tier is optimizer heavy rather than
   parse-heavy, though all five keep a meaningful `-fsyntax-only` floor.
 - The latest `ctest --test-dir build -j --output-on-failure` rerun passes
-  3338/3338 tests, and the monotonic regression guard remains green.
+  3339/3339 tests, and the monotonic regression guard remains green.
 - The first executed extraction slice reduced the hottest TU,
   `src/codegen/lir/stmt_emitter_expr.cpp`, by 1.219s on the optimized
   single-TU compile command.
@@ -726,3 +727,33 @@ Source Plan: plan.md
   `hir_templates.cpp` remains at 3.166s, `hir_stmt.cpp` remains at 3.159s,
   the reduced `stmt_emitter_call_vaarg_amd64.cpp` remains at 3.076s, and the
   reduced `hir_expr.cpp` now measures 2.667s.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_deferred_nttp_cast_static_member_expr_hir.cpp`
+  and wired the new `cpp_hir_template_deferred_nttp_cast_static_member_expr`
+  test into `tests/cpp/internal/InternalTests.cmake`.
+- Executed the twenty-first Step 4 slice by moving the deferred NTTP
+  expression evaluator cluster (`parse_pack_binding_name`,
+  `count_pack_bindings_for_name`, `DeferredNttpExprCursor`,
+  `DeferredNttpExprEnv`, `DeferredNttpTemplateLookup`,
+  `DeferredNttpExprParser`, and `eval_deferred_nttp_expr_hir`) out of
+  `src/frontend/hir/hir_templates.cpp` into the new
+  `src/frontend/hir/hir_templates_deferred_nttp.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_template_deferred_nttp_expr`,
+  `cpp_hir_template_deferred_nttp_arith_expr`,
+  `cpp_hir_template_deferred_nttp_logic_expr`,
+  `cpp_hir_template_deferred_nttp_static_member_expr`,
+  `cpp_hir_template_deferred_nttp_cast_static_member_expr`, and
+  `cpp_hir_template_deferred_nttp_sizeof_pack_expr`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard
+  passed with 3330/3330 tests passing before and 3339/3339 after, with no new
+  failures.
+- Recorded the twenty-first before/after extraction measurement: compiling the
+  pre-split `src/frontend/hir/hir_templates.cpp` from `HEAD` on the direct
+  optimized command took 3.524s, the reduced `src/frontend/hir/hir_templates.cpp`
+  took 3.416s, and the new `src/frontend/hir/hir_templates_deferred_nttp.cpp`
+  compiled in 2.361s.
+- The twenty-first extraction slice reduced `src/frontend/hir/hir_templates.cpp`
+  from 3.524s to 3.416s on the direct `HEAD` versus working-tree compile
+  comparison, so this deferred-NTTP evaluator split counts as a small but
+  measured hotspot reduction for that TU.
