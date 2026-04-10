@@ -4743,6 +4743,71 @@ c4c::backend::bir::Module make_bir_minimal_global_store_return_and_entry_return_
   return module;
 }
 
+c4c::backend::bir::Module make_bir_minimal_global_two_field_struct_store_sub_sub_module() {
+  using namespace c4c::backend::bir;
+
+  Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.globals.push_back(Global{
+      .name = "v",
+      .type = TypeKind::I32,
+      .is_extern = false,
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .initializer = Value::immediate_i32(0),
+  });
+
+  Function function;
+  function.name = "main";
+  function.return_type = TypeKind::I32;
+  function.blocks.push_back(Block{
+      .label = "entry",
+      .insts = {
+          StoreGlobalInst{
+              .global_name = "v",
+              .value = Value::immediate_i32(1),
+              .align_bytes = 4,
+          },
+          StoreGlobalInst{
+              .global_name = "v",
+              .value = Value::immediate_i32(2),
+              .byte_offset = 4,
+              .align_bytes = 4,
+          },
+          LoadGlobalInst{
+              .result = Value::named(TypeKind::I32, "%t0"),
+              .global_name = "v",
+              .align_bytes = 4,
+          },
+          BinaryInst{
+              .opcode = BinaryOpcode::Sub,
+              .result = Value::named(TypeKind::I32, "%t1"),
+              .lhs = Value::immediate_i32(3),
+              .rhs = Value::named(TypeKind::I32, "%t0"),
+          },
+          LoadGlobalInst{
+              .result = Value::named(TypeKind::I32, "%t2"),
+              .global_name = "v",
+              .byte_offset = 4,
+              .align_bytes = 4,
+          },
+          BinaryInst{
+              .opcode = BinaryOpcode::Sub,
+              .result = Value::named(TypeKind::I32, "%t3"),
+              .lhs = Value::named(TypeKind::I32, "%t1"),
+              .rhs = Value::named(TypeKind::I32, "%t2"),
+          },
+      },
+      .terminator = ReturnTerminator{
+          .value = Value::named(TypeKind::I32, "%t3"),
+      },
+  });
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_declared_direct_call_module() {
   using namespace c4c::codegen::lir;
 
@@ -6444,6 +6509,23 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_global_store_return_and_ent
                   "x86 direct BIR global store-plus-entry-return input should preserve the independent entry immediate return on the native backend path");
   expect_not_contains(rendered, "target triple =",
                       "x86 direct BIR global store-plus-entry-return input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_direct_bir_global_two_field_struct_store_sub_sub_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_minimal_global_two_field_struct_store_sub_sub_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl v",
+                  "x86 direct BIR global two-field struct store/sub/sub input should still emit the shared global definition on the native backend path");
+  expect_contains(rendered, "mov dword ptr [rax], 1",
+                  "x86 direct BIR global two-field struct store/sub/sub input should materialize the first field store on the native backend path");
+  expect_contains(rendered, "mov dword ptr [rax + 4], 2",
+                  "x86 direct BIR global two-field struct store/sub/sub input should materialize the second field store through the explicit byte offset on the native backend path");
+  expect_contains(rendered, "sub ecx, dword ptr [rax + 4]",
+                  "x86 direct BIR global two-field struct store/sub/sub input should reload the second field through its global byte offset on the native backend path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 direct BIR global two-field struct store/sub/sub input should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_two_arg_direct_call_end_to_end() {
@@ -10083,6 +10165,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_extern_scalar_global_load_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_store_reload_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_global_store_return_and_entry_return_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_global_two_field_struct_store_sub_sub_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_lowers_x86_direct_call_helper_families_to_shared_bir_views);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_through_bir_end_to_end);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_direct_call_via_outer_bir_path);

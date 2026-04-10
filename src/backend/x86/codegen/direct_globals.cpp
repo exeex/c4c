@@ -1,5 +1,7 @@
 #include "x86_codegen.hpp"
 
+#include "../../bir.hpp"
+
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -43,6 +45,16 @@ std::string emit_global_symbol_prelude(std::string_view target_triple,
 }
 
 }  // namespace
+
+struct MinimalGlobalTwoFieldStructStoreSubSubSlice {
+  std::string function_name;
+  std::string global_name;
+  std::int64_t field0_init_imm = 0;
+  std::int64_t field1_init_imm = 0;
+  std::int64_t field0_store_imm = 0;
+  std::int64_t field1_store_imm = 0;
+  std::size_t align_bytes = 4;
+};
 
 std::string emit_minimal_scalar_global_load_slice_asm(std::string_view target_triple,
                                                       std::string_view function_name,
@@ -167,6 +179,130 @@ std::string emit_minimal_global_store_return_and_entry_return_asm(
       << "  mov eax, " << slice.entry_imm << "\n"
       << "  ret\n";
   return out.str();
+}
+
+std::optional<MinimalGlobalTwoFieldStructStoreSubSubSlice>
+parse_minimal_global_two_field_struct_store_sub_sub_slice(
+    const c4c::backend::bir::Module& module) {
+  using namespace c4c::backend::bir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_extern || global.type != TypeKind::I32 || !global.initializer.has_value() ||
+      global.initializer->kind != c4c::backend::bir::Value::Kind::Immediate ||
+      global.initializer->type != TypeKind::I32 || global.size_bytes != 8) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.return_type != TypeKind::I32 ||
+      !function.params.empty() || !function.local_slots.empty() || function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* store_field0 =
+      entry.insts.size() == 6 ? std::get_if<StoreGlobalInst>(&entry.insts[0]) : nullptr;
+  const auto* store_field1 =
+      entry.insts.size() == 6 ? std::get_if<StoreGlobalInst>(&entry.insts[1]) : nullptr;
+  const auto* load_field0 =
+      entry.insts.size() == 6 ? std::get_if<LoadGlobalInst>(&entry.insts[2]) : nullptr;
+  const auto* first_sub =
+      entry.insts.size() == 6 ? std::get_if<BinaryInst>(&entry.insts[3]) : nullptr;
+  const auto* load_field1 =
+      entry.insts.size() == 6 ? std::get_if<LoadGlobalInst>(&entry.insts[4]) : nullptr;
+  const auto* second_sub =
+      entry.insts.size() == 6 ? std::get_if<BinaryInst>(&entry.insts[5]) : nullptr;
+  if (entry.label != "entry" || store_field0 == nullptr || store_field1 == nullptr ||
+      load_field0 == nullptr || first_sub == nullptr || load_field1 == nullptr ||
+      second_sub == nullptr || entry.terminator.kind != TerminatorKind::Return ||
+      !entry.terminator.value.has_value() ||
+      entry.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+      *entry.terminator.value != second_sub->result ||
+      store_field0->global_name != global.name || store_field0->byte_offset != 0 ||
+      store_field0->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+      store_field0->value.type != TypeKind::I32 ||
+      store_field1->global_name != global.name || store_field1->byte_offset != 4 ||
+      store_field1->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+      store_field1->value.type != TypeKind::I32 ||
+      load_field0->global_name != global.name || load_field0->byte_offset != 0 ||
+      load_field0->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      load_field0->result.type != TypeKind::I32 ||
+      first_sub->opcode != BinaryOpcode::Sub ||
+      first_sub->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      first_sub->result.type != TypeKind::I32 ||
+      first_sub->lhs != c4c::backend::bir::Value::immediate_i32(3) ||
+      first_sub->rhs != load_field0->result || load_field1->global_name != global.name ||
+      load_field1->byte_offset != 4 ||
+      load_field1->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      load_field1->result.type != TypeKind::I32 ||
+      second_sub->opcode != BinaryOpcode::Sub ||
+      second_sub->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      second_sub->result.type != TypeKind::I32 ||
+      second_sub->lhs != first_sub->result || second_sub->rhs != load_field1->result) {
+    return std::nullopt;
+  }
+
+  return MinimalGlobalTwoFieldStructStoreSubSubSlice{
+      .function_name = function.name,
+      .global_name = global.name,
+      .field0_init_imm = global.initializer->immediate,
+      .field1_init_imm = global.initializer->immediate,
+      .field0_store_imm = store_field0->value.immediate,
+      .field1_store_imm = store_field1->value.immediate,
+      .align_bytes = store_field0->align_bytes > 0 ? store_field0->align_bytes : 4,
+  };
+}
+
+std::string emit_minimal_global_two_field_struct_store_sub_sub_asm(
+    std::string_view target_triple,
+    const MinimalGlobalTwoFieldStructStoreSubSubSlice& slice) {
+  if (slice.field0_init_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.field0_init_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.field1_init_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.field1_init_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.field0_store_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.field0_store_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.field1_store_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.field1_store_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw std::invalid_argument(
+        "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
+  }
+
+  const auto global_symbol = symbol_name_for_target(target_triple, slice.global_name);
+  const auto function_symbol = symbol_name_for_target(target_triple, slice.function_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << emit_global_symbol_prelude(target_triple, global_symbol, slice.align_bytes, false)
+      << "  .long " << slice.field0_init_imm << "\n"
+      << "  .long " << slice.field1_init_imm << "\n";
+  if (target_triple.find("apple-darwin") == std::string::npos) {
+    out << ".size " << global_symbol << ", 8\n";
+  }
+  out << ".text\n"
+      << emit_function_prelude(target_triple, function_symbol)
+      << "  lea rax, " << global_symbol << "[rip]\n"
+      << "  mov dword ptr [rax], " << slice.field0_store_imm << "\n"
+      << "  mov dword ptr [rax + 4], " << slice.field1_store_imm << "\n"
+      << "  mov ecx, 3\n"
+      << "  sub ecx, dword ptr [rax]\n"
+      << "  sub ecx, dword ptr [rax + 4]\n"
+      << "  mov eax, ecx\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::optional<std::string> try_emit_minimal_global_two_field_struct_store_sub_sub_module(
+    const c4c::backend::bir::Module& module) {
+  const auto slice = parse_minimal_global_two_field_struct_store_sub_sub_slice(module);
+  if (!slice.has_value()) {
+    return std::nullopt;
+  }
+  return emit_minimal_global_two_field_struct_store_sub_sub_asm(module.target_triple, *slice);
 }
 
 }  // namespace c4c::backend::x86

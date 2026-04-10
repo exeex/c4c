@@ -11,7 +11,8 @@ Source Plan: plan.md
   route
 - immediate target:
   identify the next bounded top-level x86 ownership transfer that can move out
-  of `emit.cpp` and compile cleanly against the current transitional headers
+  of `emit.cpp` after the direct-global two-field struct route landed in
+  `src/backend/x86/codegen/direct_globals.cpp`
   - keep `globals.cpp` itself parked until `X86Codegen` grows the state/method
     surface it still references
   - keep `frame_compact.cpp` parked until a future iteration can prove a real
@@ -21,8 +22,11 @@ Source Plan: plan.md
 
 - continue Step 4 by identifying the next bounded top-level x86 ownership
   transfer that can compile cleanly against the current transitional headers
-  after the new direct-global helper/entry-return seam lands in
-  `direct_globals.cpp`
+  after the direct-global two-field struct store/sub/sub route joins the
+  existing scalar-global and helper/entry-return seams in `direct_globals.cpp`
+- keep the remaining direct-BIR string/printf and variadic routes parked until
+  a future slice proves one of those siblings can absorb another seam without
+  widening unrelated direct-emitter helpers
 - keep `frame_compact.cpp` parked until dead-store and callee-save cleanup
   expose a concrete safe shrink shape instead of enabling the placeholder pass
   by default
@@ -42,6 +46,17 @@ Source Plan: plan.md
 - Step 3 is now effectively complete apart from the intentionally parked
   `frame_compact.cpp` placeholder, so this iteration moves back to Step 4
   ownership transfer instead of widening the peephole matcher surface again
+- this iteration extends the direct-global sibling seam one bounded step
+  further: the direct-BIR global two-field struct store/sub/sub route now
+  lives in `src/backend/x86/codegen/direct_globals.cpp` instead of `emit.cpp`
+- added a new direct x86 BIR regression that pins the two-field global store,
+  byte-offset reload, and final subtract chain so this Step 4 ownership move
+  stays observable on the native path
+- the focused `./build/backend_bir_tests global_two_field_struct_store_sub_sub`
+  regression passed after the ownership move
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
+  monotonic against `test_fail_before.log`; the regression guard reported
+  `2723` passed / `181` failed before and after with no newly failing tests
 - this iteration extends the direct-global sibling seam one bounded step
   further: the two-function `store global in helper; return immediate in both
   helper and entry` route now lives in `src/backend/x86/codegen/direct_globals.cpp`
@@ -243,6 +258,10 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- moved the bounded direct-BIR global two-field struct store/sub/sub route out
+  of `emit.cpp` into `src/backend/x86/codegen/direct_globals.cpp`
+- added a direct x86 BIR regression that pins the native two-field global
+  store/sub/sub route without relying on the LIR-to-BIR lowering hop
 - extended `src/backend/x86/codegen/direct_globals.cpp` to own the bounded
   two-function global store plus independent entry-return direct-BIR route
 - moved `MinimalGlobalStoreReturnAndEntryReturnSlice` ownership out of

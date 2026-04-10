@@ -412,6 +412,8 @@ std::string emit_minimal_scalar_global_store_reload_slice_asm(std::string_view t
 std::string emit_minimal_global_store_return_and_entry_return_asm(
     std::string_view target_triple,
     const MinimalGlobalStoreReturnAndEntryReturnSlice& slice);
+std::optional<std::string> try_emit_minimal_global_two_field_struct_store_sub_sub_module(
+    const c4c::backend::bir::Module& module);
 c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
     const c4c::backend::LivenessInput& liveness_input);
 
