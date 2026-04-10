@@ -22,7 +22,7 @@ Observed with `build/c4cll` on 2026-04-10:
 | `eastl_piecewise_construct_simple.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_piecewise_construct_simple.cpp` | Canonical now completes in about `0.339s`; the older `mPart0` sema cluster is no longer the current frontier for this case. |
 | `eastl_tuple_fwd_decls_simple.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_tuple_fwd_decls_simple.cpp` | Canonical now completes in about `0.351s`; this header-only tuple forward-decl case is no longer failing in sema. |
 | `eastl_integer_sequence_simple.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_integer_sequence_simple.cpp` | Canonical now completes in about `1.236s`; the older `mPart0` / `mPart1` sema cluster is gone here too. |
-| `eastl_type_traits_simple.cpp` | `RUNTIME_MISMATCH` | `cmake --build build --target eastl_type_traits_simple_workflow -j8` | `--parse-only` still succeeds, and the old `eastl::is_enum<Color>::value` runtime mismatch is gone after teaching deferred NTTP evaluation to fold builtin type traits such as `__is_enum(T)` while instantiating inherited `integral_constant<bool, ...>` bases. The standalone workflow now advances to `exit 7`, so the next frontier is `remove_cv_t<const volatile unsigned int>` rather than the earlier enum-trait collapse. |
+| `eastl_type_traits_simple.cpp` | `PASS` | `cmake --build build --target eastl_type_traits_simple_workflow -j8` | `--parse-only` still succeeds, and the standalone workflow now completes after fixing template-global mangling collisions on top-level cv qualifiers and routing qualified alias-template transforms such as `eastl::remove_cv_t<...>` through the same unary trait-family normalization used by the HIR member-typedef resolver. |
 | `eastl_utility_simple.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_utility_simple.cpp` | `--parse-only` still succeeds in about `10.680s`, and `--dump-canonical` now completes in about `10.531s`. The old `eastl::pair` piecewise delegating-helper failure and the later canonical/HIR `SIGSEGV` are both gone after reserving re-entrant template-method lowering slots by `FunctionId`. |
 | `eastl_memory_simple.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_memory_simple.cpp` | `--parse-only` still succeeds, and `--dump-canonical` now completes too. The old shared `EASTL/memory.h` `eastl::size` undeclared-identifier cluster is gone after restoring local parameter lookup for unqualified names inside namespace functions. |
 | `eastl_memory_uses_allocator_frontier.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp` | Reduced header-only memory frontier now completes through both `--parse-only` and `--dump-canonical`. The old timeout was caused by the unsupported structured-binding bridge in `EASTL/utility.h` / `EASTL/tuple.h`, which is now disabled by predefined `EA_COMPILER_NO_STRUCTURED_BINDING` for C++ source profiles. |
@@ -41,9 +41,8 @@ Current explicit workflow coverage:
   the earlier parser failure, the old
   `eastl::is_signed_v<int>` / `eastl::is_unsigned_v<int>` mismatch, and the
   alias-backed `add_lvalue_reference_t` / `is_reference_v` failure; it now also
-  runs past the old inherited `eastl::is_enum<Color>::value` mismatch and
-  exposes the later `remove_cv_t<const volatile unsigned int>` runtime mismatch
-  (`c4c` binary exit `7` versus host exit `0`).
+  runs past the old inherited `eastl::is_enum<Color>::value` mismatch and the
+  later `remove_cv_t<const volatile unsigned int>` runtime mismatch too.
 - `cpp_eastl_memory_uses_allocator_parse_recipe`: positive workflow coverage for
   the reduced `EASTL/internal/memory_uses_allocator.h` frontier now that it is
   expected to parse successfully.

@@ -1132,30 +1132,46 @@ static bool parse_mangled_type_suffix(const std::string& text, TypeSpec* out) {
     TypeSpec ts{};
     ts.array_size = -1;
     ts.inner_rank = -1;
-    if (text == "int") ts.base = TB_INT;
-    else if (text == "uint") ts.base = TB_UINT;
-    else if (text == "char") ts.base = TB_CHAR;
-    else if (text == "schar") ts.base = TB_SCHAR;
-    else if (text == "uchar") ts.base = TB_UCHAR;
-    else if (text == "short") ts.base = TB_SHORT;
-    else if (text == "ushort") ts.base = TB_USHORT;
-    else if (text == "long") ts.base = TB_LONG;
-    else if (text == "ulong") ts.base = TB_ULONG;
-    else if (text == "llong") ts.base = TB_LONGLONG;
-    else if (text == "ullong") ts.base = TB_ULONGLONG;
-    else if (text == "float") ts.base = TB_FLOAT;
-    else if (text == "double") ts.base = TB_DOUBLE;
-    else if (text == "ldouble") ts.base = TB_LONGDOUBLE;
-    else if (text == "void") ts.base = TB_VOID;
-    else if (text == "bool") ts.base = TB_BOOL;
-    else if (text == "i128") ts.base = TB_INT128;
-    else if (text == "u128") ts.base = TB_UINT128;
+    std::string base_text = text;
+    while (true) {
+        if (base_text.rfind("const_", 0) == 0) {
+            ts.is_const = true;
+            base_text = base_text.substr(6);
+            continue;
+        }
+        if (base_text.rfind("volatile_", 0) == 0) {
+            ts.is_volatile = true;
+            base_text = base_text.substr(9);
+            continue;
+        }
+        break;
+    }
+    if (base_text == "int") ts.base = TB_INT;
+    else if (base_text == "uint") ts.base = TB_UINT;
+    else if (base_text == "char") ts.base = TB_CHAR;
+    else if (base_text == "schar") ts.base = TB_SCHAR;
+    else if (base_text == "uchar") ts.base = TB_UCHAR;
+    else if (base_text == "short") ts.base = TB_SHORT;
+    else if (base_text == "ushort") ts.base = TB_USHORT;
+    else if (base_text == "long") ts.base = TB_LONG;
+    else if (base_text == "ulong") ts.base = TB_ULONG;
+    else if (base_text == "llong") ts.base = TB_LONGLONG;
+    else if (base_text == "ullong") ts.base = TB_ULONGLONG;
+    else if (base_text == "float") ts.base = TB_FLOAT;
+    else if (base_text == "double") ts.base = TB_DOUBLE;
+    else if (base_text == "ldouble") ts.base = TB_LONGDOUBLE;
+    else if (base_text == "void") ts.base = TB_VOID;
+    else if (base_text == "bool") ts.base = TB_BOOL;
+    else if (base_text == "i128") ts.base = TB_INT128;
+    else if (base_text == "u128") ts.base = TB_UINT128;
     else return false;
     *out = ts;
     return true;
 }
 
 static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts) {
+    if (ts.is_const) out += "const_";
+    if (ts.is_volatile) out += "volatile_";
     switch (ts.base) {
         case TB_INT: out += "int"; break;
         case TB_UINT: out += "uint"; break;

@@ -9,22 +9,24 @@ Source Plan: plan.md
 - Step 3: keep `eastl_type_traits_simple.cpp` as the active EASTL frontier, but
   treat the next remaining workflow mismatch as the bounded `remove_cv`
   trait-follow-up rather than the now-fixed inherited `is_enum` path.
-- Iteration focus: keep the focused inherited `integral_constant<bool,
-  __is_enum(T)>` runtime coverage current, preserve the deferred-NTTP builtin
-  trait evaluation fix, and resume the EASTL workflow from the later
-  `remove_cv_t<const volatile unsigned int>` mismatch.
-- Iteration target: record that the old `exit 3` enum-trait failure is gone,
-  the standalone EASTL workflow now reaches `exit 7`, and the next slice should
-  reduce `remove_cv_t<const volatile unsigned int>` to a smallest generic repro
-  before touching unrelated EASTL cases.
-- Reduced repro: the focused internal runtime case
-  `template_builtin_is_enum_inherited_value_runtime.cpp` now passes, proving
-  that inherited `integral_constant<bool, __is_enum(T)>::value` bases preserve
-  enum classification during template instantiation, while the standalone EASTL
-  workflow now exits `7` at the later `remove_cv_t` check.
-- Current blocker: `eastl::remove_cv_t<const volatile unsigned int>` still
-  fails in the standalone workflow after the inherited `is_enum` path was
-  repaired. Treat that as the next bounded generic trait-family slice.
+- Iteration focus: record that the old `eastl_type_traits_simple.cpp` runtime
+  frontier is now closed, keep the passing standalone workflow as the active
+  acceptance check, and park the newly reduced direct `remove_cv_t<const ...>`
+  / `remove_cv_t<volatile ...>` standalone repro as a follow-up rather than
+  silently expanding this slice.
+- Iteration target: preserve the passing `eastl_type_traits_simple_workflow`,
+  update the EASTL inventory from `RUNTIME_MISMATCH` to `PASS`, and note the
+  remaining manual direct-`remove_cv_t` repro as the next optional trait-family
+  follow-up if EASTL type-trait work resumes.
+- Reduced repro: the manual standalone EASTL source
+  `tests/cpp/eastl/eastl_remove_cv_runtime.cpp` still exposes direct
+  `remove_cv_t<const unsigned int>`,
+  `remove_cv_t<volatile unsigned int>`, and
+  `remove_cv_t<const volatile unsigned int>` first-use mismatches, but that
+  broader direct repro is now separate from the runbook's original
+  `eastl_type_traits_simple.cpp` acceptance frontier.
+- Current blocker: none for the active runbook target; the remaining direct
+  `remove_cv_t` manual repro is deferred follow-up work.
 
 ## Completed
 
@@ -32,6 +34,23 @@ Source Plan: plan.md
   `tests/cpp/internal/postive_case/template_builtin_is_enum_inherited_value_runtime.cpp`
   so inherited `integral_constant<bool, __is_enum(T)>::value` lookups stay
   covered as a standalone generic repro.
+- Fixed template-global mangling so top-level `const` / `volatile` qualifiers
+  participate in template instance names, preventing `is_const_v<const T>` /
+  `is_const_v<T>` and similar variable-template collisions from overwriting each
+  other.
+- Taught parser-side qualified alias-template application and HIR
+  member-typedef resolution to normalize unary trait-family transforms such as
+  `remove_cv_t<T>` through direct type-transform handling instead of relying on
+  nested member-typedef chains to re-materialize the final transformed type.
+- Re-ran `cmake --build build --target eastl_type_traits_simple_workflow -j8`
+  and confirmed `tests/cpp/eastl/eastl_type_traits_simple.cpp` now passes its
+  standalone host-vs-c4c runtime workflow end to end.
+- Re-ran the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_fail_after.log` and compared it against `test_fail_before.log` with the
+  regression guard script; the result is monotonic at 3297/3299 passing tests
+  versus the earlier 3289/3297 baseline, with zero newly failing tests. The
+  remaining failures are still `cpp_eastl_utility_parse_recipe` and
+  `cpp_eastl_memory_uses_allocator_parse_recipe`.
 - Taught deferred NTTP expression evaluation to fold builtin type traits such
   as `__is_enum(T)` while instantiating template bases, which repairs the
   reduced inherited enum-trait repro and the old `eastl_type_traits_simple`

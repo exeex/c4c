@@ -1464,8 +1464,21 @@ void Lowerer::lower_global(const Node* gv,
   const bool has_tpl_overrides =
       tpl_override != nullptr || nttp_override != nullptr;
   FunctionCtx init_ctx{};
-  if (tpl_override) init_ctx.tpl_bindings = *tpl_override;
   if (nttp_override) init_ctx.nttp_bindings = *nttp_override;
+  if (tpl_override) {
+    init_ctx.tpl_bindings = *tpl_override;
+    for (auto& [name, bound_ts] : init_ctx.tpl_bindings) {
+      (void)name;
+      seed_and_resolve_pending_template_type_if_needed(
+          bound_ts, *tpl_override,
+          nttp_override ? *nttp_override : NttpBindings{}, gv,
+          PendingTemplateTypeKind::DeclarationType,
+          "template-global-binding");
+      while (resolve_struct_member_typedef_if_ready(&bound_ts)) {
+      }
+      resolve_typedef_to_struct(bound_ts);
+    }
+  }
 
   // Handle compound literal at global scope: `T *p = &(T){...};`
   // The compound literal must be lowered to a separate static global, and

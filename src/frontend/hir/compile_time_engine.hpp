@@ -176,7 +176,9 @@ struct DeferredTemplateTypeResult {
 /// Produce a deterministic type suffix for name mangling.
 inline std::string type_suffix_for_mangling(const TypeSpec& ts) {
   std::string out;
-  if (ts.ptr_level > 0) out = "p" + std::to_string(ts.ptr_level);
+  if (ts.is_const) out += "c_";
+  if (ts.is_volatile) out += "v_";
+  if (ts.ptr_level > 0) out += "p" + std::to_string(ts.ptr_level);
   switch (ts.base) {
     case TB_BOOL: out += "b"; break;
     case TB_CHAR: case TB_SCHAR: out += "c"; break;

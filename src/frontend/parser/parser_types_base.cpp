@@ -1250,6 +1250,55 @@ TypeSpec Parser::parse_base_type() {
                                             }
                                             return {"", ""};
                                         };
+                                    auto apply_unary_alias_transform =
+                                        [&](const std::string& owner_name,
+                                            const std::string& member_name) -> bool {
+                                            auto alias_matches_trait_family =
+                                                [&](const char* suffix) -> bool {
+                                                    const size_t suffix_len =
+                                                        std::strlen(suffix);
+                                                    if (owner_name == suffix)
+                                                        return true;
+                                                    if (owner_name.size() <=
+                                                        suffix_len + 2) {
+                                                        return false;
+                                                    }
+                                                    return owner_name.compare(
+                                                               owner_name.size() - suffix_len,
+                                                               suffix_len,
+                                                               suffix) == 0 &&
+                                                           owner_name.compare(
+                                                               owner_name.size() -
+                                                                   suffix_len - 2,
+                                                               2,
+                                                               "::") == 0;
+                                                };
+                                            if (member_name != "type" ||
+                                                resolved_alias_args.size() != 1 ||
+                                                resolved_alias_args[0].is_value) {
+                                                return false;
+                                            }
+                                            ts = resolved_alias_args[0].type;
+                                            if (alias_matches_trait_family("remove_const")) {
+                                                ts.is_const = false;
+                                                return true;
+                                            }
+                                            if (alias_matches_trait_family("remove_volatile")) {
+                                                ts.is_volatile = false;
+                                                return true;
+                                            }
+                                            if (alias_matches_trait_family("remove_cv")) {
+                                                ts.is_const = false;
+                                                ts.is_volatile = false;
+                                                return true;
+                                            }
+                                            if (alias_matches_trait_family("remove_reference")) {
+                                                ts.is_lvalue_ref = false;
+                                                ts.is_rvalue_ref = false;
+                                                return true;
+                                            }
+                                            return false;
+                                        };
                                     if (ts.base == TB_TYPEDEF && ts.tag) {
                                         std::string tag_text = ts.tag;
                                         const size_t member_pos = tag_text.rfind("::");
@@ -1260,12 +1309,15 @@ TypeSpec Parser::parse_base_type() {
                                     }
                                     if (!owner_name.empty() && !member_name.empty())
                                         resolved_alias_member =
+                                            apply_unary_alias_transform(owner_name, member_name) ||
                                             resolve_alias_member_type(owner_name, member_name);
                                     if (!resolved_alias_member) {
                                         auto [derived_owner, derived_member] =
                                             derive_alias_owner_and_member(alias_template_name);
                                         if (!derived_owner.empty() && !derived_member.empty())
                                             resolved_alias_member =
+                                                apply_unary_alias_transform(
+                                                    derived_owner, derived_member) ||
                                                 resolve_alias_member_type(
                                                     derived_owner, derived_member);
                                         if (!resolved_alias_member &&
