@@ -1290,6 +1290,15 @@ set_tests_properties(cpp_hir_deferred_consteval_multi PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_deferred_consteval_incomplete_type
+  COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/deferred_consteval_incomplete_type.cpp"
+)
+set_tests_properties(cpp_hir_deferred_consteval_incomplete_type PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "consteval get_size<T=struct TensorDesc>\\(\\) = 64.*1 consteval reduction.*\\(converged\\)"
+)
+
+add_test(
   NAME cpp_hir_specialization_key
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_func.cpp"
 )

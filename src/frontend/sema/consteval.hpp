@@ -71,6 +71,11 @@ struct ConstEvalEnv {
   // Non-type template parameter bindings (NTTP name → constant value).
   const std::unordered_map<std::string, long long>* nttp_bindings = nullptr;
 
+  // Optional late-known record layouts from HIR lowering. When present, the
+  // constant evaluator can resolve sizeof/alignof on tagged records that were
+  // not immediately computable in the sema-only path.
+  const std::unordered_map<std::string, HirStructDef>* struct_defs = nullptr;
+
   std::optional<long long> lookup(const std::string& name) const {
     // 1. Scoped enum constants (innermost first).
     if (enum_scopes) {

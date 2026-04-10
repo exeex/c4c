@@ -71,6 +71,7 @@ struct PendingTemplateTypeStep {
 };
 
 ConstEvalResult evaluate_pending_consteval(
+    const Module& module,
     const CompileTimeState& ct_state,
     const PendingConstevalExpr& pce) {
   const Node* ce_fn_def = ct_state.find_consteval_def(pce.fn_name);
@@ -86,6 +87,7 @@ ConstEvalResult evaluate_pending_consteval(
   env.type_bindings = &tpl_bindings;
   NttpBindings nttp_copy = pce.nttp_bindings;
   if (!nttp_copy.empty()) env.nttp_bindings = &nttp_copy;
+  env.struct_defs = &module.struct_defs;
   return evaluate_consteval_call(
       ce_fn_def, args, env, ct_state.consteval_fn_defs());
 }
@@ -293,7 +295,7 @@ struct PendingConstevalEvalStep {
         continue;
       }
 
-      auto result = evaluate_pending_consteval(*ct_state, *pce);
+      auto result = evaluate_pending_consteval(module, *ct_state, *pce);
       if (result.ok()) {
         long long rv = result.as_int();
         // Record consteval call metadata.
