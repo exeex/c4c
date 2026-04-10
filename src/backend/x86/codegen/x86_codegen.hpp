@@ -414,6 +414,10 @@ std::string emit_minimal_global_store_return_and_entry_return_asm(
     const MinimalGlobalStoreReturnAndEntryReturnSlice& slice);
 std::optional<std::string> try_emit_minimal_global_two_field_struct_store_sub_sub_module(
     const c4c::backend::bir::Module& module);
+std::optional<std::string> try_emit_minimal_variadic_sum2_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_variadic_double_bytes_module(
+    const c4c::codegen::lir::LirModule& module);
 c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
     const c4c::backend::LivenessInput& liveness_input);
 

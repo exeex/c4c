@@ -610,6 +610,21 @@ void test_x86_try_emit_prepared_lir_module_accepts_variadic_double_bytes_runtime
                   "x86 prepared direct-LIR probing should set the SysV variadic SSE-count register for the double call site");
 }
 
+void test_x86_direct_variadic_helper_accepts_variadic_sum2_runtime_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_variadic_sum2_lir_module(), c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_minimal_variadic_sum2_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 variadic helper seam should accept the bounded variadic i32 runtime slice after ownership moves out of emit.cpp");
+  expect_contains(*rendered, ".globl sum2",
+                  "the direct x86 variadic helper seam should still emit the helper definition after the Step 4 ownership move");
+  expect_contains(*rendered, "lea eax, [rdi + rsi]",
+                  "the direct x86 variadic helper seam should still lower the bounded variadic helper through the native integer register path");
+  expect_contains(*rendered, "xor eax, eax",
+                  "the direct x86 variadic helper seam should still clear the SysV variadic SSE-count register on integer-only call sites");
+}
+
 void test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly() {
   const auto prepared_supported = c4c::backend::prepare_lir_module_for_target(
       make_supported_aarch64_string_literal_char_lir_module(),
@@ -1970,6 +1985,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
   RUN_TEST(test_x86_try_emit_prepared_lir_module_accepts_variadic_sum2_runtime_slice);
   RUN_TEST(test_x86_try_emit_prepared_lir_module_accepts_variadic_double_bytes_runtime_slice);
+  RUN_TEST(test_x86_direct_variadic_helper_accepts_variadic_sum2_runtime_slice);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_accepts_pointer_phi_join_modules);
   RUN_TEST(test_x86_public_bir_emitter_delegates_direct_bir_route_to_shared_backend);

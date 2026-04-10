@@ -7,14 +7,14 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 4 continue transferring one bounded x86 top-level ownership seam out of
-  `emit.cpp` now that the direct-global sibling file owns one more reachable
-  route
+  `emit.cpp` now that the new direct-variadic sibling file owns the prepared
+  variadic runtime slices
 - immediate target:
-  identify the next bounded top-level x86 ownership transfer that can move out
-  of `emit.cpp` after the direct-global two-field struct route landed in
-  `src/backend/x86/codegen/direct_globals.cpp`
-  - keep `globals.cpp` itself parked until `X86Codegen` grows the state/method
-    surface it still references
+  identify the next bounded top-level ownership transfer that can move out of
+  `emit.cpp` after the prepared variadic sum2/double-byte routes landed in
+  `src/backend/x86/codegen/direct_variadic.cpp`
+  - keep translated `variadic.cpp` itself parked until `X86Codegen` grows the
+    state/method surface it still references
   - keep `frame_compact.cpp` parked until a future iteration can prove a real
     shrink/rewrite shape instead of enabling the current placeholder pass
 
@@ -22,11 +22,14 @@ Source Plan: plan.md
 
 - continue Step 4 by identifying the next bounded top-level x86 ownership
   transfer that can compile cleanly against the current transitional headers
-  after the direct-global two-field struct store/sub/sub route joins the
-  existing scalar-global and helper/entry-return seams in `direct_globals.cpp`
-- keep the remaining direct-BIR string/printf and variadic routes parked until
-  a future slice proves one of those siblings can absorb another seam without
-  widening unrelated direct-emitter helpers
+  after `direct_variadic.cpp` joins `direct_globals.cpp` as another reachable
+  Step 4 sibling seam
+- check whether one bounded source-like string/printf route can move behind a
+  dedicated direct sibling file next without widening unrelated direct-emitter
+  helpers or forcing shared string utility exports
+- keep translated `variadic.cpp` parked until a future iteration can expose
+  the missing `X86Codegen` state/method surface intentionally instead of
+  compiling placeholder member bodies by accident
 - keep `frame_compact.cpp` parked until dead-store and callee-save cleanup
   expose a concrete safe shrink shape instead of enabling the placeholder pass
   by default
@@ -40,6 +43,22 @@ Source Plan: plan.md
 - this plan was activated by explicit user priority override
 - idea 44 remains open as the parked shared-BIR cleanup and legacy-matcher
   consolidation lane
+- this iteration extends Step 4 with another bounded sibling seam: the
+  prepared direct-LIR variadic sum2 and variadic double-byte runtime slices now
+  live in `src/backend/x86/codegen/direct_variadic.cpp` instead of `emit.cpp`
+- the translated `src/backend/x86/codegen/variadic.cpp` unit stays parked:
+  once it entered the build it immediately proved it still depends on
+  non-exported `X86Codegen` state/method members, so the new direct sibling
+  file narrows ownership transfer without widening that class surface
+- added a focused backend regression that calls the new direct variadic helper
+  seam explicitly so the Step 4 ownership move stays observable apart from the
+  broader dispatcher path
+- focused checks passed:
+  `./build/backend_bir_tests test_x86_direct_variadic_helper_accepts_variadic_sum2_runtime_slice`
+  plus the existing prepared variadic sum2/double-byte filters
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
+  monotonic against `test_fail_before.log`; the regression guard reported
+  `2723` passed / `181` failed before and after with no newly failing tests
 - the current question is not "what more should be translated"
 - the current question is "which already-translated x86 codegen pieces can be
   made real and reachable first"
