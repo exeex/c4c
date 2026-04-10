@@ -204,6 +204,13 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   c4c::backend::x86::x86_param_stack_base_offset() == 16 &&
                   c4c::backend::x86::x86_param_stack_offset(0) == 16 &&
                   c4c::backend::x86::x86_param_stack_offset(8) == 24 &&
+                  c4c::backend::x86::x86_param_slot_name("%p.arg") == "%lv.param.arg" &&
+                  c4c::backend::x86::x86_param_slot_name("%p.aggregate.0") ==
+                      "%lv.param.aggregate.0" &&
+                  c4c::backend::x86::x86_param_slot_name("arg").empty() &&
+                  c4c::backend::x86::x86_param_slot_name("%p.").empty() &&
+                  c4c::backend::x86::x86_param_slot_matches("%lv.param.arg", "%p.arg") &&
+                  !c4c::backend::x86::x86_param_slot_matches("%lv.param.other", "%p.arg") &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("i32")) ==
                       "movslq" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("u32")) ==

@@ -10,23 +10,22 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  continue from the landed parked aggregate consumer helpers into the next
-  slot-discovery and branch-integration slice for translated prologue storage
-  without pulling the parked translated prologue owner into the active build
-  yet
-  - keep the next slice on parked aggregate storage owner wiring rather than
+  reconstruct the parked translated x86 param-slot lookup seam for aggregate
+  parameter allocas, then use that seam to wire the first real slot-backed
+  prologue storage branch for `ParamClass::StructSseReg`,
+  `ParamClass::StructMixedIntSseReg`, and
+  `ParamClass::StructMixedSseIntReg` without pulling the parked translated
+  prologue owner into the active build yet
+  - keep this slice on parked aggregate storage owner wiring rather than
     reopening scalar, peephole, or call-lowering work
-  - target the first real slot-backed integration point for parked
-    `ParamClass::StructSseReg`,
-    `ParamClass::StructMixedIntSseReg`, and
-    `ParamClass::StructMixedSseIntReg` now that the helper-backed consumer
-    stubs are in place
+  - lock the new seam with focused shared-helper coverage before considering a
+    wider prologue-owner cutover
 
 ## Next Slice
 
-- expose or reconstruct the parked translated param-slot lookup needed to call
-  the new helper-backed aggregate consumer routines from
-  `src/backend/x86/codegen/prologue.cpp` for
+- consume the landed x86 param-slot naming bridge from
+  `src/backend/x86/codegen/prologue.cpp` by wiring the first real slot-backed
+  aggregate parameter store path for
   `ParamClass::StructSseReg`, `ParamClass::StructMixedIntSseReg`, and
   `ParamClass::StructMixedSseIntReg`
 - keep the translated prologue owner parked out of build until the public
@@ -38,6 +37,23 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration reconstructed the parked translated x86 param-slot naming
+  bridge the aggregate prologue store helpers will consume next:
+  `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp` now expose
+  `x86_param_slot_name(...)` and `x86_param_slot_matches(...)` so the
+  future slot-backed aggregate storage branch can derive `%lv.param.*` local
+  slot names directly from `%p.*` ABI parameter names without reintroducing
+  ad hoc `emit.cpp`-local naming logic
+- `tests/backend/backend_shared_util_tests.cpp` now locks that contract,
+  including valid `%p.arg` / `%p.aggregate.0` mapping and rejection of
+  malformed or mismatched names
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests` and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation note:
+  skipped for this helper-only parked-owner slice per the current plan note to
+  defer the monotonic full-suite guard until a larger owner-path cutover lands
 
 - this iteration landed the first parked translated consumer-side wiring for
   the helper-locked SSE and mixed aggregate storage seams:

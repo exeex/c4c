@@ -305,6 +305,21 @@ std::int64_t x86_param_stack_offset(std::int64_t class_stack_offset) {
   return x86_param_stack_base_offset() + class_stack_offset;
 }
 
+std::string x86_param_slot_name(std::string_view param_name) {
+  constexpr std::string_view kParamPrefix = "%p.";
+  constexpr std::string_view kSlotPrefix = "%lv.param.";
+  if (param_name.size() <= kParamPrefix.size() ||
+      param_name.substr(0, kParamPrefix.size()) != kParamPrefix) {
+    return "";
+  }
+  return std::string(kSlotPrefix) + std::string(param_name.substr(kParamPrefix.size()));
+}
+
+bool x86_param_slot_matches(std::string_view slot_name, std::string_view param_name) {
+  const auto expected_slot_name = x86_param_slot_name(param_name);
+  return !expected_slot_name.empty() && slot_name == expected_slot_name;
+}
+
 const char* x86_param_ref_scalar_load_instr(std::string_view scalar_type) {
   if (scalar_type == "i32") {
     return "movslq";
