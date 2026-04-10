@@ -1802,6 +1802,10 @@ std::optional<std::string> try_emit_prepared_lir_module(
       asm_text.has_value()) {
     return asm_text;
   }
+  if (const auto asm_text = try_emit_minimal_two_arg_first_local_rewrite_call_module(module);
+      asm_text.has_value()) {
+    return asm_text;
+  }
   if (const auto slice = parse_minimal_two_arg_both_local_arg_helper_call_slice(module);
       slice.has_value()) {
     return emit_minimal_two_arg_local_arg_helper_call_asm(module.target_triple, *slice);

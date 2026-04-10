@@ -12,9 +12,9 @@ Source Plan: plan.md
   `src/backend/x86/codegen/direct_printf.cpp`
 - immediate target:
   continue Step 4 in `src/backend/x86/codegen/direct_calls.cpp` after the
-  bounded second-local two-argument helper-call and second-local rewrite
-  routes by moving the remaining local-slot-fed rewrite variants in bounded
-  sub-slices, starting with the first-local rewrite route
+  bounded second-local two-argument helper-call plus first-local and
+  second-local rewrite routes by moving the remaining both-local rewrite
+  variants in bounded sub-slices, starting with the first-local rewrite route
   - keep translated `variadic.cpp` itself parked until `X86Codegen` grows the
     state/method surface it still references
   - keep `frame_compact.cpp` parked until a future iteration can prove a real
@@ -55,6 +55,10 @@ Source Plan: plan.md
 - after the bounded second-local rewrite helper-call route now lives in
   `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 there with the
   first-local rewrite helper-call route before the both-local rewrite variants
+- after the bounded first-local rewrite helper-call route now lives in
+  `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 there with the
+  both-local first-rewrite helper-call route before the remaining both-local
+  rewrite variants
 - keep translated `variadic.cpp` parked until a future iteration can expose
   the missing `X86Codegen` state/method surface intentionally instead of
   compiling placeholder member bodies by accident
@@ -97,6 +101,17 @@ Source Plan: plan.md
   bounded ownership move: the x86 prepared-LIR second-local rewrite
   two-argument helper-call route now lives in
   `src/backend/x86/codegen/direct_calls.cpp` instead of staying in `emit.cpp`
+- this iteration continues that direct-calls sibling seam with the next
+  bounded ownership move: the x86 prepared-LIR first-local rewrite
+  two-argument helper-call route now lives in
+  `src/backend/x86/codegen/direct_calls.cpp` instead of staying in `emit.cpp`
+- added a focused backend regression that calls the moved first-local rewrite
+  two-arg helper seam explicitly so the Step 4 ownership move stays observable
+  apart from the broader prepared-LIR dispatcher coverage
+- focused checks passed:
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_two_arg_first_local_rewrite_call_slice`
+  plus `test_x86_direct_emitter_lowers_minimal_two_arg_first_local_rewrite_call_slice`
+  and `test_x86_direct_call_helper_accepts_two_arg_second_local_rewrite_call_slice`
 - added a focused backend regression that calls the moved second-local rewrite
   two-arg helper seam explicitly so the Step 4 ownership move stays observable
   apart from the broader prepared-LIR dispatcher coverage
