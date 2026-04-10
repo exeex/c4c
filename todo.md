@@ -6,14 +6,14 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2 bounded shared-BIR recovery for the neighboring source-backed
-  `00053.c` as the next earliest remaining non-parked red source-backed x86
-  case after recovering `00052.c`
+- Step 2 bounded shared-BIR classification and recovery planning for the next
+  source-backed `00054.c` x86 case after recovering `00053.c`
 - current exact slice:
-  classify and recover `c_testsuite_x86_backend_src_00053_c` through the
-  smallest shared-BIR local-slot or paired-aggregate fold that preserves idea
-  44's bounded single-function lane without widening into a broader multi-slot
-  ownership seam until the exact boundary is confirmed
+  classify and recover `c_testsuite_x86_backend_src_00054_c` through the
+  smallest shared-BIR enum-constant / local enum-slot zero-return fold that
+  preserves idea 44's bounded single-function lane without widening into a
+  broader constant-fold or enum-lowering initiative until the exact ownership
+  boundary is confirmed
 
 ## Next Slice
 
@@ -25,11 +25,11 @@ Source Plan: plan.md
   `ideas/open/49_x86_64_shared_bir_switch_case_goto_entry_modules_after_x86_00051.md`
   instead of widening idea 44 ad hoc
 - keep the next earliest remaining non-parked source-backed x86 case as
-  `00053.c` from the refreshed targeted state after the bounded `00052.c`
+  `00054.c` from the refreshed targeted state after the bounded `00053.c`
   recovery
-- if `00053.c` turns out to need a different ownership seam than the earlier
-  simple local-slot and single-field struct folds, record that boundary
-  explicitly before widening
+- if `00054.c` turns out to need a different ownership seam than the apparent
+  enum-constant / local enum-slot fold, record that boundary explicitly before
+  widening
 - if the refreshed broad-suite guard is still red after the unary-not /
   unary-minus, early source-backed recoveries, and the bounded `00041.c`
   through `00049.c` fixes, keep treating the stale baseline as a parked
@@ -44,6 +44,50 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- recovered the bounded shared-BIR `00053.c` seam by teaching
+  `src/backend/lowering/lir_to_bir/memory.cpp` to recognize the exact
+  source-backed paired local single-field struct compare/sub route
+  (`%struct.T` plus `%struct.T.__shadow_0` allocas, twin zero-offset field
+  stores of `1`, twin reloads, `sub`, and the bounded compare-to-zero branch)
+  and collapse `main` to the shared constant `0` return instead of stopping at
+  the unsupported x86 direct-LIR boundary
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`, plus a source-backed
+  backend route regression in `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00053_local_paired_single_field_struct_compare_retries_after_direct_bir_rejection`)
+  so the real `00053.c` path stays pinned on native x86 asm with the folded
+  zero return instead of falling back to LLVM text or the unsupported
+  direct-LIR error
+- verified the bounded `00053.c` seam end-to-end with
+  `./build/backend_bir_tests test_bir_lowering_accepts_local_paired_single_field_struct_compare_sub_zero_return_module test_backend_bir_pipeline_drives_x86_lir_local_paired_single_field_struct_compare_sub_zero_through_bir_end_to_end`,
+  `./build/c4cll --codegen asm tests/c/external/c-testsuite/src/00053.c`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00053_local_paired_single_field_struct_compare_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00053_c)$'`,
+  and the neighboring owned cluster
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00044_local_struct_shadow_store_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00045_three_global_load_pointer_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00046_nested_anonymous_aggregate_alias_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00047_global_anonymous_struct_field_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00048_named_two_field_designated_init_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00049_named_int_pointer_designated_init_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00050_nested_struct_anonymous_union_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00052_local_single_field_struct_store_load_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00053_local_paired_single_field_struct_compare_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00044_c|c_testsuite_x86_backend_src_00045_c|c_testsuite_x86_backend_src_00046_c|c_testsuite_x86_backend_src_00047_c|c_testsuite_x86_backend_src_00048_c|c_testsuite_x86_backend_src_00049_c|c_testsuite_x86_backend_src_00050_c|c_testsuite_x86_backend_src_00052_c|c_testsuite_x86_backend_src_00053_c)$'`
+  which now pass for the owned seam nonet
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard through the `c4c-regression-guard` skill:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2696/196/2892` after); the refreshed after-state
+  still regresses broadly because parked riscv64 select-route, backend
+  runtime/toolchain-diagnostic, and later x86 buckets remain red outside this
+  bounded change, but the owned x86 source-backed cluster through `00053.c`
+  now passes, the new route test raises total tests from `2891` to `2892`, and
+  the current after-state still improves versus the prior recorded
+  `2694/197/2891` snapshot by `+2` passes and `-1` failure
+- classified the next bounded seam from the refreshed targeted state as
+  `c_testsuite_x86_backend_src_00054_c`; isolated repro
+  `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00054_c)$'`
+  still stops at the unsupported direct-LIR boundary, while
+  `./build/c4cll --dump-hir-summary tests/c/external/c-testsuite/src/00054.c`
+  reports `functions=1 globals=0 blocks=7 statements=9 expressions=16` and
+  `./build/c4cll --codegen llvm tests/c/external/c-testsuite/src/00054.c`
+  shows an enum-backed local `i32` alloca with constant `x/y/z` compares
+  against `0/1/2`, followed by `store i32 0` and `ret i32 %t9`, which looks
+  adjacent to the earlier bounded constant-return local-slot lane
 - recovered the bounded shared-BIR `00052.c` seam by teaching
   `src/backend/lowering/lir_to_bir/memory.cpp` to recognize the exact
   source-backed local single-field struct route (`%struct.T` alloca, zero-offset
