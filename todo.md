@@ -73,6 +73,9 @@ Source Plan: plan.md
 - HIR typed-path cleanup: `resolve_explicit_typed_arg(...)` no longer falls back
   to parsing type-arg `debug_text`; typed type args now require structured
   payload and only value args still consult textual fallback.
+- HIR type-ref decode cleanup has started: `decode_type_ref(...)` no longer
+  runs separate top-level builtin/struct probes before suffix stripping; it now
+  routes plain and suffixed type refs through one base-resolution path.
 
 ## Completed
 
@@ -189,3 +192,7 @@ Source Plan: plan.md
   [hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp), so
   typed HIR template-arg materialization now relies on structured type payload
   for type args instead of reparsing their text form.
+- Simplified `decode_type_ref(...)` in
+  [hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp) so
+  it no longer duplicates the plain builtin/struct decode before the suffix
+  handling pass; plain and suffixed refs now share one base-resolution path.

@@ -1607,21 +1607,6 @@ bool HirTemplateArgMaterializer::decode_type_ref(const std::string& ref,
     *out_type = tit->second;
     return true;
   }
-  TypeSpec builtin{};
-  if (parse_builtin_typespec_text(ref, &builtin)) {
-    *out_type = builtin;
-    return true;
-  }
-  auto sit = struct_def_nodes.find(ref);
-  if (sit != struct_def_nodes.end()) {
-    TypeSpec st{};
-    st.base = TB_STRUCT;
-    st.tag = sit->first.c_str();
-    st.array_size = -1;
-    st.inner_rank = -1;
-    *out_type = st;
-    return true;
-  }
 
   std::string base_ref = ref;
   TypeSpec suffix_ts{};
@@ -1657,6 +1642,10 @@ bool HirTemplateArgMaterializer::decode_type_ref(const std::string& ref,
   if (base_it != tpl_bindings.end()) {
     resolved = base_it->second;
   } else if (parse_builtin_typespec_text(base_ref, &resolved)) {
+  } else if (auto sit = struct_def_nodes.find(base_ref);
+             sit != struct_def_nodes.end()) {
+    resolved.base = TB_STRUCT;
+    resolved.tag = sit->first.c_str();
   } else if (base_ref.size() > 7 &&
              base_ref.compare(0, 7, "struct_") == 0 &&
              struct_def_nodes.count(base_ref.substr(7)) != 0) {
