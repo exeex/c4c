@@ -1371,6 +1371,15 @@ set_tests_properties(cpp_hir_expr_call_member_helper PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_stmt_control_flow_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_stmt_control_flow_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_stmt_control_flow_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl total: int = 0.*if \\(\\(limit#P0 > 3\\)\\) then=block#.*else block#.*\\(total#L0 = limit#P0\\).*\\(total#L0 = 3\\).*while \\(\\(total#L0 < 8\\)\\) body=block#.*\\(total#L0 = \\(total#L0 \\+ 1\\)\\).*for \\(decl i: int = 0; \\(i#L1 < 2\\); \\(i#L1 = \\(i#L1 \\+ 1\\)\\)\\) body=block#.*\\(total#L0 = \\(total#L0 \\+ i#L1\\)\\).*do block#.*while \\(\\(total#L0 > 8\\)\\).*return total#L0"
+)
+
+add_test(
   NAME cpp_hir_stmt_range_for_helper
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_stmt_range_for_helper_hir.cpp"
 )

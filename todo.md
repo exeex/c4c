@@ -6,9 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: preserve the latest `hir_stmt.cpp` switch-family extraction
-  measurements and validation state, then decide whether the next slice stays
-  in `hir_stmt.cpp` or returns to `hir_templates.cpp`.
+- Step 5: preserve the latest `hir_stmt.cpp` control-flow extraction
+  measurements and validation state, then return to `hir_templates.cpp` for
+  the next measured helper split now that `hir_stmt.cpp` is no longer the
+  leading HIR hotspot in the direct comparison.
 
 ## Completed
 
@@ -288,15 +289,41 @@ Source Plan: plan.md
   `hir_stmt.cpp` measured 4.764s, `hir_templates.cpp` 3.945s,
   `hir_expr.cpp` 3.712s, `stmt_emitter_expr.cpp` 3.707s, and
   `stmt_emitter_call.cpp` 3.180s.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/hir_stmt_control_flow_helper_hir.cpp` and
+  wired the new `cpp_hir_stmt_control_flow_helper` test into
+  `tests/cpp/internal/InternalTests.cmake`.
+- Executed the eleventh Step 4 slice by moving the remaining basic
+  control-flow lowering family (`NK_IF`, `NK_WHILE`, `NK_FOR`, and
+  `NK_DO_WHILE`) out of `src/frontend/hir/hir_stmt.cpp` into the new
+  `src/frontend/hir/hir_stmt_control_flow.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_stmt_control_flow_helper`,
+  `cpp_hir_stmt_switch_helper`,
+  `cpp_hir_stmt_range_for_helper`,
+  `cpp_positive_sema_constexpr_local_switch_cpp`,
+  `positive_sema_ok_enum_scope_no_leak_after_block_c`, and
+  `negative_tests_bad_flow_continue_in_switch`.
+- Re-ran the full suite into `test_after.log`; the regression guard passed
+  with 3328/3328 tests passing before and 3329/3329 after, with no new
+  failures.
+- Recorded the eleventh before/after extraction measurement: compiling the
+  pre-split `src/frontend/hir/hir_stmt.cpp` from `HEAD` on the generated
+  optimized command took 3.95s, the post-split
+  `src/frontend/hir/hir_stmt.cpp` took 3.57s, and the new
+  `src/frontend/hir/hir_stmt_control_flow.cpp` compiled in 0.97s.
+- Measured the current `src/frontend/hir/hir_templates.cpp` optimized
+  single-TU compile at 4.14s, which leaves it ahead of the newly reduced
+  `src/frontend/hir/hir_stmt.cpp` in the direct comparison.
 
 ## Next Slice
 
-- The refreshed tier still leaves `hir_stmt.cpp` slightly ahead of
-  `hir_templates.cpp`, so the next iteration should inspect whether another
-  cohesive control-flow seam remains in `hir_stmt.cpp` before shifting back to
-  template-heavy work.
-- If `hir_stmt.cpp` no longer leads on the next rerun, return to
-  `hir_templates.cpp` for the next measured helper extraction.
+- Return to `src/frontend/hir/hir_templates.cpp` for the next measured helper
+  extraction, because the latest direct comparison now has it above
+  `src/frontend/hir/hir_stmt.cpp`.
+- Prefer another template helper family with a narrow HIR-focused validation
+  surface rather than continuing to fragment `hir_stmt.cpp` after the
+  control-flow split.
 
 ## Blockers
 
@@ -367,3 +394,12 @@ Source Plan: plan.md
 - The latest post-split hotspot rerun still leads with
   `src/frontend/hir/hir_stmt.cpp` at 4.764s, followed by
   `src/frontend/hir/hir_templates.cpp` at 3.945s.
+- The eleventh extraction slice reduced `src/frontend/hir/hir_stmt.cpp` from
+  3.95s to 3.57s on the direct `HEAD` versus working-tree compile comparison,
+  so this control-flow split counts as another measured hotspot reduction for
+  that TU.
+- The latest full-suite rerun passes 3329/3329 tests, and the monotonic
+  regression guard remains green.
+- The post-split direct comparison now has `src/frontend/hir/hir_templates.cpp`
+  at 4.14s versus `src/frontend/hir/hir_stmt.cpp` at 3.57s, so the next
+  highest-value slice should move back to `hir_templates.cpp`.

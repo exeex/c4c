@@ -660,6 +660,14 @@ class Lowerer {
 
   void lower_range_for_stmt(FunctionCtx& ctx, const Node* n);
 
+  void lower_if_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_while_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_for_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_do_while_stmt(FunctionCtx& ctx, const Node* n);
+
   void lower_switch_stmt(FunctionCtx& ctx, const Node* n);
 
   void lower_case_stmt(FunctionCtx& ctx, const Node* n);
