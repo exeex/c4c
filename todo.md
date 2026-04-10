@@ -11,18 +11,20 @@ Source Plan: plan.md
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
   widen the first shared translated `emit_param_ref_impl(...)` helper seam
-  beyond the new typed integer scalar register/stack load contract without
-  pulling the parked translated prologue owner into the active build yet
-  - use the new helper seam as the ABI reference for the next non-alloca-backed
-    pre-store or additional scalar-class owner slice
-  - keep the slice helper-focused until the public x86 codegen surface can
-    absorb more of `src/backend/x86/codegen/prologue.cpp` cleanly
+  from the integer-like scalar helper contract into the next translated owner
+  slice without pulling the parked translated prologue owner into the active
+  build yet
+  - keep the slice helper-focused: shared helper contract plus parked
+    translated `prologue.cpp` usage only
+  - use the widened integer-like helper seam (`i32`/`u32`/`i64`/`u64`/`ptr`)
+    as the ABI reference before attempting any float-register or broader
+    non-alloca-backed pre-store owner slice
 
 ## Next Slice
 
-- widen the new helper-backed integer `ParamRef` seam into the next owner-path
-  slice, with non-alloca-backed pre-store or another typed scalar class as the
-  leading candidate before SSE or aggregate parameter classes
+- widen the helper-backed `ParamRef` seam into the next owner-path slice after
+  `u32`/`u64`/`ptr`, with float-register scalar handling or non-alloca-backed
+  pre-store as the leading candidate before aggregate parameter classes
 - keep the translated prologue owner parked out of build until the public
   x86 codegen header exposes enough complete backend surface for
   `src/backend/x86/codegen/prologue.cpp` to compile cleanly
@@ -33,6 +35,29 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration widened the shared translated `emit_param_ref_impl(...)`
+  helper contract coverage from the earlier signed integer-only slice into the
+  remaining integer-like scalar owner cases `u32`, `u64`, and `ptr`
+- `tests/backend/backend_shared_util_tests.cpp` now locks the full helper-side
+  load mnemonic, destination-register, incoming argument-register, and incoming
+  stack-operand contract for `u32`, `u64`, and `ptr`, matching the already
+  wired helper behavior in `src/backend/x86/codegen/mod.cpp` and the parked
+  translated consumer in `src/backend/x86/codegen/prologue.cpp`
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation passed against the stored current-tree rerun baseline:
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log 2>&1`
+  plus
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_after_rerun.log --after test_fail_after.log --allow-non-decreasing-passed`
+  reported `3190` passed / `186` failed before and after, with no newly
+  failing tests and no new `>30s` tests
+- next owner-path note:
+  keep the next widening point on float-register scalar `ParamRef` handling or
+  a deliberate non-alloca-backed pre-store slice before revisiting aggregate
+  parameter classes
 
 - this iteration added the first reusable shared helper seam for the parked
   translated x86 `emit_param_ref_impl(...)` owner path: `mod.cpp` and

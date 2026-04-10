@@ -203,19 +203,43 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   c4c::backend::x86::x86_param_stack_offset(8) == 24 &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("i32")) ==
                       "movslq" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("u32")) ==
+                      "movl" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("i64")) ==
+                      "movq" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("u64")) ==
+                      "movq" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("ptr")) ==
                       "movq" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("i32")) ==
                       "%rax" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("u32")) ==
+                      "%eax" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("i64")) ==
+                      "%rax" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("u64")) ==
+                      "%rax" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("ptr")) ==
                       "%rax" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_arg_reg(0, "i32")) ==
                       "edi" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_arg_reg(0, "u32")) ==
+                      "edi" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_arg_reg(0, "i64")) ==
+                      "rdi" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_arg_reg(0, "u64")) ==
+                      "rdi" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_arg_reg(0, "ptr")) ==
                       "rdi" &&
                   c4c::backend::x86::x86_param_ref_scalar_stack_operand(0, "i32") ==
                       "DWORD PTR [rbp + 16]" &&
+                  c4c::backend::x86::x86_param_ref_scalar_stack_operand(0, "u32") ==
+                      "DWORD PTR [rbp + 16]" &&
                   c4c::backend::x86::x86_param_ref_scalar_stack_operand(8, "i64") ==
+                      "QWORD PTR [rbp + 24]" &&
+                  c4c::backend::x86::x86_param_ref_scalar_stack_operand(8, "u64") ==
+                      "QWORD PTR [rbp + 24]" &&
+                  c4c::backend::x86::x86_param_ref_scalar_stack_operand(8, "ptr") ==
                       "QWORD PTR [rbp + 24]" &&
                   c4c::backend::x86::x86_phys_reg_is_callee_saved(c4c::backend::PhysReg{1}) &&
                   !c4c::backend::x86::x86_phys_reg_is_callee_saved(c4c::backend::PhysReg{12}) &&
