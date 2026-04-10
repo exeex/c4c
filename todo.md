@@ -6,16 +6,13 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 1: Stabilize alias-template argument mapping
-- Current slice: extend Step 1 coverage from concrete-type alias packs to
-  parser-side alias argument-ref preservation for transformed member-typedef
-  outputs, including dependent reference-qualified alias-of-alias cases that
-  must defer owner member resolution instead of collapsing to the primary
-  template too early
+- Step 2: Generalize trait and variable-template normalization
+- Current slice: inspect the remaining normalized-type gaps behind
+  `eastl_type_traits_simple.cpp`, starting with alias-transformed/member-typedef
+  operands that still bypass the generic `*_v` / `::value` / `::type` flow
 
 ## Pending Items
 
-- Step 2: Generalize trait and variable-template normalization
 - Step 3: Complete scoped-enum semantics
 - Step 4: Replace heuristic owner recovery
 
@@ -37,6 +34,11 @@ Source Plan: plan.md
   `remove_ref_t<B&>` case that should strip the reference only after template
   substitution, and updated alias member handling to preserve full deferred
   owner arg refs for dependent member-typedef lookups.
+- Added runtime coverage for reordered/defaulted alias ownership with
+  `choose_second_t<int, short>`, and taught `using`-alias registration to
+  rebuild deferred `typename Owner<...>::type` payloads from the consumed token
+  range when `parse_type_name()` flattens the owner template arguments before
+  alias-template bookkeeping sees them.
 
 ## Notes
 
@@ -59,6 +61,9 @@ Source Plan: plan.md
 - The next alias follow-up, if still needed after this slice, is the narrower
   parser registration issue where dependent `typename Owner<...>::type`
   spellings can still lose owner context before alias substitution runs.
+- The narrower alias registration gap is now covered for `using` aliases whose
+  RHS is a dependent `typename Owner<...>::type`; the next planned work item is
+  Step 2 trait/value normalization rather than more Step 1 expansion.
 - A separate pack-specialization issue still exists for direct variadic class
   template specialization selection; keep that out of this Step 1 alias slice
   unless it becomes required for the next targeted alias regression.

@@ -1014,6 +1014,228 @@ Node* Parser::parse_top_level() {
                 TypeSpec alias_ts{};
                 try {
                     alias_ts = parse_type_name();
+                    if (!alias_ts.tpl_struct_origin &&
+                        alias_type_pos < pos_ &&
+                        tokens_[alias_type_pos].kind == TokenKind::KwTypename) {
+                        auto skip_balanced_template_args = [&](int* pos) -> bool {
+                            if (!pos || *pos < 0 || *pos >= static_cast<int>(tokens_.size()) ||
+                                tokens_[*pos].kind != TokenKind::Less) {
+                                return false;
+                            }
+                            int depth = 0;
+                            while (*pos < static_cast<int>(tokens_.size())) {
+                                const TokenKind kind = tokens_[*pos].kind;
+                                if (kind == TokenKind::Less) {
+                                    ++depth;
+                                    ++(*pos);
+                                    continue;
+                                }
+                                if (kind == TokenKind::Greater) {
+                                    --depth;
+                                    ++(*pos);
+                                    if (depth <= 0) return true;
+                                    continue;
+                                }
+                                if (kind == TokenKind::GreaterGreater) {
+                                    depth -= 2;
+                                    ++(*pos);
+                                    if (depth <= 0) return true;
+                                    continue;
+                                }
+                                ++(*pos);
+                            }
+                            return false;
+                        };
+                        auto join_token_lexemes = [&](int start, int end) -> std::string {
+                            std::string out;
+                            for (int i = start; i < end; ++i) out += tokens_[i].lexeme;
+                            return out;
+                        };
+                        auto split_template_arg_token_ranges =
+                            [&](int start, int end) -> std::vector<std::pair<int, int>> {
+                            std::vector<std::pair<int, int>> ranges;
+                            int arg_start = start;
+                            int angle_depth = 0;
+                            int paren_depth = 0;
+                            int bracket_depth = 0;
+                            int brace_depth = 0;
+                            for (int i = start; i < end; ++i) {
+                                switch (tokens_[i].kind) {
+                                    case TokenKind::Less: ++angle_depth; break;
+                                    case TokenKind::Greater:
+                                        if (angle_depth > 0) --angle_depth;
+                                        break;
+                                    case TokenKind::GreaterGreater:
+                                        angle_depth = std::max(0, angle_depth - 2);
+                                        break;
+                                    case TokenKind::LParen: ++paren_depth; break;
+                                    case TokenKind::RParen:
+                                        if (paren_depth > 0) --paren_depth;
+                                        break;
+                                    case TokenKind::LBracket: ++bracket_depth; break;
+                                    case TokenKind::RBracket:
+                                        if (bracket_depth > 0) --bracket_depth;
+                                        break;
+                                    case TokenKind::LBrace: ++brace_depth; break;
+                                    case TokenKind::RBrace:
+                                        if (brace_depth > 0) --brace_depth;
+                                        break;
+                                    case TokenKind::Comma:
+                                        if (angle_depth == 0 && paren_depth == 0 &&
+                                            bracket_depth == 0 && brace_depth == 0) {
+                                            ranges.push_back({arg_start, i});
+                                            arg_start = i + 1;
+                                        }
+                                        break;
+                                    default:
+                                        break;
+                                }
+                            }
+                            if (arg_start < end) ranges.push_back({arg_start, end});
+                            return ranges;
+                        };
+                        std::function<std::string(int, int)> encode_template_arg_ref_tokens =
+                            [&](int start, int end) -> std::string {
+                            while (start < end &&
+                                   (tokens_[start].kind == TokenKind::KwTypename ||
+                                    tokens_[start].kind == TokenKind::KwClass)) {
+                                ++start;
+                            }
+                            if (start >= end) return {};
+
+                            for (int i = start; i < end; ++i) {
+                                if (tokens_[i].kind != TokenKind::Less) continue;
+                                int probe = i;
+                                if (!skip_balanced_template_args(&probe) || probe > end) {
+                                    break;
+                                }
+
+                                std::string owner = join_token_lexemes(start, i);
+                                std::string inner_refs;
+                                const auto inner_ranges =
+                                    split_template_arg_token_ranges(i + 1, probe - 1);
+                                for (const auto& [arg_start, arg_end] : inner_ranges) {
+                                    const std::string part =
+                                        encode_template_arg_ref_tokens(arg_start, arg_end);
+                                    if (part.empty()) continue;
+                                    if (!inner_refs.empty()) inner_refs += ",";
+                                    inner_refs += part;
+                                }
+                                return "@" + owner + ":" + inner_refs;
+                            }
+
+                            if (tokens_[start].kind == TokenKind::IntLit ||
+                                tokens_[start].kind == TokenKind::FloatLit ||
+                                tokens_[start].kind == TokenKind::CharLit ||
+                                tokens_[start].kind == TokenKind::KwTrue ||
+                                tokens_[start].kind == TokenKind::KwFalse) {
+                                return join_token_lexemes(start, end);
+                            }
+
+                            std::string prefix;
+                            while (start < end &&
+                                   (tokens_[start].kind == TokenKind::KwConst ||
+                                    tokens_[start].kind == TokenKind::KwVolatile)) {
+                                if (tokens_[start].kind == TokenKind::KwConst)
+                                    prefix += "const_";
+                                if (tokens_[start].kind == TokenKind::KwVolatile)
+                                    prefix += "volatile_";
+                                ++start;
+                            }
+
+                            std::string base;
+                            while (start < end &&
+                                   (tokens_[start].kind == TokenKind::Identifier ||
+                                    tokens_[start].kind == TokenKind::ColonColon)) {
+                                base += tokens_[start].lexeme;
+                                ++start;
+                            }
+                            if (base.empty()) return join_token_lexemes(start, end);
+
+                            std::string suffix;
+                            for (int i = start; i < end; ++i) {
+                                if (tokens_[i].kind == TokenKind::Star) suffix += "_ptr";
+                                if (tokens_[i].kind == TokenKind::Amp) suffix += "_ref";
+                                if (tokens_[i].kind == TokenKind::AmpAmp) suffix += "_rref";
+                            }
+                            return prefix + base + suffix;
+                        };
+
+                        int probe = alias_type_pos + 1;  // skip typename
+                        if (probe < pos_ && tokens_[probe].kind == TokenKind::ColonColon)
+                            ++probe;
+                        std::vector<std::string> qualifier_segments;
+                        int owner_template_arg_start = -1;
+                        int owner_template_arg_end = -1;
+                        std::string member_name;
+                        while (probe < pos_) {
+                            if (tokens_[probe].kind != TokenKind::Identifier) break;
+                            const std::string segment = tokens_[probe].lexeme;
+                            ++probe;
+                            if (probe < pos_ && tokens_[probe].kind == TokenKind::Less) {
+                                owner_template_arg_start = probe;
+                                if (!skip_balanced_template_args(&probe)) break;
+                                owner_template_arg_end = probe;
+                            }
+                            if (probe < pos_ && tokens_[probe].kind == TokenKind::ColonColon) {
+                                ++probe;
+                                if (probe < pos_ &&
+                                    tokens_[probe].kind == TokenKind::KwTemplate) {
+                                    ++probe;
+                                }
+                                if (probe < pos_ &&
+                                    tokens_[probe].kind == TokenKind::Identifier) {
+                                    qualifier_segments.push_back(segment);
+                                    continue;
+                                }
+                            }
+                            member_name = segment;
+                            break;
+                        }
+
+                        if (!qualifier_segments.empty() &&
+                            owner_template_arg_start >= 0 &&
+                            owner_template_arg_end > owner_template_arg_start &&
+                            !member_name.empty()) {
+                            std::string owner_name = qualifier_segments.back();
+                            if (qualifier_segments.size() > 1) {
+                                QualifiedNameRef owner_ns_qn;
+                                owner_ns_qn.qualifier_segments.assign(
+                                    qualifier_segments.begin(),
+                                    qualifier_segments.end() - 1);
+                                const int context_id =
+                                    resolve_namespace_context(owner_ns_qn);
+                                if (context_id >= 0) {
+                                    owner_name =
+                                        canonical_name_in_context(context_id, owner_name);
+                                }
+                            }
+                            owner_name = resolve_visible_type_name(owner_name);
+
+                            std::string owner_arg_refs;
+                            const auto owner_ranges = split_template_arg_token_ranges(
+                                owner_template_arg_start + 1,
+                                owner_template_arg_end - 1);
+                            for (const auto& [arg_start, arg_end] : owner_ranges) {
+                                const std::string ref =
+                                    encode_template_arg_ref_tokens(arg_start, arg_end);
+                                if (ref.empty()) continue;
+                                if (!owner_arg_refs.empty()) owner_arg_refs += ",";
+                                owner_arg_refs += ref;
+                            }
+
+                            alias_ts = {};
+                            alias_ts.array_size = -1;
+                            alias_ts.inner_rank = -1;
+                            alias_ts.base = TB_STRUCT;
+                            alias_ts.tag = arena_.strdup(owner_name.c_str());
+                            alias_ts.tpl_struct_origin = alias_ts.tag;
+                            alias_ts.tpl_struct_arg_refs =
+                                arena_.strdup(owner_arg_refs.c_str());
+                            alias_ts.deferred_member_type_name =
+                                arena_.strdup(member_name.c_str());
+                        }
+                    }
                 } catch (const std::exception&) {
                     pos_ = alias_type_pos;
                     recover_top_level_using_alias_or_boundary(*this, ln);
