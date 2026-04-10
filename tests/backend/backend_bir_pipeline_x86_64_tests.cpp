@@ -9211,6 +9211,23 @@ void test_x86_peephole_eliminates_jump_to_immediately_following_label() {
                   "x86 peephole should preserve the target label and fallthrough body after removing the redundant jump");
 }
 
+void test_x86_peephole_eliminates_redundant_push_pop_pair() {
+  const std::string input =
+      ".text\n"
+      "helper:\n"
+      "  pushq %rbx\n"
+      "  popq %rbx\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_not_contains(optimized, "  pushq %rbx\n",
+                      "x86 peephole should drop a redundant push/pop pair once the translated push_pop pass is live");
+  expect_not_contains(optimized, "  popq %rbx\n",
+                      "x86 peephole should drop the matching pop from a redundant push/pop pair");
+  expect_contains(optimized, "helper:\n  ret\n",
+                  "x86 peephole should preserve the surrounding label and return after removing the redundant pair");
+}
+
 void test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole() {
   const auto rendered = c4c::backend::x86::emit_module(make_minimal_countdown_loop_bir_module());
 
@@ -9670,6 +9687,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_constant_branch_if_eq_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_constant_branch_if_uge_return_slice);
   RUN_TEST(test_x86_peephole_eliminates_jump_to_immediately_following_label);
+  RUN_TEST(test_x86_peephole_eliminates_redundant_push_pop_pair);
   RUN_TEST(test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);

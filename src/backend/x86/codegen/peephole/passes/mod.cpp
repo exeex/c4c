@@ -66,6 +66,7 @@ std::string peephole_optimize(std::string asm_text) {
     bool changed = false;
     changed |= combined_local_pass(&store, infos.data());
     changed |= fuse_movq_ext_truncation(&store, infos.data());
+    changed |= eliminate_push_pop_pairs(&store, infos.data());
     if (!changed) {
       break;
     }

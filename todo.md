@@ -9,8 +9,9 @@ Source Plan: plan.md
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
   first live optimization round
 - immediate target:
-  extend the live pass set beyond redundant jump-to-next-label cleanup while
-  preserving compatibility with the current Intel-syntax x86 emitter output
+  identify the next translated pass that can be made live without depending on
+  a broader x86 emitter syntax rewrite, likely by either broadening the shared
+  classifier/helpers or by choosing another pass with a syntax-agnostic seam
 
 ## Next Slice
 
@@ -19,6 +20,9 @@ Source Plan: plan.md
   boundary is normalized
 - evaluate whether more of `peephole/passes/*.cpp` can be compiled in without
   pulling in unrelated x86 top-level codegen ownership
+- investigate whether `compare_branch.cpp` can be safely compiled in next after
+  consolidating the duplicated `mark_nop` and `replace_line` helpers it needs,
+  while keeping Intel-syntax countdown-loop output unchanged
 
 ## Current Iteration Notes
 
@@ -59,5 +63,11 @@ Source Plan: plan.md
   x86 wrapper path and the shared backend assembly handoff path
 - added targeted backend tests that pin the live redundant-jump cleanup and
   confirm emitted countdown-loop asm reaches the peephole stage
+- compiled the translated `peephole/passes/push_pop.cpp` unit into the real
+  x86 backend and test builds
+- wired the safe redundant `pushq`/`popq` elimination pass into the live x86
+  peephole optimization loop
+- added a direct regression test that proves the translated push/pop pass now
+  removes a redundant pair while preserving the surrounding label and return
 - rebuilt and reran the full ctest suite with monotonic results:
   `181` failures before, `181` failures after, no newly failing tests
