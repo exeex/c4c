@@ -1943,12 +1943,26 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       if (!mem_name || !mem_name[0]) return false;
       if (struct_tag == mem_name) return true;
 
+      auto normalize_ctor_name = [&](const char* raw) -> std::string {
+        if (!raw || !raw[0]) return {};
+        std::string s(raw);
+        size_t scope = s.rfind("::");
+        if (scope != std::string::npos) s = s.substr(scope + 2);
+        size_t tpl = s.find('<');
+        if (tpl != std::string::npos) s.resize(tpl);
+        return s;
+      };
+
+      const std::string mem_base = normalize_ctor_name(mem_name);
       auto matches_unqualified = [&](const char* candidate) -> bool {
         if (!candidate || !candidate[0]) return false;
-        return std::strcmp(candidate, mem_name) == 0;
+        if (std::strcmp(candidate, mem_name) == 0) return true;
+        const std::string candidate_base = normalize_ctor_name(candidate);
+        return !mem_base.empty() && candidate_base == mem_base;
       };
 
       if (method_node) {
+        if (matches_unqualified(method_node->name)) return true;
         if (matches_unqualified(method_node->unqualified_name)) return true;
         if (matches_unqualified(method_node->template_origin_name)) return true;
       }
@@ -1957,6 +1971,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       }
       auto sdit = struct_def_nodes_.find(struct_tag);
       if (sdit != struct_def_nodes_.end() && sdit->second) {
+        if (matches_unqualified(sdit->second->name)) return true;
         if (matches_unqualified(sdit->second->unqualified_name)) return true;
         if (matches_unqualified(sdit->second->template_origin_name)) return true;
       }
@@ -1976,9 +1991,15 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
               struct_tag + "'");
         }
         const CtorOverload* best = nullptr;
-        if (cit->second.size() == 1 &&
-            cit->second[0].method_node->n_params == nargs) {
-          best = &cit->second[0];
+        std::vector<const CtorOverload*> arity_matches;
+        arity_matches.reserve(cit->second.size());
+        for (const auto& ov : cit->second) {
+          if (ov.method_node->n_params != nargs) continue;
+          if (ov.mangled_name == mangled_name) continue;
+          arity_matches.push_back(&ov);
+        }
+        if (arity_matches.size() == 1) {
+          best = arity_matches[0];
         } else {
           int best_score = -1;
           for (const auto& ov : cit->second) {

@@ -1721,6 +1721,8 @@ TypeSpec Parser::parse_base_type() {
                                 }
                                 Node* new_m = make_node(NK_FUNCTION, orig_m->line);
                                 new_m->name = orig_m->name;
+                                new_m->unqualified_name = orig_m->unqualified_name;
+                                new_m->template_origin_name = orig_m->template_origin_name;
                                 new_m->execution_domain = orig_m->execution_domain;
                                 new_m->variadic = orig_m->variadic;
                                 new_m->is_static = orig_m->is_static;

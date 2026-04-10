@@ -9,12 +9,12 @@ Source Plan: plan.md
 - Step 2: switch to the smaller active canonical frontier in
   `tests/cpp/eastl/eastl_utility_simple.cpp` before returning to
   `eastl_tuple_simple.cpp`.
-- Iteration target: finish reducing the remaining `eastl::pair` piecewise /
-  delegating-constructor helper failure behind
-  `error: initializer for scalar member 'pair' must have exactly one argument`.
-- This slice is specifically targeting the next bounded reproducer after
-  confirming that `eastl_tuple_simple.cpp` still times out later in canonical
-  but is no longer the smallest active case.
+- Iteration target: record the newly exposed post-fix canonical crash behind
+  `tests/cpp/eastl/eastl_utility_simple.cpp` after removing the old
+  `eastl::pair` piecewise delegating-constructor helper failure.
+- This slice is specifically transitioning from the repaired reduced
+  piecewise-helper reproducer to the next bounded blocker now that the old
+  constructor-init diagnostic is gone.
 
 ## Completed
 
@@ -146,13 +146,25 @@ Source Plan: plan.md
   `error: no matching constructor for delegating constructor call to
   'pair_T1_int_T2_int'`, so the current blocker is now narrower than the full
   EASTL case but not fully repaired yet.
+- Promoted that piecewise-style helper into focused frontend coverage in
+  `tests/cpp/internal/postive_case/ctor_init_piecewise_delegating_template_runtime.cpp`
+  and fixed delegating-constructor target detection so instantiated template
+  constructors preserve and match normalized source constructor family names.
+- Tightened delegating-constructor overload selection so a unique non-self
+  constructor with the matching arity is accepted even when templated tuple /
+  index-sequence argument inference is still too imprecise for full scoring.
+- Confirmed the new focused piecewise delegating-helper regression now compiles,
+  and `tests/cpp/eastl/eastl_utility_simple.cpp` no longer fails with the old
+  scalar-member / missing-constructor diagnostics; the remaining frontier has
+  moved deeper into later canonical lowering.
 
 ## Next Slice
 
-- reduce the new `eastl_tuple_simple.cpp` deeper canonical timeout path to the
-  next smallest internal reproducer or bounded libstdc++ / tuple checkpoint
-- continue from the smaller `eastl_utility_simple.cpp` `pair` piecewise helper
-  reproducer before returning to the deeper `eastl_tuple_simple.cpp` timeout
+- reduce the new `eastl_utility_simple.cpp` post-fix canonical `SIGSEGV` to the
+  next bounded internal reproducer before returning to the deeper
+  `eastl_tuple_simple.cpp` timeout
+- keep the new piecewise delegating-helper frontend regression green while
+  reducing the later `eastl_utility_simple.cpp` crash
 - keep `eastl_memory_simple.cpp` parked for now: after this tuple fix it still
   times out under both `--parse-only` and `--dump-canonical`, so it has not
   become the smaller frontier
@@ -162,9 +174,10 @@ Source Plan: plan.md
 - `eastl_tuple_simple.cpp` no longer stops on the old member-init semantic
   failure, but the next canonical frontier is now a deeper timeout with no new
   terminal diagnostic inside 30s, so it still needs a fresh reduction
-- `eastl_utility_simple.cpp` is now the smaller active canonical frontier:
-  direct templated self-delegation is fixed, but the remaining piecewise helper
-  path still misses the internal delegating constructor overload
+- `eastl_utility_simple.cpp` is still the smaller active canonical frontier:
+  the reduced piecewise helper now compiles, but the full case crashes later in
+  canonical/HIR lowering with `SIGSEGV` after the old delegating-constructor
+  blocker is removed
 - `eastl_memory_simple.cpp` still times out under both parse-only and
   canonical/sema pressure, though the trace reaches much later tuple/ranges
   work than before
@@ -179,7 +192,8 @@ Source Plan: plan.md
 - `eastl_utility_simple.cpp` parse-only now succeeds and is ready for
   canonical/sema follow-up if it becomes the smaller frontier
 - `eastl_utility_simple.cpp` has now become that smaller frontier; the active
-  bounded failure is the `eastl::pair` piecewise delegating-helper path
+  piecewise delegating-helper path is fixed, and the next blocker is a later
+  canonical `SIGSEGV`
 - focused parser coverage now exists for shadowed-name assignment dispatch
   under `tests/cpp/internal/postive_case/local_value_shadows_*`
 - focused parser coverage now also exists for out-of-class constructor-template
@@ -206,6 +220,8 @@ Source Plan: plan.md
   `tests/cpp/internal/postive_case/ctor_init_member_default_value_init_runtime.cpp`
 - focused delegating-ctor runtime coverage now also exists under
   `tests/cpp/internal/postive_case/ctor_init_delegating_unqualified_template_runtime.cpp`
+- focused piecewise delegating-helper frontend coverage now also exists under
+  `tests/cpp/internal/postive_case/ctor_init_piecewise_delegating_template_runtime.cpp`
 - the older constrained concept-shorthand scratch repro now parses and lowers,
   the member-init `first` diagnostic is gone, `eastl_tuple_simple.cpp`
   `--parse-only` succeeds again, and the remaining tuple frontier is now a
