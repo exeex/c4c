@@ -6,8 +6,9 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3: evaluate constructor-style init vs function-declaration lookahead as
-  the next lite-safe declaration-path probe after the range-for migration.
+- Step 3: migrate the expression-like constructor-style direct-init vs
+  function-declaration lookahead in `parse_local_decl()` onto the lite guard
+  while keeping parameter-type-shaped probes on the heavy path.
 
 ## Pending Items
 
@@ -127,15 +128,39 @@ Source Plan: plan.md
     - `test_fail_after.log`: `3312/3314` passed, `2` failed
     - monotonic check reported `0` newly failing tests and resolved `13`
       pre-existing failures from the stale baseline
+- Step 3 constructor-style direct-init slice completed:
+  - switched the `parse_local_decl()` function-declaration vs constructor-style
+    direct-init lookahead onto `TentativeParseGuardLite` for expression-like
+    argument heads while keeping heavy rollback for parameter-type-shaped
+    probes (`struct`/`class`/`union`/`enum`, `typename`, global-qualified,
+    and type-like/template-like identifier heads)
+  - added
+    `tests/cpp/internal/negative_case/parser_debug_ctor_init_tentative_lite.cpp`
+    plus `cpp_parser_debug_ctor_init_tentative_lite` to lock the
+    constructor-style rollback onto `mode=lite`
+  - targeted validation passed:
+    - `cpp_parser_debug_sizeof_type_tentative_lite`
+    - `cpp_parser_debug_if_condition_decl_tentative_lite`
+    - `cpp_parser_debug_range_for_tentative_lite`
+    - `cpp_parser_debug_ctor_init_tentative_lite`
+    - `cpp_positive_sema_copy_assign_basic_cpp`
+    - `cpp_positive_sema_copy_move_assign_overload_cpp`
+    - `cpp_positive_sema_operator_extended_member_runtime_cpp`
+  - fresh full-suite regression guard passed:
+    - `test_fail_before.log`: `1348/1363` passed, `15` failed
+    - `test_fail_after.log`: `3314/3316` passed, `2` failed
+    - monotonic check reported `0` newly failing tests and resolved `13`
+      pre-existing failures from the stale baseline
 
 ## Next Intended Slice
 
-- inventory the constructor-style init vs function-declaration lookahead in
-  `parser_declarations.cpp` for lite-safety, especially around declarator
-  heads that can still mutate typedef or variable visibility during the probe
-- add focused parser-debug or parse coverage before switching any declaration
-  lookahead to the lite guard, and keep heavy rollback where function-parameter
-  probing depends on semantic state
+- measure parser-only EASTL timing after the current Step 3 lite migrations and
+  record whether heavy-guard usage dropped enough to justify stopping before a
+  journaled rollback follow-on
+- if Step 3 needs another migration wave after timing, validate whether any
+  parameter-type-headed direct-init probes can safely move from the heavy path
+  to lite without risking semantic state leakage during
+  `parse_top_level_parameter_list()`
 
 ## Blockers
 
@@ -163,4 +188,8 @@ Source Plan: plan.md
 - the range-for migration uses the same tiering rule: simple declaration heads
   can probe under lite rollback only when speculative local variable binding is
   suppressed until the probe commits on `:`
+- the constructor-style direct-init migration is intentionally narrower than a
+  full most-vexing-parse rewrite: only expression-like argument heads now take
+  the lite rollback path, and parameter-type-shaped probes still stay on the
+  heavy guard
 - use EASTL `--parse-only` timing as the main performance comparison point

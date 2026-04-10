@@ -712,20 +712,84 @@ Node* Parser::parse_local_decl() {
                         struct_tag_def_map_.count(resolved_type_name) > 0;
                     single_value_arg = !arg_is_type;
                 }
-                TentativeParseGuard guard(*this);
-                std::vector<Node*> probe_params;
-                std::vector<const char*> probe_knr_names;
-                bool probe_variadic = false;
-                try {
+                auto can_use_lite_ctor_init_probe = [&]() -> bool {
+                    if (pos_ + 1 >= static_cast<int>(tokens_.size())) return false;
+
+                    switch (tokens_[pos_ + 1].kind) {
+                        case TokenKind::IntLit:
+                        case TokenKind::FloatLit:
+                        case TokenKind::CharLit:
+                        case TokenKind::StrLit:
+                        case TokenKind::KwTrue:
+                        case TokenKind::KwFalse:
+                        case TokenKind::KwNullptr:
+                        case TokenKind::KwSizeof:
+                        case TokenKind::KwAlignof:
+                        case TokenKind::Plus:
+                        case TokenKind::Minus:
+                        case TokenKind::Bang:
+                        case TokenKind::Tilde:
+                        case TokenKind::Amp:
+                        case TokenKind::Star:
+                        case TokenKind::LParen:
+                            return true;
+                        case TokenKind::LBracket:
+                        case TokenKind::KwAttribute:
+                        case TokenKind::KwAlignas:
+                        case TokenKind::KwTypedef:
+                        case TokenKind::KwStruct:
+                        case TokenKind::KwClass:
+                        case TokenKind::KwUnion:
+                        case TokenKind::KwEnum:
+                        case TokenKind::KwTypename:
+                        case TokenKind::ColonColon:
+                        case TokenKind::RParen:
+                            return false;
+                        case TokenKind::Identifier: {
+                            const std::string& arg_name = tokens_[pos_ + 1].lexeme;
+                            const std::string resolved_type_name =
+                                resolve_visible_type_name(arg_name);
+                            const bool arg_is_type =
+                                is_template_scope_type_param(arg_name) ||
+                                is_typedef_name(arg_name) ||
+                                typedef_types_.count(arg_name) > 0 ||
+                                typedef_types_.count(resolved_type_name) > 0 ||
+                                struct_tag_def_map_.count(arg_name) > 0 ||
+                                struct_tag_def_map_.count(resolved_type_name) > 0;
+                            if (arg_is_type) return false;
+                            if (single_value_arg) return true;
+                            if (pos_ + 2 < static_cast<int>(tokens_.size()) &&
+                                (tokens_[pos_ + 2].kind == TokenKind::ColonColon ||
+                                 tokens_[pos_ + 2].kind == TokenKind::Less)) {
+                                return false;
+                            }
+                            return true;
+                        }
+                        default:
+                            return false;
+                    }
+                };
+
+                auto probe_ctor_vs_function_decl = [&]() -> bool {
+                    std::vector<Node*> probe_params;
+                    std::vector<const char*> probe_knr_names;
+                    bool probe_variadic = false;
                     parse_top_level_parameter_list(
                         &probe_params, &probe_knr_names, &probe_variadic);
-                    if (!single_value_arg &&
-                        (check(TokenKind::Semi) || check(TokenKind::Comma))) {
-                        if (is_cpp_mode() && !probe_knr_names.empty()) {
-                            parsed_as_function_decl = false;
-                        } else {
-                        parsed_as_function_decl = true;
-                        }
+                    if (single_value_arg ||
+                        (!check(TokenKind::Semi) && !check(TokenKind::Comma))) {
+                        return false;
+                    }
+                    return !(is_cpp_mode() && !probe_knr_names.empty());
+                };
+
+                try {
+                    if (can_use_lite_ctor_init_probe()) {
+                        TentativeParseGuardLite guard(*this);
+                        parsed_as_function_decl = probe_ctor_vs_function_decl();
+                    } else {
+                        TentativeParseGuard guard(*this);
+                        parsed_as_function_decl = probe_ctor_vs_function_decl();
                     }
                 } catch (const std::exception&) {
                 }
