@@ -47,6 +47,10 @@ Source Plan: plan.md
   the `resolve_struct_member_typedef_type(...)` debug-ref fallback branch and
   the builtin-text decode helpers, now that the main callers already route
   through typed `materialize_template_args(...)`.
+- Next intended slice: now that `materialize_template_args(...)` shares one
+  HIR helper, keep trimming the helper's fallback seams, especially
+  `parse_builtin_typespec_text(...)` decode and the remaining debug-ref-only
+  recovery path for typed args that still lack concrete payload.
 
 ## Completed
 
@@ -132,3 +136,7 @@ Source Plan: plan.md
   switched both `resolve_struct_member_typedef_if_ready(...)` and
   `realize_template_struct(...)` to use structured `TypeSpec::tpl_struct_args`
   directly instead of first collecting debug-ref strings in the common path.
+- Refactored `materialize_template_args(...)` in
+  [hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp)
+  behind a dedicated HIR helper so the string-backed and typed-backed entry
+  points now share one core implementation for pack/default/binding materialization.
