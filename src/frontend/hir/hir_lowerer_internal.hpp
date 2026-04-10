@@ -385,12 +385,6 @@ class Lowerer {
 
   static bool template_struct_has_pack_params(const Node* primary_tpl);
 
-  [[deprecated("prefer the TypeSpec-based materialize_template_args overload")]]
-  ResolvedTemplateArgs materialize_template_args(
-      const Node* primary_tpl,
-      const std::vector<std::string>& arg_refs,
-      const TypeBindings& tpl_bindings,
-      const NttpBindings& nttp_bindings);
   ResolvedTemplateArgs materialize_template_args(
       const Node* primary_tpl,
       const TypeSpec& owner_ts,

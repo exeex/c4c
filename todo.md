@@ -67,6 +67,9 @@ Source Plan: plan.md
 - HIR dead-helper cleanup: `collect_template_arg_debug_refs(...)` and
   `assign_template_arg_debug_refs(...)` are now fully removed from
   `src/frontend/hir/`.
+- HIR interface cleanup: the external string-backed
+  `materialize_template_args(...)` overload is now gone; string ref handling
+  only survives as an internal fallback inside the HIR materializer helper.
 
 ## Completed
 
@@ -173,3 +176,8 @@ Source Plan: plan.md
   [hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp):
   `collect_template_arg_debug_refs(...)` and
   `assign_template_arg_debug_refs(...)`.
+- Deleted the now-unused public HIR string-backed
+  `materialize_template_args(...)` overload from
+  [hir_lowerer_internal.hpp](/workspaces/c4c/src/frontend/hir/hir_lowerer_internal.hpp)
+  and [hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp),
+  so the string path is no longer a first-class Lowerer API.

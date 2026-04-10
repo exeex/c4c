@@ -2049,31 +2049,6 @@ ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_typed(
 
 ResolvedTemplateArgs Lowerer::materialize_template_args(
     const Node* primary_tpl,
-    const std::vector<std::string>& arg_refs,
-    const TypeBindings& tpl_bindings,
-    const NttpBindings& nttp_bindings) {
-  HirTemplateArgMaterializer materializer{
-      primary_tpl,
-      tpl_bindings,
-      nttp_bindings,
-      struct_def_nodes_,
-      [this](const Node* owner_tpl, int param_idx,
-             const std::vector<std::pair<std::string, TypeSpec>>& type_env,
-             const std::vector<std::pair<std::string, long long>>& nttp_env,
-             const std::string* expr_override,
-             long long* out) {
-        return eval_deferred_nttp_expr_hir(
-            owner_tpl, param_idx, type_env, nttp_env, expr_override, out);
-      },
-      [](TypeSpec&) {},
-      [this](const std::string& base, int index) {
-        return pack_binding_name(base, index);
-      }};
-  return materializer.materialize_from_strings(arg_refs);
-}
-
-ResolvedTemplateArgs Lowerer::materialize_template_args(
-    const Node* primary_tpl,
     const TypeSpec& owner_ts,
     const TypeBindings& tpl_bindings,
     const NttpBindings& nttp_bindings) {
