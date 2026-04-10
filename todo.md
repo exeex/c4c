@@ -9,16 +9,18 @@ Source Plan: plan.md
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
   first live optimization round
 - immediate target:
-  validate the next bounded loop-trampoline spill shape against the live
-  translated pass and keep the rewrite scope limited to one proven-safe stack
-  reload/copy-back form instead of widening into generic spill coalescing
+  evaluate the next bounded stack-load trampoline gap after the new 32-bit
+  `%eax` spill plus `movslq` copy-back slice
+  - keep the next rewrite scope limited to one explicit reload/copy-back form
+    with recorded predecessor-store and fallthrough safety rules instead of
+    widening into generic spill coalescing
 
 ## Next Slice
 
 - evaluate whether the remaining stack-load trampoline cases beyond the new
-  single-slot `%rax` reload/copy-back form should reuse the same detection
-  path or stay parked until a separate bounded slice with explicit safety
-  rules for wider spill shapes
+  single-slot `%eax` spill plus `movslq` copy-back form should reuse the same
+  detection path or stay parked until a separate bounded slice with explicit
+  safety rules for wider spill shapes
 - keep `frame_compact.cpp` parked until dead-store and callee-save translated
   passes are live enough for frame shrinking to be meaningful
 - continue evaluating which remaining translated peephole units can be compiled
@@ -72,6 +74,15 @@ Source Plan: plan.md
 - the next bounded gap after this iteration is the remaining stack-load family:
   wider spill forms should stay parked until their predecessor-store matching
   and fallthrough safety rules are explicit instead of inferred ad hoc
+- this iteration closes one more bounded stack-load shape without widening the
+  shared parser or the predecessor scan into generic spill analysis: the live
+  pass now accepts a single-slot `%eax` spill plus trampoline reload and
+  `movslq` copy-back onto the loop-carried register
+- the aggregate `backend_bir_tests` runner still aborts in the same
+  pre-existing typed LIR validation coverage before it can serve as a narrow
+  harness for the new regression, so this slice again used a focused
+  standalone peephole harness while the full-suite regression guard stayed
+  monotonic
 
 ## Recently Completed
 
@@ -142,5 +153,13 @@ Source Plan: plan.md
 - added a direct regression test that proves the live x86 peephole now rewrites
   that bounded stack-spill trampoline onto the loop-carried register and drops
   the now-dead spill, reload, and trampoline copy-back sequence
+- widened the live translated loop-trampoline pass to coalesce a bounded
+  32-bit single-slot stack spill when the predecessor computes through `%eax`,
+  stores to one `(%rbp)` slot, and the trampoline reloads `%eax` before
+  `movslq` copy-back into the loop-carried register
+- added a direct regression test that proves the live x86 peephole now rewrites
+  that bounded `movl`/`movslq` stack-spill trampoline onto the loop-carried
+  register and drops the now-dead spill, reload, and trampoline copy-back
+  sequence
 - rebuilt and reran the full ctest suite with monotonic results:
   `181` failures before, `181` failures after, no newly failing tests

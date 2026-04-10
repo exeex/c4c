@@ -92,6 +92,18 @@ bool is_movslq_reg_reg(std::string_view trimmed, std::string_view first_reg,
          trimmed.substr(7 + first_reg.size() + 2) == second_reg;
 }
 
+bool is_supported_stack_spill_store_from_rax(std::string_view trimmed,
+                                             std::string_view stack_slot) {
+  return (starts_with(trimmed, "movq %rax,") || starts_with(trimmed, "movl %eax,")) &&
+         contains(trimmed, stack_slot);
+}
+
+bool is_supported_stack_reload_copy(std::string_view trimmed, RegId dst_fam) {
+  const std::string dst_reg = std::string("%") + kReg64Names[dst_fam];
+  return is_movq_reg_reg(trimmed, "%rax", dst_reg) ||
+         is_movslq_reg_reg(trimmed, "%eax", dst_reg);
+}
+
 RegId effective_dest_reg(const LineInfo& info, std::string_view trimmed) {
   if (info.dest_reg != REG_NONE) {
     return info.dest_reg;
@@ -192,7 +204,8 @@ std::optional<TrampolineBlock> collect_trampoline_block(const LineStore* store,
       }
       const auto next_trimmed = trimmed_line(store, infos[next_index], next_index);
       const auto move = parse_trampoline_reg_move(next_trimmed);
-      if (!move.has_value() || move->first != 0 || !starts_with(next_trimmed, "movq ")) {
+      if (!move.has_value() || move->first != 0 ||
+          !is_supported_stack_reload_copy(next_trimmed, move->second)) {
         return std::nullopt;
       }
       block.stack_loads.push_back(
@@ -371,8 +384,8 @@ bool find_stack_spill_copy_and_modifications(const LineStore* store, const LineI
 
     const auto trimmed = trimmed_line(store, infos[scan], scan);
     if (!saw_store) {
-      if (infos[scan].kind == LineKind::StoreRbp && starts_with(trimmed, "movq %rax,") &&
-          contains(trimmed, stack_slot)) {
+      if (infos[scan].kind == LineKind::StoreRbp &&
+          is_supported_stack_spill_store_from_rax(trimmed, stack_slot)) {
         *store_index = scan;
         saw_store = true;
       }
@@ -387,6 +400,9 @@ bool find_stack_spill_copy_and_modifications(const LineStore* store, const LineI
       if (is_movq_reg_reg(trimmed, dst_reg, "%rax")) {
         *copy_index = scan;
         return true;
+      }
+      if (is_movslq_reg_reg(trimmed, std::string("%") + kReg32Names[dst_fam], "%rax")) {
+        return false;
       }
       if (line_references_reg_fast(infos[scan], dst_fam)) {
         return false;
