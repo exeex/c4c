@@ -7,18 +7,32 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: keep `eastl_type_traits_simple.cpp` as the active EASTL frontier, but
-  treat it as a backend workflow blocker rather than a canonical/sema blocker.
-- Iteration target: reduce the remaining
-  `cmake --build build --target eastl_type_traits_simple_workflow -j8`
-  failure to the smallest generic LLVM IR/codegen mechanism behind the current
-  `%\"struct.std::byte\"` vs `or i32` mismatch.
-- Reduced repro: the earlier EASTL type-traits/frontend blockers are gone.
-  `#include <EABase/eabase.h>` now compiles through c4cll, so the next slice
-  should focus on the later `std::byte` backend handoff rather than more
-  parser/sema work.
+  treat the `std::byte` backend verifier failure as a scoped-enum parser gap.
+- Iteration target: teach the parser to accept `enum class` / scoped-enum
+  declarations as real enums, register the resulting enum type names for later
+  lookup, and validate the fix with the smallest runtime repro before
+  re-running `eastl_type_traits_simple_workflow`.
+- Reduced repro: `enum class Byte : unsigned char { A = 1, B = 2 };` was being
+  parsed as `StructDef(struct Byte)` plus an empty declaration, so canonical
+  and HIR later treated scoped enums like `std::byte` as structs instead of
+  enums.
 
 ## Completed
 
+- Added focused runtime coverage in
+  `tests/cpp/internal/postive_case/scoped_enum_bitwise_runtime.cpp` so scoped
+  enums stay covered through parsing, canonicalization, and codegen.
+- Fixed parser enum handling so `enum class` / scoped enums are accepted as
+  real enums instead of degrading into a fake `StructDef(struct ...)`, while
+  also registering enum type names for later lookup.
+- Confirmed the focused scoped-enum runtime regression passes, the full suite
+  remains monotonic at 3294/3294 passing tests versus the earlier
+  3293/3293 baseline, and the old `std::byte` LLVM verifier failure in
+  `eastl_type_traits_simple_workflow` is gone.
+- Re-ran `cmake --build build --target eastl_type_traits_simple_workflow -j8`
+  and confirmed the active type-traits frontier moved forward again: the host
+  binary still exits `0`, but the c4c-built binary now exits `10`, so the next
+  slice is a runtime semantics mismatch rather than parser/backend corruption.
 - Reduced the `eastl_memory_uses_allocator_frontier.cpp` parser timeout to the
   unsupported structured-binding bridge enabled by our predefined macro
   surface: defining `EA_COMPILER_NO_STRUCTURED_BINDING` makes both
@@ -304,22 +318,20 @@ Source Plan: plan.md
 
 - keep the structured-binding feature gate in place and treat vector as
   revalidated rather than active
-- reduce the remaining `eastl_type_traits_simple_workflow` backend failure to a
-  smallest `std::byte` IR reproducer that does not depend on the whole EASTL
-  testcase
-- keep the new inherited-base-method runtime regression green while fixing the
-  `std::byte` value/category/type-lowering mismatch before touching broader
-  container follow-up
+- reduce the new `eastl_type_traits_simple_workflow` runtime mismatch to the
+  smallest EASTL or internal reproducer behind `check_signed_traits<int>()`
+  returning `10`
+- keep the new scoped-enum runtime regression green while tracing why
+  `eastl::is_signed_v<int>` evaluates incorrectly in the c4c-built binary
 
 ## Blockers
 
 - structured bindings themselves are still unsupported in the frontend, so the
   compiler must continue advertising `EA_COMPILER_NO_STRUCTURED_BINDING` until
   a dedicated structured-binding implementation lands
-- `eastl_type_traits_simple.cpp` no longer fails in sema, but its standalone
-  workflow still fails during clang IR consumption because the emitted
-  `std::byte` path mixes `%\"struct.std::byte\"` values with integer bitwise IR
-  operators
+- `eastl_type_traits_simple.cpp` no longer fails in the parser/backend path,
+  but its standalone workflow still diverges at runtime: the c4c-built binary
+  exits `10` while the host binary exits `0`
 
 ## Resume Notes
 
@@ -333,7 +345,10 @@ Source Plan: plan.md
 - `eastl_vector_simple.cpp` now also passes `--dump-canonical`, so vector is no
   longer the active EASTL frontier
 - `eastl_type_traits_simple.cpp` now also passes `--dump-canonical`; the active
-  frontier is the standalone workflow backend failure, not the old sema cluster
+  frontier is the standalone workflow runtime mismatch, not the old sema or
+  `std::byte` backend verifier cluster
+- focused scoped-enum runtime coverage now exists under
+  `tests/cpp/internal/postive_case/scoped_enum_bitwise_runtime.cpp`
 - focused parser coverage now exists for shadowed-name assignment dispatch
   under `tests/cpp/internal/postive_case/local_value_shadows_*`
 - focused parser coverage now also exists for out-of-class constructor-template

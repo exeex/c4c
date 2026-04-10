@@ -2193,12 +2193,45 @@ Node* Parser::parse_enum() {
     int ln = cur().line;
     skip_attributes();
 
+    bool is_scoped_enum = false;
+    if (check(TokenKind::KwClass) || check(TokenKind::KwStruct)) {
+        is_scoped_enum = true;
+        consume();
+        skip_attributes();
+    }
+
     const char* tag = nullptr;
     if (check(TokenKind::Identifier)) {
         tag = arena_.strdup(cur().lexeme);
         consume();
     }
     skip_attributes();
+
+    if (match(TokenKind::Colon)) {
+        // Accept scoped-enum underlying type syntax (`enum class E : T`) even
+        // though lowering still models enums with the generic integer ABI path.
+        TypeSpec underlying_ts = parse_base_type();
+        (void)underlying_ts;
+        skip_attributes();
+    }
+
+    auto register_enum_type = [&](const char* source_tag, const char* canonical_tag) {
+        if (!source_tag || !source_tag[0] || !canonical_tag || !canonical_tag[0])
+            return;
+        TypeSpec enum_ts{};
+        enum_ts.array_size = -1;
+        enum_ts.array_rank = 0;
+        enum_ts.inner_rank = -1;
+        for (int i = 0; i < 8; ++i) enum_ts.array_dims[i] = -1;
+        enum_ts.base = TB_ENUM;
+        enum_ts.tag = canonical_tag;
+        typedefs_.insert(source_tag);
+        typedef_types_[source_tag] = enum_ts;
+        if (strcmp(source_tag, canonical_tag) != 0) {
+            typedefs_.insert(canonical_tag);
+            typedef_types_[canonical_tag] = enum_ts;
+        }
+    };
 
     if (!check(TokenKind::LBrace)) {
         if (!tag) {
@@ -2211,6 +2244,7 @@ Node* Parser::parse_enum() {
             current_namespace_context_id(), tag).c_str());
         apply_decl_namespace(ref, current_namespace_context_id(), tag);
         ref->n_enum_variants = -1;
+        register_enum_type(tag, ref->name);
         return ref;
     }
 
@@ -2224,12 +2258,14 @@ Node* Parser::parse_enum() {
     ed->name = arena_.strdup(canonical_name_in_context(
         current_namespace_context_id(), tag).c_str());
     apply_decl_namespace(ed, current_namespace_context_id(), tag);
+    register_enum_type(tag, ed->name);
 
     consume();  // consume {
 
     std::vector<const char*> names;
     std::vector<long long>   vals;
     std::unordered_set<std::string> seen_names;
+    std::unordered_map<std::string, long long> local_enum_consts = enum_consts_;
     long long cur_val = 0;
 
     while (!at_end() && !check(TokenKind::RBrace)) {
@@ -2247,7 +2283,7 @@ Node* Parser::parse_enum() {
         long long vval = cur_val;
         if (match(TokenKind::Assign)) {
             Node* ve = parse_assign_expr();
-            if (!eval_enum_expr(ve, enum_consts_, &vval)) {
+            if (!eval_enum_expr(ve, local_enum_consts, &vval)) {
                 if (is_cpp_mode() && is_dependent_enum_expr(ve, enum_consts_)) {
                     vval = 0;  // Placeholder until template/dependent evaluation exists.
                 } else {
@@ -2260,8 +2296,8 @@ Node* Parser::parse_enum() {
         cur_val = vval + 1;
         names.push_back(vname);
         vals.push_back(vval);
-        // Track enum constant for use in subsequent enum initializers
-        enum_consts_[std::string(vname)] = vval;
+        // Track enum constants for subsequent initializers in this enum body.
+        local_enum_consts[std::string(vname)] = vval;
         if (!match(TokenKind::Comma)) break;
         // Trailing comma before } is allowed
         if (check(TokenKind::RBrace)) break;
@@ -2276,6 +2312,10 @@ Node* Parser::parse_enum() {
             ed->enum_names[i] = names[i];
             ed->enum_vals[i]  = vals[i];
         }
+    }
+    if (!is_scoped_enum) {
+        for (int i = 0; i < ed->n_enum_variants; ++i)
+            enum_consts_[std::string(ed->enum_names[i])] = ed->enum_vals[i];
     }
     if (parsing_top_level_context_) struct_defs_.push_back(ed);
     return ed;
