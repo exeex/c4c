@@ -1,7 +1,35 @@
 # EASTL Container Bring-Up Plan
 
-Status: Open
-Last Updated: 2026-04-03
+Status: Complete
+Last Updated: 2026-04-10
+
+## Completion Summary
+
+Completed on 2026-04-10.
+
+The EASTL bring-up ladder is now established as a reproducible, staged
+validation track under `tests/cpp/eastl/README.md` and the related workflow
+recipes. The simpler utility, tuple, memory, and type-trait cases all advanced
+through their earlier parser, sema, HIR, and runtime blockers, and
+`eastl_vector_simple.cpp` now has a bounded positive workflow instead of serving
+as an open-ended frontier.
+
+At closure time:
+
+- every tracked case in `tests/cpp/eastl/README.md` is recorded as `PASS`
+- the standalone `eastl_type_traits_simple_workflow` passes
+- the focused EASTL workflow recipes pass
+- the full repo suite passes at `3300/3300`
+
+## Leftover Notes
+
+- Structured bindings remain intentionally gated off through
+  `EA_COMPILER_NO_STRUCTURED_BINDING`; that language feature is out of scope for
+  this completed bring-up track and should land under a separate idea when it
+  becomes the active priority.
+- Additional EASTL container expansion is no longer blocked by this baseline
+  bring-up work. New container-family follow-ons should start as separate
+  `ideas/open/*.md` initiatives rather than reopening this one.
 
 ## Goal
 
