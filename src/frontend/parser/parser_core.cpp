@@ -305,6 +305,11 @@ TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
     return resolve_typedef_chain(ts, symbol_tables_.typedef_types);
 }
 
+bool Parser::are_types_compatible(const TypeSpec& lhs,
+                                  const TypeSpec& rhs) const {
+    return types_compatible_p(lhs, rhs, symbol_tables_.typedef_types);
+}
+
 bool Parser::is_user_typedef_name(const std::string& name) const {
     return symbol_tables_.user_typedefs.count(name) > 0;
 }

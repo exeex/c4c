@@ -538,6 +538,7 @@ class Parser {
   bool has_visible_typedef_type(const std::string& name) const;
   const TypeSpec* find_visible_typedef_type(const std::string& name) const;
   TypeSpec resolve_typedef_type_chain(TypeSpec ts) const;
+  bool are_types_compatible(const TypeSpec& lhs, const TypeSpec& rhs) const;
   bool is_user_typedef_name(const std::string& name) const;
   bool has_conflicting_user_typedef_binding(const std::string& name,
                                             const TypeSpec& type) const;
@@ -618,6 +619,12 @@ class Parser {
   Node* find_template_struct_primary(const std::string& name) const;
   const std::vector<Node*>* find_template_struct_specializations(
       const Node* primary_tpl) const;
+  const Node* select_template_struct_pattern_for_args(
+      const std::vector<TemplateArgParseResult>& args,
+      const Node* primary_tpl,
+      const std::vector<Node*>* specializations,
+      std::vector<std::pair<std::string, TypeSpec>>* out_type_bindings,
+      std::vector<std::pair<std::string, long long>>* out_nttp_bindings) const;
   void register_template_struct_primary(const std::string& name, Node* node);
   void register_template_struct_specialization(const char* primary_name, Node* node);
   bool parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,

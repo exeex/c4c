@@ -10,12 +10,13 @@ Source Plan: plan.md
   grouped parser symbol-table accessors instead of direct top-level member
   storage assumptions, continuing into the next parser-local typedef/value
   helper surface after the declaration parser cleanup
-- Current slice: target the next bounded direct grouped-storage reads in the
-  template/type helper path, starting with `types_helpers.hpp` and nearby
-  `src/frontend/parser/parser_types_template.cpp` typedef-resolution probes
-- Iteration target: introduce the smallest parser-local helper coverage needed
-  for template/type helper typedef lookups without widening into unrelated
-  parser expression or sema work
+- Current slice: shift to the next remaining parser-local helper surface after
+  the template/type helper cleanup, starting with any leftover
+  `select_template_struct_pattern(...)` call sites and raw typedef-map
+  plumbing outside `types_helpers.hpp` / `parser_types_template.cpp`
+- Iteration target: keep reducing parser call sites that still need raw
+  typedef-map parameters, without widening into namespace-state grouping or
+  backend work
 
 ## Completed Items
 
@@ -216,16 +217,40 @@ Source Plan: plan.md
   clean rebuild, full `ctest --test-dir build -j8 --output-on-failure`, and
   regression guard:
   3355/3355 tests passed, no new failures
+- Added parser-owned template helper wrappers in
+  `src/frontend/parser/parser.hpp` and `src/frontend/parser/parser_core.cpp`
+  for typedef compatibility checks and template specialization-pattern
+  selection so the template helper slice no longer needs raw grouped-storage
+  reads at the migrated call sites
+- Migrated `src/frontend/parser/parser_types_template.cpp` typedef decoding,
+  deferred NTTP type-token resolution, and template-pattern selection onto
+  `find_typedef_type()`, `find_visible_typedef_type()`,
+  `resolve_typedef_type_chain()`, `are_types_compatible()`, and
+  `select_template_struct_pattern_for_args()`
+- Migrated the remaining direct typedef probes in
+  `src/frontend/parser/types_helpers.hpp` onto parser-local lookup helpers for
+  known-type heads and qualified typedef probes
+- Added positive C++ regression
+  `tests/cpp/internal/postive_case/template_visible_typedef_type_arg_parse.cpp`
+  and registered it in `tests/cpp/internal/InternalTests.cmake` to cover a
+  default template type argument using `lib::wrap<app::value_type>::type`
+  together with an explicit `holder<value_type>` instantiation
+- Revalidated this slice with
+  `ctest --test-dir build -R 'cpp_positive_sema_(template_visible_typedef_type_arg_parse_cpp|template_alias_qualified_typedef_resolution_parse_cpp|namespace_using_decl_template_typedef_type_arg_parse_cpp)' --output-on-failure`,
+  full `ctest --test-dir build -j8 --output-on-failure`, and regression
+  guard:
+  3356/3356 tests passed, no new failures
 
 ## Next Intended Slice
 
-- Shift the next Step 3 slice out of `src/frontend/parser/parser_declarations.cpp`
-  now that its direct grouped-storage accesses are cleared
-- Start with the direct typedef lookup helpers in `src/frontend/parser/types_helpers.hpp`
-  and the nearby template/type parser probes in
-  `src/frontend/parser/parser_types_template.cpp`
-- Leave namespace-state grouping for a separate slice unless it becomes
-  necessary for the chosen accessor migration
+- Continue Step 3 by removing the next raw typedef-map plumbing that still
+  leaks through helper signatures, starting with the remaining
+  `select_template_struct_pattern(...)` callers outside
+  `parser_types_template.cpp`
+- Recheck whether any parser expression or type-base paths still need a small
+  parser-owned wrapper for `types_compatible_p(...)` / typedef-map access
+- Keep namespace-state grouping deferred to a later slice unless it becomes
+  necessary for one of those parser-local wrapper migrations
 
 ## Blockers
 
@@ -254,6 +279,7 @@ Source Plan: plan.md
   `has_conflicting_user_typedef_binding()`, and the declaration-parser
   `typeof(var)` bookkeeping writes now go through
   `register_var_type_binding()` as well
-- The next dense direct grouped-storage surface is in `types_helpers.hpp` and
-  `parser_types_template.cpp`, which still perform several raw
-  `typedef_types_` lookups and compatibility checks
+- `types_helpers.hpp` and `parser_types_template.cpp` now route their typedef
+  decoding through parser-local helpers; the remaining follow-on work is the
+  smaller set of raw typedef-map parameters still passed through helper
+  signatures elsewhere
