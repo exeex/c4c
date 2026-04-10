@@ -20,9 +20,25 @@
 
 namespace c4c::hir {
 
+namespace {
+
+void ensure_function_slot(Module* module, FunctionId id) {
+  if (!module) return;
+  if (module->functions.size() <= id.value) {
+    const size_t old_size = module->functions.size();
+    module->functions.resize(static_cast<size_t>(id.value) + 1);
+    for (size_t i = old_size; i < module->functions.size(); ++i) {
+      module->functions[i].id = FunctionId::invalid();
+    }
+  }
+}
+
+}  // namespace
+
 void Lowerer::register_bodyless_callable(Function&& fn) {
   module_->fn_index[fn.name] = fn.id;
-  module_->functions.push_back(std::move(fn));
+  ensure_function_slot(module_, fn.id);
+  module_->functions[fn.id.value] = std::move(fn);
 }
 
 bool Lowerer::maybe_register_bodyless_callable(Function* fn,
@@ -34,16 +50,15 @@ bool Lowerer::maybe_register_bodyless_callable(Function* fn,
 
 BlockId Lowerer::begin_callable_body_lowering(Function& fn, FunctionCtx& ctx) {
   module_->fn_index[fn.name] = fn.id;
-  if (fn.id.value == module_->functions.size()) {
-    // Push a skeleton; callers replace it after body lowering completes.
-    Function skeleton{};
-    skeleton.id = fn.id;
-    skeleton.name = fn.name;
-    skeleton.execution_domain = fn.execution_domain;
-    skeleton.ns_qual = fn.ns_qual;
-    skeleton.return_type = fn.return_type;
-    module_->functions.push_back(std::move(skeleton));
-  }
+  ensure_function_slot(module_, fn.id);
+  // Reserve a skeleton; callers replace it after body lowering completes.
+  Function skeleton{};
+  skeleton.id = fn.id;
+  skeleton.name = fn.name;
+  skeleton.execution_domain = fn.execution_domain;
+  skeleton.ns_qual = fn.ns_qual;
+  skeleton.return_type = fn.return_type;
+  module_->functions[fn.id.value] = std::move(skeleton);
 
   const BlockId entry = create_block(ctx);
   fn.entry = entry;

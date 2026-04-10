@@ -1270,6 +1270,15 @@ set_tests_properties(cpp_hir_template_method_signature_binding PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_method_param_reentrant_lowering
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_struct_method_param_reentrant_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_method_param_reentrant_lowering PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "fn Outer_T_int__absorb\\(this: struct Outer_T_int\\*, inner: struct Inner_T_int\\) -> void"
+)
+
+add_test(
   NAME cpp_hir_template_function_pack_signature_binding
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_function_pack_signature_hir.cpp"
 )

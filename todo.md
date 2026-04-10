@@ -6,15 +6,15 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: switch to the smaller active canonical frontier in
-  `tests/cpp/eastl/eastl_utility_simple.cpp` before returning to
-  `eastl_tuple_simple.cpp`.
-- Iteration target: record the newly exposed post-fix canonical crash behind
-  `tests/cpp/eastl/eastl_utility_simple.cpp` after removing the old
-  `eastl::pair` piecewise delegating-constructor helper failure.
-- This slice is specifically transitioning from the repaired reduced
-  piecewise-helper reproducer to the next bounded blocker now that the old
-  constructor-init diagnostic is gone.
+- Step 2: return to the smallest remaining EASTL timeout frontier now that the
+  `eastl_utility_simple.cpp` and `eastl_tuple_simple.cpp` canonical blockers
+  are gone.
+- Iteration target: reduce the next parse timeout behind
+  `tests/cpp/eastl/eastl_memory_simple.cpp`, using
+  `eastl_vector_simple.cpp` only as a comparison case if it exposes the same
+  parser root cause more clearly.
+- This slice is specifically transitioning from canonical crash repair back to
+  timeout reduction on the smallest still-unbounded EASTL case.
 
 ## Completed
 
@@ -157,43 +157,49 @@ Source Plan: plan.md
   and `tests/cpp/eastl/eastl_utility_simple.cpp` no longer fails with the old
   scalar-member / missing-constructor diagnostics; the remaining frontier has
   moved deeper into later canonical lowering.
+- Reduced that later canonical lowering crash to a smaller HIR reproducer where
+  re-entrant template-struct method lowering finalized a higher function ID
+  before reserving its slot in `module_->functions`.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_struct_method_param_reentrant_hir.cpp`
+  and `cpp_hir_template_method_param_reentrant_lowering`, then fixed callable
+  slot reservation so both bodyless and body-lowered functions reserve storage
+  by `FunctionId` instead of current vector length.
+- Confirmed the reduced HIR reproducer now passes under both the normal and
+  ASan builds, `tests/cpp/eastl/eastl_utility_simple.cpp --dump-canonical`
+  now completes in about `10.531s`, and `tests/cpp/eastl/eastl_tuple_simple.cpp`
+  now completes under `--dump-canonical` as well.
+- Re-ran the targeted HIR regressions and the full
+  `ctest --test-dir build -j8 --output-on-failure` suite; the regression guard
+  remains monotonic at 3287/3287 passing tests versus the earlier 3278/3278
+  baseline, with zero new failing tests.
 
 ## Next Slice
 
-- reduce the new `eastl_utility_simple.cpp` post-fix canonical `SIGSEGV` to the
-  next bounded internal reproducer before returning to the deeper
-  `eastl_tuple_simple.cpp` timeout
-- keep the new piecewise delegating-helper frontend regression green while
-  reducing the later `eastl_utility_simple.cpp` crash
-- keep `eastl_memory_simple.cpp` parked for now: after this tuple fix it still
-  times out under both `--parse-only` and `--dump-canonical`, so it has not
-  become the smaller frontier
+- reduce the `eastl_memory_simple.cpp` 30s parse timeout to the next bounded
+  parser reproducer before reopening `eastl_vector_simple.cpp`
+- keep the new HIR re-entrant method-lowering regression green while working
+  back outward from the remaining EASTL timeout cases
+- use `eastl_vector_simple.cpp` only as a comparison case while checking
+  whether the memory and vector timeouts share the same parser root cause
 
 ## Blockers
 
-- `eastl_tuple_simple.cpp` no longer stops on the old member-init semantic
-  failure, but the next canonical frontier is now a deeper timeout with no new
-  terminal diagnostic inside 30s, so it still needs a fresh reduction
-- `eastl_utility_simple.cpp` is still the smaller active canonical frontier:
-  the reduced piecewise helper now compiles, but the full case crashes later in
-  canonical/HIR lowering with `SIGSEGV` after the old delegating-constructor
-  blocker is removed
 - `eastl_memory_simple.cpp` still times out under both parse-only and
   canonical/sema pressure, though the trace reaches much later tuple/ranges
   work than before
 - `eastl_vector_simple.cpp` also times out deeper in the stack, so it is not
-  currently the smallest useful frontier
+  currently a better frontier than `eastl_memory_simple.cpp`
 
 ## Resume Notes
 
 - use [tests/cpp/eastl/README.md](/workspaces/c4c/tests/cpp/eastl/README.md) as
   the current stage inventory
 - Step 1 foundation cases already parse and mostly fail later in sema
-- `eastl_utility_simple.cpp` parse-only now succeeds and is ready for
-  canonical/sema follow-up if it becomes the smaller frontier
-- `eastl_utility_simple.cpp` has now become that smaller frontier; the active
-  piecewise delegating-helper path is fixed, and the next blocker is a later
-  canonical `SIGSEGV`
+- `eastl_utility_simple.cpp` now passes both `--parse-only` and
+  `--dump-canonical`
+- `eastl_tuple_simple.cpp` now also passes `--dump-canonical`, so the next
+  active EASTL frontier is back to the heavier parse timeout cases
 - focused parser coverage now exists for shadowed-name assignment dispatch
   under `tests/cpp/internal/postive_case/local_value_shadows_*`
 - focused parser coverage now also exists for out-of-class constructor-template
@@ -222,9 +228,11 @@ Source Plan: plan.md
   `tests/cpp/internal/postive_case/ctor_init_delegating_unqualified_template_runtime.cpp`
 - focused piecewise delegating-helper frontend coverage now also exists under
   `tests/cpp/internal/postive_case/ctor_init_piecewise_delegating_template_runtime.cpp`
+- focused HIR re-entrant method-lowering coverage now also exists under
+  `tests/cpp/internal/hir_case/template_struct_method_param_reentrant_hir.cpp`
 - the older constrained concept-shorthand scratch repro now parses and lowers,
-  the member-init `first` diagnostic is gone, `eastl_tuple_simple.cpp`
-  `--parse-only` succeeds again, and the remaining tuple frontier is now a
-  deeper canonical timeout
+  the member-init `first` diagnostic is gone, and both
+  `eastl_utility_simple.cpp` and `eastl_tuple_simple.cpp` now complete through
+  `--dump-canonical`
 - runtime and ABI glue remain explicitly out of scope except for temporary local
   shims already allowed by the source idea
