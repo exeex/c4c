@@ -614,3 +614,34 @@ Interpretation:
 - The next extraction choice should stay in `stmt_emitter_call.cpp` and target
   the remaining AMD64 `va_arg` helper family before returning to the leading
   frontend hotspots.
+
+## Step 4: Twentieth Executed Slice
+
+- Extracted the builtin layout-query helper family (`LayoutQueries`,
+  `builtin_query_result_type`, `resolve_builtin_query_type`,
+  `lower_builtin_sizeof_type`, `lower_builtin_alignof_type`,
+  `builtin_alignof_expr_bytes`, and `lower_builtin_alignof_expr`) out of
+  `src/frontend/hir/hir_expr.cpp` into the new
+  `src/frontend/hir/hir_expr_builtin.cpp`.
+- Kept the main expression dispatcher and operator/member lowering inside
+  `src/frontend/hir/hir_expr.cpp`, so this remains a translation-unit
+  ownership split rather than a semantic rewrite of expression lowering.
+- Tightened the focused HIR builtin-layout tests so the alignof checks now
+  require the concrete `return 16` result in the dumped HIR.
+
+## Step 4: Twentieth Slice Measurements
+
+Optimized single-TU compile timings for the builtin layout-query split:
+
+| Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
+| --- | ---: | ---: | --- |
+| `src/frontend/hir/hir_expr.cpp` | 3.148 | 2.667 | before compiled from `HEAD`, after from the working tree |
+| `src/frontend/hir/hir_expr_builtin.cpp` | n/a | 1.060 | new extracted TU |
+
+Interpretation:
+
+- This slice preserved behavior and reduced the main `hir_expr.cpp` hotspot TU
+  by `0.481s`, about `15.3%`.
+- With `hir_expr.cpp` reduced to `2.667s`, the next leading frontend hotspot
+  in the current direct comparison is now `hir_templates.cpp` at `3.166s`,
+  followed closely by `hir_stmt.cpp` at `3.159s`.

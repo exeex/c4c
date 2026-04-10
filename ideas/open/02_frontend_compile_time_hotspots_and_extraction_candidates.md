@@ -875,6 +875,61 @@ Follow-on note:
   `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `3.076s`, so the
   next iteration should move back to `hir_expr.cpp`
 
+## 2026-04-10 Step 4 Twentieth Extraction Slice
+
+The refreshed direct comparison after the AMD64 `va_arg` register-path split
+put `src/frontend/hir/hir_expr.cpp` back on top at `3.277s`, just ahead of
+`src/frontend/hir/hir_templates.cpp` at `3.166s`,
+`src/frontend/hir/hir_stmt.cpp` at `3.159s`, and the reduced
+`src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `3.076s`.
+
+That made the builtin layout-query cluster inside `hir_expr.cpp` the next
+smallest cohesive frontend seam to extract.
+
+Executed the builtin layout-query split:
+
+- moved `LayoutQueries`, `builtin_query_result_type`,
+  `resolve_builtin_query_type`, `lower_builtin_sizeof_type`,
+  `lower_builtin_alignof_type`, `builtin_alignof_expr_bytes`, and
+  `lower_builtin_alignof_expr` into the new
+  `src/frontend/hir/hir_expr_builtin.cpp`
+- kept the main expression dispatcher and operator/member lowering in
+  `src/frontend/hir/hir_expr.cpp`, so the slice remains a translation-unit
+  ownership split rather than a semantic rewrite
+- tightened the focused HIR builtin-layout checks so
+  `cpp_hir_builtin_layout_query_alignof_type` and
+  `cpp_hir_builtin_layout_query_alignof_expr` now require the concrete
+  `return 16` result in the dumped HIR
+
+Measured result:
+
+- compiling the pre-split `src/frontend/hir/hir_expr.cpp` from `HEAD` on the
+  direct optimized command took `3.148s`
+- the direct post-split rerun of `src/frontend/hir/hir_expr.cpp` took
+  `2.667s`
+- the new `src/frontend/hir/hir_expr_builtin.cpp` compiles in `1.060s`
+- this means the slice did demonstrate a single-TU compile-time win for the
+  main hotspot TU, reducing `hir_expr.cpp` by `0.481s` (about `15.3%`) on the
+  direct comparison
+
+Validation result:
+
+- focused coverage passed:
+  `cpp_hir_builtin_layout_query_sizeof_type`,
+  `cpp_hir_builtin_layout_query_alignof_type`, and
+  `cpp_hir_builtin_layout_query_alignof_expr`
+- full-suite regression guard passed with `3330/3330` tests passing before and
+  `3338/3338` after, with no new failures
+
+Follow-on note:
+
+- the refreshed direct comparison now leaves
+  `src/frontend/hir/hir_templates.cpp` at `3.166s`,
+  `src/frontend/hir/hir_stmt.cpp` at `3.159s`,
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `3.076s`, and the
+  reduced `src/frontend/hir/hir_expr.cpp` at `2.667s`, so the next iteration
+  should move to `hir_templates.cpp`
+
 ## Non-Goals
 
 - no backend architecture work

@@ -1637,7 +1637,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_builtin_layout_query_alignof_type PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "fn alignof_querybox\\(\\) -> int"
+  PASS_REGULAR_EXPRESSION "fn alignof_querybox\\(\\) -> int.*return 16"
 )
 
 add_test(
@@ -1646,7 +1646,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_builtin_layout_query_alignof_expr PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "decl box: struct QueryBox"
+  PASS_REGULAR_EXPRESSION "decl box: struct QueryBox.*return 16"
 )
 
 add_test(

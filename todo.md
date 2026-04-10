@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: preserve the nineteenth extraction slice findings and hand off the
-  refreshed direct-TU comparison, which now puts `hir_expr.cpp` narrowly back
-  ahead of the reduced AMD64 `va_arg` TU.
+- Step 5: preserve the twentieth extraction slice findings and hand off the
+  refreshed direct-TU comparison, which now moves `hir_templates.cpp` ahead
+  of the reduced `hir_expr.cpp`.
 
 ## Completed
 
@@ -459,9 +459,9 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Inspect `src/frontend/hir/hir_expr.cpp` next, because the refreshed direct
-  comparison now puts it narrowly back in front of `hir_templates.cpp`,
-  `hir_stmt.cpp`, and the reduced AMD64 `va_arg` TU.
+- Move to `src/frontend/hir/hir_templates.cpp` next, because the refreshed
+  direct comparison now leaves it ahead of `hir_stmt.cpp`, the reduced AMD64
+  `va_arg` TU, and the reduced `hir_expr.cpp`.
 
 ## Blockers
 
@@ -478,7 +478,7 @@ Source Plan: plan.md
 - Step 2 is complete: the top-five hotspot tier is optimizer heavy rather than
   parse-heavy, though all five keep a meaningful `-fsyntax-only` floor.
 - The latest `ctest --test-dir build -j --output-on-failure` rerun passes
-  3334/3334 tests, and the monotonic regression guard remains green.
+  3338/3338 tests, and the monotonic regression guard remains green.
 - The first executed extraction slice reduced the hottest TU,
   `src/codegen/lir/stmt_emitter_expr.cpp`, by 1.219s on the optimized
   single-TU compile command.
@@ -700,3 +700,29 @@ Source Plan: plan.md
   `hir_expr.cpp` measured 3.277s, `hir_templates.cpp` 3.166s,
   `hir_stmt.cpp` 3.159s, and the reduced
   `stmt_emitter_call_vaarg_amd64.cpp` 3.076s.
+- Tightened the focused HIR builtin-layout checks so
+  `cpp_hir_builtin_layout_query_alignof_type` and
+  `cpp_hir_builtin_layout_query_alignof_expr` now require the concrete
+  `return 16` result in the dumped HIR.
+- Executed the twentieth Step 4 slice by moving the builtin layout-query
+  helper family (`LayoutQueries`, `builtin_query_result_type`,
+  `resolve_builtin_query_type`, `lower_builtin_sizeof_type`,
+  `lower_builtin_alignof_type`, `builtin_alignof_expr_bytes`, and
+  `lower_builtin_alignof_expr`) out of `src/frontend/hir/hir_expr.cpp` into
+  the new `src/frontend/hir/hir_expr_builtin.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_builtin_layout_query_sizeof_type`,
+  `cpp_hir_builtin_layout_query_alignof_type`, and
+  `cpp_hir_builtin_layout_query_alignof_expr`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard
+  passed with 3330/3330 tests passing before and 3338/3338 after, with no new
+  failures.
+- Recorded the twentieth before/after extraction measurement: compiling the
+  pre-split `src/frontend/hir/hir_expr.cpp` from `HEAD` on the direct
+  optimized command took 3.148s, the reduced `src/frontend/hir/hir_expr.cpp`
+  took 2.667s, and the new `src/frontend/hir/hir_expr_builtin.cpp` compiled
+  in 1.060s.
+- Refreshed the direct comparison against the remaining leaders:
+  `hir_templates.cpp` remains at 3.166s, `hir_stmt.cpp` remains at 3.159s,
+  the reduced `stmt_emitter_call_vaarg_amd64.cpp` remains at 3.076s, and the
+  reduced `hir_expr.cpp` now measures 2.667s.
