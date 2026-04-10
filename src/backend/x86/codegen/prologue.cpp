@@ -163,6 +163,34 @@ void X86Codegen::emit_store_params_impl(const IrFunction& func) {
   const auto classification = classify_params_full(func, config);
   this->state.param_classes = classification.classes;
   this->state.param_pre_stored.clear();
+
+  std::unordered_map<std::uint32_t, std::size_t> reg_param_use_counts;
+  for (const auto& param : func.params) {
+    if (const auto assigned = this->reg_assignments.find(param.name);
+        assigned != this->reg_assignments.end()) {
+      ++reg_param_use_counts[assigned->second.index];
+    }
+  }
+
+  for (std::size_t index = 0; index < func.params.size() && index < classification.classes.size();
+       ++index) {
+    const auto assigned = this->reg_assignments.find(func.params[index].name);
+    if (assigned == this->reg_assignments.end()) {
+      continue;
+    }
+    const auto assigned_param_count = reg_param_use_counts[assigned->second.index];
+    if (!x86_param_can_prestore_direct_to_reg(false, assigned->second, assigned_param_count)) {
+      continue;
+    }
+    if (const auto* reg = std::get_if<ParamClass::IntReg>(&classification.classes[index].data)) {
+      const auto* move_instr = x86_param_prestore_move_instr();
+      const auto* src_reg = x86_param_prestore_arg_reg(reg->reg_idx);
+      const auto* dest_reg = x86_param_prestore_dest_reg(assigned->second);
+      if (move_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
+        this->state.emit_fmt(format_args!("    {} %{}, %{}", move_instr, src_reg, dest_reg));
+      }
+    }
+  }
 }
 
 void X86Codegen::emit_param_ref_impl(const Value& dest, std::size_t param_idx, IrType ty) {

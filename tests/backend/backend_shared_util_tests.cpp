@@ -276,6 +276,15 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                       false, c4c::backend::PhysReg{1}, 2) &&
                   !c4c::backend::x86::x86_param_can_prestore_direct_to_reg(
                       false, std::nullopt, 0) &&
+                  std::string(c4c::backend::x86::x86_param_prestore_move_instr()) == "movq" &&
+                  std::string(c4c::backend::x86::x86_param_prestore_arg_reg(0)) == "rdi" &&
+                  std::string(c4c::backend::x86::x86_param_prestore_arg_reg(5)) == "r9" &&
+                  std::string(
+                      c4c::backend::x86::x86_param_prestore_dest_reg(c4c::backend::PhysReg{1})) ==
+                      "rbx" &&
+                  std::string(
+                      c4c::backend::x86::x86_param_prestore_dest_reg(c4c::backend::PhysReg{5})) ==
+                      "r15" &&
                   c4c::backend::x86::x86_variadic_gp_save_offset(-176, 0) == -176 &&
                   c4c::backend::x86::x86_variadic_gp_save_offset(-176, 5) == -136 &&
                   c4c::backend::x86::x86_variadic_sse_save_offset(-176, 0) == -128 &&

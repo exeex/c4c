@@ -386,6 +386,16 @@ bool x86_param_can_prestore_direct_to_reg(bool has_stack_slot,
          x86_phys_reg_is_callee_saved(*assigned_reg) && assigned_param_count == 1;
 }
 
+const char* x86_param_prestore_move_instr() { return "movq"; }
+
+const char* x86_param_prestore_arg_reg(std::size_t reg_index) {
+  return x86_arg_reg_name(reg_index);
+}
+
+const char* x86_param_prestore_dest_reg(c4c::backend::PhysReg reg) {
+  return phys_reg_name(reg);
+}
+
 std::int64_t x86_variadic_reg_save_area_size(bool no_sse) { return no_sse ? 48 : 176; }
 
 std::int64_t x86_aligned_frame_size(std::int64_t raw_space) {
