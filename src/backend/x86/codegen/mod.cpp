@@ -303,6 +303,14 @@ std::int64_t x86_callee_saved_slot_offset(std::int64_t frame_size, std::size_t s
   return -frame_size + static_cast<std::int64_t>(save_index) * 8;
 }
 
+std::int64_t x86_variadic_gp_save_offset(std::int64_t reg_save_area_base, std::size_t reg_index) {
+  return reg_save_area_base + static_cast<std::int64_t>(reg_index) * 8;
+}
+
+std::int64_t x86_variadic_sse_save_offset(std::int64_t reg_save_area_base, std::size_t reg_index) {
+  return reg_save_area_base + 48 + static_cast<std::int64_t>(reg_index) * 16;
+}
+
 c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
     const c4c::backend::LivenessInput& liveness_input) {
   c4c::backend::RegAllocConfig config;

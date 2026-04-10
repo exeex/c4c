@@ -194,7 +194,11 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   !c4c::backend::x86::x86_needs_stack_probe(4096) &&
                   c4c::backend::x86::x86_needs_stack_probe(4097) &&
                   c4c::backend::x86::x86_callee_saved_slot_offset(64, 0) == -64 &&
-                  c4c::backend::x86::x86_callee_saved_slot_offset(64, 3) == -40,
+                  c4c::backend::x86::x86_callee_saved_slot_offset(64, 3) == -40 &&
+                  c4c::backend::x86::x86_variadic_gp_save_offset(-176, 0) == -176 &&
+                  c4c::backend::x86::x86_variadic_gp_save_offset(-176, 5) == -136 &&
+                  c4c::backend::x86::x86_variadic_sse_save_offset(-176, 0) == -128 &&
+                  c4c::backend::x86::x86_variadic_sse_save_offset(-176, 7) == -16,
               "x86 translated prologue-side helpers should keep the ref callee-saved mapping, variadic register-save-area sizing, and 16-byte frame-alignment contract for the future translated prologue owner path");
 
   expect_true(std::string(c4c::backend::x86::phys_reg_name(c4c::backend::PhysReg{1})) == "rbx" &&

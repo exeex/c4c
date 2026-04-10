@@ -10,29 +10,55 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  expose the next prologue/regalloc-side translated helper seam through
-  `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp` without pulling the
-  full translated prologue owner path into the build yet
-  - continue with the next prologue-side helper family after the
-    caller-saved-pruning seam, likely around stack-probe / callee-save spill
-    offset ownership that can still route through `mod.cpp`/`x86_codegen.hpp`
+  continue through the next prologue-side helper family after the variadic
+  register-save-area seam, likely around parameter-storage / `ParamRef`
+  ownership that can still route through `mod.cpp`/`x86_codegen.hpp` without
+  pulling the full translated prologue owner into the build yet
   - keep the slice helper-only and backend-focused until the translated
     prologue owner can replace more of the provisional `prologue.cpp` body
 
 ## Next Slice
 
 - continue the translated dependency inventory with the next already-built
-  prologue/inline-asm-adjacent helper family after the caller-saved pruning
-  seam lands
-- likely next helper candidates are the translated prologue emission helpers
-  that compute or emit stack-probe and callee-saved spill-slot behavior without
-  pulling the full parameter-storage owner into the build yet
-- likely keep moving through helper-only support surfaces that can be exposed
-  through `mod.cpp`/`x86_codegen.hpp` without compiling the full translated
-  prologue owner path yet
+  prologue-side helper family after the variadic register-save-area seam lands
+- likely next helper candidates are bounded parameter-storage and `ParamRef`
+  helpers that can expose ref-owned slot/load rules through
+  `mod.cpp`/`x86_codegen.hpp` without compiling the full translated prologue
+  owner path yet
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration exposed the translated x86 variadic register-save-area layout
+  helpers through `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp`:
+  `x86_variadic_gp_save_offset(...)` and
+  `x86_variadic_sse_save_offset(...)`
+- `src/backend/x86/codegen/prologue.cpp` now routes its variadic prologue
+  register-save-area emission through that shared helper surface, including the
+  six GPR home slots and the eight 16-byte XMM save slots when SSE is enabled,
+  instead of leaving the variadic save area disconnected from the provisional
+  translated prologue path
+- added focused shared-util coverage that locks the translated variadic
+  register-save-area offset contract, including the `base + gp_index*8`
+  mapping for `%rdi`..`%r9` and the `base + 48 + xmm_index*16` mapping for
+  `%xmm0`..`%xmm7`
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests test_x86_translated_asm_emitter_helpers_match_shared_contract`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation note:
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log 2>&1`
+  and a second rerun to `test_fail_after_rerun.log` both settled at the same
+  current-tree result; the rerun-to-rerun guard passed via
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_after.log --after test_fail_after_rerun.log --allow-non-decreasing-passed`
+  with `3190` passed / `186` failed before and after
+- blocker note:
+  the stored matched full-suite baseline still diverges from the current tree
+  by the same four x86 route/c-testsuite regressions already tracked below:
+  `backend_codegen_route_x86_64_c_testsuite_00030_repeated_call_compare_zero_return_retries_after_direct_bir_rejection`,
+  `backend_codegen_route_x86_64_c_testsuite_00031_local_i32_inc_dec_compare_retries_after_direct_bir_rejection`,
+  `c_testsuite_x86_backend_src_00030_c`, and
+  `c_testsuite_x86_backend_src_00031_c`
 
 - this iteration exposed the translated x86 prologue stack-probe and
   callee-saved spill-slot helpers through `src/backend/x86/codegen/mod.cpp`

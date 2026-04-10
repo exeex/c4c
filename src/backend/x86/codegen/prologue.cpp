@@ -104,6 +104,23 @@ void X86Codegen::emit_prologue_impl(const IrFunction& func, std::int64_t frame_s
     this->state.out.emit_instr_reg_rbp(
         "    movq", phys_reg_name(reg), x86_callee_saved_slot_offset(frame_size, index));
   }
+  if (func.is_variadic) {
+    static constexpr const char* kVariadicGpRegs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+    for (std::size_t index = 0; index < std::size(kVariadicGpRegs); ++index) {
+      this->state.out.emit_instr_reg_rbp(
+          "    movq",
+          kVariadicGpRegs[index],
+          x86_variadic_gp_save_offset(this->reg_save_area_offset, index));
+    }
+    if (!this->no_sse) {
+      for (std::size_t index = 0; index < 8; ++index) {
+        this->state.emit_fmt(
+            format_args!("    movdqu %xmm{}, {}(%rbp)",
+                         index,
+                         x86_variadic_sse_save_offset(this->reg_save_area_offset, index)));
+      }
+    }
+  }
 }
 
 void X86Codegen::emit_epilogue_impl(std::int64_t frame_size) {

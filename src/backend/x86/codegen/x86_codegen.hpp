@@ -414,6 +414,8 @@ std::int64_t x86_aligned_frame_size(std::int64_t raw_space);
 std::int64_t x86_stack_probe_page_size();
 bool x86_needs_stack_probe(std::int64_t frame_size);
 std::int64_t x86_callee_saved_slot_offset(std::int64_t frame_size, std::size_t save_index);
+std::int64_t x86_variadic_gp_save_offset(std::int64_t reg_save_area_base, std::size_t reg_index);
+std::int64_t x86_variadic_sse_save_offset(std::int64_t reg_save_area_base, std::size_t reg_index);
 std::string decode_llvm_byte_string(std::string_view text);
 std::string escape_asm_string(std::string_view raw_bytes);
 std::string asm_symbol_name(std::string_view target_triple, std::string_view logical_name);
