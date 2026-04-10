@@ -7,23 +7,23 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner build-wiring follow-on after landing the bounded
-  `returns.cpp` slice: surface the next shared x86 helper/state ownership tier
-  that blocks real `src/backend/x86/codegen/calls.cpp` build wiring now that
-  the file passes both direct syntax-only and standalone object compilation
-  with the current public `x86_codegen.hpp` surface
+  `calls.cpp` slice: keep the newly linked translated call owner shippable
+  while surfacing the next semantic shared x86 state/output ownership tier
+  required before the translated call helpers can matter on the real runtime
+  x86 path
 - immediate target:
-  record the exact unresolved shared helper/state definitions exposed by the
-  temporary `calls.cpp` target-wire experiment, then choose the smallest
-  follow-on owner slice that moves those helpers out of compile-only
-  declarations and into real x86 shared support code without silently widening
-  the active plan
+  record that `src/backend/x86/codegen/calls.cpp` now enters the active build
+  through bounded transitional shared helper definitions, then choose the
+  smallest follow-on slice that replaces those placeholder state/output hooks
+  with real shared x86 semantics instead of widening into unrelated owner
+  files
 
 ## Next Slice
 
-- decide whether the next bounded Step 3 slice is real `CMakeLists.txt`
-  wire-in for `src/backend/x86/codegen/calls.cpp` after the shared helper/state
-  surface becomes linkable, or a bounded shared-owner support slice that
-  defines the missing x86 helper/state methods first
+- decide whether the next bounded Step 3 slice should teach the new shared
+  helper layer real x86 state/output semantics needed by translated call-owner
+  execution, or instead surface the next parked translated owner whose blocker
+  frontier is now smaller than the call-owner semantic gap
 - if future wiring exposes missing translated helper bodies shared with other
   parked owner files, treat that as a separate surfaced blocker tier rather
   than reverting this now-clean parser normalization work
@@ -38,9 +38,39 @@ Source Plan: plan.md
 - treat the current shared backend-entry coverage for the bounded SysV helper
   families as complete enough for this lane unless a new owner-path regression
   shows a real gap
-- only rerun the broad monotonic guard after a larger owner-path cutover lands
+- broad monotonic guard has been rerun for the `calls.cpp` build-wiring slice;
+  only rerun it again after the next real owner-path cutover or semantic
+  shared-helper upgrade lands
 
 ## Current Iteration Notes
+
+- this iteration lands the bounded shared-helper support slice that turns the
+  previously declaration-only call-owner dependency cluster into real active
+  x86 definitions and wires `src/backend/x86/codegen/calls.cpp` into both x86
+  source lists in `CMakeLists.txt`
+- implementation note:
+  `src/backend/x86/codegen/shared_call_support.cpp` now provides transitional
+  definitions for the missing shared call-owner helpers/state/output hooks
+  (`operand_to_rax`, `store_rax_to`, `store_rax_rdx_to`, `X86CodegenState`
+  emit/slot accessors, selected `X86CodegenOutput` emitters, and the
+  `X86CodegenRegCache` hooks), while
+  `tests/backend/backend_shared_util_tests.cpp` now pins those output/cache
+  hooks alongside the existing translated call-owner surface check
+- shippable-scope note:
+  the new helper definitions are explicitly transitional build-wiring support;
+  `emit.cpp` still owns the active runtime x86 path, so the next frontier is
+  real shared state/output semantics rather than link reachability
+- focused validation passed:
+  `cmake --preset default`,
+  `cmake --build --preset default --target backend_shared_util_tests -j8`, and
+  `./build/backend_shared_util_tests translated_call_owner_surface`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`
+  (still exits non-zero on the existing suite failure set), and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing tests,
+  and the existing `backend_bir_tests` `>30s` timeout note still present
 
 - this iteration targets the first parked translated-body syntax blocker inside
   `src/backend/x86/codegen/calls.cpp` after the earlier header-surfacing

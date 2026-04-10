@@ -201,10 +201,17 @@ void test_x86_codegen_header_exports_translated_returns_owner_symbols() {
 
 void test_x86_codegen_header_exports_translated_call_owner_surface() {
   using X86Codegen = c4c::backend::x86::X86Codegen;
+  using X86CodegenOutput = c4c::backend::x86::X86CodegenOutput;
+  using X86CodegenRegCache = c4c::backend::x86::X86CodegenRegCache;
   using X86CodegenState = c4c::backend::x86::X86CodegenState;
   using Value = c4c::backend::x86::Value;
   using StackSlot = c4c::backend::x86::StackSlot;
 
+  auto output_emit_instr_imm_reg = &X86CodegenOutput::emit_instr_imm_reg;
+  auto output_emit_instr_rbp_reg = &X86CodegenOutput::emit_instr_rbp_reg;
+  auto output_emit_instr_rbp = &X86CodegenOutput::emit_instr_rbp;
+  auto reg_cache_invalidate_all = &X86CodegenRegCache::invalidate_all;
+  auto reg_cache_set_acc = &X86CodegenRegCache::set_acc;
   auto operand_to_rax = &X86Codegen::operand_to_rax;
   auto operand_to_rcx = &X86Codegen::operand_to_rcx;
   auto operand_to_rax_rdx = &X86Codegen::operand_to_rax_rdx;
@@ -235,7 +242,10 @@ void test_x86_codegen_header_exports_translated_call_owner_surface() {
       6, 8, false, false, false, false, false, true, false, false, false, false,
   };
 
-  expect_true(operand_to_rax != nullptr && operand_to_rcx != nullptr &&
+  expect_true(output_emit_instr_imm_reg != nullptr && output_emit_instr_rbp_reg != nullptr &&
+                  output_emit_instr_rbp != nullptr && reg_cache_invalidate_all != nullptr &&
+                  reg_cache_set_acc != nullptr && operand_to_rax != nullptr &&
+                  operand_to_rcx != nullptr &&
                   operand_to_rax_rdx != nullptr && store_rax_to != nullptr &&
                   store_rax_rdx_to != nullptr && call_abi_config != nullptr &&
                   emit_call_compute_stack_space != nullptr &&
@@ -253,7 +263,7 @@ void test_x86_codegen_header_exports_translated_call_owner_surface() {
                   abi_config.max_int_regs == 6 && abi_config.max_float_regs == 8 &&
                   abi_config.use_sysv_struct_classification &&
                   !abi_config.allow_struct_split_reg_stack,
-              "x86 translated call-owner header surfacing should expose the shared ABI structs, raw value/slot fields, state hooks, and owner helper declarations before calls.cpp enters the build");
+              "x86 translated call-owner build wiring should keep the shared ABI structs, output hooks, reg-cache hooks, raw value/slot fields, and owner helper surface linkable once calls.cpp enters the build");
 }
 
 void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {
