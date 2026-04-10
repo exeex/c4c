@@ -10,6 +10,9 @@ Source Plan: plan.md
   grouped parser symbol-table accessors instead of direct top-level member
   storage assumptions, starting with typedef/value registration and
   namespace-aware lookup helpers
+- Current slice: continue migrating remaining direct typedef/value lookup
+  probes outside `parser_statements.cpp`, likely the next type-parser cluster
+  in `parser_types_base.cpp` or `parser_types_declarator.cpp`
 
 ## Completed Items
 
@@ -34,20 +37,30 @@ Source Plan: plan.md
 - Added frontend regression
   `tests/cpp/internal/postive_case/namespace_using_decl_typedef_and_value_frontend.cpp`
   to cover namespace `using` imports of typedef-backed types and values
+- Migrated `src/frontend/parser/parser_statements.cpp` local alias
+  registration, `if` declaration probing, and block-scope
+  declaration-vs-expression typedef/value checks onto parser-local helper
+  accessors
+- Added parse-only regression
+  `tests/cpp/internal/parse_only_case/local_using_alias_statement_probe_parse.cpp`
+  plus `cpp_parse_local_using_alias_statement_probe_dump` in
+  `tests/cpp/internal/InternalTests.cmake` to cover local alias registration,
+  shadowed value bindings, and qualified static member call disambiguation
 - Validated with targeted parser tests plus full `ctest --test-dir build -j4
   --output-on-failure`:
   3342/3342 tests passed
 - Revalidated with targeted frontend tests plus full
   `ctest --test-dir build -j8 --output-on-failure` and regression guard:
   3343/3343 tests passed, no new failures
+- Revalidated this slice with targeted parser tests plus full
+  `ctest --test-dir build -j8 --output-on-failure` and regression guard:
+  3344/3344 tests passed, no new failures
 
 ## Next Intended Slice
 
-- Add narrow parser-local accessor helpers for typedef and variable-type lookup
-- mutations that still reach through the compatibility reference members
-- Continue migrating direct typedef/value lookup call sites outside the
-  declaration and namespace-lookup family, likely statement/type probes or
-  template-heavy parser helpers
+- Continue migrating direct typedef/value lookup call sites outside
+  `parser_statements.cpp`, likely the next type-parser probe cluster in
+  `parser_types_base.cpp` or `parser_types_declarator.cpp`
 - Leave namespace-state grouping for a separate slice unless it becomes
   necessary for the chosen accessor migration
 
@@ -64,5 +77,6 @@ Source Plan: plan.md
   reference members while moving ownership and heavy snapshots under
   `ParserSymbolTables`
 - This slice centralizes typedef/value registration and namespace-aware lookup
-  behind parser helpers but intentionally leaves many read-only direct map/set
-  accesses for later Step 3 slices
+  behind parser helpers and now covers the statement parser's local alias and
+  declaration-disambiguation probes, but intentionally leaves many type-parser
+  read-only direct map/set accesses for later Step 3 slices
