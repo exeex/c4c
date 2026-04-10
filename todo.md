@@ -9,12 +9,13 @@ Source Plan: plan.md
 - Step 2: return to the smallest remaining EASTL timeout frontier now that the
   `eastl_utility_simple.cpp` and `eastl_tuple_simple.cpp` canonical blockers
   are gone.
-- Iteration target: reduce the next parse timeout behind
-  `tests/cpp/eastl/eastl_memory_simple.cpp`, using
-  `eastl_vector_simple.cpp` only as a comparison case if it exposes the same
-  parser root cause more clearly.
-- This slice is specifically transitioning from canonical crash repair back to
-  timeout reduction on the smallest still-unbounded EASTL case.
+- Iteration target: work from the reduced header-only parse timeout behind
+  `tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp`, using the full
+  `eastl_memory_simple.cpp` driver only to confirm that the smaller header path
+  still matches the active stack.
+- This slice is specifically transitioning from timeout reduction by testcase
+  triage into parser-cost reduction on the new bounded
+  `EASTL/internal/memory_uses_allocator.h` frontier.
 
 ## Completed
 
@@ -173,11 +174,23 @@ Source Plan: plan.md
   `ctest --test-dir build -j8 --output-on-failure` suite; the regression guard
   remains monotonic at 3287/3287 passing tests versus the earlier 3278/3278
   baseline, with zero new failing tests.
+- Re-reduced the remaining `eastl_memory_simple.cpp` timeout to a smaller
+  header-only parse frontier: `#include <EASTL/internal/memory_uses_allocator.h>`
+  still times out after about `32s`, `#include <EASTL/tuple.h>` also lands in
+  the same range, and the smaller
+  `#include <EASTL/internal/function_detail.h>` smoke case still completes in
+  about `15s`.
+- Added focused timeout workflow coverage in
+  `tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp` and
+  `tests/cpp/eastl/run_eastl_timeout_baseline.cmake`, then wired
+  `cpp_eastl_memory_uses_allocator_timeout_baseline` into CTest so the current
+  parser-debug timeout frontier is reproducible without the full memory driver.
 
 ## Next Slice
 
-- reduce the `eastl_memory_simple.cpp` 30s parse timeout to the next bounded
-  parser reproducer before reopening `eastl_vector_simple.cpp`
+- reduce the `eastl_memory_uses_allocator_frontier.cpp` 25s parser-debug
+  timeout to the next concrete parser mechanism before reopening
+  `eastl_vector_simple.cpp`
 - keep the new HIR re-entrant method-lowering regression green while working
   back outward from the remaining EASTL timeout cases
 - use `eastl_vector_simple.cpp` only as a comparison case while checking
@@ -188,6 +201,10 @@ Source Plan: plan.md
 - `eastl_memory_simple.cpp` still times out under both parse-only and
   canonical/sema pressure, though the trace reaches much later tuple/ranges
   work than before
+- `tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp` is smaller and
+  now reproducible in CTest, but it still has not been reduced from "late
+  parser progress through allocator/function machinery" to a single concrete
+  parser construct
 - `eastl_vector_simple.cpp` also times out deeper in the stack, so it is not
   currently a better frontier than `eastl_memory_simple.cpp`
 
