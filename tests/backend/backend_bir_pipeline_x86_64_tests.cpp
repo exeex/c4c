@@ -9252,6 +9252,29 @@ void test_x86_peephole_fuses_compare_setcc_test_branch_sequence() {
                   "x86 peephole should fuse cmp/setcc/test/jne into the direct conditional jump");
 }
 
+void test_x86_peephole_redirects_single_entry_loop_trampoline() {
+  const std::string input =
+      ".intel_syntax noprefix\n"
+      ".text\n"
+      "main:\n"
+      "  cmp eax, 0\n"
+      "  jne .Ltrampoline\n"
+      "  ret\n"
+      ".Ltrampoline:\n"
+      "  jmp .Lloop\n"
+      ".Lloop:\n"
+      "  sub eax, 1\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_contains(optimized, "  jne .Lloop\n",
+                  "x86 peephole should redirect a single-entry trampoline branch to the real loop header");
+  expect_not_contains(optimized, "  jne .Ltrampoline\n",
+                      "x86 peephole should stop branching through the trampoline label once the translated loop trampoline pass is live");
+  expect_not_contains(optimized, ".Ltrampoline:\n  jmp .Lloop\n",
+                      "x86 peephole should remove the trampoline-only jump after redirecting its sole predecessor");
+}
+
 void test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole() {
   const auto rendered = c4c::backend::x86::emit_module(make_minimal_countdown_loop_bir_module());
 
@@ -9713,6 +9736,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_peephole_eliminates_jump_to_immediately_following_label);
   RUN_TEST(test_x86_peephole_eliminates_redundant_push_pop_pair);
   RUN_TEST(test_x86_peephole_fuses_compare_setcc_test_branch_sequence);
+  RUN_TEST(test_x86_peephole_redirects_single_entry_loop_trampoline);
   RUN_TEST(test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);

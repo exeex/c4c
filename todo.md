@@ -9,20 +9,18 @@ Source Plan: plan.md
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
   first live optimization round
 - immediate target:
-  evaluate the next translated pass that can be made live after
-  compare-and-branch fusion, without depending on a broader x86 emitter syntax
-  rewrite
+  validate the conservative translated `loop_trampoline.cpp` compile-in against
+  the full suite and record the next translated peephole candidate after the
+  new single-entry trampoline subset
 
 ## Next Slice
 
-- make additional translated local cleanup rules real only when they can be
-  expressed against the current emitted syntax or after the x86 emitter syntax
-  boundary is normalized
-- evaluate whether more of `peephole/passes/*.cpp` can be compiled in without
-  pulling in unrelated x86 top-level codegen ownership
-- investigate whether another translated pass such as `loop_trampoline.cpp` or
-  `frame_compact.cpp` has a similarly syntax-agnostic seam that can be made
-  live next while keeping the current Intel-syntax emitter output unchanged
+- validate whether the remaining translated trampoline logic needs extra shared
+  register-rewrite helpers before a wider coalescing slice can be enabled
+- keep `frame_compact.cpp` parked until dead-store and callee-save translated
+  passes are live enough for frame shrinking to be meaningful
+- continue evaluating which remaining translated peephole units can be compiled
+  into the real path without widening into unrelated x86 top-level ownership
 
 ## Current Iteration Notes
 
@@ -80,5 +78,12 @@ Source Plan: plan.md
 - added a direct regression test that proves the live x86 peephole now fuses a
   cmp/setcc/test/jne boolean-materialization sequence into a direct conditional
   jump
+- compiled the translated `peephole/passes/loop_trampoline.cpp` unit into the
+  real x86 backend and test builds
+- wired a conservative single-entry trampoline rewrite into the live x86
+  peephole optimization loop before the generic adjacent-jump cleanup
+- added a direct regression test that proves the live x86 peephole now
+  rewrites a sole incoming branch away from a label-only trampoline block onto
+  the real loop header while preserving the current emitted label syntax
 - rebuilt and reran the full ctest suite with monotonic results:
   `181` failures before, `181` failures after, no newly failing tests

@@ -64,6 +64,7 @@ std::string peephole_optimize(std::string asm_text) {
 
   for (int round = 0; round < 4; ++round) {
     bool changed = false;
+    changed |= eliminate_loop_trampolines(&store, infos.data());
     changed |= combined_local_pass(&store, infos.data());
     changed |= fuse_compare_and_branch(&store, infos.data());
     changed |= fuse_movq_ext_truncation(&store, infos.data());
