@@ -135,6 +135,9 @@ std::optional<bir::Module>
 try_lower_minimal_nested_struct_i32_sum_compare_six_zero_return_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module>
+try_lower_minimal_local_struct_shadow_store_compare_two_zero_return_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module>
 try_lower_minimal_local_i32_array_pointer_inc_dec_compare_zero_return_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module>

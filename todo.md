@@ -6,12 +6,14 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 5 focused validation capture and next-slice selection after the bounded
-  shared-BIR `00043.c` nested-struct aggregate-sum seam landed
+- Step 2 bounded shared-BIR recovery for the neighboring source-backed
+  `00044.c` local-struct shadow store / compare seam
 - current exact slice:
-  preserve the focused x86 validation state after the bounded shared-BIR
-  `00043.c` recovery; keep the handoff narrowed to the next earliest
-  source-backed x86 case instead of widening this lane ad hoc
+  add the narrowest shared-BIR route for `c_testsuite_x86_backend_src_00044_c`
+  by recognizing the exact source-backed `%struct.T` local-slot store/load
+  compare-to-two module with the unused inner shadow type declaration and
+  collapsing it to the shared constant `0` return without widening into later
+  source-backed x86 seams
 
 ## Next Slice
 
@@ -19,14 +21,16 @@ Source Plan: plan.md
   parked in
   `ideas/open/48_shared_bir_family_b_recursive_global_pointer_routes_after_x86_00040.md`
   instead of widening idea 44 ad hoc
-- move next to the neighboring `c_testsuite_x86_backend_src_00044_c`
-  source-backed x86 case without broadening the bounded `00043.c`
-  aggregate-sum seam; the source shape is a local `struct T v; v.x = 2;`
-  check with an inner shadow `struct T { int z; };` block that should still
-  fold to `ret 0`
+- after the bounded `00044.c` seam lands, move to the neighboring
+  `c_testsuite_x86_backend_src_00045_c` source-backed x86 case without
+  broadening the local-struct shadow lane ad hoc
+- the `00045.c` source shape is a three-global route
+  (`int x = 5; long y = 6; int *p = &x;` then compare `x`, `y`, and `*p`)
+  that should fold to `ret 0`; treat it as the next bounded global-memory seam
+  instead of widening the just-landed local-struct route
 - if the refreshed broad-suite guard is still red after the unary-not /
   unary-minus, early source-backed recoveries, and the bounded `00041.c`,
-  `00042.c`, and `00043.c` fixes, keep treating the stale
+  `00042.c`, `00043.c`, and `00044.c` fixes, keep treating the stale
   baseline as a parked comparison and classify the next highest-value remaining
   x86-native source-backed seam from the updated after-log instead of widening
   idea 44 ad hoc
@@ -38,6 +42,43 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- recovered the bounded shared-BIR `00044.c` seam by teaching
+  `src/backend/lowering/lir_to_bir/memory.cpp` to recognize the exact
+  source-backed local `struct T v; v.x = 2; if (v.x != 2) return 1; return 0;`
+  route with the unused inner shadow `struct T { int z; };` declaration and
+  collapse `main` to the shared constant `0` return instead of stopping at the
+  unsupported x86 direct-LIR boundary
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`, plus a source-backed
+  backend route regression in `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00044_local_struct_shadow_store_compare_retries_after_direct_bir_rejection`)
+  so the real `00044.c` path stays pinned on native x86 asm with the folded
+  zero return instead of falling back to LLVM text or the unsupported
+  direct-LIR error
+- verified the bounded `00044.c` seam end-to-end with
+  `./build/backend_bir_tests test_bir_lowering_accepts_local_struct_shadow_store_compare_two_zero_return_module test_backend_bir_pipeline_drives_x86_lir_local_struct_shadow_store_compare_two_through_bir_end_to_end`,
+  `./build/c4cll --codegen asm tests/c/external/c-testsuite/src/00044.c`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00044_local_struct_shadow_store_compare_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00044_c)$'`,
+  and the neighboring owned cluster
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00042_union_alias_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00043_nested_struct_sum_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00044_local_struct_shadow_store_compare_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00042_c|c_testsuite_x86_backend_src_00043_c|c_testsuite_x86_backend_src_00044_c)$'`
+  which now pass for the owned seam trio
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard through the `c4c-regression-guard` skill:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2679/205/2884` after); the refreshed after-state
+  still regresses broadly because parked riscv64 select-route, backend runtime,
+  toolchain-diagnostic, and wider x86 buckets remain red outside this bounded
+  change, but the owned x86 source-backed cluster through `00044.c` now passes,
+  the new route test raises total tests from `2883` to `2884`, and the current
+  after-state still improves versus the prior recorded `2677/206/2883`
+  snapshot by `+2` passes and `-1` failure
+- classified the next bounded seam from the refreshed targeted state:
+  `c_testsuite_x86_backend_src_00045_c` is now the next red source-backed x86
+  case, with a global `x/y/p` load-check route that should still fold to
+  `ret 0`
 - recovered the bounded shared-BIR `00043.c` seam by teaching
   `src/backend/lowering/lir_to_bir/memory.cpp` to recognize the exact
   source-backed nested-struct local aggregate-sum route (`v.x = 1`,
