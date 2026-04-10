@@ -945,13 +945,18 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_store_reload_module(
     return std::nullopt;
   }
 
-  const auto parsed_init = parse_memory_immediate(global.init_text);
-  if (!parsed_init.has_value() ||
-      *parsed_init < std::numeric_limits<std::int32_t>::min() ||
-      *parsed_init > std::numeric_limits<std::int32_t>::max()) {
-    return std::nullopt;
+  std::int32_t init_imm = 0;
+  if (global.init_text == "zeroinitializer") {
+    init_imm = 0;
+  } else {
+    const auto parsed_init = parse_memory_immediate(global.init_text);
+    if (!parsed_init.has_value() ||
+        *parsed_init < std::numeric_limits<std::int32_t>::min() ||
+        *parsed_init > std::numeric_limits<std::int32_t>::max()) {
+      return std::nullopt;
+    }
+    init_imm = static_cast<std::int32_t>(*parsed_init);
   }
-  const auto init_imm = static_cast<std::int32_t>(*parsed_init);
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||

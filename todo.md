@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 5 full-suite monotonic validation and next-slice selection after the
-  bounded shared-BIR `00020.c` double-indirect local pointer-chain seam
+  bounded shared-BIR `00023.c` zero-initialized scalar global store-reload seam
   landed
 - current exact slice:
   preserve the refreshed focused-x86 and full-suite validation results after
-  the `00020.c` recovery; the early source-backed cluster through `00022.c`
+  the `00023.c` recovery; the early source-backed cluster through `00023.c`
   is now green, while the broad-suite comparison against `test_fail_before.log`
   remains a parked non-monotonic lane and should not be silently treated as
   Step 5 complete because the refreshed after-log still reports unrelated broad
@@ -22,10 +22,11 @@ Source Plan: plan.md
 ## Next Slice
 
 - keep the ownership split explicit for the remaining early x86 source cases:
-  `00011.c` through `00022.c` are now green, so `c_testsuite_x86_backend_src_00023_c`
+  `00011.c` through `00023.c` are now green, so `c_testsuite_x86_backend_src_00024_c`
   is the next earliest failing source-backed seam to classify from the refreshed
-  after-log instead of widening the `00020.c` slice ad hoc; its source body is
-  the compact scalar-global zero-return seam (`int x; x = 0; return x;`)
+  after-log instead of widening the `00023.c` slice ad hoc; its source body is
+  the compact global two-field struct arithmetic seam (`typedef struct { int x;
+  int y; } s; s v; v.x = 1; v.y = 2; return 3 - v.x - v.y;`)
 - if the refreshed broad-suite guard is still red after the branch-family
   and early source-backed recoveries, keep treating the stale baseline as a
   parked comparison and classify the next highest-value remaining x86-native
@@ -39,6 +40,43 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- recovered the bounded shared-BIR `00023.c` seam by extending
+  `src/backend/lowering/lir_to_bir/memory.cpp` so the existing scalar-global
+  store-reload matcher accepts zero-initialized globals (`zeroinitializer`) in
+  addition to explicit scalar initializers; that lets the compact source-backed
+  global zero-store/reload route (`int x; x = 0; return x;`) lower through
+  shared BIR instead of stopping at the unsupported x86 direct-LIR boundary
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`, plus a source-backed
+  backend route regression in `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00023_zero_initialized_scalar_global_store_reload_retries_after_direct_bir_rejection`)
+  so the real `00023.c` path stays pinned on native x86 asm and preserves the
+  explicit global store-then-reload route instead of falling back to LLVM text
+  or the unsupported direct-LIR error
+- verified the bounded `00023.c` seam end-to-end:
+  `./build/backend_bir_tests test_bir_lowering_accepts_zero_initialized_scalar_global_store_reload_lir_module`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_zero_initialized_scalar_global_store_reload_through_bir_end_to_end`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00023_zero_initialized_scalar_global_store_reload_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00023_c)$'`,
+  and
+  `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00021_c|c_testsuite_x86_backend_src_00022_c|c_testsuite_x86_backend_src_00023_c)$'`
+  now pass for the owned seam cluster
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard through the `c4c-regression-guard` skill:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2639/225/2864` after); the refreshed after-state
+  improved again from the prior recorded `2637 -> 2639` passes and
+  `226 -> 225` failures after the `00023.c` slice, the new route test raises
+  total tests from `2863` to `2864`, and the remaining red broad-suite lanes
+  stay parked in the already-known riscv64 select-route, backend runtime, and
+  wider x86 source-backed buckets outside this bounded change
+- classified the next bounded seam from the refreshed targeted state:
+  `c_testsuite_x86_backend_src_00024_c` is now the next red source-backed x86
+  case, and its source body stays a compact global two-field struct arithmetic
+  slice (`typedef struct { int x; int y; } s; s v; v.x = 1; v.y = 2; return 3 -
+  v.x - v.y;`)
 - recovered the bounded shared-BIR `00020.c` seam by teaching
   `src/backend/lowering/lir_to_bir.cpp` to recognize the exact source-backed
   local double-indirect pointer-chain route (`alloca i32`, `alloca ptr`,

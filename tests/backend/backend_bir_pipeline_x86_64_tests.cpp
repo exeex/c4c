@@ -3776,6 +3776,39 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_scalar_global_store_reload
                       "x86 LIR scalar global store-reload input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_zero_initialized_scalar_global_store_reload_through_bir_end_to_end() {
+  auto module = make_lir_minimal_scalar_global_store_reload_module();
+  module.globals.front().init_text = "zeroinitializer";
+  std::get<c4c::codegen::lir::LirStoreOp>(module.functions.front().blocks.front().insts.front()).val = "0";
+
+  const auto lowered_bir = c4c::backend::try_lower_to_bir(module);
+  expect_true(lowered_bir.has_value(),
+              "x86 LIR zero-initialized scalar global store-reload input should now lower into the bounded shared BIR global store-reload shape");
+  if (!lowered_bir.has_value()) {
+    return;
+  }
+
+  expect_true(lowered_bir->globals.size() == 1 && lowered_bir->globals.front().initializer.has_value() &&
+                  *lowered_bir->globals.front().initializer == c4c::backend::bir::Value::immediate_i32(0) &&
+                  lowered_bir->functions.size() == 1 &&
+                  lowered_bir->functions.front().blocks.size() == 1 &&
+                  lowered_bir->functions.front().blocks.front().insts.size() == 2,
+              "x86 LIR zero-initialized scalar global store-reload lowering should preserve the zero-initialized global plus the bounded store/load instructions");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl g_counter",
+                  "x86 LIR zero-initialized scalar global store-reload input should still emit the global definition after routing through the shared BIR path");
+  expect_contains(rendered, "mov dword ptr [rax], 0",
+                  "x86 LIR zero-initialized scalar global store-reload input should lower bir.store_global on the native x86 path");
+  expect_contains(rendered, "mov eax, dword ptr [rax]",
+                  "x86 LIR zero-initialized scalar global store-reload input should reload the stored scalar value on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR zero-initialized scalar global store-reload input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_do_while_through_bir_end_to_end() {
   const auto lowered_bir = c4c::backend::try_lower_to_bir(make_lir_minimal_countdown_do_while_module());
   expect_true(lowered_bir.has_value(),
@@ -5172,6 +5205,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_global_char_pointer_diff_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_global_int_pointer_diff_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_scalar_global_store_reload_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_zero_initialized_scalar_global_store_reload_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_do_while_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_double_countdown_guarded_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end);

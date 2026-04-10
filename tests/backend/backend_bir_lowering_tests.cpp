@@ -3729,6 +3729,28 @@ void test_bir_lowering_accepts_typed_minimal_scalar_global_store_reload_lir_slic
                   "the lowered scalar global store-reload BIR module should still recover the canonical i32 store/load contract from semantic global and instruction metadata");
 }
 
+void test_bir_lowering_accepts_zero_initialized_scalar_global_store_reload_lir_module() {
+  auto module = make_bir_minimal_scalar_global_store_reload_lir_module();
+  module.globals.front().init_text = "zeroinitializer";
+  std::get<c4c::codegen::lir::LirStoreOp>(module.functions.front().blocks.front().insts.front()).val = "0";
+
+  const auto lowered = c4c::backend::try_lower_to_bir(module);
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal scalar global store-reload LIR slice when the global uses zeroinitializer and the stored value is zero");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->globals.size() == 1 && lowered->globals.front().initializer.has_value() &&
+                  *lowered->globals.front().initializer == c4c::backend::bir::Value::immediate_i32(0),
+              "the lowered zero-initialized scalar global store-reload BIR module should preserve the canonical i32 zero initializer");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered,
+                  "entry:\n  bir.store_global @g_counter, i32 0\n  %t0 = bir.load_global i32 @g_counter\n  bir.ret i32 %t0\n",
+                  "the lowered zero-initialized scalar global store-reload BIR module should keep the bounded store/load contract");
+}
+
 void test_bir_printer_renders_minimal_lshr_scaffold() {
   using namespace c4c::backend::bir;
 
@@ -5966,6 +5988,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_typed_minimal_global_int_pointer_diff_lir_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_minimal_scalar_global_store_reload_lir_module);
   RUN_TEST(test_bir_lowering_accepts_typed_minimal_scalar_global_store_reload_lir_slice_with_stale_text);
+  RUN_TEST(test_bir_lowering_accepts_zero_initialized_scalar_global_store_reload_lir_module);
   RUN_TEST(test_bir_validator_rejects_returning_undefined_named_value);
   RUN_TEST(test_bir_validator_rejects_return_type_mismatch);
   RUN_TEST(test_bir_validator_rejects_non_widening_sext);
