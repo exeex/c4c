@@ -301,6 +301,14 @@ inline const char* pending_template_type_kind_name(PendingTemplateTypeKind kind)
 }
 
 inline std::string encode_pending_type_ref(const TypeSpec& ts) {
+  std::function<std::string(const TemplateArgRef&)> encode_arg =
+      [&](const TemplateArgRef& arg) -> std::string {
+    if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
+    if (arg.kind == TemplateArgKind::Value) {
+      return std::string("v:") + std::to_string(arg.value);
+    }
+    return std::string("t:{") + encode_pending_type_ref(arg.type) + "}";
+  };
   std::string out;
   out += "base=" + std::to_string(static_cast<int>(ts.base));
   out += "|tag=";
@@ -310,7 +318,12 @@ inline std::string encode_pending_type_ref(const TypeSpec& ts) {
   out += "|origin=";
   out += ts.tpl_struct_origin ? ts.tpl_struct_origin : "";
   out += "|args=";
-  out += encode_template_arg_debug_list(ts);
+  if (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) {
+    for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+      if (i > 0) out += ",";
+      out += encode_arg(ts.tpl_struct_args.data[i]);
+    }
+  }
   out += "|member=";
   out += ts.deferred_member_type_name ? ts.deferred_member_type_name : "";
   return out;

@@ -96,6 +96,10 @@ Source Plan: plan.md
   `encode_template_arg_debug_list(...)` helper in its common rebuild paths,
   and dependent-owner scanning now walks structured `TemplateArgRef` payloads
   recursively instead of first flattening them back to one debug string.
+- Key/identity cleanup is now underway too: the HIR pending-type key path and
+  parser canonical template-type key path no longer call the generic
+  debug-list flattener directly; both now build their identity strings from
+  structured `TemplateArgRef` payloads with key-specific local encoders.
 
 ## Completed
 
@@ -246,3 +250,9 @@ Source Plan: plan.md
   `TemplateArgRef` payloads directly instead of routing through the generic
   `encode_template_arg_debug_list(...)` flattening helper in those common
   paths.
+- Reworked the remaining key-centric callers in
+  [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+  and [types_helpers.hpp](/workspaces/c4c/src/frontend/parser/types_helpers.hpp)
+  so pending-type and canonical-template identity strings are now encoded from
+  structured `TemplateArgRef` payloads via key-specific local logic rather
+  than by reusing the generic debug-list helper.

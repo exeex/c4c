@@ -724,6 +724,14 @@ int specialization_match_score(const Node* spec) {
 }
 
 std::string canonical_template_struct_type_key(const TypeSpec& ts) {
+    std::function<std::string(const TemplateArgRef&)> canonical_arg_key =
+        [&](const TemplateArgRef& arg) -> std::string {
+            if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
+            if (arg.kind == TemplateArgKind::Value) {
+                return std::string("v:") + std::to_string(arg.value);
+            }
+            return std::string("t:") + canonical_template_struct_type_key(arg.type);
+        };
     std::string out;
     if (ts.is_const) out += "const_";
     if (ts.is_volatile) out += "volatile_";
@@ -759,7 +767,12 @@ std::string canonical_template_struct_type_key(const TypeSpec& ts) {
             if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
                 out += std::string("pending.") + ts.tpl_struct_origin;
                 out += "<";
-                out += encode_template_arg_debug_list(ts);
+                if (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) {
+                    for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+                        if (i > 0) out += ",";
+                        out += canonical_arg_key(ts.tpl_struct_args.data[i]);
+                    }
+                }
                 out += ">";
             } else {
                 out += ts.tag ? std::string("typedef.") + ts.tag : "typedef.?";
@@ -769,7 +782,12 @@ std::string canonical_template_struct_type_key(const TypeSpec& ts) {
             if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
                 out += std::string("pending.") + ts.tpl_struct_origin;
                 out += "<";
-                out += encode_template_arg_debug_list(ts);
+                if (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) {
+                    for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+                        if (i > 0) out += ",";
+                        out += canonical_arg_key(ts.tpl_struct_args.data[i]);
+                    }
+                }
                 out += ">";
             } else {
                 out += "unknown";
