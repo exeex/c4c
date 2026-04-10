@@ -9,25 +9,48 @@ Source Plan: plan.md
 - Step 3 translated-owner cutover for the remaining direct dispatcher surface
   in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  move the direct BIR and prepared-LIR dispatch ladders out of
-  `src/backend/x86/codegen/emit.cpp` into a sibling owner helper so `emit.cpp`
-  keeps only the public entrypoints plus the still-local parse/asm helpers
-  - add focused tests that call the new dispatcher helpers explicitly so the
-    ownership move stays observable apart from end-to-end x86 emission tests
+  move one bounded direct-BIR parse/asm family out of
+  `src/backend/x86/codegen/emit.cpp`, with the immediate preference on the
+  minimal immediate-return cluster or the countdown-loop slice
+  - add focused direct-helper tests for the moved BIR owner path and keep one
+    dispatcher-visible regression so the extraction remains observable outside
+    end-to-end x86 emission tests
   - keep validation centered on backend-only targets and focused x86
     regressions for this legacy-removal slice
 
 ## Next Slice
 
-- prune the next remaining `emit.cpp`-local ownership cluster after dispatcher
-  extraction, likely one of the parse/asm helpers still embedded in
-  `emit.cpp` or a translated top-level owner cutover that lets the public
-  entrypoint stop depending on legacy-local parsing
+- prune the next remaining `emit.cpp`-local ownership cluster after this local
+  helper extraction, likely one bounded direct-BIR parse/asm family such as
+  the minimal immediate-return cluster or the countdown-loop slice
 - keep using focused backend regressions and only rerun the broad monotonic
   guard once the bigger x86 owner switch settles
 
 ## Current Iteration Notes
 
+- this iteration moved the prepared-LIR `constant_branch` and `local_temp`
+  parse/asm helpers out of `src/backend/x86/codegen/emit.cpp` into the new
+  sibling owner file `src/backend/x86/codegen/direct_locals.cpp` through
+  `try_emit_minimal_constant_branch_return_module(...)` and
+  `try_emit_minimal_local_temp_module(...)`
+- `emit.cpp` now delegates those two prepared-LIR slices through sibling owner
+  exports instead of keeping their parser and asm emission logic locally
+- the prepared-LIR helper dispatcher in
+  `src/backend/x86/codegen/direct_dispatch.cpp` now routes those bounded local
+  slices through the new sibling owner file as well
+- added focused backend coverage that calls both moved local helpers
+  explicitly plus a shared-util dispatcher regression that proves the prepared
+  helper ladder still reaches the new local owner path
+- focused validation passed:
+  `cmake --build build -j8 --target backend_shared_util_tests backend_bir_tests`,
+  `./build/backend_shared_util_tests`,
+  `./build/backend_bir_tests test_x86_direct_local_helper_accepts_local_temp_slice`,
+  `./build/backend_bir_tests test_x86_direct_local_helper_accepts_constant_branch_return_slice`, and
+  `./build/backend_bir_tests test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly`
+- broad validation rerun stayed matched against the current-tree baseline:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_matched_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  reported `3194` passed / `182` failed before and after, with no newly
+  failing tests and no new `>30s` cases
 - this iteration moved the remaining helper-route dispatch ladders out of
   `src/backend/x86/codegen/emit.cpp` into the new sibling owner file
   `src/backend/x86/codegen/direct_dispatch.cpp` through

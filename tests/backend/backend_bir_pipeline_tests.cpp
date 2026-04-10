@@ -125,6 +125,68 @@ c4c::codegen::lir::LirModule make_supported_x86_param_slot_add_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_supported_x86_local_temp_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.value", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "27", "%lv.value"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.value"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_supported_x86_constant_branch_return_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "eq", "i32", "7", "7"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i32"});
+  entry.terminator = LirCondBr{"%t1", "then", "else"};
+
+  LirBlock then_block;
+  then_block.id = LirBlockId{1};
+  then_block.label = "then";
+  then_block.terminator = LirRet{std::string("11"), "i32"};
+
+  LirBlock else_block;
+  else_block.id = LirBlockId{2};
+  else_block.label = "else";
+  else_block.terminator = LirRet{std::string("5"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_block));
+  function.blocks.push_back(std::move(else_block));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_supported_x86_local_arg_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -1557,6 +1619,29 @@ void test_x86_direct_call_helper_accepts_param_slot_add_slice() {
                   "the direct x86 call helper seam should still lower the bounded helper add body on the native x86 path");
   expect_contains(*rendered, "main:\n  mov edi, 5\n  call add_one\n  ret\n",
                   "the direct x86 call helper seam should still lower the bounded entry call through the native x86 path");
+}
+
+void test_x86_direct_local_helper_accepts_local_temp_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_local_temp_lir_module(), c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_minimal_local_temp_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 local helper seam should accept the bounded local-temp slice after ownership moves out of emit.cpp");
+  expect_contains(*rendered, "main:\n  mov eax, 27\n  ret\n",
+                  "the direct x86 local helper seam should still lower the bounded store-then-reload slice through the native x86 path");
+}
+
+void test_x86_direct_local_helper_accepts_constant_branch_return_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_constant_branch_return_lir_module(), c4c::backend::Target::X86_64);
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_constant_branch_return_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 local helper seam should accept the bounded constant-branch return slice after ownership moves out of emit.cpp");
+  expect_contains(*rendered, "main:\n  mov eax, 11\n  ret\n",
+                  "the direct x86 local helper seam should still collapse the bounded constant branch into the selected immediate return");
 }
 
 void test_x86_direct_call_helper_accepts_local_arg_call_slice() {
@@ -3092,6 +3177,8 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_direct_printf_helper_accepts_string_literal_char_slice);
   RUN_TEST(test_x86_direct_void_helper_accepts_void_direct_call_return_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_param_slot_add_slice);
+  RUN_TEST(test_x86_direct_local_helper_accepts_local_temp_slice);
+  RUN_TEST(test_x86_direct_local_helper_accepts_constant_branch_return_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_local_arg_call_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_call_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_local_arg_call_slice);

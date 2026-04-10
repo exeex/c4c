@@ -33,6 +33,13 @@ std::optional<std::string> try_emit_direct_bir_helper_module(
 
 std::optional<std::string> try_emit_direct_prepared_lir_helper_module(
     const c4c::codegen::lir::LirModule& module) {
+  if (const auto asm_text = try_emit_minimal_constant_branch_return_module(module);
+      asm_text.has_value()) {
+    return asm_text;
+  }
+  if (const auto asm_text = try_emit_minimal_local_temp_module(module); asm_text.has_value()) {
+    return asm_text;
+  }
   if (const auto asm_text = try_emit_minimal_void_helper_call_module(module);
       asm_text.has_value()) {
     return asm_text;

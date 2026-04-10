@@ -440,6 +440,38 @@ void test_x86_direct_dispatch_owner_handles_helper_backed_prepared_lir_slice() {
               "the x86 direct dispatcher owner should still forward the bounded param-slot prepared-LIR slice into the direct call helper route");
 }
 
+void test_x86_direct_dispatch_owner_handles_local_temp_prepared_lir_slice() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.value", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "27", "%lv.value"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.value"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+
+  const auto prepared =
+      c4c::backend::prepare_lir_module_for_target(module, c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_direct_prepared_lir_helper_module(prepared);
+  expect_true(rendered.has_value(),
+              "the x86 direct dispatcher owner should accept the bounded local-temp prepared-LIR slice after that helper route moves out of emit.cpp");
+  expect_true(rendered->find("main:\n  mov eax, 27\n  ret\n") != std::string::npos,
+              "the x86 direct dispatcher owner should still forward the bounded local-temp slice into the sibling local helper owner");
+}
+
 void test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module() {
   c4c::backend::bir::Module module;
   module.string_constants.push_back(c4c::backend::bir::StringConstant{
@@ -3729,6 +3761,7 @@ int main(int argc, char* argv[]) {
   test_x86_translated_globals_owner_handles_minimal_global_store_return_and_entry_return_slice();
   test_x86_direct_dispatch_owner_handles_helper_backed_bir_slice();
   test_x86_direct_dispatch_owner_handles_helper_backed_prepared_lir_slice();
+  test_x86_direct_dispatch_owner_handles_local_temp_prepared_lir_slice();
   test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module();
   test_backend_shared_call_decode_parses_bir_minimal_void_direct_call_imm_return_module();
   test_backend_shared_call_decode_parses_bir_minimal_two_arg_direct_call_module();
