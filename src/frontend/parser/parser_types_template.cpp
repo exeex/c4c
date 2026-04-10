@@ -32,7 +32,7 @@ const Node* Parser::select_template_struct_pattern_for_args(
     std::vector<std::pair<std::string, TypeSpec>>* out_type_bindings,
     std::vector<std::pair<std::string, long long>>* out_nttp_bindings) const {
     return select_template_struct_pattern(args, primary_tpl, specializations,
-                                          typedef_types_, out_type_bindings,
+                                          *this, out_type_bindings,
                                           out_nttp_bindings);
 }
 

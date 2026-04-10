@@ -10,11 +10,11 @@ Source Plan: plan.md
   grouped parser symbol-table accessors instead of direct top-level member
   storage assumptions, continuing into the next parser-local typedef/template
   helper surface after the dependent-typename owner cleanup
-- Current slice: continue from the declarator cleanup into template helper
-  wrappers, starting with `select_template_struct_pattern_for_args()` in
-  `parser_types_template.cpp` and any adjacent parser-local template selection
-  reads that still pass raw typedef-map storage through parser implementation
-  files
+- Current slice: remove the remaining raw typedef-map threading from the
+  template specialization-pattern helpers by routing
+  `select_template_struct_pattern_for_args()` and the shared
+  `types_helpers.hpp` pattern matcher through parser-owned typedef resolution
+  and compatibility helpers
 - Iteration target: keep reducing parser call sites that still need raw
   typedef-map parameters, without widening into namespace-state grouping,
   non-parser storage redesign, or backend work
@@ -261,6 +261,22 @@ Source Plan: plan.md
   full `ctest --test-dir build -j8 --output-on-failure`, and regression
   guard:
   3356/3356 tests passed, no new failures
+- Migrated the remaining shared template specialization-pattern helper
+  signatures in `src/frontend/parser/types_helpers.hpp` and
+  `src/frontend/parser/parser_types_template.cpp` to take `Parser` and use
+  parser-owned typedef-chain resolution plus type-compatibility helpers
+  instead of threading raw typedef maps through the helper boundary
+- Added positive C++ regression
+  `tests/cpp/internal/postive_case/template_specialization_typedef_chain_parse.cpp`
+  and registered it in `tests/cpp/internal/InternalTests.cmake` to cover a
+  partial specialization selected through a typedef-chain template argument
+  used in both `__is_same(...)` and a functional-cast expression
+- Revalidated this slice with
+  `ctest --test-dir build -R 'cpp_positive_sema_(template_specialization_typedef_chain_parse|template_specialization_member_typedef_trait_parse|template_visible_typedef_type_arg_parse)_cpp' --output-on-failure`,
+  `ctest --test-dir build -R 'cpp_hir_template_alias_member_owner|cpp_hir_template_member_owner_(chain|decl_and_cast|field_and_local|signature_local)' --output-on-failure`,
+  full `ctest --test-dir build -j8 --output-on-failure`, and regression
+  guard:
+  3359/3359 tests passed, no new failures
 - Added parser-owned record-constructor and typedef-compatibility helpers in
   `src/frontend/parser/parser.hpp` and `src/frontend/parser/parser_core.cpp`
   so parser expression and type-base call sites can stop threading raw
@@ -286,13 +302,13 @@ Source Plan: plan.md
 
 ## Next Intended Slice
 
-- Continue Step 3 by removing the remaining direct typedef-chain call in
-  `src/frontend/parser/parser_types_declarator.cpp` and checking whether the
-  nearby declarator/type-spelling paths still need one more parser-local
-  typedef wrapper
-- Recheck whether any parser-local helper signature still threads raw typedef
-  maps outside the centralized template-selection helper in
-  `parser_types_template.cpp`
+- Audit whether the parser-side typedef/value grouping work is ready to retire
+  some `parser.hpp` compatibility-reference members now that parser
+  implementation files no longer thread raw typedef maps through template
+  helper signatures
+- If that cleanup is still too wide for the next slice, record the remaining
+  compatibility-only surfaces explicitly and shift Step 4 toward closing the
+  typedef/value-table wrapper work as complete
 - Keep namespace-state grouping deferred to a later slice unless it becomes
   necessary for one of those parser-local wrapper migrations
 
@@ -324,10 +340,12 @@ Source Plan: plan.md
   `typeof(var)` bookkeeping writes now go through
   `register_var_type_binding()` as well
 - `types_helpers.hpp` and `parser_types_template.cpp` now route their typedef
-  decoding through parser-local helpers; the remaining follow-on work is the
-  smaller set of raw typedef-map parameters still passed through helper
-  signatures elsewhere
-- `parser_types_base.cpp` and `parser_expressions.cpp` now use parser-owned
-  template-selection, typedef-compatibility, and record-constructor helpers;
-  the most obvious remaining direct parser-side typedef-chain use is in
-  `parser_types_declarator.cpp`
+  decoding through parser-local helpers, and the shared template
+  specialization matcher now resolves typedef chains via `Parser` instead of
+  receiving raw typedef maps directly
+- `parser_types_base.cpp`, `parser_types_template.cpp`, and
+  `parser_expressions.cpp` now use parser-owned template-selection,
+  typedef-compatibility, and record-constructor helpers; the likely next
+  cleanup is narrowing or removing compatibility-reference members in
+  `parser.hpp`, not more raw typedef-map threading in parser implementation
+  files
