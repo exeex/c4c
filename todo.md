@@ -56,6 +56,10 @@ Source Plan: plan.md
   `hir_templates.cpp`: two typed-to-string fallback calls inside the new
   materializer helper, plus the `resolve_struct_member_typedef_type(...)`
   fallback branch that still collects and reassigns debug refs.
+- Current warning state after the latest slice: the typed-materializer fallback
+  hits are gone, and the remaining deprecated call sites are now concentrated
+  in the single `resolve_struct_member_typedef_type(...)` fallback branch in
+  `hir_templates.cpp`.
 
 ## Completed
 
@@ -150,3 +154,7 @@ Source Plan: plan.md
   string-backed `materialize_template_args(...)`,
   `collect_template_arg_debug_refs(...)`, and
   `assign_template_arg_debug_refs(...)`.
+- Removed the deprecated typed-to-string fallback usage inside the HIR
+  materializer helper: `materialize_from_typed(...)` now handles the no-arg
+  default case directly and only falls back by rebuilding refs locally, so the
+  remaining deprecated hits are confined to the member-typedef fallback path.

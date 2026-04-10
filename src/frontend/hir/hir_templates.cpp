@@ -1891,6 +1891,15 @@ bool HirTemplateArgMaterializer::resolve_explicit_typed_arg(
     out_arg->type = substitute_bound_type(ref.type);
     return true;
   }
+  if (ref.kind == TemplateArgKind::Type &&
+      ref.debug_text && ref.debug_text[0]) {
+    HirTemplateArg resolved{};
+    if (!resolve_any_arg_ref(ref.debug_text, &resolved) || resolved.is_value) {
+      return false;
+    }
+    out_arg->type = resolved.type;
+    return true;
+  }
   return false;
 }
 
@@ -2005,8 +2014,16 @@ ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_strings(
 
 ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_typed(
     const TypeSpec& owner_ts) {
+  auto fallback_refs = [&]() {
+    std::vector<std::string> refs;
+    refs.reserve(owner_ts.tpl_struct_args.size);
+    for (int i = 0; i < owner_ts.tpl_struct_args.size; ++i) {
+      refs.push_back(template_arg_debug_text_at(owner_ts, i));
+    }
+    return refs;
+  };
   if (!owner_ts.tpl_struct_args.data || owner_ts.tpl_struct_args.size <= 0) {
-    return materialize_from_strings(collect_template_arg_debug_refs(owner_ts));
+    return materialize_from_strings({});
   }
 
   int ai = 0;
@@ -2042,7 +2059,7 @@ ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_typed(
         else result.type_bindings.push_back({param_name, arg.type});
         continue;
       }
-      return materialize_from_strings(collect_template_arg_debug_refs(owner_ts));
+      return materialize_from_strings(fallback_refs());
     }
 
     if (!primary_tpl->template_param_has_default ||
