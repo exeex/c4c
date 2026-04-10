@@ -328,6 +328,57 @@ void test_x86_translated_shared_call_support_tracks_real_state_and_output() {
                   "shared x86 call-support paired store helper should emit the high-half rbp store text");
 }
 
+void test_x86_codegen_header_exports_translated_memory_owner_surface() {
+  using AddressSpace = c4c::backend::x86::AddressSpace;
+  using X86Codegen = c4c::backend::x86::X86Codegen;
+
+  auto emit_store = &X86Codegen::emit_store_impl;
+  auto emit_load = &X86Codegen::emit_load_impl;
+  auto emit_store_with_const_offset = &X86Codegen::emit_store_with_const_offset_impl;
+  auto emit_load_with_const_offset = &X86Codegen::emit_load_with_const_offset_impl;
+  auto emit_typed_store_to_slot = &X86Codegen::emit_typed_store_to_slot_impl;
+  auto emit_typed_load_from_slot = &X86Codegen::emit_typed_load_from_slot_impl;
+  auto emit_load_ptr_from_slot = &X86Codegen::emit_load_ptr_from_slot_impl;
+  auto emit_typed_store_indirect = &X86Codegen::emit_typed_store_indirect_impl;
+  auto emit_typed_load_indirect = &X86Codegen::emit_typed_load_indirect_impl;
+  auto emit_add_offset_to_addr_reg = &X86Codegen::emit_add_offset_to_addr_reg_impl;
+  auto emit_alloca_addr_to = &X86Codegen::emit_alloca_addr_to;
+  auto emit_slot_addr_to_secondary = &X86Codegen::emit_slot_addr_to_secondary_impl;
+  auto emit_gep_direct_const = &X86Codegen::emit_gep_direct_const_impl;
+  auto emit_gep_indirect_const = &X86Codegen::emit_gep_indirect_const_impl;
+  auto emit_memcpy_load_dest_addr = &X86Codegen::emit_memcpy_load_dest_addr_impl;
+  auto emit_memcpy_load_src_addr = &X86Codegen::emit_memcpy_load_src_addr_impl;
+  auto emit_alloca_aligned_addr = &X86Codegen::emit_alloca_aligned_addr_impl;
+  auto emit_alloca_aligned_addr_to_acc = &X86Codegen::emit_alloca_aligned_addr_to_acc_impl;
+  auto emit_seg_load = &X86Codegen::emit_seg_load_impl;
+  auto emit_seg_load_symbol = &X86Codegen::emit_seg_load_symbol_impl;
+  auto emit_seg_store = &X86Codegen::emit_seg_store_impl;
+  auto emit_seg_store_symbol = &X86Codegen::emit_seg_store_symbol_impl;
+
+  expect_true(emit_store != nullptr && emit_load != nullptr &&
+                  emit_store_with_const_offset != nullptr &&
+                  emit_load_with_const_offset != nullptr &&
+                  emit_typed_store_to_slot != nullptr &&
+                  emit_typed_load_from_slot != nullptr &&
+                  emit_load_ptr_from_slot != nullptr &&
+                  emit_typed_store_indirect != nullptr &&
+                  emit_typed_load_indirect != nullptr &&
+                  emit_add_offset_to_addr_reg != nullptr &&
+                  emit_alloca_addr_to != nullptr &&
+                  emit_slot_addr_to_secondary != nullptr &&
+                  emit_gep_direct_const != nullptr &&
+                  emit_gep_indirect_const != nullptr &&
+                  emit_memcpy_load_dest_addr != nullptr &&
+                  emit_memcpy_load_src_addr != nullptr &&
+                  emit_alloca_aligned_addr != nullptr &&
+                  emit_alloca_aligned_addr_to_acc != nullptr &&
+                  emit_seg_load != nullptr && emit_seg_load_symbol != nullptr &&
+                  emit_seg_store != nullptr && emit_seg_store_symbol != nullptr &&
+                  AddressSpace::Default != AddressSpace::SegFs &&
+                  AddressSpace::SegFs != AddressSpace::SegGs,
+              "x86 translated memory-owner surface should stay declaration-reachable through x86_codegen while memory.cpp advances from stale syntax and missing helper glue toward the next owner-state blocker tier");
+}
+
 void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {
   using X86Codegen = c4c::backend::x86::X86Codegen;
 
@@ -4310,6 +4361,7 @@ int main(int argc, char* argv[]) {
   test_x86_codegen_header_exports_translated_returns_owner_symbols();
   test_x86_codegen_header_exports_translated_call_owner_surface();
   test_x86_translated_shared_call_support_tracks_real_state_and_output();
+  test_x86_codegen_header_exports_translated_memory_owner_surface();
   test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
   test_x86_translated_regalloc_pruning_helpers_match_shared_contract();

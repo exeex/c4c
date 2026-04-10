@@ -166,7 +166,11 @@ struct X86CodegenState {
   std::optional<std::size_t> alloca_over_align(std::uint32_t value_id) const;
 };
 
-enum class AddressSpace : unsigned;
+enum class AddressSpace : unsigned {
+  Default,
+  SegFs,
+  SegGs,
+};
 enum class IrType : unsigned {
   Void,
   I8,

@@ -13,19 +13,46 @@ Source Plan: plan.md
   parked translated owner frontier without widening into the still-blocked
   prologue/runtime-owner cutover
 - immediate target:
-  probe the next parked translated x86 owner that can now consume the shared
-  helper layer's real slot/address/assembly/cache semantics, preferring
-  `src/backend/x86/codegen/memory.cpp` or the next similarly bounded owner
-  over any fresh shared-surface expansion
+  use the landed `src/backend/x86/codegen/memory.cpp` normalization slice to
+  decide whether the next shippable owner-path step is bounded hidden-state
+  surfacing for `reg_assignments` or whether a different parked owner offers a
+  better frontier without widening into the still-parked prologue/runtime
+  surface
 
 ## Next Slice
 
-- compile-probe the next parked translated owner against the upgraded shared
-  helper contract and land the smallest owner-path slice whose remaining
-  blocker frontier is now below the old call-helper semantic gap
-- prefer an owner that directly consumes `X86CodegenState::resolve_slot_addr`,
-  `alloca_over_align`, or the newly real `X86CodegenOutput` formatting hooks
-  so this helper-semantic upgrade pays off on a concrete translated body
+- evaluate whether exposing the minimal `reg_assignments` surface needed by
+  `src/backend/x86/codegen/memory.cpp` is still a bounded Step 3 move or
+  whether that crosses too far into the parked prologue/runtime owner state
+- if the `reg_assignments` surfacing is too coupled, probe the next translated
+  owner that primarily rides the already-real shared `state` / `out` hooks
+  instead of the hidden register-assignment map
+
+## Current Iteration Notes
+
+- this iteration lands the bounded translated memory-owner normalization slice
+  without wiring `src/backend/x86/codegen/memory.cpp` into the active x86
+  build: `src/backend/x86/codegen/x86_codegen.hpp` now defines the
+  `AddressSpace` enum values consumed by the memory owner,
+  `src/backend/x86/codegen/memory.cpp` now uses the public `raw` field names
+  consistently and replaces the missing top-level default load/store glue with
+  bounded local forwarding to the existing const-offset helpers, and
+  `tests/backend/backend_shared_util_tests.cpp` now pins the translated memory
+  owner method surface through the public x86 header
+- direct compile-probe result after the normalization slice:
+  `clang++ -std=c++20 -fsyntax-only ... src/backend/x86/codegen/memory.cpp`
+  no longer fails on stale translated `.0` field syntax, missing
+  `AddressSpace` enumerators, or missing `emit_store_default` /
+  `emit_load_default` glue; it now fails first on the next explicit hidden
+  owner-state frontier, `X86Codegen::reg_assignments`
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_memory_owner_surface`, and
+  `./build/backend_shared_util_tests translated_shared_call_support`
+- broad validation note:
+  full-suite monotonic guard remains deferred because this slice only advances
+  header/test coverage plus a parked owner compile-probe boundary; it does not
+  change the active runtime x86 path
 - if future wiring exposes missing translated helper bodies shared with other
   parked owner files, treat that as a separate surfaced blocker tier rather
   than reverting this now-clean parser normalization work
