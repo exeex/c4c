@@ -116,8 +116,77 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             }
         }
 
+        auto init_prefixed_tag_type = [&](const std::string& text, TypeSpec* parsed) -> bool {
+            if (!parsed) return false;
+            auto init_tag = [&](TypeBase base, size_t prefix_len) {
+                *parsed = {};
+                parsed->array_size = -1;
+                parsed->inner_rank = -1;
+                parsed->base = base;
+                parsed->tag = arena_.strdup(text.substr(prefix_len).c_str());
+                parsed->array_rank = 0;
+            };
+            if (text.rfind("struct_", 0) == 0) {
+                init_tag(TB_STRUCT, 7);
+                return true;
+            }
+            if (text.rfind("union_", 0) == 0) {
+                init_tag(TB_UNION, 6);
+                return true;
+            }
+            if (text.rfind("enum_", 0) == 0) {
+                init_tag(TB_ENUM, 5);
+                return true;
+            }
+            return false;
+        };
+
+        auto try_parse_type_name_from_tokens = [&](TypeSpec* parsed) -> bool {
+            if (!parsed) return false;
+            ParserSnapshot snapshot = save_state();
+            const int saved_pos = pos_;
+            auto saved_tokens = std::move(tokens_);
+
+            std::vector<Token> injected_toks;
+            injected_toks.reserve(end - start + 1);
+            for (size_t i = start; i < end; ++i) {
+                injected_toks.push_back(toks[i]);
+            }
+            Token eof{};
+            eof.kind = TokenKind::EndOfFile;
+            if (!injected_toks.empty()) {
+                eof.file = injected_toks.back().file;
+                eof.line = injected_toks.back().line;
+                eof.column = injected_toks.back().column;
+            }
+            injected_toks.push_back(std::move(eof));
+
+            tokens_ = std::move(injected_toks);
+            pos_ = 0;
+            for (const auto& [pn, pts] : type_bindings) {
+                typedef_types_[pn] = pts;
+            }
+
+            bool ok = false;
+            try {
+                *parsed = parse_type_name();
+                *parsed = resolve_typedef_chain(*parsed, typedef_types_);
+                ok = pos_ > 0 &&
+                     pos_ >= static_cast<int>(tokens_.size()) - 1;
+            } catch (...) {
+                ok = false;
+            }
+
+            restore_state(snapshot);
+            tokens_ = std::move(saved_tokens);
+            pos_ = saved_pos;
+            return ok;
+        };
+
         std::string text = capture_template_arg_expr_text(
             toks, static_cast<int>(start), static_cast<int>(end));
+        if (init_prefixed_tag_type(text, out)) return true;
+        if (try_parse_type_name_from_tokens(out)) return true;
         return parse_builtin_typespec_text(text, out);
     };
 
@@ -188,6 +257,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             ti = saved_ti;
             return false;
         }
+        lhs = resolve_typedef_chain(lhs, typedef_types_);
         ti = arg1_end;
 
         auto is_integral_trait_type = [](const TypeSpec& ts) {
@@ -249,6 +319,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                 ti = saved_ti;
                 return false;
             }
+            rhs = resolve_typedef_chain(rhs, typedef_types_);
             ti = arg2_end;
             if (ti >= toks.size() || toks[ti].kind != TokenKind::RParen) {
                 ti = saved_ti;

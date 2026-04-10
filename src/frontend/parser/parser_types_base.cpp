@@ -2176,8 +2176,35 @@ TypeSpec Parser::parse_base_type() {
                                                 auto tit = typedef_types_.find(new_arg_parts[pi]);
                                                 if (tit != typedef_types_.end()) {
                                                     ba.type = tit->second;
+                                                } else if (const std::string resolved =
+                                                               resolve_visible_type_name(
+                                                                   new_arg_parts[pi]);
+                                                           !resolved.empty() &&
+                                                           typedef_types_.count(resolved) > 0) {
+                                                    ba.type = typedef_types_.at(resolved);
                                                 } else if (parse_mangled_type_suffix(new_arg_parts[pi], &ba.type)) {
                                                     // Recognized mangled builtin suffix (e.g. "uint" → TB_UINT)
+                                                } else if (new_arg_parts[pi].rfind("struct_", 0) == 0) {
+                                                    ba.type = {};
+                                                    ba.type.array_size = -1;
+                                                    ba.type.inner_rank = -1;
+                                                    ba.type.base = TB_STRUCT;
+                                                    ba.type.tag = arena_.strdup(
+                                                        new_arg_parts[pi].substr(7).c_str());
+                                                } else if (new_arg_parts[pi].rfind("union_", 0) == 0) {
+                                                    ba.type = {};
+                                                    ba.type.array_size = -1;
+                                                    ba.type.inner_rank = -1;
+                                                    ba.type.base = TB_UNION;
+                                                    ba.type.tag = arena_.strdup(
+                                                        new_arg_parts[pi].substr(6).c_str());
+                                                } else if (new_arg_parts[pi].rfind("enum_", 0) == 0) {
+                                                    ba.type = {};
+                                                    ba.type.array_size = -1;
+                                                    ba.type.inner_rank = -1;
+                                                    ba.type.base = TB_ENUM;
+                                                    ba.type.tag = arena_.strdup(
+                                                        new_arg_parts[pi].substr(5).c_str());
                                                 } else if (parse_builtin_typespec_text(new_arg_parts[pi], &ba.type)) {
                                                     // Recognized C type name (e.g. "unsigned int")
                                                 } else {
