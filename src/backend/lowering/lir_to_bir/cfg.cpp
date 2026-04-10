@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <charconv>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -161,13 +163,253 @@ bool is_forwarding_block(const lir::LirBlock& block) {
   return block.insts.empty() && std::holds_alternative<lir::LirBr>(block.terminator);
 }
 
+std::optional<std::int64_t> parse_i64_immediate(std::string_view text) {
+  std::int64_t value = 0;
+  const char* begin = text.data();
+  const char* end = begin + text.size();
+  const auto [ptr, ec] = std::from_chars(begin, end, value);
+  if (ec != std::errc{} || ptr != end) {
+    return std::nullopt;
+  }
+  return value;
+}
+
+std::optional<unsigned> parse_integer_bit_width(std::string_view type_str) {
+  if (type_str.size() < 2 || type_str.front() != 'i') {
+    return std::nullopt;
+  }
+
+  unsigned value = 0;
+  const char* begin = type_str.data() + 1;
+  const char* end = type_str.data() + type_str.size();
+  const auto [ptr, ec] = std::from_chars(begin, end, value);
+  if (ec != std::errc{} || ptr != end || value == 0 || value > 64) {
+    return std::nullopt;
+  }
+  return value;
+}
+
+std::uint64_t normalize_unsigned_bits(std::int64_t value, unsigned bit_width) {
+  if (bit_width >= 64) {
+    return static_cast<std::uint64_t>(value);
+  }
+  const auto mask = (std::uint64_t{1} << bit_width) - 1;
+  return static_cast<std::uint64_t>(value) & mask;
+}
+
+std::int64_t normalize_signed_bits(std::int64_t value, unsigned bit_width) {
+  if (bit_width >= 64) {
+    return value;
+  }
+
+  const auto masked = normalize_unsigned_bits(value, bit_width);
+  const auto sign_bit = std::uint64_t{1} << (bit_width - 1);
+  if ((masked & sign_bit) == 0) {
+    return static_cast<std::int64_t>(masked);
+  }
+
+  const auto extended_mask = ~((std::uint64_t{1} << bit_width) - 1);
+  return static_cast<std::int64_t>(masked | extended_mask);
+}
+
+std::optional<bool> evaluate_integer_cmp(const lir::LirCmpOp& cmp) {
+  if (cmp.is_float) {
+    return std::nullopt;
+  }
+
+  const auto bit_width = parse_integer_bit_width(cmp.type_str);
+  const auto lhs = parse_i64_immediate(cmp.lhs);
+  const auto rhs = parse_i64_immediate(cmp.rhs);
+  if (!bit_width.has_value() || !lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto lhs_signed = normalize_signed_bits(*lhs, *bit_width);
+  const auto rhs_signed = normalize_signed_bits(*rhs, *bit_width);
+  const auto lhs_unsigned = normalize_unsigned_bits(*lhs, *bit_width);
+  const auto rhs_unsigned = normalize_unsigned_bits(*rhs, *bit_width);
+
+  if (cmp.predicate == "eq") {
+    return lhs_unsigned == rhs_unsigned;
+  }
+  if (cmp.predicate == "ne") {
+    return lhs_unsigned != rhs_unsigned;
+  }
+  if (cmp.predicate == "slt") {
+    return lhs_signed < rhs_signed;
+  }
+  if (cmp.predicate == "sle") {
+    return lhs_signed <= rhs_signed;
+  }
+  if (cmp.predicate == "sgt") {
+    return lhs_signed > rhs_signed;
+  }
+  if (cmp.predicate == "sge") {
+    return lhs_signed >= rhs_signed;
+  }
+  if (cmp.predicate == "ult") {
+    return lhs_unsigned < rhs_unsigned;
+  }
+  if (cmp.predicate == "ule") {
+    return lhs_unsigned <= rhs_unsigned;
+  }
+  if (cmp.predicate == "ugt") {
+    return lhs_unsigned > rhs_unsigned;
+  }
+  if (cmp.predicate == "uge") {
+    return lhs_unsigned >= rhs_unsigned;
+  }
+  return std::nullopt;
+}
+
+std::optional<bool> resolve_block_local_i1(std::string_view value_name, const lir::LirBlock& block) {
+  if (value_name == "0" || value_name == "false") {
+    return false;
+  }
+  if (value_name == "1" || value_name == "true") {
+    return true;
+  }
+
+  for (auto it = block.insts.rbegin(); it != block.insts.rend(); ++it) {
+    if (const auto* cmp = std::get_if<lir::LirCmpOp>(&*it);
+        cmp != nullptr && cmp->result == value_name) {
+      return evaluate_integer_cmp(*cmp);
+    }
+  }
+  return std::nullopt;
+}
+
+void erase_trailing_cmp_if_defines(lir::LirBlock& block, std::string_view result_name) {
+  if (block.insts.empty()) {
+    return;
+  }
+  if (const auto* cmp = std::get_if<lir::LirCmpOp>(&block.insts.back());
+      cmp != nullptr && cmp->result == result_name) {
+    block.insts.pop_back();
+  }
+}
+
+std::optional<std::string> resolve_forward_target(const CfgNormalizationContext& context,
+                                                  std::string_view start_label) {
+  std::string current(start_label);
+  std::unordered_set<std::string> seen;
+  for (std::size_t depth = 0; depth < kMaxChainDepth; ++depth) {
+    const auto [it, inserted] = seen.insert(current);
+    if (!inserted) {
+      return std::nullopt;
+    }
+    const auto block_it = context.label_to_idx.find(current);
+    if (block_it == context.label_to_idx.end()) {
+      return std::nullopt;
+    }
+    const auto& block = context.function->blocks[block_it->second];
+    if (!is_forwarding_block(block)) {
+      return current;
+    }
+    current = std::get<lir::LirBr>(block.terminator).target_label;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> find_entry_label(const lir::LirFunction& function) {
+  for (const auto& block : function.blocks) {
+    if (block.id.value == function.entry.value) {
+      return block.label;
+    }
+  }
+  if (!function.blocks.empty()) {
+    return function.blocks.front().label;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> get_immediate_return_value(const lir::LirBlock& block) {
+  const auto* ret = std::get_if<lir::LirRet>(&block.terminator);
+  if (ret == nullptr || !ret->value_str.has_value() || !block.insts.empty()) {
+    return std::nullopt;
+  }
+  if (!parse_i64_immediate(*ret->value_str).has_value()) {
+    return std::nullopt;
+  }
+  return *ret->value_str;
+}
+
+std::size_t collapse_constant_conditional_return_ladder(CfgNormalizationContext& context) {
+  auto& function = *context.function;
+  if (!function.alloca_insts.empty() || function.blocks.size() < 2) {
+    return 0;
+  }
+
+  const auto entry_label = find_entry_label(function);
+  if (!entry_label.has_value()) {
+    return 0;
+  }
+
+  std::unordered_set<std::string> visited;
+  std::unordered_set<std::string> consumed;
+  std::string current = *entry_label;
+  std::optional<std::string> final_return_value;
+  std::string final_return_type = "i32";
+
+  for (std::size_t depth = 0; depth < function.blocks.size(); ++depth) {
+    if (!visited.insert(current).second) {
+      return 0;
+    }
+
+    const auto block_it = context.label_to_idx.find(current);
+    if (block_it == context.label_to_idx.end()) {
+      return 0;
+    }
+    const auto& block = function.blocks[block_it->second];
+    consumed.insert(block.label);
+
+    if (const auto return_value = get_immediate_return_value(block); return_value.has_value()) {
+      final_return_value = *return_value;
+      final_return_type = std::get<lir::LirRet>(block.terminator).type_str;
+      break;
+    }
+
+    const auto* cond = std::get_if<lir::LirCondBr>(&block.terminator);
+    if (cond == nullptr || block.insts.size() != 1) {
+      return 0;
+    }
+
+    const auto constant = resolve_block_local_i1(cond->cond_name, block);
+    if (!constant.has_value()) {
+      return 0;
+    }
+
+    const std::string taken_target = *constant ? cond->true_label : cond->false_label;
+    const std::string dead_target = *constant ? cond->false_label : cond->true_label;
+    const auto dead_it = context.label_to_idx.find(dead_target);
+    if (dead_it == context.label_to_idx.end()) {
+      return 0;
+    }
+    const auto dead_return = get_immediate_return_value(function.blocks[dead_it->second]);
+    if (!dead_return.has_value()) {
+      return 0;
+    }
+    consumed.insert(dead_target);
+    current = taken_target;
+  }
+
+  if (!final_return_value.has_value() || consumed.size() != function.blocks.size()) {
+    return 0;
+  }
+
+  lir::LirBlock collapsed;
+  collapsed.id = function.entry;
+  collapsed.label = *entry_label;
+  collapsed.terminator = lir::LirRet{*final_return_value, final_return_type};
+  function.blocks.clear();
+  function.blocks.push_back(std::move(collapsed));
+  return 1;
+}
+
 // The remaining helper names intentionally mirror the reference pass shape so
 // the eventual implementation can stay phase-aligned with cfg_simplify.rs.
 std::size_t fold_constant_cond_branches(CfgNormalizationContext& context) {
-  (void)context;
-  // TODO: Resolve branch conditions through the local LIR value table, then
-  // rewrite to unconditional branches and clean up dead incoming phi edges.
-  return 0;
+  return collapse_constant_conditional_return_ladder(context);
 }
 
 std::size_t fold_constant_switches(CfgNormalizationContext& context) {

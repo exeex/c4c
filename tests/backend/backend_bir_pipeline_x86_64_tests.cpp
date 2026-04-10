@@ -9,6 +9,56 @@
 
 namespace {
 
+c4c::codegen::lir::LirModule make_constant_false_conditional_ladder_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "ne", "i32", "0", "0"});
+  entry.terminator = LirCondBr{"%t0", "block_1", "block_2"};
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{1};
+  block_1.label = "block_1";
+  block_1.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{2};
+  block_2.label = "block_2";
+  block_2.insts.push_back(LirCmpOp{"%t1", false, "ne", "i32", "0", "0"});
+  block_2.terminator = LirCondBr{"%t1", "block_3", "block_4"};
+
+  LirBlock block_3;
+  block_3.id = LirBlockId{3};
+  block_3.label = "block_3";
+  block_3.terminator = LirRet{std::string("2"), "i32"};
+
+  LirBlock block_4;
+  block_4.id = LirBlockId{4};
+  block_4.label = "block_4";
+  block_4.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  function.blocks.push_back(std::move(block_3));
+  function.blocks.push_back(std::move(block_4));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_loop_break_ladder_zero_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -6951,6 +7001,31 @@ void test_backend_bir_pipeline_drives_x86_lir_double_countdown_guarded_zero_retu
                       "x86 LIR double-countdown guarded-return input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_constant_false_conditional_ladder_zero_return_through_bir_end_to_end() {
+  const auto lowered_bir =
+      c4c::backend::try_lower_to_bir(make_constant_false_conditional_ladder_zero_return_module());
+  expect_true(lowered_bir.has_value(),
+              "x86 LIR constant-false conditional ladder input should lower into the shared constant-return shape through CFG normalization");
+  expect_true(lowered_bir->functions.size() == 1 &&
+                  lowered_bir->functions.front().blocks.size() == 1 &&
+                  lowered_bir->functions.front().blocks.front().label == "entry" &&
+                  lowered_bir->functions.front().blocks.front().insts.empty() &&
+                  lowered_bir->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "x86 LIR constant-false conditional ladder lowering should collapse the dead branch ladder to one constant-return block");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_constant_false_conditional_ladder_zero_return_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR constant-false conditional ladder input should materialize the shared zero result on the native backend path");
+  expect_not_contains(rendered, "cmp eax, 0",
+                      "x86 LIR constant-false conditional ladder input should no longer carry the dead branch compares after shared lowering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR constant-false conditional ladder input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_loop_break_ladder_zero_return_through_bir_end_to_end() {
   const auto lowered_bir = c4c::backend::try_lower_to_bir(make_loop_break_ladder_zero_return_module());
   expect_true(lowered_bir.has_value(),
@@ -8911,6 +8986,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_global_two_field_struct_store_sub_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_do_while_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_double_countdown_guarded_zero_return_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_constant_false_conditional_ladder_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_loop_break_ladder_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_prime_counter_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end);

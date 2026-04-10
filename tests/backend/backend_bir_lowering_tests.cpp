@@ -10,6 +10,57 @@
 
 namespace {
 
+c4c::codegen::lir::LirModule make_constant_false_conditional_ladder_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "ne", "i32", "0", "0"});
+  entry.terminator = LirCondBr{"%t0", "block_1", "block_2"};
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{1};
+  block_1.label = "block_1";
+  block_1.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{2};
+  block_2.label = "block_2";
+  block_2.insts.push_back(LirCmpOp{"%t1", false, "ne", "i32", "0", "0"});
+  block_2.terminator = LirCondBr{"%t1", "block_3", "block_4"};
+
+  LirBlock block_3;
+  block_3.id = LirBlockId{3};
+  block_3.label = "block_3";
+  block_3.terminator = LirRet{std::string("2"), "i32"};
+
+  LirBlock block_4;
+  block_4.id = LirBlockId{4};
+  block_4.label = "block_4";
+  block_4.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  function.blocks.push_back(std::move(block_3));
+  function.blocks.push_back(std::move(block_4));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_loop_break_ladder_zero_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -6691,6 +6742,28 @@ void test_bir_lowering_accepts_double_countdown_guarded_zero_return_lir_module()
                   "the lowered double-countdown guarded-return BIR module should normalize the two countdown loops and dead guard to the constant zero result");
 }
 
+void test_bir_lowering_accepts_constant_false_conditional_ladder_zero_return_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_constant_false_conditional_ladder_zero_return_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded constant-false conditional ladder through the split CFG normalization seam");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().label == "entry" &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered constant-false conditional ladder BIR module should collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered constant-false conditional ladder BIR module should normalize the dead early returns to the constant zero result");
+}
+
 void test_bir_lowering_accepts_loop_break_ladder_zero_return_lir_module() {
   const auto lowered = c4c::backend::try_lower_to_bir(make_loop_break_ladder_zero_return_module());
   expect_true(lowered.has_value(),
@@ -9381,6 +9454,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module_with_stale_typed_i32_text);
   RUN_TEST(test_bir_lowering_accepts_double_countdown_guarded_zero_return_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_constant_false_conditional_ladder_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_loop_break_ladder_zero_return_lir_module);
   RUN_TEST(test_bir_lowering_accepts_prime_counter_zero_return_lir_module);
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);
