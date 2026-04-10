@@ -7,27 +7,24 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner build-wiring follow-on after landing the bounded
-  `returns.cpp` slice: reassess the remaining translated top-level units after
-  a failed `calls.cpp` compile probe and identify the smallest
-  header-surfacing cluster that can unblock real owner build wiring
+  `returns.cpp` slice: land the smallest public `x86_codegen.hpp`
+  surfacing cluster that moves `calls.cpp` past the current incomplete
+  ABI/type/state blockers, then rerun the direct compile probe to record the
+  next blocker tier before choosing another owner file for build wiring
 - immediate target:
-  use direct compile probes to inventory which translated top-level owners are
-  still blocked on incomplete `x86_codegen.hpp` type/state exposure and record
-  the minimum public-surface gap that must land before the next owner file can
-  enter the build
+  expose the shared `CallAbiConfig` / `CallArgClass` / `IrType` / call-state
+  declarations plus the minimal `X86Codegen` helper signatures and focused
+  header-export coverage needed for `calls.cpp` to stop failing immediately on
+  incomplete public surface errors
 
 ## Next Slice
 
-- land a bounded `x86_codegen.hpp` surfacing slice for the shared translated
-  owner dependency cluster instead of wiring another top-level owner file
-  blindly
-- use `calls.cpp` as the reference blocker sample for the next header slice:
-  it immediately needs real `CallAbiConfig` / `CallArgClass` / `IrType`
-  definitions plus exporter-backed `X86Codegen` state and helper declarations
-  such as `state`, `operand_to_rax`, `store_rax_to`, and `store_rax_rdx_to`
-- after that public-surface slice lands, rerun a compile probe across the
-  translated top-level units and only then choose the next compileable owner
-  file for CMake wiring
+- rerun the direct `calls.cpp` compile probe after the current header slice and
+  record the next parse-level blocker set now that incomplete ABI/state errors
+  are out of the way
+- use that refreshed probe output to decide whether the next bounded slice is
+  a syntax-normalization lane inside `calls.cpp` itself or a second shared
+  header surfacing patch that benefits multiple parked owner files
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -42,6 +39,34 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration lands the planned bounded public-surface slice in
+  `src/backend/x86/codegen/x86_codegen.hpp` for the translated call-owner
+  dependency cluster instead of wiring another top-level owner file blindly
+- implementation note:
+  the header now exposes minimal compile-time definitions for
+  `CallAbiConfig`, `CallArgClass`, `IrType`, `EightbyteClass`,
+  `RiscvFloatClass`, `X86CodegenState`, and the shared `X86Codegen` helper
+  declarations used by the parked translated call owner, plus focused
+  `backend_shared_util_tests.cpp` coverage that pins those declarations through
+  the public x86 codegen surface
+- direct compile-probe result after the header slice:
+  `calls.cpp` advances past the previous incomplete-type and missing-member
+  barrier and now fails on the next translation tier inside the parked owner
+  body itself, led by untranslated Rust-tuple syntax such as `dest.0`
+  alongside other not-yet-normalized translated constructs
+- shippable-scope note:
+  this iteration intentionally keeps `calls.cpp` out of `CMakeLists.txt`; it
+  only surfaces the shared header contract and records the new blocker
+  boundary for the next owner-path slice
+- focused validation target:
+  passed `cmake --preset default`,
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_call_owner_surface`, and a
+  direct `clang++ -fsyntax-only` probe for `src/backend/x86/codegen/calls.cpp`
+  with the repo's current include surface; the probe now fails first on the
+  parked translated body syntax (`dest.0`, `slot->0`) instead of incomplete
+  public-surface declarations
 
 - this iteration attempted the recorded next owner-build slice by probing
   `src/backend/x86/codegen/calls.cpp` with the same include surface used by the

@@ -199,6 +199,58 @@ void test_x86_codegen_header_exports_translated_returns_owner_symbols() {
               "x86 translated returns owner methods should stay compile/link reachable through the public x86_codegen surface once returns.cpp enters the build");
 }
 
+void test_x86_codegen_header_exports_translated_call_owner_surface() {
+  using X86Codegen = c4c::backend::x86::X86Codegen;
+  using X86CodegenState = c4c::backend::x86::X86CodegenState;
+
+  auto operand_to_rax = &X86Codegen::operand_to_rax;
+  auto operand_to_rcx = &X86Codegen::operand_to_rcx;
+  auto operand_to_rax_rdx = &X86Codegen::operand_to_rax_rdx;
+  auto store_rax_to = &X86Codegen::store_rax_to;
+  auto store_rax_rdx_to = &X86Codegen::store_rax_rdx_to;
+  auto call_abi_config = &X86Codegen::call_abi_config_impl;
+  auto emit_call_compute_stack_space = &X86Codegen::emit_call_compute_stack_space_impl;
+  auto emit_call_stack_args = &X86Codegen::emit_call_stack_args_impl;
+  auto emit_call_reg_args = &X86Codegen::emit_call_reg_args_impl;
+  auto emit_call_instruction = &X86Codegen::emit_call_instruction_impl;
+  auto emit_call_cleanup = &X86Codegen::emit_call_cleanup_impl;
+  auto set_call_ret_eightbyte_classes = &X86Codegen::set_call_ret_eightbyte_classes_impl;
+  auto emit_call_store_result = &X86Codegen::emit_call_store_result_impl;
+  auto emit_call_store_i128_result = &X86Codegen::emit_call_store_i128_result_impl;
+  auto emit_call_move_f32_to_acc = &X86Codegen::emit_call_move_f32_to_acc_impl;
+  auto emit_call_move_f64_to_acc = &X86Codegen::emit_call_move_f64_to_acc_impl;
+  auto state_emit = &X86CodegenState::emit;
+  auto state_get_slot = &X86CodegenState::get_slot;
+  auto state_resolve_slot_addr = &X86CodegenState::resolve_slot_addr;
+
+  c4c::backend::x86::CallArgClass stack_class;
+  stack_class.kind = c4c::backend::x86::CallArgClass::Kind::Stack;
+  c4c::backend::x86::CallArgClass register_class;
+  register_class.kind = c4c::backend::x86::CallArgClass::Kind::Register;
+  const c4c::backend::x86::CallAbiConfig abi_config{
+      6, 8, false, false, false, false, false, true, false, false, false, false,
+  };
+
+  expect_true(operand_to_rax != nullptr && operand_to_rcx != nullptr &&
+                  operand_to_rax_rdx != nullptr && store_rax_to != nullptr &&
+                  store_rax_rdx_to != nullptr && call_abi_config != nullptr &&
+                  emit_call_compute_stack_space != nullptr &&
+                  emit_call_stack_args != nullptr && emit_call_reg_args != nullptr &&
+                  emit_call_instruction != nullptr && emit_call_cleanup != nullptr &&
+                  set_call_ret_eightbyte_classes != nullptr &&
+                  emit_call_store_result != nullptr &&
+                  emit_call_store_i128_result != nullptr &&
+                  emit_call_move_f32_to_acc != nullptr &&
+                  emit_call_move_f64_to_acc != nullptr && state_emit != nullptr &&
+                  state_get_slot != nullptr && state_resolve_slot_addr != nullptr &&
+                  stack_class.is_stack() && !stack_class.is_register() &&
+                  register_class.is_register() && !register_class.is_stack() &&
+                  abi_config.max_int_regs == 6 && abi_config.max_float_regs == 8 &&
+                  abi_config.use_sysv_struct_classification &&
+                  !abi_config.allow_struct_split_reg_stack,
+              "x86 translated call-owner header surfacing should expose the shared ABI structs, state hooks, and owner helper declarations before calls.cpp enters the build");
+}
+
 void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {
   using X86Codegen = c4c::backend::x86::X86Codegen;
 
@@ -4179,6 +4231,7 @@ int main(int argc, char* argv[]) {
   test_x86_codegen_header_exports_translated_globals_owner_symbols();
   test_x86_codegen_header_exports_translated_globals_owner_helper_symbols();
   test_x86_codegen_header_exports_translated_returns_owner_symbols();
+  test_x86_codegen_header_exports_translated_call_owner_surface();
   test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
   test_x86_translated_regalloc_pruning_helpers_match_shared_contract();

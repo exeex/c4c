@@ -33,28 +33,197 @@ namespace c4c::backend::x86 {
 // The intent is that sibling translation units in this directory depend on this
 // header instead of on emit.cpp-local declarations.
 
-struct Value;
-struct Operand;
+struct Value {
+  std::uint32_t raw = 0;
+};
+
+struct Operand {
+  std::uint32_t raw = 0;
+};
+
 struct IrFunction;
 struct IntrinsicOp;
-struct SlotAddr;
-struct StackSlot;
-struct CallAbiConfig;
-struct CallArgClass;
 struct AsmOperand;
 struct BlockId;
 
+struct StackSlot {
+  std::int64_t raw = 0;
+};
+
+struct SlotAddr {
+  enum class Kind : unsigned char {
+    Direct,
+    Indirect,
+    OverAligned,
+  };
+
+  Kind kind = Kind::Direct;
+  StackSlot slot{};
+  std::uint32_t value_id = 0;
+
+  static SlotAddr Direct(StackSlot direct_slot) {
+    return SlotAddr{
+        .kind = Kind::Direct,
+        .slot = direct_slot,
+    };
+  }
+
+  static SlotAddr Indirect(StackSlot indirect_slot) {
+    return SlotAddr{
+        .kind = Kind::Indirect,
+        .slot = indirect_slot,
+    };
+  }
+
+  static SlotAddr OverAligned(StackSlot over_aligned_slot, std::uint32_t over_aligned_value_id) {
+    return SlotAddr{
+        .kind = Kind::OverAligned,
+        .slot = over_aligned_slot,
+        .value_id = over_aligned_value_id,
+    };
+  }
+};
+
+struct CallAbiConfig {
+  std::size_t max_int_regs = 0;
+  std::size_t max_float_regs = 0;
+  bool align_i128_pairs = false;
+  bool f128_in_fp_regs = false;
+  bool f128_in_gp_pairs = false;
+  bool variadic_floats_in_gp = false;
+  bool large_struct_by_ref = false;
+  bool use_sysv_struct_classification = false;
+  bool use_riscv_float_struct_classification = false;
+  bool allow_struct_split_reg_stack = false;
+  bool align_struct_pairs = false;
+  bool sret_uses_dedicated_reg = false;
+};
+
+struct CallArgClass {
+  enum class Kind : unsigned char {
+    Register,
+    Stack,
+  };
+
+  Kind kind = Kind::Register;
+
+  bool is_stack() const { return kind == Kind::Stack; }
+  bool is_register() const { return kind == Kind::Register; }
+};
+
+struct X86CodegenOutput {
+  void emit_instr_imm_reg(const char* mnemonic, std::int64_t imm, const char* reg);
+  void emit_instr_rbp_reg(const char* mnemonic, std::int64_t offset, const char* reg);
+  void emit_instr_rbp(const char* mnemonic, std::int64_t offset);
+  void emit_instr_mem_reg(const char* mnemonic,
+                          std::int64_t offset,
+                          const char* base_reg,
+                          const char* dest_reg);
+};
+
+struct X86CodegenRegCache {
+  void invalidate_all();
+  void invalidate_acc();
+  void set_acc(std::uint32_t value_id, bool known_zero_extended);
+};
+
+struct X86CodegenState {
+  X86CodegenOutput out;
+  X86CodegenRegCache reg_cache;
+  std::unordered_set<std::uint32_t> f128_direct_slots;
+
+  void emit(const std::string& asm_line);
+  std::optional<StackSlot> get_slot(std::uint32_t value_id) const;
+  bool is_alloca(std::uint32_t value_id) const;
+  std::optional<SlotAddr> resolve_slot_addr(std::uint32_t value_id) const;
+  void track_f128_load(std::uint32_t dest_id, std::uint32_t ptr_id, std::int64_t offset);
+  std::optional<std::uint32_t> get_f128_source(std::uint32_t value_id) const;
+  std::optional<std::size_t> alloca_over_align(std::uint32_t value_id) const;
+};
+
 enum class AddressSpace : unsigned;
-enum class IrType : unsigned;
-enum class IrCmpOp : unsigned;
-enum class AtomicOrdering : unsigned;
-enum class AtomicRmwOp : unsigned;
-enum class FloatOp : unsigned;
+enum class IrType : unsigned {
+  Void,
+  I8,
+  I32,
+  I64,
+  I128,
+  Ptr,
+  F32,
+  F64,
+  F128,
+};
+enum class IrCmpOp : unsigned {
+  Eq,
+  Ne,
+  Slt,
+  Sle,
+  Sgt,
+  Sge,
+  Ult,
+  Ule,
+  Ugt,
+  Uge,
+};
+enum class IrUnaryOp : unsigned {
+  Neg,
+  Not,
+  Clz,
+  Ctz,
+  Bswap,
+  Popcount,
+};
+enum class AtomicOrdering : unsigned {
+  Relaxed,
+  Acquire,
+  Release,
+  AcqRel,
+  SeqCst,
+};
+enum class AtomicRmwOp : unsigned {
+  Add,
+  Sub,
+  And,
+  Or,
+  Xor,
+  Nand,
+  Xchg,
+  TestAndSet,
+};
+enum class FloatOp : unsigned {
+  Add,
+  Sub,
+  Mul,
+  Div,
+};
 enum class AsmOperandKind : unsigned;
-enum class EightbyteClass : unsigned;
-enum class RiscvFloatClass : unsigned;
+enum class EightbyteClass : unsigned {
+  None,
+  Integer,
+  Sse,
+  X87,
+  Memory,
+};
+enum class RiscvFloatClass : unsigned {
+  None,
+  Float,
+  Double,
+};
 
 struct X86Codegen {
+  X86CodegenState state;
+  std::vector<EightbyteClass> call_ret_classes;
+
+  void operand_to_rax(const Operand& op);
+  void operand_to_rcx(const Operand& op);
+  void operand_to_rax_rdx(const Operand& op);
+  void store_rax_to(const Value& dest);
+  void store_rax_rdx_to(const Value& dest);
+  const char* reg_for_type(const char* reg, IrType ty) const;
+  const char* mov_load_for_type(IrType ty) const;
+  const char* mov_store_for_type(IrType ty) const;
+  const char* type_suffix(IrType ty) const;
+
   std::int64_t calculate_stack_space_impl(const IrFunction& func);
   std::int64_t aligned_frame_size_impl(std::int64_t raw_space) const;
   void emit_prologue_impl(const IrFunction& func, std::int64_t frame_size);
@@ -224,7 +393,7 @@ struct X86Codegen {
                              IrType ty);
   void emit_float_binop_impl_impl(const std::string& mnemonic, IrType ty);
   const char* emit_float_binop_mnemonic_impl(FloatOp op) const;
-  void emit_unaryop_impl(const Value& dest, unsigned op, const Operand& src, IrType ty);
+  void emit_unaryop_impl(const Value& dest, IrUnaryOp op, const Operand& src, IrType ty);
 
   void emit_i128_prep_binop_impl(const Operand& lhs, const Operand& rhs);
   void emit_i128_add_impl();
@@ -379,6 +548,12 @@ struct X86Codegen {
                            const IntrinsicOp& intrinsic,
                            const std::vector<Operand>& args);
 };
+
+void emit_unaryop_default(X86Codegen& codegen,
+                          const Value& dest,
+                          IrUnaryOp op,
+                          const Operand& src,
+                          IrType ty);
 
 struct MinimalGlobalStoreReturnAndEntryReturnSlice {
   std::string global_name;
