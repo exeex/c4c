@@ -392,6 +392,48 @@ c4c::codegen::lir::LirModule make_local_i32_pointer_gep_zero_store_slot_load_ret
   return module;
 }
 
+c4c::codegen::lir::LirModule make_local_i32_array_two_slot_sum_sub_three_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.arr", "[2 x i32]", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "[2 x i32]", "%lv.arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::SExt, "i32", "0", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i32", "%t0", false, {"i64 %t1"}});
+  entry.insts.push_back(LirStoreOp{"i32", "1", "%t2"});
+  entry.insts.push_back(LirGepOp{"%t3", "[2 x i32]", "%lv.arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t4", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t5", "i32", "%t3", false, {"i64 %t4"}});
+  entry.insts.push_back(LirStoreOp{"i32", "2", "%t5"});
+  entry.insts.push_back(LirGepOp{"%t6", "[2 x i32]", "%lv.arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t7", LirCastKind::SExt, "i32", "0", "i64"});
+  entry.insts.push_back(LirGepOp{"%t8", "i32", "%t6", false, {"i64 %t7"}});
+  entry.insts.push_back(LirLoadOp{"%t9", "i32", "%t8"});
+  entry.insts.push_back(LirGepOp{"%t10", "[2 x i32]", "%lv.arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t11", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t12", "i32", "%t10", false, {"i64 %t11"}});
+  entry.insts.push_back(LirLoadOp{"%t13", "i32", "%t12"});
+  entry.insts.push_back(LirBinOp{"%t14", "add", "i32", "%t9", "%t13"});
+  entry.insts.push_back(LirBinOp{"%t15", "sub", "i32", "%t14", "3"});
+  entry.terminator = LirRet{std::string("%t15"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_double_indirect_local_store_one_final_branch_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -3818,6 +3860,28 @@ void test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_gep_zero_store_s
                       "x86 LIR local-pointer gep-zero-store-slot-load-return input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_local_i32_array_two_slot_sum_sub_three_through_bir_end_to_end() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_local_i32_array_two_slot_sum_sub_three_module());
+  expect_true(lowered.has_value(),
+              "x86 LIR two-slot local-array sum-sub-three input should lower into direct BIR before native x86 emission");
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty(),
+              "x86 LIR two-slot local-array sum-sub-three lowering should collapse the bounded constant indexed array slice to one constant-return BIR block");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_local_i32_array_two_slot_sum_sub_three_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "x86 LIR two-slot local-array sum-sub-three input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR two-slot local-array sum-sub-three input should preserve the folded zero return after bounded shared lowering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR two-slot local-array sum-sub-three input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_double_indirect_local_store_one_final_branch_through_bir_end_to_end() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_double_indirect_local_store_one_final_branch_return_module());
@@ -4466,6 +4530,19 @@ void test_x86_direct_emitter_lowers_two_local_i32_zero_init_return_first_slice()
                       "x86 direct emitter should stay on native asm emission for the bounded two-local zero-init return slice");
 }
 
+void test_x86_direct_emitter_lowers_local_i32_array_two_slot_sum_sub_three_slice() {
+  auto module = make_local_i32_array_two_slot_sum_sub_three_module();
+
+  expect_true(c4c::backend::try_lower_to_bir(module).has_value(),
+              "two-slot local-array sum-sub-three input should continue to route through shared BIR so this regression pins the x86 BIR-owned source-backed seam");
+
+  const auto rendered = c4c::backend::x86::emit_module(module);
+  expect_contains(rendered, "main:\n  mov eax, 0\n  ret\n",
+                  "x86 direct emitter should constant-fold the bounded two-slot local-array sum-sub-three slice once the shared-BIR route reaches native x86 emission");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded two-slot local-array sum-sub-three slice");
+}
+
 void test_x86_direct_emitter_lowers_constant_branch_if_eq_return_slice() {
   auto module = make_x86_constant_branch_if_return_lir_module("eq", "2", "2");
 
@@ -4794,6 +4871,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_store_zero_load_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_gep_zero_load_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_gep_zero_store_slot_load_return_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_two_slot_sum_sub_three_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_double_indirect_local_store_one_final_branch_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_u8_select_post_join_add_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
@@ -4832,6 +4910,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_constant_div_sub_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_local_i32_arithmetic_chain_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_two_local_i32_zero_init_return_first_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_local_i32_array_two_slot_sum_sub_three_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_constant_branch_if_eq_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_constant_branch_if_uge_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);

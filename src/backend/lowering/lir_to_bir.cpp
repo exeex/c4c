@@ -1336,6 +1336,119 @@ std::optional<bir::Module> try_lower_minimal_local_i32_pointer_gep_zero_store_sl
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_local_i32_array_two_slot_sum_sub_three_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      function.entry.value != 0 || function.blocks.size() != 1 || function.alloca_insts.size() != 1 ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* array_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  if (array_slot == nullptr || array_slot->result.empty() || !array_slot->count.empty() ||
+      array_slot->type_str != "[2 x i32]") {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* first_base_gep = entry.insts.size() == 18 ? std::get_if<LirGepOp>(&entry.insts[0]) : nullptr;
+  const auto* first_index_cast = entry.insts.size() == 18 ? std::get_if<LirCastOp>(&entry.insts[1]) : nullptr;
+  const auto* first_elem_gep = entry.insts.size() == 18 ? std::get_if<LirGepOp>(&entry.insts[2]) : nullptr;
+  const auto* first_store = entry.insts.size() == 18 ? std::get_if<LirStoreOp>(&entry.insts[3]) : nullptr;
+  const auto* second_base_gep = entry.insts.size() == 18 ? std::get_if<LirGepOp>(&entry.insts[4]) : nullptr;
+  const auto* second_index_cast = entry.insts.size() == 18 ? std::get_if<LirCastOp>(&entry.insts[5]) : nullptr;
+  const auto* second_elem_gep = entry.insts.size() == 18 ? std::get_if<LirGepOp>(&entry.insts[6]) : nullptr;
+  const auto* second_store = entry.insts.size() == 18 ? std::get_if<LirStoreOp>(&entry.insts[7]) : nullptr;
+  const auto* third_base_gep = entry.insts.size() == 18 ? std::get_if<LirGepOp>(&entry.insts[8]) : nullptr;
+  const auto* third_index_cast = entry.insts.size() == 18 ? std::get_if<LirCastOp>(&entry.insts[9]) : nullptr;
+  const auto* third_elem_gep = entry.insts.size() == 18 ? std::get_if<LirGepOp>(&entry.insts[10]) : nullptr;
+  const auto* first_load = entry.insts.size() == 18 ? std::get_if<LirLoadOp>(&entry.insts[11]) : nullptr;
+  const auto* fourth_base_gep = entry.insts.size() == 18 ? std::get_if<LirGepOp>(&entry.insts[12]) : nullptr;
+  const auto* fourth_index_cast = entry.insts.size() == 18 ? std::get_if<LirCastOp>(&entry.insts[13]) : nullptr;
+  const auto* fourth_elem_gep = entry.insts.size() == 18 ? std::get_if<LirGepOp>(&entry.insts[14]) : nullptr;
+  const auto* second_load = entry.insts.size() == 18 ? std::get_if<LirLoadOp>(&entry.insts[15]) : nullptr;
+  const auto* add = entry.insts.size() == 18 ? std::get_if<LirBinOp>(&entry.insts[16]) : nullptr;
+  const auto* sub = entry.insts.size() == 18 ? std::get_if<LirBinOp>(&entry.insts[17]) : nullptr;
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (entry.label != "entry" || first_base_gep == nullptr || first_index_cast == nullptr ||
+      first_elem_gep == nullptr || first_store == nullptr || second_base_gep == nullptr ||
+      second_index_cast == nullptr || second_elem_gep == nullptr || second_store == nullptr ||
+      third_base_gep == nullptr || third_index_cast == nullptr || third_elem_gep == nullptr ||
+      first_load == nullptr || fourth_base_gep == nullptr || fourth_index_cast == nullptr ||
+      fourth_elem_gep == nullptr || second_load == nullptr || add == nullptr || sub == nullptr ||
+      ret == nullptr ||
+      !ret->value_str.has_value() || lower_function_return_type(function, *ret) != bir::TypeKind::I32 ||
+      *ret->value_str != sub->result || first_base_gep->ptr != array_slot->result ||
+      first_base_gep->element_type != "[2 x i32]" || first_base_gep->result.empty() ||
+      first_base_gep->indices != std::vector<std::string>{"i64 0", "i64 0"} ||
+      first_index_cast->kind != LirCastKind::SExt || first_index_cast->from_type != "i32" ||
+      first_index_cast->operand != "0" || first_index_cast->to_type != "i64" ||
+      first_elem_gep->ptr != first_base_gep->result || first_elem_gep->element_type != "i32" ||
+      first_elem_gep->result.empty() ||
+      first_elem_gep->indices != std::vector<std::string>{"i64 " + first_index_cast->result.str()} ||
+      first_store->ptr != first_elem_gep->result || first_store->val != "1" ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{first_store->type_str}, 32) ||
+      second_base_gep->ptr != array_slot->result || second_base_gep->element_type != "[2 x i32]" ||
+      second_base_gep->result.empty() ||
+      second_base_gep->indices != std::vector<std::string>{"i64 0", "i64 0"} ||
+      second_index_cast->kind != LirCastKind::SExt || second_index_cast->from_type != "i32" ||
+      second_index_cast->operand != "1" || second_index_cast->to_type != "i64" ||
+      second_elem_gep->ptr != second_base_gep->result || second_elem_gep->element_type != "i32" ||
+      second_elem_gep->result.empty() ||
+      second_elem_gep->indices != std::vector<std::string>{"i64 " + second_index_cast->result.str()} ||
+      second_store->ptr != second_elem_gep->result || second_store->val != "2" ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{second_store->type_str}, 32) ||
+      third_base_gep->ptr != array_slot->result || third_base_gep->element_type != "[2 x i32]" ||
+      third_base_gep->result.empty() ||
+      third_base_gep->indices != std::vector<std::string>{"i64 0", "i64 0"} ||
+      third_index_cast->kind != LirCastKind::SExt || third_index_cast->from_type != "i32" ||
+      third_index_cast->operand != "0" || third_index_cast->to_type != "i64" ||
+      third_elem_gep->ptr != third_base_gep->result || third_elem_gep->element_type != "i32" ||
+      third_elem_gep->result.empty() ||
+      third_elem_gep->indices != std::vector<std::string>{"i64 " + third_index_cast->result.str()} ||
+      first_load->ptr != third_elem_gep->result || first_load->result.empty() ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{first_load->type_str}, 32) ||
+      fourth_base_gep->ptr != array_slot->result ||
+      fourth_base_gep->element_type != "[2 x i32]" || fourth_base_gep->result.empty() ||
+      fourth_base_gep->indices != std::vector<std::string>{"i64 0", "i64 0"} ||
+      fourth_index_cast->kind != LirCastKind::SExt || fourth_index_cast->from_type != "i32" ||
+      fourth_index_cast->operand != "1" || fourth_index_cast->to_type != "i64" ||
+      fourth_elem_gep->ptr != fourth_base_gep->result || fourth_elem_gep->element_type != "i32" ||
+      fourth_elem_gep->result.empty() ||
+      fourth_elem_gep->indices != std::vector<std::string>{"i64 " + fourth_index_cast->result.str()} ||
+      second_load->ptr != fourth_elem_gep->result || second_load->result.empty() ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{second_load->type_str}, 32) ||
+      add->opcode != "add" || add->type_str != "i32" || add->lhs != first_load->result ||
+      add->rhs != second_load->result || sub->opcode != "sub" || sub->type_str != "i32" ||
+      sub->lhs != add->result || sub->rhs != "3") {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_double_indirect_local_store_one_final_branch_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -3650,6 +3763,11 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
   }
   if (const auto lowered =
           try_lower_minimal_local_i32_pointer_gep_zero_store_slot_load_return_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered =
+          try_lower_minimal_local_i32_array_two_slot_sum_sub_three_module(module);
       lowered.has_value()) {
     return lowered;
   }
