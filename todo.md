@@ -8,17 +8,14 @@ Source Plan: plan.md
 
 - Step 3: migrate the next narrow speculative/state-management call sites onto
   grouped parser symbol-table accessors instead of direct top-level member
-  storage assumptions, continuing through the remaining declaration-parser
-  typedef/value compatibility surfaces
-- Current slice: prepare the next bounded declaration-parser cleanup by
-  targeting the remaining direct `var_types_` writes used for declaration-side
-  `typeof(var)` bookkeeping after the typedef redefinition compatibility reads
-  have moved behind parser-local helpers
-- Iteration target: keep Step 3 in
-  `src/frontend/parser/parser_declarations.cpp` and introduce the smallest
-  parser-local helper surface needed for the residual declaration-parser
-  `typeof(var)` variable-type registration paths before reassessing whether the
-  next slice should stay in declarations or shift to another parser surface
+  storage assumptions, continuing into the next parser-local typedef/value
+  helper surface after the declaration parser cleanup
+- Current slice: target the next bounded direct grouped-storage reads in the
+  template/type helper path, starting with `types_helpers.hpp` and nearby
+  `src/frontend/parser/parser_types_template.cpp` typedef-resolution probes
+- Iteration target: introduce the smallest parser-local helper coverage needed
+  for template/type helper typedef lookups without widening into unrelated
+  parser expression or sema work
 
 ## Completed Items
 
@@ -207,16 +204,26 @@ Source Plan: plan.md
   full `ctest --test-dir build -j8 --output-on-failure`, and regression
   guard:
   3354/3354 tests passed, no new failures
+- Migrated the remaining declaration-parser `typeof(var)` bookkeeping writes in
+  `src/frontend/parser/parser_declarations.cpp` onto
+  `register_var_type_binding()`, removing the last direct grouped symbol-table
+  writes from the declaration parser slice
+- Added positive C regression
+  `tests/c/internal/positive_case/ok_typeof_decl_var_binding.c` to cover both
+  global and local `typeof(var)` resolution after ordinary declarations
+- Revalidated this slice with
+  `ctest --test-dir build -R 'positive_sema_ok_typeof_decl_var_binding' --output-on-failure`,
+  clean rebuild, full `ctest --test-dir build -j8 --output-on-failure`, and
+  regression guard:
+  3355/3355 tests passed, no new failures
 
 ## Next Intended Slice
 
-- Keep the next Step 3 slice in `src/frontend/parser/parser_declarations.cpp`
-  and remove the residual direct `var_types_` writes used for `typeof(var)`
-  declaration bookkeeping by moving them behind parser-local variable-type
-  helpers
-- After those `typeof(var)` bookkeeping writes move behind parser-local
-  helpers, reassess whether the following declaration-parser slice should stay
-  in declarations or switch to a different parser helper surface
+- Shift the next Step 3 slice out of `src/frontend/parser/parser_declarations.cpp`
+  now that its direct grouped-storage accesses are cleared
+- Start with the direct typedef lookup helpers in `src/frontend/parser/types_helpers.hpp`
+  and the nearby template/type parser probes in
+  `src/frontend/parser/parser_types_template.cpp`
 - Leave namespace-state grouping for a separate slice unless it becomes
   necessary for the chosen accessor migration
 
@@ -244,6 +251,9 @@ Source Plan: plan.md
   `typedef_types_.count/find` probes for alias-template reconstruction,
   constructor-init ambiguity checks, or qualified typedef resolution; the
   typedef redefinition compatibility checks now go through
-  `has_conflicting_user_typedef_binding()`, and the remaining
-  declaration-parser raw grouped-storage accesses are the `typeof(var)`
-  bookkeeping writes
+  `has_conflicting_user_typedef_binding()`, and the declaration-parser
+  `typeof(var)` bookkeeping writes now go through
+  `register_var_type_binding()` as well
+- The next dense direct grouped-storage surface is in `types_helpers.hpp` and
+  `parser_types_template.cpp`, which still perform several raw
+  `typedef_types_` lookups and compatibility checks

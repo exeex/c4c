@@ -861,7 +861,7 @@ Node* Parser::parse_local_decl() {
             }
         }
         if (vname && !suppress_local_var_bindings_) {
-            var_types_[vname] = ts;  // for typeof(var) resolution
+            register_var_type_binding(vname, ts);
         }
         decls.push_back(d);
     } while (match(TokenKind::Comma));
@@ -3138,7 +3138,7 @@ top_level_base_ready:
                 gv->fn_ptr_variadic = tdit->second.variadic;
             }
         }
-        if (gname) var_types_[gname] = gts;  // for typeof(var) resolution
+        if (gname) register_var_type_binding(gname, gts);
         if (gname && ginit &&
             (gv->type.is_const || gv->is_constexpr) &&
             !gv->type.is_lvalue_ref && !gv->type.is_rvalue_ref &&
