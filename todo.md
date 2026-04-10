@@ -6,10 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: refresh the optimized hotspot order after the
-  `stmt_emitter_call.cpp` call-argument split, then choose whether the next
-  extraction should stay in the remaining call-lowering families or move back
-  to the leading frontend TU.
+- Step 4/5: keep the next extraction inside `stmt_emitter_call.cpp` and split
+  the remaining AMD64 `va_arg` helper family, since the refreshed optimized
+  hotspot order still leaves `stmt_emitter_call.cpp` ahead of the leading
+  frontend TUs.
 
 ## Completed
 
@@ -612,3 +612,38 @@ Source Plan: plan.md
   optimized command took 3.227s, the post-split
   `src/codegen/lir/stmt_emitter_call.cpp` took 2.931s, and the new
   `src/codegen/lir/stmt_emitter_call_args.cpp` compiled in 2.807s.
+- Refreshed the optimized hotspot order after the call-argument split:
+  `stmt_emitter_call.cpp` measured 3.136s, `hir_expr.cpp` 2.558s,
+  `hir_templates.cpp` 2.483s, `hir_stmt.cpp` 2.415s, and
+  `stmt_emitter_expr.cpp` 2.244s, so the next slice stayed in the remaining
+  call-lowering family.
+- Added `tests/c/internal/positive_case/ok_call_target_resolution_runtime.c`
+  as focused runtime coverage for direct calls, function-pointer calls,
+  builtin-alias call resolution, and unresolved external varargs calls.
+- Executed the eighteenth Step 4 slice by moving the call-target resolution
+  and final call-emission helpers (`resolve_call_target_info`,
+  `emit_void_call`, and `emit_call_with_result`) out of
+  `src/codegen/lir/stmt_emitter_call.cpp` into the new
+  `src/codegen/lir/stmt_emitter_call_target.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `positive_sema_ok_call_target_resolution_runtime_c`,
+  `positive_sema_ok_call_builtin_runtime_c`, and
+  `positive_sema_ok_call_variadic_aggregate_runtime_c`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard
+  passed with 3330/3330 tests passing before and 3336/3336 after, with no new
+  failures.
+- Recorded the eighteenth before/after extraction measurement: compiling the
+  `HEAD` version of `src/codegen/lir/stmt_emitter_call.cpp` on the direct
+  optimized command took 3.570s, the post-split working-tree
+  `src/codegen/lir/stmt_emitter_call.cpp` took 3.490s, and the new
+  `src/codegen/lir/stmt_emitter_call_target.cpp` compiled in 1.379s.
+- The refreshed post-eighteenth-slice hotspot order is still led by
+  `src/codegen/lir/stmt_emitter_call.cpp` at 3.216s, followed by
+  `src/frontend/hir/hir_expr.cpp` at 2.629s,
+  `src/frontend/hir/hir_templates.cpp` at 2.506s,
+  `src/frontend/hir/hir_stmt.cpp` at 2.465s, and
+  `src/codegen/lir/stmt_emitter_expr.cpp` at 2.367s.
+- Because `stmt_emitter_call.cpp` still leads the measured tier and its
+  remaining cohesive seam is the AMD64 `va_arg` helper family, the next
+  highest-value slice should stay in `stmt_emitter_call.cpp` before returning
+  to the frontend hotspots.

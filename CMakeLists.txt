@@ -179,6 +179,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_vaarg.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call_builtin.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call_args.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call_target.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_stmt.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/const_init_emitter.cpp"

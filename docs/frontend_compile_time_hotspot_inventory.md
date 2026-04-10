@@ -562,3 +562,55 @@ Interpretation:
 - The next extraction choice should move back to `hir_templates.cpp`, with
   `stmt_emitter_call.cpp` as the immediate fallback if the remaining template
   seams are not cleaner.
+
+## Step 4: Eighteenth Executed Slice
+
+- Extracted the call-target resolution and final call-emission helper family
+  (`resolve_call_target_info`, `emit_void_call`, and
+  `emit_call_with_result`) out of `src/codegen/lir/stmt_emitter_call.cpp`
+  into the new `src/codegen/lir/stmt_emitter_call_target.cpp`.
+- Kept the logic as existing `StmtEmitter` methods, so this remains a
+  translation-unit ownership split rather than a semantic rewrite of call
+  lowering.
+- Added focused runtime coverage in
+  `tests/c/internal/positive_case/ok_call_target_resolution_runtime.c` to pin
+  direct-call, function-pointer, builtin-alias, and unresolved external vararg
+  call-target resolution through the extracted helpers.
+
+## Step 4: Eighteenth Slice Measurements
+
+Optimized single-TU compile timings for the call-target split:
+
+| Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
+| --- | ---: | ---: | --- |
+| `src/codegen/lir/stmt_emitter_call.cpp` | 3.570 | 3.490 | before compiled from `HEAD`, after from the working tree |
+| `src/codegen/lir/stmt_emitter_call_target.cpp` | n/a | 1.379 | new extracted TU |
+
+Interpretation:
+
+- This slice preserved behavior and reduced the main `stmt_emitter_call.cpp`
+  hotspot TU by `0.080s`, about `2.2%`.
+- The win is smaller than the earlier call-argument split, but the measured
+  hotspot order still keeps `stmt_emitter_call.cpp` ahead of the leading
+  frontend TUs.
+
+## Step 4: Refreshed Ranking After The Call-Target Split
+
+The targeted optimized single-TU rerun after the call-target extraction
+produced this updated hotspot order:
+
+| Rank | Translation unit | Optimized compile (s) |
+| --- | --- | ---: |
+| 1 | `src/codegen/lir/stmt_emitter_call.cpp` | 3.216 |
+| 2 | `src/frontend/hir/hir_expr.cpp` | 2.629 |
+| 3 | `src/frontend/hir/hir_templates.cpp` | 2.506 |
+| 4 | `src/frontend/hir/hir_stmt.cpp` | 2.465 |
+| 5 | `src/codegen/lir/stmt_emitter_expr.cpp` | 2.367 |
+
+Interpretation:
+
+- `stmt_emitter_call.cpp` still leads the refreshed tier even after the
+  call-target split.
+- The next extraction choice should stay in `stmt_emitter_call.cpp` and target
+  the remaining AMD64 `va_arg` helper family before returning to the leading
+  frontend hotspots.
