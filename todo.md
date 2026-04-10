@@ -11,13 +11,14 @@ Source Plan: plan.md
   storage assumptions, continuing through the remaining declaration-parser
   typedef/value compatibility surfaces
 - Current slice: prepare the next bounded declaration-parser cleanup by
-  targeting the remaining typedef redefinition compatibility checks that still
-  read raw `user_typedefs_` and pass `typedef_types_` directly to
-  `types_compatible_p()`
+  targeting the remaining direct `var_types_` writes used for declaration-side
+  `typeof(var)` bookkeeping after the typedef redefinition compatibility reads
+  have moved behind parser-local helpers
 - Iteration target: keep Step 3 in
   `src/frontend/parser/parser_declarations.cpp` and introduce the smallest
-  parser-local helper surface needed for top-level/local typedef
-  redefinition-compatibility checks before touching `var_types_` writes
+  parser-local helper surface needed for the residual declaration-parser
+  `typeof(var)` variable-type registration paths before reassessing whether the
+  next slice should stay in declarations or shift to another parser surface
 
 ## Completed Items
 
@@ -190,17 +191,32 @@ Source Plan: plan.md
   full `ctest --test-dir build -j8 --output-on-failure`, and regression
   guard:
   3353/3353 tests passed, no new failures
+- Added parser-local user-typedef compatibility helpers in
+  `src/frontend/parser/parser.hpp` and `src/frontend/parser/parser_core.cpp`
+  so declaration-parser typedef redefinition checks no longer read raw
+  `user_typedefs_` or pass `typedef_types_` directly at the call site
+- Migrated the remaining top-level and local typedef redefinition compatibility
+  checks in `src/frontend/parser/parser_declarations.cpp` onto
+  `has_conflicting_user_typedef_binding()`
+- Added negative C regression
+  `tests/c/internal/negative_case/bad_typedef_local_redefine_conflict.c` to
+  cover local-scope and multi-declarator conflicting typedef redefinitions
+- Revalidated this slice with
+  `ctest --test-dir build -R 'negative_tests_bad_typedef_(redefine_conflict|local_redefine_conflict)' --output-on-failure`,
+  `ctest --test-dir build -R 'template_alias_qualified_typedef_resolution_parse|negative_tests_bad_typedef_(redefine_conflict|local_redefine_conflict)' --output-on-failure`,
+  full `ctest --test-dir build -j8 --output-on-failure`, and regression
+  guard:
+  3354/3354 tests passed, no new failures
 
 ## Next Intended Slice
 
 - Keep the next Step 3 slice in `src/frontend/parser/parser_declarations.cpp`
-  and remove the remaining direct typedef redefinition compatibility reads
-  around `user_typedefs_.count(...)` plus `types_compatible_p(...,
-  typedef_types_)`
-- After those compatibility checks move behind parser-local helpers, reassess
-  whether the following declaration-parser slice should cover the residual
-  `var_types_` writes for `typeof(var)` bookkeeping or switch to a different
-  parser helper surface
+  and remove the residual direct `var_types_` writes used for `typeof(var)`
+  declaration bookkeeping by moving them behind parser-local variable-type
+  helpers
+- After those `typeof(var)` bookkeeping writes move behind parser-local
+  helpers, reassess whether the following declaration-parser slice should stay
+  in declarations or switch to a different parser helper surface
 - Leave namespace-state grouping for a separate slice unless it becomes
   necessary for the chosen accessor migration
 
@@ -227,5 +243,7 @@ Source Plan: plan.md
 - `parser_declarations.cpp` no longer carries direct read-only
   `typedef_types_.count/find` probes for alias-template reconstruction,
   constructor-init ambiguity checks, or qualified typedef resolution; the
-  remaining declaration-parser raw accesses are the typedef redefinition
-  compatibility checks and `typeof(var)` bookkeeping writes
+  typedef redefinition compatibility checks now go through
+  `has_conflicting_user_typedef_binding()`, and the remaining
+  declaration-parser raw grouped-storage accesses are the `typeof(var)`
+  bookkeeping writes

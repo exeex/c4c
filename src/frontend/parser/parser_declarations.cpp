@@ -618,10 +618,8 @@ Node* Parser::parse_local_decl() {
         parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
                          &td_n_fn_ptr_params, &td_fn_ptr_variadic);
         if (tdname) {
-            const TypeSpec* existing_typedef = find_typedef_type(tdname);
             if (!is_cpp_mode() && !is_internal_typedef_name(tdname) &&
-                user_typedefs_.count(tdname) && existing_typedef &&
-                !types_compatible_p(*existing_typedef, ts_copy, typedef_types_))
+                has_conflicting_user_typedef_binding(tdname, ts_copy))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
             register_typedef_binding(tdname, ts_copy,
                                      !is_internal_typedef_name(tdname));
@@ -640,10 +638,8 @@ Node* Parser::parse_local_decl() {
             parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
                              &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
             if (tdn2) {
-                const TypeSpec* existing_typedef = find_typedef_type(tdn2);
                 if (!is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
-                    user_typedefs_.count(tdn2) && existing_typedef &&
-                    !types_compatible_p(*existing_typedef, ts2, typedef_types_))
+                    has_conflicting_user_typedef_binding(tdn2, ts2))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
                 register_typedef_binding(tdn2, ts2,
                                          !is_internal_typedef_name(tdn2));
@@ -2391,10 +2387,8 @@ top_level_base_ready:
                          &td_n_fn_ptr_params, &td_fn_ptr_variadic);
         if (tdname) {
             const char* scoped_tdname = qualify_name_arena(tdname);
-            const TypeSpec* existing_typedef = find_typedef_type(tdname);
             if (!is_cpp_mode() && !is_internal_typedef_name(tdname) &&
-                user_typedefs_.count(tdname) && existing_typedef &&
-                !types_compatible_p(*existing_typedef, ts_copy, typedef_types_))
+                has_conflicting_user_typedef_binding(tdname, ts_copy))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
             register_typedef_binding(tdname, ts_copy,
                                      !is_internal_typedef_name(tdname));
@@ -2414,10 +2408,8 @@ top_level_base_ready:
                              &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
             if (tdn2) {
                 const char* scoped_tdn2 = qualify_name_arena(tdn2);
-                const TypeSpec* existing_typedef = find_typedef_type(tdn2);
                 if (!is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
-                    user_typedefs_.count(tdn2) && existing_typedef &&
-                    !types_compatible_p(*existing_typedef, ts2, typedef_types_))
+                    has_conflicting_user_typedef_binding(tdn2, ts2))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
                 register_typedef_binding(tdn2, ts2,
                                          !is_internal_typedef_name(tdn2));

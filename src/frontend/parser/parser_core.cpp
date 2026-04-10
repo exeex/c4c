@@ -305,6 +305,17 @@ TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
     return resolve_typedef_chain(ts, symbol_tables_.typedef_types);
 }
 
+bool Parser::is_user_typedef_name(const std::string& name) const {
+    return symbol_tables_.user_typedefs.count(name) > 0;
+}
+
+bool Parser::has_conflicting_user_typedef_binding(const std::string& name,
+                                                  const TypeSpec& type) const {
+    const TypeSpec* existing_typedef = find_typedef_type(name);
+    return is_user_typedef_name(name) && existing_typedef &&
+           !types_compatible_p(*existing_typedef, type, symbol_tables_.typedef_types);
+}
+
 void Parser::register_typedef_name(const std::string& name,
                                    bool is_user_typedef) {
     symbol_tables_.typedefs.insert(name);
