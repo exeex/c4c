@@ -106,6 +106,8 @@ struct LineStore {
 LineInfo classify_line(std::string_view raw);
 std::uint16_t scan_register_refs(std::string_view s);
 std::uint8_t register_family_fast(std::string_view reg);
+std::string_view trim_spaces(std::string_view text);
+std::string_view trailing_operand(std::string_view text);
 
 inline bool starts_with(std::string_view text, std::string_view prefix) {
   return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;

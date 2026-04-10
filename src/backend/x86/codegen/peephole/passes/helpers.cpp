@@ -110,8 +110,8 @@ std::optional<std::pair<RegId, RegId>> parse_reg_to_reg_movq(const LineInfo& inf
   if (comma == std::string_view::npos) {
     return std::nullopt;
   }
-  const auto src = rest.substr(0, comma);
-  const auto dst = rest.substr(comma + 1);
+  const auto src = trim_spaces(rest.substr(0, comma));
+  const auto dst = trailing_operand(rest);
   const auto src_fam = register_family_fast(src);
   const auto dst_fam = register_family_fast(dst);
   if (!is_valid_gp_reg(src_fam) || !is_valid_gp_reg(dst_fam) || src_fam == dst_fam || src_fam == 4 || src_fam == 5 ||

@@ -9,16 +9,15 @@ Source Plan: plan.md
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
   first live optimization round
 - immediate target:
-  decide whether the remaining translated trampoline coalescing work should
-  move into a shared operand/destination helper or stay local to
-  `loop_trampoline.cpp` for the next bounded slice
+  evaluate the next bounded trampoline-coalescing slice beyond the newly live
+  `movslq` copy-back case, with stack-load trampoline forms still parked until
+  their own safety and rewrite rules are explicit
 
 ## Next Slice
 
-- evaluate whether the remaining translated trampoline cases beyond
-  register-register `movq` copies need a shared trimmed-destination helper in
-  `types.cpp` or can stay local until stack-load and `movslq` variants are
-  ready
+- if the `movslq` trampoline slice lands cleanly, evaluate whether the
+  remaining stack-load trampoline cases should reuse the new shared destination
+  parsing path or stay parked until a separate bounded slice
 - keep `frame_compact.cpp` parked until dead-store and callee-save translated
   passes are live enough for frame shrinking to be meaningful
 - continue evaluating which remaining translated peephole units can be compiled
@@ -54,6 +53,13 @@ Source Plan: plan.md
   unset because the trailing operand is not trimmed before family lookup, so
   the live trampoline pass currently uses a local trimmed-destination fallback
   instead of broadening that shared parser mid-slice
+- this iteration promotes that trailing-operand trim into the shared
+  classifier/helper path because the next translated trampoline case
+  (`movslq` copy-back) would otherwise duplicate the same local fallback again
+- the aggregate `backend_bir_tests` runner still crashes in pre-existing typed
+  LIR validation coverage before it can serve as a narrow peephole harness, so
+  this iteration verified the new trampoline form with a focused standalone
+  peephole harness while the full-suite regression guard remained monotonic
 
 ## Recently Completed
 
@@ -98,5 +104,15 @@ Source Plan: plan.md
 - added a direct regression test that proves the live x86 peephole now rewrites
   `movq %loop_reg, %tmp` / mutate `%tmp` / trampoline `movq %tmp, %loop_reg`
   into a direct mutation of the loop-carried register
+- promoted trailing-operand trimming into the shared x86 peephole
+  classifier/helper path so comma-delimited destinations no longer leave
+  `LineInfo.dest_reg` unset just because the trailing operand still carries
+  whitespace
+- widened the live translated loop-trampoline pass to recognize and coalesce a
+  bounded `movslq %tmpd, %loop_reg` trampoline copy-back onto the real
+  loop-carried register
+- added a direct regression test that proves the live x86 peephole now rewrites
+  a 32-bit update feeding a `movslq` trampoline copy-back into a direct update
+  of the loop-carried register
 - rebuilt and reran the full ctest suite with monotonic results:
   `181` failures before, `181` failures after, no newly failing tests

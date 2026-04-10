@@ -71,6 +71,24 @@ static bool is_conditional_jump(std::string_view s) {
          starts_with(s, "jnp ");
 }
 
+std::string_view trim_spaces(std::string_view text) {
+  while (!text.empty() && (text.front() == ' ' || text.front() == '\t')) {
+    text.remove_prefix(1);
+  }
+  while (!text.empty() && (text.back() == ' ' || text.back() == '\t')) {
+    text.remove_suffix(1);
+  }
+  return text;
+}
+
+std::string_view trailing_operand(std::string_view text) {
+  const auto comma = text.rfind(',');
+  if (comma == std::string_view::npos) {
+    return trim_spaces(text);
+  }
+  return trim_spaces(text.substr(comma + 1));
+}
+
 std::uint16_t scan_register_refs(std::string_view s) {
   constexpr std::array<std::string_view, 16> regs = {
       "%rax","%rcx","%rdx","%rbx","%rsp","%rbp","%rsi","%rdi",
@@ -243,7 +261,7 @@ LineInfo classify_line(std::string_view raw) {
   }
 
   const auto reg_refs = scan_register_refs(raw);
-  const auto dest_reg = register_family_fast(raw.substr(raw.rfind(',') != std::string_view::npos ? raw.rfind(',') + 1 : 0));
+  const auto dest_reg = register_family_fast(trailing_operand(raw));
   const auto has_indirect = has_indirect_memory_access(raw);
   const auto rbp_off = has_indirect ? RBP_OFFSET_NONE : parse_rbp_offset(raw);
   LineInfo info = line_info(LineKind::Other, static_cast<std::uint16_t>(trim_start));

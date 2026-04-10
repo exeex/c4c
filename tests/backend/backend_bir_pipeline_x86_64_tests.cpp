@@ -9302,6 +9302,33 @@ void test_x86_peephole_coalesces_single_register_loop_trampoline_copy() {
                       "x86 peephole should drop the trampoline copy back into the loop-carried register after coalescing");
 }
 
+void test_x86_peephole_coalesces_movslq_loop_trampoline_copy() {
+  const std::string input =
+      ".text\n"
+      "main:\n"
+      "  movq %r9, %r14\n"
+      "  addl $8, %r14d\n"
+      "  cmpq %rsi, %rdi\n"
+      "  jne .Ltrampoline\n"
+      "  ret\n"
+      ".Ltrampoline:\n"
+      "  movslq %r14d, %r9\n"
+      "  jmp .Lloop\n"
+      ".Lloop:\n"
+      "  movq %r9, %rax\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_contains(optimized, "  addl $8, %r9d\n",
+                  "x86 peephole should retarget a 32-bit loop update onto the loop-carried register when the trampoline copy-back is movslq");
+  expect_contains(optimized, "  jne .Lloop\n",
+                  "x86 peephole should still redirect the trampoline branch onto the real loop header after movslq coalescing");
+  expect_not_contains(optimized, "  movq %r9, %r14\n",
+                      "x86 peephole should drop the predecessor copy once the movslq trampoline rewrite can coalesce it away");
+  expect_not_contains(optimized, "  movslq %r14d, %r9\n",
+                      "x86 peephole should drop the movslq trampoline copy back into the loop-carried register after coalescing");
+}
+
 void test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole() {
   const auto rendered = c4c::backend::x86::emit_module(make_minimal_countdown_loop_bir_module());
 
@@ -9765,6 +9792,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_peephole_fuses_compare_setcc_test_branch_sequence);
   RUN_TEST(test_x86_peephole_redirects_single_entry_loop_trampoline);
   RUN_TEST(test_x86_peephole_coalesces_single_register_loop_trampoline_copy);
+  RUN_TEST(test_x86_peephole_coalesces_movslq_loop_trampoline_copy);
   RUN_TEST(test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);

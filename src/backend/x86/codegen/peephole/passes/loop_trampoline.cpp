@@ -18,6 +18,10 @@ constexpr const char* kReg64Names[16] = {
     "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
     "r8",  "r9",  "r10", "r11", "r12", "r13", "r14", "r15",
 };
+constexpr const char* kReg32Names[16] = {
+    "eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi",
+    "r8d", "r9d", "r10d", "r11d", "r12d", "r13d", "r14d", "r15d",
+};
 
 void mark_nop(LineInfo& info) {
   info.kind = LineKind::Nop;
@@ -33,16 +37,6 @@ void replace_line(LineStore* store, LineInfo& info, std::size_t index,
 std::string_view trimmed_line(const LineStore* store, const LineInfo& info,
                               std::size_t index) {
   return std::string_view(store->get(index)).substr(info.trim_start);
-}
-
-std::string_view trim_spaces(std::string_view text) {
-  while (!text.empty() && (text.front() == ' ' || text.front() == '\t')) {
-    text.remove_prefix(1);
-  }
-  while (!text.empty() && (text.back() == ' ' || text.back() == '\t')) {
-    text.remove_suffix(1);
-  }
-  return text;
 }
 
 std::size_t next_real_line(const LineInfo* infos, std::size_t start,
@@ -85,28 +79,40 @@ bool is_movq_reg_reg(std::string_view trimmed, std::string_view first_reg,
          trimmed.substr(5 + first_reg.size() + 2) == second_reg;
 }
 
+bool is_movslq_reg_reg(std::string_view trimmed, std::string_view first_reg,
+                       std::string_view second_reg) {
+  if (!starts_with(trimmed, "movslq ")) {
+    return false;
+  }
+  const auto expected_len = 7 + first_reg.size() + 2 + second_reg.size();
+  return trimmed.size() == expected_len &&
+         trimmed.substr(7, first_reg.size()) == first_reg &&
+         trimmed.substr(7 + first_reg.size(), 2) == ", " &&
+         trimmed.substr(7 + first_reg.size() + 2) == second_reg;
+}
+
 RegId effective_dest_reg(const LineInfo& info, std::string_view trimmed) {
   if (info.dest_reg != REG_NONE) {
     return info.dest_reg;
   }
-  const auto comma = trimmed.rfind(',');
-  if (comma == std::string_view::npos) {
-    return REG_NONE;
-  }
-  return register_family_fast(trim_spaces(trimmed.substr(comma + 1)));
+  return register_family_fast(trailing_operand(trimmed));
 }
 
-std::optional<std::pair<RegId, RegId>> parse_reg_to_reg_movq_local(std::string_view trimmed) {
-  if (!starts_with(trimmed, "movq ")) {
+std::optional<std::pair<RegId, RegId>> parse_trampoline_reg_move(std::string_view trimmed) {
+  std::string_view rest;
+  if (starts_with(trimmed, "movq ")) {
+    rest = trimmed.substr(5);
+  } else if (starts_with(trimmed, "movslq ")) {
+    rest = trimmed.substr(7);
+  } else {
     return std::nullopt;
   }
-  const auto rest = trimmed.substr(5);
   const auto comma = rest.find(',');
   if (comma == std::string_view::npos) {
     return std::nullopt;
   }
   const auto src = register_family_fast(trim_spaces(rest.substr(0, comma)));
-  const auto dst = register_family_fast(trim_spaces(rest.substr(comma + 1)));
+  const auto dst = register_family_fast(trailing_operand(rest));
   if (!is_valid_gp_reg(src) || !is_valid_gp_reg(dst) || src == dst) {
     return std::nullopt;
   }
@@ -166,7 +172,7 @@ std::optional<std::vector<std::pair<RegId, RegId>>> collect_trampoline_moves(
       return std::nullopt;
     }
     const auto trimmed = trimmed_line(store, infos[index], index);
-    const auto move = parse_reg_to_reg_movq_local(trimmed);
+    const auto move = parse_trampoline_reg_move(trimmed);
     if (!move.has_value()) {
       return std::nullopt;
     }
@@ -282,6 +288,9 @@ bool find_copy_and_modifications(const LineStore* store, const LineInfo* infos,
       if (is_movq_reg_reg(trimmed, dst_reg, src_reg)) {
         *copy_index = scan;
         return true;
+      }
+      if (is_movslq_reg_reg(trimmed, std::string("%") + kReg32Names[dst_fam], src_reg)) {
+        return false;
       }
       modifications->push_back(scan);
       continue;
