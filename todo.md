@@ -10,32 +10,53 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  expose the next parameter-storage / `ParamRef` helper seam through
-  `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp` without pulling the
-  full translated prologue owner into the build yet
-  - cover shared ABI arg-register naming, parameter stack-base offset, and the
-    dead-param-alloca pre-store eligibility rule that decides when a `ParamRef`
-    destination can be preloaded directly into a callee-saved register
-  - keep the slice helper-only and backend-focused until the translated
-    prologue owner can replace more of the provisional `prologue.cpp` body
+  resume the first real translated `emit_param_ref_impl(...)` cutover path now
+  that the build-active direct emitter locks both `i32` and `i64` integer
+  register-plus-stack parameter loads
+  - use the current direct-emitter slices as the concrete ABI reference for the
+    parked translated prologue owner before widening into SSE or aggregates
+  - keep the slice helper-focused until the translated `prologue.cpp` owner can
+    replace more of the provisional body without a broad build hookup
 
 ## Next Slice
 
-- continue from the new `emit_store_params_impl` state-priming slice into the
-  first real `emit_param_ref_impl` translation path
-- route the provisional x86 prologue through the already-exposed helper
-  contract first, likely starting with direct integer-register and stack-scalar
-  `ParamRef` loads before widening into dead-param-alloca pre-store, SSE, or
-  aggregate parameter classes
+- route the provisional x86 prologue through a build-active helper seam that
+  mirrors the now-test-locked direct integer-register and stack-scalar
+  `ParamRef` loads for both `i32` and `i64`
+- then wire that seam into the parked `emit_param_ref_impl(...)` owner path
+  before widening into dead-param-alloca pre-store, SSE, or aggregate
+  parameter classes
 - keep the translated prologue owner parked out of build until the public
   x86 codegen header exposes enough complete backend surface for
   `src/backend/x86/codegen/prologue.cpp` to compile cleanly
 - continue using build-active direct-emitter slices to lock the intended x86
-  parameter-stack behavior meanwhile, likely by widening from the seventh
-  scalar stack arg into mixed register-plus-stack helper coverage
+  parameter-stack behavior meanwhile, with the next likely widening point being
+  non-alloca-backed pre-store or another typed scalar class rather than a new
+  ownership switch
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration widened the build-active x86 direct-emitter mixed
+  register-plus-stack parameter coverage from the prior `i32` helper into an
+  `i64` slice: `src/backend/x86/codegen/direct_calls.cpp` now also recognizes a
+  bounded `add_first_and_stack_param_i64(i64 %p.a, ..., i64 %p.g)` helper and
+  emits the typed SysV sequence with `mov rax, rdi` plus
+  `add rax, QWORD PTR [rbp + 16]`
+- added focused x86 backend coverage in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` that locks the helper-
+  side `rax`/`rdi` plus `QWORD PTR [rbp + 16]` path and the caller-side
+  six-register-plus-one-stack `i64` argument setup for the same bounded slice
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_bir_tests`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_mixed_reg_stack_param_add_i64_slice`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_mixed_reg_stack_param_add_slice`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_seventh_param_stack_add_slice`
+- next owner-path note:
+  use the paired `i32`/`i64` direct-emitter slices as the typed scalar ABI
+  reference when extracting the first reusable helper seam for the parked
+  translated `emit_param_ref_impl(...)` owner path
 
 - this iteration widened the build-active x86 direct-emitter parameter coverage
   from the prior stack-only seventh-argument helper into a mixed

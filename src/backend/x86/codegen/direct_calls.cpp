@@ -28,6 +28,7 @@ struct MinimalSeventhParamStackAddSlice {
 struct MinimalMixedRegStackParamAddSlice {
   std::string helper_name;
   std::string entry_name;
+  std::string scalar_type;
   std::int64_t first_arg_imm = 0;
   std::int64_t seventh_arg_imm = 0;
 };
@@ -284,24 +285,29 @@ std::optional<MinimalMixedRegStackParamAddSlice> parse_minimal_mixed_reg_stack_p
 
   const auto& helper = module.functions.front();
   const auto& entry = module.functions.back();
-  if (helper.name != "add_first_and_stack_param" || entry.name != "main" ||
-      helper.is_declaration || entry.is_declaration || helper.entry.value != 0 ||
-      entry.entry.value != 0 || helper.alloca_insts.size() != 2 || helper.blocks.size() != 1 ||
-      !helper.stack_objects.empty() || !entry.alloca_insts.empty() || !entry.stack_objects.empty() ||
-      entry.blocks.size() != 1 ||
-      helper.signature_text !=
-          "define i32 @add_first_and_stack_param(i32 %p.a, i32 %p.b, i32 %p.c, i32 %p.d, i32 %p.e, i32 %p.f, i32 %p.g)\n") {
+  const bool is_i32_helper = helper.name == "add_first_and_stack_param" &&
+                             helper.signature_text ==
+                                 "define i32 @add_first_and_stack_param(i32 %p.a, i32 %p.b, i32 %p.c, i32 %p.d, i32 %p.e, i32 %p.f, i32 %p.g)\n";
+  const bool is_i64_helper = helper.name == "add_first_and_stack_param_i64" &&
+                             helper.signature_text ==
+                                 "define i64 @add_first_and_stack_param_i64(i64 %p.a, i64 %p.b, i64 %p.c, i64 %p.d, i64 %p.e, i64 %p.f, i64 %p.g)\n";
+  if ((!is_i32_helper && !is_i64_helper) || entry.name != "main" || helper.is_declaration ||
+      entry.is_declaration || helper.entry.value != 0 || entry.entry.value != 0 ||
+      helper.alloca_insts.size() != 2 || helper.blocks.size() != 1 || !helper.stack_objects.empty() ||
+      !entry.alloca_insts.empty() || !entry.stack_objects.empty() || entry.blocks.size() != 1) {
     return std::nullopt;
   }
+  const std::string_view scalar_type = is_i64_helper ? "i64" : "i32";
 
   const auto* param_slot = std::get_if<LirAllocaOp>(&helper.alloca_insts.front());
   if (param_slot == nullptr || param_slot->result.str() != "%lv.param.g" ||
-      param_slot->type_str != "i32" || !param_slot->count.str().empty() || param_slot->align != 4) {
+      param_slot->type_str != scalar_type || !param_slot->count.str().empty() ||
+      param_slot->align != (is_i64_helper ? 8 : 4)) {
     return std::nullopt;
   }
 
   const auto* param_store = std::get_if<LirStoreOp>(&helper.alloca_insts[1]);
-  if (param_store == nullptr || param_store->type_str != "i32" || param_store->val != "%p.g" ||
+  if (param_store == nullptr || param_store->type_str != scalar_type || param_store->val != "%p.g" ||
       param_store->ptr != "%lv.param.g") {
     return std::nullopt;
   }
@@ -315,11 +321,11 @@ std::optional<MinimalMixedRegStackParamAddSlice> parse_minimal_mixed_reg_stack_p
   const auto* helper_add = std::get_if<LirBinOp>(&helper_entry.insts[1]);
   const auto* helper_ret = std::get_if<LirRet>(&helper_entry.terminator);
   if (helper_load0 == nullptr || helper_add == nullptr || helper_ret == nullptr ||
-      helper_load0->type_str != "i32" || helper_load0->ptr != "%lv.param.g" ||
-      helper_add->opcode.typed() != LirBinaryOpcode::Add || helper_add->type_str != "i32" ||
+      helper_load0->type_str != scalar_type || helper_load0->ptr != "%lv.param.g" ||
+      helper_add->opcode.typed() != LirBinaryOpcode::Add || helper_add->type_str != scalar_type ||
       helper_add->lhs != "%p.a" || helper_add->rhs != helper_load0->result ||
       !helper_ret->value_str.has_value() || *helper_ret->value_str != helper_add->result ||
-      helper_ret->type_str != "i32") {
+      helper_ret->type_str != scalar_type) {
     return std::nullopt;
   }
 
@@ -327,17 +333,28 @@ std::optional<MinimalMixedRegStackParamAddSlice> parse_minimal_mixed_reg_stack_p
   const auto* call = main_entry.insts.size() == 1 ? std::get_if<LirCallOp>(&main_entry.insts.front())
                                                   : nullptr;
   const auto* ret = std::get_if<LirRet>(&main_entry.terminator);
+  const std::string call_suffix =
+      std::string("(") + std::string(scalar_type) + ", " + std::string(scalar_type) + ", " +
+      std::string(scalar_type) + ", " + std::string(scalar_type) + ", " +
+      std::string(scalar_type) + ", " + std::string(scalar_type) + ", " +
+      std::string(scalar_type) + ")";
+  const std::string call_args =
+      std::string(scalar_type) + " 1, " + std::string(scalar_type) + " 2, " +
+      std::string(scalar_type) + " 3, " + std::string(scalar_type) + " 4, " +
+      std::string(scalar_type) + " 5, " + std::string(scalar_type) + " 6, " +
+      std::string(scalar_type) + " 7";
   if (main_entry.label != "entry" || call == nullptr || ret == nullptr ||
-      call->callee != "@add_first_and_stack_param" || call->return_type != "i32" ||
-      call->callee_type_suffix != "(i32, i32, i32, i32, i32, i32, i32)" ||
-      call->args_str != "i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7" ||
-      !ret->value_str.has_value() || *ret->value_str != call->result || ret->type_str != "i32") {
+      call->callee != ("@" + helper.name) || call->return_type != scalar_type ||
+      call->callee_type_suffix != call_suffix || call->args_str != call_args ||
+      !ret->value_str.has_value() || *ret->value_str != call->result ||
+      ret->type_str != scalar_type) {
     return std::nullopt;
   }
 
   return MinimalMixedRegStackParamAddSlice{
       .helper_name = helper.name,
       .entry_name = entry.name,
+      .scalar_type = std::string(scalar_type),
       .first_arg_imm = 1,
       .seventh_arg_imm = 7,
   };
@@ -1325,23 +1342,24 @@ std::string emit_minimal_mixed_reg_stack_param_add_asm(
     const MinimalMixedRegStackParamAddSlice& slice) {
   const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
   const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
+  const bool is_i64 = slice.scalar_type == "i64";
   std::ostringstream out;
   out << ".intel_syntax noprefix\n"
       << ".text\n"
       << emit_function_prelude(target_triple, helper_symbol)
       << "  push rbp\n"
       << "  mov rbp, rsp\n"
-      << "  mov eax, edi\n"
-      << "  add eax, DWORD PTR [rbp + 16]\n"
+      << "  mov " << (is_i64 ? "rax, rdi" : "eax, edi") << "\n"
+      << "  add " << (is_i64 ? "rax, QWORD PTR [rbp + 16]" : "eax, DWORD PTR [rbp + 16]") << "\n"
       << "  pop rbp\n"
       << "  ret\n"
       << emit_function_prelude(target_triple, entry_symbol)
-      << "  mov edi, " << slice.first_arg_imm << "\n"
-      << "  mov esi, 2\n"
-      << "  mov edx, 3\n"
-      << "  mov ecx, 4\n"
-      << "  mov r8d, 5\n"
-      << "  mov r9d, 6\n"
+      << "  mov " << (is_i64 ? "rdi" : "edi") << ", " << slice.first_arg_imm << "\n"
+      << "  mov " << (is_i64 ? "rsi" : "esi") << ", 2\n"
+      << "  mov " << (is_i64 ? "rdx" : "edx") << ", 3\n"
+      << "  mov " << (is_i64 ? "rcx" : "ecx") << ", 4\n"
+      << "  mov " << (is_i64 ? "r8" : "r8d") << ", 5\n"
+      << "  mov " << (is_i64 ? "r9" : "r9d") << ", 6\n"
       << "  push " << slice.seventh_arg_imm << "\n"
       << "  call " << helper_symbol << "\n"
       << "  add rsp, 8\n"
