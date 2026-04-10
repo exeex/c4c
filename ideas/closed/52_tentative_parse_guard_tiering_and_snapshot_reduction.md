@@ -1,7 +1,8 @@
 # Tentative Parse Guard Tiering And Snapshot Reduction
 
-Status: Open
+Status: Closed
 Last Updated: 2026-04-10
+Completed: 2026-04-10
 
 ## Goal
 
@@ -257,6 +258,62 @@ Observed `Release` baseline at the time this idea was written:
 - `--pp-only`: about `0.052s`
 - `--lex-only`: about `0.082s`
 - `--parse-only`: about `12.228s`
+
+## Completion Notes
+
+This idea completed the intended first-wave tiering work:
+
+- added `TentativeParseGuardLite` and shared heavy-vs-lite instrumentation
+- migrated the safest common-path probes first:
+  - `sizeof(type)` vs `sizeof(expr)`
+  - `if (...)` declaration-condition probing
+  - simple C++ range-for probing
+  - expression-like constructor-style direct-init vs function-declaration
+    lookahead in `parse_local_decl()`
+- kept semantically risky template/declarator/type-environment probes on the
+  heavy path
+- added focused parser-debug regression coverage for each migrated lite site
+- re-ran broader parser/full-suite validation after each migration slice with
+  monotonic regression-guard results
+
+## Final Measurement
+
+Release timing on `tests/cpp/eastl/eastl_vector_simple.cpp` after the first
+wave:
+
+- `ENABLE_HEAVY_TENTATIVE_SNAPSHOT=OFF`:
+  - `--pp-only`: `0.072s`, `0.035s`, `0.035s`
+  - `--lex-only`: `0.060s`, `0.060s`, `0.061s`
+  - `--parse-only`: `2.413s`, `2.324s`, `2.391s`
+- `ENABLE_HEAVY_TENTATIVE_SNAPSHOT=ON`:
+  - `--parse-only`: `11.473s`, `11.388s`, `11.321s`
+
+Result:
+
+- the lite/`OFF` build still matches the old `~2.4s` lower bound
+- the heavy/`ON` build still matches the old `~11.6s` cost shape
+- first-wave lite migrations landed correctly, but they did not materially
+  reduce total EASTL parse time while the heavy snapshot path remains enabled
+
+Temporary parser-debug instrumentation on a malformed EASTL probe input showed
+the same shape:
+
+- heavy tentative totals reached `enter=39704`, `commit=17465`,
+  `rollback=22239`
+- lite tentative totals reached `enter=234`, `commit=129`,
+  `rollback=105`
+
+## Leftover Follow-On
+
+This run should not be stretched further. The next performance idea should be
+tracked separately and should focus on one of:
+
+- deeper tiering of the remaining template/declarator-heavy tentative probes
+- replacing heavy whole-state rollback with a journaled heavy rollback model
+
+The current data says the remaining EASTL parser cost is still overwhelmingly
+dominated by heavy tentative parsing rather than preprocessing, lexing, or the
+already-migrated common-path probes.
 
 This establishes that the problem is parser-dominated rather than
 preprocessor- or lexer-dominated.
