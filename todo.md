@@ -213,6 +213,28 @@ Source Plan: plan.md
   monotonic against `test_fail_before.log`; the regression guard reported
   `2723` passed / `181` failed before and after with no newly failing tests
   and the existing `backend_bir_tests` `>30s` timeout warning unchanged
+- 2026-04-10 Step 1 audit refresh:
+  the source idea's older integration summary was stale
+  - CMake already builds `emit.cpp`, the `direct_*.cpp` seam files, and the
+    full translated `peephole/` subtree
+  - CMake still excludes the translated top-level owner units:
+    `alu.cpp`, `asm_emitter.cpp`, `atomics.cpp`, `calls.cpp`, `cast_ops.cpp`,
+    `comparison.cpp`, `f128.cpp`, `float_ops.cpp`, `globals.cpp`,
+    `i128_ops.cpp`, `inline_asm.cpp`, `intrinsics.cpp`, `memory.cpp`,
+    `prologue.cpp`, `returns.cpp`, and `variadic.cpp`
+  - `emit.cpp` still owns the direct-BIR and prepared-LIR dispatcher surface,
+    while successful emission already flows through the translated
+    `peephole_optimize(...)` entry
+  - the immediate owner-switch blocker is therefore top-level build wiring and
+    translated support-surface cleanup, not peephole activation itself
+- first compile-oriented migration cluster chosen on 2026-04-10:
+  start by wiring a leaf-like translated owner unit into CMake before touching
+  the larger dispatcher cutover
+  - preferred first candidate: `src/backend/x86/codegen/globals.cpp`
+  - near-neighbor candidates after that: `comparison.cpp` and `returns.cpp`
+  - expected blockers before broader cluster wiring:
+    placeholder-heavy `inline_asm.cpp` / `asm_emitter.cpp` and likely
+    signature/helper drift in some excluded top-level units
 - this iteration extends Step 4 with the first dedicated direct-printf sibling
   seam: the bounded repeated `printf` immediate direct-LIR route now lives in
   `src/backend/x86/codegen/direct_printf.cpp` instead of `emit.cpp`

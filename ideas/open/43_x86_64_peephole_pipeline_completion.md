@@ -40,24 +40,32 @@ The current tree contains many translated x86 codegen units, including:
 - a full `peephole/` subtree with translated pass files
 - helper/type scaffolding for the peephole pipeline
 
-On the current C++ tree:
+On the current C++ tree as of 2026-04-10:
 
-- CMake still compiles only `codegen/mod.cpp` and `codegen/emit.cpp`
-- `mod.cpp` is effectively an anchor, not a dispatcher
-- `emit.cpp` still owns the practical emission route
-- the peephole orchestration entry point is still stubbed
-- the x86 emission path does not currently flow through the translated peephole
-  optimizer
-- many translated top-level codegen units are therefore not yet real
-  participants in the backend
+- CMake compiles `codegen/mod.cpp`, `codegen/emit.cpp`, the local
+  `direct_*.cpp` seam files, and the full translated `peephole/` subtree
+- CMake still does not compile the translated top-level owner units such as
+  `alu.cpp`, `asm_emitter.cpp`, `atomics.cpp`, `calls.cpp`, `cast_ops.cpp`,
+  `comparison.cpp`, `f128.cpp`, `float_ops.cpp`, `globals.cpp`,
+  `i128_ops.cpp`, `inline_asm.cpp`, `intrinsics.cpp`, `memory.cpp`,
+  `prologue.cpp`, `returns.cpp`, and `variadic.cpp`
+- `mod.cpp` is still only an anchor, not the active dispatcher
+- `emit.cpp` still owns the practical direct-BIR and prepared-LIR emission
+  route through a large matcher/dispatcher surface
+- the translated peephole entry is no longer stubbed:
+  `emit.cpp` routes successful asm output through
+  `codegen::peephole::peephole_optimize(...)`
+- many top-level translated codegen units therefore remain parked source
+  inventory even though the peephole subtree is already real backend code
 
-So the immediate gap is integration, build wiring, and ownership transfer, not
-raw file presence.
+So the immediate gap is no longer peephole activation. It is top-level build
+wiring, emitter-entry ownership transfer, and the support-surface cleanup
+required to let the translated owner path replace `emit.cpp`.
 
 ## Initial Integration Inventory
 
 The active inventory for this idea starts from the currently translated but not
-meaningfully integrated x86 codegen surface.
+yet owner-integrated x86 codegen surface.
 
 ### Already Present But Not In The Build: top-level codegen units
 
@@ -78,7 +86,7 @@ meaningfully integrated x86 codegen surface.
 - `src/backend/x86/codegen/returns.cpp`
 - `src/backend/x86/codegen/variadic.cpp`
 
-### Present But Not Yet On The Real Main Path: peephole subtree
+### Already Built And Reachable: peephole subtree
 
 - `src/backend/x86/codegen/peephole/mod.cpp`
 - `src/backend/x86/codegen/peephole/types.cpp`
@@ -99,6 +107,47 @@ meaningfully integrated x86 codegen surface.
 This list is the starting execution queue for idea 43. Future slices should
 explicitly consume items from this inventory instead of inventing unrelated x86
 work.
+
+## Dependency Audit Refresh
+
+The translated reference owner is
+`ref/claudes-c-compiler/src/backend/x86/codegen/emit.rs`.
+
+Its dependency surface splits into four buckets on the current C++ tree:
+
+1. already-built local ownership:
+   `emit.cpp`, the `direct_*.cpp` sibling seams, and the translated peephole
+   subtree
+2. translated top-level implementation units that exist in-tree but are still
+   excluded from CMake:
+   `alu.cpp`, `asm_emitter.cpp`, `atomics.cpp`, `calls.cpp`, `cast_ops.cpp`,
+   `comparison.cpp`, `f128.cpp`, `float_ops.cpp`, `globals.cpp`,
+   `i128_ops.cpp`, `inline_asm.cpp`, `intrinsics.cpp`, `memory.cpp`,
+   `prologue.cpp`, `returns.cpp`, and `variadic.cpp`
+3. translated-support gaps that will block a straight owner cutover even after
+   build wiring:
+   `inline_asm.cpp` and `asm_emitter.cpp` are still placeholder-heavy, and
+   several top-level units emit template markers rather than settled assembly
+4. legacy owner surface that must eventually disappear:
+   `try_emit_module(...)`, `try_emit_prepared_lir_module(...)`, both
+   `emit_module(...)` overloads, and the associated direct matcher helpers in
+   `emit.cpp`
+
+## First Migration Cluster
+
+The first compile-oriented migration cluster should stay narrow:
+
+- add the translated leaf-like top-level units that depend on the existing
+  accumulator/helper surface but do not require immediate prologue/call-frame
+  ownership
+- start with `globals.cpp` as the first candidate, because it is self-contained
+  relative to `prologue.cpp`, `calls.cpp`, `variadic.cpp`, and inline-asm work
+- treat `comparison.cpp` and `returns.cpp` as near-neighbors, but expect
+  signature drift and helper-surface fixes before they can join the same build
+  cluster cleanly
+
+This keeps the next execution slice focused on compiling translated owner units
+into the build before attempting the larger `emit.cpp` dispatcher replacement.
 
 ## Goal
 
