@@ -472,6 +472,31 @@ void test_x86_direct_dispatch_owner_handles_local_temp_prepared_lir_slice() {
               "the x86 direct dispatcher owner should still forward the bounded local-temp slice into the sibling local helper owner");
 }
 
+void test_x86_direct_dispatch_owner_handles_affine_return_bir_slice() {
+  c4c::backend::bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::immediate_i32(7),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto rendered = c4c::backend::x86::try_emit_direct_bir_helper_module(module);
+  expect_true(rendered.has_value(),
+              "the x86 direct dispatcher owner should accept the bounded affine-return BIR slice after that helper route moves out of emit.cpp");
+  expect_true(rendered->find("main:\n  mov eax, 7\n  ret\n") != std::string::npos,
+              "the x86 direct dispatcher owner should still forward the bounded affine-return slice into the sibling direct-BIR return owner");
+}
+
 void test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module() {
   c4c::backend::bir::Module module;
   module.string_constants.push_back(c4c::backend::bir::StringConstant{
@@ -3759,6 +3784,7 @@ int main(int argc, char* argv[]) {
   test_x86_translated_globals_owner_handles_minimal_extern_scalar_global_load_slice();
   test_x86_translated_globals_owner_handles_minimal_scalar_global_store_reload_slice();
   test_x86_translated_globals_owner_handles_minimal_global_store_return_and_entry_return_slice();
+  test_x86_direct_dispatch_owner_handles_affine_return_bir_slice();
   test_x86_direct_dispatch_owner_handles_helper_backed_bir_slice();
   test_x86_direct_dispatch_owner_handles_helper_backed_prepared_lir_slice();
   test_x86_direct_dispatch_owner_handles_local_temp_prepared_lir_slice();

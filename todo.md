@@ -28,6 +28,27 @@ Source Plan: plan.md
 
 ## Current Iteration Notes
 
+- this iteration moved the remaining direct-BIR immediate/affine-return
+  parse/asm owner out of `src/backend/x86/codegen/emit.cpp` into the new
+  sibling owner file `src/backend/x86/codegen/direct_returns.cpp` through
+  `try_emit_minimal_affine_return_module(...)`
+- the direct-BIR helper dispatcher in
+  `src/backend/x86/codegen/direct_dispatch.cpp` now routes the bounded
+  immediate/affine-return slice through that sibling owner file, and
+  `emit.cpp` no longer keeps the local return matcher ladder for either direct
+  BIR or prepared-LIR helper-first probing
+- added focused backend coverage that calls the moved direct-BIR return helper
+  explicitly, plus a dispatcher-visible regression so the Step 3 ownership move
+  stays observable outside the public `try_emit_module(...)` surface
+- focused validation passed:
+  `cmake --build build -j8 --target backend_shared_util_tests backend_bir_tests`,
+  `./build/backend_shared_util_tests test_x86_direct_dispatch_owner_handles_affine_return_bir_slice`,
+  `./build/backend_bir_tests test_x86_direct_bir_return_helper_accepts_affine_return_slice`,
+  `./build/backend_bir_tests test_x86_try_emit_module_reports_direct_bir_support_explicitly`,
+  `./build/backend_shared_util_tests test_x86_direct_dispatch_owner_handles_helper_backed_bir_slice`,
+  `./build/backend_bir_tests test_x86_public_bir_emitter_delegates_direct_bir_route_to_shared_backend`,
+  `./build/backend_bir_tests test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly`, and
+  `./build/backend_shared_util_tests test_x86_direct_dispatch_owner_handles_local_temp_prepared_lir_slice`
 - this iteration moved the bounded direct-BIR countdown-loop parse/asm owner
   out of `src/backend/x86/codegen/emit.cpp` into the new sibling owner file
   `src/backend/x86/codegen/direct_loops.cpp` through

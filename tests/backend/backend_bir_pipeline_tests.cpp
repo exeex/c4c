@@ -1504,6 +1504,18 @@ void test_x86_try_emit_module_reports_direct_bir_support_explicitly() {
               "x86 direct BIR support probing should return no native rendering for unsupported multi-function modules instead of requiring exception-text classification");
 }
 
+void test_x86_direct_bir_return_helper_accepts_affine_return_slice() {
+  const auto rendered = c4c::backend::x86::try_emit_minimal_affine_return_module(
+      make_return_immediate_module());
+
+  expect_true(rendered.has_value(),
+              "the direct x86 BIR return helper seam should accept the bounded affine-return slice after ownership moves out of emit.cpp");
+  expect_contains(*rendered, ".globl tiny_ret",
+                  "the direct x86 BIR return helper seam should still emit the function definition after the Step 3 ownership move");
+  expect_contains(*rendered, "tiny_ret:\n  mov eax, 7\n  ret\n",
+                  "the direct x86 BIR return helper seam should still lower the bounded affine-return slice on the native x86 path");
+}
+
 void test_aarch64_try_emit_module_reports_direct_bir_support_explicitly() {
   const auto supported =
       c4c::backend::aarch64::try_emit_module(make_return_immediate_module());
@@ -3262,6 +3274,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_entry_rejects_unsupported_direct_lir_input_on_x86);
   RUN_TEST(test_backend_entry_rejects_unsupported_direct_lir_input_on_aarch64);
   RUN_TEST(test_x86_try_emit_module_reports_direct_bir_support_explicitly);
+  RUN_TEST(test_x86_direct_bir_return_helper_accepts_affine_return_slice);
   RUN_TEST(test_aarch64_try_emit_module_reports_direct_bir_support_explicitly);
   RUN_TEST(test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
   RUN_TEST(test_x86_try_emit_prepared_lir_module_accepts_variadic_sum2_runtime_slice);
