@@ -10,32 +10,54 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  resume the first real translated `emit_param_ref_impl(...)` cutover path now
-  that the build-active direct emitter locks both `i32` and `i64` integer
-  register-plus-stack parameter loads
-  - use the current direct-emitter slices as the concrete ABI reference for the
-    parked translated prologue owner before widening into SSE or aggregates
-  - keep the slice helper-focused until the translated `prologue.cpp` owner can
-    replace more of the provisional body without a broad build hookup
+  widen the first shared translated `emit_param_ref_impl(...)` helper seam
+  beyond the new typed integer scalar register/stack load contract without
+  pulling the parked translated prologue owner into the active build yet
+  - use the new helper seam as the ABI reference for the next non-alloca-backed
+    pre-store or additional scalar-class owner slice
+  - keep the slice helper-focused until the public x86 codegen surface can
+    absorb more of `src/backend/x86/codegen/prologue.cpp` cleanly
 
 ## Next Slice
 
-- route the provisional x86 prologue through a build-active helper seam that
-  mirrors the now-test-locked direct integer-register and stack-scalar
-  `ParamRef` loads for both `i32` and `i64`
-- then wire that seam into the parked `emit_param_ref_impl(...)` owner path
-  before widening into dead-param-alloca pre-store, SSE, or aggregate
-  parameter classes
+- widen the new helper-backed integer `ParamRef` seam into the next owner-path
+  slice, with non-alloca-backed pre-store or another typed scalar class as the
+  leading candidate before SSE or aggregate parameter classes
 - keep the translated prologue owner parked out of build until the public
   x86 codegen header exposes enough complete backend surface for
   `src/backend/x86/codegen/prologue.cpp` to compile cleanly
 - continue using build-active direct-emitter slices to lock the intended x86
-  parameter-stack behavior meanwhile, with the next likely widening point being
+  parameter-stack behavior meanwhile, with the next widening point remaining
   non-alloca-backed pre-store or another typed scalar class rather than a new
   ownership switch
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration added the first reusable shared helper seam for the parked
+  translated x86 `emit_param_ref_impl(...)` owner path: `mod.cpp` and
+  `x86_codegen.hpp` now expose typed scalar load helpers for the initial
+  integer register and stack-scalar cases, including the `i32` `movslq` /
+  `edi` rule and the `i64` `movq` / `rdi` plus
+  `QWORD PTR [rbp + 16 + offset]` rule mirrored from the build-active direct
+  emitter slices
+- `tests/backend/backend_shared_util_tests.cpp` now locks that helper contract,
+  proving the shared seam matches the already-covered direct-emitter ABI
+  behavior for the first translated `ParamRef` integer scalar register and
+  stack loads
+- `src/backend/x86/codegen/prologue.cpp` was updated in the parked translated
+  owner path to route those first integer scalar `ParamRef` loads through the
+  new helper seam instead of the literal `<load-parameter>` placeholder
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation passed for monotonicity on this slice:
+  `ctest --test-dir build -j8 --output-on-failure > test_before.log 2>&1`,
+  `ctest --test-dir build -j8 --output-on-failure > test_after.log 2>&1`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+  reported `3190` passed / `186` failed before and after, with no newly
+  failing tests; the checker did note one new `>30s` case `backend_bir_tests`
 
 - this iteration widened the build-active x86 direct-emitter mixed
   register-plus-stack parameter coverage from the prior `i32` helper into an

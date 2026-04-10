@@ -299,6 +299,59 @@ std::int64_t x86_param_stack_offset(std::int64_t class_stack_offset) {
   return x86_param_stack_base_offset() + class_stack_offset;
 }
 
+const char* x86_param_ref_scalar_load_instr(std::string_view scalar_type) {
+  if (scalar_type == "i32") {
+    return "movslq";
+  }
+  if (scalar_type == "u32" || scalar_type == "f32") {
+    return "movl";
+  }
+  if (scalar_type == "i64" || scalar_type == "u64" || scalar_type == "f64" ||
+      scalar_type == "ptr") {
+    return "movq";
+  }
+  return "";
+}
+
+const char* x86_param_ref_scalar_dest_reg(std::string_view scalar_type) {
+  if (scalar_type == "u32" || scalar_type == "f32") {
+    return "%eax";
+  }
+  if (scalar_type == "i32" || scalar_type == "i64" || scalar_type == "u64" ||
+      scalar_type == "f64" || scalar_type == "ptr") {
+    return "%rax";
+  }
+  return "";
+}
+
+const char* x86_param_ref_scalar_arg_reg(std::size_t reg_index, std::string_view scalar_type) {
+  if (reg_index >= std::size(kX86ArgRegs)) {
+    return "";
+  }
+  const auto base_reg = x86_arg_reg_name(reg_index);
+  if (scalar_type == "i32" || scalar_type == "u32" || scalar_type == "f32") {
+    return reg_name_to_32(base_reg);
+  }
+  if (scalar_type == "i64" || scalar_type == "u64" || scalar_type == "f64" ||
+      scalar_type == "ptr") {
+    return base_reg;
+  }
+  return "";
+}
+
+std::string x86_param_ref_scalar_stack_operand(std::int64_t class_stack_offset,
+                                               std::string_view scalar_type) {
+  const auto stack_offset = x86_param_stack_offset(class_stack_offset);
+  if (scalar_type == "i32" || scalar_type == "u32" || scalar_type == "f32") {
+    return "DWORD PTR [rbp + " + std::to_string(stack_offset) + "]";
+  }
+  if (scalar_type == "i64" || scalar_type == "u64" || scalar_type == "f64" ||
+      scalar_type == "ptr") {
+    return "QWORD PTR [rbp + " + std::to_string(stack_offset) + "]";
+  }
+  return "";
+}
+
 bool x86_phys_reg_is_callee_saved(c4c::backend::PhysReg reg) {
   return reg.index >= 1 && reg.index <= 5;
 }

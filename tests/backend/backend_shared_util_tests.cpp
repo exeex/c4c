@@ -201,6 +201,22 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   c4c::backend::x86::x86_param_stack_base_offset() == 16 &&
                   c4c::backend::x86::x86_param_stack_offset(0) == 16 &&
                   c4c::backend::x86::x86_param_stack_offset(8) == 24 &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("i32")) ==
+                      "movslq" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("i64")) ==
+                      "movq" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("i32")) ==
+                      "%rax" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("i64")) ==
+                      "%rax" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_arg_reg(0, "i32")) ==
+                      "edi" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_arg_reg(0, "i64")) ==
+                      "rdi" &&
+                  c4c::backend::x86::x86_param_ref_scalar_stack_operand(0, "i32") ==
+                      "DWORD PTR [rbp + 16]" &&
+                  c4c::backend::x86::x86_param_ref_scalar_stack_operand(8, "i64") ==
+                      "QWORD PTR [rbp + 24]" &&
                   c4c::backend::x86::x86_phys_reg_is_callee_saved(c4c::backend::PhysReg{1}) &&
                   !c4c::backend::x86::x86_phys_reg_is_callee_saved(c4c::backend::PhysReg{12}) &&
                   c4c::backend::x86::x86_param_can_prestore_direct_to_reg(
@@ -217,7 +233,7 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   c4c::backend::x86::x86_variadic_gp_save_offset(-176, 5) == -136 &&
                   c4c::backend::x86::x86_variadic_sse_save_offset(-176, 0) == -128 &&
                   c4c::backend::x86::x86_variadic_sse_save_offset(-176, 7) == -16,
-              "x86 translated prologue-side helpers should keep the ref callee-saved mapping, parameter-storage / ParamRef pre-store policy, variadic register-save-area sizing, and 16-byte frame-alignment contract for the future translated prologue owner path");
+              "x86 translated prologue-side helpers should keep the ref callee-saved mapping, typed integer ParamRef register/stack load contract, parameter-storage / ParamRef pre-store policy, variadic register-save-area sizing, and 16-byte frame-alignment contract for the future translated prologue owner path");
 
   expect_true(std::string(c4c::backend::x86::phys_reg_name(c4c::backend::PhysReg{1})) == "rbx" &&
                   std::string(c4c::backend::x86::phys_reg_name(c4c::backend::PhysReg{12})) == "r8" &&

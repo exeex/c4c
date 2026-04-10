@@ -2,6 +2,31 @@
 
 namespace c4c::backend::x86 {
 
+namespace {
+
+std::string_view scalar_param_ref_type_name(IrType ty) {
+  switch (ty) {
+    case IrType::I32:
+      return "i32";
+    case IrType::U32:
+      return "u32";
+    case IrType::F32:
+      return "f32";
+    case IrType::I64:
+      return "i64";
+    case IrType::U64:
+      return "u64";
+    case IrType::F64:
+      return "f64";
+    case IrType::Ptr:
+      return "ptr";
+    default:
+      return "";
+  }
+}
+
+}  // namespace
+
 std::int64_t X86Codegen::calculate_stack_space_impl(const IrFunction& func) {
   // Mirror the ref pipeline: classify parameters, run register allocation, and
   // then account for stack slots and callee-saved registers.
@@ -147,8 +172,32 @@ void X86Codegen::emit_param_ref_impl(const Value& dest, std::size_t param_idx, I
   if (this->state.param_pre_stored.contains(param_idx)) {
     return;
   }
-  this->state.emit("    <load-parameter>");
-  this->store_rax_to(dest);
+  const auto scalar_type = scalar_param_ref_type_name(ty);
+  if (scalar_type.empty()) {
+    return;
+  }
+
+  const auto& param_class = this->state.param_classes[param_idx];
+  if (const auto* reg = std::get_if<ParamClass::IntReg>(&param_class.data)) {
+    const auto* load_instr = x86_param_ref_scalar_load_instr(scalar_type);
+    const auto* src_reg = x86_param_ref_scalar_arg_reg(reg->reg_idx, scalar_type);
+    const auto* dest_reg = x86_param_ref_scalar_dest_reg(scalar_type);
+    if (load_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
+      this->state.emit_fmt(format_args!("    {} %{}, {}", load_instr, src_reg, dest_reg));
+      this->store_rax_to(dest);
+      return;
+    }
+  }
+  if (const auto* stack = std::get_if<ParamClass::StackScalar>(&param_class.data)) {
+    const auto* load_instr = x86_param_ref_scalar_load_instr(scalar_type);
+    const auto stack_operand = x86_param_ref_scalar_stack_operand(stack->offset, scalar_type);
+    const auto* dest_reg = x86_param_ref_scalar_dest_reg(scalar_type);
+    if (load_instr[0] != '\0' && !stack_operand.empty() && dest_reg[0] != '\0') {
+      this->state.emit_fmt(format_args!("    {} {}, {}", load_instr, stack_operand, dest_reg));
+      this->store_rax_to(dest);
+      return;
+    }
+  }
 }
 
 void X86Codegen::emit_epilogue_and_ret_impl(std::int64_t frame_size) {
