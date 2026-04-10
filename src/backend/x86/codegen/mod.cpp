@@ -1,5 +1,6 @@
 #include "x86_codegen.hpp"
 
+#include "../../generation.hpp"
 #include "../../regalloc.hpp"
 #include "../../bir.hpp"
 
@@ -260,6 +261,14 @@ std::int64_t x86_variadic_reg_save_area_size(bool no_sse) { return no_sse ? 48 :
 
 std::int64_t x86_aligned_frame_size(std::int64_t raw_space) {
   return raw_space > 0 ? (raw_space + 15) & ~15 : 0;
+}
+
+c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
+    const c4c::backend::LivenessInput& liveness_input) {
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = x86_callee_saved_regs();
+  config.caller_saved_regs = x86_caller_saved_regs();
+  return c4c::backend::run_regalloc_and_merge_clobbers(liveness_input, config, {});
 }
 
 std::string decode_llvm_byte_string(std::string_view text) {

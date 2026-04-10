@@ -1627,6 +1627,43 @@ void test_backend_shared_regalloc_helper_accepts_backend_owned_liveness_input() 
               "backend-owned liveness input should preserve cached liveness for downstream stack-layout analysis");
 }
 
+void test_x86_shared_regalloc_helper_uses_translated_register_pools() {
+  const auto module = make_call_crossing_interval_module();
+  const auto& function = module.functions.back();
+  const auto input = lower_test_backend_cfg_liveness_input(function);
+  const auto regalloc = c4c::backend::x86::run_shared_x86_regalloc(input);
+
+  const auto* before_call =
+      c4c::backend::stack_layout::find_assigned_reg(regalloc, "%t0");
+  const auto* final_sum =
+      c4c::backend::stack_layout::find_assigned_reg(regalloc, "%t2");
+  const auto* cached_liveness =
+      c4c::backend::stack_layout::find_cached_liveness(regalloc);
+  const auto callee_saved = c4c::backend::x86::x86_callee_saved_regs();
+  const auto caller_saved = c4c::backend::x86::x86_caller_saved_regs();
+  const auto in_pool = [](const std::vector<c4c::backend::PhysReg>& pool,
+                          const c4c::backend::PhysReg* reg) {
+    return reg != nullptr &&
+           std::any_of(pool.begin(), pool.end(), [&](const c4c::backend::PhysReg& candidate) {
+             return candidate.index == reg->index;
+           });
+  };
+
+  expect_true(in_pool(callee_saved, before_call),
+              "x86 shared regalloc helper should assign call-spanning values from the translated callee-saved register pool");
+  expect_true(in_pool(caller_saved, final_sum),
+              "x86 shared regalloc helper should assign non-call-spanning values from the translated caller-saved register pool");
+  expect_true(!regalloc.used_callee_saved.empty() &&
+                  c4c::backend::stack_layout::uses_callee_saved_reg(regalloc,
+                                                                    regalloc.used_callee_saved.front()),
+              "x86 shared regalloc helper should expose allocator-used translated callee-saved registers through the shared handoff view");
+  expect_true(cached_liveness != nullptr &&
+                  cached_liveness->find_interval("%t0") != nullptr &&
+                  cached_liveness->find_interval("%t1") != nullptr &&
+                  cached_liveness->find_interval("%t2") != nullptr,
+              "x86 shared regalloc helper should retain cached liveness for downstream translated prologue/regalloc ownership work");
+}
+
 void test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks() {
   const auto module = make_interval_phi_join_module();
   const auto& function = module.functions.front();
@@ -3913,6 +3950,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_regalloc_helper_filters_and_merges_clobbers();
   test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view();
   test_backend_shared_regalloc_helper_accepts_backend_owned_liveness_input();
+  test_x86_shared_regalloc_helper_uses_translated_register_pools();
   test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks();
   test_backend_shared_stack_layout_analysis_accepts_backend_owned_input();
   test_backend_shared_stack_layout_input_collects_value_names();

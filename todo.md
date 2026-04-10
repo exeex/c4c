@@ -10,25 +10,49 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  expose the translated x86 prologue-side frame helpers through
+  expose the next prologue/regalloc-side translated helper seam through
   `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp` without pulling the
   full translated prologue owner path into the build yet
-  - keep focused shared-util coverage on the translated frame-alignment and
-    variadic register-save-area contract
-  - keep validation centered on backend-only targets while this remains a
-    support-surface slice, not a full translated prologue owner compile-in
+  - implement the already-declared `run_shared_x86_regalloc(...)` helper using
+    the translated x86 callee-saved and caller-saved pool helpers
+  - add focused shared-util coverage that locks the x86 regalloc handoff to the
+    translated register-pool contract while keeping validation backend-only
 
 ## Next Slice
 
 - continue the translated dependency inventory with the next already-built
-  helper family from `ref/.../emit.rs` after the prologue-side frame helper
-  extraction lands
-- likely keep moving through prologue-adjacent shared helpers that can be
-  exposed through `mod.cpp`/`x86_codegen.hpp` without compiling the full
-  translated prologue owner path yet
+  prologue/inline-asm-adjacent helper family after the shared x86 regalloc
+  seam lands
+- likely keep moving through helper-only support surfaces that can be exposed
+  through `mod.cpp`/`x86_codegen.hpp` without compiling the full translated
+  prologue owner path yet
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration implemented the already-declared shared x86 regalloc seam in
+  `src/backend/x86/codegen/mod.cpp`:
+  `run_shared_x86_regalloc(...)` now builds its config from the translated
+  `x86_callee_saved_regs()` and `x86_caller_saved_regs()` helper surface and
+  routes through the shared backend regalloc handoff
+- added focused shared-util coverage that locks the new x86 regalloc seam to
+  the translated register-pool contract, proving call-spanning values come from
+  the translated callee-saved pool, non-call-spanning values come from the
+  translated caller-saved pool, and cached liveness stays visible through the
+  shared handoff
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests test_x86_shared_regalloc_helper_uses_translated_register_pools`,
+  `./build/backend_shared_util_tests`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation note:
+  the first post-build full-suite rerun changed 12
+  `llvm_gcc_c_torture_*` failures at the same `3190` passed / `186` failed
+  count, but a second rerun matched the original baseline exactly
+- broad validation passed on the matched rerun:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after_rerun.log --allow-non-decreasing-passed`
+  reported `3190` passed / `186` failed before and after, with no newly
+  failing tests and no new `>30s` cases
 
 - this iteration exposed the translated x86 prologue-side frame helpers
   through `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp`:
