@@ -109,7 +109,8 @@ bool is_supported_direct_stack_reload(std::string_view trimmed, RegId dst_fam) {
     return false;
   }
   const std::string dst_reg = std::string("%") + kReg64Names[dst_fam];
-  return starts_with(trimmed, "movq ") && trailing_operand(trimmed) == dst_reg;
+  return ((starts_with(trimmed, "movq ") || starts_with(trimmed, "movslq ")) &&
+          trailing_operand(trimmed) == dst_reg);
 }
 
 RegId effective_dest_reg(const LineInfo& info, std::string_view trimmed) {

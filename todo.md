@@ -9,18 +9,19 @@ Source Plan: plan.md
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
   first live optimization round
 - immediate target:
-  evaluate the next bounded stack-load trampoline gap after the new direct
-  64-bit loop-carried reload slice
+  evaluate whether the remaining bounded stack-load family needs one more
+  explicit safety regression or should stay parked behind the current
+  predecessor-store and fallthrough rules
   - keep the next rewrite scope limited to one explicit reload/copy-back form
-    with recorded predecessor-store and fallthrough safety rules instead of
-    widening into generic spill coalescing
+    or one explicit negative/safety case instead of widening into generic spill
+    coalescing
 
 ## Next Slice
 
-- evaluate whether the next bounded stack-load trampoline form should be the
-  direct sign-extending reload (`movslq -N(%rbp), %loop_reg`) or whether it
-  should stay parked until its predecessor-store and fallthrough rules are
-  written down as explicitly as the direct `movq` reload slice
+- decide whether to add one explicit non-coalescing regression for stack-load
+  trampolines whose predecessor-store or fallthrough usage violates the current
+  `%rax`/`%eax` bounded rules, or to park the rest of the stack-load family for
+  now
 - keep `frame_compact.cpp` parked until dead-store and callee-save translated
   passes are live enough for frame shrinking to be meaningful
 - continue evaluating which remaining translated peephole units can be compiled
@@ -91,6 +92,14 @@ Source Plan: plan.md
   pre-existing typed LIR validation coverage before it can serve as a narrow
   harness for the new direct-reload regression, so this slice again used the
   standalone backend test filter plus the full-suite regression guard
+- this iteration closes the direct sign-extending stack-reload variant without
+  widening predecessor analysis: the live pass now accepts a single-slot
+  `%eax` spill whose trampoline reload writes the loop-carried register
+  directly via `movslq -N(%rbp), %loop_reg`
+- the aggregate `backend_bir_tests` runner still aborts in the same
+  pre-existing typed LIR validation coverage before it can serve as a narrow
+  harness for the new direct-`movslq` regression, so this slice again uses the
+  standalone backend test filter/subset plus the full-suite regression guard
 
 ## Recently Completed
 
@@ -174,6 +183,12 @@ Source Plan: plan.md
   register directly from `(%rbp)` instead of bouncing through `%rax`
 - added a direct regression test that proves the live x86 peephole now rewrites
   that bounded direct-reload stack-spill trampoline onto the loop-carried
+  register and drops the now-dead spill and direct trampoline reload
+- widened the live translated loop-trampoline pass to coalesce a bounded
+  32-bit single-slot stack spill when the trampoline sign-extends directly from
+  `(%rbp)` into the loop-carried register instead of reloading `%eax` first
+- added a direct regression test that proves the live x86 peephole now rewrites
+  that bounded direct `movslq` stack-spill trampoline onto the loop-carried
   register and drops the now-dead spill and direct trampoline reload
 - rebuilt and reran the full ctest suite with monotonic results:
   `183` failures before, `181` failures after, no newly failing tests
