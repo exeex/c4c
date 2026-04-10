@@ -409,6 +409,12 @@ std::vector<c4c::backend::PhysReg> x86_prune_caller_saved_regs(bool has_indirect
                                                                bool has_atomic_rmw);
 std::optional<c4c::backend::PhysReg> x86_constraint_to_callee_saved(std::string_view constraint);
 std::optional<c4c::backend::PhysReg> x86_clobber_name_to_callee_saved(std::string_view name);
+const char* x86_arg_reg_name(std::size_t reg_index);
+std::int64_t x86_param_stack_base_offset();
+bool x86_phys_reg_is_callee_saved(c4c::backend::PhysReg reg);
+bool x86_param_can_prestore_direct_to_reg(bool has_stack_slot,
+                                          std::optional<c4c::backend::PhysReg> assigned_reg,
+                                          std::size_t assigned_param_count);
 std::int64_t x86_variadic_reg_save_area_size(bool no_sse);
 std::int64_t x86_aligned_frame_size(std::int64_t raw_space);
 std::int64_t x86_stack_probe_page_size();

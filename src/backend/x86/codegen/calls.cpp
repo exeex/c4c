@@ -2,12 +2,6 @@
 
 namespace c4c::backend::x86 {
 
-namespace {
-
-constexpr const char* X86_ARG_REGS[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
-
-}  // namespace
-
 CallAbiConfig X86Codegen::call_abi_config_impl() const {
   return CallAbiConfig{
       .max_int_regs = 6,
@@ -68,7 +62,7 @@ void X86Codegen::emit_call_reg_args_impl(const std::vector<Operand>& args,
   for (std::size_t i = 0; i < args.size(); ++i) {
     if (arg_classes[i].is_register()) {
       this->operand_to_rax(args[i]);
-      this->state.emit(std::string("    movq %rax, %") + X86_ARG_REGS[i]);
+      this->state.emit(std::string("    movq %rax, %") + x86_arg_reg_name(i));
     }
   }
   this->state.reg_cache.invalidate_all();

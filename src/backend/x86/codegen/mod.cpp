@@ -16,6 +16,8 @@ namespace {
 [[maybe_unused]] constexpr std::string_view kCodegenModuleOverview =
     "Mechanical translation of ref/claudes-c-compiler/src/backend/x86/codegen";
 constexpr std::int64_t kX86StackProbePageSize = 4096;
+constexpr std::int64_t kX86ParamStackBase = 16;
+constexpr const char* kX86ArgRegs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
 
 }  // namespace
 
@@ -285,6 +287,23 @@ std::optional<c4c::backend::PhysReg> x86_clobber_name_to_callee_saved(std::strin
     return c4c::backend::PhysReg{5};
   }
   return std::nullopt;
+}
+
+const char* x86_arg_reg_name(std::size_t reg_index) {
+  return reg_index < std::size(kX86ArgRegs) ? kX86ArgRegs[reg_index] : "";
+}
+
+std::int64_t x86_param_stack_base_offset() { return kX86ParamStackBase; }
+
+bool x86_phys_reg_is_callee_saved(c4c::backend::PhysReg reg) {
+  return reg.index >= 1 && reg.index <= 5;
+}
+
+bool x86_param_can_prestore_direct_to_reg(bool has_stack_slot,
+                                          std::optional<c4c::backend::PhysReg> assigned_reg,
+                                          std::size_t assigned_param_count) {
+  return !has_stack_slot && assigned_reg.has_value() &&
+         x86_phys_reg_is_callee_saved(*assigned_reg) && assigned_param_count == 1;
 }
 
 std::int64_t x86_variadic_reg_save_area_size(bool no_sse) { return no_sse ? 48 : 176; }

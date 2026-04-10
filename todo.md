@@ -10,24 +10,42 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  continue through the next prologue-side helper family after the variadic
-  register-save-area seam, likely around parameter-storage / `ParamRef`
-  ownership that can still route through `mod.cpp`/`x86_codegen.hpp` without
-  pulling the full translated prologue owner into the build yet
+  expose the next parameter-storage / `ParamRef` helper seam through
+  `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp` without pulling the
+  full translated prologue owner into the build yet
+  - cover shared ABI arg-register naming, parameter stack-base offset, and the
+    dead-param-alloca pre-store eligibility rule that decides when a `ParamRef`
+    destination can be preloaded directly into a callee-saved register
   - keep the slice helper-only and backend-focused until the translated
     prologue owner can replace more of the provisional `prologue.cpp` body
 
 ## Next Slice
 
-- continue the translated dependency inventory with the next already-built
-  prologue-side helper family after the variadic register-save-area seam lands
-- likely next helper candidates are bounded parameter-storage and `ParamRef`
-  helpers that can expose ref-owned slot/load rules through
-  `mod.cpp`/`x86_codegen.hpp` without compiling the full translated prologue
-  owner path yet
+- continue from the new shared parameter-storage helper surface into the next
+  bounded `emit_store_params_impl` / `emit_param_ref_impl` translation slice
+- route the provisional x86 prologue through the already-exposed helper
+  contract first, likely starting with the integer-register + dead-param-alloca
+  pre-store path before widening into SSE or stack-only parameter classes
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration exposed the translated x86 parameter-storage / `ParamRef`
+  helper seam through `src/backend/x86/codegen/mod.cpp` and
+  `x86_codegen.hpp`: `x86_arg_reg_name(...)`,
+  `x86_param_stack_base_offset()`, `x86_phys_reg_is_callee_saved(...)`, and
+  `x86_param_can_prestore_direct_to_reg(...)`
+- `src/backend/x86/codegen/calls.cpp` now routes outgoing integer argument
+  register selection through that shared helper surface instead of a local
+  file-only register-name table, keeping call-side ABI register naming aligned
+  with the future translated prologue parameter-owner path
+- added focused shared-util coverage that locks the translated parameter ABI
+  register order, the `%rbp+16` incoming stack-parameter base, and the
+  dead-param-alloca pre-store eligibility rule that only allows direct
+  pre-store to unshared callee-saved destinations
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests` and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
 
 - this iteration exposed the translated x86 variadic register-save-area layout
   helpers through `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp`:
