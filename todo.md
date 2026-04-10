@@ -7,12 +7,12 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2 bounded shared-BIR recovery for the neighboring source-backed
-  `00051.c` as the next earliest remaining red source-backed x86 case after the
-  bounded `00050.c` recovery
+  `00052.c` as the next earliest remaining non-parked red source-backed x86
+  case after classifying and parking `00051.c`
 - current exact slice:
-  classify `c_testsuite_x86_backend_src_00051_c` from the refreshed targeted
-  state and decide whether it continues the bounded post-`00050.c`
-  source-backed aggregate lane or needs a new parked idea before widening
+  recover `c_testsuite_x86_backend_src_00052_c` through the smallest shared-BIR
+  local-slot or aggregate fold that preserves idea 44's bounded single-function
+  lane without widening into the parked switch/case/goto control-flow seam
 
 ## Next Slice
 
@@ -20,12 +20,13 @@ Source Plan: plan.md
   parked in
   `ideas/open/48_shared_bir_family_b_recursive_global_pointer_routes_after_x86_00040.md`
   instead of widening idea 44 ad hoc
-- after the bounded `00049.c` seam recovery, keep the next earliest
-  remaining source-backed x86 case as `00051.c` from the refreshed targeted
-  state instead of broadening the named-struct/global-pointer lane ad hoc
-- if `00051.c` proves to be a distinct family rather than a direct extension
-  of the `00046.c` through `00050.c` lane, record that boundary explicitly
-  before widening coverage
+- keep the newly classified `00051.c` switch/case/goto seam parked in
+  `ideas/open/49_x86_64_shared_bir_switch_case_goto_entry_modules_after_x86_00051.md`
+  instead of widening idea 44 ad hoc
+- after parking `00051.c`, keep the next earliest remaining non-parked
+  source-backed x86 case as `00052.c` from the refreshed targeted state
+- if `00052.c` turns out to need a different ownership seam than the earlier
+  simple local-slot folds, record that boundary explicitly before widening
 - if the refreshed broad-suite guard is still red after the unary-not /
   unary-minus, early source-backed recoveries, and the bounded `00041.c`
   through `00049.c` fixes, keep treating the stale baseline as a parked
@@ -39,6 +40,30 @@ Source Plan: plan.md
   before choosing the next bounded seam
 
 ## Recently Completed
+
+- classified `c_testsuite_x86_backend_src_00051_c` from the refreshed targeted
+  state and confirmed that it does not continue the bounded `00046.c` through
+  `00050.c` aggregate lane: isolated repro
+  `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00051_c)$'`
+  still stops at the unsupported x86 direct-LIR boundary, while
+  `./build/c4cll --dump-hir-summary tests/c/external/c-testsuite/src/00051.c`
+  reports `functions=1 globals=1 blocks=24 statements=37 expressions=19` and
+  `./build/c4cll --codegen llvm tests/c/external/c-testsuite/src/00051.c`
+  shows repeated `switch(x)` entry points, bridge-block fallthrough, and
+  label/goto transfers through `next` and `foo`
+- parked that distinct control-flow seam in
+  `ideas/open/49_x86_64_shared_bir_switch_case_goto_entry_modules_after_x86_00051.md`
+  so idea 44 stays focused on the simpler bounded x86 source-backed lane
+- classified the next earliest remaining non-parked red source-backed x86 case
+  from the refreshed targeted state as `c_testsuite_x86_backend_src_00052_c`;
+  isolated repro
+  `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00052_c)$'`
+  still stops at the unsupported direct-LIR boundary, while
+  `./build/c4cll --dump-hir-summary tests/c/external/c-testsuite/src/00052.c`
+  reports `functions=1 globals=0 blocks=1` and
+  `./build/c4cll --codegen llvm tests/c/external/c-testsuite/src/00052.c`
+  shows a single-function local `%struct.T` alloca plus one field store/load
+  zero-return route, which appears to fit the simpler local-slot seam family
 
 - recovered the bounded shared-BIR `00050.c` seam by teaching
   `src/backend/lowering/lir_to_bir/memory.cpp` to recognize the exact

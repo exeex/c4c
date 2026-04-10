@@ -178,6 +178,16 @@ Step 1 classification snapshot from the current tree on 2026-04-09:
   This seam is now parked separately in
   `ideas/open/46_x86_64_shared_bir_switch_fallthrough_loop_modules.md` so idea
   44 can stay focused on the remaining simpler Family A survivor.
+- Family A3: switch/case/goto entry modules that are still single-function but
+  no longer fit the bounded aggregate or simple local-slot folds already being
+  recovered under idea 44.
+  Representative current failure:
+  `c_testsuite_x86_backend_src_00051_c`.
+  Common shapes: repeated `switch` entry blocks, bridge-block fallthrough,
+  label/goto transfers, and case/default-controlled returns.
+  This seam is now parked separately in
+  `ideas/open/49_x86_64_shared_bir_switch_case_goto_entry_modules_after_x86_00051.md`
+  so idea 44 can continue on the next simpler local-slot survivor.
 - Family B: global-rich and initializer-heavy modules whose direct-LIR surface
   still exceeds the shared BIR gateway because they carry many globals, string
   pool entries, extern declarations, or helper functions. Representative
@@ -209,6 +219,14 @@ Current-tree Step 2 progress after the `00141.c` slice:
   `c_testsuite_x86_backend_src_00086_c`,
   `c_testsuite_x86_backend_src_00138_c`, and
   `c_testsuite_x86_backend_src_00141_c`
+- later aggregate sub-lane now extends through:
+  `c_testsuite_x86_backend_src_00050_c`
+- `c_testsuite_x86_backend_src_00051_c` is now explicitly parked in
+  `ideas/open/49_x86_64_shared_bir_switch_case_goto_entry_modules_after_x86_00051.md`
+  because its switch/case/goto CFG is not a direct extension of the bounded
+  `00046.c` through `00050.c` aggregate folds
+- the next simple source-backed survivor on the active idea 44 lane is now
+  `c_testsuite_x86_backend_src_00052_c`
 - full-suite monotonic validation now stands at:
   `2847` total,
   `2664` passing,
