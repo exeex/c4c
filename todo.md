@@ -80,6 +80,19 @@ Source Plan: plan.md
   and
   `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00054_local_enum_constant_compare_store_load_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00055_shifted_local_enum_constant_compare_store_load_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00054_c|c_testsuite_x86_backend_src_00055_c)$'`,
   all of which now pass after the matcher cleanup
+- continued the shared-BIR cleanup in `src/backend/lowering/lir_to_bir/memory.cpp`
+  by removing three more rendered-IR text matchers and replacing them with
+  block/instruction-structured matching for the bounded union-alias compare,
+  local-char helper-call plus dead-array compare, and nested-struct sum seams
+- revalidated that second cleanup batch with
+  `./build/backend_bir_tests test_bir_lowering_accepts_union_i32_alias_compare_three_zero_return_module`,
+  `./build/backend_bir_tests test_bir_lowering_accepts_nested_struct_i32_sum_compare_six_zero_return_module`,
+  `./build/backend_bir_tests test_bir_lowering_accepts_local_char_helper_call_with_dead_array_compare_two_zero_return_module`,
+  `./build/backend_shared_util_tests test_backend_bir_pipeline_drives_x86_lir_union_i32_alias_compare_three_zero_through_bir_end_to_end`,
+  `./build/backend_shared_util_tests test_backend_bir_pipeline_drives_x86_lir_nested_struct_i32_sum_compare_six_zero_through_bir_end_to_end`,
+  `./build/backend_shared_util_tests test_backend_bir_pipeline_drives_x86_lir_local_char_helper_call_with_dead_array_compare_two_zero_through_bir_end_to_end`,
+  and `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00078_c)$'`,
+  all of which pass after the matcher removal
 - refreshed `test_after.log` with `ctest --test-dir build -j8 --output-on-failure > test_after.log`;
   the broad suite remains red for the known non-owned riscv64 select-route,
   runtime/toolchain, cpp, and later x86 buckets, and the aggregate ctest run

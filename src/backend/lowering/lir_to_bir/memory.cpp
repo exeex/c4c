@@ -1774,44 +1774,105 @@ std::optional<bir::Module> try_lower_minimal_union_i32_alias_compare_three_zero_
            *ret->value_str == expected_value;
   };
 
-  const auto rendered = c4c::codegen::lir::print_llvm(module);
-  constexpr std::string_view kExpectedModule =
-      "define i32 @main()\n"
-      "{\n"
-      "entry:\n"
-      "  %lv.u = alloca %struct._anon_0, align 4\n"
-      "  %t0 = getelementptr %struct._anon_0, ptr %lv.u, i32 0, i32 0\n"
-      "  store i32 1, ptr %t0\n"
-      "  %t1 = getelementptr %struct._anon_0, ptr %lv.u, i32 0, i32 0\n"
-      "  store i32 3, ptr %t1\n"
-      "  %t2 = getelementptr %struct._anon_0, ptr %lv.u, i32 0, i32 0\n"
-      "  %t3 = load i32, ptr %t2\n"
-      "  %t4 = icmp ne i32 %t3, 3\n"
-      "  %t5 = zext i1 %t4 to i32\n"
-      "  %t6 = icmp ne i32 %t5, 0\n"
-      "  br i1 %t6, label %logic.skip.8, label %logic.rhs.7\n"
-      "logic.rhs.7:\n"
-      "  %t11 = getelementptr %struct._anon_0, ptr %lv.u, i32 0, i32 0\n"
-      "  %t12 = load i32, ptr %t11\n"
-      "  %t13 = icmp ne i32 %t12, 3\n"
-      "  %t14 = zext i1 %t13 to i32\n"
-      "  %t15 = icmp ne i32 %t14, 0\n"
-      "  %t16 = zext i1 %t15 to i32\n"
-      "  br label %logic.rhs.end.9\n"
-      "logic.rhs.end.9:\n"
-      "  br label %logic.end.10\n"
-      "logic.skip.8:\n"
-      "  br label %logic.end.10\n"
-      "logic.end.10:\n"
-      "  %t17 = phi i32 [ %t16, %logic.rhs.end.9 ], [ 1, %logic.skip.8 ]\n"
-      "  %t18 = icmp ne i32 %t17, 0\n"
-      "  br i1 %t18, label %block_1, label %block_2\n"
-      "block_1:\n"
-      "  ret i32 1\n"
-      "block_2:\n"
-      "  ret i32 0\n"
-      "}\n";
-  if (rendered.find(kExpectedModule) == std::string::npos) {
+  const auto& entry = function.blocks[0];
+  const auto* entry_gep0 =
+      entry.insts.size() == 9 ? std::get_if<LirGepOp>(&entry.insts[0]) : nullptr;
+  const auto* entry_store0 =
+      entry.insts.size() == 9 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* entry_gep1 =
+      entry.insts.size() == 9 ? std::get_if<LirGepOp>(&entry.insts[2]) : nullptr;
+  const auto* entry_store1 =
+      entry.insts.size() == 9 ? std::get_if<LirStoreOp>(&entry.insts[3]) : nullptr;
+  const auto* entry_gep2 =
+      entry.insts.size() == 9 ? std::get_if<LirGepOp>(&entry.insts[4]) : nullptr;
+  const auto* entry_load =
+      entry.insts.size() == 9 ? std::get_if<LirLoadOp>(&entry.insts[5]) : nullptr;
+  const auto* entry_cmp =
+      entry.insts.size() == 9 ? std::get_if<LirCmpOp>(&entry.insts[6]) : nullptr;
+  const auto* entry_zext =
+      entry.insts.size() == 9 ? std::get_if<LirCastOp>(&entry.insts[7]) : nullptr;
+  const auto* entry_cmp2 =
+      entry.insts.size() == 9 ? std::get_if<LirCmpOp>(&entry.insts[8]) : nullptr;
+  const auto* entry_cond = std::get_if<LirCondBr>(&entry.terminator);
+  if (entry.label != "entry" || entry_gep0 == nullptr || entry_store0 == nullptr ||
+      entry_gep1 == nullptr || entry_store1 == nullptr || entry_gep2 == nullptr ||
+      entry_load == nullptr || entry_cmp == nullptr || entry_zext == nullptr ||
+      entry_cmp2 == nullptr || entry_cond == nullptr ||
+      entry_gep0->element_type != "%struct._anon_0" || entry_gep0->ptr != union_slot->result ||
+      entry_gep0->indices != std::vector<std::string>({"i32 0", "i32 0"}) ||
+      entry_store0->type_str != "i32" || entry_store0->val != "1" ||
+      entry_store0->ptr != entry_gep0->result || entry_gep1->element_type != "%struct._anon_0" ||
+      entry_gep1->ptr != union_slot->result ||
+      entry_gep1->indices != std::vector<std::string>({"i32 0", "i32 0"}) ||
+      entry_store1->type_str != "i32" || entry_store1->val != "3" ||
+      entry_store1->ptr != entry_gep1->result || entry_gep2->element_type != "%struct._anon_0" ||
+      entry_gep2->ptr != union_slot->result ||
+      entry_gep2->indices != std::vector<std::string>({"i32 0", "i32 0"}) ||
+      entry_load->type_str != "i32" || entry_load->ptr != entry_gep2->result ||
+      entry_cmp->type_str != "i32" || entry_cmp->predicate != "ne" ||
+      entry_cmp->lhs != entry_load->result || entry_cmp->rhs != "3" ||
+      entry_zext->kind != LirCastKind::ZExt || entry_zext->from_type != "i1" ||
+      entry_zext->operand != entry_cmp->result || entry_zext->to_type != "i32" ||
+      entry_cmp2->type_str != "i32" || entry_cmp2->predicate != "ne" ||
+      entry_cmp2->lhs != entry_zext->result || entry_cmp2->rhs != "0" ||
+      entry_cond->cond_name != entry_cmp2->result || entry_cond->true_label != "logic.skip.8" ||
+      entry_cond->false_label != "logic.rhs.7") {
+    return std::nullopt;
+  }
+
+  const auto& rhs = function.blocks[1];
+  const auto* rhs_gep =
+      rhs.insts.size() == 6 ? std::get_if<LirGepOp>(&rhs.insts[0]) : nullptr;
+  const auto* rhs_load =
+      rhs.insts.size() == 6 ? std::get_if<LirLoadOp>(&rhs.insts[1]) : nullptr;
+  const auto* rhs_cmp =
+      rhs.insts.size() == 6 ? std::get_if<LirCmpOp>(&rhs.insts[2]) : nullptr;
+  const auto* rhs_zext0 =
+      rhs.insts.size() == 6 ? std::get_if<LirCastOp>(&rhs.insts[3]) : nullptr;
+  const auto* rhs_cmp2 =
+      rhs.insts.size() == 6 ? std::get_if<LirCmpOp>(&rhs.insts[4]) : nullptr;
+  const auto* rhs_zext1 =
+      rhs.insts.size() == 6 ? std::get_if<LirCastOp>(&rhs.insts[5]) : nullptr;
+  const auto* rhs_br = std::get_if<LirBr>(&rhs.terminator);
+  if (rhs.label != "logic.rhs.7" || rhs_gep == nullptr || rhs_load == nullptr ||
+      rhs_cmp == nullptr || rhs_zext0 == nullptr || rhs_cmp2 == nullptr ||
+      rhs_zext1 == nullptr || rhs_br == nullptr ||
+      rhs_gep->element_type != "%struct._anon_0" || rhs_gep->ptr != union_slot->result ||
+      rhs_gep->indices != std::vector<std::string>({"i32 0", "i32 0"}) ||
+      rhs_load->type_str != "i32" || rhs_load->ptr != rhs_gep->result ||
+      rhs_cmp->type_str != "i32" || rhs_cmp->predicate != "ne" ||
+      rhs_cmp->lhs != rhs_load->result || rhs_cmp->rhs != "3" ||
+      rhs_zext0->kind != LirCastKind::ZExt || rhs_zext0->from_type != "i1" ||
+      rhs_zext0->operand != rhs_cmp->result || rhs_zext0->to_type != "i32" ||
+      rhs_cmp2->type_str != "i32" || rhs_cmp2->predicate != "ne" ||
+      rhs_cmp2->lhs != rhs_zext0->result || rhs_cmp2->rhs != "0" ||
+      rhs_zext1->kind != LirCastKind::ZExt || rhs_zext1->from_type != "i1" ||
+      rhs_zext1->operand != rhs_cmp2->result || rhs_zext1->to_type != "i32" ||
+      rhs_br->target_label != "logic.rhs.end.9") {
+    return std::nullopt;
+  }
+
+  const auto* rhs_end_br = std::get_if<LirBr>(&function.blocks[2].terminator);
+  const auto* skip_br = std::get_if<LirBr>(&function.blocks[3].terminator);
+  if (function.blocks[2].label != "logic.rhs.end.9" || !function.blocks[2].insts.empty() ||
+      rhs_end_br == nullptr || rhs_end_br->target_label != "logic.end.10" ||
+      function.blocks[3].label != "logic.skip.8" || !function.blocks[3].insts.empty() ||
+      skip_br == nullptr || skip_br->target_label != "logic.end.10") {
+    return std::nullopt;
+  }
+
+  const auto& join = function.blocks[4];
+  const auto* phi = join.insts.size() == 2 ? std::get_if<LirPhiOp>(&join.insts[0]) : nullptr;
+  const auto* join_cmp = join.insts.size() == 2 ? std::get_if<LirCmpOp>(&join.insts[1]) : nullptr;
+  const auto* join_cond = std::get_if<LirCondBr>(&join.terminator);
+  if (join.label != "logic.end.10" || phi == nullptr || join_cmp == nullptr ||
+      join_cond == nullptr || phi->type_str != "i32" || phi->incoming.size() != 2 ||
+      phi->incoming[0] != std::pair<std::string, std::string>{rhs_zext1->result.str(), "logic.rhs.end.9"} ||
+      phi->incoming[1] != std::pair<std::string, std::string>{"1", "logic.skip.8"} ||
+      join_cmp->type_str != "i32" || join_cmp->predicate != "ne" ||
+      join_cmp->lhs != phi->result || join_cmp->rhs != "0" ||
+      join_cond->cond_name != join_cmp->result || join_cond->true_label != "block_1" ||
+      join_cond->false_label != "block_2") {
     return std::nullopt;
   }
 
@@ -1937,38 +1998,6 @@ try_lower_minimal_local_char_helper_call_with_dead_array_compare_two_zero_return
     return std::nullopt;
   }
 
-  const auto rendered = c4c::codegen::lir::print_llvm(module);
-  constexpr std::string_view kExpectedModule =
-      "define i32 @f1(ptr %p.p)\n"
-      "{\n"
-      "entry:\n"
-      "  %t0 = load i8, ptr %p.p\n"
-      "  %t1 = sext i8 %t0 to i32\n"
-      "  %t2 = add i32 %t1, 1\n"
-      "  ret i32 %t2\n"
-      "}\n"
-      "\n"
-      "define i32 @main()\n"
-      "{\n"
-      "entry:\n"
-      "  %lv.s = alloca i8, align 1\n"
-      "  %lv.v = alloca [1000 x i32], align 4\n"
-      "  %t0 = trunc i32 1 to i8\n"
-      "  store i8 %t0, ptr %lv.s\n"
-      "  %t1 = call i32 (ptr) @f1(ptr %lv.s)\n"
-      "  %t2 = icmp ne i32 %t1, 2\n"
-      "  %t3 = zext i1 %t2 to i32\n"
-      "  %t4 = icmp ne i32 %t3, 0\n"
-      "  br i1 %t4, label %block_2, label %block_3\n"
-      "block_2:\n"
-      "  ret i32 1\n"
-      "block_3:\n"
-      "  ret i32 0\n"
-      "}\n";
-  if (rendered.find(kExpectedModule) == std::string::npos) {
-    return std::nullopt;
-  }
-
   if (!match_return_block(function.blocks[1], "block_2", "1") ||
       !match_return_block(function.blocks[2], "block_3", "0")) {
     return std::nullopt;
@@ -2033,40 +2062,106 @@ try_lower_minimal_nested_struct_i32_sum_compare_six_zero_return_module(
            *ret->value_str == expected_value;
   };
 
-  const auto rendered = c4c::codegen::lir::print_llvm(module);
-  constexpr std::string_view kExpectedModule =
-      "define i32 @main()\n"
-      "{\n"
-      "entry:\n"
-      "  %lv.v = alloca %struct.s, align 4\n"
-      "  %t0 = getelementptr %struct.s, ptr %lv.v, i32 0, i32 0\n"
-      "  store i32 1, ptr %t0\n"
-      "  %t1 = getelementptr %struct.s, ptr %lv.v, i32 0, i32 1\n"
-      "  %t2 = getelementptr %struct._anon_0, ptr %t1, i32 0, i32 0\n"
-      "  store i32 2, ptr %t2\n"
-      "  %t3 = getelementptr %struct.s, ptr %lv.v, i32 0, i32 1\n"
-      "  %t4 = getelementptr %struct._anon_0, ptr %t3, i32 0, i32 1\n"
-      "  store i32 3, ptr %t4\n"
-      "  %t5 = getelementptr %struct.s, ptr %lv.v, i32 0, i32 0\n"
-      "  %t6 = load i32, ptr %t5\n"
-      "  %t7 = getelementptr %struct.s, ptr %lv.v, i32 0, i32 1\n"
-      "  %t8 = getelementptr %struct._anon_0, ptr %t7, i32 0, i32 0\n"
-      "  %t9 = load i32, ptr %t8\n"
-      "  %t10 = add i32 %t6, %t9\n"
-      "  %t11 = getelementptr %struct.s, ptr %lv.v, i32 0, i32 1\n"
-      "  %t12 = getelementptr %struct._anon_0, ptr %t11, i32 0, i32 1\n"
-      "  %t13 = load i32, ptr %t12\n"
-      "  %t14 = add i32 %t10, %t13\n"
-      "  %t15 = icmp ne i32 %t14, 6\n"
-      "  %t16 = zext i1 %t15 to i32\n"
-      "  %t17 = icmp ne i32 %t16, 0\n"
-      "  br i1 %t17, label %block_1, label %block_2\n"
-      "block_1:\n"
-      "  ret i32 1\n"
-      "block_2:\n"
-      "  ret i32 0\n"
-      "}\n";
-  if (rendered.find(kExpectedModule) == std::string::npos) {
+  const auto& entry = function.blocks[0];
+  const auto* field0_gep =
+      entry.insts.size() == 21 ? std::get_if<LirGepOp>(&entry.insts[0]) : nullptr;
+  const auto* field0_store =
+      entry.insts.size() == 21 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* nested_gep0 =
+      entry.insts.size() == 21 ? std::get_if<LirGepOp>(&entry.insts[2]) : nullptr;
+  const auto* nested_field0_gep =
+      entry.insts.size() == 21 ? std::get_if<LirGepOp>(&entry.insts[3]) : nullptr;
+  const auto* nested_field0_store =
+      entry.insts.size() == 21 ? std::get_if<LirStoreOp>(&entry.insts[4]) : nullptr;
+  const auto* nested_gep1 =
+      entry.insts.size() == 21 ? std::get_if<LirGepOp>(&entry.insts[5]) : nullptr;
+  const auto* nested_field1_gep =
+      entry.insts.size() == 21 ? std::get_if<LirGepOp>(&entry.insts[6]) : nullptr;
+  const auto* nested_field1_store =
+      entry.insts.size() == 21 ? std::get_if<LirStoreOp>(&entry.insts[7]) : nullptr;
+  const auto* field0_gep_reload =
+      entry.insts.size() == 21 ? std::get_if<LirGepOp>(&entry.insts[8]) : nullptr;
+  const auto* field0_load =
+      entry.insts.size() == 21 ? std::get_if<LirLoadOp>(&entry.insts[9]) : nullptr;
+  const auto* nested_gep_reload0 =
+      entry.insts.size() == 21 ? std::get_if<LirGepOp>(&entry.insts[10]) : nullptr;
+  const auto* nested_field0_gep_reload =
+      entry.insts.size() == 21 ? std::get_if<LirGepOp>(&entry.insts[11]) : nullptr;
+  const auto* nested_field0_load =
+      entry.insts.size() == 21 ? std::get_if<LirLoadOp>(&entry.insts[12]) : nullptr;
+  const auto* add0 =
+      entry.insts.size() == 21 ? std::get_if<LirBinOp>(&entry.insts[13]) : nullptr;
+  const auto* nested_gep_reload1 =
+      entry.insts.size() == 21 ? std::get_if<LirGepOp>(&entry.insts[14]) : nullptr;
+  const auto* nested_field1_gep_reload =
+      entry.insts.size() == 21 ? std::get_if<LirGepOp>(&entry.insts[15]) : nullptr;
+  const auto* nested_field1_load =
+      entry.insts.size() == 21 ? std::get_if<LirLoadOp>(&entry.insts[16]) : nullptr;
+  const auto* add1 =
+      entry.insts.size() == 21 ? std::get_if<LirBinOp>(&entry.insts[17]) : nullptr;
+  const auto* cmp =
+      entry.insts.size() == 21 ? std::get_if<LirCmpOp>(&entry.insts[18]) : nullptr;
+  const auto* zext =
+      entry.insts.size() == 21 ? std::get_if<LirCastOp>(&entry.insts[19]) : nullptr;
+  const auto* cmp2 =
+      entry.insts.size() == 21 ? std::get_if<LirCmpOp>(&entry.insts[20]) : nullptr;
+  const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
+  if (entry.label != "entry" || field0_gep == nullptr || field0_store == nullptr ||
+      nested_gep0 == nullptr || nested_field0_gep == nullptr || nested_field0_store == nullptr ||
+      nested_gep1 == nullptr || nested_field1_gep == nullptr || nested_field1_store == nullptr ||
+      field0_gep_reload == nullptr || field0_load == nullptr || nested_gep_reload0 == nullptr ||
+      nested_field0_gep_reload == nullptr || nested_field0_load == nullptr || add0 == nullptr ||
+      nested_gep_reload1 == nullptr || nested_field1_gep_reload == nullptr ||
+      nested_field1_load == nullptr || add1 == nullptr || cmp == nullptr ||
+      zext == nullptr || cmp2 == nullptr || condbr == nullptr ||
+      field0_gep->element_type != "%struct.s" || field0_gep->ptr != struct_slot->result ||
+      field0_gep->indices != std::vector<std::string>({"i32 0", "i32 0"}) ||
+      field0_store->type_str != "i32" || field0_store->val != "1" ||
+      field0_store->ptr != field0_gep->result || nested_gep0->element_type != "%struct.s" ||
+      nested_gep0->ptr != struct_slot->result ||
+      nested_gep0->indices != std::vector<std::string>({"i32 0", "i32 1"}) ||
+      nested_field0_gep->element_type != "%struct._anon_0" ||
+      nested_field0_gep->ptr != nested_gep0->result ||
+      nested_field0_gep->indices != std::vector<std::string>({"i32 0", "i32 0"}) ||
+      nested_field0_store->type_str != "i32" || nested_field0_store->val != "2" ||
+      nested_field0_store->ptr != nested_field0_gep->result ||
+      nested_gep1->element_type != "%struct.s" || nested_gep1->ptr != struct_slot->result ||
+      nested_gep1->indices != std::vector<std::string>({"i32 0", "i32 1"}) ||
+      nested_field1_gep->element_type != "%struct._anon_0" ||
+      nested_field1_gep->ptr != nested_gep1->result ||
+      nested_field1_gep->indices != std::vector<std::string>({"i32 0", "i32 1"}) ||
+      nested_field1_store->type_str != "i32" || nested_field1_store->val != "3" ||
+      nested_field1_store->ptr != nested_field1_gep->result ||
+      field0_gep_reload->element_type != "%struct.s" ||
+      field0_gep_reload->ptr != struct_slot->result ||
+      field0_gep_reload->indices != std::vector<std::string>({"i32 0", "i32 0"}) ||
+      field0_load->type_str != "i32" || field0_load->ptr != field0_gep_reload->result ||
+      nested_gep_reload0->element_type != "%struct.s" ||
+      nested_gep_reload0->ptr != struct_slot->result ||
+      nested_gep_reload0->indices != std::vector<std::string>({"i32 0", "i32 1"}) ||
+      nested_field0_gep_reload->element_type != "%struct._anon_0" ||
+      nested_field0_gep_reload->ptr != nested_gep_reload0->result ||
+      nested_field0_gep_reload->indices != std::vector<std::string>({"i32 0", "i32 0"}) ||
+      nested_field0_load->type_str != "i32" ||
+      nested_field0_load->ptr != nested_field0_gep_reload->result ||
+      add0->opcode.typed() != LirBinaryOpcode::Add || add0->type_str != "i32" ||
+      add0->lhs != field0_load->result || add0->rhs != nested_field0_load->result ||
+      nested_gep_reload1->element_type != "%struct.s" ||
+      nested_gep_reload1->ptr != struct_slot->result ||
+      nested_gep_reload1->indices != std::vector<std::string>({"i32 0", "i32 1"}) ||
+      nested_field1_gep_reload->element_type != "%struct._anon_0" ||
+      nested_field1_gep_reload->ptr != nested_gep_reload1->result ||
+      nested_field1_gep_reload->indices != std::vector<std::string>({"i32 0", "i32 1"}) ||
+      nested_field1_load->type_str != "i32" ||
+      nested_field1_load->ptr != nested_field1_gep_reload->result ||
+      add1->opcode.typed() != LirBinaryOpcode::Add || add1->type_str != "i32" ||
+      add1->lhs != add0->result || add1->rhs != nested_field1_load->result ||
+      cmp->type_str != "i32" || cmp->predicate != "ne" || cmp->lhs != add1->result ||
+      cmp->rhs != "6" || zext->kind != LirCastKind::ZExt || zext->from_type != "i1" ||
+      zext->operand != cmp->result || zext->to_type != "i32" || cmp2->type_str != "i32" ||
+      cmp2->predicate != "ne" || cmp2->lhs != zext->result || cmp2->rhs != "0" ||
+      condbr->cond_name != cmp2->result || condbr->true_label != "block_1" ||
+      condbr->false_label != "block_2") {
     return std::nullopt;
   }
 
