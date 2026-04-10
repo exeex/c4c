@@ -169,6 +169,46 @@ void test_x86_codegen_header_exports_translated_globals_owner_helper_symbols() {
               "x86 translated globals owner helper methods should remain compile/link reachable while globals.cpp starts carrying real behavior");
 }
 
+void test_x86_translated_globals_owner_handles_minimal_scalar_global_load_slice() {
+  c4c::backend::bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.globals.push_back(c4c::backend::bir::Global{
+      .name = "answer",
+      .type = c4c::backend::bir::TypeKind::I32,
+      .is_extern = false,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = c4c::backend::bir::Value::immediate_i32(7),
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::LoadGlobalInst{
+              .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+              .global_name = "answer",
+              .byte_offset = 0,
+              .align_bytes = 4,
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto rendered = c4c::backend::x86::try_emit_minimal_scalar_global_load_module(module);
+  expect_true(rendered.has_value(),
+              "x86 translated globals owner helper should accept the bounded scalar global-load slice once globals.cpp carries real behavior");
+  expect_true(rendered->find(".globl answer") != std::string::npos &&
+                  rendered->find("lea rax, answer[rip]") != std::string::npos &&
+                  rendered->find("mov eax, dword ptr [rax]") != std::string::npos,
+              "x86 translated globals owner helper should emit the native global definition and rip-relative load for the bounded scalar global-load slice");
+}
+
 void test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module() {
   c4c::backend::bir::Module module;
   module.string_constants.push_back(c4c::backend::bir::StringConstant{
@@ -3452,6 +3492,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_call_decode_parses_bir_minimal_direct_call_module();
   test_x86_codegen_header_exports_translated_globals_owner_symbols();
   test_x86_codegen_header_exports_translated_globals_owner_helper_symbols();
+  test_x86_translated_globals_owner_handles_minimal_scalar_global_load_slice();
   test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module();
   test_backend_shared_call_decode_parses_bir_minimal_void_direct_call_imm_return_module();
   test_backend_shared_call_decode_parses_bir_minimal_two_arg_direct_call_module();

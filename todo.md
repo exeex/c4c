@@ -11,9 +11,9 @@ Source Plan: plan.md
   surface out of `emit.cpp` so `src/backend/x86/codegen/globals.cpp` can start
   carrying behavior instead of transitional unwired-owner stubs
 - immediate target:
-  port the narrowest helper/state dependency needed for one real translated
-  globals-owner behavior slice while keeping the runtime path bounded and
-  observable
+  move the minimal scalar global-load direct-BIR matcher/dispatch into
+  `src/backend/x86/codegen/globals.cpp` behind a focused direct helper entry
+  point while keeping the runtime path bounded and observable
   - do not claim the owner switch is done just because one globals helper
     starts carrying real behavior
   - keep the surrounding runtime path on the existing direct-global/native seams
@@ -23,8 +23,9 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- land one real translated globals-owner behavior slice behind focused backend
-  coverage so the compile cluster stops being symbol-only
+- repeat the same bounded globals-owner migration for the next least-coupled
+  direct-BIR global route still living in `emit.cpp`, likely the extern scalar
+  global-load or scalar global store-reload slice
 - after that, repeat the same bounded migration pattern for the next
   least-coupled translated top-level owner unit, still expected to be
   `comparison.cpp` or `returns.cpp`
@@ -48,6 +49,22 @@ Source Plan: plan.md
 - user further clarified on 2026-04-10 that the regression-guard rule should
   not block the legacy-removal phase itself; finish the cutover first, then
   evaluate broad regression fallout afterward
+- this iteration moved the bounded direct-BIR minimal scalar global-load
+  matcher/dispatch out of `src/backend/x86/codegen/emit.cpp` into
+  `src/backend/x86/codegen/globals.cpp` through the new
+  `try_emit_minimal_scalar_global_load_module(...)` helper
+- added focused shared-util coverage that calls the new globals-owner helper
+  directly and checks that it emits the expected native global definition plus
+  RIP-relative load sequence
+- focused validation passed:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
+  monotonic against `test_fail_before.log`; the regression guard reported
+  `1217` passed / `181` failed before versus `2723` passed / `181` failed
+  after, with no newly failing tests and the existing `backend_bir_tests`
+  `>30s` timeout warning unchanged
 - this iteration extends Step 4 with another bounded prepared-LIR sibling seam:
   the x86 `void` helper/call direct-LIR routes now live in
   `src/backend/x86/codegen/direct_void.cpp` instead of `emit.cpp`

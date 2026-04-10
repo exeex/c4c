@@ -400,6 +400,8 @@ std::string emit_minimal_scalar_global_load_slice_asm(std::string_view target_tr
                                                       std::int64_t init_imm,
                                                       std::size_t align_bytes,
                                                       bool zero_initializer);
+std::optional<std::string> try_emit_minimal_scalar_global_load_module(
+    const c4c::backend::bir::Module& module);
 std::string emit_minimal_extern_scalar_global_load_slice_asm(std::string_view target_triple,
                                                              std::string_view function_name,
                                                              std::string_view global_name);
