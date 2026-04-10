@@ -390,6 +390,11 @@ class Lowerer {
       const std::vector<std::string>& arg_refs,
       const TypeBindings& tpl_bindings,
       const NttpBindings& nttp_bindings);
+  ResolvedTemplateArgs materialize_template_args(
+      const Node* primary_tpl,
+      const TypeSpec& owner_ts,
+      const TypeBindings& tpl_bindings,
+      const NttpBindings& nttp_bindings);
 
   // ── template-struct realization helpers ──────────────────────────────────
   void lower_struct_def(const Node* sd);

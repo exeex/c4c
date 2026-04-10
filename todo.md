@@ -43,11 +43,10 @@ Source Plan: plan.md
   fallback inside `ensure_template_struct_instantiated_from_args(...)`, but the
   next highest-value work now likely sits in the still-stringy HIR helper
   paths.
-- Next intended slice: continue through the remaining HIR helper seams that
-  still collect debug refs first, especially the other
-  `resolve_struct_member_typedef_if_ready(...)` / deferred owner paths, until
-  `TemplateArgRef` rewrites become the common path and debug-text collection is
-  only fallback glue.
+- Next intended slice: trim the remaining HIR fallback glue itself, especially
+  the `resolve_struct_member_typedef_type(...)` debug-ref fallback branch and
+  the builtin-text decode helpers, now that the main callers already route
+  through typed `materialize_template_args(...)`.
 
 ## Completed
 
@@ -128,3 +127,8 @@ Source Plan: plan.md
   template-owner/member-typedef substitution now rewrites structured
   `TemplateArgRef` entries directly in the common path and only falls back to
   debug-text reconstruction when typed payload is unavailable.
+- Added a typed `materialize_template_args(...)` overload in
+  [hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp), and
+  switched both `resolve_struct_member_typedef_if_ready(...)` and
+  `realize_template_struct(...)` to use structured `TypeSpec::tpl_struct_args`
+  directly instead of first collecting debug-ref strings in the common path.
