@@ -86,6 +86,11 @@ Source Plan: plan.md
   instantiated trait structs have a direct `::value` fallback so inherited
   static member lookup no longer depends entirely on base-chain metadata being
   perfect.
+- HIR debug-helper cleanup has started in earnest: `hir_templates.cpp` no
+  longer routes typed-materialization fallback or member-typedef binding
+  rewrites through `template_arg_debug_text_at(...)`; those paths now read
+  `TemplateArgRef` directly and only synthesize per-arg text locally when they
+  genuinely need a compatibility string.
 
 ## Completed
 
@@ -225,3 +230,8 @@ Source Plan: plan.md
   `cpp_positive_sema_template_builtin_is_enum_qualified_inherited_value_runtime_cpp`
   `cpp_positive_sema_eastl_inherited_trait_value_template_arg_parse_cpp`
   `cpp_eastl_type_traits_parse_recipe`
+- Reworked `hir_templates.cpp` so typed HIR common paths stop consulting the
+  generic `template_arg_debug_text_at(...)` helper: typed fallback refs and
+  member-typedef binding rewrites now stringify directly from each
+  `TemplateArgRef`, shrinking one more class of debug-text semantic fallback in
+  the HIR layer.

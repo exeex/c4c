@@ -11,6 +11,26 @@ std::string encode_template_type_arg_ref_hir(const TypeSpec& ts);
 
 namespace {
 
+std::string encode_template_arg_ref_hir(const TemplateArgRef& arg) {
+  if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
+  if (arg.kind == TemplateArgKind::Value) return std::to_string(arg.value);
+  if (arg.kind == TemplateArgKind::Type &&
+      (has_concrete_type(arg.type) || arg.type.tpl_struct_origin)) {
+    return encode_template_type_arg_ref_hir(arg.type);
+  }
+  return {};
+}
+
+std::vector<std::string> encode_template_arg_ref_list_hir(const TypeSpec& ts) {
+  std::vector<std::string> refs;
+  if (!ts.tpl_struct_args.data || ts.tpl_struct_args.size <= 0) return refs;
+  refs.reserve(ts.tpl_struct_args.size);
+  for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+    refs.push_back(encode_template_arg_ref_hir(ts.tpl_struct_args.data[i]));
+  }
+  return refs;
+}
+
 bool matches_trait_family(const std::string& name, const char* suffix);
 
 bool is_signed_trait_type(const TypeSpec& ts) {
@@ -1968,14 +1988,7 @@ ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_strings(
 
 ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_typed(
     const TypeSpec& owner_ts) {
-  auto fallback_refs = [&]() {
-    std::vector<std::string> refs;
-    refs.reserve(owner_ts.tpl_struct_args.size);
-    for (int i = 0; i < owner_ts.tpl_struct_args.size; ++i) {
-      refs.push_back(template_arg_debug_text_at(owner_ts, i));
-    }
-    return refs;
-  };
+  auto fallback_refs = [&]() { return encode_template_arg_ref_list_hir(owner_ts); };
   if (!owner_ts.tpl_struct_args.data || owner_ts.tpl_struct_args.size <= 0) {
     return materialize_from_strings({});
   }
@@ -3125,7 +3138,7 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
           const std::string debug_text = has_concrete_type(dst_arg.type) ||
                                                  dst_arg.type.tpl_struct_origin
                                              ? encode_template_type_arg_ref_hir(dst_arg.type)
-                                             : template_arg_debug_text_at(ts, i);
+                                             : encode_template_arg_ref_hir(src_arg);
           dst_arg.debug_text =
               debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
         } else {
@@ -3157,7 +3170,7 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
       std::vector<std::string> updated_refs;
       updated_refs.reserve(ts.tpl_struct_args.size);
       for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
-        std::string part = template_arg_debug_text_at(ts, i);
+        std::string part = encode_template_arg_ref_hir(ts.tpl_struct_args.data[i]);
         auto tit = type_bindings.find(part);
         if (tit != type_bindings.end()) {
           part = encode_template_type_arg_ref_hir(tit->second);
