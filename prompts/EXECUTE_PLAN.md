@@ -102,8 +102,8 @@ Given a plan item or plan-blocking failure:
 2. Record the current full-suite baseline:
 
 ```bash
-cmake -S . -B build
-cmake --build build -j8
+cmake --preset default
+cmake --build --preset default
 ctest --test-dir build -j --output-on-failure > test_before.log
 ```
 
@@ -136,8 +136,8 @@ ctest --test-dir build -j --output-on-failure > test_before.log
 
 ```bash
 rm -rf build
-cmake -S . -B build
-cmake --build build -j8
+cmake --preset default
+cmake --build --preset default
 ctest --test-dir build -j --output-on-failure > test_after.log
 ```
 

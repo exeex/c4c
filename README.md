@@ -2,6 +2,17 @@
 
 `c4c` is a lightweight C/C++ compiler for NPU and RISC-V-based accelerator systems.
 
+## Build
+
+The devcontainer defaults to `Ninja` with `CMAKE_BUILD_PARALLEL_LEVEL=8`, and
+the project default build type is `Release`.
+
+```bash
+cmake --preset default
+cmake --build --preset default
+ctest --test-dir build -j8 --output-on-failure
+```
+
 ---
 
 ## Why Another C++ Compiler for xPU
