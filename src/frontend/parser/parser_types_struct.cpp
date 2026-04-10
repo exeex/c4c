@@ -1621,21 +1621,9 @@ bool Parser::try_parse_record_member_with_template_prelude(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
-    struct TemplateParamGuard {
-        Parser* parser;
-        std::set<std::string>& typedefs;
-        std::vector<TemplateScopeFrame>& scope_stack;
-        std::vector<std::string> names;
-        bool pushed_scope = false;
-        ~TemplateParamGuard() {
-            if (pushed_scope) scope_stack.pop_back();
-            if (!parser) return;
-            for (auto& n : names) parser->unregister_typedef_binding(n);
-        }
-    } tmpl_guard{this, typedefs_, template_scope_stack_, {}};
-
-    parse_record_template_member_prelude(&tmpl_guard.names,
-                                         &tmpl_guard.pushed_scope);
+    RecordTemplatePreludeGuard tmpl_guard(this);
+    parse_record_template_member_prelude(&tmpl_guard.injected_type_params,
+                                         &tmpl_guard.pushed_template_scope);
     parse_optional_cpp20_requires_clause(*this);
     if (try_skip_record_friend_member()) return true;
     if (try_skip_record_static_assert_member(methods)) return true;

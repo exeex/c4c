@@ -10,14 +10,13 @@ Source Plan: plan.md
   grouped parser symbol-table accessors instead of direct top-level member
   storage assumptions, starting with typedef/value registration and
   namespace-aware lookup helpers
-- Current slice: continue Step 3 by shrinking the remaining parser-local
-  compatibility-reference use in `src/frontend/parser/parser_types_struct.cpp`
-  and then reassess whether the next bounded typedef-access cleanup should stay
-  in record parsing or move to another parser type-parsing surface
-- Iteration target: migrate the remaining `TemplateParamGuard` dependency on
-  the compatibility `typedefs_` reference in
-  `src/frontend/parser/parser_types_struct.cpp` onto a parser-local helper or
-  grouped-state-aware guard without widening scope
+- Current slice: move the next bounded compatibility-reference cleanup into
+  `src/frontend/parser/parser_declarations.cpp`, starting with localized
+  template-parameter typedef seeding and teardown paths that still write raw
+  `typedefs_` and `typedef_types_` state
+- Iteration target: replace the declaration parser's remaining direct
+  template-parameter typedef registration and cleanup writes with parser-local
+  helper operations, without widening into expression or sema work
 
 ## Completed Items
 
@@ -141,14 +140,29 @@ Source Plan: plan.md
 - Revalidated this slice with targeted record/enum parser tests, clean rebuild,
   full `ctest --test-dir build -j8 --output-on-failure`, and regression guard:
   3350/3350 tests passed, no new failures
+- Added parser-owned `RecordTemplatePreludeGuard` in
+  `src/frontend/parser/parser.hpp` so record-member template prelude cleanup no
+  longer depends on raw compatibility references at the call site
+- Migrated the remaining `TemplateParamGuard` teardown path in
+  `src/frontend/parser/parser_types_struct.cpp` onto that parser-owned guard,
+  removing the last direct `typedefs_` and `template_scope_stack_`
+  compatibility-reference use from the record parser slice
+- Added parse-only dump regression
+  `tests/cpp/internal/parse_only_case/record_member_template_friend_cleanup_parse.cpp`
+  plus `cpp_parse_record_member_template_friend_cleanup_dump` in
+  `tests/cpp/internal/InternalTests.cmake` to cover template-member prelude
+  cleanup when a friend-member path returns early
+- Revalidated this slice with targeted record-member parser tests plus full
+  `ctest --test-dir build -j8 --output-on-failure` and regression guard:
+  3351/3351 tests passed, no new failures
 
 ## Next Intended Slice
 
-- Finish the remaining `parser_types_struct.cpp` compatibility-reference use by
-  replacing the `TemplateParamGuard` dependency on raw `typedefs_` storage with
-  a parser-local/state-aware helper
-- After that, reassess whether the next Step 3 typedef-access cleanup should
-  stay in record parsing or move to another localized parser type-parsing file
+- Move the next Step 3 compatibility-reference cleanup into
+  `src/frontend/parser/parser_declarations.cpp`, focusing on template-parameter
+  typedef seeding, cleanup, and nearby declaration-parser registration paths
+- Reassess after that slice whether the next raw symbol-table consumers should
+  stay in declaration parsing or shift to type/expression helpers
 - Leave namespace-state grouping for a separate slice unless it becomes
   necessary for the chosen accessor migration
 
@@ -169,7 +183,9 @@ Source Plan: plan.md
   declaration-disambiguation probes, but intentionally leaves many type-parser
   mutation and cache-population paths for later Step 3 slices
 - Read-only type-parser probes and the targeted dependent-member cache writes
-  now use parser-local typedef helpers; the remaining raw accesses are mostly
-  compatibility-reference uses, with `parser_types_struct.cpp` now reduced to
-  the `TemplateParamGuard` `typedefs_` reference and the broader repo still
-  carrying non-Step-3 direct typedef map consumers outside this slice
+  now use parser-local typedef helpers, and `parser_types_struct.cpp` no
+  longer carries raw compatibility-reference cleanup for the member-template
+  prelude path
+- The broader repo still carries non-Step-3 direct typedef-map consumers and
+  declaration-parser compatibility writes, with `parser_declarations.cpp` now
+  the next bounded cleanup candidate

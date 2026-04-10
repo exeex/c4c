@@ -520,6 +520,15 @@ set_tests_properties(cpp_parse_record_member_typedef_using_dump PROPERTIES
 )
 
 add_test(
+  NAME cpp_parse_record_member_template_friend_cleanup_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/record_member_template_friend_cleanup_parse.cpp"
+)
+set_tests_properties(cpp_parse_record_member_template_friend_cleanup_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(next\\).*Decl\\(kept\\).*Decl\\(tail\\).*Decl\\(kept\\)"
+)
+
+add_test(
   NAME cpp_parse_trailing_requires_following_member_decl_dump
   COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/cpp20_trailing_requires_following_member_decl_parse.cpp"
 )
