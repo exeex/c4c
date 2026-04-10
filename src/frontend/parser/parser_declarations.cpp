@@ -618,14 +618,13 @@ Node* Parser::parse_local_decl() {
         parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
                          &td_n_fn_ptr_params, &td_fn_ptr_variadic);
         if (tdname) {
-            auto it = typedef_types_.find(tdname);
+            const TypeSpec* existing_typedef = find_typedef_type(tdname);
             if (!is_cpp_mode() && !is_internal_typedef_name(tdname) &&
-                user_typedefs_.count(tdname) && it != typedef_types_.end() &&
-                !types_compatible_p(it->second, ts_copy, typedef_types_))
+                user_typedefs_.count(tdname) && existing_typedef &&
+                !types_compatible_p(*existing_typedef, ts_copy, typedef_types_))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
-            typedefs_.insert(tdname);
-            if (!is_internal_typedef_name(tdname)) user_typedefs_.insert(tdname);
-            typedef_types_[tdname] = ts_copy;
+            register_typedef_binding(tdname, ts_copy,
+                                     !is_internal_typedef_name(tdname));
             // Phase C: store fn_ptr param info for typedef'd function pointers.
             if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
                 typedef_fn_ptr_info_[tdname] = {td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
@@ -641,14 +640,13 @@ Node* Parser::parse_local_decl() {
             parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
                              &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
             if (tdn2) {
-                auto it = typedef_types_.find(tdn2);
+                const TypeSpec* existing_typedef = find_typedef_type(tdn2);
                 if (!is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
-                    user_typedefs_.count(tdn2) && it != typedef_types_.end() &&
-                    !types_compatible_p(it->second, ts2, typedef_types_))
+                    user_typedefs_.count(tdn2) && existing_typedef &&
+                    !types_compatible_p(*existing_typedef, ts2, typedef_types_))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
-                typedefs_.insert(tdn2);
-                if (!is_internal_typedef_name(tdn2)) user_typedefs_.insert(tdn2);
-                typedef_types_[tdn2] = ts2;
+                register_typedef_binding(tdn2, ts2,
+                                         !is_internal_typedef_name(tdn2));
                 if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
                     typedef_fn_ptr_info_[tdn2] = {td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
                 }
@@ -1330,13 +1328,9 @@ Node* Parser::parse_top_level() {
                     return nullptr;
                 }
                 const std::string qualified = canonical_name_in_context(using_context_id, first_name);
-                typedefs_.insert(qualified);
-                user_typedefs_.insert(qualified);
-                typedef_types_[qualified] = alias_ts;
+                register_typedef_binding(qualified, alias_ts, true);
                 if (using_context_id == 0) {
-                    typedefs_.insert(first_name);
-                    user_typedefs_.insert(first_name);
-                    typedef_types_[first_name] = alias_ts;
+                    register_typedef_binding(first_name, alias_ts, true);
                 }
                 last_using_alias_name_ = qualified;
                 return nullptr;
@@ -1356,27 +1350,21 @@ Node* Parser::parse_top_level() {
         const size_t last_sep = target.rfind("::");
         const std::string imported_name =
             (last_sep == std::string::npos) ? target : target.substr(last_sep + 2);
-        auto td_it = typedef_types_.find(lookup_target);
-        if (td_it != typedef_types_.end()) {
+        if (const TypeSpec* imported_typedef = find_typedef_type(lookup_target)) {
             const std::string imported_key =
                 canonical_name_in_context(using_context_id, imported_name);
-            typedefs_.insert(imported_key);
-            user_typedefs_.insert(imported_key);
-            typedef_types_[imported_key] = td_it->second;
+            register_typedef_binding(imported_key, *imported_typedef, true);
             if (using_context_id == 0) {
-                typedefs_.insert(imported_name);
-                user_typedefs_.insert(imported_name);
-                typedef_types_[imported_name] = td_it->second;
+                register_typedef_binding(imported_name, *imported_typedef, true);
             }
         } else {
             const std::string imported_key =
                 canonical_name_in_context(using_context_id, imported_name);
-            auto var_it = var_types_.find(lookup_target);
-            if (var_it != var_types_.end()) {
-                var_types_[imported_key] = var_it->second;
+            if (const TypeSpec* imported_var = find_var_type(lookup_target)) {
+                register_var_type_binding(imported_key, *imported_var);
             }
-            if (known_fn_names_.count(lookup_target)) {
-                known_fn_names_.insert(imported_key);
+            if (has_known_fn_name(lookup_target)) {
+                register_known_fn_name(imported_key);
             }
             using_value_aliases_[using_context_id][imported_name] = lookup_target;
         }
@@ -2438,17 +2426,15 @@ top_level_base_ready:
                          &td_n_fn_ptr_params, &td_fn_ptr_variadic);
         if (tdname) {
             const char* scoped_tdname = qualify_name_arena(tdname);
-            auto it = typedef_types_.find(tdname);
+            const TypeSpec* existing_typedef = find_typedef_type(tdname);
             if (!is_cpp_mode() && !is_internal_typedef_name(tdname) &&
-                user_typedefs_.count(tdname) && it != typedef_types_.end() &&
-                !types_compatible_p(it->second, ts_copy, typedef_types_))
+                user_typedefs_.count(tdname) && existing_typedef &&
+                !types_compatible_p(*existing_typedef, ts_copy, typedef_types_))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
-            typedefs_.insert(tdname);
-            if (!is_internal_typedef_name(tdname)) user_typedefs_.insert(tdname);
-            typedef_types_[tdname] = ts_copy;
+            register_typedef_binding(tdname, ts_copy,
+                                     !is_internal_typedef_name(tdname));
             if (scoped_tdname != tdname) {
-                typedefs_.insert(scoped_tdname);
-                typedef_types_[scoped_tdname] = ts_copy;
+                register_typedef_binding(scoped_tdname, ts_copy, false);
             }
             if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic))
                 typedef_fn_ptr_info_[tdname] = {td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
@@ -2463,17 +2449,15 @@ top_level_base_ready:
                              &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
             if (tdn2) {
                 const char* scoped_tdn2 = qualify_name_arena(tdn2);
-                auto it = typedef_types_.find(tdn2);
+                const TypeSpec* existing_typedef = find_typedef_type(tdn2);
                 if (!is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
-                    user_typedefs_.count(tdn2) && it != typedef_types_.end() &&
-                    !types_compatible_p(it->second, ts2, typedef_types_))
+                    user_typedefs_.count(tdn2) && existing_typedef &&
+                    !types_compatible_p(*existing_typedef, ts2, typedef_types_))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
-                typedefs_.insert(tdn2);
-                if (!is_internal_typedef_name(tdn2)) user_typedefs_.insert(tdn2);
-                typedef_types_[tdn2] = ts2;
+                register_typedef_binding(tdn2, ts2,
+                                         !is_internal_typedef_name(tdn2));
                 if (scoped_tdn2 != tdn2) {
-                    typedefs_.insert(scoped_tdn2);
-                    typedef_types_[scoped_tdn2] = ts2;
+                    register_typedef_binding(scoped_tdn2, ts2, false);
                 }
                 if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic))
                     typedef_fn_ptr_info_[tdn2] = {td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};

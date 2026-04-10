@@ -254,6 +254,7 @@ list(APPEND CPP_POSITIVE_FRONTEND_STEMS
     constrained_member_conversion_operator_frontend
     constrained_template_method_call_frontend
     eastl_probe_call_result_lvalue_frontend
+    namespace_using_decl_typedef_and_value_frontend
     namespaced_function_param_shadow_frontend
     namespaced_out_of_class_method_context_frontend
     qualified_namespaced_out_of_class_method_context_frontend

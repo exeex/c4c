@@ -14,7 +14,7 @@
 namespace c4c {
 
 bool Parser::is_typedef_name(const std::string& s) const {
-    return typedefs_.count(s) > 0;
+    return has_typedef_name(s);
 }
 
 void Parser::push_template_scope(TemplateScopeKind kind,

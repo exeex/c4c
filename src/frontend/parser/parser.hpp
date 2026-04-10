@@ -496,6 +496,16 @@ class Parser {
   bool is_type_start() const;            // can current token start a type?
   bool can_start_parameter_type() const;
   bool looks_like_unresolved_identifier_type_head(int pos) const;
+  bool has_typedef_name(const std::string& name) const;
+  bool has_typedef_type(const std::string& name) const;
+  const TypeSpec* find_typedef_type(const std::string& name) const;
+  void register_typedef_binding(const std::string& name, const TypeSpec& type,
+                                bool is_user_typedef);
+  bool has_var_type(const std::string& name) const;
+  const TypeSpec* find_var_type(const std::string& name) const;
+  void register_var_type_binding(const std::string& name, const TypeSpec& type);
+  bool has_known_fn_name(const std::string& name) const;
+  void register_known_fn_name(const std::string& name);
   bool is_typedef_name(const std::string& s) const;
   bool is_cpp_mode() const {
     return source_profile_ == SourceProfile::CppSubset ||

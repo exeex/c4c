@@ -274,6 +274,51 @@ int resolve_namespace_id_from_stack(const std::vector<int>& namespace_stack,
 
 }  // namespace
 
+bool Parser::has_typedef_name(const std::string& name) const {
+    return symbol_tables_.typedefs.count(name) > 0;
+}
+
+bool Parser::has_typedef_type(const std::string& name) const {
+    return symbol_tables_.typedef_types.count(name) > 0;
+}
+
+const TypeSpec* Parser::find_typedef_type(const std::string& name) const {
+    auto it = symbol_tables_.typedef_types.find(name);
+    if (it == symbol_tables_.typedef_types.end()) return nullptr;
+    return &it->second;
+}
+
+void Parser::register_typedef_binding(const std::string& name,
+                                      const TypeSpec& type,
+                                      bool is_user_typedef) {
+    symbol_tables_.typedefs.insert(name);
+    if (is_user_typedef) symbol_tables_.user_typedefs.insert(name);
+    symbol_tables_.typedef_types[name] = type;
+}
+
+bool Parser::has_var_type(const std::string& name) const {
+    return symbol_tables_.var_types.count(name) > 0;
+}
+
+const TypeSpec* Parser::find_var_type(const std::string& name) const {
+    auto it = symbol_tables_.var_types.find(name);
+    if (it == symbol_tables_.var_types.end()) return nullptr;
+    return &it->second;
+}
+
+void Parser::register_var_type_binding(const std::string& name,
+                                       const TypeSpec& type) {
+    symbol_tables_.var_types[name] = type;
+}
+
+bool Parser::has_known_fn_name(const std::string& name) const {
+    return known_fn_names_.count(name) > 0;
+}
+
+void Parser::register_known_fn_name(const std::string& name) {
+    known_fn_names_.insert(name);
+}
+
 Parser::ParseContextGuard::ParseContextGuard(
     Parser* parser_in, const char* function_name)
     : parser(parser_in) {
@@ -1003,7 +1048,7 @@ std::string Parser::resolve_visible_type_name(const std::string& name) const {
             if (alias_it != using_value_aliases_.end()) {
                 auto value_it = alias_it->second.find(name);
                 if (value_it != alias_it->second.end() &&
-                    typedef_types_.count(value_it->second)) {
+                    has_typedef_type(value_it->second)) {
                     *resolved = value_it->second;
                     return true;
                 }
@@ -1128,11 +1173,11 @@ int Parser::resolve_namespace_name(const QualifiedNameRef& name) const {
 bool Parser::lookup_value_in_context(int context_id, const std::string& name,
                                      std::string* resolved) const {
     const std::string candidate = canonical_name_in_context(context_id, name);
-    if (var_types_.count(candidate) || known_fn_names_.count(candidate)) {
+    if (has_var_type(candidate) || has_known_fn_name(candidate)) {
         *resolved = candidate;
         return true;
     }
-    if (context_id == 0 && (var_types_.count(name) || known_fn_names_.count(name))) {
+    if (context_id == 0 && (has_var_type(name) || has_known_fn_name(name))) {
         *resolved = name;
         return true;
     }
@@ -1156,11 +1201,11 @@ bool Parser::lookup_value_in_context(int context_id, const std::string& name,
 bool Parser::lookup_type_in_context(int context_id, const std::string& name,
                                     std::string* resolved) const {
     const std::string candidate = canonical_name_in_context(context_id, name);
-    if (typedef_types_.count(candidate)) {
+    if (has_typedef_type(candidate)) {
         *resolved = candidate;
         return true;
     }
-    if (context_id == 0 && typedef_types_.count(name)) {
+    if (context_id == 0 && has_typedef_type(name)) {
         *resolved = name;
         return true;
     }
