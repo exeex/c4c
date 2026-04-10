@@ -120,6 +120,20 @@ std::optional<std::pair<RegId, RegId>> parse_trampoline_reg_move(std::string_vie
   return std::pair<RegId, RegId>{src, dst};
 }
 
+struct TrampolineStackLoad {
+  std::int32_t offset = 0;
+  RegId dst_fam = REG_NONE;
+  std::size_t load_index = 0;
+  std::size_t copy_index = 0;
+};
+
+struct TrampolineBlock {
+  std::vector<std::pair<RegId, RegId>> reg_moves;
+  std::vector<std::size_t> reg_move_indices;
+  std::vector<TrampolineStackLoad> stack_loads;
+  std::size_t jump_index = 0;
+};
+
 std::size_t count_branches_to_label(const LineStore* store, const LineInfo* infos,
                                     std::string_view label_name) {
   std::size_t count = 0;
@@ -159,15 +173,32 @@ std::optional<std::size_t> find_label_index(const LineStore* store, const LineIn
   return std::nullopt;
 }
 
-std::optional<std::vector<std::pair<RegId, RegId>>> collect_trampoline_moves(
-    const LineStore* store, const LineInfo* infos, std::size_t label_index,
-    std::size_t len, std::size_t* jump_index) {
-  std::vector<std::pair<RegId, RegId>> moves;
+std::optional<TrampolineBlock> collect_trampoline_block(const LineStore* store,
+                                                        const LineInfo* infos,
+                                                        std::size_t label_index,
+                                                        std::size_t len) {
+  TrampolineBlock block;
   std::size_t index = next_real_line(infos, label_index + 1, len);
   while (index < len) {
     if (infos[index].kind == LineKind::Jmp) {
-      *jump_index = index;
-      return moves;
+      block.jump_index = index;
+      return block;
+    }
+    if (infos[index].kind == LineKind::LoadRbp &&
+        effective_dest_reg(infos[index], trimmed_line(store, infos[index], index)) == 0) {
+      const auto next_index = next_real_line(infos, index + 1, len);
+      if (next_index >= len || infos[next_index].kind != LineKind::Other) {
+        return std::nullopt;
+      }
+      const auto next_trimmed = trimmed_line(store, infos[next_index], next_index);
+      const auto move = parse_trampoline_reg_move(next_trimmed);
+      if (!move.has_value() || move->first != 0 || !starts_with(next_trimmed, "movq ")) {
+        return std::nullopt;
+      }
+      block.stack_loads.push_back(
+          TrampolineStackLoad{infos[index].rbp_offset, move->second, index, next_index});
+      index = next_real_line(infos, next_index + 1, len);
+      continue;
     }
     if (infos[index].kind != LineKind::Other) {
       return std::nullopt;
@@ -177,7 +208,8 @@ std::optional<std::vector<std::pair<RegId, RegId>>> collect_trampoline_moves(
     if (!move.has_value()) {
       return std::nullopt;
     }
-    moves.push_back(*move);
+    block.reg_moves.push_back(*move);
+    block.reg_move_indices.push_back(index);
     index = next_real_line(infos, index + 1, len);
   }
 
@@ -317,6 +349,69 @@ bool find_copy_and_modifications(const LineStore* store, const LineInfo* infos,
   return false;
 }
 
+bool find_stack_spill_copy_and_modifications(const LineStore* store, const LineInfo* infos,
+                                             std::size_t branch_index, std::int32_t offset,
+                                             RegId dst_fam, std::size_t* copy_index,
+                                             std::size_t* store_index,
+                                             std::vector<std::size_t>* modifications) {
+  const std::string dst_reg = std::string("%") + kReg64Names[dst_fam];
+  const std::string stack_slot = std::to_string(offset) + "(%rbp)";
+  bool saw_store = false;
+
+  for (std::size_t scan = branch_index; scan > 0;) {
+    --scan;
+    if (infos[scan].kind == LineKind::Nop || infos[scan].kind == LineKind::Empty) {
+      continue;
+    }
+    if (infos[scan].kind == LineKind::Label || infos[scan].kind == LineKind::Call ||
+        infos[scan].kind == LineKind::Jmp || infos[scan].kind == LineKind::JmpIndirect ||
+        infos[scan].kind == LineKind::Ret || infos[scan].kind == LineKind::Directive) {
+      break;
+    }
+
+    const auto trimmed = trimmed_line(store, infos[scan], scan);
+    if (!saw_store) {
+      if (infos[scan].kind == LineKind::StoreRbp && starts_with(trimmed, "movq %rax,") &&
+          contains(trimmed, stack_slot)) {
+        *store_index = scan;
+        saw_store = true;
+      }
+      continue;
+    }
+
+    const bool writes_src = effective_dest_reg(infos[scan], trimmed) == 0;
+    if (writes_src) {
+      if (infos[scan].kind == LineKind::SetCC) {
+        return false;
+      }
+      if (is_movq_reg_reg(trimmed, dst_reg, "%rax")) {
+        *copy_index = scan;
+        return true;
+      }
+      if (line_references_reg_fast(infos[scan], dst_fam)) {
+        return false;
+      }
+      modifications->push_back(scan);
+      continue;
+    }
+
+    const bool refs_src = line_references_reg_fast(infos[scan], 0);
+    const bool refs_dst = line_references_reg_fast(infos[scan], dst_fam);
+    if (refs_src) {
+      if (refs_dst) {
+        return false;
+      }
+      modifications->push_back(scan);
+      continue;
+    }
+    if (refs_dst) {
+      return false;
+    }
+  }
+
+  return false;
+}
+
 void replace_jump_target(LineStore* store, const LineInfo& info, std::size_t index,
                          std::string_view new_target) {
   const auto line = trimmed_line(store, info, index);
@@ -362,26 +457,33 @@ bool eliminate_loop_trampolines(LineStore* store, LineInfo* infos) {
       continue;
     }
 
-    std::size_t jump_index = len;
-    const auto trampoline_moves =
-        collect_trampoline_moves(store, infos, *label_index, len, &jump_index);
-    if (!trampoline_moves.has_value() || jump_index >= len) {
+    const auto block = collect_trampoline_block(store, infos, *label_index, len);
+    if (!block.has_value() || block->jump_index >= len) {
       continue;
     }
 
-    const auto jump_line = trimmed_line(store, infos[jump_index], jump_index);
+    const auto jump_line = trimmed_line(store, infos[block->jump_index], block->jump_index);
     const auto redirected_target = extract_jump_target(jump_line);
     if (!redirected_target.has_value() || *redirected_target == *branch_target) {
       continue;
     }
+    if (block->reg_moves.empty() && block->stack_loads.empty()) {
+      replace_jump_target(store, infos[i], i, *redirected_target);
+      mark_nop(infos[block->jump_index]);
+      changed = true;
+      continue;
+    }
 
     std::vector<std::size_t> copy_indices;
+    std::vector<std::size_t> store_indices;
     std::vector<std::size_t> trampoline_move_indices;
+    std::vector<std::size_t> trampoline_stack_indices;
     std::vector<std::pair<std::size_t, std::string>> rewrites;
     std::vector<bool> move_coalesced;
+    std::vector<bool> stack_coalesced;
 
-    std::size_t move_scan = next_real_line(infos, *label_index + 1, len);
-    for (const auto& [src_fam, dst_fam] : *trampoline_moves) {
+    for (std::size_t move_idx = 0; move_idx < block->reg_moves.size(); ++move_idx) {
+      const auto& [src_fam, dst_fam] = block->reg_moves[move_idx];
       bool can_coalesce = verify_fallthrough_safety(store, infos, i, len, src_fam, dst_fam);
       std::size_t copy_index = len;
       std::vector<std::size_t> modifications;
@@ -407,19 +509,55 @@ bool eliminate_loop_trampolines(LineStore* store, LineInfo* infos) {
       move_coalesced.push_back(can_coalesce);
       if (can_coalesce) {
         copy_indices.push_back(copy_index);
-        trampoline_move_indices.push_back(move_scan);
+        trampoline_move_indices.push_back(block->reg_move_indices[move_idx]);
         rewrites.insert(rewrites.end(), move_rewrites.begin(), move_rewrites.end());
       }
-      move_scan = next_real_line(infos, move_scan + 1, len);
+    }
+
+    for (const auto& stack_load : block->stack_loads) {
+      bool can_coalesce = verify_fallthrough_safety(store, infos, i, len, 0, stack_load.dst_fam);
+      std::size_t copy_index = len;
+      std::size_t store_index = len;
+      std::vector<std::size_t> modifications;
+      if (can_coalesce &&
+          !find_stack_spill_copy_and_modifications(store, infos, i, stack_load.offset,
+                                                   stack_load.dst_fam, &copy_index, &store_index,
+                                                   &modifications)) {
+        can_coalesce = false;
+      }
+
+      std::vector<std::pair<std::size_t, std::string>> stack_rewrites;
+      if (can_coalesce) {
+        for (const auto mod_index : modifications) {
+          const auto rewritten = replace_reg_family(
+              trimmed_line(store, infos[mod_index], mod_index), 0, stack_load.dst_fam);
+          if (rewritten == trimmed_line(store, infos[mod_index], mod_index)) {
+            can_coalesce = false;
+            break;
+          }
+          stack_rewrites.emplace_back(mod_index, "  " + rewritten);
+        }
+      }
+
+      stack_coalesced.push_back(can_coalesce);
+      if (can_coalesce) {
+        copy_indices.push_back(copy_index);
+        store_indices.push_back(store_index);
+        trampoline_stack_indices.push_back(stack_load.load_index);
+        trampoline_stack_indices.push_back(stack_load.copy_index);
+        rewrites.insert(rewrites.end(), stack_rewrites.begin(), stack_rewrites.end());
+      }
     }
 
     const bool any_coalesced =
-        std::any_of(move_coalesced.begin(), move_coalesced.end(), [](bool value) { return value; });
+        std::any_of(move_coalesced.begin(), move_coalesced.end(), [](bool value) { return value; }) ||
+        std::any_of(stack_coalesced.begin(), stack_coalesced.end(), [](bool value) { return value; });
     if (!any_coalesced) {
       continue;
     }
     const bool all_coalesced =
-        std::all_of(move_coalesced.begin(), move_coalesced.end(), [](bool value) { return value; });
+        std::all_of(move_coalesced.begin(), move_coalesced.end(), [](bool value) { return value; }) &&
+        std::all_of(stack_coalesced.begin(), stack_coalesced.end(), [](bool value) { return value; });
 
     for (const auto& [mod_index, rewritten] : rewrites) {
       replace_line(store, infos[mod_index], mod_index, rewritten);
@@ -427,16 +565,25 @@ bool eliminate_loop_trampolines(LineStore* store, LineInfo* infos) {
     for (const auto copy_index : copy_indices) {
       mark_nop(infos[copy_index]);
     }
+    for (const auto store_index : store_indices) {
+      mark_nop(infos[store_index]);
+    }
 
     if (all_coalesced) {
       for (const auto move_index : trampoline_move_indices) {
         mark_nop(infos[move_index]);
       }
+      for (const auto stack_index : trampoline_stack_indices) {
+        mark_nop(infos[stack_index]);
+      }
       replace_jump_target(store, infos[i], i, *redirected_target);
-      mark_nop(infos[jump_index]);
+      mark_nop(infos[block->jump_index]);
     } else {
       for (const auto move_index : trampoline_move_indices) {
         mark_nop(infos[move_index]);
+      }
+      for (const auto stack_index : trampoline_stack_indices) {
+        mark_nop(infos[stack_index]);
       }
     }
 

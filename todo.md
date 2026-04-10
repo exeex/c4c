@@ -9,17 +9,16 @@ Source Plan: plan.md
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
   first live optimization round
 - immediate target:
-  land partial loop-trampoline coalescing for mixed safe/unsafe register
-  shuffle blocks so the live translated pass can rewrite a proven-safe pair
-  without waiting for every sibling trampoline move to become coalescible;
-  keep stack-load trampoline forms parked until their own safety and rewrite
-  rules are explicit
+  validate the next bounded loop-trampoline spill shape against the live
+  translated pass and keep the rewrite scope limited to one proven-safe stack
+  reload/copy-back form instead of widening into generic spill coalescing
 
 ## Next Slice
 
-- evaluate whether the remaining stack-load trampoline cases should reuse the
-  new shared destination parsing path or stay parked until a separate bounded
-  slice with explicit safety rules
+- evaluate whether the remaining stack-load trampoline cases beyond the new
+  single-slot `%rax` reload/copy-back form should reuse the same detection
+  path or stay parked until a separate bounded slice with explicit safety
+  rules for wider spill shapes
 - keep `frame_compact.cpp` parked until dead-store and callee-save translated
   passes are live enough for frame shrinking to be meaningful
 - continue evaluating which remaining translated peephole units can be compiled
@@ -66,6 +65,13 @@ Source Plan: plan.md
   mixed safe/unsafe shuffle handling: the current C++ pass still bails out of
   the whole trampoline when one sibling move cannot be coalesced, while the
   reference keeps the unsafe sibling parked and still applies the safe rewrite
+- this iteration closes the simplest parked stack-load gap: the live pass now
+  recognizes a single-slot `%rax` spill in the predecessor plus an immediate
+  trampoline reload/copy-back pair and rewrites that shape onto the
+  loop-carried register without widening into generic spill analysis
+- the next bounded gap after this iteration is the remaining stack-load family:
+  wider spill forms should stay parked until their predecessor-store matching
+  and fallthrough safety rules are explicit instead of inferred ad hoc
 
 ## Recently Completed
 
@@ -129,5 +135,12 @@ Source Plan: plan.md
 - added a direct regression test that proves the live x86 peephole now removes
   only the safe `%r9/%r14` shuffle from a mixed trampoline while leaving the
   unsafe `%r10/%r15` pair and trampoline branch in place
+- widened the live translated loop-trampoline pass to coalesce a conservative
+  single-slot stack-spill trampoline when the predecessor computes into `%rax`,
+  spills to one `(%rbp)` slot, and the trampoline immediately reloads `%rax`
+  before copying back into the loop-carried register
+- added a direct regression test that proves the live x86 peephole now rewrites
+  that bounded stack-spill trampoline onto the loop-carried register and drops
+  the now-dead spill, reload, and trampoline copy-back sequence
 - rebuilt and reran the full ctest suite with monotonic results:
   `181` failures before, `181` failures after, no newly failing tests

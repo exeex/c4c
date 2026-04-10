@@ -9364,6 +9364,39 @@ void test_x86_peephole_partially_coalesces_mixed_safety_trampoline() {
                   "x86 peephole should keep branching through the trampoline until every sibling move is coalescible");
 }
 
+void test_x86_peephole_coalesces_single_stack_spill_trampoline_copy() {
+  const std::string input =
+      ".text\n"
+      "main:\n"
+      "  movq %r9, %rax\n"
+      "  addq $8, %rax\n"
+      "  movq %rax, -8(%rbp)\n"
+      "  cmpq %rsi, %rdi\n"
+      "  jne .Ltrampoline\n"
+      "  ret\n"
+      ".Ltrampoline:\n"
+      "  movq -8(%rbp), %rax\n"
+      "  movq %rax, %r9\n"
+      "  jmp .Lloop\n"
+      ".Lloop:\n"
+      "  movq %r9, %rax\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_contains(optimized, "  addq $8, %r9\n",
+                  "x86 peephole should retarget a conservative stack-spill trampoline update onto the loop-carried register");
+  expect_contains(optimized, "  jne .Lloop\n",
+                  "x86 peephole should redirect the branch once the bounded stack-spill trampoline rewrite is safe");
+  expect_not_contains(optimized, "  movq %r9, %rax\n  addq $8, %rax\n",
+                      "x86 peephole should drop the predecessor copy into %rax when the stack-spill trampoline rewrite coalesces it");
+  expect_not_contains(optimized, "  movq %rax, -8(%rbp)\n",
+                      "x86 peephole should drop the stack spill once the trampoline reload becomes unnecessary");
+  expect_not_contains(optimized, "  movq -8(%rbp), %rax\n",
+                      "x86 peephole should drop the trampoline reload after coalescing a conservative stack-spill case");
+  expect_not_contains(optimized, "  movq %rax, %r9\n",
+                      "x86 peephole should drop the trampoline copy-back after coalescing a conservative stack-spill case");
+}
+
 void test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole() {
   const auto rendered = c4c::backend::x86::emit_module(make_minimal_countdown_loop_bir_module());
 
@@ -9829,6 +9862,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_peephole_coalesces_single_register_loop_trampoline_copy);
   RUN_TEST(test_x86_peephole_coalesces_movslq_loop_trampoline_copy);
   RUN_TEST(test_x86_peephole_partially_coalesces_mixed_safety_trampoline);
+  RUN_TEST(test_x86_peephole_coalesces_single_stack_spill_trampoline_copy);
   RUN_TEST(test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);
