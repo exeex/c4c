@@ -244,6 +244,46 @@ Validation result:
 - full-suite regression guard passed with `3319/3319` tests passing before and
   after, with no new failures
 
+## 2026-04-10 Step 4 Second Extraction Slice
+
+Executed the next low-risk seam inside the remaining
+`stmt_emitter_expr.cpp` unary/binary cluster:
+
+- moved the binary-expression lowering cluster
+  (`emit_complex_binary_arith`, `emit_rval_payload(..., BinaryExpr, ...)`, and
+  `emit_logical`) out of `src/codegen/lir/stmt_emitter_expr.cpp` into the new
+  `src/codegen/lir/stmt_emitter_expr_binary.cpp`
+- kept the logic as existing `StmtEmitter` methods so the slice remains a file
+  ownership split rather than a semantic rewrite
+- added `tests/c/internal/positive_case/ok_expr_unary_binary_runtime.c` as a
+  focused runtime check for scalar unary/binary, pointer arithmetic, logical
+  short-circuiting, compound assignment, and simple complex arithmetic
+
+Measured result:
+
+- `src/codegen/lir/stmt_emitter_expr.cpp` improved from `6.021s` to `3.401s`
+  on the optimized single-TU compile command used for this iteration
+  (`-2.620s`, about `43.5%`)
+- the new `src/codegen/lir/stmt_emitter_expr_binary.cpp` compiles in `2.679s`
+
+Validation result:
+
+- focused coverage passed:
+  `positive_sema_ok_expr_unary_binary_runtime_c`,
+  `positive_sema_ok_expr_canonical_cast_index_c`,
+  `positive_sema_ok_expr_canonical_types_c`,
+  `smoke_aggregate_access.c`, and `smoke_call_lowering.c` in compare mode
+- full-suite regression guard passed with `3320/3320` tests passing after the
+  new focused test was added, with no new failures
+
+Current follow-on:
+
+- refresh the hotspot inventory before the next slice because
+  `stmt_emitter_expr.cpp` may no longer be the lead hotspot after the two
+  extractions
+- if `hir_templates.cpp` stays near the top, move the next extraction slice to
+  the member-typedef/deferred-template-resolution helper cluster
+
 ## Non-Goals
 
 - no backend architecture work
