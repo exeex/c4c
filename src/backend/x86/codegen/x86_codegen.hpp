@@ -432,6 +432,8 @@ std::optional<std::string> try_emit_minimal_extern_zero_arg_call_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_local_arg_call_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_two_arg_helper_call_module(
+    const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_void_helper_call_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_void_return_module(
