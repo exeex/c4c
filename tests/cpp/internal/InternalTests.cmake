@@ -1380,6 +1380,15 @@ set_tests_properties(cpp_hir_expr_object_materialization_helper PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_expr_operator_member_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_expr_operator_member_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_expr_operator_member_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "Wrapper__operator_bool\\(\\(&w#L1\\)\\).*Wrapper__operator_arrow\\(\\(&w#L1\\)\\).*return Wrapper__operator_arrow\\(\\(&w#L1\\)\\)->value"
+)
+
+add_test(
   NAME cpp_hir_stmt_control_flow_helper
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_stmt_control_flow_helper_hir.cpp"
 )

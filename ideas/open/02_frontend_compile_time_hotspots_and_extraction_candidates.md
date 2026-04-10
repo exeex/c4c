@@ -1050,3 +1050,59 @@ Follow-on note:
   `src/frontend/hir/hir_stmt.cpp` at `2.510s`, and the reduced
   `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `2.492s`, so the
   next iteration should move back to `hir_expr.cpp`
+
+## 2026-04-10 Step 4 Twenty-Third Extraction Slice
+
+The refreshed direct comparison after the deduction split left
+`src/frontend/hir/hir_expr.cpp` ahead at `2.740s`, with
+`src/frontend/hir/hir_templates.cpp` at `2.592s`,
+`src/frontend/hir/hir_stmt.cpp` at `2.510s`, and the reduced
+`src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `2.492s`.
+
+That moved the next extraction back into `hir_expr.cpp`, where the
+overloaded-operator and member-expression lowering helpers were the smallest
+cohesive seam that could move behind a translation-unit boundary without
+rewriting expression dispatch.
+
+Executed the operator/member helper split:
+
+- moved `try_lower_rvalue_ref_storage_addr`, `resolve_ref_overload`,
+  `find_pending_method_by_mangled`, `try_lower_operator_call`,
+  `lower_member_expr`, and `maybe_bool_convert` into the new
+  `src/frontend/hir/hir_expr_operator.cpp`
+- kept `src/frontend/hir/hir_expr.cpp` focused on the main expression
+  dispatcher and leaf expression cases, while the overload-specific lowering
+  logic now lives in its own translation unit
+- added focused HIR coverage in
+  `tests/cpp/internal/hir_case/hir_expr_operator_member_helper_hir.cpp` and
+  wired `cpp_hir_expr_operator_member_helper` into
+  `tests/cpp/internal/InternalTests.cmake`
+
+Measured result:
+
+- compiling the pre-split `src/frontend/hir/hir_expr.cpp` from `HEAD` on the
+  direct optimized command took `2.960s`
+- the direct post-split rerun of `src/frontend/hir/hir_expr.cpp` took `2.230s`
+- the new `src/frontend/hir/hir_expr_operator.cpp` compiled in `1.690s`
+- this reduced the main hotspot TU by `0.730s` (about `24.7%`) on the direct
+  comparison
+
+Validation result:
+
+- focused coverage passed:
+  `cpp_hir_expr_operator_member_helper`,
+  `cpp_hir_expr_call_member_helper`,
+  `cpp_hir_expr_object_materialization_helper`,
+  `cpp_positive_sema_operator_arrow_member_basic_cpp`,
+  `cpp_positive_sema_operator_bool_member_basic_cpp`, and
+  `cpp_positive_sema_operator_subscript_member_basic_cpp`
+- full-suite regression guard passed with `3330/3330` tests passing before and
+  `3341/3341` after, with no new failures
+
+Follow-on note:
+
+- a refreshed direct comparison now reads `src/frontend/hir/hir_expr.cpp` at
+  `2.480s`, `src/frontend/hir/hir_stmt.cpp` at `2.450s`, the reduced
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `2.370s`, and
+  `src/frontend/hir/hir_templates.cpp` at `2.100s`, so the next iteration
+  should stay in `hir_expr.cpp`

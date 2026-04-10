@@ -6,12 +6,45 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: extract the next measured `hir_expr.cpp` helper family, since the
-  refreshed direct-TU comparison now reads `hir_expr.cpp` at `2.740s`,
-  `hir_templates.cpp` at `2.592s`, `hir_stmt.cpp` at `2.510s`, and the
-  reduced `stmt_emitter_call_vaarg_amd64.cpp` at `2.492s`.
+- Step 4: extract the next measured `hir_expr.cpp` helper family, because the
+  refreshed direct-TU comparison after the operator/member split now reads
+  `hir_expr.cpp` at `2.480s`, `hir_stmt.cpp` at `2.450s`,
+  `stmt_emitter_call_vaarg_amd64.cpp` at `2.370s`, and
+  `hir_templates.cpp` at `2.100s`.
 
 ## Completed
+
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/hir_expr_operator_member_helper_hir.cpp` and
+  wired the new `cpp_hir_expr_operator_member_helper` test into
+  `tests/cpp/internal/InternalTests.cmake`.
+- Executed the twenty-third Step 4 slice by moving the overloaded
+  operator/member-expression helper family
+  (`try_lower_rvalue_ref_storage_addr`, `resolve_ref_overload`,
+  `find_pending_method_by_mangled`, `try_lower_operator_call`,
+  `lower_member_expr`, and `maybe_bool_convert`) out of
+  `src/frontend/hir/hir_expr.cpp` into the new
+  `src/frontend/hir/hir_expr_operator.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_expr_operator_member_helper`,
+  `cpp_hir_expr_call_member_helper`,
+  `cpp_hir_expr_object_materialization_helper`,
+  `cpp_positive_sema_operator_arrow_member_basic_cpp`,
+  `cpp_positive_sema_operator_bool_member_basic_cpp`, and
+  `cpp_positive_sema_operator_subscript_member_basic_cpp`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard
+  passed with `3330/3330` tests passing before and `3341/3341` after, with no
+  new failures.
+- Recorded the twenty-third before/after extraction measurement: compiling the
+  pre-split `src/frontend/hir/hir_expr.cpp` from `HEAD` on the generated
+  optimized command took `2.960s`, the reduced
+  `src/frontend/hir/hir_expr.cpp` took `2.230s`, and the new
+  `src/frontend/hir/hir_expr_operator.cpp` compiled in `1.690s` on the direct
+  comparison rerun.
+- Refreshed the direct hotspot comparison after the operator/member split:
+  `hir_expr.cpp` measured `2.480s`, `hir_stmt.cpp` `2.450s`,
+  `stmt_emitter_call_vaarg_amd64.cpp` `2.370s`, and
+  `hir_templates.cpp` `2.100s`.
 
 - Added focused HIR coverage in
   `tests/cpp/internal/hir_case/template_function_deduction_binding_hir.cpp`
@@ -490,10 +523,10 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Stay in `src/frontend/hir/hir_templates.cpp` next, because the refreshed
-  direct comparison still leaves the reduced TU at 3.416s ahead of
-  `hir_stmt.cpp` at 3.159s, the reduced AMD64 `va_arg` TU at 3.076s, and the
-  reduced `hir_expr.cpp` at 2.667s.
+- Stay in `src/frontend/hir/hir_expr.cpp` next, because the refreshed direct
+  comparison after the operator/member split still leaves the reduced TU at
+  `2.480s`, just ahead of `hir_stmt.cpp` at `2.450s`, the reduced AMD64
+  `va_arg` TU at `2.370s`, and `hir_templates.cpp` at `2.100s`.
 
 ## Blockers
 
@@ -510,7 +543,7 @@ Source Plan: plan.md
 - Step 2 is complete: the top-five hotspot tier is optimizer heavy rather than
   parse-heavy, though all five keep a meaningful `-fsyntax-only` floor.
 - The latest `ctest --test-dir build -j --output-on-failure` rerun passes
-  3339/3339 tests, and the monotonic regression guard remains green.
+  3341/3341 tests, and the monotonic regression guard remains green.
 - The first executed extraction slice reduced the hottest TU,
   `src/codegen/lir/stmt_emitter_expr.cpp`, by 1.219s on the optimized
   single-TU compile command.
