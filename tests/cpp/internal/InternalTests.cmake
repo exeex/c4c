@@ -1461,6 +1461,15 @@ set_tests_properties(cpp_hir_defaulted_destructor_member_teardown PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_stmt_local_decl_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_stmt_local_decl_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_stmt_local_decl_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl seed: struct Box.*Box__Box\\(\\(&seed#L0\\)\\).*decl copy: struct Box.*Box__Box__1\\(\\(&copy#L1\\), \\(&seed#L0\\)\\).*decl data: int\\[3\\] = 0.*\\(data#L2\\[0\\] = 1\\).*\\(data#L2\\[1\\] = 2\\).*\\(data#L2\\[2\\] = 3\\).*decl __rref_tmp_[0-9]+: int = 7.*decl moved: int\\*&& = \\(&__rref_tmp_[0-9]+#L4\\).*return \\(\\(copy#L1.value \\+ data#L2\\[1\\]\\) \\+ \\(\\*moved#L3\\)\\)"
+)
+
+add_test(
   NAME cpp_hir_template_deferred_nttp_expr
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_expr_hir.cpp"
 )

@@ -56,6 +56,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/compile_time_engine.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_stmt.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_stmt_decl.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_stmt_control_flow.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_stmt_range_for.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_stmt_switch.cpp"

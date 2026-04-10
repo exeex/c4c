@@ -565,6 +565,54 @@ Follow-on note:
   cohesive `hir_stmt.cpp` control-flow seam remains before returning to
   template-heavy work
 
+## 2026-04-10 Step 4 Thirteenth Extraction Slice
+
+The refreshed direct hotspot comparison after the later `hir_templates.cpp`
+work no longer matched that older follow-on note: `hir_stmt.cpp` measured
+`7.659s`, `hir_templates.cpp` `6.379s`, `hir_expr.cpp` `4.406s`, and
+`stmt_emitter_call.cpp` `3.181s` on the generated optimized compile commands.
+
+That moved the next extraction back to `hir_stmt.cpp`, with the
+local-declaration lowering body chosen as the next cohesive seam.
+
+Executed the `hir_stmt.cpp` local-declaration split:
+
+- moved `Lowerer::lower_local_decl_stmt` into the new
+  `src/frontend/hir/hir_stmt_decl.cpp`
+- kept the logic as an existing `Lowerer` method so the slice remains a
+  translation-unit ownership split rather than a semantic rewrite
+- added `tests/cpp/internal/hir_case/hir_stmt_local_decl_helper_hir.cpp` as
+  focused HIR coverage for default construction, copy initialization, scalar
+  array initialization, and rvalue-reference temporary materialization
+
+Measured result:
+
+- compiling the pre-split `src/frontend/hir/hir_stmt.cpp` from `HEAD` on the
+  generated optimized command took `3.725s`
+- the direct post-split `src/frontend/hir/hir_stmt.cpp` rerun took `2.540s`
+- the new `src/frontend/hir/hir_stmt_decl.cpp` compiles in `2.520s`
+- this means the slice did demonstrate a single-TU compile-time win for the
+  main hotspot TU, reducing `hir_stmt.cpp` by `1.185s` (about `31.8%`)
+
+Validation result:
+
+- focused coverage passed:
+  `cpp_hir_stmt_local_decl_helper`,
+  `cpp_positive_sema_default_ctor_basic_cpp`,
+  `cpp_positive_sema_copy_init_basic_cpp`,
+  `cpp_positive_sema_copy_move_init_basic_cpp`,
+  `cpp_positive_sema_rvalue_ref_decl_basic_cpp`, and
+  `cpp_positive_sema_ctor_init_member_typedef_ctor_runtime_cpp`
+- full-suite regression guard passed with `3330/3330` tests passing before and
+  `3331/3331` after, with no new failures
+
+Follow-on note:
+
+- a refreshed hotspot rerun now leaves `src/frontend/hir/hir_expr.cpp`
+  narrowly ahead at `3.653s`, with `src/frontend/hir/hir_templates.cpp`
+  next at `3.579s`, so the next iteration should inspect `hir_expr.cpp`
+  before returning to the remaining template-heavy seams
+
 ## Non-Goals
 
 - no backend architecture work

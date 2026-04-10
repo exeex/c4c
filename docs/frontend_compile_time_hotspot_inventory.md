@@ -457,3 +457,52 @@ Interpretation:
 - The next extraction choice should inspect whether another cohesive
   control-flow seam remains in `hir_stmt.cpp` before returning to
   `hir_templates.cpp`.
+
+## Step 4: Thirteenth Executed Slice
+
+- Extracted `Lowerer::lower_local_decl_stmt` from
+  `src/frontend/hir/hir_stmt.cpp` into the new
+  `src/frontend/hir/hir_stmt_decl.cpp`.
+- Kept the extracted logic as an existing `Lowerer` method, so this remains a
+  translation-unit ownership split around local declaration lowering rather
+  than a semantic rewrite.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/hir_stmt_local_decl_helper_hir.cpp` to pin
+  default construction, copy initialization, scalar array initialization, and
+  rvalue-reference temporary materialization through the extracted path.
+
+## Step 4: Thirteenth Slice Measurements
+
+Optimized single-TU compile timings for the local-declaration split:
+
+| Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
+| --- | ---: | ---: | --- |
+| `src/frontend/hir/hir_stmt.cpp` | 3.725 | 2.540 | before compiled from `HEAD`, after from the working tree |
+| `src/frontend/hir/hir_stmt_decl.cpp` | n/a | 2.520 | new extracted TU |
+
+Interpretation:
+
+- This slice preserved behavior and reduced the main `hir_stmt.cpp` hotspot TU
+  by `1.185s`, about `31.8%`.
+- Unlike the earlier range-for split, this local-declaration extraction is a
+  measured compile-time win on the primary TU.
+
+## Step 4: Refreshed Ranking After The Local-Declaration Split
+
+The targeted optimized single-TU rerun after the local-declaration extraction
+produced this updated hotspot order:
+
+| Rank | Translation unit | Optimized compile (s) |
+| --- | --- | ---: |
+| 1 | `src/frontend/hir/hir_expr.cpp` | 3.653 |
+| 2 | `src/frontend/hir/hir_templates.cpp` | 3.579 |
+| 3 | `src/codegen/lir/stmt_emitter_call.cpp` | 2.937 |
+| 4 | `src/frontend/hir/hir_stmt.cpp` | 2.540 |
+
+Interpretation:
+
+- The refreshed tier is no longer `hir_stmt.cpp`-led; `hir_expr.cpp` now
+  narrowly leads `hir_templates.cpp`.
+- The next extraction choice should inspect the remaining `hir_expr.cpp`
+  helper families first, with `hir_templates.cpp` as the immediate fallback if
+  its remaining seams are cleaner.

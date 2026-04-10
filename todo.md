@@ -6,10 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: preserve the latest `hir_templates.cpp` template-global extraction
+- Step 5: preserve the latest `hir_stmt.cpp` local-declaration extraction
   measurements and validation state, then refresh the hotspot comparison
-  before choosing the next helper family split from the remaining
-  template-heavy lowering paths.
+  before choosing the next helper family split from the current HIR-led tier,
+  with `hir_expr.cpp` now slightly ahead of `hir_templates.cpp`.
 
 ## Completed
 
@@ -338,15 +338,47 @@ Source Plan: plan.md
   optimized compile of `src/frontend/hir/hir_templates.cpp` improved from
   4.14s to 3.864s, and the new
   `src/frontend/hir/hir_templates_global.cpp` compiled in 1.658s.
+- Reconfigured `build` with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, rebuilt, and
+  refreshed the current direct hotspot comparison from
+  `build/compile_commands.json`: `hir_stmt.cpp` measured 7.659s,
+  `hir_templates.cpp` 6.379s, `hir_expr.cpp` 4.406s, and
+  `stmt_emitter_call.cpp` 3.181s, which invalidated the earlier
+  `hir_templates.cpp`-led follow-on assumption.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/hir_stmt_local_decl_helper_hir.cpp` and wired
+  the new `cpp_hir_stmt_local_decl_helper` test into
+  `tests/cpp/internal/InternalTests.cmake`.
+- Executed the thirteenth Step 4 slice by moving
+  `Lowerer::lower_local_decl_stmt` out of
+  `src/frontend/hir/hir_stmt.cpp` into the new
+  `src/frontend/hir/hir_stmt_decl.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_stmt_local_decl_helper`,
+  `cpp_positive_sema_default_ctor_basic_cpp`,
+  `cpp_positive_sema_copy_init_basic_cpp`,
+  `cpp_positive_sema_copy_move_init_basic_cpp`,
+  `cpp_positive_sema_rvalue_ref_decl_basic_cpp`, and
+  `cpp_positive_sema_ctor_init_member_typedef_ctor_runtime_cpp`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard passed
+  with 3330/3330 tests passing before and 3331/3331 after, with no new
+  failures.
+- Recorded the thirteenth before/after extraction measurement: compiling the
+  pre-split `src/frontend/hir/hir_stmt.cpp` from `HEAD` on the generated
+  optimized command took 3.725s, the post-split
+  `src/frontend/hir/hir_stmt.cpp` took 2.540s, and the new
+  `src/frontend/hir/hir_stmt_decl.cpp` compiled in 2.520s.
+- Refreshed the optimized hotspot ranking after the local-declaration split:
+  `hir_expr.cpp` is now 3.653s, `hir_templates.cpp` 3.579s,
+  `stmt_emitter_call.cpp` 2.937s, and the reduced `hir_stmt.cpp` 2.540s.
 
 ## Next Slice
 
-- Refresh the optimized hotspot ranking after the template-global split and
-  confirm whether `src/frontend/hir/hir_templates.cpp` still leads the HIR
-  tier.
-- If it does, choose the next low-risk `hir_templates.cpp` helper family from
-  the remaining deduction/materialization paths with another narrow HIR-first
-  validation slice.
+- Inspect the remaining `src/frontend/hir/hir_expr.cpp` helper families and
+  choose the next low-risk HIR extraction seam now that it narrowly leads the
+  refreshed tier.
+- Keep `src/frontend/hir/hir_templates.cpp` as the immediate fallback if
+  `hir_expr.cpp` does not expose a cleaner slice than the remaining
+  template-heavy deduction/materialization paths.
 
 ## Blockers
 
@@ -432,3 +464,19 @@ Source Plan: plan.md
   TU.
 - The latest full-suite rerun passes 3330/3330 tests, and the monotonic
   regression guard remains green.
+- The refreshed direct hotspot comparison before the latest slice measured
+  `src/frontend/hir/hir_stmt.cpp` at 7.659s and
+  `src/frontend/hir/hir_templates.cpp` at 6.379s, so the previous
+  `hir_templates.cpp`-first follow-on plan no longer matched the measured
+  state.
+- The thirteenth extraction slice reduced `src/frontend/hir/hir_stmt.cpp`
+  from 3.725s to 2.540s on the direct `HEAD` versus working-tree compile
+  comparison, so this local-declaration split counts as another measured
+  hotspot reduction for that TU.
+- The latest full-suite rerun passes 3331/3331 tests, and the monotonic
+  regression guard remains green.
+- The refreshed post-split hotspot order is now led by
+  `src/frontend/hir/hir_expr.cpp` at 3.653s, followed closely by
+  `src/frontend/hir/hir_templates.cpp` at 3.579s, so the next
+  highest-value slice should inspect `hir_expr.cpp` before returning to the
+  remaining template-heavy seams.
