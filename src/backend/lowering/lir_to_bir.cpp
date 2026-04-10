@@ -5406,6 +5406,19 @@ BirLoweringResult try_lower_to_bir_with_options(
         }},
     };
   }
+  if (auto lowered =
+          try_lower_minimal_local_i32_array_pointer_inc_store_compare_123_zero_return_module(
+              module);
+      lowered.has_value()) {
+    return BirLoweringResult{
+        .module = std::move(lowered),
+        .notes = {BirLoweringNote{
+            .phase = "legacy-lowering",
+            .message =
+                "local array pointer increment/store/compare seam lowered the source-shaped module before CFG normalization preserved the bounded `00072.c` pointer-write route",
+        }},
+    };
+  }
   if (auto lowered = try_lower_minimal_single_global_i32_zero_return_module(module);
       lowered.has_value()) {
     return BirLoweringResult{

@@ -2165,6 +2165,62 @@ c4c::codegen::lir::LirModule make_local_i32_array_pointer_add_deref_diff_zero_re
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_local_i32_array_pointer_inc_store_compare_123_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.arr", "[2 x i32]", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.p", "ptr", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "[2 x i32]", "%lv.arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::SExt, "i32", "0", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i32", "%t0", false, {"i64 %t1"}});
+  entry.insts.push_back(LirStoreOp{"ptr", "%t2", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t3", "ptr", "%lv.p"});
+  entry.insts.push_back(LirCastOp{"%t4", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t5", "i32", "%t3", false, {"i64 %t4"}});
+  entry.insts.push_back(LirStoreOp{"ptr", "%t5", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t6", "ptr", "%lv.p"});
+  entry.insts.push_back(LirStoreOp{"i32", "123", "%t6"});
+  entry.insts.push_back(LirGepOp{"%t7", "[2 x i32]", "%lv.arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t8", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t9", "i32", "%t7", false, {"i64 %t8"}});
+  entry.insts.push_back(LirLoadOp{"%t10", "i32", "%t9"});
+  entry.insts.push_back(LirCmpOp{"%t11", false, "ne", "i32", "%t10", "123"});
+  entry.insts.push_back(LirCastOp{"%t12", LirCastKind::ZExt, "i1", "%t11", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t13", false, "ne", "i32", "%t12", "0"});
+  entry.terminator = LirCondBr{"%t13", "block_1", "block_2"};
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{1};
+  block_1.label = "block_1";
+  block_1.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{2};
+  block_2.label = "block_2";
+  block_2.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_local_two_field_struct_sub_sub_two_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -7621,6 +7677,33 @@ void test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_add_deref_
                       "x86 LIR local-array pointer-add dereference plus pointer-diff compare input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_inc_store_compare_123_zero_through_bir_end_to_end() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(
+          make_local_i32_array_pointer_inc_store_compare_123_zero_return_module());
+  expect_true(lowered.has_value(),
+              "x86 LIR local-array pointer increment store-through-dereference compare-123 input should lower into direct BIR before native x86 emission");
+  if (!lowered.has_value()) {
+    return;
+  }
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty(),
+              "x86 LIR local-array pointer increment store-through-dereference compare-123 lowering should collapse the bounded `00072.c` source slice to one constant-return BIR block");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_local_i32_array_pointer_inc_store_compare_123_zero_return_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "x86 LIR local-array pointer increment store-through-dereference compare-123 input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR local-array pointer increment store-through-dereference compare-123 input should preserve the folded zero return after bounded shared lowering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR local-array pointer increment store-through-dereference compare-123 input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_local_two_field_struct_sub_sub_two_through_bir_end_to_end() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_local_two_field_struct_sub_sub_two_return_module());
@@ -8781,6 +8864,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_second_slot_pointer_store_zero_load_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_inc_dec_compare_zero_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_add_deref_diff_zero_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_inc_store_compare_123_zero_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_two_field_struct_sub_sub_two_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_struct_pointer_alias_add_sub_three_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_self_referential_struct_pointer_chain_through_bir_end_to_end);
