@@ -6,19 +6,14 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: return to the smallest remaining EASTL timeout frontier now that the
-  `eastl_utility_simple.cpp` and `eastl_tuple_simple.cpp` canonical blockers
-  are gone.
-- Iteration target: work from the reduced header-only parse timeout behind
-  `tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp`, but the concrete
-  target is now the unsupported structured-binding bridge in
-  `EASTL/utility.h` / `EASTL/tuple.h` that gets enabled by our predefined macro
-  surface.
-- This slice is specifically transitioning from timeout reduction by testcase
-  triage into a bounded preprocessor/profile fix: stop advertising structured
-  binding support to EASTL until the frontend can actually parse `auto [a, b]`,
-  then convert the reduced memory frontier from a timeout baseline into a real
-  parse-success workflow.
+- Step 3: fix the next smallest shared semantic blocker after the
+  namespaced out-of-class owner-context repair.
+- Iteration target: reduce the remaining `eastl::size` undeclared-identifier
+  cluster in `EASTL/memory.h`, which is now the earliest failure for
+  `tests/cpp/eastl/eastl_memory_simple.cpp`.
+- Reduced repro: `tests/cpp/eastl/eastl_memory_simple.cpp --dump-canonical`
+  now fails only at `EASTL/memory.h:1033` and follow-on `eastl::size` sites;
+  `#include <EASTL/allocator.h>` now canonicalizes successfully.
 
 ## Completed
 
@@ -33,6 +28,21 @@ Source Plan: plan.md
   `tests/preprocessor/frontend_cxx_preprocessor_tests.cpp` and now predefine
   `EA_COMPILER_NO_STRUCTURED_BINDING` for the C++ source profiles until the
   frontend actually supports that language feature.
+- Reduced the next shared EASTL sema blocker to namespaced out-of-class method
+  owner context: record definitions under namespace scope kept fully qualified
+  tags like `eastl::allocator`, while out-of-class method definitions inside
+  that namespace still arrived as `allocator::operator=` and `allocator::read`.
+- Added focused frontend coverage in
+  `tests/cpp/internal/postive_case/namespaced_out_of_class_method_context_frontend.cpp`
+  and fixed sema owner-tag resolution so out-of-class methods recover the known
+  record tag for implicit `this`, unqualified member lookup, and
+  `return *this;`.
+- Confirmed the focused regression passes, `#include <EASTL/allocator.h>` now
+  completes under `--dump-canonical`, and `tests/cpp/eastl/eastl_memory_simple.cpp`
+  no longer reports `ref/EASTL/include/EASTL/allocator.h:210:16`.
+- Re-ran nearby member-context regressions plus the full suite; the regression
+  guard remains monotonic at 3289/3289 passing tests versus the earlier
+  3288/3288 baseline, with zero new failing tests.
 - Converted
   `cpp_eastl_memory_uses_allocator_timeout_baseline` into the positive workflow
   test `cpp_eastl_memory_uses_allocator_parse_recipe`, and confirmed
@@ -224,13 +234,13 @@ Source Plan: plan.md
 
 - keep the new structured-binding feature gate in place and work from the
   moved `eastl_memory_simple.cpp` / `eastl_vector_simple.cpp`
-  canonical-sema frontier, whichever yields the smaller next generic
-  mechanism from the shared `allocator.h` / `memory.h` / `vector.h`
-  diagnostic cluster
+  canonical-sema frontier, starting from the now-smaller shared
+  `memory.h` `eastl::size` cluster before revisiting the vector-only
+  `operator_eq` / `operator_neq` follow-ups
 - keep the new HIR re-entrant method-lowering regression green while working
   back outward from the remaining EASTL canonical/sema cases
 - reduce the leading `eastl_vector_simple.cpp` semantic errors
-  (`operator_eq` / `operator_neq`, allocator return typing, or `eastl::size`)
+  (`operator_eq` / `operator_neq` or `eastl::size`)
   to the smallest generic reproducer before touching broader container follow-up
 
 ## Blockers
@@ -238,12 +248,12 @@ Source Plan: plan.md
 - structured bindings themselves are still unsupported in the frontend, so the
   compiler must continue advertising `EA_COMPILER_NO_STRUCTURED_BINDING` until
   a dedicated structured-binding implementation lands
-- `eastl_memory_simple.cpp` still times out under `--dump-canonical`, though
-  the old parse timeout is gone
-- `eastl_vector_simple.cpp` now reaches a later sema failure cluster under
-  `--dump-canonical`, but it is still not clear whether the `vector.h`
-  comparison-operator errors or the shared `allocator.h` / `memory.h`
-  diagnostics are the smallest next generic mechanism
+- `eastl_memory_simple.cpp` now reaches a bounded semantic failure cluster
+  around `eastl::size` in `EASTL/memory.h`
+- `eastl_vector_simple.cpp` still reaches a mixed later cluster under
+  `--dump-canonical`: `vector.h` comparison operators, the shared
+  `memory.h` `eastl::size` failures, and a remaining allocator-return
+  diagnostic that does not reproduce from `#include <EASTL/allocator.h>`
 
 ## Resume Notes
 
