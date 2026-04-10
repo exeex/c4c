@@ -1081,10 +1081,21 @@ TypeSpec Parser::parse_base_type() {
                                             : "";
                                         return ref;
                                     }
-                                    if (arg.type.tag) return arg.type.tag;
                                     std::string mangled;
                                     append_type_mangled_suffix(mangled, arg.type);
+                                    if (mangled.empty() && arg.type.tag)
+                                        return arg.type.tag;
                                     return mangled;
+                                };
+                            auto build_template_arg_refs =
+                                [&](const std::vector<TemplateArgParseResult>& args)
+                                -> std::string {
+                                    std::string arg_refs;
+                                    for (const auto& arg : args) {
+                                        if (!arg_refs.empty()) arg_refs += ",";
+                                        arg_refs += render_alias_arg_ref(arg);
+                                    }
+                                    return arg_refs;
                                 };
 
                             std::unordered_map<std::string, std::string> subst;
@@ -1287,6 +1298,77 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         return true;
                                     };
+                                auto type_mentions_template_scope_param =
+                                    [&](const TypeSpec& type) -> bool {
+                                        auto text_mentions_template_scope_param =
+                                            [&](const char* text) -> bool {
+                                                if (!text || !text[0]) return false;
+                                                const char* cur = text;
+                                                while (*cur) {
+                                                    if (std::isalpha(
+                                                            static_cast<unsigned char>(*cur)) ||
+                                                        *cur == '_') {
+                                                        const char* start = cur++;
+                                                        while (std::isalnum(
+                                                                   static_cast<unsigned char>(*cur)) ||
+                                                               *cur == '_') {
+                                                            ++cur;
+                                                        }
+                                                        if (is_template_scope_type_param(
+                                                                std::string(
+                                                                    start,
+                                                                    static_cast<size_t>(cur - start)))) {
+                                                            return true;
+                                                        }
+                                                        continue;
+                                                    }
+                                                    ++cur;
+                                                }
+                                                return false;
+                                            };
+                                        return text_mentions_template_scope_param(type.tag) ||
+                                               text_mentions_template_scope_param(
+                                                   type.tpl_struct_arg_refs) ||
+                                               text_mentions_template_scope_param(
+                                                   type.deferred_member_type_name);
+                                    };
+                                auto has_dependent_owner_args =
+                                    [&](const std::string& owner_name) -> bool {
+                                        std::vector<ParsedTemplateArg> actual_args;
+                                        if (!build_transformed_owner_args(
+                                                owner_name, &actual_args)) {
+                                            return false;
+                                        }
+                                        for (const auto& actual : actual_args) {
+                                            if (!actual.is_value &&
+                                                type_mentions_template_scope_param(
+                                                    actual.type)) {
+                                                return true;
+                                            }
+                                        }
+                                        return false;
+                                    };
+                                auto preserve_deferred_alias_member =
+                                    [&](const std::string& owner_name,
+                                        const std::string& member_name) -> bool {
+                                        if (owner_name.empty() || member_name.empty())
+                                            return false;
+                                        std::vector<ParsedTemplateArg> actual_args;
+                                        if (!build_transformed_owner_args(
+                                                owner_name, &actual_args)) {
+                                            return false;
+                                        }
+                                        ts.base = TB_STRUCT;
+                                        ts.tag = arena_.strdup(owner_name.c_str());
+                                        ts.tpl_struct_origin = ts.tag;
+                                        const std::string arg_refs =
+                                            build_template_arg_refs(actual_args);
+                                        ts.tpl_struct_arg_refs =
+                                            arena_.strdup(arg_refs.c_str());
+                                        ts.deferred_member_type_name =
+                                            arena_.strdup(member_name.c_str());
+                                        return true;
+                                    };
                                 auto resolve_alias_member_type =
                                     [&](const std::string& owner_name,
                                         const std::string& member_name) -> bool {
@@ -1391,34 +1473,6 @@ TypeSpec Parser::parse_base_type() {
                                 {
                                     std::string owner_name;
                                     std::string member_name;
-                                    auto build_template_arg_refs =
-                                        [&](const std::vector<TemplateArgParseResult>& args)
-                                        -> std::string {
-                                            std::string arg_refs;
-                                            for (const auto& arg : args) {
-                                                if (!arg_refs.empty()) arg_refs += ",";
-                                                if (arg.is_value) {
-                                                    if (arg.nttp_name && arg.nttp_name[0])
-                                                        arg_refs += arg.nttp_name;
-                                                    else
-                                                        arg_refs += std::to_string(arg.value);
-                                                } else if (arg.type.tpl_struct_origin) {
-                                                    arg_refs += "@";
-                                                    arg_refs += arg.type.tpl_struct_origin;
-                                                    arg_refs += ":";
-                                                    arg_refs += arg.type.tpl_struct_arg_refs
-                                                        ? arg.type.tpl_struct_arg_refs
-                                                        : "";
-                                                } else if (arg.type.tag) {
-                                                    arg_refs += arg.type.tag;
-                                                } else {
-                                                    std::string type_name;
-                                                    append_type_mangled_suffix(type_name, arg.type);
-                                                    arg_refs += type_name.empty() ? "?" : type_name;
-                                                }
-                                            }
-                                            return arg_refs;
-                                        };
                                     auto derive_alias_owner_and_member =
                                         [&](const std::string& alias_name)
                                         -> std::pair<std::string, std::string> {
@@ -1499,6 +1553,9 @@ TypeSpec Parser::parse_base_type() {
                                     }
                                     if (!owner_name.empty() && !member_name.empty())
                                         resolved_alias_member =
+                                            (has_dependent_owner_args(owner_name) &&
+                                             preserve_deferred_alias_member(
+                                                 owner_name, member_name)) ||
                                             apply_unary_alias_transform(owner_name, member_name) ||
                                             resolve_alias_member_type(owner_name, member_name);
                                     if (!resolved_alias_member &&
@@ -1522,6 +1579,11 @@ TypeSpec Parser::parse_base_type() {
                                             derive_alias_owner_and_member(alias_template_name);
                                         if (!derived_owner.empty() && !derived_member.empty())
                                             resolved_alias_member =
+                                                (has_dependent_owner_args(
+                                                     derived_owner) &&
+                                                 preserve_deferred_alias_member(
+                                                     derived_owner,
+                                                     derived_member)) ||
                                                 apply_unary_alias_transform(
                                                     derived_owner, derived_member) ||
                                                 resolve_alias_member_type(

@@ -106,28 +106,38 @@ std::string encode_template_type_arg_ref_hir(const TypeSpec& ts) {
     ref += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
     return ref;
   }
-  if (ts.tag && ts.tag[0]) return ts.tag;
+
+  const bool plain_tag_ref =
+      ts.tag && ts.tag[0] && !ts.is_const && !ts.is_volatile &&
+      ts.ptr_level == 0 && !ts.is_lvalue_ref && !ts.is_rvalue_ref;
+  if (plain_tag_ref) return ts.tag;
 
   std::string ref;
+  if (ts.is_const) ref += "const_";
+  if (ts.is_volatile) ref += "volatile_";
   switch (ts.base) {
-    case TB_INT: ref = "int"; break;
-    case TB_UINT: ref = "uint"; break;
-    case TB_CHAR: ref = "char"; break;
-    case TB_SCHAR: ref = "schar"; break;
-    case TB_UCHAR: ref = "uchar"; break;
-    case TB_SHORT: ref = "short"; break;
-    case TB_USHORT: ref = "ushort"; break;
-    case TB_LONG: ref = "long"; break;
-    case TB_ULONG: ref = "ulong"; break;
-    case TB_LONGLONG: ref = "llong"; break;
-    case TB_ULONGLONG: ref = "ullong"; break;
-    case TB_FLOAT: ref = "float"; break;
-    case TB_DOUBLE: ref = "double"; break;
-    case TB_LONGDOUBLE: ref = "ldouble"; break;
-    case TB_VOID: ref = "void"; break;
-    case TB_BOOL: ref = "bool"; break;
-    case TB_INT128: ref = "i128"; break;
-    case TB_UINT128: ref = "u128"; break;
+    case TB_INT: ref += "int"; break;
+    case TB_UINT: ref += "uint"; break;
+    case TB_CHAR: ref += "char"; break;
+    case TB_SCHAR: ref += "schar"; break;
+    case TB_UCHAR: ref += "uchar"; break;
+    case TB_SHORT: ref += "short"; break;
+    case TB_USHORT: ref += "ushort"; break;
+    case TB_LONG: ref += "long"; break;
+    case TB_ULONG: ref += "ulong"; break;
+    case TB_LONGLONG: ref += "llong"; break;
+    case TB_ULONGLONG: ref += "ullong"; break;
+    case TB_FLOAT: ref += "float"; break;
+    case TB_DOUBLE: ref += "double"; break;
+    case TB_LONGDOUBLE: ref += "ldouble"; break;
+    case TB_VOID: ref += "void"; break;
+    case TB_BOOL: ref += "bool"; break;
+    case TB_INT128: ref += "i128"; break;
+    case TB_UINT128: ref += "u128"; break;
+    case TB_STRUCT: ref += "struct_"; ref += ts.tag ? ts.tag : "anon"; break;
+    case TB_UNION: ref += "union_"; ref += ts.tag ? ts.tag : "anon"; break;
+    case TB_ENUM: ref += "enum_"; ref += ts.tag ? ts.tag : "anon"; break;
+    case TB_TYPEDEF: ref += ts.tag ? ts.tag : "typedef"; break;
     default: return "?";
   }
   for (int p = 0; p < ts.ptr_level; ++p) ref += "_ptr";
@@ -1422,6 +1432,92 @@ ResolvedTemplateArgs Lowerer::materialize_template_args(
     }
     return merged;
   };
+  auto decode_type_ref = [&](const std::string& ref,
+                             TypeSpec* out_type) -> bool {
+    if (!out_type || ref.empty()) return false;
+    auto tit = tpl_bindings.find(ref);
+    if (tit != tpl_bindings.end()) {
+      *out_type = tit->second;
+      return true;
+    }
+    TypeSpec builtin{};
+    if (parse_builtin_typespec_text(ref, &builtin)) {
+      *out_type = builtin;
+      return true;
+    }
+    auto sit = struct_def_nodes_.find(ref);
+    if (sit != struct_def_nodes_.end()) {
+      TypeSpec st{};
+      st.base = TB_STRUCT;
+      st.tag = sit->first.c_str();
+      st.array_size = -1;
+      st.inner_rank = -1;
+      *out_type = st;
+      return true;
+    }
+
+    std::string base_ref = ref;
+    TypeSpec suffix_ts{};
+    suffix_ts.array_size = -1;
+    suffix_ts.inner_rank = -1;
+    while (base_ref.size() >= 4 &&
+           base_ref.compare(base_ref.size() - 4, 4, "_ptr") == 0) {
+      suffix_ts.ptr_level++;
+      base_ref.resize(base_ref.size() - 4);
+    }
+    if (base_ref.size() >= 5 &&
+        base_ref.compare(base_ref.size() - 5, 5, "_rref") == 0) {
+      suffix_ts.is_rvalue_ref = true;
+      base_ref.resize(base_ref.size() - 5);
+    } else if (base_ref.size() >= 4 &&
+               base_ref.compare(base_ref.size() - 4, 4, "_ref") == 0) {
+      suffix_ts.is_lvalue_ref = true;
+      base_ref.resize(base_ref.size() - 4);
+    }
+    if (base_ref.size() >= 6 && base_ref.compare(0, 6, "const_") == 0) {
+      suffix_ts.is_const = true;
+      base_ref.erase(0, 6);
+    }
+    if (base_ref.size() >= 9 && base_ref.compare(0, 9, "volatile_") == 0) {
+      suffix_ts.is_volatile = true;
+      base_ref.erase(0, 9);
+    }
+
+    TypeSpec resolved{};
+    resolved.array_size = -1;
+    resolved.inner_rank = -1;
+    auto base_it = tpl_bindings.find(base_ref);
+    if (base_it != tpl_bindings.end()) {
+      resolved = base_it->second;
+    } else if (parse_builtin_typespec_text(base_ref, &resolved)) {
+    } else if (base_ref.size() > 7 &&
+               base_ref.compare(0, 7, "struct_") == 0 &&
+               struct_def_nodes_.count(base_ref.substr(7)) != 0) {
+      resolved.base = TB_STRUCT;
+      resolved.tag = struct_def_nodes_.find(base_ref.substr(7))->first.c_str();
+    } else if (base_ref.size() > 6 &&
+               base_ref.compare(0, 6, "union_") == 0 &&
+               struct_def_nodes_.count(base_ref.substr(6)) != 0) {
+      resolved.base = TB_UNION;
+      resolved.tag = struct_def_nodes_.find(base_ref.substr(6))->first.c_str();
+    } else if (base_ref.size() > 5 &&
+               base_ref.compare(0, 5, "enum_") == 0) {
+      resolved.base = TB_ENUM;
+      resolved.tag = ::strdup(base_ref.substr(5).c_str());
+    } else {
+      return false;
+    }
+
+    resolved.ptr_level += suffix_ts.ptr_level;
+    resolved.is_lvalue_ref = resolved.is_lvalue_ref || suffix_ts.is_lvalue_ref;
+    resolved.is_rvalue_ref =
+        !resolved.is_lvalue_ref &&
+        (resolved.is_rvalue_ref || suffix_ts.is_rvalue_ref);
+    resolved.is_const = resolved.is_const || suffix_ts.is_const;
+    resolved.is_volatile = resolved.is_volatile || suffix_ts.is_volatile;
+    *out_type = resolved;
+    return true;
+  };
   auto can_bind_value_param = [&](const std::string& ref) {
     if (is_deferred_nttp_expr_ref(ref)) return true;
     if (nttp_bindings.count(ref)) return true;
@@ -1435,10 +1531,8 @@ ResolvedTemplateArgs Lowerer::materialize_template_args(
   };
   auto can_bind_type_param = [&](const std::string& ref) {
     if (ref.size() > 1 && ref[0] == '@') return true;
-    if (tpl_bindings.count(ref)) return true;
-    TypeSpec builtin{};
-    if (parse_builtin_typespec_text(ref, &builtin)) return true;
-    return struct_def_nodes_.count(ref) != 0;
+    TypeSpec decoded{};
+    return decode_type_ref(ref, &decoded);
   };
   auto resolve_explicit_arg = [&](int pi, const std::string& ref,
                                   HirTemplateArg* out_arg) {
@@ -1495,26 +1589,9 @@ ResolvedTemplateArgs Lowerer::materialize_template_args(
       return true;
     }
 
-    auto tit = tpl_bindings.find(ref);
-    if (tit != tpl_bindings.end()) {
-      out_arg->type = tit->second;
-      return true;
-    }
-
-    TypeSpec builtin{};
-    if (parse_builtin_typespec_text(ref, &builtin)) {
-      out_arg->type = builtin;
-      return true;
-    }
-
-    auto sit = struct_def_nodes_.find(ref);
-    if (sit != struct_def_nodes_.end()) {
-      TypeSpec st{};
-      st.base = TB_STRUCT;
-      st.tag = sit->first.c_str();
-      st.array_size = -1;
-      st.inner_rank = -1;
-      out_arg->type = st;
+    TypeSpec decoded{};
+    if (decode_type_ref(ref, &decoded)) {
+      out_arg->type = decoded;
       return true;
     }
 
@@ -2527,8 +2604,51 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
         if (tit != type_bindings.end()) {
           part = encode_template_type_arg_ref_hir(tit->second);
         } else {
+          std::string base_part = part;
+          TypeSpec suffix_ts{};
+          suffix_ts.array_size = -1;
+          suffix_ts.inner_rank = -1;
+          while (base_part.size() >= 4 &&
+                 base_part.compare(base_part.size() - 4, 4, "_ptr") == 0) {
+            suffix_ts.ptr_level++;
+            base_part.resize(base_part.size() - 4);
+          }
+          if (base_part.size() >= 5 &&
+              base_part.compare(base_part.size() - 5, 5, "_rref") == 0) {
+            suffix_ts.is_rvalue_ref = true;
+            base_part.resize(base_part.size() - 5);
+          } else if (base_part.size() >= 4 &&
+                     base_part.compare(base_part.size() - 4, 4, "_ref") == 0) {
+            suffix_ts.is_lvalue_ref = true;
+            base_part.resize(base_part.size() - 4);
+          }
+          if (base_part.size() >= 6 &&
+              base_part.compare(0, 6, "const_") == 0) {
+            suffix_ts.is_const = true;
+            base_part.erase(0, 6);
+          }
+          if (base_part.size() >= 9 &&
+              base_part.compare(0, 9, "volatile_") == 0) {
+            suffix_ts.is_volatile = true;
+            base_part.erase(0, 9);
+          }
+          auto nested_tit = type_bindings.find(base_part);
+          if (nested_tit != type_bindings.end()) {
+            TypeSpec rebound = nested_tit->second;
+            rebound.ptr_level += suffix_ts.ptr_level;
+            rebound.is_lvalue_ref =
+                rebound.is_lvalue_ref || suffix_ts.is_lvalue_ref;
+            rebound.is_rvalue_ref =
+                !rebound.is_lvalue_ref &&
+                (rebound.is_rvalue_ref || suffix_ts.is_rvalue_ref);
+            rebound.is_const = rebound.is_const || suffix_ts.is_const;
+            rebound.is_volatile =
+                rebound.is_volatile || suffix_ts.is_volatile;
+            part = encode_template_type_arg_ref_hir(rebound);
+          } else {
           auto nit = nttp_bindings.find(part);
           if (nit != nttp_bindings.end()) part = std::to_string(nit->second);
+          }
         }
         if (i) updated_refs += ",";
         updated_refs += part;

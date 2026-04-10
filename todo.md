@@ -9,8 +9,9 @@ Source Plan: plan.md
 - Step 1: Stabilize alias-template argument mapping
 - Current slice: extend Step 1 coverage from concrete-type alias packs to
   parser-side alias argument-ref preservation for transformed member-typedef
-  outputs, while treating dependent-`typename` alias bodies as a follow-on
-  blocker if they discard owner context before alias application
+  outputs, including dependent reference-qualified alias-of-alias cases that
+  must defer owner member resolution instead of collapsing to the primary
+  template too early
 
 ## Pending Items
 
@@ -32,6 +33,10 @@ Source Plan: plan.md
 - Preserved substituted deferred-template arg refs without empty-pack
   placeholder slots and routed alias member-typedef owner resolution through
   transformed owner args when explicit owner metadata survives parsing.
+- Added focused runtime coverage for a dependent alias-of-alias
+  `remove_ref_t<B&>` case that should strip the reference only after template
+  substitution, and updated alias member handling to preserve full deferred
+  owner arg refs for dependent member-typedef lookups.
 
 ## Notes
 
@@ -51,6 +56,9 @@ Source Plan: plan.md
 - Landed prep work in `parser_types_base.cpp` keeps transformed owner arg refs
   aligned with substitution and avoids reintroducing empty-pack placeholder
   slots in deferred template arg refs.
+- The next alias follow-up, if still needed after this slice, is the narrower
+  parser registration issue where dependent `typename Owner<...>::type`
+  spellings can still lose owner context before alias substitution runs.
 - A separate pack-specialization issue still exists for direct variadic class
   template specialization selection; keep that out of this Step 1 alias slice
   unless it becomes required for the next targeted alias regression.
