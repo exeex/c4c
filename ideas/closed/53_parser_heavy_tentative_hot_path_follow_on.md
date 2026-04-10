@@ -1,6 +1,6 @@
 # Parser Heavy Tentative Hot Path Follow-On
 
-Status: Open
+Status: Complete
 Last Updated: 2026-04-10
 
 ## Goal
@@ -41,3 +41,34 @@ than extending the completed plan opportunistically.
 - do not silently weaken semantic-state restoration on risky probes
 - validate against EASTL `--parse-only` timing in Release
 - keep the next plan scoped to one concrete mechanism at a time
+
+## Completion Notes
+
+- Baseline inspection identified the qualified-type spelling path as the
+  hottest remaining heavy tentative region still showing up repeatedly in the
+  EASTL vector parse-only workload.
+- The completed slice moved
+  `consume_qualified_type_spelling_with_typename` and
+  `consume_qualified_type_spelling` from `TentativeParseGuard` to
+  `TentativeParseGuardLite`. Those probes only consume tokens and assemble
+  spelling metadata, so they do not need full semantic-environment snapshots.
+- Added focused parser coverage in
+  `tests/cpp/internal/parse_only_case/qualified_type_spelling_rollback_parse.cpp`
+  to lock in rollback-sensitive behavior for a dependent qualified-name
+  statement followed by a `typename` declaration.
+- Validation stayed monotonic:
+  - `test_before.log`: 3314 passed / 3316 total, 2 existing failures
+  - `test_after.log`: 3315 passed / 3317 total, the same 2 existing failures
+- Release EASTL vector parse-only timing after the change:
+  - heavy snapshot build: `8.766s`
+  - lite snapshot build: `2.439s`
+- This improves on the pre-slice heavy baseline recorded above
+  (`11.3s` to `11.5s`) while preserving parse correctness.
+
+## Leftover Issues
+
+- The heavy path is still materially slower than the lite path on
+  `eastl_vector_simple.cpp`, so a follow-on slice could target the next hot
+  guarded regions around qualified-base/type probing or pursue a journaled
+  rollback design if parser profiling shows whole-state snapshots still
+  dominate.

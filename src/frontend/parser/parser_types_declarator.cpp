@@ -315,7 +315,7 @@ bool Parser::consume_qualified_type_spelling_with_typename(
     std::string* out_name,
     QualifiedNameRef* out_qn) {
     ParseContextGuard trace(this, __func__);
-    TentativeParseGuard guard(*this);
+    TentativeParseGuardLite guard(*this);
     if (require_typename) {
         if (!is_cpp_mode() || !check(TokenKind::KwTypename))
             return false;
@@ -336,8 +336,8 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
                                              std::string* out_name,
                                              QualifiedNameRef* out_qn) {
     ParseContextGuard trace(this, __func__);
-    TentativeParseGuard guard(*this);
-    const int start_pos = guard.snapshot.lite.pos;
+    TentativeParseGuardLite guard(*this);
+    const int start_pos = guard.snapshot.pos;
     QualifiedNameRef qn;
 
     auto consume_optional_template_args = [&]() -> bool {

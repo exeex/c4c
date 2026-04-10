@@ -481,6 +481,15 @@ set_tests_properties(cpp_parse_template_alias_empty_pack_default_arg_dump PROPER
 )
 
 add_test(
+  NAME cpp_parse_qualified_type_spelling_rollback_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/qualified_type_spelling_rollback_parse.cpp"
+)
+set_tests_properties(cpp_parse_qualified_type_spelling_rollback_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(kept\\)"
+)
+
+add_test(
   NAME cpp_parse_trailing_requires_following_member_decl_dump
   COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/cpp20_trailing_requires_following_member_decl_parse.cpp"
 )
