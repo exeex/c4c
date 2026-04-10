@@ -416,14 +416,57 @@ Node* Parser::parse_stmt() {
             Node* for_init = nullptr;
             if (!check(TokenKind::Semi)) {
                 if (is_type_start()) {
+                    auto can_use_lite_range_for_probe = [&]() -> bool {
+                        if (!is_cpp_mode()) return false;
+
+                        TokenKind k = cur().kind;
+                        switch (k) {
+                            case TokenKind::LBracket:
+                            case TokenKind::KwAttribute:
+                            case TokenKind::KwAlignas:
+                            case TokenKind::KwTypedef:
+                            case TokenKind::KwStruct:
+                            case TokenKind::KwClass:
+                            case TokenKind::KwUnion:
+                            case TokenKind::KwEnum:
+                            case TokenKind::KwTypename:
+                            case TokenKind::ColonColon:
+                                return false;
+                            case TokenKind::Identifier:
+                                if (pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                                    (tokens_[pos_ + 1].kind == TokenKind::ColonColon ||
+                                     tokens_[pos_ + 1].kind == TokenKind::Less)) {
+                                    return false;
+                                }
+                                return true;
+                            default:
+                                return true;
+                        }
+                    };
+
                     // C++ range-for detection: save position, parse decl,
                     // check if ':' follows (range-for) vs ';' (regular for).
                     if (is_cpp_mode()) {
-                        TentativeParseGuard range_guard(*this);
-                        Node* decl = parse_local_decl();
-                        if (check(TokenKind::Colon)) {
+                        Node* decl = nullptr;
+                        bool is_range_for = false;
+                        if (can_use_lite_range_for_probe()) {
+                            TentativeParseGuardLite range_guard(*this);
+                            LocalVarBindingSuppressionGuard binding_guard(*this);
+                            decl = parse_local_decl();
+                            is_range_for = check(TokenKind::Colon);
+                            if (is_range_for) {
+                                range_guard.commit();
+                            }
+                        } else {
+                            TentativeParseGuard range_guard(*this);
+                            decl = parse_local_decl();
+                            is_range_for = check(TokenKind::Colon);
+                            if (is_range_for) {
+                                range_guard.commit();
+                            }
+                        }
+                        if (is_range_for) {
                             // Range-for: for (Type var : range_expr) body
-                            range_guard.commit();
                             consume(); // consume ':'
                             Node* range_expr = parse_expr();
                             expect(TokenKind::RParen);

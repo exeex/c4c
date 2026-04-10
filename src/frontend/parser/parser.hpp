@@ -251,6 +251,20 @@ class Parser {
     }
   };
 
+  struct LocalVarBindingSuppressionGuard {
+    Parser& parser;
+    bool old = false;
+
+    explicit LocalVarBindingSuppressionGuard(Parser& p)
+        : parser(p), old(p.suppress_local_var_bindings_) {
+      parser.suppress_local_var_bindings_ = true;
+    }
+
+    ~LocalVarBindingSuppressionGuard() {
+      parser.suppress_local_var_bindings_ = old;
+    }
+  };
+
   ParserLiteSnapshot save_lite_state() const;
   void restore_lite_state(const ParserLiteSnapshot& snap);
   ParserSnapshot save_state() const;
@@ -309,6 +323,7 @@ class Parser {
   // Variable name → TypeSpec (populated as variables are declared).
   // Used to resolve typeof(variable) in type expressions.
   std::unordered_map<std::string, TypeSpec> var_types_;
+  bool suppress_local_var_bindings_ = false;
   // Qualified function names (populated as functions are declared/defined).
   // Used by lookup_value_in_context for namespace-aware function lookup.
   std::set<std::string> known_fn_names_;

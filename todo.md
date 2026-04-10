@@ -6,8 +6,8 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3: evaluate C++ range-for detection as the next lite-safe
-  statement-path probe after the `if (...)` declaration-condition migration.
+- Step 3: evaluate constructor-style init vs function-declaration lookahead as
+  the next lite-safe declaration-path probe after the range-for migration.
 
 ## Pending Items
 
@@ -99,15 +99,43 @@ Source Plan: plan.md
     - `test_fail_after.log`: `3309/3311` passed, `2` failed
     - monotonic check reported `0` newly failing tests and resolved `13`
       pre-existing failures from the stale baseline
+- Step 3 `range-for` slice completed:
+  - switched `parser_statements.cpp` simple C++ range-for declaration probing
+    to `TentativeParseGuardLite` while keeping heavy probing for
+    attribute-qualified, tag-headed, `typename`, globally-qualified, template
+    id-headed, and `typedef`-headed declarations
+  - added a probe-local suppression guard for `parse_local_decl()` variable
+    bindings so lite rollback does not leak `var_types_` entries on the
+    non-range `for (...; ...; ...)` path
+  - added
+    `tests/cpp/internal/negative_case/parser_debug_range_for_tentative_lite.cpp`
+    plus `cpp_parser_debug_range_for_tentative_lite` to lock the range-for
+    tentative commit onto `mode=lite`
+  - added
+    `tests/cpp/internal/postive_case/for_decl_probe_rollback_parse.cpp`
+    plus `cpp_positive_sema_for_decl_probe_rollback_parse_cpp` to keep the
+    regular `for` declaration path covered after the lite probe rolls back
+  - targeted validation passed:
+    - `cpp_positive_sema_for_decl_probe_rollback_parse_cpp`
+    - `cpp_parser_debug_tentative_template_arg_lifecycle`
+    - `cpp_parser_debug_tentative_cli_only`
+    - `cpp_parser_debug_sizeof_type_tentative_lite`
+    - `cpp_parser_debug_if_condition_decl_tentative_lite`
+    - `cpp_parser_debug_range_for_tentative_lite`
+  - fresh full-suite regression guard passed:
+    - `test_fail_before.log`: `1348/1363` passed, `15` failed
+    - `test_fail_after.log`: `3312/3314` passed, `2` failed
+    - monotonic check reported `0` newly failing tests and resolved `13`
+      pre-existing failures from the stale baseline
 
 ## Next Intended Slice
 
-- inventory the C++ range-for detection probe in `parser_statements.cpp` for
-  lite-safety, especially around declaration parsing and `:` vs `;`
-  disambiguation
-- add focused parser-debug or parse coverage before switching the range-for
-  tentative guard, and keep heavy rollback for any declaration head that can
-  mutate semantic parser state
+- inventory the constructor-style init vs function-declaration lookahead in
+  `parser_declarations.cpp` for lite-safety, especially around declarator
+  heads that can still mutate typedef or variable visibility during the probe
+- add focused parser-debug or parse coverage before switching any declaration
+  lookahead to the lite guard, and keep heavy rollback where function-parameter
+  probing depends on semantic state
 
 ## Blockers
 
@@ -132,4 +160,7 @@ Source Plan: plan.md
 - the `if` declaration-condition migration is intentionally tiered: simple
   builtin/qualifier/typedef-headed probes can use lite rollback, while
   stateful declaration heads stay on the heavy guard until separately proven
+- the range-for migration uses the same tiering rule: simple declaration heads
+  can probe under lite rollback only when speculative local variable binding is
+  suppressed until the probe commits on `:`
 - use EASTL `--parse-only` timing as the main performance comparison point

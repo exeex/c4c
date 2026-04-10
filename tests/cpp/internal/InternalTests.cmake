@@ -128,6 +128,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     friend_relational_operator_parse
     friend_spaceship_operator_parse
     if_condition_decl_parse
+    for_decl_probe_rollback_parse
     free_function_record_ref_param_parse
     iterator_concepts_following_hash_base_parse
     stl_iterator_then_max_size_type_parse
@@ -1055,6 +1056,21 @@ add_test(
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )
 set_tests_properties(cpp_parser_debug_if_condition_decl_tentative_lite PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_range_for_tentative_lite
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_range_for_tentative_lite.cpp
+          "-DPARSER_DEBUG_ARGS:STRING=--parser-debug-tentative"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=parse_stmt"
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=parse_stmt line=8 col=26 detail=\"mode=lite start="
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_range_for_tentative_lite PROPERTIES
   LABELS "internal;negative_case;cpp;diagnostic_format"
 )
 

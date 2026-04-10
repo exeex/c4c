@@ -804,7 +804,9 @@ Node* Parser::parse_local_decl() {
                 d->fn_ptr_variadic = tdit->second.variadic;
             }
         }
-        if (vname) var_types_[vname] = ts;  // for typeof(var) resolution
+        if (vname && !suppress_local_var_bindings_) {
+            var_types_[vname] = ts;  // for typeof(var) resolution
+        }
         decls.push_back(d);
     } while (match(TokenKind::Comma));
 
