@@ -12,27 +12,24 @@ Source Plan: plan.md
   argument-lowering helper family; the helper-only `00080.c` `voidfn` body
   slice, the bounded seventh-parameter caller-stack helper slice, the mixed
   register-plus-stack scalar helper family, and now the register-backed
-  aggregate param-slot helper family are covered at the shared backend entry
-  surface alongside the existing two-function and main-only `00080.c` routes
+  aggregate param-slot helper family and the large caller-stack aggregate
+  param-slot helper family are covered at the shared backend entry surface
+  alongside the existing two-function and main-only `00080.c` routes
 - immediate target:
-  choose the next still-direct-emitter-only public backend representative from
-  the remaining SysV argument-lowering helper families after the
-  register-backed aggregate case confirmed the shared backend entry already
-  preserves the native x86 owner path for the first aggregate param-slot
-  sibling; the next smallest candidates are the caller-stack aggregate
-  siblings, starting with the large aggregate stack-copy path and then the
-  trailing-small-aggregate-after-six-scalars case
+  choose whether the next still-direct-emitter-only public backend
+  representative from the remaining SysV aggregate helper families should be
+  the trailing-small-aggregate-after-six-scalars `StructStack` sibling, since
+  the larger caller-stack aggregate copy path now has shared backend-entry
+  coverage at `c4c::backend::emit_module`
 
 ## Next Slice
 
-- after the register-backed aggregate helper-family slice, choose the next
+- after the large caller-stack aggregate helper-family slice, choose the next
   still-direct-emitter-only public backend representative from the remaining
   SysV argument-lowering helper families instead of adding more
-  direct-emitter-only assertions; the next obvious candidates are the
-  caller-stack aggregate siblings, starting with the large aggregate
-  param-slot copy path and then the trailing-small-aggregate-after-six-scalars
-  case if Step 3 keeps prioritizing public-entry coverage over matcher
-  expansion
+  direct-emitter-only assertions; the next obvious candidate is the trailing
+  small-aggregate-after-six-scalars `StructStack` sibling if Step 3 keeps
+  prioritizing public-entry coverage over matcher expansion
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -44,6 +41,29 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration adds the missing shared backend entrypoint coverage for the
+  bounded caller-stack aggregate param-slot helper family:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pins
+  `make_x86_stack_aggregate_param_slot_lir_module()` at
+  `c4c::backend::emit_module(...)` so the public x86 backend entry surface,
+  not just the direct-emitter seam, owns the SysV route that copies a large
+  by-value aggregate through the caller stack area
+- public-path behavior note:
+  the shared BIR route preserves the same native x86 owner shape for this
+  bounded aggregate family, including the helper-side copy from `[rbp + 16]`,
+  `[rbp + 24]`, and `[rbp + 32]` into the `%lv.param.*` slot and the
+  caller-side local-slot staging plus outgoing stack-area copy before the
+  helper call
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_stack_aggregate_param_slot_on_native_x86_path`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_stack_aggregate_param_slot_slice`
+- broad validation note:
+  still deferred for this bounded aggregate helper-family coverage slice per
+  the active plan note to wait for a larger owner-path cutover before
+  rerunning the monotonic full-suite guard
 
 - this iteration adds the missing shared backend entrypoint coverage for the
   bounded register-backed aggregate param-slot helper family:
