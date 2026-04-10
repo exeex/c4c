@@ -7436,6 +7436,21 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_
                       "x86 LIR both-local double-rewrite two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_declared_zero_arg_direct_call_on_native_x86_path() {
+  const auto module = make_x86_declared_zero_arg_call_lir_module();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".extern helper_ext\n",
+                  "x86 LIR declared zero-arg direct-call input should preserve the extern helper declaration on the native x86 path");
+  expect_contains(rendered, "main:\n  call helper_ext\n  ret\n",
+                  "x86 LIR declared zero-arg direct-call input should lower the bounded extern helper call through the public x86 backend entry surface");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR declared zero-arg direct-call input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_repeated_zero_arg_call_compare_zero_return_through_bir_end_to_end() {
   const auto lowered_bir = c4c::backend::try_lower_to_bir(
       make_lir_minimal_repeated_zero_arg_call_compare_zero_return_module());
@@ -10939,6 +10954,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_first_rewrite_direct_call_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_second_rewrite_direct_call_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_rewrite_direct_call_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_zero_arg_direct_call_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_repeated_zero_arg_call_compare_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_loop_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_scalar_global_load_through_bir_end_to_end);
