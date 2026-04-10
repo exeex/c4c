@@ -1211,7 +1211,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_template_struct_inherited_method_binding PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "struct Base_T_int.*fn Wrap_T_int__sum\\(this: struct Wrap_T_int\\*\\) -> int"
+  PASS_REGULAR_EXPRESSION "fn Wrap_T_int__sum_const\\(this: struct Wrap_T_int\\*\\) -> int"
 )
 
 add_test(

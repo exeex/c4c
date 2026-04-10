@@ -2053,6 +2053,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       ExprId this_id = append_expr(
           method_node, this_ref, this_ts, ValueCategory::LValue);
       TypeSpec field_ts{};
+      const Node* field_decl = nullptr;
       if (sit != module_->struct_defs.end()) {
         for (const auto& fld : sit->second.fields) {
           if (fld.name == mem_name) {
@@ -2061,8 +2062,29 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
               field_ts.array_rank = 1;
               field_ts.array_size = fld.array_first_dim;
             }
+            field_ts = substitute_signature_template_type(field_ts, &ctx.tpl_bindings);
+            resolve_signature_template_type_if_needed(
+                field_ts, &ctx.tpl_bindings, &ctx.nttp_bindings, method_node,
+                std::string("ctor-init-member:") + mem_name);
+            resolve_typedef_to_struct(field_ts);
             break;
           }
+        }
+      }
+      auto sdit = struct_def_nodes_.find(struct_tag);
+      if (sdit != struct_def_nodes_.end() && sdit->second) {
+        for (int fi = 0; fi < sdit->second->n_fields; ++fi) {
+          const Node* candidate = sdit->second->fields[fi];
+          if (candidate && candidate->name && mem_name &&
+              std::string(candidate->name) == mem_name) {
+            field_decl = candidate;
+            break;
+          }
+        }
+      }
+      if (field_decl && resolved_types_) {
+        if (auto ct = resolved_types_->lookup(field_decl)) {
+          field_ts = sema::typespec_from_canonical(*ct);
         }
       }
       MemberExpr me{};
@@ -2159,6 +2181,18 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       }
 
       if (!did_ctor_call) {
+        if (nargs == 0) {
+          ExprId rhs_id = append_expr(method_node, IntLiteral{0, false}, field_ts);
+          AssignExpr ae{};
+          ae.op = AssignOp::Set;
+          ae.lhs = lhs_id;
+          ae.rhs = rhs_id;
+          ExprId ae_id = append_expr(method_node, ae, field_ts);
+          ExprStmt es{};
+          es.expr = ae_id;
+          append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
+          continue;
+        }
         if (nargs != 1) {
           std::string diag = "error: initializer for scalar member '";
           diag += mem_name;

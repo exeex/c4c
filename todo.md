@@ -9,14 +9,13 @@ Source Plan: plan.md
 - Step 2: resume the smallest active EASTL parser frontier from
   `tests/cpp/eastl/eastl_tuple_simple.cpp`, not `eastl_vector_simple.cpp`.
 - Iteration target: continue reducing the remaining
-  `tests/cpp/eastl/eastl_tuple_simple.cpp` `/usr/include/c++/14/bits/ranges_util.h`
-  undeclared-identifier cluster around `_M_begin`, `_M_end`, `_M_size`,
-  `_S_store_size`, and `this` now that constrained concept-shorthand template
-  primaries instantiate correctly again.
-- This slice is specifically targeting the still-live
-  `ranges::subrange<_It, _Sent, _Kind>::advance` member-context failure under
-  `--dump-canonical`, with the goal of promoting the next smallest reproducer
-  into a focused internal frontend regression before any compiler change.
+  `tests/cpp/eastl/eastl_tuple_simple.cpp` post-member-init canonical timeout
+  path now that the earlier `initializer for scalar member 'first' must have
+  exactly one argument` failure is fixed.
+- This slice is specifically targeting the next bounded reproducer after the
+  old member-init semantic blocker, with the goal of turning the deeper tuple /
+  libstdc++ timeout into either a smaller internal regression or a sharper
+  checkpoint before any `eastl_vector_simple.cpp` work.
 
 ## Completed
 
@@ -110,13 +109,28 @@ Source Plan: plan.md
   past the old `/usr/include/c++/14/bits/ranges_util.h` undeclared-identifier
   cluster into a later semantic failure: `initializer for scalar member 'first'
   must have exactly one argument`.
+- Reduced that member-init semantic follow-up into focused internal runtime
+  regressions covering both typedef-backed record members
+  (`ctor_init_member_typedef_ctor_runtime.cpp`) and zero-argument scalar
+  value-init members (`ctor_init_member_default_value_init_runtime.cpp`).
+- Fixed template-struct method cloning so instantiated records preserve
+  constructor / defaulted / ref-qualified metadata and constructor initializer
+  lists, allowing HIR to register concrete constructors such as `Pair_T_int`.
+- Fixed constructor member-init lowering so field types recover resolved
+  semantic types from the owning record field declaration before constructor
+  dispatch, and zero-argument member initializers now value-initialize scalar
+  members instead of failing as malformed scalar ctor calls.
+- Confirmed both focused ctor-init regressions pass, and
+  `tests/cpp/eastl/eastl_tuple_simple.cpp` no longer reports
+  `initializer for scalar member 'first' must have exactly one argument`;
+  `--parse-only` succeeds and `--dump-canonical` now times out later in the
+  deeper tuple/libstdc++ stack.
 
 ## Next Slice
 
-- reduce the new `eastl_tuple_simple.cpp` semantic failure
-  `initializer for scalar member 'first' must have exactly one argument` to the
-  next smallest internal reproducer
-- compare that reduced aggregate/initializer follow-up against
+- reduce the new `eastl_tuple_simple.cpp` deeper canonical timeout path to the
+  next smallest internal reproducer or bounded libstdc++ / tuple checkpoint
+- compare that reduced post-member-init timeout follow-up against
   `eastl_tuple_simple.cpp` before touching `eastl_vector_simple.cpp`
 - keep `eastl_memory_simple.cpp` parked for now: after this tuple fix it still
   times out under both `--parse-only` and `--dump-canonical`, so it has not
@@ -124,10 +138,9 @@ Source Plan: plan.md
 
 ## Blockers
 
-- `eastl_tuple_simple.cpp` no longer stops in `ranges_util.h`, but the next
-  semantic failure still needs a fresh reduction because the current diagnostic
-  only reports `initializer for scalar member 'first' must have exactly one
-  argument` without a narrowed internal testcase yet
+- `eastl_tuple_simple.cpp` no longer stops on the old member-init semantic
+  failure, but the next canonical frontier is now a deeper timeout with no new
+  terminal diagnostic inside 30s, so it still needs a fresh reduction
 - `eastl_memory_simple.cpp` still times out under both parse-only and
   canonical/sema pressure, though the trace reaches much later tuple/ranges
   work than before
@@ -161,9 +174,13 @@ Source Plan: plan.md
 - focused constrained member-template conversion-operator frontend coverage now
   exists under
   `tests/cpp/internal/postive_case/constrained_member_conversion_operator_frontend.cpp`
+- focused ctor-init runtime coverage now also exists under
+  `tests/cpp/internal/postive_case/ctor_init_member_typedef_ctor_runtime.cpp`
+  and
+  `tests/cpp/internal/postive_case/ctor_init_member_default_value_init_runtime.cpp`
 - the older constrained concept-shorthand scratch repro now parses and lowers,
-  and the later constrained conversion-operator follow-up also parses, but
-  `tests/cpp/eastl/eastl_tuple_simple.cpp` now fails later with
-  `initializer for scalar member 'first' must have exactly one argument`
+  the member-init `first` diagnostic is gone, `eastl_tuple_simple.cpp`
+  `--parse-only` succeeds again, and the remaining tuple frontier is now a
+  deeper canonical timeout
 - runtime and ABI glue remain explicitly out of scope except for temporary local
   shims already allowed by the source idea

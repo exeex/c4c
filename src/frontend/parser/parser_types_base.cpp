@@ -1721,9 +1721,19 @@ TypeSpec Parser::parse_base_type() {
                                 }
                                 Node* new_m = make_node(NK_FUNCTION, orig_m->line);
                                 new_m->name = orig_m->name;
+                                new_m->execution_domain = orig_m->execution_domain;
                                 new_m->variadic = orig_m->variadic;
+                                new_m->is_static = orig_m->is_static;
+                                new_m->is_inline = orig_m->is_inline;
                                 new_m->is_constexpr = orig_m->is_constexpr;
                                 new_m->is_consteval = orig_m->is_consteval;
+                                new_m->is_const_method = orig_m->is_const_method;
+                                new_m->is_lvalue_ref_method = orig_m->is_lvalue_ref_method;
+                                new_m->is_rvalue_ref_method = orig_m->is_rvalue_ref_method;
+                                new_m->is_constructor = orig_m->is_constructor;
+                                new_m->is_destructor = orig_m->is_destructor;
+                                new_m->is_deleted = orig_m->is_deleted;
+                                new_m->is_defaulted = orig_m->is_defaulted;
                                 // Substitute template type params in return type
                                 new_m->type = orig_m->type;
                                 for (const auto& [pname, pts] : type_bindings) {
@@ -1754,6 +1764,10 @@ TypeSpec Parser::parse_base_type() {
                                         new_m->params[pi] = new_p;
                                     }
                                 }
+                                new_m->n_ctor_inits = orig_m->n_ctor_inits;
+                                new_m->ctor_init_names = orig_m->ctor_init_names;
+                                new_m->ctor_init_args = orig_m->ctor_init_args;
+                                new_m->ctor_init_nargs = orig_m->ctor_init_nargs;
                                 // Body is shared (not deep-cloned) — HIR lowering
                                 // handles field access via this->field resolution.
                                 new_m->body = orig_m->body;
