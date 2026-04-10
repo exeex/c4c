@@ -3233,6 +3233,80 @@ c4c::codegen::lir::LirModule make_x86_register_aggregate_param_slot_lir_module()
   return module;
 }
 
+c4c::codegen::lir::LirModule make_x86_stack_aggregate_param_slot_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.Big = type { [3 x i64] }");
+
+  LirFunction helper;
+  helper.name = "get_third";
+  helper.signature_text = "define i64 @get_third(%struct.Big %p.p)\n";
+  helper.entry = LirBlockId{0};
+  helper.alloca_insts.push_back(LirAllocaOp{"%lv.param.p", "%struct.Big", "", 8});
+  helper.alloca_insts.push_back(LirStoreOp{"%struct.Big", "%p.p", "%lv.param.p"});
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Big", "%lv.param.p", false, {"i32 0", "i32 0"}});
+  helper_entry.insts.push_back(
+      LirGepOp{"%t1", "[3 x i64]", "%t0", false, {"i64 0", "i64 0"}});
+  helper_entry.insts.push_back(
+      LirCastOp{"%t2", LirCastKind::SExt, "i32", "2", "i64"});
+  helper_entry.insts.push_back(LirGepOp{"%t3", "i64", "%t1", false, {"i64 %t2"}});
+  helper_entry.insts.push_back(LirLoadOp{"%t4", "i64", "%t3"});
+  helper_entry.terminator = LirRet{std::string("%t4"), "i64"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i64 @main()\n";
+  main_fn.entry = LirBlockId{0};
+  main_fn.alloca_insts.push_back(LirAllocaOp{"%lv.p", "%struct.Big", "", 8});
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Big", "%lv.p", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t1", "[3 x i64]", "%t0", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirCastOp{"%t2", LirCastKind::SExt, "i32", "0", "i64"});
+  main_entry.insts.push_back(LirGepOp{"%t3", "i64", "%t1", false, {"i64 %t2"}});
+  main_entry.insts.push_back(LirStoreOp{"i64", "11", "%t3"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t4", "%struct.Big", "%lv.p", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t5", "[3 x i64]", "%t4", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirCastOp{"%t6", LirCastKind::SExt, "i32", "1", "i64"});
+  main_entry.insts.push_back(LirGepOp{"%t7", "i64", "%t5", false, {"i64 %t6"}});
+  main_entry.insts.push_back(LirStoreOp{"i64", "22", "%t7"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t8", "%struct.Big", "%lv.p", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t9", "[3 x i64]", "%t8", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirCastOp{"%t10", LirCastKind::SExt, "i32", "2", "i64"});
+  main_entry.insts.push_back(LirGepOp{"%t11", "i64", "%t9", false, {"i64 %t10"}});
+  main_entry.insts.push_back(LirStoreOp{"i64", "33", "%t11"});
+  main_entry.insts.push_back(LirLoadOp{"%t12", "%struct.Big", "%lv.p"});
+  main_entry.insts.push_back(
+      LirCallOp{"%t13", "i64", "@get_third", "(%struct.Big)", "%struct.Big %t12"});
+  main_entry.terminator = LirRet{std::string("%t13"), "i64"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_x86_local_arg_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -10169,6 +10243,27 @@ void test_x86_direct_emitter_lowers_register_aggregate_param_slot_slice() {
                       "x86 direct emitter should stay on native asm emission for the bounded register-backed aggregate param-slot slice");
 }
 
+void test_x86_direct_emitter_lowers_stack_aggregate_param_slot_slice() {
+  auto module = make_x86_stack_aggregate_param_slot_lir_module();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded caller-stack aggregate param-slot helper through the native prepared-LIR seam");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, ".globl get_third",
+                  "x86 direct emitter should still emit the helper definition for the bounded caller-stack aggregate param-slot slice");
+  expect_contains(*rendered,
+                  "get_third:\n  push rbp\n  mov rbp, rsp\n  sub rsp, 24\n  mov rax, QWORD PTR [rbp + 16]\n  mov QWORD PTR [rbp - 24], rax\n  mov rax, QWORD PTR [rbp + 24]\n  mov QWORD PTR [rbp - 16], rax\n  mov rax, QWORD PTR [rbp + 32]\n  mov QWORD PTR [rbp - 8], rax\n  mov rax, QWORD PTR [rbp - 8]\n  pop rbp\n  ret\n",
+                  "x86 direct emitter should copy the incoming caller-stack aggregate into the `%lv.param.*` slot before loading the third i64 field");
+  expect_contains(*rendered,
+                  "main:\n  push rbp\n  mov rbp, rsp\n  sub rsp, 32\n  mov QWORD PTR [rbp - 24], 11\n  mov QWORD PTR [rbp - 16], 22\n  mov QWORD PTR [rbp - 8], 33\n  sub rsp, 32\n  mov rax, QWORD PTR [rbp - 24]\n  mov QWORD PTR [rsp], rax\n  mov rax, QWORD PTR [rbp - 16]\n  mov QWORD PTR [rsp + 8], rax\n  mov rax, QWORD PTR [rbp - 8]\n  mov QWORD PTR [rsp + 16], rax\n  call get_third\n  add rsp, 32\n  pop rbp\n  ret\n",
+                  "x86 direct emitter should stage the caller-side large aggregate in a local slot, copy it into the outgoing caller-stack area, and keep the call on the native direct-LIR path");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded caller-stack aggregate param-slot slice");
+}
+
 void test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice() {
   auto module = make_x86_declared_zero_arg_call_lir_module();
 
@@ -10629,6 +10724,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_mixed_reg_stack_param_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_mixed_reg_stack_param_add_i64_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_register_aggregate_param_slot_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_stack_aggregate_param_slot_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_source_00080_void_helper_only_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_source_00080_void_helper_call_slice);

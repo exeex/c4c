@@ -10,25 +10,23 @@ Source Plan: plan.md
   helper surface after the legacy matcher body removal in
   `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  add the first x86 end-to-end backend regression that exercises the already
-  wired register-backed aggregate param-slot storage path through the native
-  prepared-LIR emitter seam
-  - keep this slice on a minimal SysV by-value aggregate case that should land
-    in `ParamClass::StructByValReg` rather than reopening scalar, peephole, or
-    call-lowering work
-  - lock the helper prologue shape by asserting that the aggregate argument is
-    copied from incoming integer argument registers into the `%lv.param.*`
-    slot before the field load used by the helper body
+  follow the landed `LargeStructStack` direct-emitter slice with the next
+  bounded caller-stack aggregate case through the same native prepared-LIR
+  seam
+  - prefer an explicit `ParamClass::StructStack`-classifying SysV by-value
+    aggregate if the minimal LIR shape can stay isolated to the x86 direct
+    helper path
+  - keep the assertion surface on `%lv.param.*` slot population plus one field
+    load, not on broader translated prologue-owner activation
   - keep the translated prologue owner parked out of build until the public
     x86 codegen header exposes enough complete backend surface for a broader
     prologue-owner cutover
 
 ## Next Slice
 
-- if the direct x86 aggregate regression passes with only test changes, follow
-  up with the first caller-stack aggregate (`StructStack` /
-  `LargeStructStack`) end-to-end case through the same native prepared-LIR
-  seam
+- follow the landed caller-stack `LargeStructStack` direct-emitter regression
+  with the first bounded end-to-end `StructStack` case through the same native
+  prepared-LIR seam if a minimal memory-class aggregate can be isolated
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -40,6 +38,26 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration added the first backend-facing x86 caller-stack aggregate
+  param-slot regression through the native prepared-LIR emitter seam:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now includes a bounded
+  `%struct.Big` by-value helper that forces the `ParamClass::LargeStructStack`
+  path end to end and asserts on the emitted helper/main assembly
+- `src/backend/x86/codegen/direct_calls.cpp`, `direct_dispatch.cpp`, and
+  `x86_codegen.hpp` now recognize and emit that bounded caller-stack aggregate
+  param-slot slice so the direct x86 emitter accepts the same slot-owner shape
+  already mirrored by the parked translated prologue helpers
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_bir_tests`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_stack_aggregate_param_slot_slice`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_register_aggregate_param_slot_slice`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_mixed_reg_stack_param_add_i64_slice`
+- broad validation note:
+  skipped for this still-bounded owner-path aggregate slice per the current
+  plan note to defer the monotonic full-suite guard until a larger owner-path
+  cutover lands
 
 - this iteration added the first backend-facing x86 aggregate param-slot
   regression through the native prepared-LIR emitter seam:

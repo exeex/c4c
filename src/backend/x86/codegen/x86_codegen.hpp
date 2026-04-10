@@ -542,6 +542,8 @@ std::optional<std::string> try_emit_minimal_mixed_reg_stack_param_add_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_register_aggregate_param_slot_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_stack_aggregate_param_slot_module(
+    const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_extern_zero_arg_call_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_local_arg_call_module(
