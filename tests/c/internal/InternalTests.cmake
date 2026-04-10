@@ -1145,6 +1145,16 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00058_local_string_literal_char_compare_ladder_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00058.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00058_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|x86 backend emitter does not support this direct LIR module|cmp eax, 97|cmp eax, 98|cmp eax, 99|cmp eax, 100|cmp eax, 101|cmp eax, 102"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_i686_c_testsuite_00012_retries_after_direct_bir_rejection
       SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00012.c"
       TARGET_TRIPLE i686-unknown-linux-gnu

@@ -149,6 +149,9 @@ std::optional<bir::Module>
 try_lower_minimal_local_enum_constant_compare_store_load_zero_return_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module>
+try_lower_minimal_local_string_literal_char_compare_ladder_zero_return_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module>
 try_lower_minimal_global_x_y_pointer_compare_zero_return_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module>

@@ -1101,6 +1101,98 @@ make_local_enum_constant_compare_store_load_zero_return_module(int second_enum_c
   return module;
 }
 
+c4c::codegen::lir::LirModule make_local_string_literal_char_compare_ladder_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+  module.string_pool.push_back(LirStringConst{"@.str0", "abcdef", 7});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.s", "ptr", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "[7 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirStoreOp{"ptr", "%t0", "%lv.s"});
+  entry.insts.push_back(LirLoadOp{"%t1", "ptr", "%lv.s"});
+  entry.insts.push_back(LirCastOp{"%t2", LirCastKind::SExt, "i32", "0", "i64"});
+  entry.insts.push_back(LirGepOp{"%t3", "i8", "%t1", false, {"i64 %t2"}});
+  entry.insts.push_back(LirLoadOp{"%t4", "i8", "%t3"});
+  entry.insts.push_back(LirCastOp{"%t5", LirCastKind::SExt, "i8", "%t4", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t6", false, "ne", "i32", "%t5", "97"});
+  entry.insts.push_back(LirCastOp{"%t7", LirCastKind::ZExt, "i1", "%t6", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t8", false, "ne", "i32", "%t7", "0"});
+  entry.terminator = LirCondBr{"%t8", "block_1", "block_2"};
+  function.blocks.push_back(std::move(entry));
+
+  auto add_fail = [&](uint32_t id, const char* label, const char* value) {
+    LirBlock block;
+    block.id = LirBlockId{id};
+    block.label = label;
+    block.terminator = LirRet{std::string(value), "i32"};
+    function.blocks.push_back(std::move(block));
+  };
+  auto add_check = [&](uint32_t id, const char* label, const char* ptr_value,
+                       const char* index_result, const char* gep_result, const char* load_result,
+                       const char* sext_result, const char* cmp_result, const char* zext_result,
+                       const char* branch_cmp_result, int index, int expected_char,
+                       const char* fail_label, const char* next_label) {
+    LirBlock block;
+    block.id = LirBlockId{id};
+    block.label = label;
+    block.insts.push_back(LirLoadOp{ptr_value, "ptr", "%lv.s"});
+    block.insts.push_back(
+        LirCastOp{index_result, LirCastKind::SExt, "i32", std::to_string(index), "i64"});
+    block.insts.push_back(LirGepOp{
+        gep_result, "i8", ptr_value, false, {"i64 " + std::string(index_result)}});
+    block.insts.push_back(LirLoadOp{load_result, "i8", gep_result});
+    block.insts.push_back(LirCastOp{sext_result, LirCastKind::SExt, "i8", load_result, "i32"});
+    block.insts.push_back(
+        LirCmpOp{cmp_result, false, "ne", "i32", sext_result, std::to_string(expected_char)});
+    block.insts.push_back(LirCastOp{zext_result, LirCastKind::ZExt, "i1", cmp_result, "i32"});
+    block.insts.push_back(LirCmpOp{branch_cmp_result, false, "ne", "i32", zext_result, "0"});
+    block.terminator = LirCondBr{branch_cmp_result, fail_label, next_label};
+    function.blocks.push_back(std::move(block));
+  };
+
+  add_fail(1, "block_1", "1");
+  add_check(2, "block_2", "%t9", "%t10", "%t11", "%t12", "%t13", "%t14", "%t15", "%t16", 1, 98,
+            "block_3", "block_4");
+  add_fail(3, "block_3", "2");
+  add_check(4, "block_4", "%t17", "%t18", "%t19", "%t20", "%t21", "%t22", "%t23", "%t24", 2,
+            99, "block_5", "block_6");
+  add_fail(5, "block_5", "3");
+  add_check(6, "block_6", "%t25", "%t26", "%t27", "%t28", "%t29", "%t30", "%t31", "%t32", 3,
+            100, "block_7", "block_8");
+  add_fail(7, "block_7", "4");
+  add_check(8, "block_8", "%t33", "%t34", "%t35", "%t36", "%t37", "%t38", "%t39", "%t40", 4,
+            101, "block_9", "block_10");
+  add_fail(9, "block_9", "5");
+  add_check(10, "block_10", "%t41", "%t42", "%t43", "%t44", "%t45", "%t46", "%t47", "%t48", 5,
+            102, "block_11", "block_12");
+  add_fail(11, "block_11", "6");
+  add_check(12, "block_12", "%t49", "%t50", "%t51", "%t52", "%t53", "%t54", "%t55", "%t56", 6,
+            0, "block_13", "block_14");
+  add_fail(13, "block_13", "7");
+
+  LirBlock block14;
+  block14.id = LirBlockId{14};
+  block14.label = "block_14";
+  block14.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(block14));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_local_i32_array_two_slot_sum_sub_three_module() {
   using namespace c4c::codegen::lir;
 
@@ -5882,6 +5974,27 @@ void test_bir_lowering_accepts_local_shifted_enum_constant_compare_store_load_ze
                   "the lowered local enum-constant compare/store-load module should also normalize the bounded `00055.c` source route to a single immediate zero return");
 }
 
+void test_bir_lowering_accepts_local_string_literal_char_compare_ladder_zero_return_module() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_local_string_literal_char_compare_ladder_zero_return_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded local string-literal char-compare ladder slice through the shared constant-return contract");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered local string-literal char-compare ladder module should collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered local string-literal char-compare ladder module should normalize the bounded `00058.c` source route to a single immediate zero return");
+}
+
 void test_bir_lowering_accepts_global_x_y_pointer_compare_zero_return_module() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_global_x_y_pointer_compare_zero_return_module());
@@ -8978,6 +9091,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_local_enum_constant_compare_store_load_zero_return_module);
   RUN_TEST(
       test_bir_lowering_accepts_local_shifted_enum_constant_compare_store_load_zero_return_module);
+  RUN_TEST(test_bir_lowering_accepts_local_string_literal_char_compare_ladder_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_x_y_pointer_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_anonymous_struct_field_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_named_two_field_struct_designated_init_compare_zero_return_module);
