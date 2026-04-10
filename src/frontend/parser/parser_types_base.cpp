@@ -84,7 +84,7 @@ bool Parser::is_type_start() const {
         if (match_floatn_keyword_base(cur().lexeme, nullptr)) return true;
         if (is_template_scope_type_param(cur().lexeme)) return true;
         if (is_typedef_name(cur().lexeme)) return true;
-        if (typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) return true;
+        if (has_visible_typedef_type(cur().lexeme)) return true;
         // C++ fallback: identifier followed by < is likely a template type if
         // the name is registered as a template struct, or if we're inside a
         // struct body where namespace-scoped template names may not resolve.
@@ -784,9 +784,8 @@ TypeSpec Parser::parse_base_type() {
         if (check(TokenKind::Identifier)) {
             std::string id = cur().lexeme;
             consume();
-            auto vit = var_types_.find(id);
-            if (vit != var_types_.end()) {
-                *out = vit->second;
+            if (const TypeSpec* var_type = find_visible_var_type(id)) {
+                *out = *var_type;
             } else {
                 out->base = TB_INT;  // enum constants and unknowns → int
             }
@@ -1010,7 +1009,7 @@ TypeSpec Parser::parse_base_type() {
                           tokens_[pos_ + 1].kind == TokenKind::ColonColon) &&
                         (is_typedef_name(cur().lexeme) ||
                          is_template_scope_type_param(cur().lexeme) ||
-                         typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0);
+                         has_visible_typedef_type(cur().lexeme));
                     if (!simple_unqualified_known_type_head &&
                         try_parse_cpp_scoped_base_type(already_have_base, &ts)) {
                         has_typedef = true;
@@ -1024,7 +1023,7 @@ TypeSpec Parser::parse_base_type() {
                 }
                 if (is_typedef_name(cur().lexeme) ||
                     is_template_scope_type_param(cur().lexeme) ||
-                    typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) {
+                    has_visible_typedef_type(cur().lexeme)) {
                     // If we've already seen concrete type specifiers/modifiers,
                     // this identifier is the declarator name (e.g. `int s;` even
                     // when `s` is also a typedef name in outer scope).
@@ -1108,8 +1107,9 @@ TypeSpec Parser::parse_base_type() {
         Node* ed = parse_enum();
         last_enum_def_ = ed;
         if (ed && ed->name) {
-            auto it = typedef_types_.find(ed->name);
-            if (it != typedef_types_.end()) ts = it->second;
+            if (const TypeSpec* typedef_type = find_typedef_type(ed->name)) {
+                ts = *typedef_type;
+            }
         }
         ts.base = TB_ENUM;
         ts.tag  = ed ? ed->name : nullptr;
@@ -1137,11 +1137,10 @@ TypeSpec Parser::parse_base_type() {
         // Try to resolve the typedef to its underlying TypeSpec
         const char* tname = ts.tag;
         if (tname) {
-            auto it = typedef_types_.find(tname);
-            if (it != typedef_types_.end()) {
+            if (const TypeSpec* typedef_type = find_typedef_type(tname)) {
                 // Resolve: use the stored TypeSpec, preserving qualifiers from this context
                 bool save_const = ts.is_const, save_vol = ts.is_volatile;
-                ts = it->second;
+                ts = *typedef_type;
                 ts.is_const   |= save_const;
                 ts.is_volatile |= save_vol;
                 // Phase C: remember the typedef name for fn_ptr param propagation.
@@ -1434,9 +1433,9 @@ TypeSpec Parser::parse_base_type() {
                                             *out = parsed;
                                             return true;
                                         }
-                                        auto tit = typedef_types_.find(ref);
-                                        if (tit != typedef_types_.end()) {
-                                            parsed.type = tit->second;
+                                        if (const TypeSpec* typedef_type =
+                                                find_typedef_type(ref)) {
+                                            parsed.type = *typedef_type;
                                             *out = parsed;
                                             return true;
                                         }

@@ -103,6 +103,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     using_alias_basic_parse
     using_scoped_typedef_parse
     using_declaration_namespace_parse
+    namespace_using_decl_template_typedef_type_arg_parse
     using_namespace_directive_parse
     using_nested_namespace_parse
     template_conversion_operator_parse

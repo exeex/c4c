@@ -499,10 +499,13 @@ class Parser {
   bool has_typedef_name(const std::string& name) const;
   bool has_typedef_type(const std::string& name) const;
   const TypeSpec* find_typedef_type(const std::string& name) const;
+  bool has_visible_typedef_type(const std::string& name) const;
+  const TypeSpec* find_visible_typedef_type(const std::string& name) const;
   void register_typedef_binding(const std::string& name, const TypeSpec& type,
                                 bool is_user_typedef);
   bool has_var_type(const std::string& name) const;
   const TypeSpec* find_var_type(const std::string& name) const;
+  const TypeSpec* find_visible_var_type(const std::string& name) const;
   void register_var_type_binding(const std::string& name, const TypeSpec& type);
   bool has_known_fn_name(const std::string& name) const;
   void register_known_fn_name(const std::string& name);

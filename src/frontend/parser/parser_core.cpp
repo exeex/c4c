@@ -288,6 +288,19 @@ const TypeSpec* Parser::find_typedef_type(const std::string& name) const {
     return &it->second;
 }
 
+bool Parser::has_visible_typedef_type(const std::string& name) const {
+    if (has_typedef_type(name)) return true;
+    const std::string resolved = resolve_visible_type_name(name);
+    return resolved != name && has_typedef_type(resolved);
+}
+
+const TypeSpec* Parser::find_visible_typedef_type(const std::string& name) const {
+    if (const TypeSpec* type = find_typedef_type(name)) return type;
+    const std::string resolved = resolve_visible_type_name(name);
+    if (resolved.empty() || resolved == name) return nullptr;
+    return find_typedef_type(resolved);
+}
+
 void Parser::register_typedef_binding(const std::string& name,
                                       const TypeSpec& type,
                                       bool is_user_typedef) {
@@ -304,6 +317,13 @@ const TypeSpec* Parser::find_var_type(const std::string& name) const {
     auto it = symbol_tables_.var_types.find(name);
     if (it == symbol_tables_.var_types.end()) return nullptr;
     return &it->second;
+}
+
+const TypeSpec* Parser::find_visible_var_type(const std::string& name) const {
+    if (const TypeSpec* type = find_var_type(name)) return type;
+    const std::string resolved = resolve_visible_value_name(name);
+    if (resolved.empty() || resolved == name) return nullptr;
+    return find_var_type(resolved);
 }
 
 void Parser::register_var_type_binding(const std::string& name,

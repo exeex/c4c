@@ -101,10 +101,9 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
             }
         }
         if (!check(TokenKind::Identifier)) return false;
-        const std::string resolved = resolve_visible_type_name(cur().lexeme);
         return is_typedef_name(cur().lexeme) ||
                is_template_scope_type_param(cur().lexeme) ||
-               typedef_types_.count(resolved) > 0;
+               has_visible_typedef_type(cur().lexeme);
     };
 
     if (is_simple_known_template_type_head() &&
@@ -555,7 +554,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                 : start_pos;
         const std::string spelled_name = join_token_lexemes(owner_start, pos_);
         std::string resolved = resolve_visible_type_name(dep_name);
-        if (typedef_types_.count(resolved) == 0) {
+        if (!has_typedef_type(resolved)) {
             bool preserved_template_owner_member = false;
             if (spelled_name.find('<') != std::string::npos &&
                 qn.base_name == "type") {
@@ -607,13 +606,14 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                 return true;
             }
             resolved = dep_name;
-            if (typedef_types_.count(resolved) == 0 &&
-                !qn.qualifier_segments.empty()) {
+            if (!has_typedef_type(resolved) && !qn.qualifier_segments.empty()) {
                 auto resolve_struct_like = [&](TypeSpec ts) -> TypeSpec {
                     ts = resolve_typedef_chain(ts, typedef_types_);
-                    if (ts.base == TB_TYPEDEF && ts.tag &&
-                        typedef_types_.count(ts.tag) > 0) {
-                        ts = typedef_types_.at(ts.tag);
+                    if (ts.base == TB_TYPEDEF && ts.tag) {
+                        if (const TypeSpec* typedef_type =
+                                find_typedef_type(ts.tag)) {
+                            ts = *typedef_type;
+                        }
                     }
                     return ts;
                 };
@@ -728,9 +728,9 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                     if (owner->name && owner->name[0]) {
                         const std::string scoped_name =
                             std::string(owner->name) + "::" + qn.base_name;
-                        auto scoped_it = typedef_types_.find(scoped_name);
-                        if (scoped_it != typedef_types_.end()) {
-                            resolved_member = scoped_it->second;
+                        if (const TypeSpec* scoped_type =
+                                find_typedef_type(scoped_name)) {
+                            resolved_member = *scoped_type;
                             found_member = true;
                         }
                     }
