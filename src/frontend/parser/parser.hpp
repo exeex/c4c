@@ -170,12 +170,16 @@ class Parser {
 
   // Snapshot of all speculative parser state fields. Used by the heavy guard
   // to automatically roll back semantic environment mutations when needed.
-  struct ParserSnapshot {
-    ParserLiteSnapshot lite;
+  struct ParserSymbolTables {
     std::set<std::string> typedefs;
     std::set<std::string> user_typedefs;
     std::unordered_map<std::string, TypeSpec> typedef_types;
     std::unordered_map<std::string, TypeSpec> var_types;
+  };
+
+  struct ParserSnapshot {
+    ParserLiteSnapshot lite;
+    ParserSymbolTables symbol_tables;
   };
 
   struct TentativeParseStats {
@@ -269,6 +273,8 @@ class Parser {
   void restore_lite_state(const ParserLiteSnapshot& snap);
   ParserSnapshot save_state() const;
   void restore_state(const ParserSnapshot& snap);
+  ParserSymbolTables& parser_symbol_tables();
+  const ParserSymbolTables& parser_symbol_tables() const;
 
   // ── public parser entry points ────────────────────────────────────────────
   // All members public (required by project coding constraints).
@@ -293,12 +299,14 @@ class Parser {
   std::string source_file_;  // source path used by diagnostics
 
   // ── name / type knowledge accumulated during parsing ─────────────────────
-  std::set<std::string> typedefs_;  // known typedef names
+  ParserSymbolTables symbol_tables_;
+  std::set<std::string>& typedefs_ = symbol_tables_.typedefs;  // known typedef names
   // Typedef names declared in the current translation unit (not pre-seeded).
-  std::set<std::string> user_typedefs_;
+  std::set<std::string>& user_typedefs_ = symbol_tables_.user_typedefs;
   // Maps typedef name → resolved TypeSpec (populated when registering typedefs)
   // so subsequent uses of the typedef name resolve to the actual struct/base type.
-  std::unordered_map<std::string, TypeSpec> typedef_types_;
+  std::unordered_map<std::string, TypeSpec>& typedef_types_ =
+      symbol_tables_.typedef_types;
   // Declared concept names visible to the parser. Kept separate from typedef
   // tracking so concept-ids do not get mistaken for type names.
   std::set<std::string> concept_names_;
@@ -322,7 +330,7 @@ class Parser {
   std::unordered_map<std::string, long long> const_int_bindings_;
   // Variable name → TypeSpec (populated as variables are declared).
   // Used to resolve typeof(variable) in type expressions.
-  std::unordered_map<std::string, TypeSpec> var_types_;
+  std::unordered_map<std::string, TypeSpec>& var_types_ = symbol_tables_.var_types;
   bool suppress_local_var_bindings_ = false;
   // Qualified function names (populated as functions are declared/defined).
   // Used by lookup_value_in_context for namespace-aware function lookup.

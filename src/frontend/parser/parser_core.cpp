@@ -290,6 +290,7 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
       source_file_(source_file),
       anon_counter_(0), had_error_(false), parsing_top_level_context_(false),
       last_enum_def_(nullptr) {
+    ParserSymbolTables& symbol_tables = parser_symbol_tables();
     namespace_contexts_.push_back(
         NamespaceContext{0, -1, false, arena_.strdup(""), arena_.strdup("")});
     namespace_stack_.push_back(0);
@@ -324,7 +325,7 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         "__true_type", "__false_type",
         nullptr
     };
-    for (int i = 0; seed[i]; ++i) typedefs_.insert(seed[i]);
+    for (int i = 0; seed[i]; ++i) symbol_tables.typedefs.insert(seed[i]);
 
     // Seed typedef_types_ for well-known types so they resolve to correct LLVM types
     // instead of the TB_TYPEDEF fallback (which emits i32).
@@ -334,10 +335,10 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         va_ts.array_rank = 0;
         va_ts.is_ptr_to_array = false;
         va_ts.base = TB_VA_LIST;
-        typedef_types_["va_list"]          = va_ts;
-        typedef_types_["__va_list"]        = va_ts;
-        typedef_types_["__builtin_va_list"]= va_ts;
-        typedef_types_["__gnuc_va_list"]   = va_ts;
+        symbol_tables.typedef_types["va_list"]           = va_ts;
+        symbol_tables.typedef_types["__va_list"]         = va_ts;
+        symbol_tables.typedef_types["__builtin_va_list"] = va_ts;
+        symbol_tables.typedef_types["__gnuc_va_list"]    = va_ts;
 
         // size_t / uintptr_t etc. → u64 on 64-bit platforms
         TypeSpec u64_ts{};
@@ -345,80 +346,80 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         u64_ts.array_rank = 0;
         u64_ts.is_ptr_to_array = false;
         u64_ts.base = TB_ULONGLONG;  // 64-bit unsigned
-        typedef_types_["size_t"]    = u64_ts;
-        typedef_types_["uintptr_t"] = u64_ts;
-        typedef_types_["uintmax_t"] = u64_ts;
-        typedef_types_["uint64_t"]  = u64_ts;
-        typedef_types_["uint_least64_t"] = u64_ts;
-        typedef_types_["uint_fast64_t"]  = u64_ts;
+        symbol_tables.typedef_types["size_t"]            = u64_ts;
+        symbol_tables.typedef_types["uintptr_t"]         = u64_ts;
+        symbol_tables.typedef_types["uintmax_t"]         = u64_ts;
+        symbol_tables.typedef_types["uint64_t"]          = u64_ts;
+        symbol_tables.typedef_types["uint_least64_t"]    = u64_ts;
+        symbol_tables.typedef_types["uint_fast64_t"]     = u64_ts;
 
         TypeSpec i64_ts{};
         i64_ts.array_size = -1;
         i64_ts.array_rank = 0;
         i64_ts.is_ptr_to_array = false;
         i64_ts.base = TB_LONGLONG;
-        typedef_types_["ssize_t"]   = i64_ts;
-        typedef_types_["ptrdiff_t"] = i64_ts;
-        typedef_types_["intptr_t"]  = i64_ts;
-        typedef_types_["intmax_t"]  = i64_ts;
-        typedef_types_["int64_t"]   = i64_ts;
-        typedef_types_["int_least64_t"] = i64_ts;
-        typedef_types_["int_fast64_t"]  = i64_ts;
-        typedef_types_["off_t"]     = i64_ts;
+        symbol_tables.typedef_types["ssize_t"]           = i64_ts;
+        symbol_tables.typedef_types["ptrdiff_t"]         = i64_ts;
+        symbol_tables.typedef_types["intptr_t"]          = i64_ts;
+        symbol_tables.typedef_types["intmax_t"]          = i64_ts;
+        symbol_tables.typedef_types["int64_t"]           = i64_ts;
+        symbol_tables.typedef_types["int_least64_t"]     = i64_ts;
+        symbol_tables.typedef_types["int_fast64_t"]      = i64_ts;
+        symbol_tables.typedef_types["off_t"]             = i64_ts;
 
         TypeSpec u32_ts{};
         u32_ts.array_size = -1;
         u32_ts.array_rank = 0;
         u32_ts.is_ptr_to_array = false;
         u32_ts.base = TB_UINT;
-        typedef_types_["uint32_t"]  = u32_ts;
-        typedef_types_["uint_least32_t"] = u32_ts;
-        typedef_types_["uint_fast32_t"]  = u32_ts;
+        symbol_tables.typedef_types["uint32_t"]          = u32_ts;
+        symbol_tables.typedef_types["uint_least32_t"]    = u32_ts;
+        symbol_tables.typedef_types["uint_fast32_t"]     = u32_ts;
 
         TypeSpec i32_ts{};
         i32_ts.array_size = -1;
         i32_ts.array_rank = 0;
         i32_ts.is_ptr_to_array = false;
         i32_ts.base = TB_INT;
-        typedef_types_["int32_t"]   = i32_ts;
-        typedef_types_["int_least32_t"] = i32_ts;
-        typedef_types_["int_fast32_t"]  = i32_ts;
+        symbol_tables.typedef_types["int32_t"]           = i32_ts;
+        symbol_tables.typedef_types["int_least32_t"]     = i32_ts;
+        symbol_tables.typedef_types["int_fast32_t"]      = i32_ts;
 
         TypeSpec u16_ts{};
         u16_ts.array_size = -1;
         u16_ts.array_rank = 0;
         u16_ts.is_ptr_to_array = false;
         u16_ts.base = TB_USHORT;
-        typedef_types_["uint16_t"]  = u16_ts;
-        typedef_types_["uint_least16_t"] = u16_ts;
-        typedef_types_["uint_fast16_t"]  = u16_ts;
+        symbol_tables.typedef_types["uint16_t"]          = u16_ts;
+        symbol_tables.typedef_types["uint_least16_t"]    = u16_ts;
+        symbol_tables.typedef_types["uint_fast16_t"]     = u16_ts;
 
         TypeSpec i16_ts{};
         i16_ts.array_size = -1;
         i16_ts.array_rank = 0;
         i16_ts.is_ptr_to_array = false;
         i16_ts.base = TB_SHORT;
-        typedef_types_["int16_t"]   = i16_ts;
-        typedef_types_["int_least16_t"] = i16_ts;
-        typedef_types_["int_fast16_t"]  = i16_ts;
+        symbol_tables.typedef_types["int16_t"]           = i16_ts;
+        symbol_tables.typedef_types["int_least16_t"]     = i16_ts;
+        symbol_tables.typedef_types["int_fast16_t"]      = i16_ts;
 
         TypeSpec u8_ts{};
         u8_ts.array_size = -1;
         u8_ts.array_rank = 0;
         u8_ts.is_ptr_to_array = false;
         u8_ts.base = TB_UCHAR;
-        typedef_types_["uint8_t"]   = u8_ts;
-        typedef_types_["uint_least8_t"] = u8_ts;
-        typedef_types_["uint_fast8_t"]  = u8_ts;
+        symbol_tables.typedef_types["uint8_t"]           = u8_ts;
+        symbol_tables.typedef_types["uint_least8_t"]     = u8_ts;
+        symbol_tables.typedef_types["uint_fast8_t"]      = u8_ts;
 
         TypeSpec i8_ts{};
         i8_ts.array_size = -1;
         i8_ts.array_rank = 0;
         i8_ts.is_ptr_to_array = false;
         i8_ts.base = TB_SCHAR;
-        typedef_types_["int8_t"]    = i8_ts;
-        typedef_types_["int_least8_t"] = i8_ts;
-        typedef_types_["int_fast8_t"]  = i8_ts;
+        symbol_tables.typedef_types["int8_t"]            = i8_ts;
+        symbol_tables.typedef_types["int_least8_t"]      = i8_ts;
+        symbol_tables.typedef_types["int_fast8_t"]       = i8_ts;
 
         // wchar_t on macOS/ARM64 is i32
         TypeSpec wchar_ts{};
@@ -426,8 +427,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         wchar_ts.array_rank = 0;
         wchar_ts.is_ptr_to_array = false;
         wchar_ts.base = TB_INT;
-        typedef_types_["wchar_t"]  = wchar_ts;
-        typedef_types_["wint_t"]   = wchar_ts;
+        symbol_tables.typedef_types["wchar_t"]           = wchar_ts;
+        symbol_tables.typedef_types["wint_t"]            = wchar_ts;
 
         TypeSpec true_ts{};
         true_ts.array_size = -1;
@@ -435,9 +436,9 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         true_ts.is_ptr_to_array = false;
         true_ts.base = TB_STRUCT;
         true_ts.tag = arena_.strdup("__true_type");
-        typedef_types_["__true_type"] = true_ts;
-        typedef_types_["std::__true_type"] = true_ts;
-        typedef_types_["std::__8::__true_type"] = true_ts;
+        symbol_tables.typedef_types["__true_type"]       = true_ts;
+        symbol_tables.typedef_types["std::__true_type"]  = true_ts;
+        symbol_tables.typedef_types["std::__8::__true_type"] = true_ts;
 
         TypeSpec false_ts{};
         false_ts.array_size = -1;
@@ -445,9 +446,9 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         false_ts.is_ptr_to_array = false;
         false_ts.base = TB_STRUCT;
         false_ts.tag = arena_.strdup("__false_type");
-        typedef_types_["__false_type"] = false_ts;
-        typedef_types_["std::__false_type"] = false_ts;
-        typedef_types_["std::__8::__false_type"] = false_ts;
+        symbol_tables.typedef_types["__false_type"]      = false_ts;
+        symbol_tables.typedef_types["std::__false_type"] = false_ts;
+        symbol_tables.typedef_types["std::__8::__false_type"] = false_ts;
     }
     refresh_current_namespace_bridge();
 }
