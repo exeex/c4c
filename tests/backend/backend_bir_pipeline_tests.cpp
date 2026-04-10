@@ -205,6 +205,46 @@ c4c::codegen::lir::LirModule make_supported_x86_two_arg_helper_call_lir_module()
   return module;
 }
 
+c4c::codegen::lir::LirModule make_supported_x86_two_arg_local_arg_call_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction helper;
+  helper.name = "add_pair";
+  helper.signature_text = "define i32 @add_pair(i32 %lhs, i32 %rhs)\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirBinOp{"%sum", LirBinaryOpcode::Add, "i32", "%lhs", "%rhs"});
+  helper_entry.terminator = LirRet{std::string("%sum"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+  main_fn.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirStoreOp{"i32", "5", "%lv.x"});
+  main_entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  main_entry.insts.push_back(
+      LirCallOp{"%t1", "i32", "@add_pair", "(i32, i32)", "i32 %t0, i32 7"});
+  main_entry.terminator = LirRet{std::string("%t1"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_pointer_phi_join_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -1124,6 +1164,22 @@ void test_x86_direct_call_helper_accepts_two_arg_call_slice() {
                   "the direct x86 call helper seam should still lower the bounded two-arg helper body on the native x86 path");
   expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
                   "the direct x86 call helper seam should still lower the bounded two-immediate helper call through the native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_two_arg_local_arg_call_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_two_arg_local_arg_call_lir_module(), c4c::backend::Target::X86_64);
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_two_arg_local_arg_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded first-local two-arg helper-call slice after ownership moves out of emit.cpp");
+  expect_contains(*rendered, ".globl add_pair",
+                  "the direct x86 call helper seam should still emit the first-local two-arg helper definition after the Step 4 ownership move");
+  expect_contains(*rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "the direct x86 call helper seam should still lower the bounded first-local two-arg helper body on the native x86 path");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "the direct x86 call helper seam should still lower the bounded first-local helper call through the native x86 path");
 }
 
 void test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly() {
@@ -2495,6 +2551,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_direct_call_helper_accepts_param_slot_add_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_local_arg_call_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_call_slice);
+  RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_local_arg_call_slice);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_accepts_pointer_phi_join_modules);
   RUN_TEST(test_x86_public_bir_emitter_delegates_direct_bir_route_to_shared_backend);
