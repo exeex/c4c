@@ -263,6 +263,26 @@ std::optional<ExprId> Lowerer::try_lower_member_call_expr(FunctionCtx* ctx,
     fn_ts.ptr_level++;
     call.callee = append_expr(n->left, dr, fn_ts);
     ExprId base_id = lower_expr(ctx, base_node);
+    if (ctx && !n->left->is_arrow &&
+        module_->expr_pool[base_id.value].type.category != ValueCategory::LValue) {
+      LocalDecl tmp{};
+      tmp.id = next_local_id();
+      std::string tmp_name = "__member_call_tmp_" + std::to_string(tmp.id.value);
+      tmp.name = tmp_name;
+      tmp.type = qtype_from(base_ts, ValueCategory::RValue);
+      const TypeSpec init_ts = module_->expr_pool[base_id.value].type.spec;
+      if (init_ts.base == base_ts.base && init_ts.ptr_level == base_ts.ptr_level &&
+          init_ts.tag == base_ts.tag) {
+        tmp.init = base_id;
+      }
+      const LocalId tmp_lid = tmp.id;
+      append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(base_node)});
+
+      DeclRef tmp_ref{};
+      tmp_ref.name = tmp_name;
+      tmp_ref.local = tmp_lid;
+      base_id = append_expr(base_node, tmp_ref, base_ts, ValueCategory::LValue);
+    }
     if (n->left->is_arrow) {
       call.args.push_back(base_id);
     } else {

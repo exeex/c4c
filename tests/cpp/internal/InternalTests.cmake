@@ -1425,6 +1425,15 @@ set_tests_properties(cpp_hir_expr_call_member_helper PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_function_return_temporary_member_call
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/function_return_temporary_member_call_hir.cpp"
+)
+set_tests_properties(cpp_hir_function_return_temporary_member_call PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl local: struct Box.*Box__Box\\(\\(&local#L1\\), \\(&3\\)\\).*decl __member_call_tmp_[0-9]+: struct Box = make_box\\(\\).*return \\(Box__read\\(\\(&local#L1\\)\\) \\+ Box__read__rref\\(\\(&__member_call_tmp_[0-9]+#L[0-9]+\\)\\)\\)"
+)
+
+add_test(
   NAME cpp_hir_expr_object_materialization_helper
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_expr_object_materialization_helper_hir.cpp"
 )
