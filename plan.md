@@ -30,6 +30,14 @@ and emission path:
 
 ## Current Scope
 
+- translated-but-not-built top-level x86 codegen units:
+  `alu.cpp`, `asm_emitter.cpp`, `atomics.cpp`, `calls.cpp`, `cast_ops.cpp`,
+  `comparison.cpp`, `f128.cpp`, `float_ops.cpp`, `globals.cpp`,
+  `i128_ops.cpp`, `inline_asm.cpp`, `intrinsics.cpp`, `memory.cpp`,
+  `prologue.cpp`, `returns.cpp`, `variadic.cpp`
+- translated peephole subtree not yet on the real main path:
+  `peephole/mod.cpp`, `peephole/types.cpp`, and the translated pass files under
+  `peephole/passes/*.cpp`
 - `src/backend/x86/codegen/peephole/mod.cpp`
 - `src/backend/x86/codegen/peephole/passes/*.cpp`
 - `src/backend/x86/codegen/emit.cpp`
@@ -54,7 +62,8 @@ compiled, and reachable.
 Completion check:
 
 - the translated-unit inventory is explicit
-- the first implementation slice is chosen
+- the first implementation slice is chosen from the recorded top-level or
+  peephole inventory
 
 ### Step 2: Bring translated units into the build and reachable path
 

@@ -54,6 +54,52 @@ On the current C++ tree:
 So the immediate gap is integration, build wiring, and ownership transfer, not
 raw file presence.
 
+## Initial Integration Inventory
+
+The active inventory for this idea starts from the currently translated but not
+meaningfully integrated x86 codegen surface.
+
+### Already Present But Not In The Build: top-level codegen units
+
+- `src/backend/x86/codegen/alu.cpp`
+- `src/backend/x86/codegen/asm_emitter.cpp`
+- `src/backend/x86/codegen/atomics.cpp`
+- `src/backend/x86/codegen/calls.cpp`
+- `src/backend/x86/codegen/cast_ops.cpp`
+- `src/backend/x86/codegen/comparison.cpp`
+- `src/backend/x86/codegen/f128.cpp`
+- `src/backend/x86/codegen/float_ops.cpp`
+- `src/backend/x86/codegen/globals.cpp`
+- `src/backend/x86/codegen/i128_ops.cpp`
+- `src/backend/x86/codegen/inline_asm.cpp`
+- `src/backend/x86/codegen/intrinsics.cpp`
+- `src/backend/x86/codegen/memory.cpp`
+- `src/backend/x86/codegen/prologue.cpp`
+- `src/backend/x86/codegen/returns.cpp`
+- `src/backend/x86/codegen/variadic.cpp`
+
+### Present But Not Yet On The Real Main Path: peephole subtree
+
+- `src/backend/x86/codegen/peephole/mod.cpp`
+- `src/backend/x86/codegen/peephole/types.cpp`
+- `src/backend/x86/codegen/peephole/passes/callee_saves.cpp`
+- `src/backend/x86/codegen/peephole/passes/compare_branch.cpp`
+- `src/backend/x86/codegen/peephole/passes/copy_propagation.cpp`
+- `src/backend/x86/codegen/peephole/passes/dead_code.cpp`
+- `src/backend/x86/codegen/peephole/passes/frame_compact.cpp`
+- `src/backend/x86/codegen/peephole/passes/helpers.cpp`
+- `src/backend/x86/codegen/peephole/passes/local_patterns.cpp`
+- `src/backend/x86/codegen/peephole/passes/loop_trampoline.cpp`
+- `src/backend/x86/codegen/peephole/passes/memory_fold.cpp`
+- `src/backend/x86/codegen/peephole/passes/mod.cpp`
+- `src/backend/x86/codegen/peephole/passes/push_pop.cpp`
+- `src/backend/x86/codegen/peephole/passes/store_forwarding.cpp`
+- `src/backend/x86/codegen/peephole/passes/tail_call.cpp`
+
+This list is the starting execution queue for idea 43. Future slices should
+explicitly consume items from this inventory instead of inventing unrelated x86
+work.
+
 ## Goal
 
 Make the translated x86 codegen surface real and reachable:

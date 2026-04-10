@@ -8,11 +8,10 @@ Source Plan: plan.md
 
 - Step 1 audit translated x86 codegen coverage
 - immediate target:
-  map `src/backend/x86/codegen/*.cpp` into:
-  compiled-and-reachable;
-  translated-but-not-built;
-  built-but-still-not-owning;
-  and choose the first bounded integration slice
+  use the recorded idea-43 inventory as the canonical queue and choose the
+  first bounded integration slice from:
+  the 16 translated-but-not-built top-level codegen units;
+  or the peephole subtree that exists but is not yet on the real main path
 
 ## Next Slice
 
@@ -32,6 +31,8 @@ Source Plan: plan.md
   made real and reachable first"
 - current evidence shows most of `src/backend/x86/codegen/*.cpp` is still not
   in the build, while `emit.cpp` remains the practical owner of x86 emission
+- the active inventory for this plan is now explicit inside idea 43:
+  16 translated top-level codegen units plus the translated peephole subtree
 
 ## Recently Completed
 
