@@ -39,6 +39,10 @@ Source Plan: plan.md
 - Next intended slice: push one more common parser instantiation case onto a
   true typed fast path, now that most obvious parser-side `text -> TypeSpec`
   recovery sites have been centralized.
+- Next intended slice: keep converting the remaining parser instantiation
+  fallback inside `ensure_template_struct_instantiated_from_args(...)`, but the
+  next highest-value work now likely sits in the still-stringy HIR helper
+  paths.
 
 ## Completed
 
@@ -104,3 +108,7 @@ Source Plan: plan.md
 - Routed two additional parser common-path decode sites through
   `Parser::decode_type_ref_text(...)`, reducing direct open-coded
   `mangled/prefix/builtin` recovery inside deferred template arg parsing.
+- Added a typed fast path for template-base rebuild: when pending base args are
+  already present in `tpl_struct_args`, parser now reconstructs
+  `ParsedTemplateArg` directly from structured payloads instead of first
+  round-tripping through `arg_refs_str` text in that common case.

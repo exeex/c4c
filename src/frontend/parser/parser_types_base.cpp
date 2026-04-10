@@ -2121,6 +2121,125 @@ TypeSpec Parser::parse_base_type() {
                                 // Resolve pending template base types: e.g. is_const<T> → is_const<const int>
                                 if (inst->base_types[bi].tpl_struct_origin) {
                                     std::string origin = inst->base_types[bi].tpl_struct_origin;
+                                    auto type_mentions_bound_param =
+                                        [&](const TypeSpec& candidate) -> bool {
+                                            if (candidate.base == TB_TYPEDEF &&
+                                                candidate.tag && candidate.tag[0]) {
+                                                for (const auto& [pname2, _] : type_bindings) {
+                                                    if (std::string(candidate.tag) == pname2) {
+                                                        return true;
+                                                    }
+                                                }
+                                            }
+                                            return false;
+                                        };
+                                    if (inst->base_types[bi].tpl_struct_args.data &&
+                                        inst->base_types[bi].tpl_struct_args.size > 0 &&
+                                        find_template_struct_primary(origin)) {
+                                        bool can_use_typed_args = true;
+                                        std::vector<ParsedTemplateArg> base_args;
+                                        base_args.reserve(
+                                            inst->base_types[bi].tpl_struct_args.size);
+                                        for (int ai = 0;
+                                             ai < inst->base_types[bi].tpl_struct_args.size;
+                                             ++ai) {
+                                            const TemplateArgRef& src_arg =
+                                                inst->base_types[bi].tpl_struct_args.data[ai];
+                                            ParsedTemplateArg base_arg{};
+                                            if (src_arg.kind == TemplateArgKind::Value) {
+                                                if (src_arg.debug_text &&
+                                                    std::strncmp(src_arg.debug_text,
+                                                                 "$expr:", 6) == 0) {
+                                                    can_use_typed_args = false;
+                                                    break;
+                                                }
+                                                base_arg.is_value = true;
+                                                base_arg.value = src_arg.value;
+                                            } else {
+                                                base_arg.is_value = false;
+                                                base_arg.type = src_arg.type;
+                                                if (type_mentions_bound_param(base_arg.type)) {
+                                                    can_use_typed_args = false;
+                                                    break;
+                                                }
+                                            }
+                                            base_args.push_back(base_arg);
+                                        }
+                                        if (can_use_typed_args) {
+                                            const Node* base_primary =
+                                                find_template_struct_primary(origin);
+                                            std::vector<std::pair<std::string, TypeSpec>>
+                                                base_prelim_tb;
+                                            std::vector<std::pair<std::string, long long>>
+                                                base_prelim_nb;
+                                            for (int pi = 0;
+                                                 pi < static_cast<int>(base_args.size()) &&
+                                                 pi < base_primary->n_template_params; ++pi) {
+                                                const char* pn =
+                                                    base_primary->template_param_names[pi];
+                                                if (base_primary->template_param_is_nttp[pi]) {
+                                                    if (base_args[pi].is_value) {
+                                                        base_prelim_nb.push_back(
+                                                            {pn, base_args[pi].value});
+                                                    }
+                                                } else if (!base_args[pi].is_value) {
+                                                    base_prelim_tb.push_back(
+                                                        {pn, base_args[pi].type});
+                                                }
+                                            }
+                                            int bsz = static_cast<int>(base_args.size());
+                                            while (bsz < base_primary->n_template_params) {
+                                                if (!base_primary->template_param_has_default ||
+                                                    !base_primary->template_param_has_default[bsz]) {
+                                                    break;
+                                                }
+                                                ParsedTemplateArg da{};
+                                                da.is_value =
+                                                    base_primary->template_param_is_nttp[bsz];
+                                                if (da.is_value &&
+                                                    base_primary->template_param_default_values[bsz] ==
+                                                        LLONG_MIN) {
+                                                    long long ev = 0;
+                                                    if (eval_deferred_nttp_default(
+                                                            origin, bsz,
+                                                            base_prelim_tb, base_prelim_nb,
+                                                            &ev)) {
+                                                        da.value = ev;
+                                                    } else {
+                                                        can_use_typed_args = false;
+                                                        break;
+                                                    }
+                                                } else if (da.is_value) {
+                                                    da.value =
+                                                        base_primary->template_param_default_values[bsz];
+                                                } else {
+                                                    da.type =
+                                                        base_primary->template_param_default_types[bsz];
+                                                }
+                                                base_args.push_back(da);
+                                                ++bsz;
+                                            }
+                                            if (can_use_typed_args) {
+                                                std::string base_mangled;
+                                                if (ensure_template_struct_instantiated_from_args(
+                                                        origin, base_primary, base_args,
+                                                        tpl_def->line, &base_mangled,
+                                                        "template_base_instantiation",
+                                                        &inst->base_types[bi])) {
+                                                    if (!inst->base_types[bi].tag &&
+                                                        struct_tag_def_map_.count(base_mangled)) {
+                                                        inst->base_types[bi] = TypeSpec{};
+                                                        inst->base_types[bi].array_size = -1;
+                                                        inst->base_types[bi].inner_rank = -1;
+                                                        inst->base_types[bi].base = TB_STRUCT;
+                                                        inst->base_types[bi].tag =
+                                                            arena_.strdup(base_mangled.c_str());
+                                                    }
+                                                    continue;
+                                                }
+                                            }
+                                        }
+                                    }
                                     std::string arg_refs_str =
                                         template_arg_refs_text(inst->base_types[bi]);
                                     // Substitute template param names in arg_refs
