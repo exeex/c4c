@@ -502,6 +502,15 @@ set_tests_properties(cpp_parse_local_using_alias_statement_probe_dump PROPERTIES
 )
 
 add_test(
+  NAME cpp_parse_record_member_typedef_using_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/record_member_typedef_using_dump_parse.cpp"
+)
+set_tests_properties(cpp_parse_record_member_typedef_using_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(value\\).*Decl\\(next\\).*Decl\\(current\\).*Decl\\(slot\\).*Decl\\(cb\\)"
+)
+
+add_test(
   NAME cpp_parse_trailing_requires_following_member_decl_dump
   COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/cpp20_trailing_requires_following_member_decl_parse.cpp"
 )

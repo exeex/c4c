@@ -670,14 +670,12 @@ bool Parser::try_parse_record_using_member(
         TypeSpec alias_ts = parse_type_name();
         expect(TokenKind::Semi);
 
-        typedefs_.insert(alias_name);
-        typedef_types_[alias_name] = alias_ts;
+        register_typedef_binding(alias_name, alias_ts, false);
         member_typedef_names->push_back(arena_.strdup(alias_name.c_str()));
         member_typedef_types->push_back(alias_ts);
         if (!current_struct_tag_.empty()) {
             std::string scoped = current_struct_tag_ + "::" + alias_name;
-            typedefs_.insert(scoped);
-            typedef_types_[scoped] = alias_ts;
+            register_struct_member_typedef_binding(scoped, alias_ts);
         }
         return true;
     }
@@ -699,6 +697,23 @@ bool Parser::try_parse_record_typedef_member(
     consume(); // eat 'typedef'
     TypeSpec td_base = parse_base_type();
     parse_attributes(&td_base);
+    auto register_record_typedef = [&](const char* name, const TypeSpec& type,
+                                       Node** fn_ptr_params,
+                                       int n_fn_ptr_params,
+                                       bool fn_ptr_variadic) {
+        register_typedef_binding(name, type, true);
+        if (type.is_fn_ptr && (n_fn_ptr_params > 0 || fn_ptr_variadic)) {
+            typedef_fn_ptr_info_[name] = {
+                fn_ptr_params, n_fn_ptr_params, fn_ptr_variadic};
+        }
+        member_typedef_names->push_back(name);
+        member_typedef_types->push_back(type);
+        if (!current_struct_tag_.empty()) {
+            std::string scoped = current_struct_tag_ + "::" + name;
+            register_struct_member_typedef_binding(scoped, type);
+        }
+    };
+
     const char* tdname = nullptr;
     TypeSpec ts_copy = td_base;
     Node** td_fn_ptr_params = nullptr;
@@ -707,23 +722,8 @@ bool Parser::try_parse_record_typedef_member(
     parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
                      &td_n_fn_ptr_params, &td_fn_ptr_variadic);
     if (tdname) {
-        typedefs_.insert(tdname);
-        user_typedefs_.insert(tdname);
-        typedef_types_[tdname] = ts_copy;
-        if (ts_copy.is_fn_ptr &&
-            (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
-            typedef_fn_ptr_info_[tdname] = {
-                td_fn_ptr_params, td_n_fn_ptr_params,
-                td_fn_ptr_variadic};
-        }
-        member_typedef_names->push_back(tdname);
-        member_typedef_types->push_back(ts_copy);
-        if (!current_struct_tag_.empty()) {
-            std::string scoped = current_struct_tag_ + "::" + tdname;
-            struct_typedefs_[scoped] = ts_copy;
-            typedefs_.insert(scoped);
-            typedef_types_[scoped] = ts_copy;
-        }
+        register_record_typedef(tdname, ts_copy, td_fn_ptr_params,
+                                td_n_fn_ptr_params, td_fn_ptr_variadic);
     }
 
     while (match(TokenKind::Comma)) {
@@ -735,23 +735,8 @@ bool Parser::try_parse_record_typedef_member(
         parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
                          &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
         if (tdn2) {
-            typedefs_.insert(tdn2);
-            user_typedefs_.insert(tdn2);
-            typedef_types_[tdn2] = ts2;
-            if (ts2.is_fn_ptr &&
-                (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
-                typedef_fn_ptr_info_[tdn2] = {
-                    td2_fn_ptr_params, td2_n_fn_ptr_params,
-                    td2_fn_ptr_variadic};
-            }
-            member_typedef_names->push_back(tdn2);
-            member_typedef_types->push_back(ts2);
-            if (!current_struct_tag_.empty()) {
-                std::string scoped = current_struct_tag_ + "::" + tdn2;
-                struct_typedefs_[scoped] = ts2;
-                typedefs_.insert(scoped);
-                typedef_types_[scoped] = ts2;
-            }
+            register_record_typedef(tdn2, ts2, td2_fn_ptr_params,
+                                    td2_n_fn_ptr_params, td2_fn_ptr_variadic);
         }
     }
     expect(TokenKind::Semi);
