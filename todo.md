@@ -258,6 +258,27 @@ Source Plan: plan.md
 - 2026-04-10 Step 2 compile-cluster slice:
   a direct standalone compile probe on `src/backend/x86/codegen/globals.cpp`
   confirmed the first blocker is still exported-surface drift, not CMake wiring
+- 2026-04-10 Step 2 blocker refinement:
+  a follow-up attempt to let `globals.cpp` reuse the existing
+  `emit_seg_{load,store}_symbol_impl(...)` path failed at link time even after
+  the new unit compiled
+  - `x86_codegen.hpp` currently exposes declarations that do not link cleanly
+    against the existing `memory.cpp` symbol-helper definitions from this unit
+  - the smallest real behavior lift for `globals.cpp` therefore still requires
+    promoting a shared `X86Codegen` helper/state surface out of `emit.cpp`
+    instead of trying to tunnel through the current public declarations
+- added a second focused backend shared-util smoke test that keeps the
+  translated globals-owner helper entrypoints (`emit_global_load_rip_rel_impl`,
+  `emit_global_store_rip_rel_impl`, `emit_store_result_impl`,
+  `emit_load_operand_impl`) compile/link reachable while the real owner wiring
+  remains blocked on the shared-surface export
+- focused checks passed:
+  `./build/backend_shared_util_tests test_x86_codegen_header_exports_translated_globals_owner_helper_symbols`
+  plus `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun matched the
+  current 2904-test baseline in `test_after_rerun.log`; the regression guard
+  reported `2723` passed / `181` failed before and after, with no newly failing
+  tests and no new `>30s` cases
   - the translated unit could not compile because `X86Codegen` still hides
     `state`, `store_rax_to`, and `operand_to_rax` behind the legacy
     `emit.cpp` owner surface
