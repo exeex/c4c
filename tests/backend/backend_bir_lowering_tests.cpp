@@ -1479,6 +1479,34 @@ c4c::codegen::lir::LirModule make_global_anonymous_struct_field_compare_zero_ret
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_global_anonymous_struct_field_compare_zero_return_module_with_renamed_entry_temps() {
+  auto module = make_global_anonymous_struct_field_compare_zero_return_module();
+  auto& entry = module.functions.front().blocks.front();
+  auto* gep = std::get_if<c4c::codegen::lir::LirGepOp>(&entry.insts[0]);
+  auto* load = std::get_if<c4c::codegen::lir::LirLoadOp>(&entry.insts[1]);
+  auto* cmp = std::get_if<c4c::codegen::lir::LirCmpOp>(&entry.insts[2]);
+  auto* zext = std::get_if<c4c::codegen::lir::LirCastOp>(&entry.insts[3]);
+  auto* branch_cmp = std::get_if<c4c::codegen::lir::LirCmpOp>(&entry.insts[4]);
+  auto* cond_br = std::get_if<c4c::codegen::lir::LirCondBr>(&entry.terminator);
+  if (gep == nullptr || load == nullptr || cmp == nullptr || zext == nullptr ||
+      branch_cmp == nullptr || cond_br == nullptr) {
+    return module;
+  }
+
+  gep->result = "%g0";
+  load->result = "%g1";
+  load->ptr = "%g0";
+  cmp->result = "%g2";
+  cmp->lhs = "%g1";
+  zext->result = "%g3";
+  zext->operand = "%g2";
+  branch_cmp->result = "%g4";
+  branch_cmp->lhs = "%g3";
+  cond_br->cond_name = "%g4";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_nested_anonymous_aggregate_alias_compare_zero_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -6596,6 +6624,27 @@ void test_bir_lowering_accepts_global_anonymous_struct_field_compare_zero_return
                   "the lowered global anonymous-struct field compare module should normalize the bounded `00047.c` source route to a single immediate zero return");
 }
 
+void test_bir_lowering_accepts_global_anonymous_struct_field_compare_zero_return_module_with_renamed_entry_temps() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_global_anonymous_struct_field_compare_zero_return_module_with_renamed_entry_temps());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded global anonymous-struct field compare slice even when the entry SSA temp names no longer match the legacy rendered-text fixture");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered renamed-temp global anonymous-struct field compare module should still collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered renamed-temp global anonymous-struct field compare module should preserve the shared constant-return normalization");
+}
+
 void test_bir_lowering_accepts_nested_anonymous_aggregate_alias_compare_zero_return_module() {
   const auto lowered = c4c::backend::try_lower_to_bir(
       make_nested_anonymous_aggregate_alias_compare_zero_return_module());
@@ -9806,6 +9855,8 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_global_x_y_pointer_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_single_global_i32_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_anonymous_struct_field_compare_zero_return_module);
+  RUN_TEST(
+      test_bir_lowering_accepts_global_anonymous_struct_field_compare_zero_return_module_with_renamed_entry_temps);
   RUN_TEST(test_bir_lowering_accepts_global_named_two_field_struct_designated_init_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_named_int_pointer_struct_designated_init_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_nested_struct_anonymous_union_compare_zero_return_module);

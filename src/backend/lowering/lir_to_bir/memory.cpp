@@ -3246,44 +3246,44 @@ try_lower_minimal_global_anonymous_struct_field_compare_zero_return_module(
            *ret->value_str == expected_value;
   };
 
-  const auto rendered = c4c::codegen::lir::print_llvm(module);
-  constexpr std::string_view kExpectedModule =
-      "%struct._anon_0 = type { i32, i32, i32 }\n"
-      "@s = global %struct._anon_0 { i32 1, i32 2, i32 3 }, align 4\n"
-      "\n"
-      "define i32 @main()\n"
-      "{\n"
-      "entry:\n"
-      "  %t0 = getelementptr %struct._anon_0, ptr @s, i32 0, i32 0\n"
-      "  %t1 = load i32, ptr %t0\n"
-      "  %t2 = icmp ne i32 %t1, 1\n"
-      "  %t3 = zext i1 %t2 to i32\n"
-      "  %t4 = icmp ne i32 %t3, 0\n"
-      "  br i1 %t4, label %block_1, label %block_2\n"
-      "block_1:\n"
-      "  ret i32 1\n"
-      "block_2:\n"
-      "  %t5 = getelementptr %struct._anon_0, ptr @s, i32 0, i32 1\n"
-      "  %t6 = load i32, ptr %t5\n"
-      "  %t7 = icmp ne i32 %t6, 2\n"
-      "  %t8 = zext i1 %t7 to i32\n"
-      "  %t9 = icmp ne i32 %t8, 0\n"
-      "  br i1 %t9, label %block_3, label %block_4\n"
-      "block_3:\n"
-      "  ret i32 2\n"
-      "block_4:\n"
-      "  %t10 = getelementptr %struct._anon_0, ptr @s, i32 0, i32 2\n"
-      "  %t11 = load i32, ptr %t10\n"
-      "  %t12 = icmp ne i32 %t11, 3\n"
-      "  %t13 = zext i1 %t12 to i32\n"
-      "  %t14 = icmp ne i32 %t13, 0\n"
-      "  br i1 %t14, label %block_5, label %block_6\n"
-      "block_5:\n"
-      "  ret i32 3\n"
-      "block_6:\n"
-      "  ret i32 0\n"
-      "}\n";
-  if (rendered.find(kExpectedModule) == std::string::npos) {
+  auto match_global_field_compare_block =
+      [&](const LirBlock& block,
+          std::string_view expected_label,
+          std::size_t expected_field,
+          std::string_view expected_value,
+          std::string_view true_label,
+          std::string_view false_label) -> bool {
+    const auto* gep = block.insts.size() == 5 ? std::get_if<LirGepOp>(&block.insts[0]) : nullptr;
+    const auto* load = block.insts.size() == 5 ? std::get_if<LirLoadOp>(&block.insts[1]) : nullptr;
+    const auto* cmp = block.insts.size() == 5 ? std::get_if<LirCmpOp>(&block.insts[2]) : nullptr;
+    const auto* zext =
+        block.insts.size() == 5 ? std::get_if<LirCastOp>(&block.insts[3]) : nullptr;
+    const auto* branch_cmp =
+        block.insts.size() == 5 ? std::get_if<LirCmpOp>(&block.insts[4]) : nullptr;
+    const auto* cond_br = std::get_if<LirCondBr>(&block.terminator);
+    return block.label == expected_label && gep != nullptr && load != nullptr && cmp != nullptr &&
+           zext != nullptr && branch_cmp != nullptr && cond_br != nullptr &&
+           !gep->result.empty() &&
+           match_memory_global_struct_field_gep(*gep, global.name, "%struct._anon_0",
+                                                expected_field) &&
+           memory_lir_type_matches_integer_width(load->type_str, 32) &&
+           load->ptr == gep->result && !load->result.empty() && !cmp->is_float &&
+           cmp->predicate == "ne" && memory_lir_type_matches_integer_width(cmp->type_str, 32) &&
+           cmp->lhs == load->result && cmp->rhs == expected_value && zext->kind == LirCastKind::ZExt &&
+           zext->from_type == "i1" && zext->operand == cmp->result && zext->to_type == "i32" &&
+           !branch_cmp->is_float && branch_cmp->predicate == "ne" &&
+           memory_lir_type_matches_integer_width(branch_cmp->type_str, 32) &&
+           branch_cmp->lhs == zext->result && branch_cmp->rhs == "0" &&
+           cond_br->cond_name == branch_cmp->result && cond_br->true_label == true_label &&
+           cond_br->false_label == false_label;
+  };
+
+  if (!match_global_field_compare_block(function.blocks[0], "entry", 0, "1", "block_1",
+                                        "block_2") ||
+      !match_global_field_compare_block(function.blocks[2], "block_2", 1, "2", "block_3",
+                                        "block_4") ||
+      !match_global_field_compare_block(function.blocks[4], "block_4", 2, "3", "block_5",
+                                        "block_6")) {
     return std::nullopt;
   }
 
@@ -3353,35 +3353,41 @@ try_lower_minimal_global_named_two_field_struct_designated_init_compare_zero_ret
            *ret->value_str == expected_value;
   };
 
-  const auto rendered = c4c::codegen::lir::print_llvm(module);
-  constexpr std::string_view kExpectedModule =
-      "%struct.S = type { i32, i32 }\n"
-      "@s = global %struct.S { i32 1, i32 2 }, align 4\n"
-      "\n"
-      "define i32 @main()\n"
-      "{\n"
-      "entry:\n"
-      "  %t0 = getelementptr %struct.S, ptr @s, i32 0, i32 0\n"
-      "  %t1 = load i32, ptr %t0\n"
-      "  %t2 = icmp ne i32 %t1, 1\n"
-      "  %t3 = zext i1 %t2 to i32\n"
-      "  %t4 = icmp ne i32 %t3, 0\n"
-      "  br i1 %t4, label %block_1, label %block_2\n"
-      "block_1:\n"
-      "  ret i32 1\n"
-      "block_2:\n"
-      "  %t5 = getelementptr %struct.S, ptr @s, i32 0, i32 1\n"
-      "  %t6 = load i32, ptr %t5\n"
-      "  %t7 = icmp ne i32 %t6, 2\n"
-      "  %t8 = zext i1 %t7 to i32\n"
-      "  %t9 = icmp ne i32 %t8, 0\n"
-      "  br i1 %t9, label %block_3, label %block_4\n"
-      "block_3:\n"
-      "  ret i32 2\n"
-      "block_4:\n"
-      "  ret i32 0\n"
-      "}\n";
-  if (rendered.find(kExpectedModule) == std::string::npos) {
+  auto match_global_field_compare_block =
+      [&](const LirBlock& block,
+          std::string_view expected_label,
+          std::size_t expected_field,
+          std::string_view expected_value,
+          std::string_view true_label,
+          std::string_view false_label) -> bool {
+    const auto* gep = block.insts.size() == 5 ? std::get_if<LirGepOp>(&block.insts[0]) : nullptr;
+    const auto* load = block.insts.size() == 5 ? std::get_if<LirLoadOp>(&block.insts[1]) : nullptr;
+    const auto* cmp = block.insts.size() == 5 ? std::get_if<LirCmpOp>(&block.insts[2]) : nullptr;
+    const auto* zext =
+        block.insts.size() == 5 ? std::get_if<LirCastOp>(&block.insts[3]) : nullptr;
+    const auto* branch_cmp =
+        block.insts.size() == 5 ? std::get_if<LirCmpOp>(&block.insts[4]) : nullptr;
+    const auto* cond_br = std::get_if<LirCondBr>(&block.terminator);
+    return block.label == expected_label && gep != nullptr && load != nullptr && cmp != nullptr &&
+           zext != nullptr && branch_cmp != nullptr && cond_br != nullptr &&
+           !gep->result.empty() &&
+           match_memory_global_struct_field_gep(*gep, global.name, "%struct.S", expected_field) &&
+           memory_lir_type_matches_integer_width(load->type_str, 32) &&
+           load->ptr == gep->result && !load->result.empty() && !cmp->is_float &&
+           cmp->predicate == "ne" && memory_lir_type_matches_integer_width(cmp->type_str, 32) &&
+           cmp->lhs == load->result && cmp->rhs == expected_value && zext->kind == LirCastKind::ZExt &&
+           zext->from_type == "i1" && zext->operand == cmp->result && zext->to_type == "i32" &&
+           !branch_cmp->is_float && branch_cmp->predicate == "ne" &&
+           memory_lir_type_matches_integer_width(branch_cmp->type_str, 32) &&
+           branch_cmp->lhs == zext->result && branch_cmp->rhs == "0" &&
+           cond_br->cond_name == branch_cmp->result && cond_br->true_label == true_label &&
+           cond_br->false_label == false_label;
+  };
+
+  if (!match_global_field_compare_block(function.blocks[0], "entry", 0, "1", "block_1",
+                                        "block_2") ||
+      !match_global_field_compare_block(function.blocks[2], "block_2", 1, "2", "block_3",
+                                        "block_4")) {
     return std::nullopt;
   }
 
@@ -3459,37 +3465,78 @@ try_lower_minimal_global_named_int_pointer_struct_designated_init_compare_zero_r
            *ret->value_str == expected_value;
   };
 
-  const auto rendered = c4c::codegen::lir::print_llvm(module);
-  constexpr std::string_view kExpectedModule =
-      "%struct.S = type { i32, [4 x i8], ptr }\n"
-      "@x = global i32 10, align 4\n"
-      "@s = global %struct.S { i32 1, [4 x i8] zeroinitializer, ptr @x }, align 8\n"
-      "\n"
-      "define i32 @main()\n"
-      "{\n"
-      "entry:\n"
-      "  %t0 = getelementptr %struct.S, ptr @s, i32 0, i32 0\n"
-      "  %t1 = load i32, ptr %t0\n"
-      "  %t2 = icmp ne i32 %t1, 1\n"
-      "  %t3 = zext i1 %t2 to i32\n"
-      "  %t4 = icmp ne i32 %t3, 0\n"
-      "  br i1 %t4, label %block_1, label %block_2\n"
-      "block_1:\n"
-      "  ret i32 1\n"
-      "block_2:\n"
-      "  %t5 = getelementptr %struct.S, ptr @s, i32 0, i32 2\n"
-      "  %t6 = load ptr, ptr %t5\n"
-      "  %t7 = load i32, ptr %t6\n"
-      "  %t8 = icmp ne i32 %t7, 10\n"
-      "  %t9 = zext i1 %t8 to i32\n"
-      "  %t10 = icmp ne i32 %t9, 0\n"
-      "  br i1 %t10, label %block_3, label %block_4\n"
-      "block_3:\n"
-      "  ret i32 2\n"
-      "block_4:\n"
-      "  ret i32 0\n"
-      "}\n";
-  if (rendered.find(kExpectedModule) == std::string::npos) {
+  auto match_global_field_compare_block =
+      [&](const LirBlock& block,
+          std::string_view expected_label,
+          std::size_t expected_field,
+          std::string_view expected_value,
+          std::string_view true_label,
+          std::string_view false_label) -> bool {
+    const auto* gep = block.insts.size() == 5 ? std::get_if<LirGepOp>(&block.insts[0]) : nullptr;
+    const auto* load = block.insts.size() == 5 ? std::get_if<LirLoadOp>(&block.insts[1]) : nullptr;
+    const auto* cmp = block.insts.size() == 5 ? std::get_if<LirCmpOp>(&block.insts[2]) : nullptr;
+    const auto* zext =
+        block.insts.size() == 5 ? std::get_if<LirCastOp>(&block.insts[3]) : nullptr;
+    const auto* branch_cmp =
+        block.insts.size() == 5 ? std::get_if<LirCmpOp>(&block.insts[4]) : nullptr;
+    const auto* cond_br = std::get_if<LirCondBr>(&block.terminator);
+    return block.label == expected_label && gep != nullptr && load != nullptr && cmp != nullptr &&
+           zext != nullptr && branch_cmp != nullptr && cond_br != nullptr &&
+           !gep->result.empty() &&
+           match_memory_global_struct_field_gep(*gep, struct_global.name, "%struct.S",
+                                                expected_field) &&
+           memory_lir_type_matches_integer_width(load->type_str, 32) &&
+           load->ptr == gep->result && !load->result.empty() && !cmp->is_float &&
+           cmp->predicate == "ne" && memory_lir_type_matches_integer_width(cmp->type_str, 32) &&
+           cmp->lhs == load->result && cmp->rhs == expected_value && zext->kind == LirCastKind::ZExt &&
+           zext->from_type == "i1" && zext->operand == cmp->result && zext->to_type == "i32" &&
+           !branch_cmp->is_float && branch_cmp->predicate == "ne" &&
+           memory_lir_type_matches_integer_width(branch_cmp->type_str, 32) &&
+           branch_cmp->lhs == zext->result && branch_cmp->rhs == "0" &&
+           cond_br->cond_name == branch_cmp->result && cond_br->true_label == true_label &&
+           cond_br->false_label == false_label;
+  };
+
+  const auto& entry = function.blocks[0];
+  const auto* block2_gep =
+      function.blocks[2].insts.size() == 6 ? std::get_if<LirGepOp>(&function.blocks[2].insts[0])
+                                           : nullptr;
+  const auto* block2_load_ptr =
+      function.blocks[2].insts.size() == 6 ? std::get_if<LirLoadOp>(&function.blocks[2].insts[1])
+                                           : nullptr;
+  const auto* block2_load_i32 =
+      function.blocks[2].insts.size() == 6 ? std::get_if<LirLoadOp>(&function.blocks[2].insts[2])
+                                           : nullptr;
+  const auto* block2_cmp =
+      function.blocks[2].insts.size() == 6 ? std::get_if<LirCmpOp>(&function.blocks[2].insts[3])
+                                           : nullptr;
+  const auto* block2_zext =
+      function.blocks[2].insts.size() == 6 ? std::get_if<LirCastOp>(&function.blocks[2].insts[4])
+                                           : nullptr;
+  const auto* block2_branch_cmp =
+      function.blocks[2].insts.size() == 6 ? std::get_if<LirCmpOp>(&function.blocks[2].insts[5])
+                                           : nullptr;
+  const auto* block2_cond_br = std::get_if<LirCondBr>(&function.blocks[2].terminator);
+  if (!match_global_field_compare_block(entry, "entry", 0, "1", "block_1", "block_2") ||
+      block2_gep == nullptr || block2_load_ptr == nullptr || block2_load_i32 == nullptr ||
+      block2_cmp == nullptr || block2_zext == nullptr || block2_branch_cmp == nullptr ||
+      block2_cond_br == nullptr || function.blocks[2].label != "block_2" ||
+      block2_gep->result.empty() ||
+      !match_memory_global_struct_field_gep(*block2_gep, struct_global.name, "%struct.S", 2) ||
+      block2_load_ptr->type_str != "ptr" || block2_load_ptr->ptr != block2_gep->result ||
+      block2_load_ptr->result.empty() ||
+      !memory_lir_type_matches_integer_width(block2_load_i32->type_str, 32) ||
+      block2_load_i32->ptr != block2_load_ptr->result || block2_load_i32->result.empty() ||
+      block2_cmp->is_float || block2_cmp->predicate != "ne" ||
+      !memory_lir_type_matches_integer_width(block2_cmp->type_str, 32) ||
+      block2_cmp->lhs != block2_load_i32->result || block2_cmp->rhs != "10" ||
+      block2_zext->kind != LirCastKind::ZExt || block2_zext->from_type != "i1" ||
+      block2_zext->operand != block2_cmp->result || block2_zext->to_type != "i32" ||
+      block2_branch_cmp->is_float || block2_branch_cmp->predicate != "ne" ||
+      !memory_lir_type_matches_integer_width(block2_branch_cmp->type_str, 32) ||
+      block2_branch_cmp->lhs != block2_zext->result || block2_branch_cmp->rhs != "0" ||
+      block2_cond_br->cond_name != block2_branch_cmp->result ||
+      block2_cond_br->true_label != "block_3" || block2_cond_br->false_label != "block_4") {
     return std::nullopt;
   }
 
