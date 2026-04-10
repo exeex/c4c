@@ -2410,6 +2410,73 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
   return git->second;
 }
 
+void Lowerer::assign_template_arg_refs_from_ast_args(
+    TypeSpec* ts,
+    const Node* ref,
+    const FunctionCtx* ctx,
+    const Node* span_node,
+    PendingTemplateTypeKind kind,
+    const std::string& context_name) {
+  if (!ts) return;
+  ts->tpl_struct_args.data = nullptr;
+  ts->tpl_struct_args.size = 0;
+  if (!ref || ref->n_template_args <= 0) return;
+
+  std::vector<HirTemplateArg> actual_args;
+  actual_args.reserve(ref->n_template_args);
+  for (int i = 0; i < ref->n_template_args; ++i) {
+    HirTemplateArg arg{};
+    arg.is_value = ref->template_arg_is_value && ref->template_arg_is_value[i];
+    if (arg.is_value) {
+      if (ctx && ref->template_arg_nttp_names && ref->template_arg_nttp_names[i] &&
+          ref->template_arg_nttp_names[i][0]) {
+        auto it = ctx->nttp_bindings.find(ref->template_arg_nttp_names[i]);
+        arg.value = (it != ctx->nttp_bindings.end()) ? it->second : 0;
+      } else {
+        arg.value = ref->template_arg_values ? ref->template_arg_values[i] : 0;
+      }
+    } else if (ref->template_arg_types) {
+      TypeSpec arg_ts = ref->template_arg_types[i];
+      if (ctx && arg_ts.base == TB_TYPEDEF && arg_ts.tag) {
+        const int outer_ptr_level = arg_ts.ptr_level;
+        const bool outer_lref = arg_ts.is_lvalue_ref;
+        const bool outer_rref = arg_ts.is_rvalue_ref;
+        const bool outer_const = arg_ts.is_const;
+        const bool outer_volatile = arg_ts.is_volatile;
+        auto it = ctx->tpl_bindings.find(arg_ts.tag);
+        if (it != ctx->tpl_bindings.end()) {
+          arg_ts = it->second;
+          arg_ts.ptr_level += outer_ptr_level;
+          arg_ts.is_lvalue_ref = arg_ts.is_lvalue_ref || outer_lref;
+          arg_ts.is_rvalue_ref =
+              !arg_ts.is_lvalue_ref && (arg_ts.is_rvalue_ref || outer_rref);
+          arg_ts.is_const = arg_ts.is_const || outer_const;
+          arg_ts.is_volatile = arg_ts.is_volatile || outer_volatile;
+        }
+      }
+      TypeBindings tpl_empty;
+      NttpBindings nttp_empty;
+      seed_and_resolve_pending_template_type_if_needed(
+          arg_ts, ctx ? ctx->tpl_bindings : tpl_empty,
+          ctx ? ctx->nttp_bindings : nttp_empty, span_node, kind, context_name);
+      while (resolve_struct_member_typedef_if_ready(&arg_ts)) {
+      }
+      if (arg_ts.deferred_member_type_name && arg_ts.tag && arg_ts.tag[0]) {
+        TypeSpec resolved_member{};
+        if (resolve_struct_member_typedef_type(
+                arg_ts.tag, arg_ts.deferred_member_type_name, &resolved_member)) {
+          arg_ts = resolved_member;
+        }
+      }
+      resolve_typedef_to_struct(arg_ts);
+      arg.type = arg_ts;
+    }
+    actual_args.push_back(arg);
+  }
+
+  assign_template_arg_refs_from_hir_args(ts, actual_args);
+}
+
 std::optional<long long> Lowerer::try_eval_template_static_member_const(
     FunctionCtx* ctx,
     const std::string& tpl_name,

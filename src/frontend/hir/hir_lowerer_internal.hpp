@@ -454,6 +454,14 @@ class Lowerer {
       const std::vector<HirTemplateArg>& concrete_args,
       const TemplateStructInstanceKey& instance_key);
 
+  void assign_template_arg_refs_from_ast_args(
+      TypeSpec* ts,
+      const Node* ref,
+      const FunctionCtx* ctx,
+      const Node* span_node,
+      PendingTemplateTypeKind kind,
+      const std::string& context_name);
+
   void realize_template_struct(TypeSpec& ts,
                                const Node* primary_tpl,
                                const TypeBindings& tpl_bindings,

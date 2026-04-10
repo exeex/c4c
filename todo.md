@@ -43,6 +43,10 @@ Source Plan: plan.md
   fallback inside `ensure_template_struct_instantiated_from_args(...)`, but the
   next highest-value work now likely sits in the still-stringy HIR helper
   paths.
+- Next intended slice: refactor `hir_templates.cpp` `apply_bindings(...)`
+  paths so pending owner/member-typedef resolution rewrites structured
+  `TemplateArgRef` payloads directly instead of first round-tripping through
+  collected debug-text refs.
 
 ## Completed
 
@@ -112,3 +116,9 @@ Source Plan: plan.md
   already present in `tpl_struct_args`, parser now reconstructs
   `ParsedTemplateArg` directly from structured payloads instead of first
   round-tripping through `arg_refs_str` text in that common case.
+- Replaced the HIR pending-owner common path in
+  [hir_expr.cpp](/workspaces/c4c/src/frontend/hir/hir_expr.cpp) and
+  [hir_types.cpp](/workspaces/c4c/src/frontend/hir/hir_types.cpp): those sites
+  now materialize typed `TemplateArgRefList` entries directly from AST template
+  args instead of packing all args into a single `debug_text` blob before
+  pending owner resolution.

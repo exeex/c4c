@@ -1603,28 +1603,14 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
       }
       if (n->name && n->name[0] &&
           n->has_template_args && find_template_struct_primary(n->name)) {
-        std::string arg_refs;
-        for (int i = 0; i < n->n_template_args; ++i) {
-          if (!arg_refs.empty()) arg_refs += ",";
-          if (n->template_arg_is_value && n->template_arg_is_value[i]) {
-            const char* fwd_name = n->template_arg_nttp_names ?
-                n->template_arg_nttp_names[i] : nullptr;
-            if (fwd_name && fwd_name[0]) arg_refs += fwd_name;
-            else arg_refs += std::to_string(n->template_arg_values[i]);
-          } else if (n->template_arg_types) {
-            const TypeSpec& arg_ts = n->template_arg_types[i];
-            arg_refs += encode_template_type_arg_ref_hir(arg_ts);
-          }
-        }
         TypeSpec tmp_ts{};
         tmp_ts.base = TB_STRUCT;
         tmp_ts.array_size = -1;
         tmp_ts.inner_rank = -1;
         tmp_ts.tpl_struct_origin = n->name;
-        tmp_ts.tpl_struct_args.data = new TemplateArgRef[1]();
-        tmp_ts.tpl_struct_args.size = 1;
-        tmp_ts.tpl_struct_args.data[0].kind = TemplateArgKind::Type;
-        tmp_ts.tpl_struct_args.data[0].debug_text = ::strdup(arg_refs.c_str());
+        assign_template_arg_refs_from_ast_args(
+            &tmp_ts, n, ctx, n, PendingTemplateTypeKind::OwnerStruct,
+            "generic-ctrl-type-var-arg");
         const Node* primary_tpl = find_template_struct_primary(n->name);
         TypeBindings tpl_empty;
         NttpBindings nttp_empty;
