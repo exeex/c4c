@@ -414,26 +414,17 @@ TypeSpec Parser::parse_base_type() {
     auto set_template_arg_debug_refs =
         [&](TypeSpec* target, const std::vector<std::string>& refs) {
             if (!target) return;
-            target->tpl_struct_arg_kinds = nullptr;
-            target->tpl_struct_arg_types = nullptr;
-            target->tpl_struct_arg_values = nullptr;
-            target->tpl_struct_arg_debug_texts = nullptr;
-            target->n_tpl_struct_args = 0;
+            target->tpl_struct_args.data = nullptr;
+            target->tpl_struct_args.size = 0;
             if (refs.empty()) return;
-            target->n_tpl_struct_args = static_cast<int>(refs.size());
-            target->tpl_struct_arg_kinds =
-                arena_.alloc_array<TemplateArgKind>(target->n_tpl_struct_args);
-            target->tpl_struct_arg_types =
-                arena_.alloc_array<TypeSpec>(target->n_tpl_struct_args);
-            target->tpl_struct_arg_values =
-                arena_.alloc_array<long long>(target->n_tpl_struct_args);
-            target->tpl_struct_arg_debug_texts =
-                arena_.alloc_array<const char*>(target->n_tpl_struct_args);
-            for (int i = 0; i < target->n_tpl_struct_args; ++i) {
-                target->tpl_struct_arg_kinds[i] = TemplateArgKind::Type;
-                target->tpl_struct_arg_types[i] = {};
-                target->tpl_struct_arg_values[i] = 0;
-                target->tpl_struct_arg_debug_texts[i] =
+            target->tpl_struct_args.data =
+                arena_.alloc_array<TemplateArgRef>(refs.size());
+            target->tpl_struct_args.size = static_cast<int>(refs.size());
+            for (int i = 0; i < target->tpl_struct_args.size; ++i) {
+                target->tpl_struct_args.data[i].kind = TemplateArgKind::Type;
+                target->tpl_struct_args.data[i].type = {};
+                target->tpl_struct_args.data[i].value = 0;
+                target->tpl_struct_args.data[i].debug_text =
                     arena_.strdup(refs[i].c_str());
             }
         };
@@ -1385,7 +1376,7 @@ TypeSpec Parser::parse_base_type() {
                                         if (!out_args) return false;
                                         out_args->clear();
                                         if (!ts.tpl_struct_origin ||
-                                            ts.n_tpl_struct_args <= 0 ||
+                                            ts.tpl_struct_args.size <= 0 ||
                                             owner_name != ts.tpl_struct_origin) {
                                             for (const auto& arg : resolved_alias_args) {
                                                 ParsedTemplateArg actual = arg;
@@ -1737,7 +1728,7 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                     }
                                 }
-                                if (ts.n_tpl_struct_args > 0) {
+                                if (ts.tpl_struct_args.size > 0) {
                                     const std::string new_refs =
                                         substitute_template_arg_refs(
                                             template_arg_refs_text(ts).c_str());
@@ -2760,7 +2751,7 @@ TypeSpec Parser::parse_base_type() {
                     tokens_[pos_ + 1].kind == TokenKind::Identifier) {
                     std::string member = tokens_[pos_ + 1].lexeme;
                     const bool should_preserve_deferred_template_member =
-                        ts.tpl_struct_origin && ts.n_tpl_struct_args > 0 &&
+                        ts.tpl_struct_origin && ts.tpl_struct_args.size > 0 &&
                         member == "type";
                     if (should_preserve_deferred_template_member) {
                         consume(); // ::

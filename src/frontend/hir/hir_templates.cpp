@@ -98,8 +98,8 @@ bool matches_trait_family(const std::string& name, const char* suffix) {
 
 std::vector<std::string> collect_template_arg_debug_refs(const TypeSpec& ts) {
   std::vector<std::string> refs;
-  refs.reserve(ts.n_tpl_struct_args);
-  for (int i = 0; i < ts.n_tpl_struct_args; ++i) {
+  refs.reserve(ts.tpl_struct_args.size);
+  for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
     refs.push_back(template_arg_debug_text_at(ts, i));
   }
   return refs;
@@ -108,21 +108,15 @@ std::vector<std::string> collect_template_arg_debug_refs(const TypeSpec& ts) {
 void assign_template_arg_debug_refs(TypeSpec* ts,
                                     const std::vector<std::string>& refs) {
   if (!ts) return;
-  ts->tpl_struct_arg_kinds = nullptr;
-  ts->tpl_struct_arg_types = nullptr;
-  ts->tpl_struct_arg_values = nullptr;
-  ts->tpl_struct_arg_debug_texts = nullptr;
-  ts->n_tpl_struct_args = 0;
+  ts->tpl_struct_args.data = nullptr;
+  ts->tpl_struct_args.size = 0;
   if (refs.empty()) return;
 
-  ts->tpl_struct_arg_kinds = new TemplateArgKind[refs.size()];
-  ts->tpl_struct_arg_types = new TypeSpec[refs.size()]();
-  ts->tpl_struct_arg_values = new long long[refs.size()]();
-  ts->tpl_struct_arg_debug_texts = new const char*[refs.size()];
-  ts->n_tpl_struct_args = static_cast<int>(refs.size());
+  ts->tpl_struct_args.data = new TemplateArgRef[refs.size()]();
+  ts->tpl_struct_args.size = static_cast<int>(refs.size());
   for (size_t i = 0; i < refs.size(); ++i) {
-    ts->tpl_struct_arg_kinds[i] = TemplateArgKind::Type;
-    ts->tpl_struct_arg_debug_texts[i] = ::strdup(refs[i].c_str());
+    ts->tpl_struct_args.data[i].kind = TemplateArgKind::Type;
+    ts->tpl_struct_args.data[i].debug_text = ::strdup(refs[i].c_str());
   }
 }
 
@@ -2998,11 +2992,8 @@ void Lowerer::realize_template_struct(
   }
   if (!ts.deferred_member_type_name) {
     ts.tpl_struct_origin = nullptr;
-    ts.tpl_struct_arg_kinds = nullptr;
-    ts.tpl_struct_arg_types = nullptr;
-    ts.tpl_struct_arg_values = nullptr;
-    ts.tpl_struct_arg_debug_texts = nullptr;
-    ts.n_tpl_struct_args = 0;
+    ts.tpl_struct_args.data = nullptr;
+    ts.tpl_struct_args.size = 0;
   }
 }
 

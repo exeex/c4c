@@ -1621,13 +1621,10 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
         tmp_ts.array_size = -1;
         tmp_ts.inner_rank = -1;
         tmp_ts.tpl_struct_origin = n->name;
-        tmp_ts.tpl_struct_arg_kinds = new TemplateArgKind[1];
-        tmp_ts.tpl_struct_arg_types = new TypeSpec[1]();
-        tmp_ts.tpl_struct_arg_values = new long long[1]();
-        tmp_ts.tpl_struct_arg_debug_texts = new const char*[1];
-        tmp_ts.tpl_struct_arg_kinds[0] = TemplateArgKind::Type;
-        tmp_ts.tpl_struct_arg_debug_texts[0] = ::strdup(arg_refs.c_str());
-        tmp_ts.n_tpl_struct_args = 1;
+        tmp_ts.tpl_struct_args.data = new TemplateArgRef[1]();
+        tmp_ts.tpl_struct_args.size = 1;
+        tmp_ts.tpl_struct_args.data[0].kind = TemplateArgKind::Type;
+        tmp_ts.tpl_struct_args.data[0].debug_text = ::strdup(arg_refs.c_str());
         const Node* primary_tpl = find_template_struct_primary(n->name);
         TypeBindings tpl_empty;
         NttpBindings nttp_empty;

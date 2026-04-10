@@ -84,6 +84,13 @@ enum class TemplateArgKind : uint8_t {
     Value = 1,
 };
 
+struct TemplateArgRef;
+
+struct TemplateArgRefList {
+    TemplateArgRef* data;
+    int size;
+};
+
 struct TypeSpec {
     TypeBase base;
     TypeBase enum_underlying_base; // fixed underlying base for TB_ENUM, or TB_VOID when unknown/default
@@ -116,12 +123,15 @@ struct TypeSpec {
     // depends on unresolved template type params (e.g., Pair<T> inside a
     // template function body).  The HIR resolves it during instantiation.
     const char* tpl_struct_origin;     // original template struct name (e.g., "Pair")
-    TemplateArgKind* tpl_struct_arg_kinds; // parallel template arg kinds
-    TypeSpec* tpl_struct_arg_types;        // parallel type args when kind=Type
-    long long* tpl_struct_arg_values;      // parallel NTTP values when kind=Value
-    const char** tpl_struct_arg_debug_texts; // optional debug spellings per arg
-    int n_tpl_struct_args;                 // number of carried template args
+    TemplateArgRefList tpl_struct_args; // structured template arg payload
     const char* deferred_member_type_name; // pending `StructLike::type`-style member typedef
+};
+
+struct TemplateArgRef {
+    TemplateArgKind kind;
+    TypeSpec type;
+    long long value;
+    const char* debug_text;
 };
 
 // ── OperatorKind ─────────────────────────────────────────────────────────────
@@ -457,17 +467,14 @@ inline bool typespec_mentions_template_param(const TypeSpec& ts, const Node* nod
 
 inline bool template_arg_list_mentions_template_param(const TypeSpec& ts,
                                                       const Node* node) {
-    if (!node || ts.n_tpl_struct_args <= 0) return false;
-    for (int i = 0; i < ts.n_tpl_struct_args; ++i) {
-        if (ts.tpl_struct_arg_kinds &&
-            ts.tpl_struct_arg_kinds[i] == TemplateArgKind::Type) {
-            if (ts.tpl_struct_arg_types &&
-                typespec_mentions_template_param(ts.tpl_struct_arg_types[i], node)) {
-                return true;
-            }
+    if (!node || ts.tpl_struct_args.size <= 0 || !ts.tpl_struct_args.data) return false;
+    for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+        const TemplateArgRef& arg = ts.tpl_struct_args.data[i];
+        if (arg.kind == TemplateArgKind::Type &&
+            typespec_mentions_template_param(arg.type, node)) {
+            return true;
         }
-        if (ts.tpl_struct_arg_debug_texts &&
-            text_mentions_template_param(node, ts.tpl_struct_arg_debug_texts[i])) {
+        if (text_mentions_template_param(node, arg.debug_text)) {
             return true;
         }
     }
@@ -486,22 +493,21 @@ inline std::string encode_template_arg_debug_ref(const TypeSpec& ts) {
 
 inline std::string encode_template_arg_debug_list(const TypeSpec& ts) {
     std::string out;
-    for (int i = 0; i < ts.n_tpl_struct_args; ++i) {
+    if (!ts.tpl_struct_args.data) return out;
+    for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+        const TemplateArgRef& arg = ts.tpl_struct_args.data[i];
         if (i > 0) out += ",";
-        if (ts.tpl_struct_arg_debug_texts && ts.tpl_struct_arg_debug_texts[i] &&
-            ts.tpl_struct_arg_debug_texts[i][0]) {
-            out += ts.tpl_struct_arg_debug_texts[i];
+        if (arg.debug_text && arg.debug_text[0]) {
+            out += arg.debug_text;
             continue;
         }
-        if (ts.tpl_struct_arg_kinds &&
-            ts.tpl_struct_arg_kinds[i] == TemplateArgKind::Value) {
-            out += std::to_string(
-                ts.tpl_struct_arg_values ? ts.tpl_struct_arg_values[i] : 0);
+        if (arg.kind == TemplateArgKind::Value) {
+            out += std::to_string(arg.value);
             continue;
         }
-        if (ts.tpl_struct_arg_types) {
+        if (arg.kind == TemplateArgKind::Type) {
             out += "{";
-            out += encode_template_arg_debug_ref(ts.tpl_struct_arg_types[i]);
+            out += encode_template_arg_debug_ref(arg.type);
             out += "}";
         } else {
             out += "?";
@@ -511,18 +517,17 @@ inline std::string encode_template_arg_debug_list(const TypeSpec& ts) {
 }
 
 inline std::string template_arg_debug_text_at(const TypeSpec& ts, int index) {
-    if (index < 0 || index >= ts.n_tpl_struct_args) return {};
-    if (ts.tpl_struct_arg_debug_texts && ts.tpl_struct_arg_debug_texts[index] &&
-        ts.tpl_struct_arg_debug_texts[index][0]) {
-        return ts.tpl_struct_arg_debug_texts[index];
+    if (index < 0 || index >= ts.tpl_struct_args.size || !ts.tpl_struct_args.data) {
+        return {};
     }
-    if (ts.tpl_struct_arg_kinds &&
-        ts.tpl_struct_arg_kinds[index] == TemplateArgKind::Value) {
-        return std::to_string(
-            ts.tpl_struct_arg_values ? ts.tpl_struct_arg_values[index] : 0);
+    const TemplateArgRef& arg = ts.tpl_struct_args.data[index];
+    if (arg.debug_text && arg.debug_text[0]) {
+        return arg.debug_text;
     }
-    if (ts.tpl_struct_arg_types) return encode_template_arg_debug_ref(
-        ts.tpl_struct_arg_types[index]);
+    if (arg.kind == TemplateArgKind::Value) {
+        return std::to_string(arg.value);
+    }
+    if (arg.kind == TemplateArgKind::Type) return encode_template_arg_debug_ref(arg.type);
     return {};
 }
 

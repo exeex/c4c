@@ -11,14 +11,14 @@ Source Plan: plan.md
   per-arg payloads so deferred NTTP and HIR paths can stop reparsing internal
   spellings in the common case.
 - Iteration focus: keep the tree green after deleting `tpl_struct_arg_refs`,
-  then tighten the new `TemplateArgKind` transport so each arg is stored as an
-  actual typed/value payload instead of mostly as `debug_text`.
+  then tighten the new `TemplateArgKind` transport so each arg is stored in a
+  real `TemplateArgRefList` object instead of split parallel arrays.
 - Hard acceptance rule remains: this plan is only fully done when the old field
   is gone and the new architecture no longer relies on string-prefix semantic
   recovery.
-- Next intended slice: replace the current parallel-array fallback pattern with
-  a real per-arg transport object, then migrate parser/HIR rebuild helpers to
-  consume `kind/type/value` directly before touching `parser_types_template.cpp`.
+- Next intended slice: migrate parser/HIR rebuild helpers to populate and
+  consume `TemplateArgRef.kind/type/value` directly, then switch
+  `parser_types_template.cpp` off debug-text-first decoding in the common path.
 
 ## Completed
 
@@ -41,3 +41,6 @@ Source Plan: plan.md
   `cpp_positive_sema_template_builtin_is_enum_qualified_inherited_value_runtime_cpp`
   `cpp_positive_sema_eastl_inherited_trait_value_template_arg_parse_cpp`
   `cpp_eastl_type_traits_parse_recipe`
+- Replaced the interim parallel-array storage on `TypeSpec` with a single
+  `TemplateArgRefList`, so the transport shape now matches the refactor target
+  more closely and new code can move toward reading per-arg `kind/type/value`.
