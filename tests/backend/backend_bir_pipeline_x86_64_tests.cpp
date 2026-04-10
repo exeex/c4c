@@ -9598,6 +9598,26 @@ void test_x86_peephole_keeps_stack_spill_trampoline_when_fallthrough_uses_rax() 
                       "x86 peephole should not bypass the trampoline when fallthrough safety fails for a stack-spill rewrite");
 }
 
+void test_x86_peephole_converts_simple_epilogue_call_into_tail_jump() {
+  const std::string input =
+      ".text\n"
+      "helper:\n"
+      "  call target@PLT\n"
+      "  movq -8(%rbp), %rbx\n"
+      "  movq %rbp, %rsp\n"
+      "  popq %rbp\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_not_contains(optimized, "  call target@PLT\n",
+                      "x86 peephole should remove a direct call once the translated tail-call pass can prove the remaining instructions are a pure epilogue");
+  expect_contains(optimized, "  movq -8(%rbp), %rbx\n"
+                             "  movq %rbp, %rsp\n"
+                             "  popq %rbp\n"
+                             "    jmp target@PLT\n",
+                  "x86 peephole should rewrite call plus pure epilogue plus ret into the same epilogue followed by a jump to the callee");
+}
+
 void test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole() {
   const auto rendered = c4c::backend::x86::emit_module(make_minimal_countdown_loop_bir_module());
 
@@ -10072,6 +10092,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_peephole_coalesces_single_stack_spill_movslq_trampoline_copy);
   RUN_TEST(test_x86_peephole_coalesces_single_stack_spill_direct_movslq_reload);
   RUN_TEST(test_x86_peephole_keeps_stack_spill_trampoline_when_fallthrough_uses_rax);
+  RUN_TEST(test_x86_peephole_converts_simple_epilogue_call_into_tail_jump);
   RUN_TEST(test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);

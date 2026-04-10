@@ -9,16 +9,17 @@ Source Plan: plan.md
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
   first live optimization round
 - immediate target:
-  evaluate the next bounded translated peephole pass after the
-  store-forwarding slice
-  - prefer another non-ABI-sensitive cleanup or tail-call orchestration before
+  choose the next bounded translated peephole pass after the tail-call slice
+  - prefer a non-ABI-sensitive activation such as `memory_fold.cpp` before
     reopening callee-save or frame-compaction work
+  - keep any required classifier/parser expansion explicit instead of silently
+    widening the current tail-call slice
 
 ## Next Slice
 
-- after the store-forwarding slice, evaluate whether the next bounded
-  candidate should be tail-call orchestration or another non-ABI-sensitive
-  cleanup instead of widening loop-trampoline matching again
+- after the tail-call slice, evaluate whether the next bounded candidate
+  should be `memory_fold.cpp` or another non-ABI-sensitive cleanup before
+  turning to callee-save elimination
 - keep the remaining stack-load family intentionally parked behind the current
   `%rax`/`%eax` predecessor-store and fallthrough rules unless a future slice
   proves one more explicit safe shape
@@ -162,6 +163,21 @@ Source Plan: plan.md
 - the full-suite regression guard stayed monotonic for this slice:
   `2723` passed / `181` failed before and after, with no newly failing tests
   and no new `>30s` tests
+- this iteration activates the parked translated tail-call slice in the real
+  x86 peephole build and optimization round without widening into callee-save
+  or frame-compaction work
+- `peephole/passes/tail_call.cpp` now compiles as part of the real build,
+  runs inside the live optimization loop, and rewrites a bounded
+  `call; pure epilogue; ret` sequence into the same epilogue followed by
+  `jmp target`
+- the first full-suite rerun picked up the same intermittent
+  `cpp_qualified_template_call_template_arg_perf` outlier already noted in
+  earlier slices; rerunning that test in isolation passed, and a second
+  full-suite rerun returned to the baseline `2723` passed / `181` failed
+  counts with no newly failing tests
+- this slice intentionally keeps the shared classifier boundary parked:
+  focused coverage uses the currently classified `call ...` spelling rather
+  than widening `types.cpp` to classify `callq ...` in the same iteration
 
 ## Recently Completed
 
@@ -299,3 +315,15 @@ Source Plan: plan.md
   same `181`-failure count as the baseline; the stable rerun surfaced the
   existing aggregate `backend_bir_tests` crash path as `SEGFAULT` instead of
   the earlier timeout while keeping the failure set otherwise unchanged
+- compiled the translated `peephole/passes/tail_call.cpp` unit into the real
+  x86 backend and test builds
+- wired the translated tail-call pass into the live x86 peephole optimization
+  loop
+- added a direct regression test that proves the live x86 peephole now
+  rewrites a bounded `call` plus pure epilogue plus `ret` sequence into the
+  same epilogue followed by `jmp target`
+- rebuilt, ran the focused tail-call regression plus the surrounding
+  `test_x86_peephole_` backend subset, reran the intermittent
+  `cpp_qualified_template_call_template_arg_perf` case in isolation after a
+  transient full-suite failure, and confirmed a second full ctest rerun
+  returned to the baseline `181`-failure count with no newly failing tests

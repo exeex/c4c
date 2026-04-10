@@ -149,6 +149,7 @@ bool propagate_register_copies(LineStore* store, LineInfo* infos);
 bool global_store_forwarding(LineStore* store, LineInfo* infos);
 bool eliminate_dead_reg_moves(const LineStore* store, LineInfo* infos);
 bool eliminate_dead_stores(const LineStore* store, LineInfo* infos);
+bool optimize_tail_calls(LineStore* store, LineInfo* infos);
 std::string peephole_optimize(std::string asm_text);
 
 }  // namespace passes
