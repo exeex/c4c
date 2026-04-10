@@ -6,75 +6,50 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 4 continue transferring one bounded x86 top-level ownership seam out of
-  `emit.cpp` after the repeated `printf` immediate and local-buffer
-  `strcpy`/`printf` direct-LIR routes moved into
-  `src/backend/x86/codegen/direct_printf.cpp`
+- Step 1 reset: audit the dependency surface required to replace x86
+  `emit.cpp` with a direct port of
+  `ref/claudes-c-compiler/src/backend/x86/codegen/emit.rs`
 - immediate target:
-  continue Step 4 in `src/backend/x86/codegen/direct_calls.cpp` after the
-  bounded second-local two-argument helper-call plus first-local and
-  second-local rewrite routes by moving the remaining both-local rewrite
-  variants in bounded sub-slices, starting with the first-local rewrite route
-  - keep translated `variadic.cpp` itself parked until `X86Codegen` grows the
-    state/method surface it still references
-  - keep `frame_compact.cpp` parked until a future iteration can prove a real
-    shrink/rewrite shape instead of enabling the current placeholder pass
+  inventory the translated support units, `X86Codegen` state/method gaps, and
+  entry-path wiring required for a one-shot emitter-owner switch
+  - stop planning further testcase-shaped seam moves out of `emit.cpp`
+  - use focused backend regressions during the cutover, not the full
+    regression-guard rule
+  - keep idea 44 as the separate shared-BIR cleanup lane unless the emitter
+    switch directly deletes x86-local legacy ownership
 
 ## Next Slice
 
-- continue Step 4 by identifying the next bounded top-level x86 ownership
-  transfer that can compile cleanly against the current transitional headers
-  after `direct_printf.cpp` joins `direct_variadic.cpp` and
-  `direct_globals.cpp` as another reachable Step 4 sibling seam
-- with the repeated `printf`, local-buffer `strcpy`/`printf`, counted ternary
-  loop, and `string_literal_char` routes now behind `direct_printf.cpp`,
-  continue with the prepared-LIR call/helper routes in `emit.cpp`, starting
-  with the bounded `void` helper/call ownership seam before considering the
-  larger integer helper-call cluster
-- after the bounded `void` seam now lives in `src/backend/x86/codegen/direct_void.cpp`,
-  continue Step 4 with the neighboring prepared-LIR integer helper-call routes
-  in bounded sub-slices instead of widening unrelated x86 emitter support
-- after the bounded `param_slot_add` plus zero-arg extern/declared-call routes
-  now live in `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 with
-  the remaining prepared-LIR integer helper-call routes there: the single-local
-  helper call first, then the two-arg helper variants
-- after the bounded single-local helper-call route now lives in
-  `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 there with the
-  neighboring immediate/immediate two-argument helper-call route before moving
-  to the local-slot-fed two-argument variants
-- after the bounded immediate/immediate two-argument helper-call route now
-  lives in `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 there
-  with the first-local two-argument helper-call route before the remaining
-  second-local and rewrite variants
-- after the bounded first-local two-argument helper-call route now lives in
-  `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 there with the
-  second-local two-argument helper-call route before the rewrite variants
-- after the bounded second-local two-argument helper-call route now lives in
-  `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 there with the
-  second-local rewrite helper-call route before the remaining rewrite variants
-- after the bounded second-local rewrite helper-call route now lives in
-  `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 there with the
-  first-local rewrite helper-call route before the both-local rewrite variants
-- after the bounded first-local rewrite helper-call route now lives in
-  `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 there with the
-  both-local first-rewrite helper-call route before the remaining both-local
-  rewrite variants
-- keep translated `variadic.cpp` parked until a future iteration can expose
-  the missing `X86Codegen` state/method surface intentionally instead of
-  compiling placeholder member bodies by accident
-- keep `frame_compact.cpp` parked until dead-store and callee-save cleanup
-  expose a concrete safe shrink shape instead of enabling the placeholder pass
-  by default
-- keep the full translated top-level units parked when they still depend on
-  missing `X86Codegen` state instead of forcing broad header/class expansion
-- prefer small sibling-file ownership moves like the direct global seam when a
-  full translated unit is not yet compile-ready
+- produce a concrete dependency checklist from `emit.rs`:
+  which translated units must enter the build, which `X86Codegen` members must
+  be exposed or ported, and which current helper seams become obsolete
+- choose the first migration cluster that enables emitter-owner replacement
+  fastest, likely `emit.cpp` plus the directly referenced support units rather
+  than more `direct_*` sibling seams
+- once the checklist is explicit, start deleting legacy `emit.cpp` ownership in
+  cluster-sized ports instead of continuing bounded legacy matcher moves
+- keep validation centered on focused backend regressions during the cutover;
+  rerun the backend full-suite regression guard only after the legacy `emit.cpp`
+  owner path is removed
+- do not use frontend LLVM IR checks as a routine gate for backend-only
+  emitter work
 
 ## Current Iteration Notes
 
 - this plan was activated by explicit user priority override
 - idea 44 remains open as the parked shared-BIR cleanup and legacy-matcher
   consolidation lane
+- user redirected the execution strategy on 2026-04-10:
+  stop optimizing for slow `emit.cpp` seam-by-seam extraction and instead aim
+  to delete the remaining x86 `emit.cpp` legacy ownership by porting from
+  `ref/claudes-c-compiler/src/backend/x86/codegen/emit.rs`
+- user also clarified the validation boundary on 2026-04-10:
+  backend-only emitter work should be gated primarily by backend regression
+  coverage because frontend validation runs through LLVM IR and is not part of
+  this backend ownership switch
+- user further clarified on 2026-04-10 that the regression-guard rule should
+  not block the legacy-removal phase itself; finish the cutover first, then
+  evaluate broad regression fallout afterward
 - this iteration extends Step 4 with another bounded prepared-LIR sibling seam:
   the x86 `void` helper/call direct-LIR routes now live in
   `src/backend/x86/codegen/direct_void.cpp` instead of `emit.cpp`
