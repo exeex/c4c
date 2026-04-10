@@ -613,6 +613,58 @@ Follow-on note:
   next at `3.579s`, so the next iteration should inspect `hir_expr.cpp`
   before returning to the remaining template-heavy seams
 
+## 2026-04-10 Step 4 Fourteenth Extraction Slice
+
+The refreshed hotspot order after the local-declaration split left
+`hir_expr.cpp` narrowly ahead of `hir_templates.cpp`, so the next extraction
+stayed in `hir_expr.cpp`.
+
+Executed the object-materialization split:
+
+- moved `hoist_compound_literal_to_global`,
+  `try_lower_direct_struct_constructor_call`,
+  `describe_initializer_list_struct`,
+  `materialize_initializer_list_arg`,
+  `lower_compound_literal_expr`,
+  `lower_new_expr`, and `lower_delete_expr` into the new
+  `src/frontend/hir/hir_expr_object.cpp`
+- kept the logic as existing `Lowerer` methods so the slice remains a
+  translation-unit ownership split rather than a semantic rewrite
+- added `tests/cpp/internal/hir_case/hir_expr_object_materialization_helper_hir.cpp`
+  as focused HIR coverage for direct constructor temps, initializer-list
+  materialization, and `new`/`delete` lowering
+
+Measured result:
+
+- compiling the pre-split `src/frontend/hir/hir_expr.cpp` from `HEAD` on the
+  generated optimized command took `4.087s`
+- the direct post-split `src/frontend/hir/hir_expr.cpp` rerun took `2.639s`
+- the new `src/frontend/hir/hir_expr_object.cpp` compiles in `2.179s`
+- this means the slice did demonstrate a single-TU compile-time win for the
+  main hotspot TU, reducing `hir_expr.cpp` by `1.448s` (about `35.4%`)
+
+Validation result:
+
+- focused coverage passed:
+  `cpp_hir_expr_object_materialization_helper`,
+  `cpp_hir_expr_call_member_helper`,
+  `cpp_hir_builtin_layout_query_sizeof_type`,
+  `cpp_hir_builtin_layout_query_alignof_type`,
+  `cpp_hir_builtin_layout_query_alignof_expr`,
+  `cpp_llvm_initializer_list_runtime_materialization`,
+  `cpp_positive_sema_new_delete_side_effect_runtime_cpp`, and
+  `cpp_positive_sema_class_specific_new_delete_side_effect_runtime_cpp`
+- full-suite regression guard passed with `3330/3330` tests passing before and
+  `3332/3332` after, with no new failures
+
+Follow-on note:
+
+- a refreshed hotspot rerun now leaves `src/frontend/hir/hir_templates.cpp`
+  ahead at `3.522s`, with `src/codegen/lir/stmt_emitter_call.cpp` next at
+  `3.036s`, so the next iteration should move back to the remaining
+  `hir_templates.cpp` deduction/materialization seams before returning to
+  LIR follow-up work
+
 ## Non-Goals
 
 - no backend architecture work

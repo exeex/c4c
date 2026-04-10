@@ -52,6 +52,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_expr.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_expr_call.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_expr_object.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_functions.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/compile_time_engine.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_printer.cpp"

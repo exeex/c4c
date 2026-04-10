@@ -506,3 +506,59 @@ Interpretation:
 - The next extraction choice should inspect the remaining `hir_expr.cpp`
   helper families first, with `hir_templates.cpp` as the immediate fallback if
   its remaining seams are cleaner.
+
+## Step 4: Fourteenth Executed Slice
+
+- Extracted the object-materialization helper family
+  (`hoist_compound_literal_to_global`,
+  `try_lower_direct_struct_constructor_call`,
+  `describe_initializer_list_struct`,
+  `materialize_initializer_list_arg`,
+  `lower_compound_literal_expr`,
+  `lower_new_expr`, and `lower_delete_expr`) out of
+  `src/frontend/hir/hir_expr.cpp` into the new
+  `src/frontend/hir/hir_expr_object.cpp`.
+- Kept the logic as existing `Lowerer` methods, so this remains a
+  translation-unit ownership split rather than a semantic rewrite of object
+  materialization.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/hir_expr_object_materialization_helper_hir.cpp`
+  to pin direct constructor lowering, initializer-list materialization, and
+  `new`/`delete` call shape through the extracted helpers.
+
+## Step 4: Fourteenth Slice Measurements
+
+Optimized single-TU compile timings for the object-materialization split:
+
+| Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
+| --- | ---: | ---: | --- |
+| `src/frontend/hir/hir_expr.cpp` | 4.087 | 2.639 | before compiled from `HEAD`, after from the working tree |
+| `src/frontend/hir/hir_expr_object.cpp` | n/a | 2.179 | new extracted TU |
+
+Interpretation:
+
+- This slice preserved behavior and reduced the main `hir_expr.cpp` hotspot TU
+  by `1.448s`, about `35.4%`.
+- The extracted helpers are still non-trivial, but the main expression TU now
+  sits below both `hir_templates.cpp` and `stmt_emitter_call.cpp` in the
+  refreshed tier.
+
+## Step 4: Refreshed Ranking After The Object-Materialization Split
+
+The targeted optimized single-TU rerun after the object-materialization
+extraction produced this updated hotspot order:
+
+| Rank | Translation unit | Optimized compile (s) |
+| --- | --- | ---: |
+| 1 | `src/frontend/hir/hir_templates.cpp` | 3.522 |
+| 2 | `src/codegen/lir/stmt_emitter_call.cpp` | 3.036 |
+| 3 | `src/frontend/hir/hir_stmt.cpp` | 2.773 |
+| 4 | `src/frontend/hir/hir_expr.cpp` | 2.639 |
+
+Interpretation:
+
+- The refreshed tier is now led by `hir_templates.cpp`; `hir_expr.cpp` is no
+  longer the primary hotspot after the object-materialization split.
+- The next extraction choice should move back to `hir_templates.cpp`, with
+  `stmt_emitter_call.cpp` as the immediate fallback if the remaining template
+  seams are not cleaner.

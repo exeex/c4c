@@ -718,6 +718,12 @@ class Lowerer {
 
   ExprId lower_builtin_alignof_expr(FunctionCtx* ctx, const Node* n);
 
+  ExprId lower_compound_literal_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_new_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_delete_expr(FunctionCtx* ctx, const Node* n);
+
   ExprId lower_expr(FunctionCtx* ctx, const Node* n);
 
   // ── Template multi-instantiation support ──────────────────────────────────

@@ -1371,6 +1371,15 @@ set_tests_properties(cpp_hir_expr_call_member_helper PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_expr_object_materialization_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_expr_object_materialization_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_expr_object_materialization_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl local: struct Box.*Box__Box\\(\\(&local#L0\\), \\(&3\\)\\).*decl <clit>: const int\\[3\\] = 0.*decl __init_list_arg_[0-9]+: struct std::initializer_list_T_int = 0.*decl __new_tmp_[0-9]+: struct Box\\* = \\(\\(struct Box\\*\\)operator_new\\(sizeof\\(struct Box\\)\\)\\).*Box__Box\\(__new_tmp_[0-9]+#L[0-9]+, 5\\).*operator_delete\\(\\(\\(void\\*\\)heap#L[0-9]+\\)\\)"
+)
+
+add_test(
   NAME cpp_hir_stmt_control_flow_helper
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_stmt_control_flow_helper_hir.cpp"
 )
