@@ -2391,37 +2391,21 @@ TypeSpec Parser::parse_base_type() {
                                                 ++bsz;
                                             }
                                         }
-                                        // Select specialization and build mangled name
-                                        std::vector<std::pair<std::string, TypeSpec>> base_tb;
-                                        std::vector<std::pair<std::string, long long>> base_nb;
-                                        const auto* base_specializations =
-                                            find_template_struct_specializations(base_primary);
-                                        const Node* base_sel = select_template_struct_pattern(
-                                            base_args, base_primary, base_specializations,
-                                            typedef_types_, &base_tb, &base_nb);
-                                        if (!base_sel) base_sel = base_primary;
-                                        const std::string base_family =
-                                            base_sel->template_origin_name ? base_sel->template_origin_name : origin;
-                                        std::string base_mangled = base_family;
-                                        for (int pi = 0; pi < base_primary->n_template_params; ++pi) {
-                                            base_mangled += "_";
-                                            base_mangled += base_primary->template_param_names[pi];
-                                            base_mangled += "_";
-                                            if (pi < (int)base_args.size() && base_args[pi].is_value) {
-                                                base_mangled += std::to_string(base_args[pi].value);
-                                            } else if (pi < (int)base_args.size() && !base_args[pi].is_value) {
-                                                append_type_mangled_suffix(base_mangled, base_args[pi].type);
-                                            }
-                                        }
-                                        const std::string base_instance_key =
-                                            make_template_struct_instance_key(base_primary, base_args);
-                                        // Trigger instantiation if needed
-                                        if (!instantiated_template_struct_keys_.count(base_instance_key) &&
-                                            !struct_tag_def_map_.count(base_mangled)) {
-                                            (void)instantiate_template_struct_via_injected_parse(
-                                                *this, origin, base_args, tpl_def->line,
+                                        std::string base_mangled;
+                                        if (ensure_template_struct_instantiated_from_args(
+                                                origin, base_primary, base_args,
+                                                tpl_def->line, &base_mangled,
                                                 "template_base_instantiation",
-                                                &inst->base_types[bi]);
+                                                &inst->base_types[bi])) {
+                                            if (!inst->base_types[bi].tag &&
+                                                struct_tag_def_map_.count(base_mangled)) {
+                                                inst->base_types[bi] = TypeSpec{};
+                                                inst->base_types[bi].array_size = -1;
+                                                inst->base_types[bi].inner_rank = -1;
+                                                inst->base_types[bi].base = TB_STRUCT;
+                                                inst->base_types[bi].tag =
+                                                    arena_.strdup(base_mangled.c_str());
+                                            }
                                         } else if (struct_tag_def_map_.count(base_mangled)) {
                                             inst->base_types[bi] = TypeSpec{};
                                             inst->base_types[bi].array_size = -1;

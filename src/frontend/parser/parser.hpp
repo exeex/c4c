@@ -486,6 +486,14 @@ class Parser {
   bool parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
                                     const Node* primary_tpl = nullptr,
                                     const std::vector<bool>* explicit_param_is_nttp = nullptr);
+  bool ensure_template_struct_instantiated_from_args(
+      const std::string& template_name,
+      const Node* primary_tpl,
+      const std::vector<TemplateArgParseResult>& args,
+      int line,
+      std::string* out_mangled,
+      const char* debug_reason = nullptr,
+      TypeSpec* out_resolved = nullptr);
   TypenameTemplateParamKind classify_typename_template_parameter() const;
   void push_template_scope(TemplateScopeKind kind,
                            const std::vector<TemplateScopeParam>& params);

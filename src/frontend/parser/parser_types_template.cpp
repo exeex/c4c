@@ -46,6 +46,69 @@ void Parser::register_template_struct_specialization(const char* primary_name, N
     template_struct_specializations_[qualified_primary].push_back(node);
 }
 
+bool Parser::ensure_template_struct_instantiated_from_args(
+    const std::string& template_name,
+    const Node* primary_tpl,
+    const std::vector<TemplateArgParseResult>& args,
+    int line,
+    std::string* out_mangled,
+    const char* debug_reason,
+    TypeSpec* out_resolved) {
+    if (!primary_tpl || !out_mangled) return false;
+
+    std::vector<std::pair<std::string, TypeSpec>> type_bindings;
+    std::vector<std::pair<std::string, long long>> nttp_bindings;
+    const auto* specializations = find_template_struct_specializations(primary_tpl);
+    const Node* selected = select_template_struct_pattern(
+        args, primary_tpl, specializations, typedef_types_,
+        &type_bindings, &nttp_bindings);
+    if (!selected) return false;
+
+    if (selected != primary_tpl && selected->n_template_params == 0 &&
+        selected->name && selected->name[0]) {
+        *out_mangled = selected->name;
+    } else {
+        const std::string family =
+            (selected->template_origin_name && selected->template_origin_name[0])
+                ? selected->template_origin_name
+                : template_name;
+        *out_mangled = family;
+        for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+            *out_mangled += "_";
+            *out_mangled += primary_tpl->template_param_names[pi];
+            *out_mangled += "_";
+            if (pi < static_cast<int>(args.size()) && args[pi].is_value) {
+                *out_mangled += std::to_string(args[pi].value);
+            } else if (pi < static_cast<int>(args.size()) && !args[pi].is_value) {
+                append_type_mangled_suffix(*out_mangled, args[pi].type);
+            }
+        }
+    }
+
+    const std::string instance_key =
+        make_template_struct_instance_key(primary_tpl, args);
+    if (!struct_tag_def_map_.count(*out_mangled)) {
+        if (!instantiated_template_struct_keys_.count(instance_key) ||
+            !struct_tag_def_map_.count(*out_mangled)) {
+            if (!instantiate_template_struct_via_injected_parse(
+                    *this, template_name, args, line, debug_reason,
+                    out_resolved)) {
+                return false;
+            }
+        }
+    }
+
+    if (out_resolved && !out_resolved->tag &&
+        struct_tag_def_map_.count(*out_mangled)) {
+        *out_resolved = {};
+        out_resolved->array_size = -1;
+        out_resolved->inner_rank = -1;
+        out_resolved->base = TB_STRUCT;
+        out_resolved->tag = arena_.strdup(out_mangled->c_str());
+    }
+    return struct_tag_def_map_.count(*out_mangled) > 0;
+}
+
 bool Parser::eval_deferred_nttp_expr_tokens(
     const std::string& tpl_name,
     const std::vector<Token>& toks,
@@ -479,40 +542,13 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         }
         if (!ref_primary) { ti = saved_ti; return false; }
 
-        std::vector<std::pair<std::string, TypeSpec>> ref_type_bindings;
-        std::vector<std::pair<std::string, long long>> ref_nttp_bindings;
-        const auto* ref_specializations = find_template_struct_specializations(ref_primary);
-        const Node* ref_def = select_template_struct_pattern(
-            ref_args, ref_primary, ref_specializations,
-            typedef_types_, &ref_type_bindings, &ref_nttp_bindings);
-        if (!ref_def) { ti = saved_ti; return false; }
-
-        // Build the concrete struct tag.
         std::string ref_mangled;
-        if (ref_def != ref_primary && ref_def->n_template_params == 0 &&
-            ref_def->name && ref_def->name[0]) {
-            ref_mangled = ref_def->name;
-        } else {
-            const std::string ref_family =
-                (ref_def && ref_def->template_origin_name && ref_def->template_origin_name[0])
-                    ? ref_def->template_origin_name : resolved_ref_tpl_name;
-            ref_mangled = ref_family;
-            for (int pi = 0; pi < ref_primary->n_template_params; ++pi) {
-                ref_mangled += "_";
-                ref_mangled += ref_primary->template_param_names[pi];
-                ref_mangled += "_";
-                if (pi < static_cast<int>(ref_args.size()) && ref_args[pi].is_value)
-                    ref_mangled += std::to_string(ref_args[pi].value);
-                else if (pi < static_cast<int>(ref_args.size()) && !ref_args[pi].is_value)
-                    append_type_mangled_suffix(ref_mangled, ref_args[pi].type);
-            }
-        }
-
-        // Ensure the referenced struct is instantiated via token injection.
-        if (!struct_tag_def_map_.count(ref_mangled)) {
-            (void)instantiate_template_struct_via_injected_parse(
-                *this, resolved_ref_tpl_name, ref_args, ref_primary->line,
-                "template_member_lookup_instantiation");
+        if (!ensure_template_struct_instantiated_from_args(
+                resolved_ref_tpl_name, ref_primary, ref_args,
+                ref_primary->line, &ref_mangled,
+                "template_member_lookup_instantiation")) {
+            ti = saved_ti;
+            return false;
         }
 
         auto sdef_it = struct_tag_def_map_.find(ref_mangled);

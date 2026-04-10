@@ -25,6 +25,10 @@ Source Plan: plan.md
 - Next intended slice: replace the remaining injected-parse instantiation seam
   with a typed helper that can realize template structs without rebuilding a
   token stream, now that both parser call sites share one injection helper.
+- Next intended slice: implement the inside of the new
+  `Parser::ensure_template_struct_instantiated_from_args(...)` seam with a
+  typed realization path so parser no longer has to rely on injected parse for
+  common template instantiation cases.
 
 ## Completed
 
@@ -72,3 +76,7 @@ Source Plan: plan.md
 - Introduced a shared parser-side `instantiate_template_struct_via_injected_parse(...)`
   helper and moved both template-base instantiation and deferred
   `Trait<args>::member` instantiation onto that single seam.
+- Promoted parser-side specialization-selection + mangled-name +
+  ensure-instantiated flow into `Parser::ensure_template_struct_instantiated_from_args(...)`,
+  so both parser call sites now share one higher-level typed entry point before
+  the remaining injected-parse fallback.
