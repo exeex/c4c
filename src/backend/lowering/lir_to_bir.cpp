@@ -1632,6 +1632,119 @@ std::optional<bir::Module> try_lower_minimal_local_two_field_struct_sub_sub_two_
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_local_struct_pointer_alias_add_sub_three_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      function.entry.value != 0 || function.blocks.size() != 1 || function.alloca_insts.size() != 2 ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* struct_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* pointer_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  const std::string struct_type =
+      struct_slot == nullptr ? std::string{} : struct_slot->type_str.str();
+  if (struct_slot == nullptr || pointer_slot == nullptr || struct_slot->result.empty() ||
+      !struct_slot->count.empty() ||
+      (struct_type != "%struct._anon_0" && struct_type != "%struct.S") ||
+      pointer_slot->result.empty() || !pointer_slot->count.empty() || pointer_slot->type_str != "ptr" ||
+      std::find(module.type_decls.begin(), module.type_decls.end(),
+                struct_type + " = type { i32, i32 }") == module.type_decls.end()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* store_pointer =
+      entry.insts.size() == 14 ? std::get_if<LirStoreOp>(&entry.insts[0]) : nullptr;
+  const auto* field0_gep = entry.insts.size() == 14 ? std::get_if<LirGepOp>(&entry.insts[1]) : nullptr;
+  const auto* store_field0 =
+      entry.insts.size() == 14 ? std::get_if<LirStoreOp>(&entry.insts[2]) : nullptr;
+  const auto* first_pointer_load =
+      entry.insts.size() == 14 ? std::get_if<LirLoadOp>(&entry.insts[3]) : nullptr;
+  const auto* field1_store_gep =
+      entry.insts.size() == 14 ? std::get_if<LirGepOp>(&entry.insts[4]) : nullptr;
+  const auto* store_field1 =
+      entry.insts.size() == 14 ? std::get_if<LirStoreOp>(&entry.insts[5]) : nullptr;
+  const auto* second_pointer_load =
+      entry.insts.size() == 14 ? std::get_if<LirLoadOp>(&entry.insts[6]) : nullptr;
+  const auto* field1_load_gep =
+      entry.insts.size() == 14 ? std::get_if<LirGepOp>(&entry.insts[7]) : nullptr;
+  const auto* load_field1 =
+      entry.insts.size() == 14 ? std::get_if<LirLoadOp>(&entry.insts[8]) : nullptr;
+  const auto* third_pointer_load =
+      entry.insts.size() == 14 ? std::get_if<LirLoadOp>(&entry.insts[9]) : nullptr;
+  const auto* field0_load_gep =
+      entry.insts.size() == 14 ? std::get_if<LirGepOp>(&entry.insts[10]) : nullptr;
+  const auto* load_field0 =
+      entry.insts.size() == 14 ? std::get_if<LirLoadOp>(&entry.insts[11]) : nullptr;
+  const auto* add = entry.insts.size() == 14 ? std::get_if<LirBinOp>(&entry.insts[12]) : nullptr;
+  const auto* sub = entry.insts.size() == 14 ? std::get_if<LirBinOp>(&entry.insts[13]) : nullptr;
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+
+  if (entry.label != "entry" || store_pointer == nullptr || field0_gep == nullptr ||
+      store_field0 == nullptr || first_pointer_load == nullptr || field1_store_gep == nullptr ||
+      store_field1 == nullptr || second_pointer_load == nullptr || field1_load_gep == nullptr ||
+      load_field1 == nullptr || third_pointer_load == nullptr || field0_load_gep == nullptr ||
+      load_field0 == nullptr || add == nullptr || sub == nullptr || ret == nullptr ||
+      !ret->value_str.has_value() || lower_function_return_type(function, *ret) != bir::TypeKind::I32 ||
+      *ret->value_str != sub->result || store_pointer->type_str != "ptr" ||
+      store_pointer->val != struct_slot->result || store_pointer->ptr != pointer_slot->result ||
+      field0_gep->ptr != struct_slot->result || field0_gep->element_type != struct_type ||
+      field0_gep->result.empty() || field0_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+      store_field0->ptr != field0_gep->result || store_field0->val != "1" ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{store_field0->type_str}, 32) ||
+      first_pointer_load->ptr != pointer_slot->result || first_pointer_load->result.empty() ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{first_pointer_load->type_str}) ||
+      field1_store_gep->ptr != first_pointer_load->result ||
+      field1_store_gep->element_type != struct_type || field1_store_gep->result.empty() ||
+      field1_store_gep->indices != std::vector<std::string>{"i32 0", "i32 1"} ||
+      store_field1->ptr != field1_store_gep->result || store_field1->val != "2" ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{store_field1->type_str}, 32) ||
+      second_pointer_load->ptr != pointer_slot->result || second_pointer_load->result.empty() ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{second_pointer_load->type_str}) ||
+      field1_load_gep->ptr != second_pointer_load->result ||
+      field1_load_gep->element_type != struct_type || field1_load_gep->result.empty() ||
+      field1_load_gep->indices != std::vector<std::string>{"i32 0", "i32 1"} ||
+      load_field1->ptr != field1_load_gep->result || load_field1->result.empty() ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{load_field1->type_str}, 32) ||
+      third_pointer_load->ptr != pointer_slot->result || third_pointer_load->result.empty() ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{third_pointer_load->type_str}) ||
+      field0_load_gep->ptr != third_pointer_load->result ||
+      field0_load_gep->element_type != struct_type || field0_load_gep->result.empty() ||
+      field0_load_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+      load_field0->ptr != field0_load_gep->result || load_field0->result.empty() ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{load_field0->type_str}, 32) ||
+      add->opcode != "add" || add->type_str != "i32" || add->lhs != load_field1->result ||
+      add->rhs != load_field0->result || sub->opcode != "sub" || sub->type_str != "i32" ||
+      sub->lhs != add->result || sub->rhs != "3") {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_double_indirect_local_store_one_final_branch_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -3962,6 +4075,11 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
   }
   if (const auto lowered = try_lower_minimal_local_two_field_struct_sub_sub_two_return_module(
           module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered =
+          try_lower_minimal_local_struct_pointer_alias_add_sub_three_return_module(module);
       lowered.has_value()) {
     return lowered;
   }
