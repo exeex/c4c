@@ -847,6 +847,48 @@ void test_x86_translated_globals_owner_handles_minimal_extern_scalar_global_load
               "x86 translated globals owner helper should keep the extern global unresolved while still emitting the rip-relative load sequence");
 }
 
+void test_x86_translated_globals_owner_emits_bounded_helper_text() {
+  using IrType = c4c::backend::x86::IrType;
+  using Operand = c4c::backend::x86::Operand;
+  using StackSlot = c4c::backend::x86::StackSlot;
+  using Value = c4c::backend::x86::Value;
+
+  c4c::backend::x86::X86Codegen codegen;
+  codegen.state.slots.emplace(5, StackSlot{-24});
+  codegen.state.slots.emplace(7, StackSlot{-40});
+
+  codegen.emit_global_addr_impl(Value{5}, "global_counter");
+  codegen.emit_global_addr_absolute_impl(Value{5}, "global_counter");
+  codegen.emit_label_addr_impl(Value{5}, ".Lowner_tmp");
+  codegen.emit_global_load_rip_rel_impl(Value{7}, "global_counter", IrType::I32);
+  codegen.emit_global_store_rip_rel_impl(Operand{5}, "global_counter", IrType::I32);
+
+  std::string asm_text;
+  for (const auto& line : codegen.state.asm_lines) {
+    asm_text += line;
+    asm_text.push_back('\n');
+  }
+
+  expect_contains(asm_text, "    leaq global_counter(%rip), %rax",
+                  "wired translated globals owner should emit rip-relative global address materialization through the active owner body");
+  expect_contains(asm_text, "    movq $global_counter, %rax",
+                  "wired translated globals owner should keep absolute global-address materialization linked through the active owner body");
+  expect_contains(asm_text, "    leaq .Lowner_tmp(%rip), %rax",
+                  "wired translated globals owner should emit label-address materialization through the active owner body");
+  expect_contains(asm_text, "    movl global_counter(%rip), %eax",
+                  "wired translated globals owner should emit bounded scalar rip-relative loads through the active owner body");
+  expect_contains(asm_text, "    movl %eax, global_counter(%rip)",
+                  "wired translated globals owner should emit bounded scalar rip-relative stores through the active owner body");
+  expect_contains(asm_text, "    movq %rax, -24(%rbp)",
+                  "wired translated globals owner should store materialized addresses back through the shared result helper");
+  expect_contains(asm_text, "    movq -24(%rbp), %rax",
+                  "wired translated globals owner should load operand values through the shared operand helper before stores");
+  expect_contains(asm_text, "    movq %rax, -40(%rbp)",
+                  "wired translated globals owner should store rip-relative load results through the shared result helper");
+  expect_true(!codegen.state.reg_cache.acc_valid,
+              "wired translated globals owner should invalidate the accumulator cache after loading a store operand through the shared helper path");
+}
+
 void test_x86_translated_globals_owner_handles_minimal_scalar_global_store_reload_slice() {
   c4c::backend::bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -4426,6 +4468,7 @@ int main(int argc, char* argv[]) {
   test_x86_translated_regalloc_pruning_helpers_match_shared_contract();
   test_x86_translated_globals_owner_handles_minimal_scalar_global_load_slice();
   test_x86_translated_globals_owner_handles_minimal_extern_scalar_global_load_slice();
+  test_x86_translated_globals_owner_emits_bounded_helper_text();
   test_x86_translated_globals_owner_handles_minimal_scalar_global_store_reload_slice();
   test_x86_translated_globals_owner_handles_minimal_global_store_return_and_entry_return_slice();
   test_x86_direct_dispatch_owner_handles_affine_return_bir_slice();

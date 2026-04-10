@@ -133,9 +133,8 @@ std::optional<std::string> try_emit_minimal_extern_scalar_global_load_module(
 }
 
 void X86Codegen::emit_global_addr_impl(const Value& dest, const std::string& name) {
-  (void)dest;
-  (void)name;
-  throw_unwired_translated_globals_owner();
+  this->state.emit("    leaq " + name + "(%rip), %rax");
+  this->emit_store_result_impl(dest);
 }
 
 void X86Codegen::emit_tls_global_addr_impl(const Value& dest, const std::string& name) {
@@ -145,43 +144,33 @@ void X86Codegen::emit_tls_global_addr_impl(const Value& dest, const std::string&
 }
 
 void X86Codegen::emit_global_addr_absolute_impl(const Value& dest, const std::string& name) {
-  (void)dest;
-  (void)name;
-  throw_unwired_translated_globals_owner();
+  this->state.emit("    movq $" + name + ", %rax");
+  this->emit_store_result_impl(dest);
 }
 
 void X86Codegen::emit_global_load_rip_rel_impl(const Value& dest,
                                                 const std::string& sym,
                                                 IrType ty) {
-  (void)dest;
-  (void)sym;
-  (void)ty;
-  throw_unwired_translated_globals_owner();
+  this->state.emit(std::string("    ") + this->mov_load_for_type(ty) + " " + sym + "(%rip), %" +
+                   this->reg_for_type("rax", ty));
+  this->emit_store_result_impl(dest);
 }
 
 void X86Codegen::emit_global_store_rip_rel_impl(const Operand& val,
                                                  const std::string& sym,
                                                  IrType ty) {
-  (void)val;
-  (void)sym;
-  (void)ty;
-  throw_unwired_translated_globals_owner();
+  this->emit_load_operand_impl(val);
+  this->state.emit(std::string("    ") + this->mov_store_for_type(ty) + " %" +
+                   this->reg_for_type("rax", ty) + ", " + sym + "(%rip)");
 }
 
 void X86Codegen::emit_label_addr_impl(const Value& dest, const std::string& label) {
-  (void)dest;
-  (void)label;
-  throw_unwired_translated_globals_owner();
+  this->state.emit("    leaq " + label + "(%rip), %rax");
+  this->emit_store_result_impl(dest);
 }
 
-void X86Codegen::emit_store_result_impl(const Value& dest) {
-  (void)dest;
-  throw_unwired_translated_globals_owner();
-}
+void X86Codegen::emit_store_result_impl(const Value& dest) { this->store_rax_to(dest); }
 
-void X86Codegen::emit_load_operand_impl(const Operand& op) {
-  (void)op;
-  throw_unwired_translated_globals_owner();
-}
+void X86Codegen::emit_load_operand_impl(const Operand& op) { this->operand_to_rax(op); }
 
 }  // namespace c4c::backend::x86

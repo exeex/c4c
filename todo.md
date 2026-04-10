@@ -6,30 +6,50 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 translated-owner build-wiring follow-on after landing the bounded
-  `memory.cpp` slice: keep the newly linked translated memory owner shippable
-  after replacing the remaining missing shared f128 helper link points with
-  bounded transitional semantics, then use the now-linked owner cluster to
-  choose the next parked translated file that can advance without widening
-  into the still-blocked prologue/runtime-owner cutover
+- Step 3 translated-owner follow-on after landing the bounded `memory.cpp`
+  slice: advance another already-linked translated owner body without widening
+  into the still-blocked prologue/runtime-owner or parked `f128.cpp` owner
+  surfaces
 - immediate target:
-  preserve the newly wired `src/backend/x86/codegen/memory.cpp` build path
-  after the bounded shared f128 helper backfill, then inventory whether the
-  next Step 3 move should be another translated owner wire-in or shared helper
-  tightening around the still-parked f128/prologue surfaces
+  turn the helper-backed subset of
+  `src/backend/x86/codegen/globals.cpp` into real bounded owner behavior by
+  replacing the current unconditional throws for global-address, label-address,
+  RIP-relative load/store, and thin store/load delegation with shared emitted
+  assembly text plus focused direct tests
 
 ## Next Slice
 
-- inspect whether the next bounded Step 3 frontier is wiring another parked
-  translated owner that already compiles against the current shared surface or
-  tightening the transitional shared f128 helper/header contract without
-  pulling the not-yet-buildable `src/backend/x86/codegen/f128.cpp` owner into
-  the active targets
-- if the next candidate owner depends on the same placeholder-only f128 layer,
-  treat the missing semantic parity as a separate bounded helper-upgrade slice
-  rather than widening straight into the parked translated f128 owner file
+- if the bounded `globals.cpp` owner slice lands cleanly, inspect whether the
+  next Step 3 frontier should be another already-linked owner body
+  (`returns.cpp`) or a separate shared-helper tightening slice around the
+  still-parked `f128.cpp` support layer
+- keep `emit_tls_global_addr_impl` out of scope for this slice unless the new
+  direct tests show the shared state already exposes enough PIC/TLS contract to
+  implement it without pulling in broader runtime-owner state
 
 ## Current Iteration Notes
+
+- this iteration lands a bounded translated globals-owner behavior slice inside
+  `src/backend/x86/codegen/globals.cpp` without widening into the still-blocked
+  TLS/PIC or prologue/runtime-owner state: global-address materialization,
+  absolute-address materialization, label-address materialization, scalar
+  RIP-relative load/store emission, and the thin store/load delegation helpers
+  now emit real shared helper-backed x86 text instead of throwing
+- implementation note:
+  `tests/backend/backend_shared_util_tests.cpp` now exercises the linked
+  translated globals-owner body directly, pinning the emitted text contract for
+  global-address, label-address, RIP-relative load/store, and the shared
+  accumulator-cache invalidation behavior on the store path
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_globals_owner`, and
+  `./build/backend_shared_util_tests`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration wires `src/backend/x86/codegen/memory.cpp` into both active
   x86 source lists in `CMakeLists.txt` and keeps the owner linkable by adding
