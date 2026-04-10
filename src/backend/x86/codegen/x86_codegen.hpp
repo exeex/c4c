@@ -411,6 +411,9 @@ std::optional<c4c::backend::PhysReg> x86_constraint_to_callee_saved(std::string_
 std::optional<c4c::backend::PhysReg> x86_clobber_name_to_callee_saved(std::string_view name);
 std::int64_t x86_variadic_reg_save_area_size(bool no_sse);
 std::int64_t x86_aligned_frame_size(std::int64_t raw_space);
+std::int64_t x86_stack_probe_page_size();
+bool x86_needs_stack_probe(std::int64_t frame_size);
+std::int64_t x86_callee_saved_slot_offset(std::int64_t frame_size, std::size_t save_index);
 std::string decode_llvm_byte_string(std::string_view text);
 std::string escape_asm_string(std::string_view raw_bytes);
 std::string asm_symbol_name(std::string_view target_triple, std::string_view logical_name);

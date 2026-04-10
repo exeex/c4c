@@ -34,6 +34,39 @@ Source Plan: plan.md
 
 ## Current Iteration Notes
 
+- this iteration exposed the translated x86 prologue stack-probe and
+  callee-saved spill-slot helpers through `src/backend/x86/codegen/mod.cpp`
+  and `x86_codegen.hpp`:
+  `x86_stack_probe_page_size()`, `x86_needs_stack_probe(...)`, and
+  `x86_callee_saved_slot_offset(...)`
+- `src/backend/x86/codegen/prologue.cpp` now routes its frame-growth and
+  callee-saved save/restore offset decisions through that shared helper surface,
+  including the translated page-probe loop for frames larger than 4096 bytes,
+  instead of keeping placeholder local ownership for those rules
+- added focused shared-util coverage that locks the translated prologue
+  stack-probe threshold and callee-saved spill-offset contract, including the
+  4096-byte page threshold and `-frame_size + slot*8` offset rule
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests test_x86_translated_asm_emitter_helpers_match_shared_contract`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation note:
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log 2>&1`
+  plus
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_matched_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  still reported `3190` passed / `186` failed versus the stored matched
+  baseline `3194` passed / `182` failed, with the same four x86 route/c-testsuite
+  regressions already tracked below:
+  `backend_codegen_route_x86_64_c_testsuite_00030_repeated_call_compare_zero_return_retries_after_direct_bir_rejection`,
+  `backend_codegen_route_x86_64_c_testsuite_00031_local_i32_inc_dec_compare_retries_after_direct_bir_rejection`,
+  `c_testsuite_x86_backend_src_00030_c`, and
+  `c_testsuite_x86_backend_src_00031_c`
+- blocker note:
+  the stored matched full-suite baseline still diverges from the current tree
+  by those same four x86 route/c-testsuite failures, so this helper slice is
+  validated by focused backend coverage plus confirmation that no additional
+  full-suite failures appeared beyond the already-tracked mismatch
+
 - this iteration exposed the translated x86 caller-saved pruning helper
   through `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp`:
   `x86_prune_caller_saved_regs(...)`

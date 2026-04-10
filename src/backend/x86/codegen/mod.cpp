@@ -15,6 +15,7 @@ namespace {
 
 [[maybe_unused]] constexpr std::string_view kCodegenModuleOverview =
     "Mechanical translation of ref/claudes-c-compiler/src/backend/x86/codegen";
+constexpr std::int64_t kX86StackProbePageSize = 4096;
 
 }  // namespace
 
@@ -290,6 +291,16 @@ std::int64_t x86_variadic_reg_save_area_size(bool no_sse) { return no_sse ? 48 :
 
 std::int64_t x86_aligned_frame_size(std::int64_t raw_space) {
   return raw_space > 0 ? (raw_space + 15) & ~15 : 0;
+}
+
+std::int64_t x86_stack_probe_page_size() { return kX86StackProbePageSize; }
+
+bool x86_needs_stack_probe(std::int64_t frame_size) {
+  return frame_size > x86_stack_probe_page_size();
+}
+
+std::int64_t x86_callee_saved_slot_offset(std::int64_t frame_size, std::size_t save_index) {
+  return -frame_size + static_cast<std::int64_t>(save_index) * 8;
 }
 
 c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(

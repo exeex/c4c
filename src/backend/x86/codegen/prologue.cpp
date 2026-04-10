@@ -83,16 +83,34 @@ void X86Codegen::emit_prologue_impl(const IrFunction& func, std::int64_t frame_s
   this->state.emit("    pushq %rbp");
   this->state.emit("    movq %rsp, %rbp");
   if (frame_size > 0) {
-    this->state.emit("    subq <frame>, %rsp");
+    if (x86_needs_stack_probe(frame_size)) {
+      const auto probe_label = this->state.fresh_label("stack_probe");
+      const auto page_size = x86_stack_probe_page_size();
+      this->state.out.emit_instr_imm_reg("    movq", frame_size, "r11");
+      this->state.out.emit_named_label(&probe_label);
+      this->state.out.emit_instr_imm_reg("    subq", page_size, "rsp");
+      this->state.emit("    orl $0, (%rsp)");
+      this->state.out.emit_instr_imm_reg("    subq", page_size, "r11");
+      this->state.out.emit_instr_imm_reg("    cmpq", page_size, "r11");
+      this->state.out.emit_jcc_label("    ja", &probe_label);
+      this->state.emit("    subq %r11, %rsp");
+      this->state.emit("    orl $0, (%rsp)");
+    } else {
+      this->state.out.emit_instr_imm_reg("    subq", frame_size, "rsp");
+    }
   }
-  for (const auto& reg : this->used_callee_saved) {
-    this->state.emit("    movq <callee-saved>, <stack-slot>");
+  for (std::size_t index = 0; index < this->used_callee_saved.size(); ++index) {
+    const auto reg = this->used_callee_saved[index];
+    this->state.out.emit_instr_reg_rbp(
+        "    movq", phys_reg_name(reg), x86_callee_saved_slot_offset(frame_size, index));
   }
 }
 
 void X86Codegen::emit_epilogue_impl(std::int64_t frame_size) {
-  for (const auto& reg : this->used_callee_saved) {
-    this->state.emit("    movq <stack-slot>, <callee-saved>");
+  for (std::size_t index = 0; index < this->used_callee_saved.size(); ++index) {
+    const auto reg = this->used_callee_saved[index];
+    this->state.out.emit_instr_rbp_reg(
+        "    movq", x86_callee_saved_slot_offset(frame_size, index), phys_reg_name(reg));
   }
   this->state.emit("    movq %rbp, %rsp");
   this->state.emit("    popq %rbp");
