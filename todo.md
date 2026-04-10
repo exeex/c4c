@@ -7,24 +7,27 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner build-wiring follow-on after landing the bounded
-  `returns.cpp` slice: both x86 source lists now compile
-  `src/backend/x86/codegen/asm_emitter.cpp`, and the public translated
-  asm-emitter owner methods are link-reachable through `x86_codegen.hpp`
+  `returns.cpp` slice: reassess the remaining translated top-level units after
+  a failed `calls.cpp` compile probe and identify the smallest
+  header-surfacing cluster that can unblock real owner build wiring
 - immediate target:
-  wire `src/backend/x86/codegen/asm_emitter.cpp` into both x86 source lists
-  and add focused `backend_shared_util_tests.cpp` coverage that pins the
-  translated asm-emitter owner symbols through the public
-  `x86_codegen.hpp` surface
+  use direct compile probes to inventory which translated top-level owners are
+  still blocked on incomplete `x86_codegen.hpp` type/state exposure and record
+  the minimum public-surface gap that must land before the next owner file can
+  enter the build
 
 ## Next Slice
 
-- reassess the remaining top-level translated units and choose the next
-  smallest leaf-like owner candidate whose public surface can enter the build
-  without widening into prologue/call-frame repair or hidden private-state
-  exposure
-- current leading candidate after `asm_emitter.cpp`:
-  `src/backend/x86/codegen/calls.cpp`, unless focused validation shows a
-  cheaper compileable owner surface elsewhere
+- land a bounded `x86_codegen.hpp` surfacing slice for the shared translated
+  owner dependency cluster instead of wiring another top-level owner file
+  blindly
+- use `calls.cpp` as the reference blocker sample for the next header slice:
+  it immediately needs real `CallAbiConfig` / `CallArgClass` / `IrType`
+  definitions plus exporter-backed `X86Codegen` state and helper declarations
+  such as `state`, `operand_to_rax`, `store_rax_to`, and `store_rax_rdx_to`
+- after that public-surface slice lands, rerun a compile probe across the
+  translated top-level units and only then choose the next compileable owner
+  file for CMake wiring
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -39,6 +42,35 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration attempted the recorded next owner-build slice by probing
+  `src/backend/x86/codegen/calls.cpp` with the same include surface used by the
+  current x86 targets instead of wiring it into `CMakeLists.txt` blindly
+- compile-probe result:
+  `calls.cpp` is still blocked before link/build wiring because the
+  transitional public `x86_codegen.hpp` surface only forward-declares key
+  translated dependencies and does not expose the exporter-backed
+  `X86Codegen` helpers/state the file uses
+- concrete blocker samples from the probe:
+  incomplete `CallAbiConfig`, `CallArgClass`, `Operand`, and `IrType`
+  definitions plus missing `X86Codegen` members such as `state`,
+  `operand_to_rax`, `store_rax_to`, and `store_rax_rdx_to`
+- broader reassessment result:
+  the same direct compile probe currently fails for every remaining top-level
+  translated owner candidate (`alu.cpp`, `atomics.cpp`, `cast_ops.cpp`,
+  `comparison.cpp`, `f128.cpp`, `float_ops.cpp`, `i128_ops.cpp`,
+  `inline_asm.cpp`, `intrinsics.cpp`, `memory.cpp`, `prologue.cpp`, and
+  `variadic.cpp`), so the real next shippable slice is public
+  x86-codegen-header surfacing rather than another owner-file CMake wire-in
+- focused validation passed:
+  `cmake --preset default`,
+  `cmake --build --preset default --target backend_shared_util_tests -j8`, and
+  direct compile probes for `calls.cpp` plus the remaining untranslated
+  top-level owner files using the current x86 target include surface
+- broad validation note:
+  full-suite monotonic guard remains deferred because no runtime/backend
+  behavior changed; this iteration produced blocker inventory rather than a
+  landed owner-path cutover
 
 - this iteration wires `src/backend/x86/codegen/asm_emitter.cpp` into both x86
   source lists in `CMakeLists.txt` and adds focused

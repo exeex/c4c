@@ -55,6 +55,12 @@ On the current C++ tree as of 2026-04-10:
   `comparison.cpp`, `f128.cpp`, `float_ops.cpp`, `i128_ops.cpp`,
   `inline_asm.cpp`, `intrinsics.cpp`, `memory.cpp`, `prologue.cpp`, and
   `variadic.cpp`
+- a 2026-04-10 compile probe against `calls.cpp` and the remaining untranslated
+  top-level owners showed that the blocker is not just missing CMake wiring:
+  the current public `x86_codegen.hpp` surface still forward-declares key
+  translated ABI/IR types and omits exporter-backed `X86Codegen` helper/state
+  declarations that those units depend on, so the next practical integration
+  slice is header surfacing rather than another blind owner-file wire-in
 - `mod.cpp` is still only an anchor, not the active dispatcher
 - `emit.cpp` still owns the practical direct-BIR and prepared-LIR emission
   route through a large matcher/dispatcher surface
@@ -152,9 +158,12 @@ The first compile-oriented migration cluster should stay narrow:
 - `returns.cpp` can now join the build only as symbol/link coverage; its real
   bodies remain blocked on the hidden exporter-backed `X86Codegen` return-state
   surface
-- treat `comparison.cpp` as the next near-neighbor candidate, but expect
-  signature drift and helper-surface fixes before it can join the same build
-  cluster cleanly
+- the next migration slice should expose the minimum shared
+  `x86_codegen.hpp` type/helper surface needed by the parked translated owners;
+  `calls.cpp` is the current reference blocker because it immediately needs
+  real `CallAbiConfig` / `CallArgClass` / `IrType` definitions plus
+  exporter-backed `X86Codegen` members such as `state`, `operand_to_rax`,
+  `store_rax_to`, and `store_rax_rdx_to`
 
 This keeps the next execution slice focused on compiling translated owner units
 into the build before attempting the larger `emit.cpp` dispatcher replacement.
