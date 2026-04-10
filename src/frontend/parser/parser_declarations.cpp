@@ -1212,6 +1212,17 @@ Node* Parser::parse_top_level() {
             return std::pair<bool, const char*>(is_pack, pname);
         };
         auto try_consume_typedef_nttp_type_head = [&]() -> bool {
+            if (is_cpp_mode()) {
+                TentativeParseGuard guard(*this);
+                std::string head_name;
+                if (consume_qualified_type_spelling(
+                        /*allow_global=*/true,
+                        /*consume_final_template_args=*/true,
+                        &head_name, nullptr) &&
+                    is_concept_name(head_name)) {
+                    return false;
+                }
+            }
             return consume_template_parameter_type_start(/*allow_typename_keyword=*/true);
         };
         while (!at_end() && !check(TokenKind::Greater)) {
@@ -1449,8 +1460,9 @@ Node* Parser::parse_top_level() {
                 register_template_struct_specialization(
                     last_sd->template_origin_name, last_sd);
             } else if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
-                       !template_params.empty() && last_sd->n_template_params == 0) {
-                attach_template_params(last_sd);
+                       !template_params.empty()) {
+                if (last_sd->n_template_params == 0)
+                    attach_template_params(last_sd);
                 register_template_struct_primary(last_sd->name, last_sd);
                 // In C++ mode, register the template struct name as a typedef
                 // so it's recognized as a type start for Pair<int> syntax.

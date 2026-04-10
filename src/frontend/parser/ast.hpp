@@ -402,7 +402,10 @@ inline bool is_primary_template_struct_def(const Node* node) {
     return node &&
            node->kind == NK_STRUCT_DEF &&
            node->n_template_params > 0 &&
-           (!node->template_origin_name || !node->template_origin_name[0]);
+           node->n_template_args == 0 &&
+           (!node->template_origin_name || !node->template_origin_name[0] ||
+            (node->name && node->template_origin_name &&
+             std::strcmp(node->name, node->template_origin_name) == 0));
 }
 
 inline bool node_has_template_param_name(const Node* node, const char* name) {

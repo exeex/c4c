@@ -26,7 +26,10 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
 }
 
 void Parser::register_template_struct_primary(const std::string& name, Node* node) {
-    if (!is_primary_template_struct_def(node)) return;
+    if (!node || node->kind != NK_STRUCT_DEF || node->n_template_params <= 0 ||
+        node->n_template_args != 0) {
+        return;
+    }
     template_struct_defs_[name] = node;
 }
 
