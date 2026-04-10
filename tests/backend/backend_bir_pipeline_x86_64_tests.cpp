@@ -825,6 +825,66 @@ c4c::codegen::lir::LirModule make_union_i32_alias_compare_three_zero_return_modu
   return module;
 }
 
+c4c::codegen::lir::LirModule make_nested_struct_i32_sum_compare_six_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+  module.type_decls.push_back("%struct._anon_0 = type { i32, i32 }");
+  module.type_decls.push_back("%struct.s = type { i32, %struct._anon_0 }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.v", "%struct.s", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "%struct.s", "%lv.v", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirStoreOp{"i32", "1", "%t0"});
+  entry.insts.push_back(LirGepOp{"%t1", "%struct.s", "%lv.v", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirGepOp{"%t2", "%struct._anon_0", "%t1", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirStoreOp{"i32", "2", "%t2"});
+  entry.insts.push_back(LirGepOp{"%t3", "%struct.s", "%lv.v", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirGepOp{"%t4", "%struct._anon_0", "%t3", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirStoreOp{"i32", "3", "%t4"});
+  entry.insts.push_back(LirGepOp{"%t5", "%struct.s", "%lv.v", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t6", "i32", "%t5"});
+  entry.insts.push_back(LirGepOp{"%t7", "%struct.s", "%lv.v", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirGepOp{"%t8", "%struct._anon_0", "%t7", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t9", "i32", "%t8"});
+  entry.insts.push_back(LirBinOp{"%t10", "add", "i32", "%t6", "%t9"});
+  entry.insts.push_back(LirGepOp{"%t11", "%struct.s", "%lv.v", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirGepOp{"%t12", "%struct._anon_0", "%t11", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirLoadOp{"%t13", "i32", "%t12"});
+  entry.insts.push_back(LirBinOp{"%t14", "add", "i32", "%t10", "%t13"});
+  entry.insts.push_back(LirCmpOp{"%t15", false, "ne", "i32", "%t14", "6"});
+  entry.insts.push_back(LirCastOp{"%t16", LirCastKind::ZExt, "i1", "%t15", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t17", false, "ne", "i32", "%t16", "0"});
+  entry.terminator = LirCondBr{"%t17", "block_1", "block_2"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock block1;
+  block1.id = LirBlockId{1};
+  block1.label = "block_1";
+  block1.terminator = LirRet{std::string("1"), "i32"};
+  function.blocks.push_back(std::move(block1));
+
+  LirBlock block2;
+  block2.id = LirBlockId{2};
+  block2.label = "block_2";
+  block2.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(block2));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_local_i32_array_two_slot_sum_sub_three_module() {
   using namespace c4c::codegen::lir;
 
@@ -5992,6 +6052,31 @@ void test_backend_bir_pipeline_drives_x86_lir_union_i32_alias_compare_three_zero
                       "x86 LIR union-backed local alias compare-to-three input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_nested_struct_i32_sum_compare_six_zero_through_bir_end_to_end() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_nested_struct_i32_sum_compare_six_zero_return_module());
+  expect_true(lowered.has_value(),
+              "x86 LIR nested-struct local aggregate sum input should lower into direct BIR before native x86 emission");
+  if (!lowered.has_value()) {
+    return;
+  }
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty(),
+              "x86 LIR nested-struct local aggregate sum lowering should collapse the bounded `00043.c` source slice to one constant-return BIR block");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_nested_struct_i32_sum_compare_six_zero_return_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "x86 LIR nested-struct local aggregate sum input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR nested-struct local aggregate sum input should preserve the folded zero return after bounded shared lowering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR nested-struct local aggregate sum input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_inc_dec_compare_zero_through_bir_end_to_end() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(
@@ -7177,6 +7262,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_gep_zero_store_slot_load_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_alias_compare_two_zero_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_union_i32_alias_compare_three_zero_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_nested_struct_i32_sum_compare_six_zero_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_two_slot_sum_sub_three_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_second_slot_pointer_store_zero_load_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_inc_dec_compare_zero_through_bir_end_to_end);
