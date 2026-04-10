@@ -7236,34 +7236,34 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_throug
                       "x86 LIR two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
-void test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_through_bir_end_to_end() {
+void test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_on_native_x86_path() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_lir_minimal_direct_call_add_imm_module()},
       make_bir_pipeline_options(c4c::backend::Target::X86_64));
 
-  expect_contains(rendered, ".type add_one, %function\nadd_one:\n",
-                  "x86 LIR add-immediate direct-call input should still emit the helper definition after routing through the shared BIR path");
+  expect_contains(rendered, ".globl add_one",
+                  "x86 LIR add-immediate direct-call input should still emit the helper definition on the native x86 path");
   expect_contains(rendered, "add eax, 1",
-                  "x86 LIR add-immediate direct-call input should preserve the helper add immediate on the BIR-owned route");
+                  "x86 LIR add-immediate direct-call input should preserve the helper add immediate on the native x86 path");
   expect_contains(rendered, "mov edi, 5",
-                  "x86 LIR add-immediate direct-call input should preserve the caller argument immediate on the BIR-owned route");
+                  "x86 LIR add-immediate direct-call input should preserve the caller argument immediate on the native x86 path");
   expect_contains(rendered, "call add_one",
                   "x86 LIR add-immediate direct-call input should lower the helper call on the native x86 path");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR add-immediate direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
-void test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_through_bir_end_to_end() {
+void test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_on_native_x86_path() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_lir_minimal_direct_call_identity_arg_module()},
       make_bir_pipeline_options(c4c::backend::Target::X86_64));
 
-  expect_contains(rendered, ".type f, %function\nf:\n",
-                  "x86 LIR identity direct-call input should still emit the helper definition after routing through the shared BIR path");
+  expect_contains(rendered, ".globl f",
+                  "x86 LIR identity direct-call input should still emit the helper definition on the native x86 path");
   expect_contains(rendered, "mov eax, edi",
-                  "x86 LIR identity direct-call input should preserve the helper identity return on the BIR-owned route");
+                  "x86 LIR identity direct-call input should preserve the helper identity return on the native x86 path");
   expect_contains(rendered, "mov edi, 0",
-                  "x86 LIR identity direct-call input should preserve the caller immediate on the BIR-owned route");
+                  "x86 LIR identity direct-call input should preserve the caller immediate on the native x86 path");
   expect_contains(rendered, "call f",
                   "x86 LIR identity direct-call input should lower the helper call on the native x86 path");
   expect_not_contains(rendered, "target triple =",
@@ -10446,6 +10446,44 @@ void test_x86_direct_emitter_lowers_minimal_local_arg_call_slice() {
                       "x86 direct emitter should stay on native asm emission for the bounded local-arg direct-LIR slice");
 }
 
+void test_x86_direct_emitter_lowers_minimal_single_arg_add_imm_helper_call_slice() {
+  auto module = make_lir_minimal_direct_call_add_imm_module();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded single-arg add-immediate helper call through the native prepared-LIR seam");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, ".globl add_one",
+                  "x86 direct emitter should still emit the helper definition for the bounded single-arg add-immediate direct-LIR slice");
+  expect_contains(*rendered, "add_one:\n  mov eax, edi\n  add eax, 1\n  ret\n",
+                  "x86 direct emitter should keep the helper add-immediate body on the native direct-LIR path");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  call add_one\n  ret\n",
+                  "x86 direct emitter should materialize the single immediate call operand before invoking the add-immediate helper on the native x86 path");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded single-arg add-immediate helper slice");
+}
+
+void test_x86_direct_emitter_lowers_minimal_single_arg_identity_helper_call_slice() {
+  auto module = make_lir_minimal_direct_call_identity_arg_module();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded single-arg identity helper call through the native prepared-LIR seam");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, ".globl f",
+                  "x86 direct emitter should still emit the helper definition for the bounded single-arg identity direct-LIR slice");
+  expect_contains(*rendered, "f:\n  mov eax, edi\n  ret\n",
+                  "x86 direct emitter should keep the helper identity body on the native direct-LIR path");
+  expect_contains(*rendered, "main:\n  mov edi, 0\n  call f\n  ret\n",
+                  "x86 direct emitter should materialize the single immediate call operand before invoking the identity helper on the native x86 path");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded single-arg identity helper slice");
+}
+
 void test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice() {
   auto module = make_lir_minimal_two_arg_direct_call_module();
 
@@ -10677,8 +10715,8 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_short_circuit_effect_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_three_block_add_compare_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_repeated_zero_arg_call_compare_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_loop_through_bir_end_to_end);
@@ -10822,6 +10860,8 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_source_00080_void_helper_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_source_00080_main_only_void_call_zero_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_arg_call_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_add_imm_helper_call_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_identity_helper_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_arg_call_slice);

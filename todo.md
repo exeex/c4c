@@ -6,20 +6,19 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 translated-owner cutover follow-on around the x86 entry/support
-  helper surface after the legacy matcher body removal in
-  `src/backend/x86/codegen/emit.cpp`
+- Step 3 translated-owner cutover follow-on in the bounded prepared-LIR
+  direct-calls sibling seam after landing the bounded one-arg helper-call
+  ownership move out of `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  land the first bounded prepared-LIR direct-emitter regression for a true
-  SysV `ParamClass::StructStack` case by exhausting the six GP arg registers
-  with scalar parameters before a small by-value aggregate
-  - keep the helper assertion surface on `%lv.param.*` slot population plus
-    one field load from the stacked aggregate
-  - keep the caller assertion surface on staging the small aggregate in a
-    local slot and copying one qword into the outgoing stack area
-  - keep the translated prologue owner parked out of build until the public
-    x86 codegen header exposes enough complete backend surface for a broader
-    prologue-owner cutover
+  return to the next bounded direct-calls follow-on after the new one-arg
+  helper family: decide whether the next ownership move should be the dual-
+  helper subtraction/call-crossing family or another still-unowned prepared-LIR
+  direct-call slice
+  - keep the next slice limited to one direct-call family; do not bundle the
+    dual-helper and call-crossing routes together unless they prove to share
+    the same parser/emitter seam exactly
+  - keep the broader translated prologue-owner work parked; this iteration is
+    only about shrinking the remaining prepared-LIR direct-call matcher surface
 
 ## Next Slice
 
@@ -37,6 +36,36 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration moved the bounded one-arg helper-call family into
+  `src/backend/x86/codegen/direct_calls.cpp`: the native prepared-LIR path now
+  accepts both the immediate single-arg `add_one(i32)` helper and the minimal
+  single-arg identity helper instead of forcing those shapes through shared
+  BIR lowering first
+- `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pins both native
+  prepared-LIR slices directly and adjusts the shared-entrypoint add-imm and
+  identity assertions to reflect that these modules now stay on the native x86
+  path while separate lowering coverage continues to own the shared-BIR checks
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_bir_tests`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_single_arg_add_imm_helper_call_slice`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_single_arg_identity_helper_call_slice`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_on_native_x86_path`,
+  and
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_on_native_x86_path`
+- broad validation note:
+  after rebuilding the full tree with `cmake --build build -j8`, a refreshed
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`
+  stayed monotonic against the current matched rerun baseline
+  `test_fail_after_rerun.log`; the regression guard reported
+  `3190` passed / `186` failed before and after with no newly failing tests
+  in non-decreasing mode
+- timeout note:
+  the stricter timeout-enforced guard still reports the recurring
+  `backend_bir_tests` `>30s` warning as a new suspicious timeout relative to
+  `test_fail_after_rerun.log`, so this slice records the monotonic non-
+  decreasing pass/fail result while leaving the broad backend-binary timeout
+  noise as pre-existing validation debt
 
 - this iteration added the first bounded prepared-LIR direct-emitter coverage
   for a true SysV `ParamClass::StructStack` case:
@@ -1429,6 +1458,13 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- moved the bounded one-arg prepared-LIR helper-call family out of
+  `emit.cpp` into `src/backend/x86/codegen/direct_calls.cpp`
+- added direct x86 regressions that pin the native single-arg add-immediate
+  and single-arg identity helper-call slices
+- updated the shared x86 LIR add-immediate and identity route checks to assert
+  the native x86 ownership path explicitly instead of implying a still-active
+  shared-BIR emission route for those shapes
 - moved the bounded direct-BIR global two-field struct store/sub/sub route out
   of `emit.cpp` into `src/backend/x86/codegen/direct_globals.cpp`
 - added a direct x86 BIR regression that pins the native two-field global
