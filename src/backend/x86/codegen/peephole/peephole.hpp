@@ -145,6 +145,7 @@ bool fuse_compare_and_branch(LineStore* store, LineInfo* infos);
 bool fuse_movq_ext_truncation(LineStore* store, LineInfo* infos);
 bool eliminate_loop_trampolines(LineStore* store, LineInfo* infos);
 bool eliminate_push_pop_pairs(const LineStore* store, LineInfo* infos);
+bool propagate_register_copies(LineStore* store, LineInfo* infos);
 bool eliminate_dead_reg_moves(const LineStore* store, LineInfo* infos);
 bool eliminate_dead_stores(const LineStore* store, LineInfo* infos);
 std::string peephole_optimize(std::string asm_text);

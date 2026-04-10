@@ -9,15 +9,16 @@ Source Plan: plan.md
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
   first live optimization round
 - immediate target:
-  wire the translated dead-code cleanup pass into the live peephole
-  orchestration with direct regression coverage for dead reg-move and
-  overwritten stack-store elimination
-  - keep the parked stack-load remainder untouched for this slice; this
-    iteration is about enabling another translated pass file rather than
-    widening loop-trampoline matching again
+  evaluate the next bounded translated peephole pass after the
+  copy-propagation slice
+  - prefer store-forwarding or another non-ABI-sensitive pass before
+    reopening tail-call, callee-save, or frame-compaction work
 
 ## Next Slice
 
+- if the translated copy-propagation slice lands cleanly, evaluate whether the
+  next bounded candidate should be store-forwarding or tail-call
+  orchestration instead of widening loop-trampoline matching again
 - keep the remaining stack-load family intentionally parked behind the current
   `%rax`/`%eax` predecessor-store and fallthrough rules unless a future slice
   proves one more explicit safe shape
@@ -25,9 +26,6 @@ Source Plan: plan.md
   passes are live enough for frame shrinking to be meaningful
 - continue evaluating which remaining translated peephole units can be compiled
   into the real path without widening into unrelated x86 top-level ownership
-- if the translated dead-code slice lands cleanly, evaluate whether the next
-  bounded candidate should be store-forwarding, copy-propagation, or tail-call
-  orchestration instead of more loop-trampoline shape growth
 
 ## Current Iteration Notes
 
@@ -126,7 +124,28 @@ Source Plan: plan.md
 - the first full-suite rerun picked up one extra unrelated failure in
   `cpp_typedef_owned_functional_cast_perf`; rerunning that test in isolation
   passed, and a second full-suite rerun returned to the monotonic baseline
-  count
+- this iteration promotes copy propagation because the translated pass already
+  exists, is more substantive than the parked stub passes, and composes
+  directly with the live dead-move cleanup without crossing into epilogue or
+  frame-layout ownership
+- the translated copy-propagation slice landed as another bounded
+  orchestration/build step: `peephole/passes/copy_propagation.cpp` now
+  compiles into the real x86 backend and runs inside the live peephole round
+  without widening into ABI-sensitive cleanup passes
+- the new direct regression deliberately gives the existing dead-move cleanup
+  explicit overwrite proof after the propagated use so this slice stays about
+  activating translated copy propagation rather than broadening dead-code
+  semantics
+- the first full-suite rerun picked up one extra unrelated failure in
+  `cpp_qualified_template_call_template_arg_perf`; rerunning that test in
+  isolation passed, and a second full-suite rerun returned to the same
+  `2723` passed / `181` failed count as the baseline
+- the aggregate `backend_bir_tests` entry still does not serve as a narrow
+  peephole harness: on the rerun it reached the same pre-existing
+  `test_bir_lowering_accepts_local_two_field_struct_sub_sub_two_return_module`
+  crash path quickly enough to surface as `SEGFAULT` instead of the earlier
+  `Timeout`, so the unstable aggregate runner remains a known blocker rather
+  than a new peephole regression
 
 ## Recently Completed
 
@@ -237,3 +256,16 @@ Source Plan: plan.md
 - rebuilt, ran the filtered `test_x86_peephole_` backend subset plus the new
   direct dead-code test filters, and reran the full ctest suite with monotonic
   results: `181` failures before, `181` failures after, no newly failing tests
+- compiled the translated `peephole/passes/copy_propagation.cpp` unit into the
+  real x86 backend and test builds
+- wired the translated register copy-propagation pass into the live x86
+  peephole optimization loop ahead of the existing dead-code cleanup
+- added a direct regression test that proves the live x86 peephole now
+  propagates a transitive register-copy chain into a downstream ALU use and
+  lets the existing overwrite-based dead-move cleanup drop the superseded
+  copies
+- rebuilt, ran the filtered `test_x86_peephole_` backend subset plus the new
+  direct copy-propagation test filter, and reran the full ctest suite to the
+  same `181`-failure count as the baseline; the stable rerun surfaced the
+  existing aggregate `backend_bir_tests` crash path as `SEGFAULT` instead of
+  the earlier timeout while keeping the failure set otherwise unchanged

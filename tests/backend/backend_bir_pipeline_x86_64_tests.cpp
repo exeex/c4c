@@ -9282,6 +9282,30 @@ void test_x86_peephole_eliminates_overwritten_stack_store() {
                   "x86 peephole should keep the later store that overwrites the same stack slot");
 }
 
+void test_x86_peephole_propagates_transitive_register_copies() {
+  const std::string input =
+      ".text\n"
+      "helper:\n"
+      "  movq %rax, %rcx\n"
+      "  movq %rcx, %rdx\n"
+      "  movq %r10, %rcx\n"
+      "  addq %rdx, %r8\n"
+      "  movq %r11, %rdx\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_contains(optimized, "  addq %rax, %r8\n",
+                  "x86 peephole should propagate transitive register copies into downstream ALU uses once the translated copy-propagation pass is live");
+  expect_not_contains(optimized, "  movq %rax, %rcx\n",
+                      "x86 peephole should drop the first copy after propagation and dead-move cleanup make it unused");
+  expect_not_contains(optimized, "  movq %rcx, %rdx\n",
+                      "x86 peephole should collapse the transitive copy chain instead of leaving an intermediate register move behind");
+  expect_contains(optimized, "  movq %r10, %rcx\n",
+                  "x86 peephole should preserve the later overwrite that makes the original rcx copy dead");
+  expect_contains(optimized, "  movq %r11, %rdx\n",
+                  "x86 peephole should preserve the later overwrite that makes the original rdx copy dead");
+}
+
 void test_x86_peephole_redirects_single_entry_loop_trampoline() {
   const std::string input =
       ".intel_syntax noprefix\n"
@@ -10020,6 +10044,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_peephole_fuses_compare_setcc_test_branch_sequence);
   RUN_TEST(test_x86_peephole_eliminates_dead_register_move);
   RUN_TEST(test_x86_peephole_eliminates_overwritten_stack_store);
+  RUN_TEST(test_x86_peephole_propagates_transitive_register_copies);
   RUN_TEST(test_x86_peephole_redirects_single_entry_loop_trampoline);
   RUN_TEST(test_x86_peephole_coalesces_single_register_loop_trampoline_copy);
   RUN_TEST(test_x86_peephole_coalesces_movslq_loop_trampoline_copy);
