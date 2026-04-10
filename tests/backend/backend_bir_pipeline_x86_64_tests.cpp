@@ -7396,6 +7396,23 @@ void test_backend_bir_pipeline_drives_x86_lir_stack_aggregate_param_slot_on_nati
                       "x86 LIR caller-stack aggregate param-slot helper input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_small_struct_stack_param_slot_on_native_x86_path() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_struct_stack_small_aggregate_param_slot_lir_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl get_second_after_six",
+                  "x86 LIR trailing small-aggregate `StructStack` helper input should still emit the helper definition on the native x86 path");
+  expect_contains(rendered,
+                  "get_second_after_six:\n  push rbp\n  mov rbp, rsp\n  sub rsp, 16\n  mov rax, QWORD PTR [rbp + 16]\n  mov QWORD PTR [rbp - 8], rax\n  mov eax, DWORD PTR [rbp - 4]\n  pop rbp\n  ret\n",
+                  "x86 LIR trailing small-aggregate `StructStack` helper input should still copy the incoming by-value aggregate from the caller stack into the `%lv.param.*` slot before loading the second i32 field on the public x86 path");
+  expect_contains(rendered,
+                  "main:\n  push rbp\n  mov rbp, rsp\n  sub rsp, 16\n  mov DWORD PTR [rbp - 8], 4\n  mov DWORD PTR [rbp - 4], 6\n  mov rdi, 1\n  mov rsi, 2\n  mov rdx, 3\n  mov rcx, 4\n  mov r8, 5\n  mov r9, 6\n  sub rsp, 16\n  mov rax, QWORD PTR [rbp - 8]\n  mov QWORD PTR [rsp], rax\n  call get_second_after_six\n  add rsp, 16\n  pop rbp\n  ret\n",
+                  "x86 LIR trailing small-aggregate `StructStack` helper input should still keep the first six scalar arguments in SysV integer registers while copying the trailing aggregate into the outgoing caller-stack area on the public x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR trailing small-aggregate `StructStack` helper input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_local_arg_direct_call_on_native_x86_path() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_x86_local_arg_call_lir_module()},
@@ -11078,6 +11095,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_mixed_reg_stack_param_add_i64_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_register_aggregate_param_slot_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_stack_aggregate_param_slot_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_small_struct_stack_param_slot_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_local_arg_direct_call_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_on_native_x86_path);
