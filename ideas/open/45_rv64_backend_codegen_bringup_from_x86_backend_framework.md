@@ -1,314 +1,169 @@
-# RV64 Backend Codegen Bring-Up From x86 Architecture Reset
+# RV64 Translated Codegen Integration
 
 Status: Open
-Last Updated: 2026-04-09
+Last Updated: 2026-04-10
 
 ## Why This Idea
 
-The repository now has a copied and translated `src/backend/riscv` tree, but
-that translation is still mostly inventory and isolated helper logic. It does
-not yet define the actual native RV64 backend bring-up strategy for the current
-c4c backend pipeline.
+The repository already contains a translated `src/backend/riscv/` tree,
+including assembler, codegen, linker, and target entry files. The main problem
+is no longer "translate the Rust files." The translated files are already in
+the tree. The real problem is that they are not meaningfully integrated:
 
-The right first step is not to finish every RISC-V subsystem at once. The
-highest-leverage seam is the native codegen path, especially the emitter and
-lowering surface that the in-progress x86 backend architecture reset is now
-re-establishing as the repo's current backend framework.
+- the current build does not appear to compile any `src/backend/riscv/*.cpp`
+  units
+- `src/backend/riscv/codegen/mod.cpp` is still a structural mirror, not a real
+  dispatcher
+- `src/backend/riscv/codegen/emit.cpp` exposes only a narrow helper subset and
+  explicitly notes that the shared `RiscvCodegen` / `CodegenState` C++ surface
+  does not exist yet
 
-This idea therefore narrows RV64 bring-up to native codegen only. The initial
-goal is to establish an RV64 emitter/lowering skeleton by following the
-backend framework being rebuilt in the active x86 plan, rather than widening
-scope into assembler or linker completion.
+So the right framing for RV64 is the same one now used for x86 translated-code
+work: treat the translated inventory as real source assets that must be wired
+into the build and active backend path, instead of re-describing the problem as
+greenfield bring-up.
 
 ## Source Context
 
-- `src/backend/aarch64/mod.cpp`
-- `src/backend/aarch64/codegen/mod.cpp`
-- `src/backend/aarch64/codegen/emit.cpp`
-- `src/backend/x86/codegen/x86_codegen.hpp`
-- `src/backend/x86/codegen/emit.cpp`
-- `src/backend/lowering/lir_to_bir.cpp`
-- `src/backend/lowering/lir_to_bir/`
-- `plan.md`
 - `src/backend/riscv/mod.cpp`
 - `src/backend/riscv/codegen/mod.cpp`
 - `src/backend/riscv/codegen/emit.cpp`
+- `src/backend/riscv/codegen/*.cpp`
+- `src/backend/x86/codegen/`
+- `plan.md`
 
-## Current Snapshot
+## Current State
 
-As of 2026-04-09:
+The `src/backend/riscv/` tree already contains translated source for:
 
-- `src/backend/riscv` exists in-tree
-- all translated Rust source inventory has been converted into `.cpp` siblings
-- all legacy `.rs` files under `src/backend/riscv` have been removed
-- the RISC-V tree contains many useful helper translations, but no integrated
-  RV64 native backend contract yet
+- assembler
+- codegen
+- linker
+- target entry
 
-Current shape:
+Current observed integration state:
 
-- `assembler` and `linker` translations exist, but they are not the first
-  bring-up target
-- `codegen` contains many translated helpers and structural mirrors
-- the main missing seam is a coherent RV64 emitter/lowering contract comparable
-  to the backend framework now being rebuilt for x86
-- the repo's current backend runtime and `c-testsuite` harnesses still assume
-  native execution on the host CPU rather than cross-run through an emulator
+- translated codegen siblings exist for ALU, memory, calls, returns, prologue,
+  globals, casts, variadic, atomics, floating-point, intrinsics, inline asm,
+  `i128`, `f128`, and peephole support
+- the build does not currently list `src/backend/riscv/*.cpp` sources
+- the RV64 codegen surface is therefore present as inventory but not active
+
+This means the highest-leverage work is not "translate more Rust," but:
+
+- define the first real RV64 integration boundary
+- bring translated units into the build in bounded slices
+- make `riscv/codegen/emit.cpp` depend on real translated siblings instead of
+  staying a narrow source mirror
+
+## Initial Integration Inventory
+
+The active inventory for this idea starts from the translated RV64 surface that
+already exists in-tree.
+
+### Translated top-level RV64 codegen units
+
+- `src/backend/riscv/codegen/alu.cpp`
+- `src/backend/riscv/codegen/asm_emitter.cpp`
+- `src/backend/riscv/codegen/atomics.cpp`
+- `src/backend/riscv/codegen/calls.cpp`
+- `src/backend/riscv/codegen/cast_ops.cpp`
+- `src/backend/riscv/codegen/comparison.cpp`
+- `src/backend/riscv/codegen/emit.cpp`
+- `src/backend/riscv/codegen/f128.cpp`
+- `src/backend/riscv/codegen/float_ops.cpp`
+- `src/backend/riscv/codegen/globals.cpp`
+- `src/backend/riscv/codegen/i128_ops.cpp`
+- `src/backend/riscv/codegen/inline_asm.cpp`
+- `src/backend/riscv/codegen/intrinsics.cpp`
+- `src/backend/riscv/codegen/memory.cpp`
+- `src/backend/riscv/codegen/mod.cpp`
+- `src/backend/riscv/codegen/peephole.cpp`
+- `src/backend/riscv/codegen/prologue.cpp`
+- `src/backend/riscv/codegen/returns.cpp`
+- `src/backend/riscv/codegen/variadic.cpp`
+
+### Additional translated RV64 subsystems already present
+
+- assembler subtree under `src/backend/riscv/assembler/`
+- linker subtree under `src/backend/riscv/linker/`
+- target entry at `src/backend/riscv/mod.cpp`
+
+This list is the starting execution queue for RV64 integration. Future RV64
+work should consume items from this inventory rather than treating the tree as
+missing translation work.
 
 ## Goal
 
-Bring up the first coherent RV64 native codegen path by porting the current
-backend framework method incrementally, using the active x86 architecture-reset
-runbook as the primary template and AArch64 only as a secondary ISA-specific
-reference where x86 does not answer a RISC-V question directly.
+Turn the translated RV64 backend surface into a real staged integration lane:
+
+- compile translated RV64 units in controlled slices
+- establish a real codegen ownership boundary
+- make `riscv/codegen/emit.cpp` and sibling units part of an active backend path
+- keep assembler and linker present as inventory, but integrate them only when
+  a bounded codegen slice truly needs them
 
 ## Non-Goals
 
-- do not try to finish the RISC-V assembler in the first wave
-- do not try to finish the RISC-V linker in the first wave
-- do not widen this into a full all-target backend rewrite
-- do not force immediate parity with every x86 or AArch64 optimization/helper
-- do not treat the current translated `riscv/*.cpp` files as already integrated
-  production code
+- do not treat this as a greenfield RV64 rewrite
+- do not translate more Rust just to create more parked inventory
+- do not widen this into a full all-target backend redesign
+- do not silently absorb unrelated x86 or shared-BIR cleanup work
+- do not promise immediate end-to-end runtime execution before the codegen
+  integration boundary is real
 
 ## Working Model
 
-- treat the active x86 backend runbook and its architecture-reset framework as
-  the primary reference for structure, sequencing, and ownership boundaries
-- treat AArch64 as a secondary local reference for ISA-specific helper layout,
-  not as the main integration template
-- build RV64 around the same backend contracts where possible instead of
-  inventing a separate architecture-specific pipeline shape
-- prioritize emitter/lowering seams that unlock end-to-end native codegen
-  earliest
-- keep assembler and linker out of scope unless a tiny stub is strictly needed
-  to keep the codegen work coherent
-- prefer a thin working RV64 path over a broad but disconnected translation set
-- validate RV64 backend output on the host through Linux user-mode emulation
-  rather than requiring a guest-first full-system environment
-
-## Reference Order
-
-When RV64 bring-up needs a structural reference, use this priority order:
-
-1. the active x86 backend runbook in `plan.md`
-2. the split shared lowering structure under `src/backend/lowering/lir_to_bir/`
-3. the x86 codegen class/header split under `src/backend/x86/codegen/`
-4. AArch64 codegen files for target-local helper details only
-
-The intent is that RV64 should follow the backend framework that will exist
-after the x86 architecture reset is complete, not copy AArch64's older module
-boundaries wholesale.
-
-## Validation Model
-
-The target validation model for first-wave RV64 backend bring-up is:
-
-- compile on the host
-- produce RV64 Linux asm/binary artifacts on the host
-- execute those RV64 Linux binaries on the host through
-  `qemu-riscv64 -L /usr/riscv64-linux-gnu`
-
-This is intentionally lighter than a full guest Linux VM. It matches the
-current need: verify that RV64 backend-emitted asm can be assembled, linked,
-and executed as Linux userland code, including C and C++ paths.
-
-The expected steady-state pipeline is:
-
-1. `c4cll --codegen asm --target riscv64-unknown-linux-gnu ...`
-2. `clang --target=riscv64-unknown-linux-gnu --gcc-toolchain=/usr ...`
-3. `qemu-riscv64 -L /usr/riscv64-linux-gnu <binary>`
-4. compare exit status and stdout/stderr against the existing test oracle
-
-Full-system QEMU remains a later integration option, but it is not required
-for first-wave backend validation.
+- use the x86 translated-code integration lane as the primary process model
+- prefer integrating existing translated units over inventing new local
+  stand-ins
+- move one bounded RV64 integration seam at a time
+- treat assembler and linker as follow-on consumers unless codegen integration
+  truly requires them
+- keep the first ownership transfers centered on `riscv/codegen/`
 
 ## Proposed Plan
 
-### Step 1: Define the RV64 backend ownership boundary
+### Step 1: Audit translated RV64 coverage
 
-Goal: make `src/backend/riscv/codegen/emit.cpp` the explicit bring-up center.
-
-Concrete actions:
-
-- compare the active x86 backend framework in `plan.md`,
-  `src/backend/x86/codegen/x86_codegen.hpp`,
-  `src/backend/x86/codegen/emit.cpp`, and
-  `src/backend/lowering/lir_to_bir/` against the current
-  `src/backend/riscv/codegen/emit.cpp`
-- identify the minimum shared backend contracts RV64 must satisfy:
-  - module validation
-  - LIR/BIR entry routing
-  - split ownership between monolithic entrypoints and helper files
-  - target register model
-  - call ABI scaffolding
-  - prologue/epilogue ownership
-- write down which current `riscv/codegen/*.cpp` files should become true
-  dependencies of `emit.cpp` first, and which should stay as follow-on slices
+Goal: make the translated RV64 inventory explicit by role and current
+integration state.
 
 Completion check:
 
-- RV64 bring-up is framed around a concrete backend-framework dependency graph
-- `emit.cpp` is confirmed as the first integration seam, not just another
-  translated file
+- the translated-unit inventory is explicit
+- the first integration slice is chosen from that inventory
 
-### Step 2: Port the minimal backend framework skeleton to RV64
+### Step 2: Bring translated RV64 codegen units into the build
 
-Goal: establish the same top-level native codegen flow shape that the active
-x86 backend runbook is rebuilding.
+Goal: stop treating RV64 codegen as parked source inventory.
 
 Concrete actions:
 
-- mirror the x86 architecture-reset structure into RV64 where architecture-
-  neutral backend flow should match
-- add or tighten RV64 equivalents for:
-  - unsupported-slice diagnostics
-  - module/function validation
-  - minimal lowering entry points
-  - native code emission staging
-- if needed, allow the same phased bring-up used by x86:
-  ownership wiring first, compile recovery second, regression work later
-- keep the first version intentionally narrow, even if many operations still
-  fail with explicit unsupported diagnostics
+- update the build to compile the first bounded RV64 codegen slice
+- resolve the minimum shared header/type surface needed for that slice
+- avoid broad rewrites; connect only the units needed for the active seam
 
 Completion check:
 
-- `src/backend/riscv/codegen/emit.cpp` owns a real RV64 backend control flow
-- unsupported paths fail at explicit RV64-native boundaries instead of through
-  disconnected helper inventory
+- at least one translated RV64 codegen unit or cluster is compiled
+- the chosen slice is reachable from a real RV64 backend entry boundary
 
-### Step 3: Integrate the first RV64 codegen dependency slice
+### Step 3: Establish a real RV64 codegen ownership seam
 
-Goal: connect the smallest set of helper files needed for an end-to-end native
-RV64 path.
-
-Concrete actions:
-
-- choose the minimum dependency cluster beneath `emit.cpp`, likely from:
-  - `calls.cpp`
-  - `returns.cpp`
-  - `prologue.cpp`
-  - `memory.cpp`
-  - `comparison.cpp`
-- follow the same class/header ownership model now used by x86 rather than
-  leaving RV64 methods trapped in one private emitter translation unit
-- unify any duplicated local stand-in types into the first real RV64 codegen
-  surface where necessary
-- avoid broad cleanup; only consolidate what the emitter integration truly
-  needs
+Goal: make `riscv/codegen/emit.cpp` depend on real translated siblings instead
+of acting as a narrow helper mirror.
 
 Completion check:
 
-- at least one bounded RV64 codegen path is integrated through real shared
-  C++ interfaces rather than file-local stand-ins
+- at least one bounded RV64 codegen path uses real sibling units
+- the active RV64 entry surface is no longer pure structural inventory
 
-### Step 4: Prove one minimal RV64 native path end to end
+### Step 4: Expand RV64 integration carefully
 
-Goal: make one narrow RV64 backend slice actually work through the emitter.
-
-Concrete actions:
-
-- pick the smallest viable supported slice, such as:
-  - affine integer return
-  - simple arithmetic on integer arguments
-  - minimal call/return path
-- add focused regression coverage for that slice
-- verify the path runs through RV64 native codegen ownership rather than
-  placeholder structure only
+Goal: continue consuming the translated inventory in leverage order.
 
 Completion check:
 
-- one narrow RV64-native path is demonstrably owned by the integrated backend
-- the test or internal backend check pins that slice
-
-### Step 5: Expand RV64 codegen breadth without widening scope
-
-Goal: grow native RV64 support while keeping the initiative centered on codegen.
-
-Concrete actions:
-
-- add seams in leverage order from `emit.cpp` outward
-- prefer slices that collapse several future gaps at once:
-  - ABI/register assignment
-  - stack frame setup
-  - loads/stores
-  - comparisons and branches
-  - returns
-- spin assembler/linker work into separate follow-on ideas if they become
-  independently large
-
-Completion check:
-
-- RV64 codegen support expands through intentional emitter-led slices
-- assembler/linker remain clearly out of first-wave ownership
-
-### Step 6: Wire RV64 validation into the existing backend test harness
-
-Goal: make RV64 backend tests runnable from the host without requiring a native
-RV64 machine.
-
-Concrete actions:
-
-- extend the internal backend runtime harness under
-  `tests/c/internal/cmake/run_backend_positive_case.cmake` to support an
-  optional executable runner
-- add RV64 runner configuration based on:
-  - runner: `qemu-riscv64`
-  - runner args: `-L /usr/riscv64-linux-gnu`
-- stop assuming backend-produced binaries always execute directly on the host
-- add the same runner concept to
-  `tests/c/external/c-testsuite/RunCase.cmake`
-- make `tests/TestEntry.cmake` accept an explicit RV64 backend configuration
-  instead of deriving backend mode only from `CMAKE_HOST_SYSTEM_PROCESSOR`
-
-Completion check:
-
-- RV64 backend runtime cases can compile on the host and execute through QEMU
-- the `c-testsuite` backend path can be configured for RV64 cross-run from the
-  host
-
-### Step 7: Bring RV64 into c-testsuite backend coverage
-
-Goal: reach the same style of backend-validation lane that AArch64 and x86 use,
-but through host-side RV64 emulation.
-
-Concrete actions:
-
-- start with a bounded RV64 subset of internal backend runtime cases
-- after the runner path is stable, register RV64 backend `c-testsuite` cases
-- keep the early RV64 lane narrow and explicit rather than pretending all
-  `c-testsuite` backend cases are ready immediately
-- classify failures by boundary:
-  - emitter unsupported slice
-  - asm/toolchain failure
-  - QEMU/runtime mismatch
-  - harness/runner defect
-
-Completion check:
-
-- RV64 has a real backend-validation lane that executes target binaries
-- the lane follows the same oracle style as existing backend tests, while using
-  QEMU for execution on non-RV64 hosts
-
-## Acceptance Criteria
-
-- the repo has an explicit RV64 backend bring-up plan centered on
-  `src/backend/riscv/codegen/emit.cpp`
-- the active x86 backend framework is used as the primary reference structure
-  for RV64 native emitter/lowering bring-up
-- AArch64 is retained only as a secondary target-local reference
-- at least one minimal RV64 codegen path is planned as an end-to-end owned seam
-- assembler and linker are explicitly kept out of first-wave scope
-- the idea defines a concrete RV64 validation strategy based on host-side
-  compile plus `qemu-riscv64` execution
-- the path from internal backend runtime tests to `c-testsuite` backend
-  coverage is explicit
-- any broader RISC-V subsystem work discovered during execution is split into a
-  separate idea instead of silently expanding this one
-
-## Notes
-
-- The translated `src/backend/riscv` tree is now useful as implementation
-  inventory, but not yet evidence of an integrated backend.
-- The first real integration work should follow the backend framework being
-  established by the active x86 architecture-reset runbook; AArch64 is no
-  longer the main structural template.
+- remaining disconnected translated RV64 units are explicit
+- the next ownership-transfer slice is clear
