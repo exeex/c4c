@@ -11,28 +11,50 @@ Source Plan: plan.md
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
   widen the parked translated prologue helper seam beyond the landed split
-  register-plus-stack contract into the next aggregate storage shape without
-  pulling the parked translated prologue owner into the active build yet
+  register-plus-stack and stack-copy contracts into the next aggregate
+  register-storage shape without pulling the parked translated prologue owner
+  into the active build yet
   - keep the slice helper-focused so the shared contract is test-locked before
     any future parked-owner wiring
-  - target the next parked aggregate storage behavior that still needs a
-    shared helper surface after the landed stack-copy and split-register seams
+  - target the parked `ParamClass::StructByValReg` storage behavior that still
+    needs a shared helper surface after the landed stack-copy and split-register
+    seams
 
 ## Next Slice
 
 - widen the helper-backed prologue seam beyond the landed integer-register,
-  `ParamClass::FloatReg`, aggregate stack-copy, and split register-plus-stack
-  helper contracts with the next owner-path candidate staying on parked
-  aggregate storage behavior instead of reopening scalar work
+  `ParamClass::FloatReg`, aggregate stack-copy, split register-plus-stack, and
+  `ParamClass::StructByValReg` helper contracts with the next owner-path
+  candidate staying on parked aggregate storage behavior instead of reopening
+  scalar work
 - keep the translated prologue owner parked out of build until the public
   x86 codegen header exposes enough complete backend surface for
   `src/backend/x86/codegen/prologue.cpp` to compile cleanly
 - continue using build-active direct-emitter slices to lock the intended x86
   parameter-stack behavior meanwhile, with the next widening point remaining on
   parked aggregate storage helper extraction rather than a new ownership switch
+  and likely moving into the mixed register/SSE aggregate branches next
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration added a shared register-backed aggregate storage helper seam
+  for the parked translated x86 prologue owner path:
+  `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp` now expose the
+  bounded `ParamClass::StructByValReg` qword-count, incoming GP register, and
+  destination-slot offset helpers mirrored from the reference prologue copy
+  shape
+- `tests/backend/backend_shared_util_tests.cpp` now locks that contract,
+  including the one- and two-qword aggregate sizes, `rdi` / `rsi` and `r9`
+  register mapping, and destination-slot offset progression for the parked
+  by-value aggregate store path
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation note:
+  skipped for this helper-only parked-owner slice per the current plan note to
+  defer the monotonic full-suite guard until a larger owner-path cutover lands
 
 - this iteration added a shared split register-plus-stack aggregate helper seam
   for the parked translated x86 prologue owner path: `src/backend/x86/codegen/mod.cpp`

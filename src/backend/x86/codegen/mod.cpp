@@ -423,6 +423,21 @@ const char* x86_param_prestore_dest_reg(c4c::backend::PhysReg reg, std::string_v
   return "";
 }
 
+std::size_t x86_param_struct_reg_qword_count(std::size_t size_bytes) {
+  if (size_bytes == 0) {
+    return 0;
+  }
+  return std::min<std::size_t>(2, (size_bytes + 7) / 8);
+}
+
+const char* x86_param_struct_reg_arg_reg(std::size_t base_reg_index, std::size_t qword_index) {
+  return x86_arg_reg_name(base_reg_index + qword_index);
+}
+
+std::int64_t x86_param_struct_reg_dest_offset(std::int64_t slot_offset, std::size_t qword_index) {
+  return slot_offset + static_cast<std::int64_t>(qword_index) * 8;
+}
+
 std::size_t x86_param_aggregate_copy_qword_count(std::size_t size_bytes) {
   return (size_bytes + 7) / 8;
 }

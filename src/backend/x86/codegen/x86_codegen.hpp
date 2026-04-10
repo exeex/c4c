@@ -431,6 +431,9 @@ const char* x86_param_prestore_dest_reg(c4c::backend::PhysReg reg);
 const char* x86_param_prestore_float_move_instr(std::string_view scalar_type);
 const char* x86_param_prestore_float_arg_reg(std::size_t reg_index, std::string_view scalar_type);
 const char* x86_param_prestore_dest_reg(c4c::backend::PhysReg reg, std::string_view scalar_type);
+std::size_t x86_param_struct_reg_qword_count(std::size_t size_bytes);
+const char* x86_param_struct_reg_arg_reg(std::size_t base_reg_index, std::size_t qword_index);
+std::int64_t x86_param_struct_reg_dest_offset(std::int64_t slot_offset, std::size_t qword_index);
 std::size_t x86_param_aggregate_copy_qword_count(std::size_t size_bytes);
 std::int64_t x86_param_aggregate_copy_src_offset(std::int64_t class_stack_offset,
                                                  std::size_t qword_index);
