@@ -6,9 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: preserve the twenty-first extraction slice findings and hand off
-  the refreshed direct-TU comparison, which keeps the reduced
-  `hir_templates.cpp` ahead of the remaining frontend leaders.
+- Step 4: extract the next measured `hir_templates.cpp` helper family, since
+  the refreshed direct-TU comparison still leaves the reduced
+  `hir_templates.cpp` ahead of `hir_expr.cpp`, `hir_stmt.cpp`, and the
+  reduced `stmt_emitter_call_vaarg_amd64.cpp`.
 
 ## Completed
 
@@ -757,3 +758,10 @@ Source Plan: plan.md
   from 3.524s to 3.416s on the direct `HEAD` versus working-tree compile
   comparison, so this deferred-NTTP evaluator split counts as a small but
   measured hotspot reduction for that TU.
+- Refreshed the direct comparison against the remaining leaders:
+  `hir_templates.cpp` now measures 2.672s, `hir_expr.cpp` 2.402s,
+  `hir_stmt.cpp` 2.330s, and the reduced
+  `stmt_emitter_call_vaarg_amd64.cpp` 2.147s.
+- The post-split handoff still keeps `src/frontend/hir/hir_templates.cpp` as
+  the highest direct-TU hotspot, so the next extraction slice should remain in
+  that file instead of switching back to `hir_expr.cpp` or `hir_stmt.cpp`.

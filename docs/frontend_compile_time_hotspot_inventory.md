@@ -645,3 +645,41 @@ Interpretation:
 - With `hir_expr.cpp` reduced to `2.667s`, the next leading frontend hotspot
   in the current direct comparison is now `hir_templates.cpp` at `3.166s`,
   followed closely by `hir_stmt.cpp` at `3.159s`.
+
+## Step 4: Twenty-First Executed Slice
+
+- Extracted the deferred NTTP expression evaluator cluster
+  (`parse_pack_binding_name`, `count_pack_bindings_for_name`,
+  `DeferredNttpExprCursor`, `DeferredNttpExprEnv`,
+  `DeferredNttpTemplateLookup`, `DeferredNttpExprParser`, and
+  `eval_deferred_nttp_expr_hir`) out of
+  `src/frontend/hir/hir_templates.cpp` into the new
+  `src/frontend/hir/hir_templates_deferred_nttp.cpp`.
+- Kept the remaining template deduction, substitution, and owner-resolution
+  flow inside `src/frontend/hir/hir_templates.cpp`, so this remains a
+  translation-unit ownership split rather than a semantic rewrite of template
+  lowering.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_deferred_nttp_cast_static_member_expr_hir.cpp`
+  and wired `cpp_hir_template_deferred_nttp_cast_static_member_expr` into
+  `tests/cpp/internal/InternalTests.cmake`.
+
+## Step 4: Twenty-First Slice Measurements
+
+Optimized single-TU compile timings for the deferred NTTP evaluator split:
+
+| Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
+| --- | ---: | ---: | --- |
+| `src/frontend/hir/hir_templates.cpp` | 3.524 | 3.416 | before compiled from `HEAD`, after from the working tree |
+| `src/frontend/hir/hir_templates_deferred_nttp.cpp` | n/a | 2.361 | new extracted TU |
+
+Interpretation:
+
+- This slice preserved behavior and reduced the main `hir_templates.cpp`
+  hotspot TU by `0.108s`, about `3.1%`.
+- The refreshed direct comparison after the split now reads
+  `hir_templates.cpp` at `2.672s`, `hir_expr.cpp` at `2.402s`,
+  `hir_stmt.cpp` at `2.330s`, and the reduced
+  `stmt_emitter_call_vaarg_amd64.cpp` at `2.147s`.
+- Because `hir_templates.cpp` still leads the remaining direct-TU hotspot
+  tier, the next extraction choice should stay in that file.

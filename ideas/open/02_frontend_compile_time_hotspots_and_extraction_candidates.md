@@ -930,6 +930,66 @@ Follow-on note:
   reduced `src/frontend/hir/hir_expr.cpp` at `2.667s`, so the next iteration
   should move to `hir_templates.cpp`
 
+## 2026-04-10 Step 4 Twenty-First Extraction Slice
+
+The refreshed direct comparison after the builtin layout-query split left
+`src/frontend/hir/hir_templates.cpp` in front at `3.166s`, just ahead of
+`src/frontend/hir/hir_stmt.cpp` at `3.159s`, the reduced
+`src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `3.076s`, and the
+reduced `src/frontend/hir/hir_expr.cpp` at `2.667s`.
+
+That kept the next extraction in `hir_templates.cpp`, where the deferred NTTP
+expression evaluator cluster was the smallest cohesive seam that could move
+behind its own translation-unit boundary.
+
+Executed the deferred NTTP evaluator split:
+
+- moved `parse_pack_binding_name`, `count_pack_bindings_for_name`,
+  `DeferredNttpExprCursor`, `DeferredNttpExprEnv`,
+  `DeferredNttpTemplateLookup`, `DeferredNttpExprParser`, and
+  `eval_deferred_nttp_expr_hir` into the new
+  `src/frontend/hir/hir_templates_deferred_nttp.cpp`
+- kept the remaining template deduction, substitution, and owner-resolution
+  flow in `src/frontend/hir/hir_templates.cpp`, so the change stays a TU
+  ownership split rather than a semantic rewrite of template lowering
+- added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_deferred_nttp_cast_static_member_expr_hir.cpp`
+  and wired `cpp_hir_template_deferred_nttp_cast_static_member_expr` into
+  `tests/cpp/internal/InternalTests.cmake`
+
+Measured result:
+
+- compiling the pre-split `src/frontend/hir/hir_templates.cpp` from `HEAD` on
+  the direct optimized command took `3.524s`
+- the direct post-split rerun of `src/frontend/hir/hir_templates.cpp` took
+  `3.416s`
+- the new `src/frontend/hir/hir_templates_deferred_nttp.cpp` compiles in
+  `2.361s`
+- this means the slice still delivered a measured single-TU compile-time win
+  for the main hotspot TU, reducing `hir_templates.cpp` by `0.108s`
+  (about `3.1%`) on the direct comparison
+
+Validation result:
+
+- focused coverage passed:
+  `cpp_hir_template_deferred_nttp_expr`,
+  `cpp_hir_template_deferred_nttp_arith_expr`,
+  `cpp_hir_template_deferred_nttp_logic_expr`,
+  `cpp_hir_template_deferred_nttp_static_member_expr`,
+  `cpp_hir_template_deferred_nttp_cast_static_member_expr`, and
+  `cpp_hir_template_deferred_nttp_sizeof_pack_expr`
+- full-suite regression guard passed with `3330/3330` tests passing before and
+  `3339/3339` after, with no new failures
+
+Follow-on note:
+
+- a refreshed direct comparison now reads
+  `src/frontend/hir/hir_templates.cpp` at `2.672s`,
+  `src/frontend/hir/hir_expr.cpp` at `2.402s`,
+  `src/frontend/hir/hir_stmt.cpp` at `2.330s`, and the reduced
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `2.147s`, so the
+  next iteration should stay in `hir_templates.cpp`
+
 ## Non-Goals
 
 - no backend architecture work
