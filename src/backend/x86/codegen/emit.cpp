@@ -51,6 +51,18 @@ struct MinimalScalarGlobalStoreReloadSlice {
   std::size_t align_bytes = 4;
 };
 
+struct MinimalGlobalStoreReturnAndEntryReturnSlice {
+  std::string global_name;
+  std::string helper_name;
+  std::string entry_name;
+  std::int64_t init_imm = 0;
+  std::int64_t store_imm = 0;
+  std::int64_t helper_imm = 0;
+  std::int64_t entry_imm = 0;
+  std::size_t align_bytes = 4;
+  bool zero_initializer = false;
+};
+
 struct MinimalGlobalTwoFieldStructStoreSubSubSlice {
   std::string function_name;
   std::string global_name;
@@ -1765,6 +1777,74 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
   };
 }
 
+std::optional<MinimalGlobalStoreReturnAndEntryReturnSlice>
+parse_minimal_global_store_return_and_entry_return_slice(
+    const c4c::backend::bir::Module& module) {
+  using namespace c4c::backend::bir;
+
+  if (module.functions.size() != 2 || module.globals.size() != 1 ||
+      !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_extern || global.type != TypeKind::I32 || !global.initializer.has_value() ||
+      global.initializer->kind != c4c::backend::bir::Value::Kind::Immediate ||
+      global.initializer->type != TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  auto try_match = [&](const Function& helper,
+                       const Function& entry)
+      -> std::optional<MinimalGlobalStoreReturnAndEntryReturnSlice> {
+    if (helper.is_declaration || entry.is_declaration || helper.return_type != TypeKind::I32 ||
+        entry.return_type != TypeKind::I32 || !helper.params.empty() || !entry.params.empty() ||
+        !helper.local_slots.empty() || !entry.local_slots.empty() ||
+        helper.blocks.size() != 1 || entry.blocks.size() != 1) {
+      return std::nullopt;
+    }
+
+    const auto& helper_entry = helper.blocks.front();
+    const auto& entry_entry = entry.blocks.front();
+    const auto* store = helper_entry.insts.size() == 1
+                            ? std::get_if<StoreGlobalInst>(&helper_entry.insts.front())
+                            : nullptr;
+    if (helper_entry.label != "entry" || store == nullptr ||
+        store->global_name != global.name || store->byte_offset != 0 ||
+        store->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        store->value.type != TypeKind::I32 ||
+        helper_entry.terminator.kind != TerminatorKind::Return ||
+        !helper_entry.terminator.value.has_value() ||
+        helper_entry.terminator.value->kind != c4c::backend::bir::Value::Kind::Immediate ||
+        helper_entry.terminator.value->type != TypeKind::I32 ||
+        entry_entry.label != "entry" || !entry_entry.insts.empty() ||
+        entry_entry.terminator.kind != TerminatorKind::Return ||
+        !entry_entry.terminator.value.has_value() ||
+        entry_entry.terminator.value->kind != c4c::backend::bir::Value::Kind::Immediate ||
+        entry_entry.terminator.value->type != TypeKind::I32) {
+      return std::nullopt;
+    }
+
+    return MinimalGlobalStoreReturnAndEntryReturnSlice{
+        .global_name = global.name,
+        .helper_name = helper.name,
+        .entry_name = entry.name,
+        .init_imm = global.initializer->immediate,
+        .store_imm = store->value.immediate,
+        .helper_imm = helper_entry.terminator.value->immediate,
+        .entry_imm = entry_entry.terminator.value->immediate,
+        .align_bytes = store->align_bytes > 0 ? store->align_bytes : 4,
+        .zero_initializer = global.initializer->immediate == 0,
+    };
+  };
+
+  if (const auto parsed = try_match(module.functions.front(), module.functions.back());
+      parsed.has_value()) {
+    return parsed;
+  }
+  return try_match(module.functions.back(), module.functions.front());
+}
+
 std::optional<MinimalGlobalTwoFieldStructStoreSubSubSlice>
 parse_minimal_global_two_field_struct_store_sub_sub_slice(
     const c4c::backend::bir::Module& module) {
@@ -2692,6 +2772,48 @@ std::string emit_minimal_scalar_global_store_reload_asm(
   return out.str();
 }
 
+std::string emit_minimal_global_store_return_and_entry_return_asm(
+    std::string_view target_triple,
+    const MinimalGlobalStoreReturnAndEntryReturnSlice& slice) {
+  if (slice.init_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.init_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.store_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.store_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.helper_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.helper_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.entry_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.entry_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw std::invalid_argument(
+        "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
+  }
+
+  const auto global_symbol = asm_symbol_name(target_triple, slice.global_name);
+  const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << emit_global_symbol_prelude(target_triple, global_symbol, slice.align_bytes,
+                                    slice.zero_initializer);
+  if (slice.zero_initializer) {
+    out << "  .zero 4\n";
+  } else {
+    out << "  .long " << slice.init_imm << "\n";
+  }
+  if (target_triple.find("apple-darwin") == std::string::npos) {
+    out << ".size " << global_symbol << ", 4\n";
+  }
+  out << ".text\n"
+      << emit_function_prelude(target_triple, helper_symbol)
+      << "  lea rax, " << global_symbol << "[rip]\n"
+      << "  mov dword ptr [rax], " << slice.store_imm << "\n"
+      << "  mov eax, " << slice.helper_imm << "\n"
+      << "  ret\n"
+      << emit_function_prelude(target_triple, entry_symbol)
+      << "  mov eax, " << slice.entry_imm << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_global_two_field_struct_store_sub_sub_asm(
     std::string_view target_triple,
     const MinimalGlobalTwoFieldStructStoreSubSubSlice& slice) {
@@ -3383,6 +3505,10 @@ std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& modu
   if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
       slice.has_value()) {
     return emit_minimal_scalar_global_store_reload_asm(module.target_triple, *slice);
+  }
+  if (const auto slice = parse_minimal_global_store_return_and_entry_return_slice(module);
+      slice.has_value()) {
+    return emit_minimal_global_store_return_and_entry_return_asm(module.target_triple, *slice);
   }
   if (const auto slice = parse_minimal_global_two_field_struct_store_sub_sub_slice(module);
       slice.has_value()) {

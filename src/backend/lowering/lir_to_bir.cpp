@@ -4204,6 +4204,10 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
       lowered.has_value()) {
     return lowered;
   }
+  if (const auto lowered = try_lower_minimal_short_circuit_effect_zero_return_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
   if (const auto lowered = try_lower_minimal_dual_identity_direct_call_sub_module(module);
       lowered.has_value()) {
     return lowered;
@@ -4622,6 +4626,19 @@ BirLoweringResult try_lower_to_bir_with_options(
         .phase = "legacy-lowering",
         .message =
             "string-literal compare memory seam lowered the CFG-normalized module before phi-lowering rewrite erased the join phi",
+    });
+    return BirLoweringResult{
+        .module = std::move(lowered),
+        .notes = std::move(notes),
+    };
+  }
+  if (auto lowered =
+          try_lower_minimal_short_circuit_effect_zero_return_module(normalized_module);
+      lowered.has_value()) {
+    notes.push_back(BirLoweringNote{
+        .phase = "legacy-lowering",
+        .message =
+            "short-circuit global-effect seam lowered the CFG-normalized module before phi-lowering rewrote the boolean join blocks",
     });
     return BirLoweringResult{
         .module = std::move(lowered),

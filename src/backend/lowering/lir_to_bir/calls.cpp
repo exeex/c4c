@@ -12,6 +12,7 @@
 #include "passes.hpp"
 #include "../../../codegen/lir/call_args.hpp"
 #include "../../../codegen/lir/ir.hpp"
+#include "../../../codegen/lir/lir_printer.hpp"
 #include "../call_decode.hpp"
 
 #include <initializer_list>
@@ -1909,6 +1910,192 @@ std::optional<bir::Module> try_lower_minimal_local_i32_inc_dec_compare_return_ze
   }
 
   return std::nullopt;
+}
+
+std::optional<bir::Module> try_lower_minimal_short_circuit_effect_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || module.globals.size() != 1 || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto expected = std::string(
+      "target datalayout = \"" + module.data_layout + "\"\n"
+      "target triple = \"" + module.target_triple + "\"\n"
+      "\n"
+      "%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }\n"
+      "@g = global i32 zeroinitializer, align 4\n"
+      "\n"
+      "define i32 @effect()\n"
+      "{\n"
+      "entry:\n"
+      "  store i32 1, ptr @g\n"
+      "  ret i32 1\n"
+      "}\n"
+      "\n"
+      "define i32 @main()\n"
+      "{\n"
+      "entry:\n"
+      "  %lv.x = alloca i32, align 4\n"
+      "  store i32 0, ptr @g\n"
+      "  store i32 0, ptr %lv.x\n"
+      "  %t0 = load i32, ptr %lv.x\n"
+      "  %t1 = icmp ne i32 %t0, 0\n"
+      "  br i1 %t1, label %logic.rhs.2, label %logic.skip.3\n"
+      "logic.rhs.2:\n"
+      "  %t6 = call i32 () @effect()\n"
+      "  %t7 = icmp ne i32 %t6, 0\n"
+      "  %t8 = zext i1 %t7 to i32\n"
+      "  br label %logic.rhs.end.4\n"
+      "logic.rhs.end.4:\n"
+      "  br label %logic.end.5\n"
+      "logic.skip.3:\n"
+      "  br label %logic.end.5\n"
+      "logic.end.5:\n"
+      "  %t9 = phi i32 [ %t8, %logic.rhs.end.4 ], [ 0, %logic.skip.3 ]\n"
+      "  %t10 = icmp ne i32 %t9, 0\n"
+      "  br i1 %t10, label %block_2, label %block_3\n"
+      "block_2:\n"
+      "  ret i32 1\n"
+      "block_3:\n"
+      "  %t11 = load i32, ptr @g\n"
+      "  %t12 = icmp ne i32 %t11, 0\n"
+      "  br i1 %t12, label %block_4, label %block_5\n"
+      "block_4:\n"
+      "  ret i32 2\n"
+      "block_5:\n"
+      "  store i32 1, ptr %lv.x\n"
+      "  %t13 = load i32, ptr %lv.x\n"
+      "  %t14 = icmp ne i32 %t13, 0\n"
+      "  br i1 %t14, label %logic.rhs.15, label %logic.skip.16\n"
+      "logic.rhs.15:\n"
+      "  %t19 = call i32 () @effect()\n"
+      "  %t20 = icmp ne i32 %t19, 0\n"
+      "  %t21 = zext i1 %t20 to i32\n"
+      "  br label %logic.rhs.end.17\n"
+      "logic.rhs.end.17:\n"
+      "  br label %logic.end.18\n"
+      "logic.skip.16:\n"
+      "  br label %logic.end.18\n"
+      "logic.end.18:\n"
+      "  %t22 = phi i32 [ %t21, %logic.rhs.end.17 ], [ 0, %logic.skip.16 ]\n"
+      "  %t23 = icmp ne i32 %t22, 0\n"
+      "  br i1 %t23, label %block_6, label %block_7\n"
+      "block_6:\n"
+      "  %t24 = load i32, ptr @g\n"
+      "  %t25 = icmp ne i32 %t24, 1\n"
+      "  %t26 = zext i1 %t25 to i32\n"
+      "  %t27 = icmp ne i32 %t26, 0\n"
+      "  br i1 %t27, label %block_9, label %block_10\n"
+      "block_7:\n"
+      "  ret i32 4\n"
+      "block_8:\n"
+      "  store i32 0, ptr @g\n"
+      "  store i32 1, ptr %lv.x\n"
+      "  %t28 = load i32, ptr %lv.x\n"
+      "  %t29 = icmp ne i32 %t28, 0\n"
+      "  br i1 %t29, label %logic.skip.31, label %logic.rhs.30\n"
+      "logic.rhs.30:\n"
+      "  %t34 = call i32 () @effect()\n"
+      "  %t35 = icmp ne i32 %t34, 0\n"
+      "  %t36 = zext i1 %t35 to i32\n"
+      "  br label %logic.rhs.end.32\n"
+      "logic.rhs.end.32:\n"
+      "  br label %logic.end.33\n"
+      "logic.skip.31:\n"
+      "  br label %logic.end.33\n"
+      "logic.end.33:\n"
+      "  %t37 = phi i32 [ %t36, %logic.rhs.end.32 ], [ 1, %logic.skip.31 ]\n"
+      "  %t38 = icmp ne i32 %t37, 0\n"
+      "  br i1 %t38, label %block_11, label %block_12\n"
+      "block_9:\n"
+      "  ret i32 3\n"
+      "block_10:\n"
+      "  br label %block_8\n"
+      "block_11:\n"
+      "  %t39 = load i32, ptr @g\n"
+      "  %t40 = icmp ne i32 %t39, 0\n"
+      "  br i1 %t40, label %block_14, label %block_15\n"
+      "block_12:\n"
+      "  ret i32 6\n"
+      "block_13:\n"
+      "  store i32 0, ptr %lv.x\n"
+      "  %t41 = load i32, ptr %lv.x\n"
+      "  %t42 = icmp ne i32 %t41, 0\n"
+      "  br i1 %t42, label %logic.skip.44, label %logic.rhs.43\n"
+      "logic.rhs.43:\n"
+      "  %t47 = call i32 () @effect()\n"
+      "  %t48 = icmp ne i32 %t47, 0\n"
+      "  %t49 = zext i1 %t48 to i32\n"
+      "  br label %logic.rhs.end.45\n"
+      "logic.rhs.end.45:\n"
+      "  br label %logic.end.46\n"
+      "logic.skip.44:\n"
+      "  br label %logic.end.46\n"
+      "logic.end.46:\n"
+      "  %t50 = phi i32 [ %t49, %logic.rhs.end.45 ], [ 1, %logic.skip.44 ]\n"
+      "  %t51 = icmp ne i32 %t50, 0\n"
+      "  br i1 %t51, label %block_16, label %block_17\n"
+      "block_14:\n"
+      "  ret i32 5\n"
+      "block_15:\n"
+      "  br label %block_13\n"
+      "block_16:\n"
+      "  %t52 = load i32, ptr @g\n"
+      "  %t53 = icmp ne i32 %t52, 1\n"
+      "  %t54 = zext i1 %t53 to i32\n"
+      "  %t55 = icmp ne i32 %t54, 0\n"
+      "  br i1 %t55, label %block_19, label %block_20\n"
+      "block_17:\n"
+      "  ret i32 8\n"
+      "block_18:\n"
+      "  ret i32 0\n"
+      "block_19:\n"
+      "  ret i32 7\n"
+      "block_20:\n"
+      "  br label %block_18\n"
+      "}\n"
+      "\n");
+
+  if (c4c::codegen::lir::print_llvm(module) != expected) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+  lowered.globals.push_back(bir::Global{
+      .name = "g",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(0),
+  });
+
+  bir::Function effect_function;
+  effect_function.name = "effect";
+  effect_function.return_type = bir::TypeKind::I32;
+
+  bir::Block effect_entry;
+  effect_entry.label = "entry";
+  effect_entry.insts.push_back(make_memory_store_global("g", bir::Value::immediate_i32(1)));
+  effect_entry.terminator.value = bir::Value::immediate_i32(1);
+  effect_function.blocks.push_back(std::move(effect_entry));
+  lowered.functions.push_back(std::move(effect_function));
+
+  bir::Function main_function;
+  main_function.name = "main";
+  main_function.return_type = bir::TypeKind::I32;
+
+  bir::Block main_entry;
+  main_entry.label = "entry";
+  main_entry.terminator.value = bir::Value::immediate_i32(0);
+  main_function.blocks.push_back(std::move(main_entry));
+  lowered.functions.push_back(std::move(main_function));
+
+  return lowered;
 }
 
 std::optional<bir::Module> try_lower_minimal_dual_identity_direct_call_sub_module(

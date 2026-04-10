@@ -1842,6 +1842,301 @@ c4c::codegen::lir::LirModule make_bir_minimal_direct_call_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_minimal_short_circuit_effect_zero_return_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0}, "g", {}, false, false, "", "global ", "i32", "zeroinitializer", 4, false});
+
+  LirFunction effect;
+  effect.name = "effect";
+  effect.signature_text = "define i32 @effect()\n";
+  effect.entry = LirBlockId{0};
+  LirBlock effect_entry;
+  effect_entry.id = LirBlockId{0};
+  effect_entry.label = "entry";
+  effect_entry.insts.push_back(LirStoreOp{"i32", "1", "@g"});
+  effect_entry.terminator = LirRet{std::string("1"), "i32"};
+  effect.blocks.push_back(std::move(effect_entry));
+  module.functions.push_back(std::move(effect));
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+  main_function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "0", "@g"});
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  entry.insts.push_back(LirCmpOp{"%t1", false, "ne", "i32", "%t0", "0"});
+  entry.terminator = LirCondBr{"%t1", "logic.rhs.2", "logic.skip.3"};
+  main_function.blocks.push_back(std::move(entry));
+
+  LirBlock rhs_2;
+  rhs_2.id = LirBlockId{1};
+  rhs_2.label = "logic.rhs.2";
+  rhs_2.insts.push_back(LirCallOp{"%t6", "i32", "@effect", "", ""});
+  rhs_2.insts.push_back(LirCmpOp{"%t7", false, "ne", "i32", "%t6", "0"});
+  rhs_2.insts.push_back(LirCastOp{"%t8", LirCastKind::ZExt, "i1", "%t7", "i32"});
+  rhs_2.terminator = LirBr{"logic.rhs.end.4"};
+  main_function.blocks.push_back(std::move(rhs_2));
+
+  LirBlock rhs_end_4;
+  rhs_end_4.id = LirBlockId{2};
+  rhs_end_4.label = "logic.rhs.end.4";
+  rhs_end_4.terminator = LirBr{"logic.end.5"};
+  main_function.blocks.push_back(std::move(rhs_end_4));
+
+  LirBlock skip_3;
+  skip_3.id = LirBlockId{3};
+  skip_3.label = "logic.skip.3";
+  skip_3.terminator = LirBr{"logic.end.5"};
+  main_function.blocks.push_back(std::move(skip_3));
+
+  LirBlock join_5;
+  join_5.id = LirBlockId{4};
+  join_5.label = "logic.end.5";
+  join_5.insts.push_back(LirPhiOp{"%t9", "i32", {{"%t8", "logic.rhs.end.4"}, {"0", "logic.skip.3"}}});
+  join_5.insts.push_back(LirCmpOp{"%t10", false, "ne", "i32", "%t9", "0"});
+  join_5.terminator = LirCondBr{"%t10", "block_2", "block_3"};
+  main_function.blocks.push_back(std::move(join_5));
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{5};
+  block_2.label = "block_2";
+  block_2.terminator = LirRet{std::string("1"), "i32"};
+  main_function.blocks.push_back(std::move(block_2));
+
+  LirBlock block_3;
+  block_3.id = LirBlockId{6};
+  block_3.label = "block_3";
+  block_3.insts.push_back(LirLoadOp{"%t11", "i32", "@g"});
+  block_3.insts.push_back(LirCmpOp{"%t12", false, "ne", "i32", "%t11", "0"});
+  block_3.terminator = LirCondBr{"%t12", "block_4", "block_5"};
+  main_function.blocks.push_back(std::move(block_3));
+
+  LirBlock block_4;
+  block_4.id = LirBlockId{7};
+  block_4.label = "block_4";
+  block_4.terminator = LirRet{std::string("2"), "i32"};
+  main_function.blocks.push_back(std::move(block_4));
+
+  LirBlock block_5;
+  block_5.id = LirBlockId{8};
+  block_5.label = "block_5";
+  block_5.insts.push_back(LirStoreOp{"i32", "1", "%lv.x"});
+  block_5.insts.push_back(LirLoadOp{"%t13", "i32", "%lv.x"});
+  block_5.insts.push_back(LirCmpOp{"%t14", false, "ne", "i32", "%t13", "0"});
+  block_5.terminator = LirCondBr{"%t14", "logic.rhs.15", "logic.skip.16"};
+  main_function.blocks.push_back(std::move(block_5));
+
+  LirBlock rhs_15;
+  rhs_15.id = LirBlockId{9};
+  rhs_15.label = "logic.rhs.15";
+  rhs_15.insts.push_back(LirCallOp{"%t19", "i32", "@effect", "", ""});
+  rhs_15.insts.push_back(LirCmpOp{"%t20", false, "ne", "i32", "%t19", "0"});
+  rhs_15.insts.push_back(LirCastOp{"%t21", LirCastKind::ZExt, "i1", "%t20", "i32"});
+  rhs_15.terminator = LirBr{"logic.rhs.end.17"};
+  main_function.blocks.push_back(std::move(rhs_15));
+
+  LirBlock rhs_end_17;
+  rhs_end_17.id = LirBlockId{10};
+  rhs_end_17.label = "logic.rhs.end.17";
+  rhs_end_17.terminator = LirBr{"logic.end.18"};
+  main_function.blocks.push_back(std::move(rhs_end_17));
+
+  LirBlock skip_16;
+  skip_16.id = LirBlockId{11};
+  skip_16.label = "logic.skip.16";
+  skip_16.terminator = LirBr{"logic.end.18"};
+  main_function.blocks.push_back(std::move(skip_16));
+
+  LirBlock join_18;
+  join_18.id = LirBlockId{12};
+  join_18.label = "logic.end.18";
+  join_18.insts.push_back(LirPhiOp{"%t22", "i32", {{"%t21", "logic.rhs.end.17"}, {"0", "logic.skip.16"}}});
+  join_18.insts.push_back(LirCmpOp{"%t23", false, "ne", "i32", "%t22", "0"});
+  join_18.terminator = LirCondBr{"%t23", "block_6", "block_7"};
+  main_function.blocks.push_back(std::move(join_18));
+
+  LirBlock block_6;
+  block_6.id = LirBlockId{13};
+  block_6.label = "block_6";
+  block_6.insts.push_back(LirLoadOp{"%t24", "i32", "@g"});
+  block_6.insts.push_back(LirCmpOp{"%t25", false, "ne", "i32", "%t24", "1"});
+  block_6.insts.push_back(LirCastOp{"%t26", LirCastKind::ZExt, "i1", "%t25", "i32"});
+  block_6.insts.push_back(LirCmpOp{"%t27", false, "ne", "i32", "%t26", "0"});
+  block_6.terminator = LirCondBr{"%t27", "block_9", "block_10"};
+  main_function.blocks.push_back(std::move(block_6));
+
+  LirBlock block_7;
+  block_7.id = LirBlockId{14};
+  block_7.label = "block_7";
+  block_7.terminator = LirRet{std::string("4"), "i32"};
+  main_function.blocks.push_back(std::move(block_7));
+
+  LirBlock block_8;
+  block_8.id = LirBlockId{15};
+  block_8.label = "block_8";
+  block_8.insts.push_back(LirStoreOp{"i32", "0", "@g"});
+  block_8.insts.push_back(LirStoreOp{"i32", "1", "%lv.x"});
+  block_8.insts.push_back(LirLoadOp{"%t28", "i32", "%lv.x"});
+  block_8.insts.push_back(LirCmpOp{"%t29", false, "ne", "i32", "%t28", "0"});
+  block_8.terminator = LirCondBr{"%t29", "logic.skip.31", "logic.rhs.30"};
+  main_function.blocks.push_back(std::move(block_8));
+
+  LirBlock rhs_30;
+  rhs_30.id = LirBlockId{16};
+  rhs_30.label = "logic.rhs.30";
+  rhs_30.insts.push_back(LirCallOp{"%t34", "i32", "@effect", "", ""});
+  rhs_30.insts.push_back(LirCmpOp{"%t35", false, "ne", "i32", "%t34", "0"});
+  rhs_30.insts.push_back(LirCastOp{"%t36", LirCastKind::ZExt, "i1", "%t35", "i32"});
+  rhs_30.terminator = LirBr{"logic.rhs.end.32"};
+  main_function.blocks.push_back(std::move(rhs_30));
+
+  LirBlock rhs_end_32;
+  rhs_end_32.id = LirBlockId{17};
+  rhs_end_32.label = "logic.rhs.end.32";
+  rhs_end_32.terminator = LirBr{"logic.end.33"};
+  main_function.blocks.push_back(std::move(rhs_end_32));
+
+  LirBlock skip_31;
+  skip_31.id = LirBlockId{18};
+  skip_31.label = "logic.skip.31";
+  skip_31.terminator = LirBr{"logic.end.33"};
+  main_function.blocks.push_back(std::move(skip_31));
+
+  LirBlock join_33;
+  join_33.id = LirBlockId{19};
+  join_33.label = "logic.end.33";
+  join_33.insts.push_back(LirPhiOp{"%t37", "i32", {{"%t36", "logic.rhs.end.32"}, {"1", "logic.skip.31"}}});
+  join_33.insts.push_back(LirCmpOp{"%t38", false, "ne", "i32", "%t37", "0"});
+  join_33.terminator = LirCondBr{"%t38", "block_11", "block_12"};
+  main_function.blocks.push_back(std::move(join_33));
+
+  LirBlock block_9;
+  block_9.id = LirBlockId{20};
+  block_9.label = "block_9";
+  block_9.terminator = LirRet{std::string("3"), "i32"};
+  main_function.blocks.push_back(std::move(block_9));
+
+  LirBlock block_10;
+  block_10.id = LirBlockId{21};
+  block_10.label = "block_10";
+  block_10.terminator = LirBr{"block_8"};
+  main_function.blocks.push_back(std::move(block_10));
+
+  LirBlock block_11;
+  block_11.id = LirBlockId{22};
+  block_11.label = "block_11";
+  block_11.insts.push_back(LirLoadOp{"%t39", "i32", "@g"});
+  block_11.insts.push_back(LirCmpOp{"%t40", false, "ne", "i32", "%t39", "0"});
+  block_11.terminator = LirCondBr{"%t40", "block_14", "block_15"};
+  main_function.blocks.push_back(std::move(block_11));
+
+  LirBlock block_12;
+  block_12.id = LirBlockId{23};
+  block_12.label = "block_12";
+  block_12.terminator = LirRet{std::string("6"), "i32"};
+  main_function.blocks.push_back(std::move(block_12));
+
+  LirBlock block_13;
+  block_13.id = LirBlockId{24};
+  block_13.label = "block_13";
+  block_13.insts.push_back(LirStoreOp{"i32", "0", "%lv.x"});
+  block_13.insts.push_back(LirLoadOp{"%t41", "i32", "%lv.x"});
+  block_13.insts.push_back(LirCmpOp{"%t42", false, "ne", "i32", "%t41", "0"});
+  block_13.terminator = LirCondBr{"%t42", "logic.skip.44", "logic.rhs.43"};
+  main_function.blocks.push_back(std::move(block_13));
+
+  LirBlock rhs_43;
+  rhs_43.id = LirBlockId{25};
+  rhs_43.label = "logic.rhs.43";
+  rhs_43.insts.push_back(LirCallOp{"%t47", "i32", "@effect", "", ""});
+  rhs_43.insts.push_back(LirCmpOp{"%t48", false, "ne", "i32", "%t47", "0"});
+  rhs_43.insts.push_back(LirCastOp{"%t49", LirCastKind::ZExt, "i1", "%t48", "i32"});
+  rhs_43.terminator = LirBr{"logic.rhs.end.45"};
+  main_function.blocks.push_back(std::move(rhs_43));
+
+  LirBlock rhs_end_45;
+  rhs_end_45.id = LirBlockId{26};
+  rhs_end_45.label = "logic.rhs.end.45";
+  rhs_end_45.terminator = LirBr{"logic.end.46"};
+  main_function.blocks.push_back(std::move(rhs_end_45));
+
+  LirBlock skip_44;
+  skip_44.id = LirBlockId{27};
+  skip_44.label = "logic.skip.44";
+  skip_44.terminator = LirBr{"logic.end.46"};
+  main_function.blocks.push_back(std::move(skip_44));
+
+  LirBlock join_46;
+  join_46.id = LirBlockId{28};
+  join_46.label = "logic.end.46";
+  join_46.insts.push_back(LirPhiOp{"%t50", "i32", {{"%t49", "logic.rhs.end.45"}, {"1", "logic.skip.44"}}});
+  join_46.insts.push_back(LirCmpOp{"%t51", false, "ne", "i32", "%t50", "0"});
+  join_46.terminator = LirCondBr{"%t51", "block_16", "block_17"};
+  main_function.blocks.push_back(std::move(join_46));
+
+  LirBlock block_14;
+  block_14.id = LirBlockId{29};
+  block_14.label = "block_14";
+  block_14.terminator = LirRet{std::string("5"), "i32"};
+  main_function.blocks.push_back(std::move(block_14));
+
+  LirBlock block_15;
+  block_15.id = LirBlockId{30};
+  block_15.label = "block_15";
+  block_15.terminator = LirBr{"block_13"};
+  main_function.blocks.push_back(std::move(block_15));
+
+  LirBlock block_16;
+  block_16.id = LirBlockId{31};
+  block_16.label = "block_16";
+  block_16.insts.push_back(LirLoadOp{"%t52", "i32", "@g"});
+  block_16.insts.push_back(LirCmpOp{"%t53", false, "ne", "i32", "%t52", "1"});
+  block_16.insts.push_back(LirCastOp{"%t54", LirCastKind::ZExt, "i1", "%t53", "i32"});
+  block_16.insts.push_back(LirCmpOp{"%t55", false, "ne", "i32", "%t54", "0"});
+  block_16.terminator = LirCondBr{"%t55", "block_19", "block_20"};
+  main_function.blocks.push_back(std::move(block_16));
+
+  LirBlock block_17;
+  block_17.id = LirBlockId{32};
+  block_17.label = "block_17";
+  block_17.terminator = LirRet{std::string("8"), "i32"};
+  main_function.blocks.push_back(std::move(block_17));
+
+  LirBlock block_18;
+  block_18.id = LirBlockId{33};
+  block_18.label = "block_18";
+  block_18.terminator = LirRet{std::string("0"), "i32"};
+  main_function.blocks.push_back(std::move(block_18));
+
+  LirBlock block_19;
+  block_19.id = LirBlockId{34};
+  block_19.label = "block_19";
+  block_19.terminator = LirRet{std::string("7"), "i32"};
+  main_function.blocks.push_back(std::move(block_19));
+
+  LirBlock block_20;
+  block_20.id = LirBlockId{35};
+  block_20.label = "block_20";
+  block_20.terminator = LirBr{"block_18"};
+  main_function.blocks.push_back(std::move(block_20));
+
+  module.functions.push_back(std::move(main_function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_declared_direct_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -4178,6 +4473,32 @@ void test_bir_lowering_accepts_minimal_local_i32_inc_dec_compare_return_zero_lir
                   "the lowered local-slot inc/dec compare slice should keep the one helper definition in the shared BIR module");
   expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
                   "the lowered local-slot inc/dec compare slice should print the folded main immediate return");
+}
+
+void test_bir_lowering_accepts_minimal_short_circuit_effect_zero_return_lir_module() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_short_circuit_effect_zero_return_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded short-circuit global-effect zero-return LIR slice");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->globals.size() == 1 &&
+                  lowered->globals[0].name == "g" &&
+                  lowered->functions.size() == 2 &&
+                  lowered->functions[0].name == "effect" &&
+                  lowered->functions[1].name == "main" &&
+                  lowered->functions[0].blocks.front().insts.size() == 1 &&
+                  lowered->functions[1].blocks.front().terminator.value ==
+                      c4c::backend::bir::Value::immediate_i32(0),
+              "the lowered short-circuit effect slice should preserve the global-plus-helper ownership while folding main to the exact zero return");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @effect() -> i32 {\nentry:\n  bir.store_global @g, i32 1\n  bir.ret i32 1\n}\n",
+                  "the lowered short-circuit effect slice should preserve the helper side effect and return in shared BIR");
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered short-circuit effect slice should print the folded main immediate return");
 }
 
 void test_bir_lowering_accepts_minimal_string_literal_compare_phi_return_lir_module() {
@@ -6810,6 +7131,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_local_i32_store_and_sub_lir_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_store_xor_sub_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_local_i32_inc_dec_compare_return_zero_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_short_circuit_effect_zero_return_lir_module);
   RUN_TEST(test_bir_lowering_infers_extern_decl_params_from_typed_call_lir_module);
   RUN_TEST(test_bir_lowering_uses_typed_declared_direct_call_metadata_when_text_is_stale);
   RUN_TEST(test_bir_lowering_uses_typed_extern_declared_direct_call_metadata_when_text_is_stale);
