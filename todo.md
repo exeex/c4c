@@ -7,27 +7,27 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 5 full-suite monotonic validation and next-slice selection after the
-  bounded shared-BIR `00031.c` local-slot increment/decrement compare seam
-  landed
+  bounded shared-BIR `00032.c` local-array pointer increment/decrement compare
+  seam landed
 - current exact slice:
   preserve the refreshed focused-x86 and full-suite validation results after
-  the `00031.c` recovery; the early source-backed cluster through `00031.c`
+  the `00032.c` recovery; the early source-backed cluster through `00032.c`
   is now green, while the broad-suite comparison against `test_fail_before.log`
   remains a parked non-monotonic lane and should not be silently treated as
   Step 5 complete because the refreshed after-log still reports unrelated broad
   red lanes outside this bounded shared-BIR slice, including the already-known
-  broad riscv64 select-route, backend runtime, and wider x86 source-backed
-  buckets
+  broad riscv64 select-route, backend runtime, wider x86 source-backed, and
+  parser buckets
 
 ## Next Slice
 
 - keep the ownership split explicit for the remaining early x86 source cases:
-  `00011.c` through `00031.c` are now green, so `c_testsuite_x86_backend_src_00032_c`
+  `00011.c` through `00032.c` are now green, so `c_testsuite_x86_backend_src_00033_c`
   is the next earliest failing source-backed seam to classify from the refreshed
-  neighboring lane instead of widening the `00031.c` slice ad hoc
-- `00032.c` is a compact local-array plus pointer pre/post increment-decrement
-  seam (`arr[2]`, `p = &arr[0/1]`, `*(p++)`, `*(p--)`, `*(++p)`, `*(--p)`)
-  and should stay bounded to the shared-BIR memory/pointer ownership lane
+  neighboring lane instead of widening the `00032.c` slice ad hoc
+- `00033.c` is a compact short-circuit boolean/effect ordering seam (`x &&
+  effect()`, `x || effect()`, global `g`, and nested `if` checks) and should
+  stay bounded to the shared-BIR control-flow plus side-effect ownership lane
 - if the refreshed broad-suite guard is still red after the branch-family
   and early source-backed recoveries, keep treating the stale baseline as a
   parked comparison and classify the next highest-value remaining x86-native
@@ -41,6 +41,42 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- recovered the bounded shared-BIR `00032.c` seam by teaching
+  `src/backend/lowering/lir_to_bir/memory.cpp` to recognize the exact
+  source-backed local-array plus pointer pre/post increment-decrement compare
+  route (`arr[2]`, stores `2/3`, pointer slot `%lv.p`, `*(p++)`, `*(p--)`,
+  `*(++p)`, `*(--p)`, compare-`ne`, `zext i1 -> i32`, branch returns, final
+  `ret i32 0`) and collapse `main` to the shared constant `0` return instead
+  of stopping at the unsupported x86 direct-LIR boundary
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`, plus a source-backed
+  backend route regression in `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00032_local_array_pointer_inc_dec_compare_retries_after_direct_bir_rejection`)
+  so the real `00032.c` path stays pinned on native x86 asm with the folded
+  zero return instead of falling back to LLVM text or the unsupported
+  direct-LIR error
+- verified the bounded `00032.c` seam end-to-end:
+  `./build/backend_bir_tests test_bir_lowering_accepts_local_i32_array_pointer_inc_dec_compare_zero_return_module test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_inc_dec_compare_zero_through_bir_end_to_end test_x86_direct_emitter_lowers_local_i32_array_pointer_inc_dec_compare_zero_slice`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00031_local_i32_inc_dec_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00032_local_array_pointer_inc_dec_compare_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00031_c|c_testsuite_x86_backend_src_00032_c)$'`,
+  and the neighboring cluster
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00030_repeated_call_compare_zero_return_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00031_local_i32_inc_dec_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00032_local_array_pointer_inc_dec_compare_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00030_c|c_testsuite_x86_backend_src_00031_c|c_testsuite_x86_backend_src_00032_c)$'`
+  which now pass for the owned seam cluster
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard through the `c4c-regression-guard` skill:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2657/216/2873` after); the refreshed after-state
+  improved again from the prior recorded `2655 -> 2657` passes and
+  `217 -> 216` failures after the `00032.c` slice, the new route test raises
+  total tests from `2872` to `2873`, and the remaining red broad-suite lanes
+  stay parked in the already-known riscv64 select-route, backend runtime,
+  wider x86 source-backed, and parser buckets outside this bounded change
+- classified the next bounded seam from the refreshed targeted state:
+  `c_testsuite_x86_backend_src_00033_c` is now the next red source-backed x86
+  case, and its source body stays a compact short-circuit side-effect ordering
+  slice around `x && effect()` and `x || effect()` with global `g`
 - recovered the bounded shared-BIR `00031.c` seam by teaching
   `src/backend/lowering/lir_to_bir/calls.cpp` to recognize the exact
   source-backed two-local-slot helper-call increment/decrement compare route

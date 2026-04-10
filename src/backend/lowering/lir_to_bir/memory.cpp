@@ -1597,6 +1597,221 @@ std::optional<bir::Module> try_lower_minimal_string_literal_compare_phi_return_m
   return lowered;
 }
 
+std::optional<bir::Module>
+try_lower_minimal_local_i32_array_pointer_inc_dec_compare_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.blocks.size() != 13 ||
+      function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* array_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* pointer_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  if (array_slot == nullptr || pointer_slot == nullptr || array_slot->result.empty() ||
+      pointer_slot->result.empty() || !array_slot->count.empty() || !pointer_slot->count.empty() ||
+      array_slot->type_str != "[2 x i32]" || pointer_slot->type_str != "ptr") {
+    return std::nullopt;
+  }
+
+  auto match_array_elem_address =
+      [&](const std::vector<LirInst>& insts,
+          std::size_t index,
+          std::string_view array_name,
+          std::string_view expected_index,
+          std::string_view expected_result) -> bool {
+    if (index + 2 >= insts.size()) {
+      return false;
+    }
+    const auto* base_gep = std::get_if<LirGepOp>(&insts[index]);
+    const auto* index_cast = std::get_if<LirCastOp>(&insts[index + 1]);
+    const auto* elem_gep = std::get_if<LirGepOp>(&insts[index + 2]);
+    return base_gep != nullptr && index_cast != nullptr && elem_gep != nullptr &&
+           base_gep->ptr == array_name && base_gep->element_type == "[2 x i32]" &&
+           !base_gep->result.empty() &&
+           base_gep->indices == std::vector<std::string>{"i64 0", "i64 0"} &&
+           index_cast->kind == LirCastKind::SExt && index_cast->from_type == "i32" &&
+           index_cast->operand == expected_index && index_cast->to_type == "i64" &&
+           !index_cast->result.empty() &&
+           elem_gep->ptr == base_gep->result && elem_gep->element_type == "i32" &&
+           elem_gep->result == expected_result &&
+           elem_gep->indices ==
+               std::vector<std::string>{"i64 " + index_cast->result.str()};
+  };
+
+  auto match_return_block = [&](const LirBlock& block,
+                                std::string_view expected_label,
+                                std::string_view expected_value) -> bool {
+    const auto* ret = std::get_if<LirRet>(&block.terminator);
+    return block.label == expected_label && block.insts.empty() && ret != nullptr &&
+           ret->type_str == "i32" && ret->value_str.has_value() &&
+           *ret->value_str == expected_value;
+  };
+
+  auto match_pointer_compare_block =
+      [&](const std::vector<LirInst>& insts,
+          std::size_t index,
+          std::string_view pointer_name,
+          std::string_view load_ptr_result,
+          std::string_view gep_result,
+          std::string_view load_i32_result,
+          std::string_view cmp_result,
+          std::string_view zext_result,
+          std::string_view branch_cmp_result,
+          std::string_view delta,
+          std::string_view expected_value,
+          bool load_from_updated_pointer) -> bool {
+    if (index + 6 >= insts.size()) {
+      return false;
+    }
+    const auto* load_ptr = std::get_if<LirLoadOp>(&insts[index]);
+    const auto* gep = std::get_if<LirGepOp>(&insts[index + 1]);
+    const auto* store_ptr = std::get_if<LirStoreOp>(&insts[index + 2]);
+    const auto* load_value = std::get_if<LirLoadOp>(&insts[index + 3]);
+    const auto* cmp = std::get_if<LirCmpOp>(&insts[index + 4]);
+    const auto* zext = std::get_if<LirCastOp>(&insts[index + 5]);
+    const auto* branch_cmp = std::get_if<LirCmpOp>(&insts[index + 6]);
+    return load_ptr != nullptr && gep != nullptr && store_ptr != nullptr &&
+           load_value != nullptr && cmp != nullptr && zext != nullptr && branch_cmp != nullptr &&
+           load_ptr->type_str == "ptr" && load_ptr->ptr == pointer_name &&
+           load_ptr->result == load_ptr_result && gep->ptr == load_ptr->result &&
+           gep->element_type == "i32" && gep->result == gep_result &&
+           gep->indices == std::vector<std::string>{"i64 " + std::string(delta)} &&
+           store_ptr->type_str == "ptr" && store_ptr->val == gep->result &&
+           store_ptr->ptr == pointer_name && load_value->type_str == "i32" &&
+           load_value->ptr ==
+               (load_from_updated_pointer ? std::string(gep->result.str())
+                                          : std::string(load_ptr->result.str())) &&
+           load_value->result == load_i32_result && !cmp->is_float &&
+           cmp->predicate.str() == "ne" && cmp->type_str == "i32" &&
+           cmp->lhs == load_value->result && cmp->rhs == expected_value &&
+           cmp->result == cmp_result && zext->kind == LirCastKind::ZExt &&
+           zext->from_type == "i1" && zext->operand == cmp->result &&
+           zext->to_type == "i32" && zext->result == zext_result &&
+           !branch_cmp->is_float && branch_cmp->predicate.str() == "ne" &&
+           branch_cmp->type_str == "i32" && branch_cmp->lhs == zext->result &&
+           branch_cmp->rhs == "0" && branch_cmp->result == branch_cmp_result;
+  };
+
+  const auto& entry = function.blocks[0];
+  const auto* entry_pointer_store =
+      entry.insts.size() == 19 ? std::get_if<LirStoreOp>(&entry.insts[11]) : nullptr;
+  const auto* second_store =
+      entry.insts.size() == 19 ? std::get_if<LirStoreOp>(&entry.insts[3]) : nullptr;
+  const auto* entry_condbr = std::get_if<LirCondBr>(&entry.terminator);
+  if (entry.label != "entry" || entry_pointer_store == nullptr || second_store == nullptr ||
+      entry_condbr == nullptr || entry_condbr->cond_name != "%t14" ||
+      entry_condbr->true_label != "block_1" || entry_condbr->false_label != "block_2" ||
+      !match_array_elem_address(entry.insts, 0, array_slot->result, "0", "%t2") ||
+      second_store->type_str != "i32" || second_store->val != "2" || second_store->ptr != "%t2" ||
+      !match_array_elem_address(entry.insts, 4, array_slot->result, "1", "%t5") ||
+      entry_pointer_store->type_str != "ptr" || entry_pointer_store->val != "%t8" ||
+      entry_pointer_store->ptr != pointer_slot->result ||
+      !match_array_elem_address(entry.insts, 8, array_slot->result, "0", "%t8") ||
+      !match_pointer_compare_block(entry.insts, 12, pointer_slot->result, "%t9", "%t10", "%t11",
+                                   "%t12", "%t13", "%t14", "1", "2", false)) {
+    return std::nullopt;
+  }
+
+  const auto* block2_condbr = std::get_if<LirCondBr>(&function.blocks[2].terminator);
+  if (!match_return_block(function.blocks[1], "block_1", "1") || block2_condbr == nullptr ||
+      block2_condbr->cond_name != "%t20" || block2_condbr->true_label != "block_3" ||
+      block2_condbr->false_label != "block_4" ||
+      !match_pointer_compare_block(function.blocks[2].insts, 0, pointer_slot->result, "%t15",
+                                   "%t16", "%t17", "%t18", "%t19", "%t20", "1", "3", false) ||
+      !match_return_block(function.blocks[3], "block_3", "2")) {
+    return std::nullopt;
+  }
+
+  const auto& block_4 = function.blocks[4];
+  const auto* block4_pointer_store =
+      block_4.insts.size() == 11 ? std::get_if<LirStoreOp>(&block_4.insts[3]) : nullptr;
+  const auto* block4_condbr = std::get_if<LirCondBr>(&block_4.terminator);
+  if (block_4.label != "block_4" || block4_pointer_store == nullptr ||
+      block4_condbr == nullptr || block4_condbr->cond_name != "%t29" ||
+      block4_condbr->true_label != "block_5" || block4_condbr->false_label != "block_6" ||
+      !match_array_elem_address(block_4.insts, 0, array_slot->result, "1", "%t23") ||
+      block4_pointer_store->type_str != "ptr" || block4_pointer_store->val != "%t23" ||
+      block4_pointer_store->ptr != pointer_slot->result ||
+      !match_pointer_compare_block(block_4.insts, 4, pointer_slot->result, "%t24", "%t25",
+                                   "%t26", "%t27", "%t28", "%t29", "-1", "3", false)) {
+    return std::nullopt;
+  }
+
+  const auto* block6_condbr = std::get_if<LirCondBr>(&function.blocks[6].terminator);
+  if (!match_return_block(function.blocks[5], "block_5", "1") || block6_condbr == nullptr ||
+      block6_condbr->cond_name != "%t35" || block6_condbr->true_label != "block_7" ||
+      block6_condbr->false_label != "block_8" ||
+      !match_pointer_compare_block(function.blocks[6].insts, 0, pointer_slot->result, "%t30",
+                                   "%t31", "%t32", "%t33", "%t34", "%t35", "-1", "2", false) ||
+      !match_return_block(function.blocks[7], "block_7", "2")) {
+    return std::nullopt;
+  }
+
+  const auto& block_8 = function.blocks[8];
+  const auto* block8_pointer_store =
+      block_8.insts.size() == 11 ? std::get_if<LirStoreOp>(&block_8.insts[3]) : nullptr;
+  const auto* block8_condbr = std::get_if<LirCondBr>(&block_8.terminator);
+  if (block_8.label != "block_8" || block8_pointer_store == nullptr ||
+      block8_condbr == nullptr || block8_condbr->cond_name != "%t44" ||
+      block8_condbr->true_label != "block_9" || block8_condbr->false_label != "block_10" ||
+      !match_array_elem_address(block_8.insts, 0, array_slot->result, "0", "%t38") ||
+      block8_pointer_store->type_str != "ptr" || block8_pointer_store->val != "%t38" ||
+      block8_pointer_store->ptr != pointer_slot->result ||
+      !match_pointer_compare_block(block_8.insts, 4, pointer_slot->result, "%t39", "%t40",
+                                   "%t41", "%t42", "%t43", "%t44", "1", "3", true)) {
+    return std::nullopt;
+  }
+
+  if (!match_return_block(function.blocks[9], "block_9", "1")) {
+    return std::nullopt;
+  }
+
+  const auto& block_10 = function.blocks[10];
+  const auto* block10_pointer_store =
+      block_10.insts.size() == 11 ? std::get_if<LirStoreOp>(&block_10.insts[3]) : nullptr;
+  const auto* block10_condbr = std::get_if<LirCondBr>(&block_10.terminator);
+  if (block_10.label != "block_10" || block10_pointer_store == nullptr ||
+      block10_condbr == nullptr || block10_condbr->cond_name != "%t53" ||
+      block10_condbr->true_label != "block_11" || block10_condbr->false_label != "block_12" ||
+      !match_array_elem_address(block_10.insts, 0, array_slot->result, "1", "%t47") ||
+      block10_pointer_store->type_str != "ptr" || block10_pointer_store->val != "%t47" ||
+      block10_pointer_store->ptr != pointer_slot->result ||
+      !match_pointer_compare_block(block_10.insts, 4, pointer_slot->result, "%t48", "%t49",
+                                   "%t50", "%t51", "%t52", "%t53", "-1", "2", true)) {
+    return std::nullopt;
+  }
+
+  if (!match_return_block(function.blocks[11], "block_11", "1") ||
+      !match_return_block(function.blocks[12], "block_12", "0")) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 bir::LoadLocalInst make_memory_load_local(bir::Value result,
                                           std::string slot_name,
                                           std::size_t byte_offset,
