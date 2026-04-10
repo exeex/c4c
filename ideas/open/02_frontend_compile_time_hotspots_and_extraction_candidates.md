@@ -1,0 +1,133 @@
+# Frontend Compile-Time Hotspots And Extraction Candidates
+
+Status: Open
+Last Updated: 2026-04-10
+
+## Goal
+
+Investigate why frontend and frontend-adjacent translation units have become
+noticeably slower to compile, identify the biggest compile-time hotspots, and
+turn the findings into a prioritized list of extraction and structure changes
+that can reduce optimized build cost without changing behavior.
+
+## Why This Idea Exists
+
+Recent local measurements suggest the slowdown is not explained by one issue
+alone.
+
+Representative observations from current frontend work:
+
+- `src/frontend/hir/hir_expr.cpp` is only about 2.5k lines of source, but an
+  optimized single-file compile still takes multiple seconds
+- the file preprocesses to roughly 84k lines, so the compiler sees much more
+  than the raw `.cpp` size suggests
+- syntax-only parsing is materially cheaper than full optimized compilation,
+  which suggests optimizer workload matters in addition to include cost
+- the frontend contains multiple very large dispatcher-style functions in
+  parser and HIR code, not just one isolated file
+- several frontend headers are now large enough to amplify rebuild cost across
+  many translation units
+
+This makes it worth studying the problem directly instead of assuming the cause
+is only includes, only templates, or only link time.
+
+## Main Objective
+
+Produce a frontend-focused compile-time map that answers:
+
+1. which translation units are currently the most expensive to rebuild
+2. how much of the cost is front-end parsing/includes versus optimization
+3. which very large functions or helper-heavy headers are the strongest
+   candidates for extraction
+4. which fixes should be attempted first because they offer good compile-time
+   benefit with low semantic risk
+
+## Primary Scope
+
+- `src/frontend/parser/*.cpp`
+- `src/frontend/hir/*.cpp`
+- `src/frontend/sema/*.cpp`
+- `src/frontend/preprocessor/*.cpp`
+- `src/frontend/lexer/*.cpp`
+- `src/codegen/lir/*.cpp`
+- frontend-owned headers that are widely included by those units
+- build-system settings that materially change frontend compile cost
+
+## Candidate Investigation Tasks
+
+1. Measure representative single-TU compile times for the largest frontend and
+   frontend-adjacent `.cpp` files under the common optimized configuration.
+2. Compare `-fsyntax-only`, `-O0`, and optimized `-c` builds on hotspot files
+   to separate parse/include cost from optimizer cost.
+3. Use compiler timing output such as `-ftime-report` or equivalent to locate
+   especially expensive optimization passes or template-instantiation work.
+4. Record preprocess size and include fan-in for hotspot files to spot headers
+   that magnify rebuild cost across many translation units.
+5. Identify giant dispatcher functions that should become thin coordinators
+   plus helper subflows.
+6. Identify heavy helper headers whose larger implementations should move into
+   `.cpp` files or narrower helper boundaries.
+7. Distinguish translation-unit compile cost from final link cost so fixes are
+   targeted accurately.
+
+## Expected Hotspot Candidates
+
+Based on current inspection, likely first-pass candidates include:
+
+- `src/frontend/hir/hir_expr.cpp`
+- `src/frontend/hir/hir_stmt.cpp`
+- `src/frontend/hir/hir_templates.cpp`
+- `src/frontend/parser/parser_types_base.cpp`
+- `src/frontend/parser/parser_declarations.cpp`
+- `src/frontend/parser/parser_expressions.cpp`
+- `src/frontend/parser/parser_statements.cpp`
+- `src/codegen/lir/stmt_emitter_expr.cpp`
+- `src/codegen/lir/stmt_emitter_call.cpp`
+
+Likely high-impact headers to inspect include:
+
+- `src/frontend/parser/parser.hpp`
+- `src/frontend/parser/types_helpers.hpp`
+- `src/frontend/hir/hir_lowerer_internal.hpp`
+- `src/frontend/hir/compile_time_engine.hpp`
+- `src/frontend/hir/hir_ir.hpp`
+
+## Extraction Direction
+
+The preferred direction is not blanket micro-optimization. The preferred
+direction is to find stable semantic seams and extract around them.
+
+Examples:
+
+- turn giant parser functions into dispatch plus named parsing helpers for
+  specific syntactic families
+- turn giant HIR lowering functions into dispatch plus helpers for var/member/
+  call/template/operator lowering paths
+- centralize repeated temporary-materialization and ref/rvalue-ref lowering
+  logic
+- move heavy non-trivial helper implementations out of large shared headers
+  when a `.cpp` boundary would reduce rebuild cost
+
+## Constraints
+
+- preserve existing frontend behavior and diagnostics
+- do not mix this investigation with backend-only refactors
+- do not assume compile-time wins unless they are measured
+- avoid broad container rewrites as a first response
+- prefer extraction plans that can be landed incrementally and validated with
+  existing tests
+
+## Validation
+
+At minimum:
+
+- record before/after compile-time measurements for the hotspot units touched
+- ensure no new frontend test regressions
+- ensure extracted helpers preserve parser, HIR, and LIR behavior on existing
+  regression coverage
+
+## Non-Goals
+
+- no backend architecture work
+- no speculative rewrite of the entire frontend around a new IR or parser model
+- no unmeasured "performance cleanup" bundle that mixes unrelated changes
