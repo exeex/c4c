@@ -1440,6 +1440,168 @@ make_global_named_int_pointer_struct_designated_init_compare_zero_return_module(
 }
 
 c4c::codegen::lir::LirModule
+make_global_nested_struct_anonymous_union_compare_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+  module.type_decls.push_back("%struct.S1 = type { i32, i32 }");
+  module.type_decls.push_back("%struct._anon_0 = type { [4 x i8] }");
+  module.type_decls.push_back("%struct.S2 = type { i32, i32, %struct._anon_0, %struct.S1 }");
+  module.globals.push_back(LirGlobal{LirGlobalId{0},
+                                     "v",
+                                     {},
+                                     false,
+                                     false,
+                                     "",
+                                     "global ",
+                                     "%struct.S2",
+                                     "{ i32 1, i32 2, %struct._anon_0 { [4 x i8] [i8 3, i8 0, "
+                                     "i8 0, i8 0] }, %struct.S1 { i32 4, i32 5 } }",
+                                     4,
+                                     false});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "%struct.S2", "@v", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t1", "i32", "%t0"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "1"});
+  entry.insts.push_back(LirCastOp{"%t3", LirCastKind::ZExt, "i1", "%t2", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t4", false, "ne", "i32", "%t3", "0"});
+  entry.terminator = LirCondBr{"%t4", "block_1", "block_2"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock block1;
+  block1.id = LirBlockId{1};
+  block1.label = "block_1";
+  block1.terminator = LirRet{std::string("1"), "i32"};
+  function.blocks.push_back(std::move(block1));
+
+  LirBlock block2;
+  block2.id = LirBlockId{2};
+  block2.label = "block_2";
+  block2.insts.push_back(LirGepOp{"%t5", "%struct.S2", "@v", false, {"i32 0", "i32 1"}});
+  block2.insts.push_back(LirLoadOp{"%t6", "i32", "%t5"});
+  block2.insts.push_back(LirCmpOp{"%t7", false, "ne", "i32", "%t6", "2"});
+  block2.insts.push_back(LirCastOp{"%t8", LirCastKind::ZExt, "i1", "%t7", "i32"});
+  block2.insts.push_back(LirCmpOp{"%t9", false, "ne", "i32", "%t8", "0"});
+  block2.terminator = LirCondBr{"%t9", "block_3", "block_4"};
+  function.blocks.push_back(std::move(block2));
+
+  LirBlock block3;
+  block3.id = LirBlockId{3};
+  block3.label = "block_3";
+  block3.terminator = LirRet{std::string("2"), "i32"};
+  function.blocks.push_back(std::move(block3));
+
+  LirBlock block4;
+  block4.id = LirBlockId{4};
+  block4.label = "block_4";
+  block4.insts.push_back(LirGepOp{"%t10", "%struct.S2", "@v", false, {"i32 0", "i32 2"}});
+  block4.insts.push_back(LirGepOp{"%t11", "%struct._anon_0", "%t10", false, {"i32 0", "i32 0"}});
+  block4.insts.push_back(LirLoadOp{"%t12", "i32", "%t11"});
+  block4.insts.push_back(LirCmpOp{"%t13", false, "ne", "i32", "%t12", "3"});
+  block4.insts.push_back(LirCastOp{"%t14", LirCastKind::ZExt, "i1", "%t13", "i32"});
+  block4.insts.push_back(LirCmpOp{"%t15", false, "ne", "i32", "%t14", "0"});
+  block4.terminator = LirCondBr{"%t15", "logic.skip.17", "logic.rhs.16"};
+  function.blocks.push_back(std::move(block4));
+
+  LirBlock rhs;
+  rhs.id = LirBlockId{5};
+  rhs.label = "logic.rhs.16";
+  rhs.insts.push_back(LirGepOp{"%t20", "%struct.S2", "@v", false, {"i32 0", "i32 2"}});
+  rhs.insts.push_back(LirGepOp{"%t21", "%struct._anon_0", "%t20", false, {"i32 0", "i32 0"}});
+  rhs.insts.push_back(LirLoadOp{"%t22", "i32", "%t21"});
+  rhs.insts.push_back(LirCmpOp{"%t23", false, "ne", "i32", "%t22", "3"});
+  rhs.insts.push_back(LirCastOp{"%t24", LirCastKind::ZExt, "i1", "%t23", "i32"});
+  rhs.insts.push_back(LirCmpOp{"%t25", false, "ne", "i32", "%t24", "0"});
+  rhs.insts.push_back(LirCastOp{"%t26", LirCastKind::ZExt, "i1", "%t25", "i32"});
+  rhs.terminator = LirBr{"logic.rhs.end.18"};
+  function.blocks.push_back(std::move(rhs));
+
+  LirBlock rhs_end;
+  rhs_end.id = LirBlockId{6};
+  rhs_end.label = "logic.rhs.end.18";
+  rhs_end.terminator = LirBr{"logic.end.19"};
+  function.blocks.push_back(std::move(rhs_end));
+
+  LirBlock skip;
+  skip.id = LirBlockId{7};
+  skip.label = "logic.skip.17";
+  skip.terminator = LirBr{"logic.end.19"};
+  function.blocks.push_back(std::move(skip));
+
+  LirBlock join;
+  join.id = LirBlockId{8};
+  join.label = "logic.end.19";
+  join.insts.push_back(
+      LirPhiOp{"%t27", "i32", {{"%t26", "logic.rhs.end.18"}, {"1", "logic.skip.17"}}});
+  join.insts.push_back(LirCmpOp{"%t28", false, "ne", "i32", "%t27", "0"});
+  join.terminator = LirCondBr{"%t28", "block_5", "block_6"};
+  function.blocks.push_back(std::move(join));
+
+  LirBlock block5;
+  block5.id = LirBlockId{9};
+  block5.label = "block_5";
+  block5.terminator = LirRet{std::string("3"), "i32"};
+  function.blocks.push_back(std::move(block5));
+
+  LirBlock block6;
+  block6.id = LirBlockId{10};
+  block6.label = "block_6";
+  block6.insts.push_back(LirGepOp{"%t29", "%struct.S2", "@v", false, {"i32 0", "i32 3"}});
+  block6.insts.push_back(LirGepOp{"%t30", "%struct.S1", "%t29", false, {"i32 0", "i32 0"}});
+  block6.insts.push_back(LirLoadOp{"%t31", "i32", "%t30"});
+  block6.insts.push_back(LirCmpOp{"%t32", false, "ne", "i32", "%t31", "4"});
+  block6.insts.push_back(LirCastOp{"%t33", LirCastKind::ZExt, "i1", "%t32", "i32"});
+  block6.insts.push_back(LirCmpOp{"%t34", false, "ne", "i32", "%t33", "0"});
+  block6.terminator = LirCondBr{"%t34", "block_7", "block_8"};
+  function.blocks.push_back(std::move(block6));
+
+  LirBlock block7;
+  block7.id = LirBlockId{11};
+  block7.label = "block_7";
+  block7.terminator = LirRet{std::string("4"), "i32"};
+  function.blocks.push_back(std::move(block7));
+
+  LirBlock block8;
+  block8.id = LirBlockId{12};
+  block8.label = "block_8";
+  block8.insts.push_back(LirGepOp{"%t35", "%struct.S2", "@v", false, {"i32 0", "i32 3"}});
+  block8.insts.push_back(LirGepOp{"%t36", "%struct.S1", "%t35", false, {"i32 0", "i32 1"}});
+  block8.insts.push_back(LirLoadOp{"%t37", "i32", "%t36"});
+  block8.insts.push_back(LirCmpOp{"%t38", false, "ne", "i32", "%t37", "5"});
+  block8.insts.push_back(LirCastOp{"%t39", LirCastKind::ZExt, "i1", "%t38", "i32"});
+  block8.insts.push_back(LirCmpOp{"%t40", false, "ne", "i32", "%t39", "0"});
+  block8.terminator = LirCondBr{"%t40", "block_9", "block_10"};
+  function.blocks.push_back(std::move(block8));
+
+  LirBlock block9;
+  block9.id = LirBlockId{13};
+  block9.label = "block_9";
+  block9.terminator = LirRet{std::string("5"), "i32"};
+  function.blocks.push_back(std::move(block9));
+
+  LirBlock block10;
+  block10.id = LirBlockId{14};
+  block10.label = "block_10";
+  block10.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(block10));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule
 make_local_i32_array_second_slot_pointer_store_zero_load_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -5445,6 +5607,27 @@ void test_bir_lowering_accepts_global_named_int_pointer_struct_designated_init_c
                   "the lowered global named int-pointer designated-init compare module should normalize the bounded `00049.c` source route to a single immediate zero return");
 }
 
+void test_bir_lowering_accepts_global_nested_struct_anonymous_union_compare_zero_return_module() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_global_nested_struct_anonymous_union_compare_zero_return_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded global nested-struct anonymous-union compare slice through the shared constant-return contract");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered global nested-struct anonymous-union compare module should collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered global nested-struct anonymous-union compare module should normalize the bounded `00050.c` source route to a single immediate zero return");
+}
+
 void test_bir_lowering_accepts_local_i32_array_pointer_inc_dec_compare_zero_return_module() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(
@@ -8414,6 +8597,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_global_anonymous_struct_field_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_named_two_field_struct_designated_init_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_named_int_pointer_struct_designated_init_compare_zero_return_module);
+  RUN_TEST(test_bir_lowering_accepts_global_nested_struct_anonymous_union_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_nested_anonymous_aggregate_alias_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_two_slot_sum_sub_three_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_second_slot_pointer_store_zero_load_return_module);
