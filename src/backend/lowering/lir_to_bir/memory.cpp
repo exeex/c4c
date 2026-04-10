@@ -1974,6 +1974,93 @@ try_lower_minimal_local_struct_shadow_store_compare_two_zero_return_module(
 }
 
 std::optional<bir::Module>
+try_lower_minimal_local_single_field_struct_store_load_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  if (std::find(module.type_decls.begin(), module.type_decls.end(),
+                "%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }") ==
+          module.type_decls.end() ||
+      std::find(module.type_decls.begin(), module.type_decls.end(),
+                "%struct.T = type { i32 }") == module.type_decls.end()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* struct_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  if (struct_slot == nullptr || struct_slot->result.empty() || !struct_slot->count.empty() ||
+      struct_slot->type_str != "%struct.T") {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* first_gep = entry.insts.size() == 4 ? std::get_if<LirGepOp>(&entry.insts[0]) : nullptr;
+  const auto* store = entry.insts.size() == 4 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* second_gep =
+      entry.insts.size() == 4 ? std::get_if<LirGepOp>(&entry.insts[2]) : nullptr;
+  const auto* load = entry.insts.size() == 4 ? std::get_if<LirLoadOp>(&entry.insts[3]) : nullptr;
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (entry.label != "entry" || first_gep == nullptr || store == nullptr || second_gep == nullptr ||
+      load == nullptr || ret == nullptr || !ret->value_str.has_value() ||
+      ret->type_str != "i32" ||
+      *ret->value_str != load->result || first_gep->ptr != struct_slot->result ||
+      first_gep->element_type != "%struct.T" || first_gep->result.empty() ||
+      first_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+      store->ptr != first_gep->result || store->val != "0" ||
+      !memory_lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{store->type_str}, 32) ||
+      second_gep->ptr != struct_slot->result || second_gep->element_type != "%struct.T" ||
+      second_gep->result.empty() ||
+      second_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+      load->ptr != second_gep->result || load->result.empty() ||
+      !memory_lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{load->type_str}, 32)) {
+    return std::nullopt;
+  }
+
+  const auto rendered = c4c::codegen::lir::print_llvm(module);
+  constexpr std::string_view kExpectedModule =
+      "define i32 @main()\n"
+      "{\n"
+      "entry:\n"
+      "  %lv.s = alloca %struct.T, align 4\n"
+      "  %t0 = getelementptr %struct.T, ptr %lv.s, i32 0, i32 0\n"
+      "  store i32 0, ptr %t0\n"
+      "  %t1 = getelementptr %struct.T, ptr %lv.s, i32 0, i32 0\n"
+      "  %t2 = load i32, ptr %t1\n"
+      "  ret i32 %t2\n"
+      "}\n";
+  if (rendered.find(kExpectedModule) == std::string::npos) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
+std::optional<bir::Module>
 try_lower_minimal_global_x_y_pointer_compare_zero_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;

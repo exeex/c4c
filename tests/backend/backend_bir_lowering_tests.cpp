@@ -933,6 +933,36 @@ c4c::codegen::lir::LirModule make_local_struct_shadow_store_compare_two_zero_ret
   return module;
 }
 
+c4c::codegen::lir::LirModule make_local_single_field_struct_store_load_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+  module.type_decls.push_back("%struct.T = type { i32 }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.s", "%struct.T", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "%struct.T", "%lv.s", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%t0"});
+  entry.insts.push_back(LirGepOp{"%t1", "%struct.T", "%lv.s", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t2", "i32", "%t1"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_local_i32_array_two_slot_sum_sub_three_module() {
   using namespace c4c::codegen::lir;
 
@@ -5502,6 +5532,27 @@ void test_bir_lowering_accepts_local_struct_shadow_store_compare_two_zero_return
                   "the lowered local-struct shadow store-and-compare module should normalize the bounded `00044.c` source route to a single immediate zero return");
 }
 
+void test_bir_lowering_accepts_local_single_field_struct_store_load_zero_return_module() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_local_single_field_struct_store_load_zero_return_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded local single-field struct store/load slice through the shared constant-return contract");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered local single-field struct store/load module should collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered local single-field struct store/load module should normalize the bounded `00052.c` source route to a single immediate zero return");
+}
+
 void test_bir_lowering_accepts_global_x_y_pointer_compare_zero_return_module() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_global_x_y_pointer_compare_zero_return_module());
@@ -8593,6 +8644,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_union_i32_alias_compare_three_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_nested_struct_i32_sum_compare_six_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_struct_shadow_store_compare_two_zero_return_module);
+  RUN_TEST(test_bir_lowering_accepts_local_single_field_struct_store_load_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_x_y_pointer_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_anonymous_struct_field_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_named_two_field_struct_designated_init_compare_zero_return_module);
