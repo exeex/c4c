@@ -1,6 +1,6 @@
 # HIR Dense ID Maps And Storage Cleanup
 
-Status: Open
+Status: Closed
 Last Updated: 2026-04-10
 
 ## Goal
@@ -43,6 +43,37 @@ The first step can be very small:
 
 The internal implementation can initially remain STL-backed if that keeps the
 slice safer.
+
+## Completion
+
+Completed on 2026-04-10.
+
+Landed scope:
+
+- added frontend-owned `DenseIdMap<Id, T>` and `OptionalDenseIdMap<Id, T>`
+- migrated `InlineCloneContext::{local_map, block_map, expr_map}` to
+  `OptionalDenseIdMap`
+- migrated `Lowerer::FunctionCtx::local_types` to `DenseIdMap<LocalId,
+  TypeSpec>`
+- migrated `run_inline_expansion`'s `callee_expand_count` recursion guard to
+  `OptionalDenseIdMap<FunctionId, int>`
+- extended `frontend_hir_tests` with direct helper coverage for `LocalId`,
+  `ExprId`, and `FunctionId` storage patterns
+
+Validation:
+
+- targeted checks passed for `frontend_hir_tests` and
+  `positive_sema_inline_phase9_c`
+- full `ctest --test-dir build -j --output-on-failure` remained monotonic at
+  `3361/3361` passing before and after the final recursion-guard migration
+
+Deferred follow-on:
+
+- keep string-keyed lowering maps out of scope
+- keep `InlineCloneContext::param_to_local` as a parameter-index table unless a
+  later slice shows that helper-backed checked access materially improves it
+- next dense-ID candidate should be another function-local typed-ID map that
+  still uses raw integer keys and clearly behaves like dense storage
 
 ## Primary Scope
 

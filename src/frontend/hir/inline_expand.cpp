@@ -1239,7 +1239,7 @@ void run_inline_expansion(Module& module) {
   // Cap each callee at 16 expansions — enough for reasonable always_inline
   // depth but prevents runaway mutual recursion (A→B→A→B→...).
   constexpr int max_per_callee = 16;
-  std::unordered_map<uint32_t, int> callee_expand_count;
+  OptionalDenseIdMap<FunctionId, int> callee_expand_count;
   while (changed && max_iterations-- > 0) {
     changed = false;
     auto candidates = discover_inline_candidates(module);
@@ -1248,8 +1248,11 @@ void run_inline_expansion(Module& module) {
 
       // Skip callees that have already been expanded too many times
       // (mutual recursion guard).
-      auto callee_id = cand.callee->id.value;
-      if (callee_expand_count[callee_id] >= max_per_callee) continue;
+      FunctionId callee_id = cand.callee->id;
+      if (const int* expand_count = callee_expand_count.find(callee_id);
+          expand_count && *expand_count >= max_per_callee) {
+        continue;
+      }
 
       // Find the mutable caller function.
       Function* caller = nullptr;
@@ -1262,7 +1265,7 @@ void run_inline_expansion(Module& module) {
       if (!caller) continue;
 
       if (expand_inline_site(module, *caller, cand)) {
-        callee_expand_count[callee_id]++;
+        ++callee_expand_count.get_or_create(callee_id, [] { return 0; });
         changed = true;
         break;  // re-discover after each expansion
       }

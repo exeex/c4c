@@ -74,12 +74,33 @@ void test_dense_id_map_supports_local_type_storage() {
               "DenseIdMap should preserve TypeSpec values at dense local slots");
 }
 
+void test_optional_dense_id_map_supports_function_id_counters() {
+  c4c::hir::OptionalDenseIdMap<c4c::hir::FunctionId, int> expand_counts;
+
+  expect_true(!expand_counts.contains(c4c::hir::FunctionId{2}),
+              "OptionalDenseIdMap should leave untouched FunctionId slots absent");
+
+  int& first = expand_counts.get_or_create(c4c::hir::FunctionId{2}, [] { return 0; });
+  ++first;
+  int& second = expand_counts.get_or_create(c4c::hir::FunctionId{2}, [] { return 99; });
+  ++second;
+  expand_counts.insert(c4c::hir::FunctionId{5}, 7);
+
+  expect_true(first == 2 && &first == &second,
+              "OptionalDenseIdMap should preserve FunctionId-backed counter slots");
+  expect_true(*expand_counts.find(c4c::hir::FunctionId{5}) == 7,
+              "OptionalDenseIdMap should support sparse FunctionId insertions");
+  expect_true(expand_counts.size() == 6,
+              "OptionalDenseIdMap should grow to the highest FunctionId index");
+}
+
 }  // namespace
 
 int main() {
   test_dense_id_map_tracks_assigned_dense_ids();
   test_optional_dense_id_map_supports_sparse_occupancy();
   test_dense_id_map_supports_local_type_storage();
+  test_optional_dense_id_map_supports_function_id_counters();
 
   std::cout << "PASS: frontend_hir_tests\n";
   return 0;
