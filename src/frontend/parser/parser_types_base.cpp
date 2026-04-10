@@ -1160,7 +1160,29 @@ TypeSpec Parser::parse_base_type() {
                                             for (const auto& [pname, pts] : type_bindings) {
                                                 if (ts.base == TB_TYPEDEF && ts.tag &&
                                                     std::string(ts.tag) == pname) {
+                                                    const int outer_ptr_level =
+                                                        ts.ptr_level;
+                                                    const bool outer_lref =
+                                                        ts.is_lvalue_ref;
+                                                    const bool outer_rref =
+                                                        ts.is_rvalue_ref;
+                                                    const bool outer_const =
+                                                        ts.is_const;
+                                                    const bool outer_volatile =
+                                                        ts.is_volatile;
                                                     ts = pts;
+                                                    ts.ptr_level += outer_ptr_level;
+                                                    ts.is_lvalue_ref =
+                                                        ts.is_lvalue_ref || outer_lref;
+                                                    ts.is_rvalue_ref =
+                                                        !ts.is_lvalue_ref &&
+                                                        (ts.is_rvalue_ref ||
+                                                         outer_rref);
+                                                    ts.is_const =
+                                                        ts.is_const || outer_const;
+                                                    ts.is_volatile =
+                                                        ts.is_volatile ||
+                                                        outer_volatile;
                                                     substituted = true;
                                                     break;
                                                 }

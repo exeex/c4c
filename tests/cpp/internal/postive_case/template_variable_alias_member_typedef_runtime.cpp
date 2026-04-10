@@ -37,6 +37,27 @@ struct is_same<T, T> {
 template <typename T, typename U>
 constexpr bool is_same_v = is_same<T, U>::value;
 
+template <typename T>
+struct add_lvalue_reference {
+  using type = T&;
+};
+
+template <typename T>
+using add_lvalue_reference_t = typename add_lvalue_reference<T>::type;
+
+template <typename T>
+struct is_reference {
+  static constexpr bool value = false;
+};
+
+template <typename T>
+struct is_reference<T&> {
+  static constexpr bool value = true;
+};
+
+template <typename T>
+constexpr bool is_reference_v = is_reference<T>::value;
+
 }  // namespace ns
 
 int main() {
@@ -46,5 +67,9 @@ int main() {
     return 2;
   if (!ns::is_same_v<ns::conditional_t<false, int, long>, long>)
     return 3;
+  if (!ns::is_same_v<ns::add_lvalue_reference_t<int>, int&>)
+    return 4;
+  if (!ns::is_reference_v<ns::add_lvalue_reference_t<int>>)
+    return 5;
   return 0;
 }

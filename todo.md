@@ -9,29 +9,24 @@ Source Plan: plan.md
 - Step 3: keep `eastl_type_traits_simple.cpp` as the active EASTL frontier, but
   treat the remaining workflow mismatch as a variable-template trait
   normalization gap for alias-transformed types.
-- Iteration focus: validate and, if needed, finish the in-progress
-  parser/HIR support for alias-backed member typedef selection in
-  `enable_if_t`, `conditional_t`, `remove_reference_t`, `remove_cv_t`, and
-  `add_lvalue_reference_t`, starting from the focused internal runtime repro
-  `template_variable_alias_member_typedef_runtime.cpp` before rerunning the
-  EASTL workflow.
-- Iteration target: reduce why alias-backed trait operands such as
-  `eastl::add_lvalue_reference_t<T>`, `eastl::remove_reference_t<T&>`,
-  `eastl::remove_cv_t<const volatile T>`, `eastl::conditional_t<...>`, and
-  `eastl::enable_if_t<...>` still reach `is_reference_v` / `is_same_v` as
-  unresolved member-typedef spellings after the signedness slice moved the
-  workflow from exit `10` to exit `22`.
-- Reduced repro: `eastl_type_traits_simple_workflow` now gets past
-  `check_signed_traits<int>()`, and the remaining failure stays narrowed to
-  `check_reference_transforms<int>()` returning `22` because
-  `eastl::is_reference_v<eastl::add_lvalue_reference_t<T>>` still lowers as
-  false even after the alias-backed `is_same_v` cases were repaired.
-- Current blocker: alias-template default arguments and namespaced partial
-  specializations now resolve cleanly enough to make `--parse-only` succeed and
-  to fold the focused `enable_if_t` / `conditional_t` variable-template repro,
-  but `add_lvalue_reference_t<int>` still materializes as the owner struct
-  `eastl::add_lvalue_reference<T>` instead of `int&`, so the final runtime
-  mismatch has moved from exits `20`/`21` down to only exit `22`.
+- Iteration focus: keep the focused runtime coverage for alias-backed member
+  typedef selection current while the broader remaining blocker is spun out as
+  the generic normalization/owner-resolution follow-up in
+  `ideas/open/48_template_trait_normalization_and_owner_resolution.md`.
+- Iteration target: preserve the repaired direct alias-member path
+  (`enable_if_t`, `conditional_t`, and the focused `add_lvalue_reference_t`
+  runtime repro) while recording that the remaining `eastl::type_traits`
+  mismatch is no longer a small alias-template-only slice.
+- Reduced repro: the focused internal runtime case
+  `template_variable_alias_member_typedef_runtime.cpp` now proves the direct
+  alias-member path for `add_lvalue_reference_t<int>` alongside the earlier
+  `enable_if_t` / `conditional_t` checks, but the standalone EASTL workflow
+  still exits `22` in `check_reference_transforms<int>()`.
+- Current blocker: the remaining `eastl::add_lvalue_reference_t<T>` failure is
+  tied to broader generic template-trait normalization and owner-resolution
+  behavior beyond the narrowed alias-member substitution fix. Keep follow-up
+  investigation under `ideas/open/48_template_trait_normalization_and_owner_resolution.md`
+  instead of silently growing this EASTL slice.
 
 ## Completed
 
@@ -39,6 +34,19 @@ Source Plan: plan.md
   `tests/cpp/internal/postive_case/template_variable_alias_member_typedef_runtime.cpp`
   and confirmed the reduced alias-backed `enable_if_t` / `conditional_t`
   variable-template repro now passes.
+- Extended
+  `tests/cpp/internal/postive_case/template_variable_alias_member_typedef_runtime.cpp`
+  to cover the direct alias-backed `add_lvalue_reference_t<int>` /
+  `is_reference_v` path too, and fixed parser alias-member substitution so
+  outer reference qualifiers on member typedef spellings like `using type = T&`
+  survive replacement with the bound concrete type.
+- Re-ran the focused runtime regression plus the full `ctest --test-dir build
+  -j8 --output-on-failure` suite; the regression guard is monotonic at
+  3295/3297 passing tests versus the earlier 3289/3297 baseline, with zero new
+  failing tests.
+- Confirmed `cmake --build build --target eastl_type_traits_simple_workflow -j8`
+  still exits `22`, so the remaining type-trait work is broader than the
+  direct alias-member substitution repaired in this slice.
 - Fixed parser alias-template application to accept omitted trailing default
   template arguments, which repairs partial-specialization heads such as
   `trait<T, enable_if_t<true>>` and unblocks `eastl_type_traits_simple.cpp`
