@@ -267,6 +267,18 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
       return emit_rval_payload(ctx, *call, e);
     }
   }
+  if (const auto* assign = std::get_if<AssignExpr>(&e.payload)) {
+    TypeSpec rhs_ts{};
+    const std::string rhs = emit_rval_id(ctx, assign->rhs, rhs_ts);
+    const AssignableLValue lhs = emit_assignable_lval(ctx, assign->lhs);
+    if (assign->op == AssignOp::Set) {
+      (void)emit_set_assign_value(ctx, lhs, rhs, rhs_ts);
+    } else {
+      (void)emit_compound_assign_value(ctx, lhs, assign->op, rhs, rhs_ts);
+    }
+    pts = lhs.pointee_ts;
+    return lhs.ptr;
+  }
   if (const auto* c = std::get_if<CastExpr>(&e.payload)) {
     if (c->to_type.spec.is_rvalue_ref || c->to_type.spec.is_lvalue_ref) {
       return emit_lval(ctx, c->expr, pts);

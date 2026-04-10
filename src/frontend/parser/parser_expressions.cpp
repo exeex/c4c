@@ -1,9 +1,11 @@
-#include "parser.hpp"
-
 #include <cassert>
 #include <cstring>
 #include <functional>
 #include <stdexcept>
+
+#include "lexer.hpp"
+#include "parser.hpp"
+#include "types_helpers.hpp"
 
 namespace c4c {
 
@@ -36,6 +38,21 @@ static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& t
     for (int p = 0; p < ts.ptr_level; ++p) out += "_ptr";
     if (ts.is_lvalue_ref) out += "_ref";
     if (ts.is_rvalue_ref) out += "_rref";
+}
+
+static bool resolves_to_record_ctor_type(
+    TypeSpec ts,
+    const std::unordered_map<std::string, TypeSpec>& typedef_types,
+    const std::set<std::string>& defined_struct_tags,
+    const std::unordered_map<std::string, Node*>& template_struct_defs) {
+    ts = resolve_typedef_chain(ts, typedef_types);
+    if (ts.base == TB_TYPEDEF && ts.tag) {
+        if (defined_struct_tags.count(ts.tag) > 0 ||
+            template_struct_defs.count(ts.tag) > 0) {
+            return true;
+        }
+    }
+    return ts.base == TB_STRUCT || ts.base == TB_UNION;
 }
 
 int Parser::bin_prec(TokenKind k) {
@@ -296,9 +313,10 @@ Node* Parser::parse_unary() {
                 // Could be sizeof(type) or sizeof(expr)
                 // Disambiguate: if first token inside is a type keyword, it's a type
                 {
-                    TentativeParseGuard guard(*this);
+                    TentativeParseGuardLite guard(*this);
                     consume();  // consume (
-                    if (is_type_start()) {
+                    if (is_type_start() ||
+                        starts_qualified_member_pointer_type_id(*this, pos_)) {
                         TypeSpec ts = parse_type_name();
                         expect(TokenKind::RParen);
                         guard.commit();
@@ -335,7 +353,8 @@ Node* Parser::parse_unary() {
         case TokenKind::KwGnuAlignof: {
             consume();
             expect(TokenKind::LParen);
-            if (is_type_start()) {
+            if (is_type_start() ||
+                starts_qualified_member_pointer_type_id(*this, pos_)) {
                 TypeSpec ts = parse_type_name();
                 expect(TokenKind::RParen);
                 Node* n = make_node(NK_ALIGNOF_TYPE, ln);
@@ -855,7 +874,6 @@ Node* Parser::parse_primary() {
                     after_template == TokenKind::RBracket ||
                     after_template == TokenKind::RBrace ||
                     after_template == TokenKind::PipePipe ||
-                    after_template == TokenKind::AmpAmp ||
                     after_template == TokenKind::Pipe ||
                     after_template == TokenKind::Caret) {
                     return false;
@@ -1132,7 +1150,9 @@ Node* Parser::parse_primary() {
         // Check for cast: (type-name)expr
         // NOTE: This site saves tokens_ in addition to pos_ (for template edge cases).
         // TentativeParseGuard does not snapshot tokens_, so manual save/restore is kept here.
-        if (is_type_start() && has_balanced_template_id_ahead()) {
+        if ((is_type_start() ||
+             starts_qualified_member_pointer_type_id(*this, pos_)) &&
+            has_balanced_template_id_ahead()) {
             int save_pos = pos_;
             std::vector<Token> saved_tokens = tokens_;
             TypeSpec cast_ts = parse_type_name();
@@ -1273,10 +1293,11 @@ Node* Parser::parse_primary() {
                 }
             }
             expect(TokenKind::RParen);
-            const bool ctor_like_type =
-                cast_ts.base == TB_STRUCT || cast_ts.base == TB_UNION ||
-                cast_ts.base == TB_TYPEDEF;
-            if (ctor_like_type && args.size() != 1) {
+            const bool record_ctor_like =
+                resolves_to_record_ctor_type(
+                    cast_ts, typedef_types_, defined_struct_tags_, template_struct_defs_);
+            const bool multi_arg_typedef_cast = cast_ts.base == TB_TYPEDEF && args.size() != 1;
+            if (record_ctor_like || multi_arg_typedef_cast) {
                 Node* callee =
                     make_var(cast_ts.tag ? cast_ts.tag
                                          : direct_resolved_type_name.c_str(),
@@ -1306,31 +1327,26 @@ Node* Parser::parse_primary() {
             }
             return parse_postfix(n);
         }
-        auto resolve_type_name_for_qn = [&](const QualifiedNameRef& type_qn) -> std::string {
-            std::string resolved;
-            if (!type_qn.qualifier_segments.empty()) {
-                std::string scoped;
-                for (size_t i = 0; i < type_qn.qualifier_segments.size(); ++i) {
-                    if (i) scoped += "::";
-                    scoped += type_qn.qualifier_segments[i];
-                }
-                if (!scoped.empty()) scoped += "::";
-                scoped += type_qn.base_name;
-                if (typedef_types_.count(scoped) > 0) return scoped;
-                int context_id = resolve_namespace_context(type_qn);
-                if (context_id >= 0) {
-                    resolved = canonical_name_in_context(context_id, type_qn.base_name);
-                    if (typedef_types_.count(resolved) > 0) return resolved;
-                }
-                return scoped;
-            }
-            resolved = resolve_visible_type_name(type_qn.base_name);
-            return resolved.empty() ? type_qn.base_name : resolved;
+        auto qualified_name_starts_from_type_owner =
+            [&](const QualifiedNameRef& type_qn) -> bool {
+            if (type_qn.qualifier_segments.empty()) return false;
+
+            const std::string first_qualifier =
+                resolve_visible_type_name(type_qn.qualifier_segments.front());
+            if (first_qualifier.empty()) return false;
+
+            return typedef_types_.count(first_qualifier) > 0 ||
+                   template_struct_defs_.count(first_qualifier) > 0 ||
+                   defined_struct_tags_.count(first_qualifier) > 0;
         };
         if (is_cpp_mode() && (check(TokenKind::Less) || check(TokenKind::LParen))) {
-            const std::string candidate_type_name = resolve_type_name_for_qn(qn);
-            if (!candidate_type_name.empty() &&
-                typedef_types_.count(candidate_type_name) > 0) {
+            const QualifiedTypeProbe type_probe = probe_qualified_type(*this, qn);
+            const std::string candidate_type_name =
+                !type_probe.resolved_typedef_name.empty()
+                    ? type_probe.resolved_typedef_name
+                    : type_probe.spelled_name;
+            if (type_probe.has_resolved_typedef ||
+                qualified_name_starts_from_type_owner(qn)) {
                 pos_ = ident_start;
                 std::vector<Token> saved_tokens = tokens_;
                 std::string saved_typedef = last_resolved_typedef_;
@@ -1346,7 +1362,13 @@ Node* Parser::parse_primary() {
                     consume();
                     cast_ts.is_lvalue_ref = true;
                 }
-                if (check(TokenKind::LParen)) {
+                if (check(TokenKind::LParen) &&
+                    starts_parenthesized_member_pointer_declarator(*this, pos_)) {
+                    pos_ = ident_start;
+                    tokens_ = saved_tokens;
+                    last_resolved_typedef_ = saved_typedef;
+                    qn = parse_qualified_name(false);
+                } else if (check(TokenKind::LParen)) {
                     consume();
                     std::vector<Node*> args;
                     if (!check(TokenKind::RParen)) {
@@ -1356,10 +1378,12 @@ Node* Parser::parse_primary() {
                         }
                     }
                     expect(TokenKind::RParen);
-                    const bool ctor_like_type =
-                        cast_ts.base == TB_STRUCT || cast_ts.base == TB_UNION ||
-                        cast_ts.base == TB_TYPEDEF;
-                    if (ctor_like_type && args.size() != 1) {
+                    const bool record_ctor_like =
+                        resolves_to_record_ctor_type(
+                            cast_ts, typedef_types_, defined_struct_tags_, template_struct_defs_);
+                    const bool multi_arg_typedef_cast =
+                        cast_ts.base == TB_TYPEDEF && args.size() != 1;
+                    if (record_ctor_like || multi_arg_typedef_cast) {
                         Node* callee = make_var(cast_ts.tag ? cast_ts.tag : candidate_type_name.c_str(), ln);
                         Node* call = make_node(NK_CALL, ln);
                         call->left = callee;
@@ -1501,6 +1525,7 @@ Node* Parser::parse_primary() {
                         ident->template_arg_nttp_names[i] = parsed_args[i].nttp_name;
                         ident->template_arg_exprs[i] = parsed_args[i].expr;
                     }
+                    ident->is_concept_id = is_concept_name(ident->name ? ident->name : "");
                     // Template<A,B>::member — resolve as qualified name.
                     // Re-parse from ident_start to trigger template struct
                     // instantiation and get the mangled tag.
@@ -1660,10 +1685,12 @@ Node* Parser::parse_primary() {
                 }
             }
             expect(TokenKind::RParen);
-            const bool ctor_like_type =
-                cast_ts.base == TB_STRUCT || cast_ts.base == TB_UNION ||
-                cast_ts.base == TB_TYPEDEF;
-            if (ctor_like_type && args.size() != 1) {
+            const bool record_ctor_like =
+                resolves_to_record_ctor_type(
+                    cast_ts, typedef_types_, defined_struct_tags_, template_struct_defs_);
+            const bool multi_arg_typedef_cast =
+                cast_ts.base == TB_TYPEDEF && args.size() != 1;
+            if (record_ctor_like || multi_arg_typedef_cast) {
                 Node* callee = make_var(cast_ts.tag ? cast_ts.tag : "<ctor>", ln);
                 Node* call = make_node(NK_CALL, ln);
                 call->left = callee;
@@ -1672,6 +1699,7 @@ Node* Parser::parse_primary() {
                     call->children = arena_.alloc_array<Node*>(call->n_children);
                     for (int i = 0; i < call->n_children; ++i) call->children[i] = args[i];
                 }
+                guard.commit();
                 return parse_postfix(call);
             }
             Node* operand = args.empty() ? make_int_lit(0, ln) : args[0];

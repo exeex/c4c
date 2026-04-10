@@ -15,26 +15,37 @@ Shared parse-only recipe:
   /workspaces/c4c/tests/cpp/eastl/<case>.cpp
 ```
 
-Observed with `build/c4cll` on 2026-04-02:
+Observed with `build/c4cll` on 2026-04-10:
 
 | Case | Current earliest failing stage | Reproducible command | Notes |
 | --- | --- | --- | --- |
-| `eastl_piecewise_construct_simple.cpp` | `SEMA` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_piecewise_construct_simple.cpp` | `--parse-only` succeeds; canonical/sema fails with undeclared identifiers such as `mPart0` from instantiated EASTL internals. |
-| `eastl_tuple_fwd_decls_simple.cpp` | `SEMA` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_tuple_fwd_decls_simple.cpp` | `--parse-only` succeeds; canonical/sema fails with the same undeclared-identifier cluster as `piecewise_construct`. |
-| `eastl_integer_sequence_simple.cpp` | `SEMA` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_integer_sequence_simple.cpp` | `--parse-only` now succeeds. The next frontier matches the existing Step 2 sema cluster: canonical/sema stops around `tests/cpp/eastl/eastl_integer_sequence_simple.cpp:766:1` with undeclared identifiers such as `mPart0` and `mPart1` from instantiated EASTL internals. |
-| `eastl_type_traits_simple.cpp` | `SEMA` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_type_traits_simple.cpp` | `--parse-only` now succeeds. Canonical/sema reaches the same undeclared-identifier cluster as `eastl_integer_sequence_simple.cpp`, starting around `tests/cpp/eastl/eastl_type_traits_simple.cpp:766:1` with `mPart0` / `mPart1` and related locals missing from EASTL internals. |
-| `eastl_utility_simple.cpp` | `PARSE` | `build/c4cll --parse-only -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_utility_simple.cpp` | Parse-only now succeeds after the nested variable-template parser fix, so this case is ready for canonical / semantic follow-up. |
-| `eastl_memory_simple.cpp` | `PARSE` | `build/c4cll --parser-debug --parser-debug-tentative --parse-only -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_memory_simple.cpp` | The old `function_detail.h` dot-token parser blocker is gone, but `--parse-only`, `--parser-debug`, and `--dump-canonical` still time out under the heavier libstdc++ / EASTL stack. Current progress reaches much later parser work in `/usr/include/c++/14/type_traits`, `/usr/include/c++/14/tuple`, and `/usr/include/c++/14/bits/uses_allocator_args.h` before timing out, so the next blocker is no longer the old `allocator.deallocate` statement shape. |
-| `eastl_tuple_simple.cpp` | `PARSE` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_tuple_simple.cpp` | `--dump-canonical` still times out after 20s with no terminal diagnostics, but the earlier `TupleLeaf<...>::operator=` and `function_detail.h` parser blockers are both cleared. The next actionable frontier still needs a smaller reduction from the remaining libstdc++ / EASTL parse pressure. |
-| `eastl_vector_simple.cpp` | `PARSE` | `build/c4cll --parse-only -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_vector_simple.cpp` | The old `ref/EASTL/include/EASTL/internal/function_detail.h:237:16` dot-token parser blocker and the later `ref/EASTL/include/EASTL/internal/function.h:66:26` incomplete-type cluster are both gone. The current `--parse-only` and `--dump-canonical` workflows now time out under the deeper libstdc++ / EASTL stack with no replacement terminal diagnostic yet, so the next frontier needs a fresh reduction from the heavier timeout path. |
+| `eastl_piecewise_construct_simple.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_piecewise_construct_simple.cpp` | Canonical now completes in about `0.339s`; the older `mPart0` sema cluster is no longer the current frontier for this case. |
+| `eastl_tuple_fwd_decls_simple.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_tuple_fwd_decls_simple.cpp` | Canonical now completes in about `0.351s`; this header-only tuple forward-decl case is no longer failing in sema. |
+| `eastl_integer_sequence_simple.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_integer_sequence_simple.cpp` | Canonical now completes in about `1.236s`; the older `mPart0` / `mPart1` sema cluster is gone here too. |
+| `eastl_type_traits_simple.cpp` | `PASS` | `cmake --build build --target eastl_type_traits_simple_workflow -j8` | `--parse-only` still succeeds, and the standalone workflow now completes after fixing template-global mangling collisions on top-level cv qualifiers and routing qualified alias-template transforms such as `eastl::remove_cv_t<...>` through the same unary trait-family normalization used by the HIR member-typedef resolver. |
+| `eastl_utility_simple.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_utility_simple.cpp` | `--parse-only` now succeeds again, and `--dump-canonical` completes too. The shared `EASTL/iterator.h` trailing-return EOF regression is gone after speculative template-close splitting started restoring `>>` token mutations on rollback. |
+| `eastl_memory_simple.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_memory_simple.cpp` | `--parse-only` still succeeds, and `--dump-canonical` now completes too. The old shared `EASTL/memory.h` `eastl::size` undeclared-identifier cluster is gone after restoring local parameter lookup for unqualified names inside namespace functions. |
+| `eastl_memory_uses_allocator_frontier.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp` | Reduced memory frontier now completes through both `--parse-only` and `--dump-canonical` again. It was blocked by the same `EASTL/iterator.h` trailing-return parser regression, not by a separate allocator-specific mechanism. |
+| `eastl_tuple_simple.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_tuple_simple.cpp` | `--parse-only` still succeeds, and `--dump-canonical` now completes within the old timeout window after the re-entrant template-method HIR fix that also unblocked `eastl_utility_simple.cpp`. This case is no longer the smallest active frontier. |
+| `eastl_vector_simple.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_vector_simple.cpp` | `--parse-only` still succeeds within the workflow timeout, and `--dump-canonical` now completes too. The old allocator `operator=` owner-resolution failure and `base_type::allocator_type` functional-cast rejection are both gone, so vector is no longer the active EASTL sema frontier. |
 
 Current explicit workflow coverage:
 
 - `run_eastl_parse_recipe.cmake`: reusable parse-only recipe for expected success
   or expected parser failure.
-- `run_eastl_vector_parse_recipe.cmake`: negative workflow recipe for the
-  current `eastl_vector_simple.cpp` timeout-based parse frontier while the next
-  reduced blocker is still being isolated.
-- `run_eastl_type_traits_simple_workflow.cmake`: older end-to-end workflow kept
-  for future reactivation once the current `is_complete_type__spec_167` /
-  `function_detail.h` frontiers move.
+- `cpp_eastl_vector_parse_recipe`: positive parse-only workflow coverage for
+  `eastl_vector_simple.cpp` now that the old parser timeout frontier is gone
+  and the case reaches a later canonical/sema failure.
+- `run_eastl_type_traits_simple_workflow.cmake`: active standalone workflow for
+  the current `eastl_type_traits_simple.cpp` runtime frontier. It now runs past
+  the earlier parser failure, the old
+  `eastl::is_signed_v<int>` / `eastl::is_unsigned_v<int>` mismatch, and the
+  alias-backed `add_lvalue_reference_t` / `is_reference_v` failure; it now also
+  runs past the old inherited `eastl::is_enum<Color>::value` mismatch and the
+  later `remove_cv_t<const volatile unsigned int>` runtime mismatch too.
+- `cpp_eastl_utility_parse_recipe`: positive parse-only workflow coverage for
+  `eastl_utility_simple.cpp` now that the shared `EASTL/iterator.h`
+  trailing-return EOF regression is fixed.
+- `cpp_eastl_memory_uses_allocator_parse_recipe`: positive parse-only workflow
+  coverage for the reduced `EASTL/internal/memory_uses_allocator.h` frontier
+  now that it no longer hits the shared `EASTL/iterator.h` parser blocker.

@@ -94,7 +94,7 @@ That split causes several problems:
   rehydration entrypoints are now explicit compatibility helpers used by tests
   rather than hidden production ownership shims, so the leftover cleanup was
   split into follow-up idea
-  `ideas/open/47_stack_layout_test_surface_cleanup_after_backend_ownership_migration.md`
+  `ideas/open/49_stack_layout_test_surface_cleanup_after_backend_ownership_migration.md`
   instead of stretching this ownership migration plan
 - 2026-04-09: a follow-up Step 5 audit confirmed that the shared
   `try_lower_conditional_return_select_function(...)` matcher already handles
@@ -245,7 +245,7 @@ Concretely, after this work:
 
 ## Leftover Follow-Up
 
-- `ideas/open/47_stack_layout_test_surface_cleanup_after_backend_ownership_migration.md`
+- `ideas/open/49_stack_layout_test_surface_cleanup_after_backend_ownership_migration.md`
   tracks the remaining test-surface cleanup that is no longer part of the
   ownership migration itself
 

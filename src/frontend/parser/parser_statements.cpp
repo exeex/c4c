@@ -1,9 +1,11 @@
-#include "parser.hpp"
-
 #include <cctype>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include "lexer.hpp"
+#include "parser.hpp"
+#include "types_helpers.hpp"
 
 namespace c4c {
 Node* Parser::parse_block() {
@@ -275,43 +277,77 @@ Node* Parser::parse_stmt() {
                 return typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0;
             };
 
+            auto can_use_lite_if_condition_decl = [&]() -> bool {
+                if (!can_start_if_condition_decl()) return false;
+
+                TokenKind k = cur().kind;
+                switch (k) {
+                    case TokenKind::KwStruct:
+                    case TokenKind::KwClass:
+                    case TokenKind::KwUnion:
+                    case TokenKind::KwEnum:
+                    case TokenKind::KwTypename:
+                    case TokenKind::ColonColon:
+                        return false;
+                    case TokenKind::Identifier:
+                        if (pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                            (tokens_[pos_ + 1].kind == TokenKind::ColonColon ||
+                             tokens_[pos_ + 1].kind == TokenKind::Less)) {
+                            return false;
+                        }
+                        return true;
+                    default:
+                        return true;
+                }
+            };
+
             auto parse_if_condition_decl = [&]() -> Node* {
                 if (!can_start_if_condition_decl()) return nullptr;
 
-                TentativeParseGuard guard(*this);
+                auto try_parse_if_condition_decl =
+                    [&](auto& guard) -> Node* {
+                        TypeSpec base_ts = parse_base_type();
+                        parse_attributes(&base_ts);
+
+                        TypeSpec ts = base_ts;
+                        ts.array_size_expr = nullptr;
+                        const char* vname = nullptr;
+                        parse_declarator(ts, &vname);
+                        skip_attributes();
+                        skip_asm();
+                        skip_attributes();
+
+                        if (!vname) {
+                            return nullptr;
+                        }
+
+                        Node* init_node = nullptr;
+                        if (match(TokenKind::Assign) ||
+                            (is_cpp_mode() && check(TokenKind::LBrace))) {
+                            init_node = parse_initializer();
+                        }
+
+                        if (!check(TokenKind::RParen)) {
+                            return nullptr;
+                        }
+
+                        Node* decl = make_node(NK_DECL, ln);
+                        decl->type = ts;
+                        decl->name = vname;
+                        decl->init = init_node;
+                        var_types_[vname] = ts;
+                        guard.commit();
+                        return decl;
+                    };
+
                 try {
-                    TypeSpec base_ts = parse_base_type();
-                    parse_attributes(&base_ts);
-
-                    TypeSpec ts = base_ts;
-                    ts.array_size_expr = nullptr;
-                    const char* vname = nullptr;
-                    parse_declarator(ts, &vname);
-                    skip_attributes();
-                    skip_asm();
-                    skip_attributes();
-
-                    if (!vname) {
-                        return nullptr;
+                    if (can_use_lite_if_condition_decl()) {
+                        TentativeParseGuardLite guard(*this);
+                        return try_parse_if_condition_decl(guard);
                     }
 
-                    Node* init_node = nullptr;
-                    if (match(TokenKind::Assign) ||
-                        (is_cpp_mode() && check(TokenKind::LBrace))) {
-                        init_node = parse_initializer();
-                    }
-
-                    if (!check(TokenKind::RParen)) {
-                        return nullptr;
-                    }
-
-                    Node* decl = make_node(NK_DECL, ln);
-                    decl->type = ts;
-                    decl->name = vname;
-                    decl->init = init_node;
-                    var_types_[vname] = ts;
-                    guard.commit();
-                    return decl;
+                    TentativeParseGuard guard(*this);
+                    return try_parse_if_condition_decl(guard);
                 } catch (const std::exception&) {
                     return nullptr;
                 }
@@ -380,14 +416,57 @@ Node* Parser::parse_stmt() {
             Node* for_init = nullptr;
             if (!check(TokenKind::Semi)) {
                 if (is_type_start()) {
+                    auto can_use_lite_range_for_probe = [&]() -> bool {
+                        if (!is_cpp_mode()) return false;
+
+                        TokenKind k = cur().kind;
+                        switch (k) {
+                            case TokenKind::LBracket:
+                            case TokenKind::KwAttribute:
+                            case TokenKind::KwAlignas:
+                            case TokenKind::KwTypedef:
+                            case TokenKind::KwStruct:
+                            case TokenKind::KwClass:
+                            case TokenKind::KwUnion:
+                            case TokenKind::KwEnum:
+                            case TokenKind::KwTypename:
+                            case TokenKind::ColonColon:
+                                return false;
+                            case TokenKind::Identifier:
+                                if (pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                                    (tokens_[pos_ + 1].kind == TokenKind::ColonColon ||
+                                     tokens_[pos_ + 1].kind == TokenKind::Less)) {
+                                    return false;
+                                }
+                                return true;
+                            default:
+                                return true;
+                        }
+                    };
+
                     // C++ range-for detection: save position, parse decl,
                     // check if ':' follows (range-for) vs ';' (regular for).
                     if (is_cpp_mode()) {
-                        TentativeParseGuard range_guard(*this);
-                        Node* decl = parse_local_decl();
-                        if (check(TokenKind::Colon)) {
+                        Node* decl = nullptr;
+                        bool is_range_for = false;
+                        if (can_use_lite_range_for_probe()) {
+                            TentativeParseGuardLite range_guard(*this);
+                            LocalVarBindingSuppressionGuard binding_guard(*this);
+                            decl = parse_local_decl();
+                            is_range_for = check(TokenKind::Colon);
+                            if (is_range_for) {
+                                range_guard.commit();
+                            }
+                        } else {
+                            TentativeParseGuard range_guard(*this);
+                            decl = parse_local_decl();
+                            is_range_for = check(TokenKind::Colon);
+                            if (is_range_for) {
+                                range_guard.commit();
+                            }
+                        }
+                        if (is_range_for) {
                             // Range-for: for (Type var : range_expr) body
-                            range_guard.commit();
                             consume(); // consume ':'
                             Node* range_expr = parse_expr();
                             expect(TokenKind::RParen);
@@ -710,11 +789,47 @@ Node* Parser::parse_stmt() {
         return parse_local_decl();
     }
 
+    if (is_cpp_mode() &&
+        starts_qualified_member_pointer_type_id(*this, pos_)) {
+        return parse_local_decl();
+    }
+
     // Local declaration?
     // Disambiguate: Type::Method(args) is a qualified call expression, not a
     // declaration.  When the first identifier is a type but Type::Ident is NOT
     // a known type, route to expression parsing for qualified calls.
     if (is_type_start()) {
+        auto follows_assignment_operator = [&](int pos) -> bool {
+            if (pos < 0 || pos >= static_cast<int>(tokens_.size())) return false;
+            switch (tokens_[pos].kind) {
+                case TokenKind::Assign:
+                case TokenKind::PlusAssign:
+                case TokenKind::MinusAssign:
+                case TokenKind::StarAssign:
+                case TokenKind::SlashAssign:
+                case TokenKind::PercentAssign:
+                case TokenKind::AmpAssign:
+                case TokenKind::PipeAssign:
+                case TokenKind::CaretAssign:
+                case TokenKind::LessLessAssign:
+                case TokenKind::GreaterGreaterAssign:
+                    return true;
+                default:
+                    return false;
+            }
+        };
+        auto has_visible_value_binding = [&](const std::string& name) -> bool {
+            if (name.empty()) return false;
+            const std::string resolved = resolve_visible_value_name(name);
+            return var_types_.count(name) > 0 || known_fn_names_.count(name) > 0 ||
+                   var_types_.count(resolved) > 0 ||
+                   known_fn_names_.count(resolved) > 0;
+        };
+        if (is_cpp_mode() && check(TokenKind::Identifier) &&
+            has_visible_value_binding(cur().lexeme) &&
+            follows_assignment_operator(pos_ + 1)) {
+            goto expr_stmt;
+        }
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
             (peek(1).kind == TokenKind::Dot || peek(1).kind == TokenKind::Arrow)) {
             const std::string visible_value = resolve_visible_value_name(cur().lexeme);
@@ -739,6 +854,13 @@ Node* Parser::parse_stmt() {
             // Peek the full qualified name to check if it resolves to a type.
             QualifiedNameRef qn;
             if (peek_qualified_name(&qn, false) && !qn.qualifier_segments.empty()) {
+                const int after_pos =
+                    pos_ + 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
+                if (after_pos < static_cast<int>(tokens_.size()) &&
+                    tokens_[after_pos].kind == TokenKind::LParen &&
+                    starts_parenthesized_member_pointer_declarator(*this, after_pos)) {
+                    return parse_local_decl();
+                }
                 // Build the full qualified name
                 std::string full_name;
                 for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {

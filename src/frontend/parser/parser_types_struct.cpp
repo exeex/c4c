@@ -250,7 +250,18 @@ void Parser::parse_record_template_member_prelude(
         } else if (consume_template_parameter_type_start(/*allow_typename_keyword=*/true)) {
             while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
             if (check(TokenKind::Ellipsis)) consume();
-            if (check(TokenKind::Identifier)) consume();
+            if (check(TokenKind::Identifier)) {
+                std::string pname = cur().lexeme;
+                consume();
+                typedefs_.insert(pname);
+                TypeSpec param_ts{};
+                param_ts.array_size = -1;
+                param_ts.inner_rank = -1;
+                param_ts.base = TB_TYPEDEF;
+                param_ts.tag = arena_.strdup(pname.c_str());
+                typedef_types_[pname] = param_ts;
+                injected_type_params->push_back(std::move(pname));
+            }
             if (check(TokenKind::Assign)) {
                 consume();
                 int depth = 0, paren_depth = 0;
@@ -281,6 +292,79 @@ void Parser::parse_record_template_member_prelude(
                 }
             }
         } else if (is_cpp_mode()) {
+            bool parsed_constrained_type_param = false;
+            {
+                TentativeParseGuard guard(*this);
+                std::string constraint_name;
+                if (consume_qualified_type_spelling(
+                        /*allow_global=*/true,
+                        /*consume_final_template_args=*/true,
+                        &constraint_name, nullptr) &&
+                    (check(TokenKind::Ellipsis) || check(TokenKind::Identifier))) {
+                    if (check(TokenKind::Ellipsis)) consume();
+                    if (check(TokenKind::Identifier)) {
+                        std::string pname = cur().lexeme;
+                        consume();
+                        typedefs_.insert(pname);
+                        TypeSpec param_ts{};
+                        param_ts.array_size = -1;
+                        param_ts.inner_rank = -1;
+                        param_ts.base = TB_TYPEDEF;
+                        param_ts.tag = arena_.strdup(pname.c_str());
+                        typedef_types_[pname] = param_ts;
+                        injected_type_params->push_back(std::move(pname));
+                    }
+                    if (check(TokenKind::Assign)) {
+                        consume();
+                        bool parsed_default_type = false;
+                        {
+                            TentativeParseGuard default_guard(*this);
+                            try {
+                                TypeSpec ignored_default = parse_type_name();
+                                (void)ignored_default;
+                                default_guard.commit();
+                                parsed_default_type = true;
+                            } catch (...) {
+                                // default_guard restores pos_ on scope exit
+                            }
+                        }
+                        if (!parsed_default_type) {
+                            int depth = 0, paren_depth = 0;
+                            while (!at_end()) {
+                                if (check(TokenKind::Less) || check(TokenKind::LParen)) {
+                                    if (check(TokenKind::LParen)) ++paren_depth;
+                                    else ++depth;
+                                } else if (check(TokenKind::RParen)) {
+                                    if (paren_depth > 0) --paren_depth;
+                                } else if (check(TokenKind::GreaterGreater)) {
+                                    if (paren_depth == 0 && depth <= 0) break;
+                                    if (paren_depth == 0 && depth == 1) {
+                                        parse_greater_than_in_template_list(false);
+                                        break;
+                                    }
+                                    if (depth >= 2) depth -= 2;
+                                    else if (depth == 1) --depth;
+                                    consume();
+                                    continue;
+                                } else if (check(TokenKind::Greater)) {
+                                    if (paren_depth == 0 && depth == 0) break;
+                                    if (depth > 0) --depth;
+                                } else if (check(TokenKind::Comma) && depth == 0 &&
+                                           paren_depth == 0) {
+                                    break;
+                                }
+                                consume();
+                            }
+                        }
+                    }
+                    parsed_constrained_type_param =
+                        check(TokenKind::Comma) || check_template_close();
+                    if (parsed_constrained_type_param) guard.commit();
+                }
+            }
+            if (parsed_constrained_type_param) {
+                // C++20 constrained type parameter, e.g. `template<C T>`.
+            } else {
             bool parsed_typed_nttp = false;
             {
                 TentativeParseGuard guard(*this);
@@ -440,6 +524,7 @@ void Parser::parse_record_template_member_prelude(
                         consume();
                     }
                 }
+            }
             }
         } else {
             consume();
@@ -758,6 +843,9 @@ bool Parser::try_parse_record_enum_member(
             // Prefer enum type tag if available
             fts.base = TB_ENUM;
             fts.tag  = ed->name;
+            auto it = typedef_types_.find(ed->name);
+            if (it != typedef_types_.end())
+                fts.enum_underlying_base = it->second.enum_underlying_base;
         }
         while (true) {
             TypeSpec cur_fts = fts;
@@ -1008,9 +1096,28 @@ bool Parser::try_parse_record_method_or_field_member(
     // C++ conversion operators (e.g., operator bool()) have no return
     // type prefix, so KwOperator can appear directly here.
     bool is_conversion_operator = false;
-    if (is_cpp_mode() && check(TokenKind::KwOperator)) {
-        is_conversion_operator = true;
-    } else if (!is_type_start()) {
+    if (is_cpp_mode()) {
+        TentativeParseGuard operator_guard(*this);
+        while (!at_end()) {
+            if (check(TokenKind::KwOperator)) {
+                is_conversion_operator = true;
+                break;
+            }
+            if (check(TokenKind::KwConst) || check(TokenKind::KwVolatile) ||
+                check(TokenKind::KwInline) || check(TokenKind::KwExtern) ||
+                check(TokenKind::KwStatic) || check(TokenKind::KwConstexpr) ||
+                check(TokenKind::KwConsteval) || check(TokenKind::KwMutable)) {
+                consume();
+                continue;
+            }
+            if (check(TokenKind::KwExplicit)) {
+                consume_optional_cpp_explicit_specifier(this);
+                continue;
+            }
+            break;
+        }
+    }
+    if (!is_conversion_operator && !is_type_start()) {
         // unknown token in struct body — skip
         consume();
         return true;
@@ -1045,6 +1152,22 @@ bool Parser::try_parse_record_method_or_field_member(
     if (!is_conversion_operator) {
         fts = parse_base_type();
         parse_attributes(&fts);
+    } else if (is_cpp_mode()) {
+        while (!at_end()) {
+            if (check(TokenKind::KwOperator)) break;
+            if (check(TokenKind::KwConst) || check(TokenKind::KwVolatile) ||
+                check(TokenKind::KwInline) || check(TokenKind::KwExtern) ||
+                check(TokenKind::KwStatic) || check(TokenKind::KwConstexpr) ||
+                check(TokenKind::KwConsteval) || check(TokenKind::KwMutable)) {
+                consume();
+                continue;
+            }
+            if (check(TokenKind::KwExplicit)) {
+                consume_optional_cpp_explicit_specifier(this);
+                continue;
+            }
+            break;
+        }
     }
 
     // C++ operator method: <return-type> operator<symbol>(<params>) { ... }
@@ -1068,12 +1191,23 @@ bool Parser::try_parse_record_method_or_field_member(
         // Determine which operator
         std::string conversion_mangled_name;
         if (is_type_start() || can_start_parameter_type() ||
+            check(TokenKind::Identifier) ||
             check(TokenKind::ColonColon)) {
             // Conversion operator: operator T() — the token after 'operator'
             // is a type name. This covers both standalone 'operator T()' and
             // prefix forms like 'explicit operator T()' / 'constexpr explicit operator T()'.
             is_conversion_operator = true;
-            fts = parse_base_type();
+            if (check(TokenKind::Identifier) && !is_type_start() &&
+                !can_start_parameter_type()) {
+                fts = TypeSpec{};
+                fts.base = TB_TYPEDEF;
+                fts.tag = arena_.strdup(cur().lexeme);
+                fts.array_size = -1;
+                fts.inner_rank = -1;
+                consume();
+            } else {
+                fts = parse_base_type();
+            }
             parse_attributes(&fts);
             if (check(TokenKind::Star)) {
                 while (check(TokenKind::Star)) {
@@ -2062,12 +2196,47 @@ Node* Parser::parse_enum() {
     int ln = cur().line;
     skip_attributes();
 
+    bool is_scoped_enum = false;
+    if (check(TokenKind::KwClass) || check(TokenKind::KwStruct)) {
+        is_scoped_enum = true;
+        consume();
+        skip_attributes();
+    }
+
     const char* tag = nullptr;
     if (check(TokenKind::Identifier)) {
         tag = arena_.strdup(cur().lexeme);
         consume();
     }
     skip_attributes();
+
+    TypeBase enum_underlying_base = TB_INT;
+    if (match(TokenKind::Colon)) {
+        // Preserve fixed underlying-type metadata for layout-sensitive queries.
+        TypeSpec underlying_ts = parse_base_type();
+        underlying_ts = resolve_typedef_chain(underlying_ts, typedef_types_);
+        enum_underlying_base = effective_scalar_base(underlying_ts);
+        skip_attributes();
+    }
+
+    auto register_enum_type = [&](const char* source_tag, const char* canonical_tag) {
+        if (!source_tag || !source_tag[0] || !canonical_tag || !canonical_tag[0])
+            return;
+        TypeSpec enum_ts{};
+        enum_ts.array_size = -1;
+        enum_ts.array_rank = 0;
+        enum_ts.inner_rank = -1;
+        for (int i = 0; i < 8; ++i) enum_ts.array_dims[i] = -1;
+        enum_ts.base = TB_ENUM;
+        enum_ts.enum_underlying_base = enum_underlying_base;
+        enum_ts.tag = canonical_tag;
+        typedefs_.insert(source_tag);
+        typedef_types_[source_tag] = enum_ts;
+        if (strcmp(source_tag, canonical_tag) != 0) {
+            typedefs_.insert(canonical_tag);
+            typedef_types_[canonical_tag] = enum_ts;
+        }
+    };
 
     if (!check(TokenKind::LBrace)) {
         if (!tag) {
@@ -2080,6 +2249,7 @@ Node* Parser::parse_enum() {
             current_namespace_context_id(), tag).c_str());
         apply_decl_namespace(ref, current_namespace_context_id(), tag);
         ref->n_enum_variants = -1;
+        register_enum_type(tag, ref->name);
         return ref;
     }
 
@@ -2093,12 +2263,14 @@ Node* Parser::parse_enum() {
     ed->name = arena_.strdup(canonical_name_in_context(
         current_namespace_context_id(), tag).c_str());
     apply_decl_namespace(ed, current_namespace_context_id(), tag);
+    register_enum_type(tag, ed->name);
 
     consume();  // consume {
 
     std::vector<const char*> names;
     std::vector<long long>   vals;
     std::unordered_set<std::string> seen_names;
+    std::unordered_map<std::string, long long> local_enum_consts = enum_consts_;
     long long cur_val = 0;
 
     while (!at_end() && !check(TokenKind::RBrace)) {
@@ -2116,7 +2288,7 @@ Node* Parser::parse_enum() {
         long long vval = cur_val;
         if (match(TokenKind::Assign)) {
             Node* ve = parse_assign_expr();
-            if (!eval_enum_expr(ve, enum_consts_, &vval)) {
+            if (!eval_enum_expr(ve, local_enum_consts, &vval)) {
                 if (is_cpp_mode() && is_dependent_enum_expr(ve, enum_consts_)) {
                     vval = 0;  // Placeholder until template/dependent evaluation exists.
                 } else {
@@ -2129,8 +2301,8 @@ Node* Parser::parse_enum() {
         cur_val = vval + 1;
         names.push_back(vname);
         vals.push_back(vval);
-        // Track enum constant for use in subsequent enum initializers
-        enum_consts_[std::string(vname)] = vval;
+        // Track enum constants for subsequent initializers in this enum body.
+        local_enum_consts[std::string(vname)] = vval;
         if (!match(TokenKind::Comma)) break;
         // Trailing comma before } is allowed
         if (check(TokenKind::RBrace)) break;
@@ -2145,6 +2317,10 @@ Node* Parser::parse_enum() {
             ed->enum_names[i] = names[i];
             ed->enum_vals[i]  = vals[i];
         }
+    }
+    if (!is_scoped_enum) {
+        for (int i = 0; i < ed->n_enum_variants; ++i)
+            enum_consts_[std::string(ed->enum_names[i])] = ed->enum_vals[i];
     }
     if (parsing_top_level_context_) struct_defs_.push_back(ed);
     return ed;

@@ -621,10 +621,33 @@ void Parser::maybe_emit_parse_debug_progress() {
     parse_debug_last_progress_at_ = now;
 }
 
-void Parser::note_tentative_parse_event(const char* kind,
+void Parser::note_tentative_parse_event(TentativeParseMode mode,
+                                        const char* kind,
                                         int start_pos,
                                         int end_pos) {
-    const std::string detail = format_tentative_parse_detail(start_pos, end_pos);
+    int* counter = nullptr;
+    switch (mode) {
+        case TentativeParseMode::Heavy:
+            if (std::strcmp(kind, "tentative_enter") == 0)
+                counter = &tentative_parse_stats_.heavy_enter;
+            else if (std::strcmp(kind, "tentative_commit") == 0)
+                counter = &tentative_parse_stats_.heavy_commit;
+            else if (std::strcmp(kind, "tentative_rollback") == 0)
+                counter = &tentative_parse_stats_.heavy_rollback;
+            break;
+        case TentativeParseMode::Lite:
+            if (std::strcmp(kind, "tentative_enter") == 0)
+                counter = &tentative_parse_stats_.lite_enter;
+            else if (std::strcmp(kind, "tentative_commit") == 0)
+                counter = &tentative_parse_stats_.lite_commit;
+            else if (std::strcmp(kind, "tentative_rollback") == 0)
+                counter = &tentative_parse_stats_.lite_rollback;
+            break;
+    }
+    if (counter) ++(*counter);
+
+    const std::string detail =
+        format_tentative_parse_detail(mode, kind, start_pos, end_pos);
     note_parse_debug_event(kind, detail.c_str());
 }
 
@@ -770,9 +793,34 @@ std::string Parser::format_parse_failure_token_window(
     return oss.str();
 }
 
-std::string Parser::format_tentative_parse_detail(int start_pos, int end_pos) const {
+std::string Parser::format_tentative_parse_detail(TentativeParseMode mode,
+                                                  const char* kind,
+                                                  int start_pos,
+                                                  int end_pos) const {
     std::ostringstream oss;
-    oss << "start=" << start_pos << " end=" << end_pos;
+    oss << "mode="
+        << (mode == TentativeParseMode::Heavy ? "heavy" : "lite")
+        << " start=" << start_pos
+        << " end=" << end_pos;
+    if (kind && kind[0]) {
+        int count = 0;
+        if (mode == TentativeParseMode::Heavy) {
+            if (std::strcmp(kind, "tentative_enter") == 0)
+                count = tentative_parse_stats_.heavy_enter;
+            else if (std::strcmp(kind, "tentative_commit") == 0)
+                count = tentative_parse_stats_.heavy_commit;
+            else if (std::strcmp(kind, "tentative_rollback") == 0)
+                count = tentative_parse_stats_.heavy_rollback;
+        } else {
+            if (std::strcmp(kind, "tentative_enter") == 0)
+                count = tentative_parse_stats_.lite_enter;
+            else if (std::strcmp(kind, "tentative_commit") == 0)
+                count = tentative_parse_stats_.lite_commit;
+            else if (std::strcmp(kind, "tentative_rollback") == 0)
+                count = tentative_parse_stats_.lite_rollback;
+        }
+        if (count > 0) oss << " count=" << count;
+    }
     return oss.str();
 }
 
@@ -1238,6 +1286,7 @@ bool Parser::parse_greater_than_in_template_list(bool consume_last_token) {
 
     if (check(TokenKind::GreaterGreater)) {
         // Consume one > and leave the second > in the token stream.
+        token_mutations_.push_back({pos_, tokens_[pos_]});
         tokens_[pos_].kind = TokenKind::Greater;
         tokens_[pos_].lexeme = ">";
         return true;
@@ -1245,6 +1294,7 @@ bool Parser::parse_greater_than_in_template_list(bool consume_last_token) {
 
     if (check(TokenKind::GreaterEqual)) {
         // Consume one > and leave = in the token stream.
+        token_mutations_.push_back({pos_, tokens_[pos_]});
         tokens_[pos_].kind = TokenKind::Assign;
         tokens_[pos_].lexeme = "=";
         return true;
@@ -1252,6 +1302,7 @@ bool Parser::parse_greater_than_in_template_list(bool consume_last_token) {
 
     if (check(TokenKind::GreaterGreaterAssign)) {
         // Consume one > and leave >= in the token stream.
+        token_mutations_.push_back({pos_, tokens_[pos_]});
         tokens_[pos_].kind = TokenKind::GreaterEqual;
         tokens_[pos_].lexeme = ">=";
         return true;
@@ -1372,6 +1423,26 @@ Node* Parser::make_node(NodeKind k, int line) {
     std::memset(n, 0, sizeof(Node));
     n->kind = k;
     n->line = line;
+    n->column = 1;
+    n->file = arena_.strdup(source_file_);
+    int loc_index = -1;
+    if (pos_ >= 0 && pos_ < static_cast<int>(tokens_.size()) &&
+        tokens_[pos_].line == line) {
+        loc_index = pos_;
+    } else if (pos_ > 0 && pos_ - 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ - 1].line == line) {
+        loc_index = pos_ - 1;
+    } else if (pos_ >= 0 && pos_ < static_cast<int>(tokens_.size())) {
+        loc_index = pos_;
+    } else if (!tokens_.empty()) {
+        loc_index = static_cast<int>(tokens_.size()) - 1;
+    }
+    if (loc_index >= 0 && loc_index < static_cast<int>(tokens_.size())) {
+        n->column = tokens_[loc_index].column;
+        if (!tokens_[loc_index].file.empty()) {
+            n->file = arena_.strdup(tokens_[loc_index].file);
+        }
+    }
     n->ival = -1;  // -1 = not a bitfield (for struct field declarations)
     n->builtin_id = BuiltinId::Unknown;
     n->type.array_size = -1;

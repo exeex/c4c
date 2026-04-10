@@ -220,6 +220,8 @@ class Lowerer {
 
   void collect_function_template_specializations(const std::vector<const Node*>& items);
 
+  void collect_template_global_definitions(const std::vector<const Node*>& items);
+
   void collect_depth0_template_instantiations(const std::vector<const Node*>& items);
 
   void realize_consteval_template_seeds_fixpoint(
@@ -328,10 +330,18 @@ class Lowerer {
   std::optional<FnPtrSig> fn_ptr_sig_from_decl_node(const Node* n);
 
   std::optional<TypeSpec> infer_call_result_type_from_callee(
-      FunctionCtx* ctx, const Node* callee);
+      const FunctionCtx* ctx, const Node* callee);
+
+  std::optional<TypeSpec> infer_call_result_type(
+      const FunctionCtx* ctx, const Node* call);
 
   std::optional<TypeSpec> storage_type_for_declref(FunctionCtx* ctx,
                                                    const DeclRef& r);
+
+  std::optional<ExprId> try_lower_rvalue_ref_storage_addr(
+      FunctionCtx* ctx,
+      const Node* n,
+      const TypeSpec& storage_ts);
 
   // ── block / expression construction helpers ──────────────────────────────
   TypeSpec infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n);
@@ -346,6 +356,8 @@ class Lowerer {
                                              const std::string& member) const;
 
   std::optional<long long> find_struct_static_member_const_value(
+      const std::string& tag, const std::string& member) const;
+  std::optional<long long> try_eval_instantiated_struct_static_member_const(
       const std::string& tag, const std::string& member) const;
 
   long long eval_const_int_with_nttp_bindings(
@@ -377,7 +389,7 @@ class Lowerer {
 
   ResolvedTemplateArgs materialize_template_args(
       const Node* primary_tpl,
-      const std::vector<std::string>& arg_refs,
+      const TypeSpec& owner_ts,
       const TypeBindings& tpl_bindings,
       const NttpBindings& nttp_bindings);
 
@@ -444,6 +456,23 @@ class Lowerer {
       const std::vector<HirTemplateArg>& concrete_args,
       const TemplateStructInstanceKey& instance_key);
 
+  void assign_template_arg_refs_from_ast_args(
+      TypeSpec* ts,
+      const Node* ref,
+      const Node* owner_tpl,
+      const FunctionCtx* ctx,
+      const Node* span_node,
+      PendingTemplateTypeKind kind,
+      const std::string& context_name);
+
+  bool resolve_ast_template_value_arg(
+      const Node* owner_tpl,
+      const Node* ref,
+      int index,
+      const FunctionCtx* ctx,
+      long long* out_value,
+      const char** out_debug_ref = nullptr);
+
   void realize_template_struct(TypeSpec& ts,
                                const Node* primary_tpl,
                                const TypeBindings& tpl_bindings,
@@ -451,7 +480,7 @@ class Lowerer {
 
   // ── callable and global lowering helpers ─────────────────────────────────
   TypeSpec substitute_signature_template_type(
-      TypeSpec ts, const TypeBindings* tpl_bindings) const;
+      TypeSpec ts, const TypeBindings* tpl_bindings);
 
   void resolve_signature_template_type_if_needed(
       TypeSpec& ts,
@@ -513,7 +542,10 @@ class Lowerer {
   // Returns the ExprId of an AddrOf(DeclRef{clit_name}) expression.
   ExprId hoist_compound_literal_to_global(const Node* addr_node, const Node* clit);
 
-  void lower_global(const Node* gv);
+  void lower_global(const Node* gv,
+                    const std::string* name_override = nullptr,
+                    const TypeBindings* tpl_override = nullptr,
+                    const NttpBindings* nttp_override = nullptr);
 
   void lower_local_decl_stmt(FunctionCtx& ctx, const Node* n);
 
@@ -521,13 +553,14 @@ class Lowerer {
                                                       const Node* n);
 
   // Check if an AST expression is an lvalue (variable, subscript, deref, member).
-  static bool is_ast_lvalue(const Node* n);
+  static bool is_ast_lvalue(const Node* n, const FunctionCtx* ctx = nullptr);
 
   // Resolve a ref-overloaded function call: pick the best overload based on
   // argument value categories. Returns the mangled name of the best match,
   // or empty string if no overload set exists.
   std::string resolve_ref_overload(const std::string& base_name,
-                                   const Node* call_node);
+                                   const Node* call_node,
+                                   const FunctionCtx* ctx = nullptr);
 
   const Node* find_pending_method_by_mangled(
       const std::string& mangled_name) const;
@@ -671,9 +704,10 @@ class Lowerer {
 
   // Try to infer the type of an AST expression node for template argument
   // deduction.  Only handles cases where the type is statically obvious
-  // from the AST (literals, typed variables, address-of, casts).
+  // from the AST (literals, typed variables, address-of, casts, and calls with
+  // inferable result types).
   // Returns nullopt when the type cannot be determined.
-  static std::optional<TypeSpec> try_infer_arg_type_for_deduction(
+  std::optional<TypeSpec> try_infer_arg_type_for_deduction(
       const Node* expr, const Node* enclosing_fn);
 
   // Try to deduce template type arguments from call arguments.
@@ -682,7 +716,7 @@ class Lowerer {
   // corresponding call argument's inferred type.
   // Returns the deduced bindings.  May be incomplete if some params cannot
   // be deduced (caller should fill from defaults or reject).
-  static TypeBindings try_deduce_template_type_args(
+  TypeBindings try_deduce_template_type_args(
       const Node* call_node, const Node* fn_def, const Node* enclosing_fn);
 
   // Check if deduced bindings cover all required type parameters (those
@@ -778,6 +812,16 @@ class Lowerer {
   const Node* find_template_struct_primary(const std::string& name) const;
   const std::vector<const Node*>* find_template_struct_specializations(
       const Node* primary_tpl) const;
+  const Node* find_template_global_primary(const std::string& name) const;
+  const std::vector<const Node*>* find_template_global_specializations(
+      const Node* primary_tpl) const;
+  std::optional<long long> try_eval_template_static_member_const(
+      FunctionCtx* ctx,
+      const std::string& tpl_name,
+      const Node* ref,
+      const std::string& member);
+  std::optional<GlobalId> ensure_template_global_instance(FunctionCtx* ctx,
+                                                          const Node* ref);
   TemplateStructEnv build_template_struct_env(const Node* primary_tpl) const;
   void register_template_struct_primary(const std::string& name, const Node* node);
   void register_template_struct_specialization(const Node* primary_tpl,
@@ -797,6 +841,10 @@ class Lowerer {
   std::unordered_map<std::string, const Node*> template_struct_defs_;
   // Template struct specializations indexed by primary template name.
   std::unordered_map<std::string, std::vector<const Node*>> template_struct_specializations_;
+  std::unordered_map<std::string, const Node*> template_global_defs_;
+  std::unordered_map<std::string, std::vector<const Node*>> template_global_specializations_;
+  std::unordered_map<TemplateStructInstanceKey, GlobalId, TemplateStructInstanceKeyHash>
+      instantiated_template_globals_;
   // Already-instantiated template structs, keyed by semantic identity
   // (primary template + concrete bindings), not by printed/mangled name.
   std::unordered_set<TemplateStructInstanceKey, TemplateStructInstanceKeyHash>
@@ -809,6 +857,10 @@ class Lowerer {
   std::unordered_map<std::string, std::string> struct_methods_;
   // Struct method return types: "struct_tag::method_name" → return TypeSpec.
   std::unordered_map<std::string, TypeSpec> struct_method_ret_types_;
+  // Top-level function definitions keyed by unqualified name for early
+  // template-deduction return-type probes before ordinary functions are
+  // lowered into the module.
+  std::unordered_map<std::string, const Node*> function_decl_nodes_;
   // Pending struct methods to lower.
   struct PendingMethod {
     std::string mangled;
@@ -825,6 +877,7 @@ class Lowerer {
     NttpBindings nttp_bindings;
   };
   std::unordered_map<const Node*, DeducedTemplateCall> deduced_template_calls_;
+  std::unordered_set<const Node*> rejected_template_calls_;
   // Constructor overloads per struct tag: tag → list of {mangled, method_node}.
   struct CtorOverload {
     std::string mangled_name;

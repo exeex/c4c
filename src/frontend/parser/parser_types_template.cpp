@@ -26,13 +26,214 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
 }
 
 void Parser::register_template_struct_primary(const std::string& name, Node* node) {
-    if (!is_primary_template_struct_def(node)) return;
+    if (!node || node->kind != NK_STRUCT_DEF || node->n_template_params <= 0 ||
+        node->n_template_args != 0) {
+        return;
+    }
     template_struct_defs_[name] = node;
 }
 
 void Parser::register_template_struct_specialization(const char* primary_name, Node* node) {
     if (!primary_name || !primary_name[0] || !node) return;
     template_struct_specializations_[primary_name].push_back(node);
+    if (!node->name) return;
+    if (std::strstr(primary_name, "::")) return;
+    std::string spelled_name = node->name;
+    const size_t scope_sep = spelled_name.rfind("::");
+    if (scope_sep == std::string::npos) return;
+    std::string qualified_primary =
+        spelled_name.substr(0, scope_sep + 2) + primary_name;
+    template_struct_specializations_[qualified_primary].push_back(node);
+}
+
+bool Parser::ensure_template_struct_instantiated_from_args(
+    const std::string& template_name,
+    const Node* primary_tpl,
+    const std::vector<TemplateArgParseResult>& args,
+    int line,
+    std::string* out_mangled,
+    const char* debug_reason,
+    TypeSpec* out_resolved) {
+    if (!primary_tpl || !out_mangled) return false;
+
+    std::vector<std::pair<std::string, TypeSpec>> type_bindings;
+    std::vector<std::pair<std::string, long long>> nttp_bindings;
+    const auto* specializations = find_template_struct_specializations(primary_tpl);
+    const Node* selected = select_template_struct_pattern(
+        args, primary_tpl, specializations, typedef_types_,
+        &type_bindings, &nttp_bindings);
+    if (!selected) return false;
+
+    *out_mangled = build_template_struct_mangled_name(
+        template_name, primary_tpl, selected, args);
+
+    const std::string instance_key =
+        make_template_struct_instance_key(primary_tpl, args);
+
+    // Typed fast path: an explicit full specialization already exists as a
+    // concrete struct node, so we can register/use it directly without
+    // rebuilding tokens and reparsing the instantiation spelling.
+    if (selected != primary_tpl && selected->n_template_params == 0 &&
+        selected->name && selected->name[0]) {
+        if (!struct_tag_def_map_.count(*out_mangled)) {
+            struct_tag_def_map_[*out_mangled] = const_cast<Node*>(selected);
+            defined_struct_tags_.insert(*out_mangled);
+        }
+        if (out_resolved) {
+            *out_resolved = {};
+            out_resolved->array_size = -1;
+            out_resolved->inner_rank = -1;
+            out_resolved->base = TB_STRUCT;
+            out_resolved->tag = arena_.strdup(out_mangled->c_str());
+        }
+        return true;
+    }
+
+    if (!struct_tag_def_map_.count(*out_mangled)) {
+        if (!instantiated_template_struct_keys_.count(instance_key) ||
+            !struct_tag_def_map_.count(*out_mangled)) {
+            if (!instantiate_template_struct_via_injected_parse(
+                    *this, template_name, args, line, debug_reason,
+                    out_resolved)) {
+                return false;
+            }
+        }
+    }
+
+    if (out_resolved && !out_resolved->tag &&
+        struct_tag_def_map_.count(*out_mangled)) {
+        *out_resolved = {};
+        out_resolved->array_size = -1;
+        out_resolved->inner_rank = -1;
+        out_resolved->base = TB_STRUCT;
+        out_resolved->tag = arena_.strdup(out_mangled->c_str());
+    }
+    return struct_tag_def_map_.count(*out_mangled) > 0;
+}
+
+std::string Parser::build_template_struct_mangled_name(
+    const std::string& template_name,
+    const Node* primary_tpl,
+    const Node* selected_tpl,
+    const std::vector<TemplateArgParseResult>& args) const {
+    if (!primary_tpl) return {};
+    if (selected_tpl != primary_tpl && selected_tpl &&
+        selected_tpl->n_template_params == 0 &&
+        selected_tpl->name && selected_tpl->name[0]) {
+        return selected_tpl->name;
+    }
+
+    const std::string family =
+        (selected_tpl && selected_tpl->template_origin_name &&
+         selected_tpl->template_origin_name[0])
+            ? selected_tpl->template_origin_name
+            : template_name;
+    std::string mangled = family;
+    int arg_index = 0;
+    for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+        mangled += "_";
+        mangled += primary_tpl->template_param_names[pi];
+        const bool is_pack =
+            primary_tpl->template_param_is_pack &&
+            primary_tpl->template_param_is_pack[pi];
+        if (is_pack) {
+            while (arg_index < static_cast<int>(args.size())) {
+                mangled += "_";
+                if (args[arg_index].is_value) {
+                    mangled += std::to_string(args[arg_index].value);
+                } else {
+                    append_type_mangled_suffix(mangled, args[arg_index].type);
+                }
+                ++arg_index;
+            }
+            continue;
+        }
+        mangled += "_";
+        if (arg_index < static_cast<int>(args.size()) && args[arg_index].is_value) {
+            mangled += std::to_string(args[arg_index].value);
+        } else if (arg_index < static_cast<int>(args.size()) &&
+                   !args[arg_index].is_value) {
+            append_type_mangled_suffix(mangled, args[arg_index].type);
+        } else {
+            mangled +=
+                primary_tpl->template_param_is_nttp[pi] ? "0" : "T";
+        }
+        ++arg_index;
+    }
+    return mangled;
+}
+
+bool Parser::decode_type_ref_text(const std::string& text, TypeSpec* out) {
+    if (!out || text.empty()) return false;
+
+    auto tit = typedef_types_.find(text);
+    if (tit != typedef_types_.end()) {
+        *out = tit->second;
+        return true;
+    }
+
+    const std::string resolved_name = resolve_visible_type_name(text);
+    if (!resolved_name.empty()) {
+        auto rit = typedef_types_.find(resolved_name);
+        if (rit != typedef_types_.end()) {
+            *out = rit->second;
+            return true;
+        }
+    }
+
+    if (parse_mangled_type_suffix(text, out)) return true;
+
+    auto init_tag = [&](TypeBase base, size_t prefix_len) {
+        *out = {};
+        out->array_size = -1;
+        out->inner_rank = -1;
+        out->base = base;
+        out->tag = arena_.strdup(text.substr(prefix_len).c_str());
+        out->array_rank = 0;
+    };
+    if (text.rfind("struct_", 0) == 0) {
+        init_tag(TB_STRUCT, 7);
+        return true;
+    }
+    if (text.rfind("union_", 0) == 0) {
+        init_tag(TB_UNION, 6);
+        return true;
+    }
+    if (text.rfind("enum_", 0) == 0) {
+        init_tag(TB_ENUM, 5);
+        return true;
+    }
+
+    ParserSnapshot snapshot = save_state();
+    const int saved_pos = pos_;
+    auto saved_tokens = std::move(tokens_);
+
+    Lexer lexer(text, lex_profile_from(source_profile_));
+    std::vector<Token> injected_toks = lexer.scan_all();
+    if (injected_toks.empty()) {
+        restore_state(snapshot);
+        tokens_ = std::move(saved_tokens);
+        pos_ = saved_pos;
+        return false;
+    }
+    tokens_ = std::move(injected_toks);
+    pos_ = 0;
+
+    bool ok = false;
+    try {
+        *out = parse_type_name();
+        *out = resolve_typedef_chain(*out, typedef_types_);
+        ok = pos_ > 0 &&
+             pos_ >= static_cast<int>(tokens_.size()) - 1;
+    } catch (...) {
+        ok = false;
+    }
+
+    restore_state(snapshot);
+    tokens_ = std::move(saved_tokens);
+    pos_ = saved_pos;
+    if (ok) return true;
+    return parse_builtin_typespec_text(text, out);
 }
 
 bool Parser::eval_deferred_nttp_expr_tokens(
@@ -57,6 +258,202 @@ bool Parser::eval_deferred_nttp_expr_tokens(
     std::function<bool(long long*)> eval_mul;
     std::function<bool(long long*)> eval_unary;
     std::function<bool(long long*)> eval_primary;
+
+    auto decode_type_tokens = [&](size_t start, size_t end, TypeSpec* out) -> bool {
+        if (!out || start >= end || end > toks.size()) return false;
+        if (end - start == 1) {
+            const Token& tok = toks[start];
+            if (tok.kind == TokenKind::Identifier) {
+                for (const auto& [pn, pts] : type_bindings) {
+                    if (tok.lexeme == pn) {
+                        *out = pts;
+                        return true;
+                    }
+                }
+                auto tit = typedef_types_.find(tok.lexeme);
+                if (tit != typedef_types_.end()) {
+                    *out = tit->second;
+                    return true;
+                }
+                return decode_type_ref_text(tok.lexeme, out);
+            }
+        }
+
+        std::string text = capture_template_arg_expr_text(
+            toks, static_cast<int>(start), static_cast<int>(end));
+        return decode_type_ref_text(text, out);
+    };
+
+    auto eval_builtin_type_trait = [&](long long* val) -> bool {
+        if (ti >= toks.size() || toks[ti].kind != TokenKind::Identifier) return false;
+        const std::string builtin_name = toks[ti].lexeme;
+        if (!is_builtin_type_trait_name(builtin_name) ||
+            builtin_name == "__builtin_types_compatible_p") {
+            return false;
+        }
+
+        auto find_builtin_type_arg_end = [&](size_t start) -> size_t {
+            int angle_depth = 0;
+            int paren_depth = 0;
+            int bracket_depth = 0;
+            int brace_depth = 0;
+            size_t pos = start;
+            while (pos < toks.size()) {
+                const TokenKind tk = toks[pos].kind;
+                if (tk == TokenKind::LParen) {
+                    ++paren_depth;
+                } else if (tk == TokenKind::RParen) {
+                    if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 &&
+                        angle_depth == 0) {
+                        break;
+                    }
+                    if (paren_depth > 0) --paren_depth;
+                } else if (tk == TokenKind::LBracket) {
+                    ++bracket_depth;
+                } else if (tk == TokenKind::RBracket) {
+                    if (bracket_depth > 0) --bracket_depth;
+                } else if (tk == TokenKind::LBrace) {
+                    ++brace_depth;
+                } else if (tk == TokenKind::RBrace) {
+                    if (brace_depth > 0) --brace_depth;
+                } else if (tk == TokenKind::Less) {
+                    ++angle_depth;
+                } else if (tk == TokenKind::Greater) {
+                    if (angle_depth > 0) --angle_depth;
+                } else if (tk == TokenKind::GreaterGreater) {
+                    angle_depth = std::max(0, angle_depth - 2);
+                } else if (tk == TokenKind::Comma && paren_depth == 0 &&
+                           bracket_depth == 0 && brace_depth == 0 &&
+                           angle_depth == 0) {
+                    break;
+                }
+                ++pos;
+            }
+            return pos;
+        };
+
+        const size_t saved_ti = ti;
+        ++ti;
+        if (ti >= toks.size() || toks[ti].kind != TokenKind::LParen) {
+            ti = saved_ti;
+            return false;
+        }
+        ++ti;
+
+        const size_t arg1_start = ti;
+        const size_t arg1_end = find_builtin_type_arg_end(arg1_start);
+        if (arg1_end <= arg1_start || arg1_end > toks.size()) {
+            ti = saved_ti;
+            return false;
+        }
+        TypeSpec lhs{};
+        if (!decode_type_tokens(arg1_start, arg1_end, &lhs)) {
+            ti = saved_ti;
+            return false;
+        }
+        lhs = resolve_typedef_chain(lhs, typedef_types_);
+        ti = arg1_end;
+
+        auto is_integral_trait_type = [](const TypeSpec& ts) {
+            if (ts.ptr_level > 0 || ts.is_fn_ptr || ts.array_rank > 0) return false;
+            switch (ts.base) {
+                case TB_BOOL:
+                case TB_CHAR:
+                case TB_SCHAR:
+                case TB_UCHAR:
+                case TB_SHORT:
+                case TB_USHORT:
+                case TB_INT:
+                case TB_UINT:
+                case TB_LONG:
+                case TB_ULONG:
+                case TB_LONGLONG:
+                case TB_ULONGLONG:
+                case TB_INT128:
+                case TB_UINT128:
+                    return true;
+                default:
+                    return false;
+            }
+        };
+
+        auto is_floating_trait_type = [](const TypeSpec& ts) {
+            if (ts.ptr_level > 0 || ts.is_fn_ptr || ts.array_rank > 0) return false;
+            return ts.base == TB_FLOAT || ts.base == TB_DOUBLE ||
+                   ts.base == TB_LONGDOUBLE;
+        };
+
+        auto is_const_trait_type = [](const TypeSpec& ts) {
+            return ts.is_const && !ts.is_lvalue_ref && !ts.is_rvalue_ref;
+        };
+
+        auto is_reference_trait_type = [](const TypeSpec& ts) {
+            return ts.is_lvalue_ref || ts.is_rvalue_ref;
+        };
+
+        auto is_enum_trait_type = [](const TypeSpec& ts) {
+            if (ts.ptr_level > 0 || ts.is_fn_ptr || ts.array_rank > 0) return false;
+            return ts.base == TB_ENUM;
+        };
+
+        if (builtin_name == "__is_same") {
+            if (ti >= toks.size() || toks[ti].kind != TokenKind::Comma) {
+                ti = saved_ti;
+                return false;
+            }
+            ++ti;
+            const size_t arg2_start = ti;
+            const size_t arg2_end = find_builtin_type_arg_end(arg2_start);
+            if (arg2_end <= arg2_start || arg2_end > toks.size()) {
+                ti = saved_ti;
+                return false;
+            }
+            TypeSpec rhs{};
+            if (!decode_type_tokens(arg2_start, arg2_end, &rhs)) {
+                ti = saved_ti;
+                return false;
+            }
+            rhs = resolve_typedef_chain(rhs, typedef_types_);
+            ti = arg2_end;
+            if (ti >= toks.size() || toks[ti].kind != TokenKind::RParen) {
+                ti = saved_ti;
+                return false;
+            }
+            ++ti;
+            *val = types_compatible_p(lhs, rhs, typedef_types_) ? 1 : 0;
+            return true;
+        }
+
+        if (ti >= toks.size() || toks[ti].kind != TokenKind::RParen) {
+            ti = saved_ti;
+            return false;
+        }
+        ++ti;
+
+        if (builtin_name == "__is_integral") {
+            *val = is_integral_trait_type(lhs) ? 1 : 0;
+            return true;
+        }
+        if (builtin_name == "__is_floating_point") {
+            *val = is_floating_trait_type(lhs) ? 1 : 0;
+            return true;
+        }
+        if (builtin_name == "__is_const") {
+            *val = is_const_trait_type(lhs) ? 1 : 0;
+            return true;
+        }
+        if (builtin_name == "__is_reference") {
+            *val = is_reference_trait_type(lhs) ? 1 : 0;
+            return true;
+        }
+        if (builtin_name == "__is_enum") {
+            *val = is_enum_trait_type(lhs) ? 1 : 0;
+            return true;
+        }
+
+        ti = saved_ti;
+        return false;
+    };
 
     // Helper: resolve a template arg token at position ti.
     auto resolve_template_arg = [&](std::vector<ParsedTemplateArg>& ref_args) -> bool {
@@ -99,7 +496,9 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             ParsedTemplateArg a; a.is_value = true; a.value = 0;
             ref_args.push_back(a); ++ti; return true;
         } else {
-            // Multi-token arg (e.g. builtin type keywords)
+            // Multi-token arg: prefer the shared typed decoder so qualified
+            // names and other non-builtin type spellings do not fall back to
+            // debug-text-only handling.
             size_t arg_end = ti;
             int nested_angle_depth = 0;
             while (arg_end < toks.size()) {
@@ -112,11 +511,9 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                 } else if (tk == TokenKind::Comma && nested_angle_depth == 0) break;
                 ++arg_end;
             }
-            std::string arg_text = capture_template_arg_expr_text(
-                toks, static_cast<int>(ti), static_cast<int>(arg_end));
-            TypeSpec builtin_ts{};
-            if (!arg_text.empty() && parse_builtin_typespec_text(arg_text, &builtin_ts)) {
-                ParsedTemplateArg a; a.is_value = false; a.type = builtin_ts;
+            TypeSpec decoded_ts{};
+            if (arg_end > ti && decode_type_tokens(ti, arg_end, &decoded_ts)) {
+                ParsedTemplateArg a; a.is_value = false; a.type = decoded_ts;
                 ref_args.push_back(a); ti = arg_end; return true;
             }
             return false;
@@ -176,104 +573,13 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         }
         if (!ref_primary) { ti = saved_ti; return false; }
 
-        std::vector<std::pair<std::string, TypeSpec>> ref_type_bindings;
-        std::vector<std::pair<std::string, long long>> ref_nttp_bindings;
-        const auto* ref_specializations = find_template_struct_specializations(ref_primary);
-        const Node* ref_def = select_template_struct_pattern(
-            ref_args, ref_primary, ref_specializations,
-            typedef_types_, &ref_type_bindings, &ref_nttp_bindings);
-        if (!ref_def) { ti = saved_ti; return false; }
-
-        // Build the concrete struct tag.
         std::string ref_mangled;
-        if (ref_def != ref_primary && ref_def->n_template_params == 0 &&
-            ref_def->name && ref_def->name[0]) {
-            ref_mangled = ref_def->name;
-        } else {
-            const std::string ref_family =
-                (ref_def && ref_def->template_origin_name && ref_def->template_origin_name[0])
-                    ? ref_def->template_origin_name : resolved_ref_tpl_name;
-            ref_mangled = ref_family;
-            for (int pi = 0; pi < ref_primary->n_template_params; ++pi) {
-                ref_mangled += "_";
-                ref_mangled += ref_primary->template_param_names[pi];
-                ref_mangled += "_";
-                if (pi < static_cast<int>(ref_args.size()) && ref_args[pi].is_value)
-                    ref_mangled += std::to_string(ref_args[pi].value);
-                else if (pi < static_cast<int>(ref_args.size()) && !ref_args[pi].is_value)
-                    append_type_mangled_suffix(ref_mangled, ref_args[pi].type);
-            }
-        }
-
-        // Ensure the referenced struct is instantiated via token injection.
-        if (!struct_tag_def_map_.count(ref_mangled)) {
-            std::vector<Token> inject_toks;
-            Token t; t.line = ref_primary->line; t.column = 0;
-            auto append_qualified_name_tokens = [&](const std::string& name) {
-                size_t start = 0;
-                while (start < name.size()) {
-                    size_t sep = name.find("::", start);
-                    Token name_tok = t;
-                    name_tok.kind = TokenKind::Identifier;
-                    name_tok.lexeme = sep == std::string::npos
-                        ? name.substr(start)
-                        : name.substr(start, sep - start);
-                    inject_toks.push_back(name_tok);
-                    if (sep == std::string::npos) break;
-                    Token cc_tok = t;
-                    cc_tok.kind = TokenKind::ColonColon;
-                    cc_tok.lexeme = "::";
-                    inject_toks.push_back(cc_tok);
-                    start = sep + 2;
-                }
-            };
-            append_qualified_name_tokens(resolved_ref_tpl_name);
-            t.kind = TokenKind::Less; t.lexeme = "<";
-            inject_toks.push_back(t);
-            for (int ai = 0; ai < (int)ref_args.size(); ++ai) {
-                if (ai > 0) { t.kind = TokenKind::Comma; t.lexeme = ","; inject_toks.push_back(t); }
-                if (ref_args[ai].is_value) {
-                    if (ref_args[ai].value == 0) { t.kind = TokenKind::KwFalse; t.lexeme = "false"; }
-                    else if (ref_args[ai].value == 1) { t.kind = TokenKind::KwTrue; t.lexeme = "true"; }
-                    else { t.kind = TokenKind::IntLit; t.lexeme = std::to_string(ref_args[ai].value); }
-                    inject_toks.push_back(t);
-                } else {
-                    const TypeSpec& ats = ref_args[ai].type;
-                    t.kind = TokenKind::Identifier;
-                    if (ats.tag) {
-                        t.lexeme = ats.tag;
-                    } else {
-                        switch (ats.base) {
-                            case TB_INT: t.kind = TokenKind::KwInt; t.lexeme = "int"; break;
-                            case TB_UINT: t.kind = TokenKind::KwUnsigned; t.lexeme = "unsigned"; break;
-                            case TB_CHAR: t.kind = TokenKind::KwChar; t.lexeme = "char"; break;
-                            case TB_VOID: t.kind = TokenKind::KwVoid; t.lexeme = "void"; break;
-                            case TB_FLOAT: t.kind = TokenKind::KwFloat; t.lexeme = "float"; break;
-                            case TB_DOUBLE: t.kind = TokenKind::KwDouble; t.lexeme = "double"; break;
-                            case TB_LONG: t.kind = TokenKind::KwLong; t.lexeme = "long"; break;
-                            case TB_SHORT: t.kind = TokenKind::KwShort; t.lexeme = "short"; break;
-                            case TB_BOOL: t.kind = TokenKind::KwBool; t.lexeme = "bool"; break;
-                            default: { std::string nm; append_type_mangled_suffix(nm, ats); t.lexeme = nm; } break;
-                        }
-                    }
-                    inject_toks.push_back(t);
-                }
-            }
-            t.kind = TokenKind::Greater; t.lexeme = ">";
-            inject_toks.push_back(t);
-            t.kind = TokenKind::Semi; t.lexeme = ";";
-            inject_toks.push_back(t);
-
-            // Token injection: temporarily swap tokens_ to parse injected text.
-            // TentativeParseGuard does not snapshot tokens_, so manual
-            // save/restore of tokens_ and pos_ is intentionally kept here.
-            int saved_pos = pos_;
-            auto saved_parser_toks = std::move(tokens_);
-            tokens_ = std::move(inject_toks);
-            pos_ = 0;
-            try { (void)parse_base_type(); } catch (...) {}
-            tokens_ = std::move(saved_parser_toks);
-            pos_ = saved_pos;
+        if (!ensure_template_struct_instantiated_from_args(
+                resolved_ref_tpl_name, ref_primary, ref_args,
+                ref_primary->line, &ref_mangled,
+                "template_member_lookup_instantiation")) {
+            ti = saved_ti;
+            return false;
         }
 
         auto sdef_it = struct_tag_def_map_.find(ref_mangled);
@@ -319,6 +625,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
     // Primary: literal, NTTP param name, parenthesized expr, or member lookup.
     eval_primary = [&](long long* val) -> bool {
         if (ti >= toks.size()) return false;
+        if (eval_builtin_type_trait(val)) return true;
         // Parenthesized expression
         if (toks[ti].kind == TokenKind::LParen) {
             ++ti;

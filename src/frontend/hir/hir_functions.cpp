@@ -20,9 +20,77 @@
 
 namespace c4c::hir {
 
+namespace {
+
+void ensure_function_slot(Module* module, FunctionId id) {
+  if (!module) return;
+  if (module->functions.size() <= id.value) {
+    const size_t old_size = module->functions.size();
+    module->functions.resize(static_cast<size_t>(id.value) + 1);
+    for (size_t i = old_size; i < module->functions.size(); ++i) {
+      module->functions[i].id = FunctionId::invalid();
+    }
+  }
+}
+
+bool normalize_zero_sized_struct_return_from_body(Module* module, Function* fn) {
+  if (!module || !fn) return false;
+  const TypeSpec ret_ts = fn->return_type.spec;
+  if (ret_ts.base != TB_STRUCT || !ret_ts.tag || !ret_ts.tag[0] ||
+      ret_ts.ptr_level != 0 || ret_ts.array_rank != 0 ||
+      ret_ts.is_lvalue_ref || ret_ts.is_rvalue_ref) {
+    return false;
+  }
+
+  auto sit = module->struct_defs.find(ret_ts.tag);
+  if (sit == module->struct_defs.end() || sit->second.size_bytes != 0) {
+    return false;
+  }
+
+  std::optional<TypeSpec> inferred;
+  for (const auto& block : fn->blocks) {
+    for (const auto& stmt : block.stmts) {
+      const auto* ret = std::get_if<ReturnStmt>(&stmt.payload);
+      if (!ret || !ret->expr) continue;
+      ExprId expr_id = *ret->expr;
+      auto eit = std::find_if(
+          module->expr_pool.begin(),
+          module->expr_pool.end(),
+          [&](const Expr& expr) { return expr.id.value == expr_id.value; });
+      if (eit == module->expr_pool.end()) continue;
+
+      const TypeSpec expr_ts = eit->type.spec;
+      if (expr_ts.base == TB_VOID || expr_ts.ptr_level > 0 ||
+          expr_ts.array_rank > 0 || expr_ts.is_lvalue_ref ||
+          expr_ts.is_rvalue_ref || expr_ts.base == TB_STRUCT ||
+          expr_ts.base == TB_UNION) {
+        return false;
+      }
+
+      if (!inferred) {
+        inferred = expr_ts;
+        continue;
+      }
+
+      std::unordered_map<std::string, TypeSpec> empty_typedefs;
+      if (!types_compatible_p(*inferred, expr_ts, empty_typedefs)) {
+        return false;
+      }
+    }
+  }
+
+  if (!inferred) return false;
+  fn->return_type.spec = *inferred;
+  fn->return_type.category = ValueCategory::RValue;
+  return true;
+}
+
+}  // namespace
+
 void Lowerer::register_bodyless_callable(Function&& fn) {
   module_->fn_index[fn.name] = fn.id;
-  module_->functions.push_back(std::move(fn));
+  ensure_function_slot(module_, fn.id);
+  module_->functions[fn.id.value] = std::move(fn);
 }
 
 bool Lowerer::maybe_register_bodyless_callable(Function* fn,
@@ -34,16 +102,15 @@ bool Lowerer::maybe_register_bodyless_callable(Function* fn,
 
 BlockId Lowerer::begin_callable_body_lowering(Function& fn, FunctionCtx& ctx) {
   module_->fn_index[fn.name] = fn.id;
-  if (fn.id.value == module_->functions.size()) {
-    // Push a skeleton; callers replace it after body lowering completes.
-    Function skeleton{};
-    skeleton.id = fn.id;
-    skeleton.name = fn.name;
-    skeleton.execution_domain = fn.execution_domain;
-    skeleton.ns_qual = fn.ns_qual;
-    skeleton.return_type = fn.return_type;
-    module_->functions.push_back(std::move(skeleton));
-  }
+  ensure_function_slot(module_, fn.id);
+  // Reserve a skeleton; callers replace it after body lowering completes.
+  Function skeleton{};
+  skeleton.id = fn.id;
+  skeleton.name = fn.name;
+  skeleton.execution_domain = fn.execution_domain;
+  skeleton.ns_qual = fn.ns_qual;
+  skeleton.return_type = fn.return_type;
+  module_->functions[fn.id.value] = std::move(skeleton);
 
   const BlockId entry = create_block(ctx);
   fn.entry = entry;
@@ -185,26 +252,51 @@ void Lowerer::lower_function(const Node* fn_node,
   }
 
   lower_stmt_node(ctx, fn_node->body);
+  normalize_zero_sized_struct_return_from_body(module_, &fn);
   finish_lowered_callable(&fn, entry);
 }
 
 TypeSpec Lowerer::substitute_signature_template_type(
-    TypeSpec ts, const TypeBindings* tpl_bindings) const {
-  if (!tpl_bindings || ts.base != TB_TYPEDEF || !ts.tag) return ts;
-  auto it = tpl_bindings->find(ts.tag);
-  if (it == tpl_bindings->end()) return ts;
-  const TypeSpec& concrete = it->second;
+    TypeSpec ts, const TypeBindings* tpl_bindings) {
+  if (ts.base != TB_TYPEDEF || !ts.tag) return ts;
   const int outer_ptr_level = ts.ptr_level;
   const bool outer_lref = ts.is_lvalue_ref;
   const bool outer_rref = ts.is_rvalue_ref;
   const bool outer_const = ts.is_const;
   const bool outer_volatile = ts.is_volatile;
-  ts = concrete;
-  ts.ptr_level += outer_ptr_level;
-  ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
-  ts.is_rvalue_ref = !ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
-  ts.is_const = concrete.is_const || outer_const;
-  ts.is_volatile = concrete.is_volatile || outer_volatile;
+
+  auto apply_concrete = [&](const TypeSpec& concrete) {
+    ts = concrete;
+    ts.ptr_level += outer_ptr_level;
+    ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
+    ts.is_rvalue_ref =
+        !ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
+    ts.is_const = concrete.is_const || outer_const;
+    ts.is_volatile = concrete.is_volatile || outer_volatile;
+  };
+
+  if (tpl_bindings) {
+    auto it = tpl_bindings->find(ts.tag);
+    if (it != tpl_bindings->end()) {
+      apply_concrete(it->second);
+      return ts;
+    }
+  }
+
+  const std::string qualified_name = ts.tag;
+  const size_t split = qualified_name.rfind("::");
+  if (split == std::string::npos) return ts;
+
+  TypeSpec resolved{};
+  if (!resolve_struct_member_typedef_type(
+          qualified_name.substr(0, split), qualified_name.substr(split + 2),
+          &resolved)) {
+    return ts;
+  }
+
+  apply_concrete(resolved);
+  if (tpl_bindings && ts.base == TB_TYPEDEF && ts.tag)
+    return substitute_signature_template_type(ts, tpl_bindings);
   return ts;
 }
 
@@ -231,6 +323,34 @@ TypeSpec Lowerer::prepare_callable_return_type(
   ret_ts = substitute_signature_template_type(ret_ts, tpl_bindings);
   resolve_signature_template_type_if_needed(
       ret_ts, tpl_bindings, nttp_bindings, span_node, context_name);
+  while (resolve_struct_member_typedef_if_ready(&ret_ts)) {
+  }
+  if (ret_ts.deferred_member_type_name &&
+      ((ret_ts.tpl_struct_origin && ret_ts.tpl_struct_origin[0]) ||
+       (ret_ts.tag && ret_ts.tag[0]))) {
+    seed_pending_template_type(
+        ret_ts,
+        tpl_bindings ? *tpl_bindings : TypeBindings{},
+        nttp_bindings ? *nttp_bindings : NttpBindings{},
+        span_node,
+        PendingTemplateTypeKind::MemberTypedef,
+        context_name);
+    while (resolve_struct_member_typedef_if_ready(&ret_ts)) {
+    }
+  }
+  if (!ret_ts.deferred_member_type_name && ret_ts.ptr_level == 0 &&
+      ret_ts.array_rank == 0 && !ret_ts.is_lvalue_ref &&
+      !ret_ts.is_rvalue_ref && ret_ts.base == TB_STRUCT && ret_ts.tag &&
+      ret_ts.tag[0]) {
+    TypeSpec resolved_member{};
+    if (resolve_struct_member_typedef_type(ret_ts.tag, "type",
+                                           &resolved_member)) {
+      while (resolve_struct_member_typedef_if_ready(&resolved_member)) {
+      }
+      resolve_typedef_to_struct(resolved_member);
+      ret_ts = resolved_member;
+    }
+  }
   if (resolve_typedef_struct) resolve_typedef_to_struct(ret_ts);
   return ret_ts;
 }
@@ -248,6 +368,34 @@ void Lowerer::append_explicit_callable_param(
   param_ts = substitute_signature_template_type(param_ts, tpl_bindings);
   resolve_signature_template_type_if_needed(
       param_ts, tpl_bindings, nttp_bindings, param_node, context_name);
+  while (resolve_struct_member_typedef_if_ready(&param_ts)) {
+  }
+  if (param_ts.deferred_member_type_name &&
+      ((param_ts.tpl_struct_origin && param_ts.tpl_struct_origin[0]) ||
+       (param_ts.tag && param_ts.tag[0]))) {
+    seed_pending_template_type(
+        param_ts,
+        tpl_bindings ? *tpl_bindings : TypeBindings{},
+        nttp_bindings ? *nttp_bindings : NttpBindings{},
+        param_node,
+        PendingTemplateTypeKind::MemberTypedef,
+        context_name);
+    while (resolve_struct_member_typedef_if_ready(&param_ts)) {
+    }
+  }
+  if (!param_ts.deferred_member_type_name && param_ts.ptr_level == 0 &&
+      param_ts.array_rank == 0 && !param_ts.is_lvalue_ref &&
+      !param_ts.is_rvalue_ref && param_ts.base == TB_STRUCT && param_ts.tag &&
+      param_ts.tag[0]) {
+    TypeSpec resolved_member{};
+    if (resolve_struct_member_typedef_type(param_ts.tag, "type",
+                                           &resolved_member)) {
+      while (resolve_struct_member_typedef_if_ready(&resolved_member)) {
+      }
+      resolve_typedef_to_struct(resolved_member);
+      param_ts = resolved_member;
+    }
+  }
   if (resolve_typedef_struct) resolve_typedef_to_struct(param_ts);
 
   Param param{};

@@ -1,6 +1,7 @@
 #include "validate.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <iostream>
 #include <optional>
@@ -246,11 +247,38 @@ bool is_ref_overload(const FunctionSig& a, const FunctionSig& b) {
   return has_ref_diff;
 }
 
+bool supports_cpp_overload_set(const char* name) {
+  if (!name || !name[0]) return false;
+  // C++ permits overloading ordinary operator functions, not just allocation
+  // forms. Treat our parser's normalized operator_* spellings as overloadable
+  // so sema doesn't reject later declarations as C-style redeclarations.
+  if (std::strncmp(name, "operator_", 9) == 0) return true;
+  return std::strcmp(name, "operator_new") == 0 ||
+         std::strcmp(name, "operator_new_array") == 0 ||
+         std::strcmp(name, "operator_delete") == 0 ||
+         std::strcmp(name, "operator_delete_array") == 0;
+}
+
 bool same_tagged_type(const TypeSpec& a, const TypeSpec& b) {
   if (a.base != b.base) return false;
   if (a.base != TB_STRUCT && a.base != TB_UNION && a.base != TB_ENUM) return true;
   if (a.tag == nullptr || b.tag == nullptr) return false;
   return std::string(a.tag) == std::string(b.tag);
+}
+
+std::string unqualified_tag_name(const TypeSpec& ts) {
+  if (!ts.tag || !ts.tag[0]) return {};
+  const std::string tag(ts.tag);
+  const size_t sep = tag.rfind("::");
+  return sep == std::string::npos ? tag : tag.substr(sep + 2);
+}
+
+bool same_tagged_type_ignoring_qualification(const TypeSpec& a, const TypeSpec& b) {
+  if (a.base != b.base) return false;
+  if (a.base != TB_STRUCT && a.base != TB_UNION && a.base != TB_ENUM) return false;
+  const std::string a_name = unqualified_tag_name(a);
+  const std::string b_name = unqualified_tag_name(b);
+  return !a_name.empty() && a_name == b_name;
 }
 
 // C11 6.3.2.3p3: null pointer constant is an integer constant expression with value 0,
@@ -264,6 +292,11 @@ bool is_null_pointer_constant_expr(const Node* n) {
     if (cast_to_void_ptr) return is_null_pointer_constant_expr(n->left);
   }
   return false;
+}
+
+bool is_deref_of_this_expr(const Node* n) {
+  return n && n->kind == NK_DEREF && n->left && n->left->kind == NK_VAR &&
+         n->left->name && std::strcmp(n->left->name, "this") == 0;
 }
 
 std::optional<std::string> qualified_method_owner_struct(const Node* fn) {
@@ -393,12 +426,16 @@ class Validator {
   std::unordered_map<std::string, const Node*> consteval_funcs_;
   // Ref-overloaded function signatures: name → multiple overloads differing in ref-qualifier.
   std::unordered_map<std::string, std::vector<FunctionSig>> ref_overload_sigs_;
+  std::unordered_map<std::string, std::vector<FunctionSig>> cpp_overload_sigs_;
   std::unordered_set<std::string> complete_structs_;
   std::unordered_set<std::string> complete_unions_;
+  std::unordered_map<const Node*, const Node*> method_owner_records_;
+  std::unordered_map<std::string, std::vector<const Node*>> struct_defs_by_unqualified_name_;
   // Struct field names for implicit member lookup in out-of-class method bodies.
   std::unordered_map<std::string, std::unordered_set<std::string>> struct_field_names_;
   std::unordered_map<std::string, std::unordered_map<std::string, TypeSpec>> struct_static_member_types_;
   std::unordered_map<std::string, std::vector<std::string>> struct_base_tags_;
+  std::unordered_set<std::string> template_type_params_;
   std::string current_method_struct_tag_;
   std::vector<std::unordered_map<std::string, ScopedSym>> scopes_;
   bool suppress_uninit_read_ = false;
@@ -433,7 +470,32 @@ class Validator {
   }
 
   void emit(int line, std::string msg) {
-    diags_.push_back(Diagnostic{line, std::move(msg)});
+    diags_.push_back(Diagnostic{nullptr, line, 1, std::move(msg)});
+  }
+
+  void emit(const Node* node, std::string msg) {
+    if (!node) {
+      emit(0, std::move(msg));
+      return;
+    }
+    diags_.push_back(Diagnostic{
+        node->file, node->line, node->column > 0 ? node->column : 1, std::move(msg)});
+  }
+
+  void record_cpp_overload(const std::string& name, FunctionSig sig) {
+    auto& ovset = cpp_overload_sigs_[name];
+    if (ovset.empty()) {
+      auto it = funcs_.find(name);
+      if (it != funcs_.end()) ovset.push_back(it->second);
+    }
+    for (FunctionSig& existing : ovset) {
+      if (!function_sig_compatible(existing, sig)) continue;
+      if (existing.unspecified_params && !sig.unspecified_params) {
+        existing = std::move(sig);
+      }
+      return;
+    }
+    ovset.push_back(std::move(sig));
   }
 
   ValidateResult finish() {
@@ -463,6 +525,28 @@ class Validator {
       return;
     }
     scope[name] = ScopedSym{ts, initialized};
+  }
+
+  TypeSpec deduce_local_decl_type(const Node* decl, const ExprInfo* init_info = nullptr) {
+    if (!decl) return {};
+    TypeSpec deduced = decl->type;
+    if (deduced.base != TB_AUTO || !decl->init) return deduced;
+
+    ExprInfo local_init_info = init_info ? *init_info : infer_expr(decl->init);
+    if (!local_init_info.valid) return deduced;
+
+    deduced = local_init_info.type;
+    deduced.is_const = deduced.is_const || decl->type.is_const;
+    deduced.is_volatile = deduced.is_volatile || decl->type.is_volatile;
+    deduced.is_lvalue_ref = false;
+    deduced.is_rvalue_ref = false;
+    if (decl->type.is_lvalue_ref) {
+      deduced.is_lvalue_ref = true;
+    } else if (decl->type.is_rvalue_ref) {
+      if (local_init_info.is_lvalue) deduced.is_lvalue_ref = true;
+      else deduced.is_rvalue_ref = true;
+    }
+    return deduced;
   }
 
   std::optional<ScopedSym> lookup_symbol(const std::string& name) const {
@@ -533,10 +617,16 @@ class Validator {
     return complete_unions_.count(tag) > 0;
   }
 
+  static std::string unqualified_name(const std::string& name) {
+    const size_t sep = name.rfind("::");
+    return sep == std::string::npos ? name : name.substr(sep + 2);
+  }
+
   void note_struct_def(const Node* n) {
     if (!n || n->kind != NK_STRUCT_DEF || !n->name || !n->name[0]) return;
     // Zero-sized structs/unions are a GCC extension; treat them as complete.
     const std::string tag(n->name);
+    struct_defs_by_unqualified_name_[unqualified_name(tag)].push_back(n);
     if (n->is_union) {
       complete_unions_.insert(tag);
     } else {
@@ -574,8 +664,144 @@ class Validator {
     return std::nullopt;
   }
 
+  bool has_struct_instance_field(const std::string& tag,
+                                 const std::string& member) const {
+    auto fit = struct_field_names_.find(tag);
+    if (fit != struct_field_names_.end() && fit->second.count(member)) return true;
+    auto bit = struct_base_tags_.find(tag);
+    if (bit != struct_base_tags_.end()) {
+      for (const auto& base_tag : bit->second) {
+        if (has_struct_instance_field(base_tag, member)) return true;
+      }
+    }
+    return false;
+  }
+
+  std::optional<std::string> resolve_owner_in_namespace_context(
+      const std::string& owner, int namespace_context_id) const {
+    if (owner.empty() || namespace_context_id < 0) return std::nullopt;
+
+    auto it = struct_defs_by_unqualified_name_.find(unqualified_name(owner));
+    if (it == struct_defs_by_unqualified_name_.end()) return std::nullopt;
+
+    const Node* match = nullptr;
+    for (const Node* candidate : it->second) {
+      if (!candidate || candidate->namespace_context_id != namespace_context_id ||
+          !candidate->name || !candidate->name[0]) {
+        continue;
+      }
+      if (owner.find("::") != std::string::npos) {
+        const std::string candidate_name(candidate->name);
+        if (candidate_name.size() < owner.size() ||
+            candidate_name.compare(candidate_name.size() - owner.size(), owner.size(), owner) != 0) {
+          continue;
+        }
+      }
+      if (match && match != candidate) return std::nullopt;
+      match = candidate;
+    }
+    if (!match) return std::nullopt;
+    return std::string(match->name);
+  }
+
+  std::optional<std::string> enclosing_method_owner_struct(const Node* fn) const {
+    if (auto owner = qualified_method_owner_struct(fn); owner.has_value()) {
+      if (auto contextual =
+              resolve_owner_in_namespace_context(*owner, fn ? fn->namespace_context_id : -1);
+          contextual.has_value()) {
+        return contextual;
+      }
+      if (complete_structs_.count(*owner) || complete_unions_.count(*owner)) return owner;
+      // Do not guess across namespaces once direct contextual and canonical-tag
+      // lookup has failed. Unqualified owners must resolve through the
+      // declaration namespace; qualified owners must already name the record.
+      if (owner->find("::") != std::string::npos) return owner;
+      return std::nullopt;
+    }
+    auto it = method_owner_records_.find(fn);
+    if (it == method_owner_records_.end() || !it->second || !it->second->name ||
+        !it->second->name[0]) {
+      return std::nullopt;
+    }
+    return std::string(it->second->name);
+  }
+
+  bool can_defer_owner_qualified_cast_typedef(const TypeSpec& ts) const {
+    if (current_method_struct_tag_.empty() || !ts.tag || !ts.tag[0]) return false;
+    if (ts.is_global_qualified) return false;
+    return std::strstr(ts.tag, "::") != nullptr;
+  }
+
+  void bind_template_nttps(const Node* n, int line) {
+    if (!n || n->n_template_params <= 0 || !n->template_param_names) return;
+    for (int i = 0; i < n->n_template_params; ++i) {
+      if (!(n->template_param_is_nttp && n->template_param_is_nttp[i]) ||
+          !n->template_param_names[i]) {
+        continue;
+      }
+      TypeSpec nttp_ts{};
+      nttp_ts.base = TB_INT;
+      nttp_ts.array_size = -1;
+      nttp_ts.inner_rank = -1;
+      bind_local(n->template_param_names[i], nttp_ts, true, line);
+    }
+  }
+
+  void record_template_type_params_recursive(const Node* n) {
+    if (!n) return;
+    if (n->n_template_params > 0 &&
+        n->template_param_names) {
+      for (int i = 0; i < n->n_template_params; ++i) {
+        if (n->template_param_names[i] &&
+            (!n->template_param_is_nttp ||
+             !n->template_param_is_nttp[i])) {
+          template_type_params_.insert(n->template_param_names[i]);
+        }
+      }
+    }
+    for (int i = 0; i < n->n_children; ++i) {
+      record_template_type_params_recursive(n->children[i]);
+    }
+    for (int i = 0; i < n->n_fields; ++i) {
+      record_template_type_params_recursive(n->fields[i]);
+    }
+    for (int i = 0; i < n->n_params; ++i) {
+      record_template_type_params_recursive(n->params[i]);
+    }
+    record_template_type_params_recursive(n->body);
+    record_template_type_params_recursive(n->left);
+    record_template_type_params_recursive(n->right);
+    record_template_type_params_recursive(n->cond);
+    record_template_type_params_recursive(n->then_);
+    record_template_type_params_recursive(n->else_);
+    record_template_type_params_recursive(n->init);
+    record_template_type_params_recursive(n->update);
+  }
+
+  bool looks_like_template_placeholder_name(const char* name) const {
+    if (!name || !name[0]) return false;
+    if (complete_structs_.count(name) > 0 || complete_unions_.count(name) > 0 ||
+        globals_.count(name) > 0 || enum_consts_.count(name) > 0 ||
+        funcs_.count(name) > 0) {
+      return false;
+    }
+    bool saw_upper = false;
+    for (const unsigned char* p =
+             reinterpret_cast<const unsigned char*>(name);
+         *p; ++p) {
+      if (std::isupper(*p)) {
+        saw_upper = true;
+        continue;
+      }
+      if (std::isdigit(*p) || *p == '_') continue;
+      return false;
+    }
+    return saw_upper;
+  }
+
   void collect_toplevel_node(const Node* n) {
     if (!n) return;
+    record_template_type_params_recursive(n);
     if (n->kind == NK_BLOCK) {
       // Multi-declarator global block: recurse into children.
       for (int i = 0; i < n->n_children; ++i) collect_toplevel_node(n->children[i]);
@@ -584,7 +810,7 @@ class Validator {
     if (n->kind == NK_GLOBAL_VAR) {
       if (n->name && n->name[0]) globals_[n->name] = n->type;
       if (!is_complete_object_type(n->type)) {
-        emit(n->line, "object has incomplete struct/union type");
+        emit(n, "object has incomplete struct/union type");
       }
     } else if (n->kind == NK_FUNCTION) {
       if (!n->name || !n->name[0]) return;
@@ -604,26 +830,52 @@ class Validator {
         sig.params.push_back(pt);
         if (param->is_parameter_pack) sig.has_param_pack = true;
       }
-      auto it = funcs_.find(n->name);
-      if (it != funcs_.end()) {
+      auto cpp_ov = cpp_overload_sigs_.find(n->name);
+      if (cpp_ov != cpp_overload_sigs_.end()) {
+        bool matched = false;
+        for (FunctionSig& existing : cpp_ov->second) {
+          if (!function_sig_compatible(existing, sig)) continue;
+          matched = true;
+          if (existing.unspecified_params && !sig.unspecified_params) {
+            existing = std::move(sig);
+          }
+          break;
+        }
+        if (!matched && !n->is_explicit_specialization) {
+          if (supports_cpp_overload_set(n->name)) {
+            cpp_ov->second.push_back(std::move(sig));
+          } else {
+            emit(n, std::string("conflicting types for function '") + n->name + "'");
+          }
+        }
+      } else {
+        auto it = funcs_.find(n->name);
+        if (it != funcs_.end()) {
         if (!function_sig_compatible(it->second, sig) && !n->is_explicit_specialization) {
           // Check if this is a ref-overload (T& vs T&&) before emitting error.
           if (is_ref_overload(it->second, sig)) {
             auto& ovset = ref_overload_sigs_[n->name];
             if (ovset.empty()) ovset.push_back(it->second);
             ovset.push_back(std::move(sig));
+          } else if (supports_cpp_overload_set(n->name)) {
+            record_cpp_overload(n->name, std::move(sig));
           } else {
-            emit(n->line, std::string("conflicting types for function '") + n->name + "'");
+            emit(n, std::string("conflicting types for function '") + n->name + "'");
           }
         } else if (it->second.unspecified_params && !sig.unspecified_params) {
           // Upgrade K&R unspecified-params declaration to the full prototype.
           it->second = std::move(sig);
         }
-      } else {
-        funcs_[n->name] = std::move(sig);
+        } else {
+          funcs_[n->name] = std::move(sig);
+        }
       }
     } else if (n->kind == NK_STRUCT_DEF) {
       note_struct_def(n);
+      for (int i = 0; i < n->n_children; ++i) {
+        const Node* child = n->children[i];
+        if (child && child->kind == NK_FUNCTION) method_owner_records_[child] = n;
+      }
     } else if (n->kind == NK_ENUM_DEF) {
       bind_enum_constants_global(n);
     }
@@ -669,7 +921,7 @@ class Validator {
     env.local_const_scopes = &local_const_vals_scopes_;
 
     if (auto r = evaluate_constant_expr(n->left, env); r.ok()) {
-      if (r.as_int() == 0) emit(n->line, "_Static_assert condition is false");
+      if (r.as_int() == 0) emit(n, "_Static_assert condition is false");
       return;
     }
 
@@ -690,7 +942,7 @@ class Validator {
         if (args_ok) {
           auto r = hir::evaluate_consteval_call(it->second, args, env, consteval_funcs_);
           if (r.ok()) {
-            if (r.as_int() == 0) emit(n->line, "_Static_assert condition is false");
+            if (r.as_int() == 0) emit(n, "_Static_assert condition is false");
             return;
           }
         }
@@ -703,7 +955,7 @@ class Validator {
       return;
     }
 
-    emit(n->line, "_Static_assert requires an integer constant expression");
+    emit(n, "_Static_assert requires an integer constant expression");
   }
 
   void validate_global(const Node* n) {
@@ -713,23 +965,23 @@ class Validator {
     // understand (e.g. reference-returning functions like char(&f(T(&x)[N]))[N]).
     if (n->n_template_params > 0) return;
     if (n->type.is_lvalue_ref && !n->init) {
-      emit(n->line, "lvalue reference must be initialized");
+      emit(n, "lvalue reference must be initialized");
     }
     if (n->type.is_rvalue_ref && !n->init) {
-      emit(n->line, "rvalue reference must be initialized");
+      emit(n, "rvalue reference must be initialized");
     }
     if (n->init) {
       ExprInfo rhs = infer_expr(n->init);
       if (n->type.is_lvalue_ref && !rhs.is_lvalue) {
-        emit(n->line, "lvalue reference must bind to an lvalue");
+        emit(n, "lvalue reference must bind to an lvalue");
       }
       if (n->type.is_rvalue_ref && rhs.is_lvalue) {
-        emit(n->line, "rvalue reference cannot bind to an lvalue");
+        emit(n, "rvalue reference cannot bind to an lvalue");
       }
       if (rhs.valid &&
           is_invalid_pointer_float_implicit_conversion(
               referred_type(n->type), rhs.type, is_null_pointer_constant_expr(n->init))) {
-        emit(n->line, "incompatible initializer type");
+        emit(n, "incompatible initializer type");
       }
     }
   }
@@ -788,34 +1040,29 @@ class Validator {
       bind_local("__FUNCTION__", func_ts, true, 0);
       bind_local("__PRETTY_FUNCTION__", func_ts, true, 0);
     }
-    // Inject non-type template parameter names as int locals so body validation
-    // can resolve references to them.
-    for (int i = 0; i < fn->n_template_params; ++i) {
-      if (fn->template_param_is_nttp && fn->template_param_is_nttp[i] &&
-          fn->template_param_names[i]) {
-        TypeSpec nttp_ts{};
-        nttp_ts.base = TB_INT;
-        nttp_ts.array_size = -1;
-        nttp_ts.inner_rank = -1;
-        bind_local(fn->template_param_names[i], nttp_ts, true, fn->line);
-      }
-    }
+    // Inject non-type template parameter names so dependent expressions in
+    // templated function and method bodies can validate before instantiation.
+    bind_template_nttps(fn, fn->line);
+    const Node* enclosing_record = nullptr;
+    auto owner_it = method_owner_records_.find(fn);
+    if (owner_it != method_owner_records_.end()) enclosing_record = owner_it->second;
+    bind_template_nttps(enclosing_record, fn->line);
     for (int i = 0; i < fn->n_params; ++i) {
       const Node* p = fn->params[i];
       if (!p || !p->name || !p->name[0]) continue;
       bind_local(p->name, p->type, true, p->line);
     }
-    if (auto owner = qualified_method_owner_struct(fn); owner.has_value()) {
+    if (auto owner = enclosing_method_owner_struct(fn); owner.has_value()) {
+      current_method_struct_tag_ = *owner;
       TypeSpec this_ts{};
       this_ts.base = TB_STRUCT;
-      this_ts.tag = owner->c_str();
+      this_ts.tag = current_method_struct_tag_.c_str();
       this_ts.ptr_level = 1;
       this_ts.array_size = -1;
       this_ts.inner_rank = -1;
       // In this codebase, is_const with ptr_level>0 models pointee constness.
       this_ts.is_const = fn->is_const_method;
       bind_local("this", this_ts, true, fn->line);
-      current_method_struct_tag_ = *owner;
     }
 
     // Validate constructor initializer list expressions.
@@ -843,10 +1090,11 @@ class Validator {
   }
 
 
-  void validate_decl_init(const Node* decl) {
+  void validate_decl_init(const Node* decl, const TypeSpec* effective_type = nullptr) {
     if (!decl) return;
-    if (!is_complete_object_type(decl->type)) {
-      emit(decl->line, "object has incomplete struct/union type");
+    const TypeSpec decl_ts = effective_type ? *effective_type : decl->type;
+    if (!is_complete_object_type(decl_ts)) {
+      emit(decl, "object has incomplete struct/union type");
     }
     // Constructor-initialized declarations: validate the constructor args.
     if (decl->is_ctor_init) {
@@ -855,24 +1103,24 @@ class Validator {
       }
       return;
     }
-    if (decl->type.is_lvalue_ref && !decl->init) {
-      emit(decl->line, "lvalue reference must be initialized");
+    if (decl_ts.is_lvalue_ref && !decl->init) {
+      emit(decl, "lvalue reference must be initialized");
     }
-    if (decl->type.is_rvalue_ref && !decl->init) {
-      emit(decl->line, "rvalue reference must be initialized");
+    if (decl_ts.is_rvalue_ref && !decl->init) {
+      emit(decl, "rvalue reference must be initialized");
     }
     if (decl->init) {
       ExprInfo rhs = infer_expr(decl->init);
-      if (decl->type.is_lvalue_ref && !rhs.is_lvalue) {
-        emit(decl->line, "lvalue reference must bind to an lvalue");
+      if (decl_ts.is_lvalue_ref && !rhs.is_lvalue) {
+        emit(decl, "lvalue reference must bind to an lvalue");
       }
-      if (decl->type.is_rvalue_ref && rhs.is_lvalue) {
-        emit(decl->line, "rvalue reference cannot bind to an lvalue");
+      if (decl_ts.is_rvalue_ref && rhs.is_lvalue) {
+        emit(decl, "rvalue reference cannot bind to an lvalue");
       }
       if (rhs.valid &&
           is_invalid_pointer_float_implicit_conversion(
-              referred_type(decl->type), rhs.type, is_null_pointer_constant_expr(decl->init))) {
-        emit(decl->line, "incompatible initializer type");
+              referred_type(decl_ts), rhs.type, is_null_pointer_constant_expr(decl->init))) {
+        emit(decl, "incompatible initializer type");
       }
       mark_initialized_if_local_var(decl);
     }
@@ -893,12 +1141,23 @@ class Validator {
         return;
       }
       case NK_DECL: {
-        if (n->name && n->name[0]) bind_local(n->name, n->type, n->init != nullptr || n->is_ctor_init, n->line);
-        validate_decl_init(n);
+        std::optional<TypeSpec> effective_decl_type;
+        if (n->type.base == TB_AUTO && n->init) {
+          effective_decl_type = deduce_local_decl_type(n);
+        }
+        if (n->name && n->name[0]) {
+          bind_local(n->name, effective_decl_type ? *effective_decl_type : n->type,
+                     n->init != nullptr || n->is_ctor_init, n->line);
+        }
+        validate_decl_init(n, effective_decl_type ? &*effective_decl_type : nullptr);
         // Track const/constexpr locals with foldable initializers for case label evaluation.
         if (n->name && n->name[0] && n->init &&
-            (n->type.is_const || n->is_constexpr) &&
-            n->type.ptr_level == 0 && n->type.array_rank == 0) {
+            ((effective_decl_type ? effective_decl_type->is_const : n->type.is_const) ||
+             n->is_constexpr) &&
+            !(effective_decl_type ? effective_decl_type->is_lvalue_ref : n->type.is_lvalue_ref) &&
+            !(effective_decl_type ? effective_decl_type->is_rvalue_ref : n->type.is_rvalue_ref) &&
+            (effective_decl_type ? effective_decl_type->ptr_level : n->type.ptr_level) == 0 &&
+            (effective_decl_type ? effective_decl_type->array_rank : n->type.array_rank) == 0) {
           ConstEvalEnv env;
           env.enum_consts = &enum_const_vals_global_;
           env.enum_scopes = &enum_const_vals_scopes_;
@@ -920,7 +1179,7 @@ class Validator {
       }
       case NK_RETURN: {
         if (!in_function_) {
-          emit(n->line, "return statement not within function");
+          emit(n, "return statement not within function");
           return;
         }
 
@@ -944,7 +1203,13 @@ class Validator {
                 rv_info.type.ptr_level == 0 &&
                 rv_info.type.array_rank == 0;
             if (!returns_void_expr)
-              emit(n->line, "return with a value in function returning void");
+              emit(n, "return with a value in function returning void");
+          }
+          if (current_fn_ret_.is_lvalue_ref && !rv_info.is_lvalue) {
+            emit(n, "lvalue reference must bind to an lvalue");
+          }
+          if (current_fn_ret_.is_rvalue_ref && rv_info.is_lvalue) {
+            emit(n, "rvalue reference cannot bind to an lvalue");
           }
           // Detect direct return of an uninitialized plain-scalar local.
           // Skip if the function has goto/loop statements (complex control flow
@@ -955,14 +1220,20 @@ class Validator {
             auto sym = lookup_symbol(rv->name);
             if (sym.has_value() && !sym->initialized &&
                 tracks_uninit_read(sym->type)) {
-              emit(rv->line, std::string("read of uninitialized variable '") +
-                   rv->name + "'");
+              emit(rv, std::string("read of uninitialized variable '") +
+                              rv->name + "'");
             }
           }
+          const TypeSpec return_check_ts =
+              is_any_ref_ty(current_fn_ret_) ? referred_type(current_fn_ret_) : current_fn_ret_;
+          const bool self_return_compatible =
+              is_deref_of_this_expr(rv) &&
+              same_tagged_type_ignoring_qualification(return_check_ts, rv_info.type);
           if (!fn_returns_void && rv_info.valid &&
               !implicit_convertible(
-                  current_fn_ret_, rv_info.type, is_null_pointer_constant_expr(n->left))) {
-            emit(n->line, "incompatible return type");
+                  return_check_ts, rv_info.type, is_null_pointer_constant_expr(n->left)) &&
+              !self_return_compatible) {
+            emit(n, "incompatible return type");
           }
         }
         return;
@@ -1025,7 +1296,7 @@ class Validator {
         if (n->cond) {
           ExprInfo c = infer_expr(n->cond);
           if (c.valid && !is_switch_integer_type(c.type)) {
-            emit(n->line, "switch quantity is not an integer");
+            emit(n, "switch quantity is not an integer");
           }
         }
         switch_stack_.push_back(SwitchCtx{});
@@ -1035,21 +1306,21 @@ class Validator {
       }
       case NK_CASE: {
         if (switch_stack_.empty()) {
-          emit(n->line, "case label not within a switch statement");
+          emit(n, "case label not within a switch statement");
         } else if (n->left) {
           ExprInfo case_expr = infer_expr(n->left);
           if (case_expr.valid && !is_switch_integer_type(case_expr.type)) {
-            emit(n->line, "case label does not have an integer type");
+            emit(n, "case label does not have an integer type");
           }
           ConstEvalEnv case_env;
           case_env.enum_consts = &enum_const_vals_global_;
           case_env.enum_scopes = &enum_const_vals_scopes_;
           case_env.local_const_scopes = &local_const_vals_scopes_;
           if (auto r = evaluate_constant_expr(n->left, case_env); !r.ok()) {
-            emit(n->line, "case label does not reduce to an integer constant");
+            emit(n, "case label does not reduce to an integer constant");
           } else {
             auto [it, inserted] = switch_stack_.back().case_vals.insert(r.as_int());
-            if (!inserted) emit(n->line, "duplicate case label in switch");
+            if (!inserted) emit(n, "duplicate case label in switch");
           }
         }
         if (n->body) visit_stmt(n->body);
@@ -1057,9 +1328,9 @@ class Validator {
       }
       case NK_DEFAULT: {
         if (switch_stack_.empty()) {
-          emit(n->line, "default label not within a switch statement");
+          emit(n, "default label not within a switch statement");
         } else if (switch_stack_.back().has_default) {
-          emit(n->line, "duplicate default label in switch");
+          emit(n, "duplicate default label in switch");
         } else {
           switch_stack_.back().has_default = true;
         }
@@ -1068,13 +1339,13 @@ class Validator {
       }
       case NK_BREAK: {
         if (loop_depth_ <= 0 && switch_stack_.empty()) {
-          emit(n->line, "break statement not within loop or switch");
+          emit(n, "break statement not within loop or switch");
         }
         return;
       }
       case NK_CONTINUE: {
         if (loop_depth_ <= 0) {
-          emit(n->line, "continue statement not within loop");
+          emit(n, "continue statement not within loop");
         }
         return;
       }
@@ -1142,6 +1413,13 @@ class Validator {
       }
       case NK_VAR: {
         if (!n->name || !n->name[0]) return out;
+        if (n->is_concept_id) {
+          out.valid = true;
+          out.type = make_int_ts();
+          out.is_lvalue = false;
+          out.is_const_lvalue = false;
+          return out;
+        }
         std::string qname = n->name;
         size_t scope_pos = qname.rfind("::");
         if (scope_pos != std::string::npos) {
@@ -1166,20 +1444,28 @@ class Validator {
           }
         }
         auto sym = lookup_symbol(n->name);
+        if (!sym.has_value() && !n->is_global_qualified &&
+            n->n_qualifier_segments == 0 && n->unqualified_name &&
+            n->unqualified_name[0] &&
+            std::string(n->unqualified_name) != n->name) {
+          // The parser may canonicalize unqualified identifiers to a visible
+          // namespace value spelling (for example `eastl::size`) before sema
+          // has bound function parameters and locals. Fall back to the source
+          // spelling for truly unqualified ids so local scope wins.
+          sym = lookup_symbol(n->unqualified_name);
+        }
         if (!sym.has_value()) {
           // In an out-of-class method body, unqualified names may refer to
           // struct fields (implicit this->field).  Accept them here; the HIR
           // lowerer resolves them via MemberExpr.
           if (!current_method_struct_tag_.empty()) {
-            auto fit = struct_field_names_.find(current_method_struct_tag_);
-            if (fit != struct_field_names_.end() &&
-                fit->second.count(n->name)) {
+            if (has_struct_instance_field(current_method_struct_tag_, n->name)) {
               out.valid = true;
               out.is_lvalue = true;
               return out;
             }
           }
-          emit(n->line, std::string("use of undeclared identifier '") + n->name + "'");
+          emit(n, std::string("use of undeclared identifier '") + n->name + "'");
           return out;
         }
         out.valid = true;
@@ -1192,7 +1478,8 @@ class Validator {
                               out.type.ptr_level == 0 &&
                               out.type.array_rank == 0;
         // Mark function names so that &func doesn't add a spurious ptr_level.
-        out.is_fn_name = funcs_.find(n->name) != funcs_.end();
+        out.is_fn_name = funcs_.find(n->name) != funcs_.end() ||
+                         cpp_overload_sigs_.find(n->name) != cpp_overload_sigs_.end();
         return out;
       }
       case NK_ADDR: {
@@ -1270,9 +1557,9 @@ class Validator {
         // We don't track struct field types, so mark valid=false to suppress
         // false-positive incompatible-assignment-type errors for member accesses.
         out.valid = false;
-        out.is_lvalue = true;
+        out.is_lvalue = n->is_arrow || base.is_lvalue;
         out.type = make_int_ts();
-        out.is_const_lvalue = base.is_const_lvalue;
+        out.is_const_lvalue = out.is_lvalue && base.is_const_lvalue;
         return out;
       }
       case NK_ASSIGN:
@@ -1283,7 +1570,7 @@ class Validator {
         suppress_uninit_read_ = old_suppress;
         ExprInfo rhs = infer_expr(n->right);
         if (lhs.is_const_lvalue) {
-          emit(n->line, "assignment to const-qualified lvalue");
+          emit(n, "assignment to const-qualified lvalue");
         }
         // Note: assigning const T* to T* discards const but is GCC-warned, not
         // an error (C11 6.5.16.1p2); we only reject const writes (is_const_lvalue).
@@ -1293,11 +1580,13 @@ class Validator {
         if (is_simple_assign && lhs.valid && rhs.valid &&
             is_invalid_pointer_float_implicit_conversion(
                 lhs.type, rhs.type, is_null_pointer_constant_expr(n->right))) {
-          emit(n->line, "incompatible assignment type");
+          emit(n, "incompatible assignment type");
         }
         mark_initialized_if_local_var(n->left);
         out.valid = lhs.valid && rhs.valid;
         out.type = lhs.type;
+        out.is_lvalue = lhs.is_lvalue;
+        out.is_const_lvalue = lhs.is_const_lvalue;
         return out;
       }
       case NK_UNARY: {
@@ -1306,7 +1595,7 @@ class Validator {
         if (n->op &&
             (std::string(n->op).rfind("++", 0) == 0 || std::string(n->op).rfind("--", 0) == 0)) {
           if (e.is_const_lvalue) {
-            emit(n->line, "increment/decrement of const-qualified object");
+            emit(n, "increment/decrement of const-qualified object");
           }
         }
         out.is_lvalue = false;
@@ -1319,7 +1608,7 @@ class Validator {
         if (n->op &&
             (std::string(n->op).rfind("++", 0) == 0 || std::string(n->op).rfind("--", 0) == 0)) {
           if (e.is_const_lvalue) {
-            emit(n->line, "increment/decrement of const-qualified object");
+            emit(n, "increment/decrement of const-qualified object");
           }
         }
         out.is_lvalue = false;
@@ -1372,9 +1661,43 @@ class Validator {
             }
             if (best) {
               out.valid = true;
-              out.type = best->ret;
+              out.type = referred_type(best->ret);
+              out.is_lvalue = best->ret.is_lvalue_ref;
+              out.is_const_lvalue = out.is_lvalue &&
+                                    out.type.is_const &&
+                                    out.type.ptr_level == 0 &&
+                                    out.type.array_rank == 0;
             } else {
-              emit(n->line, "no viable overload for function call");
+              emit(n, "no viable overload for function call");
+          }
+          return out;
+        }
+          auto cpp_ovit = cpp_overload_sigs_.find(n->left->name);
+          if (cpp_ovit != cpp_overload_sigs_.end() && !cpp_ovit->second.empty()) {
+            const auto& overloads = cpp_ovit->second;
+            const int argc = n->n_children;
+            const FunctionSig* best = nullptr;
+            for (const auto& sig : overloads) {
+              const int required = static_cast<int>(sig.params.size());
+              const int min_required = sig.has_param_pack ? required - 1 : required;
+              if (!sig.unspecified_params &&
+                  ((!sig.variadic && !sig.has_param_pack && argc != required) ||
+                   ((sig.variadic || sig.has_param_pack) && argc < min_required))) {
+                continue;
+              }
+              best = &sig;
+              if (!sig.unspecified_params && argc == required) break;
+            }
+            if (best) {
+              out.valid = true;
+              out.type = referred_type(best->ret);
+              out.is_lvalue = best->ret.is_lvalue_ref;
+              out.is_const_lvalue = out.is_lvalue &&
+                                    out.type.is_const &&
+                                    out.type.ptr_level == 0 &&
+                                    out.type.array_rank == 0;
+            } else {
+              emit(n, "no viable overload for function call");
             }
             return out;
           }
@@ -1387,7 +1710,7 @@ class Validator {
             if (!sig.unspecified_params &&
                 ((!sig.variadic && !sig.has_param_pack && argc != required) ||
                  ((sig.variadic || sig.has_param_pack) && argc < min_required))) {
-              emit(n->line, "function call arity mismatch");
+              emit(n, "function call arity mismatch");
             }
             const int check_n = std::min(argc, required);
             for (int i = 0; i < check_n; ++i) {
@@ -1397,21 +1720,26 @@ class Validator {
                   (sig.params[i].is_lvalue_ref || sig.params[i].is_rvalue_ref);
               if (!dependent_ref_param &&
                   sig.params[i].is_lvalue_ref && arg.valid && !arg.is_lvalue) {
-                emit(n->line, "function call argument must be an lvalue for reference parameter");
+                emit(n, "function call argument must be an lvalue for reference parameter");
               }
               if (!dependent_ref_param &&
                   sig.params[i].is_rvalue_ref && arg.valid && arg.is_lvalue) {
-                emit(n->line, "rvalue reference parameter cannot bind to an lvalue argument");
+                emit(n, "rvalue reference parameter cannot bind to an lvalue argument");
               }
               if (arg.valid &&
                   is_invalid_pointer_float_implicit_conversion(
                       referred_type(sig.params[i]), arg.type,
                       is_null_pointer_constant_expr(n->children[i]))) {
-                emit(n->line, "function call argument type mismatch");
+                emit(n, "function call argument type mismatch");
               }
             }
             out.valid = true;
-            out.type = sig.ret;
+            out.type = referred_type(sig.ret);
+            out.is_lvalue = sig.ret.is_lvalue_ref;
+            out.is_const_lvalue = out.is_lvalue &&
+                                  out.type.is_const &&
+                                  out.type.ptr_level == 0 &&
+                                  out.type.array_rank == 0;
             return out;
           }
         }
@@ -1430,6 +1758,8 @@ class Validator {
                               out.type.ptr_level == 0 &&
                               out.type.array_rank == 0;
         if (n->type.base == TB_TYPEDEF) {
+          const bool is_owner_qualified_cast_typedef =
+              can_defer_owner_qualified_cast_typedef(n->type);
           // Suppress for template type parameters — they're resolved at instantiation.
           bool is_tpl_type_param = false;
           if (current_fn_node_ && n->type.tag) {
@@ -1442,13 +1772,32 @@ class Validator {
               }
             }
           }
-          if (!is_tpl_type_param) {
+          // Dependent member typedefs in cast targets can currently preserve the
+          // owner template parameter name even when the surrounding owner type
+          // is otherwise concrete. Accept these decorated placeholder names so
+          // generated dependent-owner cast matrices can validate through the
+          // frontend without masking ordinary unknown bare type names.
+          if (!is_tpl_type_param &&
+              n->type.tag &&
+              template_type_params_.count(n->type.tag) > 0 &&
+              (n->type.ptr_level > 0 || n->type.is_fn_ptr ||
+               n->type.is_lvalue_ref || n->type.is_rvalue_ref)) {
+            is_tpl_type_param = true;
+          }
+          if (!is_tpl_type_param &&
+              n->type.tag &&
+              looks_like_template_placeholder_name(n->type.tag) &&
+              (n->type.ptr_level > 0 || n->type.is_fn_ptr ||
+               n->type.is_lvalue_ref || n->type.is_rvalue_ref)) {
+            is_tpl_type_param = true;
+          }
+          if (!is_tpl_type_param && !is_owner_qualified_cast_typedef) {
             const std::string tname = n->type.tag ? n->type.tag : "<anonymous>";
-            emit(n->line, "cast to unknown type name '" + tname + "'");
+            emit(n, "cast to unknown type name '" + tname + "'");
           }
         }
         if (!is_complete_object_type(n->type)) {
-          emit(n->line, "cast to incomplete struct/union object type");
+          emit(n, "cast to incomplete struct/union object type");
         }
         // Note: explicit C casts that discard const are permitted by the
         // standard (C11 6.3.2.3); GCC emits a -Wcast-qual warning but not
@@ -1520,7 +1869,7 @@ class Validator {
           ExprInfo e = infer_expr(n->left);
           suppress_uninit_read_ = old_suppress;
           if (e.valid && !is_complete_object_type(e.type)) {
-            emit(n->line, "invalid application of sizeof to incomplete type");
+            emit(n, "invalid application of sizeof to incomplete type");
           }
         }
         out.valid = true;
@@ -1530,7 +1879,7 @@ class Validator {
         return out;
       case NK_SIZEOF_TYPE:
         if (!is_complete_object_type(n->type)) {
-          emit(n->line, "invalid application of sizeof to incomplete type");
+          emit(n, "invalid application of sizeof to incomplete type");
         }
         out.valid = true;
         return out;
@@ -1545,7 +1894,7 @@ class Validator {
         return out;
       case NK_ALIGNOF_TYPE:
         if (!is_complete_object_type(n->type)) {
-          emit(n->line, "invalid application of _Alignof to incomplete type");
+          emit(n, "invalid application of _Alignof to incomplete type");
         }
         out.valid = true;
         return out;
@@ -1576,7 +1925,10 @@ ValidateResult validate_program(const Node* root) {
 
 void print_diagnostics(const std::vector<Diagnostic>& diags, const std::string& file) {
   for (const auto& d : diags) {
-    std::cerr << file << ":" << d.line << ":1: error: " << d.message << "\n";
+    const char* diag_file = (d.file && d.file[0]) ? d.file : file.c_str();
+    const int diag_column = d.column > 0 ? d.column : 1;
+    std::cerr << diag_file << ":" << d.line << ":" << diag_column
+              << ": error: " << d.message << "\n";
   }
 }
 

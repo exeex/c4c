@@ -48,7 +48,7 @@ bool StmtEmitter::find_field_chain(const std::string& tag, const std::string& fi
 
   for (const auto& f : sd.fields) {
     if (f.name == field_name) {
-      FieldStep step{tag, llvm_struct_field_slot(sd, f.llvm_idx), sd.is_union};
+      FieldStep step{tag, llvm_struct_field_slot(mod_, sd, f.llvm_idx), sd.is_union};
       if (f.bit_width >= 0) {
         step.bit_width = f.bit_width;
         step.bit_offset = f.bit_offset;
@@ -67,11 +67,23 @@ bool StmtEmitter::find_field_chain(const std::string& tag, const std::string& fi
     std::vector<FieldStep> sub_chain;
     TypeSpec sub_ts{};
     if (find_field_chain(f.elem_type.tag, field_name, sub_chain, sub_ts)) {
-      chain.push_back({tag, llvm_struct_field_slot(sd, f.llvm_idx), sd.is_union});
+      chain.push_back({tag, llvm_struct_field_slot(mod_, sd, f.llvm_idx), sd.is_union});
       for (const auto& s : sub_chain) chain.push_back(s);
       out_field_ts = sub_ts;
       return true;
     }
+  }
+
+  for (size_t base_index = 0; base_index < sd.base_tags.size(); ++base_index) {
+    const auto& base_tag = sd.base_tags[base_index];
+    if (base_tag.empty()) continue;
+    std::vector<FieldStep> sub_chain;
+    TypeSpec sub_ts{};
+    if (!find_field_chain(base_tag, field_name, sub_chain, sub_ts)) continue;
+    chain.push_back({tag, llvm_struct_base_slot(mod_, sd, base_index), sd.is_union});
+    for (const auto& s : sub_chain) chain.push_back(s);
+    out_field_ts = sub_ts;
+    return true;
   }
   return false;
 }

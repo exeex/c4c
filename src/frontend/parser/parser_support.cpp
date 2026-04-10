@@ -7,26 +7,46 @@ namespace c4c {
 
 // ── ParserSnapshot save / restore ────────────────────────────────────────────
 
+Parser::ParserLiteSnapshot Parser::save_lite_state() const {
+    ParserLiteSnapshot snap;
+    snap.pos = pos_;
+    snap.last_resolved_typedef = last_resolved_typedef_;
+    snap.template_arg_expr_depth = template_arg_expr_depth_;
+    snap.token_mutation_count = token_mutations_.size();
+    return snap;
+}
+
+void Parser::restore_lite_state(const ParserLiteSnapshot& snap) {
+    pos_ = snap.pos;
+    last_resolved_typedef_ = snap.last_resolved_typedef;
+    template_arg_expr_depth_ = snap.template_arg_expr_depth;
+    while (token_mutations_.size() > snap.token_mutation_count) {
+        const TokenMutation& mutation = token_mutations_.back();
+        tokens_[mutation.pos] = mutation.token;
+        token_mutations_.pop_back();
+    }
+}
+
 Parser::ParserSnapshot Parser::save_state() const {
     ParserSnapshot snap;
-    snap.pos                  = pos_;
+    snap.lite = save_lite_state();
+#if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
     snap.typedefs             = typedefs_;
     snap.user_typedefs        = user_typedefs_;
     snap.typedef_types        = typedef_types_;
     snap.var_types            = var_types_;
-    snap.last_resolved_typedef = last_resolved_typedef_;
-    snap.template_arg_expr_depth = template_arg_expr_depth_;
+#endif
     return snap;
 }
 
 void Parser::restore_state(const ParserSnapshot& snap) {
-    pos_                   = snap.pos;
+    restore_lite_state(snap.lite);
+#if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
     typedefs_              = snap.typedefs;
     user_typedefs_         = snap.user_typedefs;
     typedef_types_         = snap.typedef_types;
     var_types_             = snap.var_types;
-    last_resolved_typedef_ = snap.last_resolved_typedef;
-    template_arg_expr_depth_ = snap.template_arg_expr_depth;
+#endif
 }
 
 
@@ -44,9 +64,7 @@ bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& c
         if (n->type.base == TB_TYPEDEF && n->type.tag && consts.count(n->type.tag) == 0) {
             return false;  // dependent or unresolved type
         }
-        long long sz = sizeof_base(n->type.base);
-        if (n->type.ptr_level > 0) sz = 8;
-        *out = sz;
+        *out = sizeof_type_spec(n->type);
         return true;
     }
     if (n->kind == NK_UNARY && n->op && n->left) {
@@ -110,6 +128,12 @@ bool is_dependent_enum_expr(Node* n,
     return false;
 }
 
+TypeBase effective_scalar_base(const TypeSpec& ts) {
+    if (ts.base == TB_ENUM && ts.enum_underlying_base != TB_VOID)
+        return ts.enum_underlying_base;
+    return ts.base;
+}
+
 // ── constant expression evaluator ─────────────────────────────────────────────
 // Evaluate a simple AST subtree as an integer constant (for array sizes).
 // Returns true and sets *out on success; false if the expression is dynamic.
@@ -144,6 +168,11 @@ long long sizeof_base(TypeBase b) {
             return 32;
         default: return 4;
     }
+}
+
+long long sizeof_type_spec(const TypeSpec& ts) {
+    if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
+    return sizeof_base(effective_scalar_base(ts));
 }
 
 long long align_base(TypeBase b, int ptr_level) {
@@ -182,6 +211,10 @@ long long align_base(TypeBase b, int ptr_level) {
     }
 }
 
+long long alignof_type_spec(const TypeSpec& ts) {
+    return align_base(effective_scalar_base(ts), ts.ptr_level);
+}
+
 bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* struct_map,
     const std::unordered_map<std::string, long long>* named_consts);
@@ -202,7 +235,7 @@ static long long field_align(const TypeSpec& ts,
     } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag) {
         natural = struct_align(ts.tag, struct_map);
     } else {
-        natural = align_base(ts.base, ts.ptr_level);
+        natural = alignof_type_spec(ts);
     }
     if (ts.align_bytes > 0 && ts.align_bytes > natural) return ts.align_bytes;
     return natural;
@@ -248,7 +281,7 @@ static long long struct_sizeof(const char* tag,
             sz = f->type.vector_bytes;
         else if (f->type.base == TB_STRUCT || f->type.base == TB_UNION)
             sz = struct_sizeof(f->type.tag, struct_map);
-        else sz = sizeof_base(f->type.base);
+        else sz = sizeof_type_spec(f->type);
         if (f->type.array_rank > 0)
             for (int d = 0; d < f->type.array_rank; d++)
                 if (f->type.array_dims[d] > 0) sz *= f->type.array_dims[d];
@@ -299,7 +332,7 @@ static bool compute_offsetof(const char* tag, const char* field_name,
         if (f->type.ptr_level > 0) sz = 8;
         else if (f->type.base == TB_STRUCT || f->type.base == TB_UNION)
             sz = struct_sizeof(f->type.tag, struct_map);
-        else sz = sizeof_base(f->type.base);
+        else sz = sizeof_type_spec(f->type);
         if (f->type.array_rank > 0) {
             for (int d = 0; d < f->type.array_rank; d++)
                 if (f->type.array_dims[d] > 0) sz *= f->type.array_dims[d];
@@ -342,8 +375,7 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_SIZEOF_TYPE) {
         // sizeof(type): use LP64 sizes
-        long long sz = sizeof_base(n->type.base);
-        if (n->type.ptr_level > 0) sz = 8;
+        long long sz = sizeof_type_spec(n->type);
         if ((n->type.base == TB_STRUCT || n->type.base == TB_UNION) && n->type.tag) {
             sz = struct_sizeof(n->type.tag, struct_map);
         }

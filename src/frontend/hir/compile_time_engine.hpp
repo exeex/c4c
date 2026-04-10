@@ -175,29 +175,36 @@ struct DeferredTemplateTypeResult {
 
 /// Produce a deterministic type suffix for name mangling.
 inline std::string type_suffix_for_mangling(const TypeSpec& ts) {
-  if (ts.ptr_level > 0) return "p" + std::to_string(ts.ptr_level);
+  std::string out;
+  if (ts.is_const) out += "c_";
+  if (ts.is_volatile) out += "v_";
+  if (ts.ptr_level > 0) out += "p" + std::to_string(ts.ptr_level);
   switch (ts.base) {
-    case TB_BOOL: return "b";
-    case TB_CHAR: case TB_SCHAR: return "c";
-    case TB_UCHAR: return "uc";
-    case TB_SHORT: return "s";
-    case TB_USHORT: return "us";
-    case TB_INT: return "i";
-    case TB_UINT: return "ui";
-    case TB_LONG: return "l";
-    case TB_ULONG: return "ul";
-    case TB_LONGLONG: return "ll";
-    case TB_ULONGLONG: return "ull";
-    case TB_FLOAT: return "f";
-    case TB_DOUBLE: return "d";
-    case TB_LONGDOUBLE: return "ld";
-    case TB_INT128: return "i128";
-    case TB_UINT128: return "u128";
-    case TB_VOID: return "v";
+    case TB_BOOL: out += "b"; break;
+    case TB_CHAR: case TB_SCHAR: out += "c"; break;
+    case TB_UCHAR: out += "uc"; break;
+    case TB_SHORT: out += "s"; break;
+    case TB_USHORT: out += "us"; break;
+    case TB_INT: out += "i"; break;
+    case TB_UINT: out += "ui"; break;
+    case TB_LONG: out += "l"; break;
+    case TB_ULONG: out += "ul"; break;
+    case TB_LONGLONG: out += "ll"; break;
+    case TB_ULONGLONG: out += "ull"; break;
+    case TB_FLOAT: out += "f"; break;
+    case TB_DOUBLE: out += "d"; break;
+    case TB_LONGDOUBLE: out += "ld"; break;
+    case TB_INT128: out += "i128"; break;
+    case TB_UINT128: out += "u128"; break;
+    case TB_VOID: out += "v"; break;
     default:
-      if (ts.tag) return std::string("T") + ts.tag;
-      return "unknown";
+      if (ts.tag) out += std::string("T") + ts.tag;
+      else out += "unknown";
+      break;
   }
+  if (ts.is_lvalue_ref) out += "_ref";
+  if (ts.is_rvalue_ref) out += "_rref";
+  return out;
 }
 
 /// Check whether all type bindings are concrete (no unresolved typedefs).
@@ -294,6 +301,14 @@ inline const char* pending_template_type_kind_name(PendingTemplateTypeKind kind)
 }
 
 inline std::string encode_pending_type_ref(const TypeSpec& ts) {
+  std::function<std::string(const TemplateArgRef&)> encode_arg =
+      [&](const TemplateArgRef& arg) -> std::string {
+    if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
+    if (arg.kind == TemplateArgKind::Value) {
+      return std::string("v:") + std::to_string(arg.value);
+    }
+    return std::string("t:{") + encode_pending_type_ref(arg.type) + "}";
+  };
   std::string out;
   out += "base=" + std::to_string(static_cast<int>(ts.base));
   out += "|tag=";
@@ -303,7 +318,12 @@ inline std::string encode_pending_type_ref(const TypeSpec& ts) {
   out += "|origin=";
   out += ts.tpl_struct_origin ? ts.tpl_struct_origin : "";
   out += "|args=";
-  out += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
+  if (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) {
+    for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+      if (i > 0) out += ",";
+      out += encode_arg(ts.tpl_struct_args.data[i]);
+    }
+  }
   out += "|member=";
   out += ts.deferred_member_type_name ? ts.deferred_member_type_name : "";
   return out;

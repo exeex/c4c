@@ -336,7 +336,7 @@ class LayoutQueries {
     if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
       return struct_size_bytes(ts.tag);
     }
-    return sizeof_base(ts.base);
+    return sizeof_type_spec(ts);
   }
 
   int type_align_bytes(const TypeSpec& ts) const {
@@ -350,7 +350,7 @@ class LayoutQueries {
     } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
       natural = struct_align_bytes(ts.tag);
     } else {
-      natural = std::max(1, static_cast<int>(align_base(ts.base, ts.ptr_level)));
+      natural = std::max(1, static_cast<int>(alignof_type_spec(ts)));
     }
     if (ts.align_bytes > 0) natural = std::max(natural, ts.align_bytes);
     return natural;
@@ -444,6 +444,20 @@ void compute_record_layout(const hir::Module& module, HirStructDef& def, int pac
   const LayoutQueries queries(module);
   def.align_bytes = 1;
   int offset = 0;
+
+  for (const auto& base_tag : def.base_tags) {
+    if (base_tag.empty()) continue;
+    TypeSpec base_ts{};
+    base_ts.base = TB_STRUCT;
+    base_ts.tag = base_tag.c_str();
+
+    int base_align = queries.type_align_bytes(base_ts);
+    if (pack > 0 && base_align > pack) base_align = pack;
+    offset = align_to(offset, base_align);
+    offset += queries.type_size_bytes(base_ts);
+    def.align_bytes = std::max(def.align_bytes, base_align);
+  }
+
   int last_llvm_idx = -1;
   int last_offset = 0;
   for (auto& field : def.fields) {
@@ -469,7 +483,7 @@ void compute_struct_layout(hir::Module* module, HirStructDef& def) {
 
   const int pack = def.pack_align;  // 0 = default, >0 = cap alignment
 
-  if (def.fields.empty()) {
+  if (def.fields.empty() && def.base_tags.empty()) {
     compute_empty_record_layout(*module, def);
     return;
   }

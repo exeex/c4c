@@ -46,12 +46,14 @@ void Preprocessor::set_source_profile(SourceProfile profile) {
     define_macro("__cpp_concepts=201907L");
     define_macro("__GNUG__=4");
     define_macro("__GXX_ABI_VERSION=1002");
+    define_macro("EA_COMPILER_NO_STRUCTURED_BINDING=1");
   } else {
     macros_.erase("__cplusplus");
     macros_.erase("__cpp_constexpr");
     macros_.erase("__cpp_concepts");
     macros_.erase("__GNUG__");
     macros_.erase("__GXX_ABI_VERSION");
+    macros_.erase("EA_COMPILER_NO_STRUCTURED_BINDING");
   }
 }
 

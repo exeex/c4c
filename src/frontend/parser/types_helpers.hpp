@@ -104,6 +104,181 @@ bool token_can_follow_value_like_template_arg(TokenKind kind) {
     }
 }
 
+void append_qualified_name_tokens(std::vector<Token>* out,
+                                  const Token& seed,
+                                  const std::string& name) {
+    if (!out || name.empty()) return;
+    size_t start = 0;
+    while (start < name.size()) {
+        size_t sep = name.find("::", start);
+        Token name_tok = seed;
+        name_tok.kind = TokenKind::Identifier;
+        name_tok.lexeme = sep == std::string::npos
+            ? name.substr(start)
+            : name.substr(start, sep - start);
+        out->push_back(name_tok);
+        if (sep == std::string::npos) break;
+        Token cc_tok = seed;
+        cc_tok.kind = TokenKind::ColonColon;
+        cc_tok.lexeme = "::";
+        out->push_back(cc_tok);
+        start = sep + 2;
+    }
+}
+
+void append_typespec_reparse_tokens(std::vector<Token>* out,
+                                    const Token& seed,
+                                    const TypeSpec& ts) {
+    if (!out) return;
+    auto emit = [&](TokenKind kind, const char* lexeme) {
+        Token tok = seed;
+        tok.kind = kind;
+        tok.lexeme = lexeme;
+        out->push_back(tok);
+    };
+
+    if (ts.is_const) emit(TokenKind::KwConst, "const");
+    if (ts.is_volatile) emit(TokenKind::KwVolatile, "volatile");
+
+    bool emitted_head = false;
+    if (ts.tag && ts.tag[0]) {
+        append_qualified_name_tokens(out, seed, ts.tag);
+        emitted_head = true;
+    } else {
+        switch (ts.base) {
+            case TB_VOID: emit(TokenKind::KwVoid, "void"); emitted_head = true; break;
+            case TB_BOOL: emit(TokenKind::KwBool, "bool"); emitted_head = true; break;
+            case TB_CHAR: emit(TokenKind::KwChar, "char"); emitted_head = true; break;
+            case TB_SCHAR:
+                emit(TokenKind::KwSigned, "signed");
+                emit(TokenKind::KwChar, "char");
+                emitted_head = true;
+                break;
+            case TB_UCHAR:
+                emit(TokenKind::KwUnsigned, "unsigned");
+                emit(TokenKind::KwChar, "char");
+                emitted_head = true;
+                break;
+            case TB_SHORT: emit(TokenKind::KwShort, "short"); emitted_head = true; break;
+            case TB_USHORT:
+                emit(TokenKind::KwUnsigned, "unsigned");
+                emit(TokenKind::KwShort, "short");
+                emitted_head = true;
+                break;
+            case TB_INT: emit(TokenKind::KwInt, "int"); emitted_head = true; break;
+            case TB_UINT:
+                emit(TokenKind::KwUnsigned, "unsigned");
+                emit(TokenKind::KwInt, "int");
+                emitted_head = true;
+                break;
+            case TB_LONG: emit(TokenKind::KwLong, "long"); emitted_head = true; break;
+            case TB_ULONG:
+                emit(TokenKind::KwUnsigned, "unsigned");
+                emit(TokenKind::KwLong, "long");
+                emitted_head = true;
+                break;
+            case TB_LONGLONG:
+                emit(TokenKind::KwLong, "long");
+                emit(TokenKind::KwLong, "long");
+                emitted_head = true;
+                break;
+            case TB_ULONGLONG:
+                emit(TokenKind::KwUnsigned, "unsigned");
+                emit(TokenKind::KwLong, "long");
+                emit(TokenKind::KwLong, "long");
+                emitted_head = true;
+                break;
+            case TB_FLOAT: emit(TokenKind::KwFloat, "float"); emitted_head = true; break;
+            case TB_DOUBLE: emit(TokenKind::KwDouble, "double"); emitted_head = true; break;
+            default:
+                break;
+        }
+    }
+
+    if (!emitted_head) {
+        Token tok = seed;
+        tok.kind = TokenKind::Identifier;
+        tok.lexeme = "int";
+        out->push_back(tok);
+        return;
+    }
+
+    for (int i = 0; i < ts.ptr_level; ++i) emit(TokenKind::Star, "*");
+    if (ts.is_lvalue_ref) emit(TokenKind::Amp, "&");
+    if (ts.is_rvalue_ref) emit(TokenKind::AmpAmp, "&&");
+}
+
+bool instantiate_template_struct_via_injected_parse(
+    Parser& parser,
+    const std::string& template_name,
+    const std::vector<ParsedTemplateArg>& args,
+    int line,
+    const char* debug_reason = nullptr,
+    TypeSpec* out_resolved = nullptr) {
+    std::vector<Token> inject_toks;
+    Token t{};
+    t.line = line;
+    t.column = 0;
+    append_qualified_name_tokens(&inject_toks, t, template_name);
+    t.kind = TokenKind::Less;
+    t.lexeme = "<";
+    inject_toks.push_back(t);
+    for (int ai = 0; ai < static_cast<int>(args.size()); ++ai) {
+        if (ai > 0) {
+            t.kind = TokenKind::Comma;
+            t.lexeme = ",";
+            inject_toks.push_back(t);
+        }
+        if (args[ai].is_value) {
+            if (args[ai].value == 0) {
+                t.kind = TokenKind::KwFalse;
+                t.lexeme = "false";
+            } else if (args[ai].value == 1) {
+                t.kind = TokenKind::KwTrue;
+                t.lexeme = "true";
+            } else {
+                t.kind = TokenKind::IntLit;
+                t.lexeme = std::to_string(args[ai].value);
+            }
+            inject_toks.push_back(t);
+        } else {
+            append_typespec_reparse_tokens(&inject_toks, t, args[ai].type);
+        }
+    }
+    t.kind = TokenKind::Greater;
+    t.lexeme = ">";
+    inject_toks.push_back(t);
+    t.kind = TokenKind::Semi;
+    t.lexeme = ";";
+    inject_toks.push_back(t);
+
+    const int saved_pos = parser.pos_;
+    const std::string injected_detail =
+        std::string("reason=") + (debug_reason ? debug_reason : "template_instantiation") +
+        " saved_pos=" + std::to_string(saved_pos) +
+        " token_count=" + std::to_string(inject_toks.size());
+    auto saved_toks = std::move(parser.tokens_);
+    parser.tokens_ = std::move(inject_toks);
+    parser.pos_ = 0;
+    parser.note_parse_debug_event_for("injected_parse_begin",
+                                      "parse_base_type",
+                                      injected_detail.c_str());
+    bool ok = false;
+    try {
+        TypeSpec resolved = parser.parse_base_type();
+        if (out_resolved) *out_resolved = resolved;
+        ok = true;
+    } catch (...) {
+        ok = false;
+    }
+    parser.note_parse_debug_event_for("injected_parse_end",
+                                      "parse_base_type",
+                                      injected_detail.c_str());
+    parser.tokens_ = std::move(saved_toks);
+    parser.pos_ = saved_pos;
+    return ok;
+}
+
 bool is_known_simple_type_head(const Parser& parser, const std::string& name) {
     if (match_floatn_keyword_base(name, nullptr)) return true;
     if (parser.is_template_scope_type_param(name)) return true;
@@ -151,6 +326,16 @@ bool starts_with_value_like_template_expr(const Parser& parser,
 
         if (pos < static_cast<int>(tokens.size()) &&
             tokens[pos].kind == TokenKind::LParen) {
+            const int declarator_probe = pos + 1;
+            if (declarator_probe < static_cast<int>(tokens.size())) {
+                const TokenKind declarator_kind = tokens[declarator_probe].kind;
+                if (declarator_kind == TokenKind::Star ||
+                    declarator_kind == TokenKind::Caret ||
+                    declarator_kind == TokenKind::Amp ||
+                    declarator_kind == TokenKind::AmpAmp) {
+                    return false;
+                }
+            }
             return saw_scope || saw_template_args || !first_identifier_is_known_type;
         }
 
@@ -289,12 +474,100 @@ bool has_qualified_type_parse_fallback(const QualifiedTypeProbe& probe) {
            probe.has_unresolved_qualified_fallback;
 }
 
+bool starts_parenthesized_member_pointer_declarator(const Parser& parser,
+                                                    int after_pos) {
+    if (after_pos < 0 || after_pos >= static_cast<int>(parser.tokens_.size()) ||
+        parser.tokens_[after_pos].kind != TokenKind::LParen) {
+        return false;
+    }
+
+    int probe = after_pos + 1;
+    auto skip_attributes = [&]() {
+        while (probe < static_cast<int>(parser.tokens_.size()) &&
+               parser.tokens_[probe].kind == TokenKind::KwAttribute) {
+            ++probe;
+            for (int paren = 0; probe < static_cast<int>(parser.tokens_.size()) &&
+                                parser.tokens_[probe].kind == TokenKind::LParen;) {
+                ++paren;
+                ++probe;
+                while (probe < static_cast<int>(parser.tokens_.size()) && paren > 0) {
+                    if (parser.tokens_[probe].kind == TokenKind::LParen) {
+                        ++paren;
+                    } else if (parser.tokens_[probe].kind == TokenKind::RParen) {
+                        --paren;
+                    }
+                    ++probe;
+                }
+            }
+        }
+    };
+
+    skip_attributes();
+    if (probe < static_cast<int>(parser.tokens_.size()) &&
+        parser.tokens_[probe].kind == TokenKind::KwTypename) {
+        ++probe;
+    }
+    if (probe < static_cast<int>(parser.tokens_.size()) &&
+        parser.tokens_[probe].kind == TokenKind::ColonColon) {
+        ++probe;
+    }
+    if (probe >= static_cast<int>(parser.tokens_.size()) ||
+        parser.tokens_[probe].kind != TokenKind::Identifier) {
+        return false;
+    }
+
+    ++probe;
+    while (probe + 1 < static_cast<int>(parser.tokens_.size()) &&
+           parser.tokens_[probe].kind == TokenKind::ColonColon &&
+           parser.tokens_[probe + 1].kind == TokenKind::Identifier) {
+        probe += 2;
+    }
+
+    return probe + 1 < static_cast<int>(parser.tokens_.size()) &&
+           parser.tokens_[probe].kind == TokenKind::ColonColon &&
+           parser.tokens_[probe + 1].kind == TokenKind::Star;
+}
+
+bool starts_qualified_member_pointer_type_id(const Parser& parser,
+                                             int start_pos) {
+    if (start_pos < 0 || start_pos >= static_cast<int>(parser.tokens_.size())) {
+        return false;
+    }
+
+    int probe = start_pos;
+    bool saw_qualified = false;
+    if (parser.tokens_[probe].kind == TokenKind::ColonColon) {
+        saw_qualified = true;
+        ++probe;
+    }
+    if (probe >= static_cast<int>(parser.tokens_.size()) ||
+        parser.tokens_[probe].kind != TokenKind::Identifier) {
+        return false;
+    }
+
+    ++probe;
+    while (probe + 1 < static_cast<int>(parser.tokens_.size()) &&
+           parser.tokens_[probe].kind == TokenKind::ColonColon &&
+           parser.tokens_[probe + 1].kind == TokenKind::Identifier) {
+        saw_qualified = true;
+        probe += 2;
+    }
+
+    return saw_qualified &&
+           starts_parenthesized_member_pointer_declarator(parser, probe);
+}
+
 bool can_start_qualified_type_declaration(const Parser& parser,
                                           const QualifiedTypeProbe& probe,
+                                          int after_pos,
                                           TokenKind trailing_kind) {
     if (probe.has_resolved_typedef) return true;
     if (!probe.has_unresolved_qualified_fallback || !parser.is_cpp_mode()) {
         return false;
+    }
+    if (trailing_kind == TokenKind::LParen &&
+        starts_parenthesized_member_pointer_declarator(parser, after_pos)) {
+        return true;
     }
     if (probe.namespace_context_id < 0)
         return trailing_kind == TokenKind::Less;
@@ -451,6 +724,14 @@ int specialization_match_score(const Node* spec) {
 }
 
 std::string canonical_template_struct_type_key(const TypeSpec& ts) {
+    std::function<std::string(const TemplateArgRef&)> canonical_arg_key =
+        [&](const TemplateArgRef& arg) -> std::string {
+            if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
+            if (arg.kind == TemplateArgKind::Value) {
+                return std::string("v:") + std::to_string(arg.value);
+            }
+            return std::string("t:") + canonical_template_struct_type_key(arg.type);
+        };
     std::string out;
     if (ts.is_const) out += "const_";
     if (ts.is_volatile) out += "volatile_";
@@ -486,7 +767,12 @@ std::string canonical_template_struct_type_key(const TypeSpec& ts) {
             if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
                 out += std::string("pending.") + ts.tpl_struct_origin;
                 out += "<";
-                out += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
+                if (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) {
+                    for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+                        if (i > 0) out += ",";
+                        out += canonical_arg_key(ts.tpl_struct_args.data[i]);
+                    }
+                }
                 out += ">";
             } else {
                 out += ts.tag ? std::string("typedef.") + ts.tag : "typedef.?";
@@ -496,7 +782,12 @@ std::string canonical_template_struct_type_key(const TypeSpec& ts) {
             if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
                 out += std::string("pending.") + ts.tpl_struct_origin;
                 out += "<";
-                out += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
+                if (ts.tpl_struct_args.data && ts.tpl_struct_args.size > 0) {
+                    for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+                        if (i > 0) out += ",";
+                        out += canonical_arg_key(ts.tpl_struct_args.data[i]);
+                    }
+                }
                 out += ">";
             } else {
                 out += "unknown";
@@ -516,6 +807,7 @@ std::string make_template_struct_instance_key(
     std::string key = primary_tpl->name;
     key += "<";
     bool first = true;
+    int arg_idx = 0;
     for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
         const char* param_name = primary_tpl->template_param_names[pi];
         if (!param_name) continue;
@@ -523,20 +815,46 @@ std::string make_template_struct_instance_key(
         first = false;
         key += param_name;
         key += "=";
-        if (pi >= static_cast<int>(concrete_args.size())) {
+        const bool is_pack =
+            primary_tpl->template_param_is_pack &&
+            primary_tpl->template_param_is_pack[pi];
+        if (is_pack) {
+            bool first_pack_arg = true;
+            while (arg_idx < static_cast<int>(concrete_args.size())) {
+                if (!first_pack_arg) key += "|";
+                first_pack_arg = false;
+                if (concrete_args[arg_idx].is_value) {
+                    if (concrete_args[arg_idx].nttp_name &&
+                        concrete_args[arg_idx].nttp_name[0] &&
+                        std::strncmp(concrete_args[arg_idx].nttp_name, "$expr:", 6) == 0) {
+                        key += concrete_args[arg_idx].nttp_name;
+                    } else {
+                        key += std::to_string(concrete_args[arg_idx].value);
+                    }
+                } else {
+                    key += canonical_template_struct_type_key(
+                        concrete_args[arg_idx].type);
+                }
+                ++arg_idx;
+            }
+            continue;
+        }
+        if (arg_idx >= static_cast<int>(concrete_args.size())) {
             key += "?";
             continue;
         }
-        if (concrete_args[pi].is_value) {
-            if (concrete_args[pi].nttp_name && concrete_args[pi].nttp_name[0] &&
-                std::strncmp(concrete_args[pi].nttp_name, "$expr:", 6) == 0) {
-                key += concrete_args[pi].nttp_name;
+        if (concrete_args[arg_idx].is_value) {
+            if (concrete_args[arg_idx].nttp_name &&
+                concrete_args[arg_idx].nttp_name[0] &&
+                std::strncmp(concrete_args[arg_idx].nttp_name, "$expr:", 6) == 0) {
+                key += concrete_args[arg_idx].nttp_name;
             } else {
-                key += std::to_string(concrete_args[pi].value);
+                key += std::to_string(concrete_args[arg_idx].value);
             }
         } else {
-            key += canonical_template_struct_type_key(concrete_args[pi].type);
+            key += canonical_template_struct_type_key(concrete_args[arg_idx].type);
         }
+        ++arg_idx;
     }
     key += ">";
     return key;
@@ -633,28 +951,50 @@ const Node* select_template_struct_pattern(
     out_nttp_bindings->clear();
     if (!primary_tpl) return nullptr;
     int arg_idx = 0;
-    for (; arg_idx < static_cast<int>(actual_args.size()) &&
-           arg_idx < primary_tpl->n_template_params; ++arg_idx) {
-        const char* param_name = primary_tpl->template_param_names[arg_idx];
-        if (primary_tpl->template_param_is_nttp[arg_idx]) {
-            if (!actual_args[arg_idx].is_value) return nullptr;
-            out_nttp_bindings->push_back({param_name, actual_args[arg_idx].value});
-        } else {
-            if (actual_args[arg_idx].is_value) return nullptr;
-            out_type_bindings->push_back({param_name, actual_args[arg_idx].type});
-        }
-    }
-    while (arg_idx < primary_tpl->n_template_params) {
-        if (primary_tpl->template_param_has_default &&
-            primary_tpl->template_param_has_default[arg_idx]) {
-            const char* param_name = primary_tpl->template_param_names[arg_idx];
-            if (primary_tpl->template_param_is_nttp[arg_idx]) {
-                out_nttp_bindings->push_back({param_name, primary_tpl->template_param_default_values[arg_idx]});
-            } else {
-                out_type_bindings->push_back({param_name, primary_tpl->template_param_default_types[arg_idx]});
+    for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+        const char* param_name = primary_tpl->template_param_names[pi];
+        const bool is_pack =
+            primary_tpl->template_param_is_pack &&
+            primary_tpl->template_param_is_pack[pi];
+        if (is_pack) {
+            while (arg_idx < static_cast<int>(actual_args.size())) {
+                if (primary_tpl->template_param_is_nttp[pi]) {
+                    if (!actual_args[arg_idx].is_value) return nullptr;
+                    out_nttp_bindings->push_back({param_name, actual_args[arg_idx].value});
+                } else {
+                    if (actual_args[arg_idx].is_value) return nullptr;
+                    out_type_bindings->push_back({param_name, actual_args[arg_idx].type});
+                }
+                ++arg_idx;
             }
+            continue;
         }
-        ++arg_idx;
+        if (arg_idx < static_cast<int>(actual_args.size())) {
+            if (primary_tpl->template_param_is_nttp[pi]) {
+                if (!actual_args[arg_idx].is_value) return nullptr;
+                out_nttp_bindings->push_back({param_name, actual_args[arg_idx].value});
+            } else {
+                if (actual_args[arg_idx].is_value) return nullptr;
+                out_type_bindings->push_back({param_name, actual_args[arg_idx].type});
+            }
+            ++arg_idx;
+            continue;
+        }
+        if (primary_tpl->template_param_has_default &&
+            primary_tpl->template_param_has_default[pi]) {
+            if (primary_tpl->template_param_is_nttp[pi]) {
+                out_nttp_bindings->push_back(
+                    {param_name, primary_tpl->template_param_default_values[pi]});
+            } else {
+                out_type_bindings->push_back(
+                    {param_name, primary_tpl->template_param_default_types[pi]});
+            }
+            continue;
+        }
+        return nullptr;
+    }
+    if (arg_idx != static_cast<int>(actual_args.size())) {
+        return nullptr;
     }
     return primary_tpl;
 }
@@ -1034,30 +1374,46 @@ static bool parse_mangled_type_suffix(const std::string& text, TypeSpec* out) {
     TypeSpec ts{};
     ts.array_size = -1;
     ts.inner_rank = -1;
-    if (text == "int") ts.base = TB_INT;
-    else if (text == "uint") ts.base = TB_UINT;
-    else if (text == "char") ts.base = TB_CHAR;
-    else if (text == "schar") ts.base = TB_SCHAR;
-    else if (text == "uchar") ts.base = TB_UCHAR;
-    else if (text == "short") ts.base = TB_SHORT;
-    else if (text == "ushort") ts.base = TB_USHORT;
-    else if (text == "long") ts.base = TB_LONG;
-    else if (text == "ulong") ts.base = TB_ULONG;
-    else if (text == "llong") ts.base = TB_LONGLONG;
-    else if (text == "ullong") ts.base = TB_ULONGLONG;
-    else if (text == "float") ts.base = TB_FLOAT;
-    else if (text == "double") ts.base = TB_DOUBLE;
-    else if (text == "ldouble") ts.base = TB_LONGDOUBLE;
-    else if (text == "void") ts.base = TB_VOID;
-    else if (text == "bool") ts.base = TB_BOOL;
-    else if (text == "i128") ts.base = TB_INT128;
-    else if (text == "u128") ts.base = TB_UINT128;
+    std::string base_text = text;
+    while (true) {
+        if (base_text.rfind("const_", 0) == 0) {
+            ts.is_const = true;
+            base_text = base_text.substr(6);
+            continue;
+        }
+        if (base_text.rfind("volatile_", 0) == 0) {
+            ts.is_volatile = true;
+            base_text = base_text.substr(9);
+            continue;
+        }
+        break;
+    }
+    if (base_text == "int") ts.base = TB_INT;
+    else if (base_text == "uint") ts.base = TB_UINT;
+    else if (base_text == "char") ts.base = TB_CHAR;
+    else if (base_text == "schar") ts.base = TB_SCHAR;
+    else if (base_text == "uchar") ts.base = TB_UCHAR;
+    else if (base_text == "short") ts.base = TB_SHORT;
+    else if (base_text == "ushort") ts.base = TB_USHORT;
+    else if (base_text == "long") ts.base = TB_LONG;
+    else if (base_text == "ulong") ts.base = TB_ULONG;
+    else if (base_text == "llong") ts.base = TB_LONGLONG;
+    else if (base_text == "ullong") ts.base = TB_ULONGLONG;
+    else if (base_text == "float") ts.base = TB_FLOAT;
+    else if (base_text == "double") ts.base = TB_DOUBLE;
+    else if (base_text == "ldouble") ts.base = TB_LONGDOUBLE;
+    else if (base_text == "void") ts.base = TB_VOID;
+    else if (base_text == "bool") ts.base = TB_BOOL;
+    else if (base_text == "i128") ts.base = TB_INT128;
+    else if (base_text == "u128") ts.base = TB_UINT128;
     else return false;
     *out = ts;
     return true;
 }
 
 static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts) {
+    if (ts.is_const) out += "const_";
+    if (ts.is_volatile) out += "volatile_";
     switch (ts.base) {
         case TB_INT: out += "int"; break;
         case TB_UINT: out += "uint"; break;

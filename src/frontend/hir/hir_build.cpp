@@ -73,15 +73,26 @@ void Lowerer::collect_enum_def(const Node* ed) {
 
 void Lowerer::collect_initial_type_definitions(const std::vector<const Node*>& items) {
   for (const Node* item : items) {
-    if (item->kind == NK_STRUCT_DEF) {
+      if (item->kind == NK_STRUCT_DEF) {
       lower_struct_def(item);
       if (item->name) struct_def_nodes_[item->name] = item;
       if (is_primary_template_struct_def(item) && item->name) {
         register_template_struct_primary(item->name, item);
       }
-      if (item->template_origin_name && item->n_template_args > 0) {
+      if (item->template_origin_name && item->template_origin_name[0]) {
         const Node* primary_tpl =
             find_template_struct_primary(item->template_origin_name);
+        if (!primary_tpl && item->name) {
+          std::string spelled_name = item->name;
+          const size_t scope_sep = spelled_name.rfind("::");
+          if (scope_sep != std::string::npos &&
+              std::string(item->template_origin_name).find("::") ==
+                  std::string::npos) {
+            std::string qualified_origin =
+                spelled_name.substr(0, scope_sep + 2) + item->template_origin_name;
+            primary_tpl = find_template_struct_primary(qualified_origin);
+          }
+        }
         if (primary_tpl) register_template_struct_specialization(primary_tpl, item);
       }
     }
@@ -483,6 +494,12 @@ void Lowerer::lower_non_method_functions_and_globals(
         }
       }
     } else if (item->kind == NK_GLOBAL_VAR) {
+      if (item->name && item->name[0] &&
+          (template_global_defs_.count(item->name) > 0 ||
+           template_global_specializations_.count(item->name) > 0) &&
+          (item->n_template_params > 0 || item->n_template_args > 0)) {
+        continue;
+      }
       lower_global(item);
     }
   }
@@ -504,12 +521,19 @@ void Lowerer::lower_initial_program(const Node* root, Module& m) {
   module_ = &m;
 
   std::vector<const Node*> items = flatten_program_items(root);
+  function_decl_nodes_.clear();
+  for (const Node* item : items) {
+    if (item && item->kind == NK_FUNCTION && item->name && item->name[0]) {
+      function_decl_nodes_.emplace(item->name, item);
+    }
+  }
 
   collect_weak_symbol_names(items);
   collect_initial_type_definitions(items);
   collect_consteval_function_definitions(items);
   collect_template_function_definitions(items);
   collect_function_template_specializations(items);
+  collect_template_global_definitions(items);
   collect_depth0_template_instantiations(items);
   registry_.realize_seeds();
   realize_consteval_template_seeds_fixpoint(items);

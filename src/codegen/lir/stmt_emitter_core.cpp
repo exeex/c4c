@@ -10,6 +10,12 @@ using namespace stmt_emitter_detail;
 
 namespace stmt_emitter_detail {
 
+static int align_to_bytes(int value, int align) {
+  if (align <= 1) return value;
+  const int rem = value % align;
+  return rem == 0 ? value : value + (align - rem);
+}
+
 bool amd64_registers_available(const llvm_cc::Amd64VarargInfo& layout,
                                const Amd64CallArgState& state) {
   if (layout.gp_chunks > 0) {
@@ -171,6 +177,50 @@ std::string llvm_fn_type_suffix_str(const hir::Module& mod, const Function& fn) 
   }
   out << ")";
   return out.str();
+}
+
+int llvm_struct_base_slot(const hir::Module& mod, const HirStructDef& sd,
+                          size_t base_index) {
+  if (sd.is_union) return 0;
+  int cur_offset = 0;
+  int slot = 0;
+  for (size_t i = 0; i < sd.base_tags.size(); ++i) {
+    const auto it = mod.struct_defs.find(sd.base_tags[i]);
+    if (it == mod.struct_defs.end()) continue;
+    const auto& base = it->second;
+    if (base.align_bytes > 0 && cur_offset % base.align_bytes != 0) ++slot;
+    cur_offset = align_to_bytes(cur_offset, std::max(1, base.align_bytes));
+    if (i == base_index) return slot;
+    cur_offset += std::max(0, base.size_bytes);
+    ++slot;
+  }
+  return 0;
+}
+
+int llvm_struct_field_slot(const hir::Module& mod, const HirStructDef& sd,
+                           int target_llvm_idx) {
+  if (sd.is_union) return 0;
+  int last_idx = -1;
+  int cur_offset = 0;
+  int slot = 0;
+  for (const auto& base_tag : sd.base_tags) {
+    const auto it = mod.struct_defs.find(base_tag);
+    if (it == mod.struct_defs.end()) continue;
+    const auto& base = it->second;
+    if (base.align_bytes > 0 && cur_offset % base.align_bytes != 0) ++slot;
+    cur_offset = align_to_bytes(cur_offset, std::max(1, base.align_bytes));
+    cur_offset += std::max(0, base.size_bytes);
+    ++slot;
+  }
+  for (const auto& f : sd.fields) {
+    if (f.llvm_idx == last_idx) continue;
+    last_idx = f.llvm_idx;
+    if (f.offset_bytes > cur_offset) ++slot;
+    if (f.llvm_idx == target_llvm_idx) return slot;
+    cur_offset = f.offset_bytes + std::max(0, f.size_bytes);
+    ++slot;
+  }
+  return 0;
 }
 
 int llvm_struct_field_slot(const HirStructDef& sd, int target_llvm_idx) {
@@ -592,6 +642,8 @@ std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSp
                                 const TypeSpec& to_ts) {
   const std::string ft = llvm_ty(from_ts);
   const std::string tt = llvm_ty(to_ts);
+  const TypeBase from_scalar_base = llvm_storage_base(from_ts);
+  const TypeBase to_scalar_base = llvm_storage_base(to_ts);
   if (tt == "ptr" && val == "0") return "null";
   if (ft == tt) return val;
   if (ft == "ptr" && tt == "ptr") return val;
@@ -645,13 +697,14 @@ std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSp
 
   if (from_ts.ptr_level == 0 && from_ts.array_rank == 0 && to_ts.ptr_level == 0 &&
       to_ts.array_rank == 0 && is_any_int(from_ts.base) && is_any_int(to_ts.base)) {
-    const int fb = int_bits(from_ts.base);
-    const int tb = int_bits(to_ts.base);
+    const int fb = int_bits(from_scalar_base);
+    const int tb = int_bits(to_scalar_base);
     if (fb == tb) return val;
     const std::string tmp = fresh_tmp(ctx);
     if (tb > fb) {
       const auto kind =
-          is_signed_int(from_ts.base) ? lir::LirCastKind::SExt : lir::LirCastKind::ZExt;
+          is_signed_int(from_scalar_base) ? lir::LirCastKind::SExt
+                                          : lir::LirCastKind::ZExt;
       emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
     } else {
       emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::Trunc, ft, val, tt});
@@ -673,7 +726,8 @@ std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSp
       to_ts.ptr_level == 0 && to_ts.array_rank == 0) {
     const std::string tmp = fresh_tmp(ctx);
     const auto kind =
-        is_signed_int(from_ts.base) ? lir::LirCastKind::SIToFP : lir::LirCastKind::UIToFP;
+        is_signed_int(from_scalar_base) ? lir::LirCastKind::SIToFP
+                                        : lir::LirCastKind::UIToFP;
     emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
     return tmp;
   }
@@ -682,7 +736,8 @@ std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSp
       is_any_int(to_ts.base) && to_ts.ptr_level == 0) {
     const std::string tmp = fresh_tmp(ctx);
     const auto kind =
-        is_signed_int(to_ts.base) ? lir::LirCastKind::FPToSI : lir::LirCastKind::FPToUI;
+        is_signed_int(to_scalar_base) ? lir::LirCastKind::FPToSI
+                                      : lir::LirCastKind::FPToUI;
     emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
     return tmp;
   }

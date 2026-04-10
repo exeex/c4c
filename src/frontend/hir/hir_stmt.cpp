@@ -33,24 +33,33 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   LocalDecl d{};
   d.id = next_local_id();
   d.name = n->name ? n->name : "<anon_local>";
+  TypeSpec effective_decl_ts{};
   // Substitute template type parameters in local variable types.
   {
-    TypeSpec decl_ts = n->type;
-    if (ctx.tpl_bindings.size() && decl_ts.base == TB_TYPEDEF && decl_ts.tag) {
-      auto it = ctx.tpl_bindings.find(decl_ts.tag);
-      if (it != ctx.tpl_bindings.end()) {
-        const TypeSpec& concrete = it->second;
-        decl_ts.base = concrete.base;
-        decl_ts.tag = concrete.tag;
+    TypeSpec decl_ts =
+        substitute_signature_template_type(n->type, &ctx.tpl_bindings);
+    if (decl_ts.base == TB_AUTO && n->init) {
+      TypeSpec deduced_ts = infer_generic_ctrl_type(&ctx, n->init);
+      deduced_ts.is_const = deduced_ts.is_const || decl_ts.is_const;
+      deduced_ts.is_volatile = deduced_ts.is_volatile || decl_ts.is_volatile;
+      deduced_ts.is_lvalue_ref = false;
+      deduced_ts.is_rvalue_ref = false;
+      if (decl_ts.is_lvalue_ref) {
+        deduced_ts.is_lvalue_ref = true;
+      } else if (decl_ts.is_rvalue_ref) {
+        if (is_ast_lvalue(n->init, &ctx)) deduced_ts.is_lvalue_ref = true;
+        else deduced_ts.is_rvalue_ref = true;
       }
+      decl_ts = deduced_ts;
     }
+    effective_decl_ts = decl_ts;
     // Resolve pending template struct types in local variable decls.
     seed_and_resolve_pending_template_type_if_needed(
-        decl_ts, ctx.tpl_bindings, ctx.nttp_bindings, n,
+        effective_decl_ts, ctx.tpl_bindings, ctx.nttp_bindings, n,
         PendingTemplateTypeKind::DeclarationType,
         std::string("local-decl:") + d.name);
-    resolve_typedef_to_struct(decl_ts);
-    d.type = qtype_from(reference_storage_ts(decl_ts), ValueCategory::LValue);
+    resolve_typedef_to_struct(effective_decl_ts);
+    d.type = qtype_from(reference_storage_ts(effective_decl_ts), ValueCategory::LValue);
   }
   d.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
   if (d.fn_ptr_sig) ctx.local_fn_ptr_sigs[d.name] = *d.fn_ptr_sig;
@@ -99,7 +108,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   if (n->init && !n->is_ctor_init && n->init->kind != NK_INIT_LIST &&
       d.type.spec.base == TB_STRUCT && d.type.spec.ptr_level == 0 &&
       d.type.spec.array_rank == 0 && d.type.spec.tag &&
-      !is_lvalue_ref_ts(n->type) && !n->type.is_rvalue_ref) {
+      !is_lvalue_ref_ts(effective_decl_ts) && !effective_decl_ts.is_rvalue_ref) {
     auto cit = struct_constructors_.find(d.type.spec.tag);
     if (cit != struct_constructors_.end()) {
       // Check if any constructor takes a single param of same struct type (copy/move ctor).
@@ -116,38 +125,52 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       }
     }
   }
-  if (is_lvalue_ref_ts(n->type) && n->init) {
+  if (is_lvalue_ref_ts(effective_decl_ts) && n->init) {
     UnaryExpr addr{};
     addr.op = UnaryOp::AddrOf;
     addr.operand = lower_expr(&ctx, n->init);
     d.init = append_expr(n->init, addr, d.type.spec);
-  } else if (n->type.is_rvalue_ref && n->init) {
-    // Rvalue reference: materialize the rvalue into a temporary, then
-    // store a pointer to that temporary as the reference value.
-    ExprId init_val = lower_expr(&ctx, n->init);
-    TypeSpec val_ts = reference_value_ts(n->type);
-    // Create a hidden temporary local for the rvalue
-    LocalDecl tmp{};
-    tmp.id = next_local_id();
-    tmp.name = ("__rref_tmp_" + std::to_string(d.id.value)).c_str();
-    tmp.type = qtype_from(val_ts, ValueCategory::LValue);
-    tmp.init = init_val;
-    const LocalId tmp_lid = tmp.id;
-    ctx.locals[tmp.name] = tmp.id;
-    ctx.local_types[tmp.id.value] = val_ts;
-    append_stmt(ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
-    // Take address of temporary
-    DeclRef tmp_ref{};
-    tmp_ref.name = ("__rref_tmp_" + std::to_string(d.id.value)).c_str();
-    tmp_ref.local = tmp_lid;
-    ExprId var_id = append_expr(n->init, tmp_ref, val_ts, ValueCategory::LValue);
-    UnaryExpr addr{};
-    addr.op = UnaryOp::AddrOf;
-    addr.operand = var_id;
-    d.init = append_expr(n->init, addr, d.type.spec);
+  } else if (effective_decl_ts.is_rvalue_ref && n->init) {
+    if (auto storage_addr =
+            try_lower_rvalue_ref_storage_addr(&ctx, n->init, d.type.spec)) {
+      d.init = *storage_addr;
+    } else {
+      // Rvalue reference: materialize the rvalue into a temporary, then
+      // store a pointer to that temporary as the reference value.
+      ExprId init_val = lower_expr(&ctx, n->init);
+      TypeSpec val_ts = reference_value_ts(effective_decl_ts);
+      // Create a hidden temporary local for the rvalue
+      LocalDecl tmp{};
+      tmp.id = next_local_id();
+      tmp.name = ("__rref_tmp_" + std::to_string(d.id.value)).c_str();
+      tmp.type = qtype_from(val_ts, ValueCategory::LValue);
+      tmp.init = init_val;
+      const LocalId tmp_lid = tmp.id;
+      ctx.locals[tmp.name] = tmp.id;
+      ctx.local_types[tmp.id.value] = val_ts;
+      append_stmt(ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
+      // Take address of temporary
+      DeclRef tmp_ref{};
+      tmp_ref.name = ("__rref_tmp_" + std::to_string(d.id.value)).c_str();
+      tmp_ref.local = tmp_lid;
+      ExprId var_id = append_expr(n->init, tmp_ref, val_ts, ValueCategory::LValue);
+      UnaryExpr addr{};
+      addr.op = UnaryOp::AddrOf;
+      addr.operand = var_id;
+      d.init = append_expr(n->init, addr, d.type.spec);
+    }
   } else if (!is_array_with_init_list && !is_array_with_string_init &&
              !is_struct_with_init_list && !is_struct_copy_init && n->init)
     d.init = lower_expr(&ctx, n->init);
+  else if (n->is_ctor_init &&
+           !(effective_decl_ts.base == TB_STRUCT && effective_decl_ts.ptr_level == 0 &&
+             effective_decl_ts.array_rank == 0 && effective_decl_ts.tag) &&
+           n->n_children == 1) {
+    // Parser reuses is_ctor_init for C++ direct-initialization syntax such as
+    // `int i(0)` / `bool b(expr)`. Non-record locals should still lower like a
+    // regular single-expression initializer.
+    d.init = lower_expr(&ctx, n->children[0]);
+  }
   // For aggregate init lists / string array init, emit zeroinitializer first
   // then overlay explicit element/field assignments below.
   if (is_struct_with_init_list || is_array_with_init_list || is_array_with_string_init) {
@@ -161,9 +184,9 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   ctx.local_types[d.id.value] = d.type.spec;
   // Track const/constexpr locals with foldable int initializers.
   if (n->name && n->name[0] && n->init &&
-      (n->type.is_const || n->is_constexpr) &&
-      !n->type.is_lvalue_ref && !n->type.is_rvalue_ref &&
-      n->type.ptr_level == 0 && n->type.array_rank == 0) {
+      (effective_decl_ts.is_const || n->is_constexpr) &&
+      !effective_decl_ts.is_lvalue_ref && !effective_decl_ts.is_rvalue_ref &&
+      effective_decl_ts.ptr_level == 0 && effective_decl_ts.array_rank == 0) {
     ConstEvalEnv cenv{&enum_consts_, &const_int_bindings_, &ctx.local_const_bindings};
     if (auto cr = evaluate_constant_expr(n->init, cenv); cr.ok()) {
       ctx.local_const_bindings[n->name] = cr.as_int();
@@ -190,7 +213,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             TypeSpec param_ts = ov.method_node->params[pi]->type;
             resolve_typedef_to_struct(param_ts);
             TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, n->children[pi]);
-            bool arg_is_lvalue = is_ast_lvalue(n->children[pi]);
+            bool arg_is_lvalue = is_ast_lvalue(n->children[pi], &ctx);
             // Strip ref qualifiers for base type comparison.
             TypeSpec param_base = param_ts;
             param_base.is_lvalue_ref = false;
@@ -261,26 +284,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             // Check if the argument is a function call returning a reference type.
             // In that case, the call already returns a pointer; no AddrOf needed.
             bool arg_returns_ref = false;
-            if (inner->kind == NK_CALL && inner->left &&
-                inner->left->kind == NK_VAR && inner->left->name) {
-              TypeSpec call_ret = infer_generic_ctrl_type(&ctx, arg);
-              (void)call_ret;
-              // infer_generic_ctrl_type strips refs, so check original return type.
-              auto dit = deduced_template_calls_.find(inner);
-              if (dit != deduced_template_calls_.end()) {
-                auto fit = module_->fn_index.find(dit->second.mangled_name);
-                if (fit != module_->fn_index.end()) {
-                  const Function* fn = module_->find_function(fit->second);
-                  if (fn && is_any_ref_ts(fn->return_type.spec)) arg_returns_ref = true;
-                }
-              }
-              if (!arg_returns_ref) {
-                auto fit = module_->fn_index.find(inner->left->name);
-                if (fit != module_->fn_index.end()) {
-                  const Function* fn = module_->find_function(fit->second);
-                  if (fn && is_any_ref_ts(fn->return_type.spec)) arg_returns_ref = true;
-                }
-              }
+            if (auto ts = infer_call_result_type(&ctx, inner)) {
+              arg_returns_ref = is_any_ref_ts(*ts);
             }
             if (arg_returns_ref) {
               // Call already returns a pointer (reference ABI).
@@ -358,7 +363,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     auto cit = struct_constructors_.find(decl_ts.tag);
     if (cit != struct_constructors_.end() && !cit->second.empty()) {
       // Score constructors: prefer T&& for rvalue, const T& for lvalue.
-      bool init_is_lvalue = is_ast_lvalue(n->init);
+      bool init_is_lvalue = is_ast_lvalue(n->init, &ctx);
       const CtorOverload* best = nullptr;
       int best_score = -1;
       for (const auto& ov : cit->second) {
@@ -699,6 +704,38 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         return false;
       return rhs_node->kind == NK_STR_LIT;
     };
+    auto append_base_lvalue = [&](const TypeSpec& owner_ts, ExprId owner_lhs,
+                                  const std::string& base_tag)
+        -> std::optional<std::pair<TypeSpec, ExprId>> {
+      if (!owner_ts.tag || !owner_ts.tag[0]) return std::nullopt;
+      const auto sit = module_->struct_defs.find(owner_ts.tag);
+      if (sit == module_->struct_defs.end()) return std::nullopt;
+      if (sit->second.base_tags.empty() || sit->second.base_tags.front() != base_tag)
+        return std::nullopt;
+      TypeSpec owner_ptr_ts = owner_ts;
+      owner_ptr_ts.ptr_level++;
+      UnaryExpr addr{};
+      addr.op = UnaryOp::AddrOf;
+      addr.operand = owner_lhs;
+      ExprId owner_addr = append_expr(n, addr, owner_ptr_ts);
+
+      TypeSpec base_ptr_ts{};
+      base_ptr_ts.base = TB_STRUCT;
+      base_ptr_ts.tag = base_tag.c_str();
+      base_ptr_ts.ptr_level = 1;
+      CastExpr cast{};
+      cast.to_type = qtype_from(base_ptr_ts, ValueCategory::RValue);
+      cast.expr = owner_addr;
+      ExprId base_ptr = append_expr(n, cast, base_ptr_ts);
+
+      TypeSpec base_ts = base_ptr_ts;
+      base_ts.ptr_level = 0;
+      UnaryExpr deref{};
+      deref.op = UnaryOp::Deref;
+      deref.operand = base_ptr;
+      ExprId base_lhs = append_expr(n, deref, base_ts, ValueCategory::LValue);
+      return std::make_pair(base_ts, base_lhs);
+    };
 
     std::function<void(const TypeSpec&, ExprId, const Node*, int&)> consume_from_list;
     consume_from_list =
@@ -710,17 +747,47 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             const auto sit = module_->struct_defs.find(cur_ts.tag);
             if (sit == module_->struct_defs.end()) return;
             const auto& sd = sit->second;
+            size_t next_base = 0;
             size_t next_field = 0;
             while (cursor < list_node->n_children) {
               const Node* item = list_node->children[cursor];
               if (!item) {
                 ++cursor;
+                if (next_base < sd.base_tags.size()) {
+                  ++next_base;
+                  continue;
+                }
                 if (next_field < sd.fields.size()) ++next_field;
                 continue;
               }
               const bool has_field_designator =
                   item->kind == NK_INIT_ITEM && item->is_designated &&
                   !item->is_index_desig && item->desig_field;
+              if (!has_field_designator && next_base < sd.base_tags.size()) {
+                const std::string& base_tag = sd.base_tags[next_base];
+                auto base_access = append_base_lvalue(cur_ts, cur_lhs, base_tag);
+                ++next_base;
+                if (!base_access) break;
+                const TypeSpec& base_ts = base_access->first;
+                ExprId base_lhs = base_access->second;
+                const Node* val_node = init_item_value_node(item);
+                if (is_agg(base_ts) || base_ts.array_rank > 0) {
+                  if (val_node && val_node->kind == NK_INIT_LIST) {
+                    int sub_cursor = 0;
+                    consume_from_list(base_ts, base_lhs, val_node, sub_cursor);
+                    ++cursor;
+                  } else if (can_direct_assign_agg(base_ts, val_node)) {
+                    append_assign(base_lhs, base_ts, val_node);
+                    ++cursor;
+                  } else {
+                    consume_from_list(base_ts, base_lhs, list_node, cursor);
+                  }
+                } else {
+                  append_assign(base_lhs, base_ts, val_node);
+                  ++cursor;
+                }
+                continue;
+              }
               if (!has_field_designator && next_field >= sd.fields.size()) break;
               size_t fi = next_field;
               if (has_field_designator) {
@@ -1872,12 +1939,51 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
 
   if (method_node->is_constructor && method_node->n_ctor_inits > 0) {
     auto sit = module_->struct_defs.find(struct_tag);
+    auto is_delegating_ctor_target = [&](const char* mem_name) -> bool {
+      if (!mem_name || !mem_name[0]) return false;
+      if (struct_tag == mem_name) return true;
+
+      auto normalize_ctor_name = [&](const char* raw) -> std::string {
+        if (!raw || !raw[0]) return {};
+        std::string s(raw);
+        size_t scope = s.rfind("::");
+        if (scope != std::string::npos) s = s.substr(scope + 2);
+        size_t tpl = s.find('<');
+        if (tpl != std::string::npos) s.resize(tpl);
+        return s;
+      };
+
+      const std::string mem_base = normalize_ctor_name(mem_name);
+      auto matches_unqualified = [&](const char* candidate) -> bool {
+        if (!candidate || !candidate[0]) return false;
+        if (std::strcmp(candidate, mem_name) == 0) return true;
+        const std::string candidate_base = normalize_ctor_name(candidate);
+        return !mem_base.empty() && candidate_base == mem_base;
+      };
+
+      if (method_node) {
+        if (matches_unqualified(method_node->name)) return true;
+        if (matches_unqualified(method_node->unqualified_name)) return true;
+        if (matches_unqualified(method_node->template_origin_name)) return true;
+      }
+      if (sit != module_->struct_defs.end()) {
+        if (matches_unqualified(sit->second.tag.c_str())) return true;
+      }
+      auto sdit = struct_def_nodes_.find(struct_tag);
+      if (sdit != struct_def_nodes_.end() && sdit->second) {
+        if (matches_unqualified(sdit->second->name)) return true;
+        if (matches_unqualified(sdit->second->unqualified_name)) return true;
+        if (matches_unqualified(sdit->second->template_origin_name)) return true;
+      }
+      return false;
+    };
+
     for (int i = 0; i < method_node->n_ctor_inits; ++i) {
       const char* mem_name = method_node->ctor_init_names[i];
       int nargs = method_node->ctor_init_nargs[i];
       Node** args = method_node->ctor_init_args[i];
 
-      if (mem_name == struct_tag || (mem_name && struct_tag == mem_name)) {
+      if (is_delegating_ctor_target(mem_name)) {
         auto cit = struct_constructors_.find(struct_tag);
         if (cit == struct_constructors_.end() || cit->second.empty()) {
           throw std::runtime_error(
@@ -1885,9 +1991,15 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
               struct_tag + "'");
         }
         const CtorOverload* best = nullptr;
-        if (cit->second.size() == 1 &&
-            cit->second[0].method_node->n_params == nargs) {
-          best = &cit->second[0];
+        std::vector<const CtorOverload*> arity_matches;
+        arity_matches.reserve(cit->second.size());
+        for (const auto& ov : cit->second) {
+          if (ov.method_node->n_params != nargs) continue;
+          if (ov.mangled_name == mangled_name) continue;
+          arity_matches.push_back(&ov);
+        }
+        if (arity_matches.size() == 1) {
+          best = arity_matches[0];
         } else {
           int best_score = -1;
           for (const auto& ov : cit->second) {
@@ -1899,7 +2011,18 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
               TypeSpec param_ts = ov.method_node->params[pi]->type;
               resolve_typedef_to_struct(param_ts);
               TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, args[pi]);
-              bool arg_is_lvalue = is_ast_lvalue(args[pi]);
+              resolve_typedef_to_struct(arg_ts);
+              if (arg_ts.base != TB_STRUCT && args[pi] &&
+                  args[pi]->kind == NK_CALL && args[pi]->left) {
+                TypeSpec constructed_ts =
+                    infer_generic_ctrl_type(&ctx, args[pi]->left);
+                resolve_typedef_to_struct(constructed_ts);
+                if (constructed_ts.base == TB_STRUCT &&
+                    constructed_ts.ptr_level == 0) {
+                  arg_ts = constructed_ts;
+                }
+              }
+              bool arg_is_lvalue = is_ast_lvalue(args[pi], &ctx);
               TypeSpec param_base = param_ts;
               param_base.is_lvalue_ref = false;
               param_base.is_rvalue_ref = false;
@@ -1986,6 +2109,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       ExprId this_id = append_expr(
           method_node, this_ref, this_ts, ValueCategory::LValue);
       TypeSpec field_ts{};
+      const Node* field_decl = nullptr;
       if (sit != module_->struct_defs.end()) {
         for (const auto& fld : sit->second.fields) {
           if (fld.name == mem_name) {
@@ -1994,8 +2118,29 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
               field_ts.array_rank = 1;
               field_ts.array_size = fld.array_first_dim;
             }
+            field_ts = substitute_signature_template_type(field_ts, &ctx.tpl_bindings);
+            resolve_signature_template_type_if_needed(
+                field_ts, &ctx.tpl_bindings, &ctx.nttp_bindings, method_node,
+                std::string("ctor-init-member:") + mem_name);
+            resolve_typedef_to_struct(field_ts);
             break;
           }
+        }
+      }
+      auto sdit = struct_def_nodes_.find(struct_tag);
+      if (sdit != struct_def_nodes_.end() && sdit->second) {
+        for (int fi = 0; fi < sdit->second->n_fields; ++fi) {
+          const Node* candidate = sdit->second->fields[fi];
+          if (candidate && candidate->name && mem_name &&
+              std::string(candidate->name) == mem_name) {
+            field_decl = candidate;
+            break;
+          }
+        }
+      }
+      if (field_decl && resolved_types_) {
+        if (auto ct = resolved_types_->lookup(field_decl)) {
+          field_ts = sema::typespec_from_canonical(*ct);
         }
       }
       MemberExpr me{};
@@ -2022,7 +2167,18 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
                 TypeSpec param_ts = ov.method_node->params[pi]->type;
                 resolve_typedef_to_struct(param_ts);
                 TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, args[pi]);
-                bool arg_is_lvalue = is_ast_lvalue(args[pi]);
+                resolve_typedef_to_struct(arg_ts);
+                if (arg_ts.base != TB_STRUCT && args[pi] &&
+                    args[pi]->kind == NK_CALL && args[pi]->left) {
+                  TypeSpec constructed_ts =
+                      infer_generic_ctrl_type(&ctx, args[pi]->left);
+                  resolve_typedef_to_struct(constructed_ts);
+                  if (constructed_ts.base == TB_STRUCT &&
+                      constructed_ts.ptr_level == 0) {
+                    arg_ts = constructed_ts;
+                  }
+                }
+                bool arg_is_lvalue = is_ast_lvalue(args[pi], &ctx);
                 TypeSpec param_base = param_ts;
                 param_base.is_lvalue_ref = false;
                 param_base.is_rvalue_ref = false;
@@ -2092,6 +2248,18 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       }
 
       if (!did_ctor_call) {
+        if (nargs == 0) {
+          ExprId rhs_id = append_expr(method_node, IntLiteral{0, false}, field_ts);
+          AssignExpr ae{};
+          ae.op = AssignOp::Set;
+          ae.lhs = lhs_id;
+          ae.rhs = rhs_id;
+          ExprId ae_id = append_expr(method_node, ae, field_ts);
+          ExprStmt es{};
+          es.expr = ae_id;
+          append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
+          continue;
+        }
         if (nargs != 1) {
           std::string diag = "error: initializer for scalar member '";
           diag += mem_name;

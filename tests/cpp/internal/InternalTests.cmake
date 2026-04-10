@@ -5,6 +5,13 @@ file(GLOB INTERNAL_CPP_POSITIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_CPP_TEST_ROOT}/postive_case/*.cpp")
 file(GLOB INTERNAL_CPP_NEGATIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_CPP_TEST_ROOT}/negative_case/*.cpp")
+file(GLOB_RECURSE INTERNAL_CPP_GENERATED_PARSE_ONLY_TEST_SRCS CONFIGURE_DEPENDS
+     "${INTERNAL_CPP_TEST_ROOT}/generated/parser_disambiguation_matrix/parse_only/*.cpp")
+file(GLOB_RECURSE INTERNAL_CPP_GENERATED_COMPILE_POSITIVE_TEST_SRCS CONFIGURE_DEPENDS
+     "${INTERNAL_CPP_TEST_ROOT}/generated/parser_disambiguation_matrix/compile_positive/*.cpp")
+
+list(APPEND INTERNAL_CPP_POSITIVE_TEST_SRCS ${INTERNAL_CPP_GENERATED_PARSE_ONLY_TEST_SRCS})
+list(APPEND INTERNAL_CPP_POSITIVE_TEST_SRCS ${INTERNAL_CPP_GENERATED_COMPILE_POSITIVE_TEST_SRCS})
 
 set(CPP_POSITIVE_FRONTEND_STEMS
     if_constexpr_template_chain
@@ -17,6 +24,9 @@ set(CPP_POSITIVE_FRONTEND_STEMS
     template_constexpr_member_runtime
     cpp20_out_of_class_trailing_requires_runtime
     cpp20_record_member_trailing_requires_frontend
+    cpp20_if_constexpr_concept_id_frontend
+    free_operator_eq_overload_frontend
+    ctor_init_piecewise_delegating_template_runtime
 )
 
 set(CPP_POSITIVE_PARSE_STEMS
@@ -46,6 +56,12 @@ set(CPP_POSITIVE_PARSE_STEMS
     operator_shift_static_member_call_parse
     template_anon_param_extern_cxx_parse
     template_bool_specialization_parse
+    local_value_shadows_tag_assign_expr_parse
+    local_value_shadows_tag_compound_assign_expr_parse
+    local_value_shadows_typedef_assign_expr_parse
+    local_value_shadows_using_alias_assign_expr_parse
+    ctor_init_dependent_typename_index_tuple_parse
+    ctor_init_out_of_class_dependent_typename_index_tuple_parse
     scope_resolution_expr_parse
     template_dependent_enum_parse
     template_dependent_enum_sizeof_parse
@@ -112,6 +128,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     friend_relational_operator_parse
     friend_spaceship_operator_parse
     if_condition_decl_parse
+    for_decl_probe_rollback_parse
     free_function_record_ref_param_parse
     iterator_concepts_following_hash_base_parse
     stl_iterator_then_max_size_type_parse
@@ -175,12 +192,23 @@ set(CPP_POSITIVE_PARSE_STEMS
     declarator_pointer_ref_qualifier_staging_parse
     declarator_parenthesized_fn_ptr_staging_parse
     declarator_member_fn_ptr_suffix_staging_parse
+    c_style_cast_template_fn_ptr_return_type_parse
+    c_style_cast_template_fn_ptr_lvalue_ref_return_type_parse
+    c_style_cast_template_member_fn_ptr_const_parse
+    c_style_cast_template_member_fn_ptr_ref_qual_parse
+    c_style_cast_global_qualified_template_member_fn_ptr_const_parse
+    c_style_cast_namespace_qualified_template_member_fn_ptr_const_parse
+    c_style_cast_namespace_qualified_template_member_fn_ptr_ref_qual_parse
+    c_style_cast_global_qualified_dependent_template_member_fn_ptr_const_parse
+    c_style_cast_global_qualified_dependent_template_member_fn_ptr_ref_qual_parse
+    c_style_cast_namespace_qualified_dependent_template_member_fn_ptr_ref_qual_parse
     declarator_parenthesized_member_pointer_prefix_parse
     declarator_parenthesized_pointer_inner_staging_parse
     declarator_parenthesized_member_pointer_finalization_parse
     declarator_normal_tail_staging_parse
     declarator_non_parenthesized_suffix_staging_parse
     declarator_plain_function_suffix_staging_parse
+    c_style_cast_dependent_template_member_ptr_parse
     record_nested_aggregate_member_parse
     record_member_typedef_using_parse
     record_member_enum_parse
@@ -223,8 +251,25 @@ set(CPP_POSITIVE_PARSE_STEMS
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS
     call_expr_ref_return_lvalue_frontend
+    constrained_member_conversion_operator_frontend
+    constrained_template_method_call_frontend
     eastl_probe_call_result_lvalue_frontend
+    namespaced_function_param_shadow_frontend
+    namespaced_out_of_class_method_context_frontend
+    qualified_namespaced_out_of_class_method_context_frontend
+    operator_new_delete_array_placement_overload_frontend
+    template_inline_method_member_context_frontend
 )
+
+foreach(src IN LISTS INTERNAL_CPP_GENERATED_PARSE_ONLY_TEST_SRCS)
+  get_filename_component(stem "${src}" NAME_WE)
+  list(APPEND CPP_POSITIVE_PARSE_STEMS "${stem}")
+endforeach()
+
+foreach(src IN LISTS INTERNAL_CPP_GENERATED_COMPILE_POSITIVE_TEST_SRCS)
+  get_filename_component(stem "${src}" NAME_WE)
+  list(APPEND CPP_POSITIVE_FRONTEND_STEMS "${stem}")
+endforeach()
 
 foreach(src IN LISTS INTERNAL_CPP_NEGATIVE_TEST_SRCS)
   get_filename_component(stem "${src}" NAME_WE)
@@ -424,6 +469,24 @@ add_test(
 set_tests_properties(cpp_parse_record_base_variable_template_value_arg_dump PROPERTIES
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "StructDef\\(struct eastl::has_unique_object_representations_T_int\\)"
+)
+
+add_test(
+  NAME cpp_parse_template_alias_empty_pack_default_arg_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/template_alias_empty_pack_default_arg_parse.cpp"
+)
+set_tests_properties(cpp_parse_template_alias_empty_pack_default_arg_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "StructDef\\(struct ns::has_equality\\)"
+)
+
+add_test(
+  NAME cpp_parse_qualified_type_spelling_rollback_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/qualified_type_spelling_rollback_parse.cpp"
+)
+set_tests_properties(cpp_parse_qualified_type_spelling_rollback_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(kept\\)"
 )
 
 add_test(
@@ -701,6 +764,16 @@ set_tests_properties(cpp_parse_keyword_not_eq_operator_dump PROPERTIES
 )
 
 add_test(
+  NAME cpp_parse_namespace_trailing_return_nested_variadic_alias_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/namespace_trailing_return_nested_variadic_alias_parse.cpp"
+)
+set_tests_properties(cpp_parse_namespace_trailing_return_nested_variadic_alias_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Function\\(eastl::f\\)"
+  FAIL_REGULAR_EXPRESSION "expected=RBRACE got='<eof>'"
+)
+
+add_test(
   NAME cpp_lex_keyword_bitand_tokens
   COMMAND c4cll --lex-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_bitand_parse.cpp"
 )
@@ -942,7 +1015,7 @@ add_test(
           -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_type_spelling_stack.cpp
           "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list"
           "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] kind=tentative_rollback fn=try_parse_template_type_arg"
-          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=try_parse_template_type_arg line=15 col=23 detail=\"start="
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=try_parse_template_type_arg line=15 col=23 detail=\"mode=heavy start="
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )
 set_tests_properties(cpp_parser_debug_tentative_template_arg_lifecycle PROPERTIES
@@ -957,11 +1030,70 @@ add_test(
           "-DPARSER_DEBUG_ARGS:STRING=--parser-debug-tentative"
           "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list"
           "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] kind=tentative_rollback fn=try_parse_template_type_arg"
-          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=try_parse_template_type_arg line=15 col=23 detail=\"start="
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=try_parse_template_type_arg line=15 col=23 detail=\"mode=heavy start="
           "-DEXPECT_ABSENT_SUBSTRING:STRING=[pdebug] kind=enter fn=parse_top_level"
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )
 set_tests_properties(cpp_parser_debug_tentative_cli_only PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_sizeof_type_tentative_lite
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_sizeof_type_tentative_lite.cpp
+          "-DPARSER_DEBUG_ARGS:STRING=--parser-debug-tentative"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=parse_unary"
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=parse_unary line=5 col=24 detail=\"mode=lite start="
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_sizeof_type_tentative_lite PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_if_condition_decl_tentative_lite
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_if_condition_decl_tentative_lite.cpp
+          "-DPARSER_DEBUG_ARGS:STRING=--parser-debug-tentative"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=parse_stmt"
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=parse_stmt line=6 col=28 detail=\"mode=lite start="
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_if_condition_decl_tentative_lite PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_range_for_tentative_lite
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_range_for_tentative_lite.cpp
+          "-DPARSER_DEBUG_ARGS:STRING=--parser-debug-tentative"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=parse_stmt"
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=parse_stmt line=8 col=26 detail=\"mode=lite start="
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_range_for_tentative_lite PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_ctor_init_tentative_lite
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_ctor_init_tentative_lite.cpp
+          "-DPARSER_DEBUG_ARGS:STRING=--parser-debug-tentative"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] kind=tentative_rollback fn=parse_local_decl line=11 col=14 detail=\"mode=lite start="
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_ctor_init_tentative_lite PROPERTIES
   LABELS "internal;negative_case;cpp;diagnostic_format"
 )
 
@@ -1172,7 +1304,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_template_struct_inherited_method_binding PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "struct Base_T_int.*fn Wrap_T_int__sum\\(this: struct Wrap_T_int\\*\\) -> int"
+  PASS_REGULAR_EXPRESSION "fn Wrap_T_int__sum_const\\(this: struct Wrap_T_int\\*\\) -> int"
 )
 
 add_test(
@@ -1227,6 +1359,15 @@ add_test(
 set_tests_properties(cpp_hir_template_method_signature_binding PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
   PASS_REGULAR_EXPRESSION "fn Transformer_T_int__make_scaled_pair\\(this: struct Transformer_T_int\\*, x: int\\) -> struct Pair_T_int"
+)
+
+add_test(
+  NAME cpp_hir_template_method_param_reentrant_lowering
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_struct_method_param_reentrant_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_method_param_reentrant_lowering PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "fn Outer_T_int__absorb\\(this: struct Outer_T_int\\*, inner: struct Inner_T_int\\) -> void"
 )
 
 add_test(
@@ -1437,6 +1578,42 @@ set_tests_properties(cpp_llvm_spec_key_named_metadata_entry PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_forward_pick_ref_specialization_identity
+  COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_forward_pick_specialization_identity.cpp"
+)
+set_tests_properties(cpp_hir_forward_pick_ref_specialization_identity PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "template forward_pick<typename T> \\[2 instantiations\\].*-> forward_pick_i_ref \\{T=int&\\} key=forward_pick<T=int&>.*-> forward_pick_i \\{T=int\\} key=forward_pick<T=int>"
+)
+
+add_test(
+  NAME cpp_llvm_forward_pick_specialization_metadata
+  COMMAND c4cll "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_forward_pick_specialization_identity.cpp"
+)
+set_tests_properties(cpp_llvm_forward_pick_specialization_metadata PROPERTIES
+  LABELS "internal;positive_case;cpp;llvm"
+  PASS_REGULAR_EXPRESSION "!c4c\\.specializations = !\\{!0, !1\\}"
+)
+
+add_test(
+  NAME cpp_llvm_forward_pick_ref_specialization_metadata_entry
+  COMMAND c4cll "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_forward_pick_specialization_identity.cpp"
+)
+set_tests_properties(cpp_llvm_forward_pick_ref_specialization_metadata_entry PROPERTIES
+  LABELS "internal;positive_case;cpp;llvm"
+  PASS_REGULAR_EXPRESSION "!\"forward_pick<T=int&>\""
+)
+
+add_test(
+  NAME cpp_llvm_forward_pick_value_specialization_metadata_entry
+  COMMAND c4cll "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_forward_pick_specialization_identity.cpp"
+)
+set_tests_properties(cpp_llvm_forward_pick_value_specialization_metadata_entry PROPERTIES
+  LABELS "internal;positive_case;cpp;llvm"
+  PASS_REGULAR_EXPRESSION "!\"forward_pick<T=int>\""
+)
+
+add_test(
   NAME cpp_llvm_initializer_list_runtime_materialization
   COMMAND c4cll "${INTERNAL_CPP_TEST_ROOT}/postive_case/eastl_probe_initializer_list_runtime.cpp"
 )
@@ -1523,13 +1700,29 @@ add_test(
           -DROOT=${PROJECT_SOURCE_DIR}
           -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_vector_simple.cpp
           -DCASE_TIMEOUT_SEC=25
-          "-DEXPECT_FAIL_LOC:STRING=ref/EASTL/include/EASTL/internal/function.h:66:26"
-          "-DEXPECT_ERROR_SUBSTRING:STRING=object has incomplete type: eastl::internal::function_detail"
-          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_vector_parse_recipe.cmake"
+          -DEXPECT_SUCCESS=ON
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
 )
 set_tests_properties(cpp_eastl_vector_parse_recipe PROPERTIES
-  LABELS "internal;negative_case;cpp;workflow"
+  LABELS "internal;positive_case;cpp;workflow"
   TIMEOUT 45
+  RUN_SERIAL TRUE
+)
+
+add_test(
+  NAME cpp_eastl_memory_uses_allocator_parse_recipe
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DROOT=${PROJECT_SOURCE_DIR}
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp
+          -DCASE_TIMEOUT_SEC=25
+          -DEXPECT_SUCCESS=ON
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
+)
+set_tests_properties(cpp_eastl_memory_uses_allocator_parse_recipe PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow"
+  TIMEOUT 35
+  RUN_SERIAL TRUE
 )
 
 add_test(

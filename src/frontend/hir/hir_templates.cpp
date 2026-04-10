@@ -7,36 +7,198 @@
 
 namespace c4c::hir {
 
+std::string encode_template_type_arg_ref_hir(const TypeSpec& ts);
+
+namespace {
+
+std::string encode_template_arg_ref_hir(const TemplateArgRef& arg) {
+  if (arg.debug_text && arg.debug_text[0]) return arg.debug_text;
+  if (arg.kind == TemplateArgKind::Value) return std::to_string(arg.value);
+  if (arg.kind == TemplateArgKind::Type &&
+      (has_concrete_type(arg.type) || arg.type.tpl_struct_origin)) {
+    return encode_template_type_arg_ref_hir(arg.type);
+  }
+  return {};
+}
+
+std::vector<std::string> encode_template_arg_ref_list_hir(const TypeSpec& ts) {
+  std::vector<std::string> refs;
+  if (!ts.tpl_struct_args.data || ts.tpl_struct_args.size <= 0) return refs;
+  refs.reserve(ts.tpl_struct_args.size);
+  for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+    refs.push_back(encode_template_arg_ref_hir(ts.tpl_struct_args.data[i]));
+  }
+  return refs;
+}
+
+std::string encode_template_arg_debug_compat_hir(const TypeSpec& ts) {
+  std::string out;
+  if (!ts.tpl_struct_args.data || ts.tpl_struct_args.size <= 0) return out;
+  for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+    if (i > 0) out += ",";
+    out += encode_template_arg_ref_hir(ts.tpl_struct_args.data[i]);
+  }
+  return out;
+}
+
+bool matches_trait_family(const std::string& name, const char* suffix);
+
+bool is_signed_trait_type(const TypeSpec& ts) {
+  if (ts.ptr_level > 0 || ts.is_fn_ptr || ts.array_rank > 0) return false;
+  switch (ts.base) {
+    case TB_FLOAT:
+    case TB_DOUBLE:
+    case TB_LONGDOUBLE:
+      return true;
+    case TB_SCHAR:
+    case TB_SHORT:
+    case TB_INT:
+    case TB_LONG:
+    case TB_LONGLONG:
+    case TB_INT128:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool is_unsigned_trait_type(const TypeSpec& ts) {
+  if (ts.ptr_level > 0 || ts.is_fn_ptr || ts.array_rank > 0) return false;
+  switch (ts.base) {
+    case TB_BOOL:
+    case TB_UCHAR:
+    case TB_USHORT:
+    case TB_UINT:
+    case TB_ULONG:
+    case TB_ULONGLONG:
+    case TB_UINT128:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool is_const_trait_type(const TypeSpec& ts) {
+  return ts.is_const && !ts.is_lvalue_ref && !ts.is_rvalue_ref;
+}
+
+bool is_reference_trait_type(const TypeSpec& ts) {
+  return ts.is_lvalue_ref || ts.is_rvalue_ref;
+}
+
+std::optional<TypeSpec> try_resolve_unary_type_transform_trait(
+    const std::string& tpl_name,
+    const std::string& member,
+    const std::vector<HirTemplateArg>& actual_args) {
+  if (member != "type" || actual_args.size() != 1 || actual_args[0].is_value) {
+    return std::nullopt;
+  }
+
+  TypeSpec resolved = actual_args[0].type;
+  if (matches_trait_family(tpl_name, "remove_const")) {
+    resolved.is_const = false;
+    return resolved;
+  }
+  if (matches_trait_family(tpl_name, "remove_volatile")) {
+    resolved.is_volatile = false;
+    return resolved;
+  }
+  if (matches_trait_family(tpl_name, "remove_cv")) {
+    resolved.is_const = false;
+    resolved.is_volatile = false;
+    return resolved;
+  }
+  if (matches_trait_family(tpl_name, "remove_reference")) {
+    resolved.is_lvalue_ref = false;
+    resolved.is_rvalue_ref = false;
+    return resolved;
+  }
+  return std::nullopt;
+}
+
+bool is_enum_trait_type(const TypeSpec& ts) {
+  if (ts.ptr_level > 0 || ts.is_fn_ptr || ts.array_rank > 0) return false;
+  return ts.base == TB_ENUM;
+}
+
+bool matches_trait_family(const std::string& name, const char* suffix) {
+  if (name == suffix) return true;
+  if (name.size() <= std::strlen(suffix) + 2) return false;
+  return name.compare(name.size() - std::strlen(suffix), std::strlen(suffix), suffix) == 0 &&
+         name.compare(name.size() - std::strlen(suffix) - 2, 2, "::") == 0;
+}
+
+void assign_template_arg_refs_from_hir_args(
+    TypeSpec* ts,
+    const std::vector<HirTemplateArg>& args) {
+  if (!ts) return;
+  ts->tpl_struct_args.data = nullptr;
+  ts->tpl_struct_args.size = 0;
+  if (args.empty()) return;
+
+  ts->tpl_struct_args.data = new TemplateArgRef[args.size()]();
+  ts->tpl_struct_args.size = static_cast<int>(args.size());
+  for (size_t i = 0; i < args.size(); ++i) {
+    const HirTemplateArg& arg = args[i];
+    TemplateArgRef& out = ts->tpl_struct_args.data[i];
+    out.kind = arg.is_value ? TemplateArgKind::Value
+                            : TemplateArgKind::Type;
+    out.type = arg.is_value ? TypeSpec{} : arg.type;
+    out.value = arg.is_value ? arg.value : 0;
+    const std::string debug_text =
+        arg.is_value ? std::to_string(arg.value)
+                     : encode_template_type_arg_ref_hir(arg.type);
+    out.debug_text =
+        debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
+  }
+}
+
+}  // namespace
+
 std::string encode_template_type_arg_ref_hir(const TypeSpec& ts) {
   if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
     std::string ref = "@";
     ref += ts.tpl_struct_origin;
     ref += ":";
-    ref += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
+    ref += encode_template_arg_debug_compat_hir(ts);
+    if (ts.deferred_member_type_name && ts.deferred_member_type_name[0]) {
+      ref += "$";
+      ref += ts.deferred_member_type_name;
+    }
     return ref;
   }
-  if (ts.tag && ts.tag[0]) return ts.tag;
+
+  const bool plain_tag_ref =
+      ts.tag && ts.tag[0] && !ts.is_const && !ts.is_volatile &&
+      ts.ptr_level == 0 && !ts.is_lvalue_ref && !ts.is_rvalue_ref;
+  if (plain_tag_ref) return ts.tag;
 
   std::string ref;
+  if (ts.is_const) ref += "const_";
+  if (ts.is_volatile) ref += "volatile_";
   switch (ts.base) {
-    case TB_INT: ref = "int"; break;
-    case TB_UINT: ref = "uint"; break;
-    case TB_CHAR: ref = "char"; break;
-    case TB_SCHAR: ref = "schar"; break;
-    case TB_UCHAR: ref = "uchar"; break;
-    case TB_SHORT: ref = "short"; break;
-    case TB_USHORT: ref = "ushort"; break;
-    case TB_LONG: ref = "long"; break;
-    case TB_ULONG: ref = "ulong"; break;
-    case TB_LONGLONG: ref = "llong"; break;
-    case TB_ULONGLONG: ref = "ullong"; break;
-    case TB_FLOAT: ref = "float"; break;
-    case TB_DOUBLE: ref = "double"; break;
-    case TB_LONGDOUBLE: ref = "ldouble"; break;
-    case TB_VOID: ref = "void"; break;
-    case TB_BOOL: ref = "bool"; break;
-    case TB_INT128: ref = "i128"; break;
-    case TB_UINT128: ref = "u128"; break;
+    case TB_INT: ref += "int"; break;
+    case TB_UINT: ref += "uint"; break;
+    case TB_CHAR: ref += "char"; break;
+    case TB_SCHAR: ref += "schar"; break;
+    case TB_UCHAR: ref += "uchar"; break;
+    case TB_SHORT: ref += "short"; break;
+    case TB_USHORT: ref += "ushort"; break;
+    case TB_LONG: ref += "long"; break;
+    case TB_ULONG: ref += "ulong"; break;
+    case TB_LONGLONG: ref += "llong"; break;
+    case TB_ULONGLONG: ref += "ullong"; break;
+    case TB_FLOAT: ref += "float"; break;
+    case TB_DOUBLE: ref += "double"; break;
+    case TB_LONGDOUBLE: ref += "ldouble"; break;
+    case TB_VOID: ref += "void"; break;
+    case TB_BOOL: ref += "bool"; break;
+    case TB_INT128: ref += "i128"; break;
+    case TB_UINT128: ref += "u128"; break;
+    case TB_STRUCT: ref += "struct_"; ref += ts.tag ? ts.tag : "anon"; break;
+    case TB_UNION: ref += "union_"; ref += ts.tag ? ts.tag : "anon"; break;
+    case TB_ENUM: ref += "enum_"; ref += ts.tag ? ts.tag : "anon"; break;
+    case TB_TYPEDEF: ref += ts.tag ? ts.tag : "typedef"; break;
     default: return "?";
   }
   for (int p = 0; p < ts.ptr_level; ++p) ref += "_ptr";
@@ -132,6 +294,23 @@ bool Lowerer::has_plain_call(const Node* n, const char* fn_name) {
   for (int i = 0; i < n->n_children; ++i)
     if (has_plain_call(n->children[i], fn_name)) return true;
   return false;
+}
+
+void Lowerer::collect_template_global_definitions(
+    const std::vector<const Node*>& items) {
+  template_global_defs_.clear();
+  template_global_specializations_.clear();
+
+  for (const Node* item : items) {
+    if (!item || item->kind != NK_GLOBAL_VAR || !item->name || !item->name[0]) continue;
+    if (item->n_template_params > 0 && item->n_template_args == 0) {
+      template_global_defs_[item->name] = item;
+      continue;
+    }
+    if (item->n_template_args > 0) {
+      template_global_specializations_[item->name].push_back(item);
+    }
+  }
 }
 
 bool Lowerer::template_struct_has_pack_params(const Node* primary_tpl) {
@@ -270,6 +449,13 @@ std::optional<TypeSpec> Lowerer::try_infer_arg_type_for_deduction(
     const Node* expr, const Node* enclosing_fn) {
   if (!expr) return std::nullopt;
 
+  if (resolved_types_) {
+    if (auto ct = resolved_types_->lookup(expr)) {
+      TypeSpec ts = sema::typespec_from_canonical(*ct);
+      if (has_concrete_type(ts)) return ts;
+    }
+  }
+
   if (has_concrete_type(expr->type)) return expr->type;
 
   switch (expr->kind) {
@@ -316,6 +502,28 @@ std::optional<TypeSpec> Lowerer::try_infer_arg_type_for_deduction(
     }
     case NK_CAST:
       if (has_concrete_type(expr->type)) return expr->type;
+      return std::nullopt;
+    case NK_CALL:
+    case NK_BUILTIN_CALL:
+      if (resolved_types_ && expr->left) {
+        if (auto callee_ct = resolved_types_->lookup(expr->left);
+            callee_ct && sema::is_callable_type(*callee_ct)) {
+          if (const auto* sig = sema::get_function_sig(*callee_ct);
+              sig && sig->return_type) {
+            return sema::typespec_from_canonical(*sig->return_type);
+          }
+        }
+      }
+      if (expr->left && expr->left->kind == NK_VAR && expr->left->name) {
+        auto fit = function_decl_nodes_.find(expr->left->name);
+        if (fit != function_decl_nodes_.end() &&
+            fit->second && has_concrete_type(fit->second->type)) {
+          return fit->second->type;
+        }
+      }
+      if (auto call_ts = infer_call_result_type(nullptr, expr)) {
+        return reference_value_ts(*call_ts);
+      }
       return std::nullopt;
     case NK_ADDR:
       if (expr->left) {
@@ -367,10 +575,20 @@ TypeBindings Lowerer::try_deduce_template_type_args(
 
     const TypeSpec& param_ts = param->type;
 
-    if (param_ts.base == TB_TYPEDEF && param_ts.tag &&
+    const bool is_forwarding_reference_param =
+        param_ts.base == TB_TYPEDEF && param_ts.tag &&
         type_param_names.count(param_ts.tag) &&
         param_ts.ptr_level == 0 && param_ts.array_rank == 0 &&
-        param_ts.is_rvalue_ref) {
+        param_ts.is_rvalue_ref &&
+        !param_ts.is_const && !param_ts.is_volatile;
+
+    const bool is_dependent_rvalue_ref_param =
+        param_ts.base == TB_TYPEDEF && param_ts.tag &&
+        type_param_names.count(param_ts.tag) &&
+        param_ts.ptr_level == 0 && param_ts.array_rank == 0 &&
+        param_ts.is_rvalue_ref;
+
+    if (is_forwarding_reference_param) {
       auto arg_type = try_infer_arg_type_for_deduction(arg, enclosing_fn);
       if (!arg_type) continue;
       TypeSpec deduced_ts = *arg_type;
@@ -390,6 +608,9 @@ TypeBindings Lowerer::try_deduce_template_type_args(
       } else {
         deduced[param_ts.tag] = deduced_ts;
       }
+    } else if (is_dependent_rvalue_ref_param && is_ast_lvalue(arg)) {
+      rejected_template_calls_.insert(call_node);
+      return {};
     } else if (param_ts.base == TB_TYPEDEF && param_ts.tag &&
                type_param_names.count(param_ts.tag) &&
                param_ts.ptr_level == 0 && param_ts.array_rank == 0) {
@@ -608,6 +829,79 @@ struct DeferredNttpExprEnv {
 
   bool resolve_arg_text(const std::string& text, HirTemplateArg* out_arg) const {
     if (!out_arg || text.empty()) return false;
+    if (text.size() > 1 && text[0] == '@') {
+      const size_t colon = text.find(':', 1);
+      if (colon == std::string::npos) return false;
+      const std::string inner_origin = text.substr(1, colon - 1);
+      const size_t member_sep = text.find('$', colon + 1);
+      const std::string inner_args =
+          member_sep == std::string::npos
+              ? text.substr(colon + 1)
+              : text.substr(colon + 1, member_sep - (colon + 1));
+      std::function<bool(const std::string&, HirTemplateArg*)> parse_nested_arg;
+      parse_nested_arg = [&](const std::string& ref,
+                             HirTemplateArg* nested_out) -> bool {
+        if (!nested_out || ref.empty()) return false;
+        auto tit_inner = type_lookup.find(ref);
+        if (tit_inner != type_lookup.end()) {
+          nested_out->is_value = false;
+          nested_out->type = tit_inner->second;
+          return true;
+        }
+        auto nit_inner = nttp_lookup.find(ref);
+        if (nit_inner != nttp_lookup.end()) {
+          nested_out->is_value = true;
+          nested_out->value = nit_inner->second;
+          return true;
+        }
+        if (ref == "true" || ref == "false") {
+          nested_out->is_value = true;
+          nested_out->value = (ref == "true") ? 1 : 0;
+          return true;
+        }
+        char* nested_end = nullptr;
+        const long long parsed_val = std::strtoll(ref.c_str(), &nested_end, 10);
+        if (nested_end && *nested_end == '\0') {
+          nested_out->is_value = true;
+          nested_out->value = parsed_val;
+          return true;
+        }
+        if (ref.size() > 1 && ref[0] == '@') {
+          return resolve_arg_text(ref, nested_out);
+        }
+        TypeSpec nested_builtin{};
+        if (parse_builtin_typespec_text(ref, &nested_builtin)) {
+          nested_out->is_value = false;
+          nested_out->type = nested_builtin;
+          return true;
+        }
+        return false;
+      };
+
+      TypeSpec nested_ts{};
+      nested_ts.base = TB_STRUCT;
+      nested_ts.array_size = -1;
+      nested_ts.inner_rank = -1;
+      nested_ts.tpl_struct_origin = ::strdup(inner_origin.c_str());
+      if (!inner_args.empty()) {
+        std::vector<HirTemplateArg> nested_args;
+        const auto parts = split_deferred_template_arg_refs(inner_args);
+        nested_args.reserve(parts.size());
+        for (const auto& part : parts) {
+          HirTemplateArg nested_arg{};
+          if (!parse_nested_arg(part, &nested_arg)) return false;
+          nested_args.push_back(nested_arg);
+        }
+        assign_template_arg_refs_from_hir_args(&nested_ts, nested_args);
+      }
+      if (member_sep != std::string::npos && member_sep + 1 < text.size()) {
+        nested_ts.deferred_member_type_name =
+            ::strdup(text.substr(member_sep + 1).c_str());
+      }
+      out_arg->is_value = false;
+      out_arg->type = nested_ts;
+      return true;
+    }
     auto tit = type_lookup.find(text);
     if (tit != type_lookup.end()) {
       out_arg->is_value = false;
@@ -1232,144 +1526,398 @@ SelectedTemplateStructPattern select_template_struct_pattern_hir(
   return selected;
 }
 
-ResolvedTemplateArgs Lowerer::materialize_template_args(
-    const Node* primary_tpl,
-    const std::vector<std::string>& arg_refs,
-    const TypeBindings& tpl_bindings,
-    const NttpBindings& nttp_bindings) {
+namespace {
+
+struct HirTemplateArgMaterializer {
+  const Node* primary_tpl;
+  const TypeBindings& tpl_bindings;
+  const NttpBindings& nttp_bindings;
+  const std::unordered_map<std::string, const Node*>& struct_def_nodes;
+  std::function<bool(const Node*, int,
+                     const std::vector<std::pair<std::string, TypeSpec>>&,
+                     const std::vector<std::pair<std::string, long long>>&,
+                     const std::string*, long long*)> eval_deferred_nttp;
+  std::function<void(TypeSpec&)> resolve_pending_type;
+  std::function<std::string(const std::string&, int)> make_pack_name;
   ResolvedTemplateArgs result;
-  auto merged_type_bindings = [&]() {
-    std::vector<std::pair<std::string, TypeSpec>> merged;
-    merged.reserve(tpl_bindings.size() + result.type_bindings.size());
-    for (const auto& [name, ts] : tpl_bindings) merged.push_back({name, ts});
-    for (const auto& [name, ts] : result.type_bindings) {
-      bool replaced = false;
-      for (auto& [merged_name, merged_ts] : merged) {
-        if (merged_name == name) {
-          merged_ts = ts;
-          replaced = true;
-          break;
-        }
+
+  std::vector<std::pair<std::string, TypeSpec>> merged_type_bindings() const;
+  std::vector<std::pair<std::string, long long>> merged_nttp_bindings() const;
+  bool has_type_binding(const char* param_name) const;
+  bool has_nttp_binding(const char* param_name) const;
+  TypeSpec substitute_bound_type(TypeSpec ts) const;
+  bool decode_type_ref(const std::string& ref, TypeSpec* out_type) const;
+  bool can_bind_value_param(const std::string& ref) const;
+  bool can_bind_type_param(const std::string& ref) const;
+  bool resolve_any_arg_ref(const std::string& ref, HirTemplateArg* out_arg);
+  bool resolve_explicit_string_arg(int pi, const std::string& ref, HirTemplateArg* out_arg);
+  bool resolve_explicit_typed_arg(int pi, const TemplateArgRef& ref, HirTemplateArg* out_arg);
+  void append_default_arg(int pi, const char* param_name);
+  ResolvedTemplateArgs materialize_from_strings(const std::vector<std::string>& arg_refs);
+  ResolvedTemplateArgs materialize_from_typed(const TypeSpec& owner_ts);
+};
+
+std::vector<std::pair<std::string, TypeSpec>>
+HirTemplateArgMaterializer::merged_type_bindings() const {
+  std::vector<std::pair<std::string, TypeSpec>> merged;
+  merged.reserve(tpl_bindings.size() + result.type_bindings.size());
+  for (const auto& [name, ts] : tpl_bindings) merged.push_back({name, ts});
+  for (const auto& [name, ts] : result.type_bindings) {
+    bool replaced = false;
+    for (auto& [merged_name, merged_ts] : merged) {
+      if (merged_name == name) {
+        merged_ts = ts;
+        replaced = true;
+        break;
       }
-      if (!replaced) merged.push_back({name, ts});
     }
-    return merged;
-  };
-  auto merged_nttp_bindings = [&]() {
-    std::vector<std::pair<std::string, long long>> merged;
-    merged.reserve(nttp_bindings.size() + result.nttp_bindings.size());
-    for (const auto& [name, val] : nttp_bindings) merged.push_back({name, val});
-    for (const auto& [name, val] : result.nttp_bindings) {
-      bool replaced = false;
-      for (auto& [merged_name, merged_val] : merged) {
-        if (merged_name == name) {
-          merged_val = val;
-          replaced = true;
-          break;
-        }
+    if (!replaced) merged.push_back({name, ts});
+  }
+  return merged;
+}
+
+std::vector<std::pair<std::string, long long>>
+HirTemplateArgMaterializer::merged_nttp_bindings() const {
+  std::vector<std::pair<std::string, long long>> merged;
+  merged.reserve(nttp_bindings.size() + result.nttp_bindings.size());
+  for (const auto& [name, val] : nttp_bindings) merged.push_back({name, val});
+  for (const auto& [name, val] : result.nttp_bindings) {
+    bool replaced = false;
+    for (auto& [merged_name, merged_val] : merged) {
+      if (merged_name == name) {
+        merged_val = val;
+        replaced = true;
+        break;
       }
-      if (!replaced) merged.push_back({name, val});
     }
-    return merged;
-  };
-  auto can_bind_value_param = [&](const std::string& ref) {
-    if (is_deferred_nttp_expr_ref(ref)) return true;
-    if (nttp_bindings.count(ref)) return true;
-    if (ref == "true" || ref == "false") return true;
+    if (!replaced) merged.push_back({name, val});
+  }
+  return merged;
+}
+
+bool HirTemplateArgMaterializer::has_type_binding(const char* param_name) const {
+  for (const auto& [name, _] : result.type_bindings) {
+    if (name == param_name) return true;
+  }
+  return false;
+}
+
+bool HirTemplateArgMaterializer::has_nttp_binding(const char* param_name) const {
+  for (const auto& [name, _] : result.nttp_bindings) {
+    if (name == param_name) return true;
+  }
+  return false;
+}
+
+TypeSpec HirTemplateArgMaterializer::substitute_bound_type(TypeSpec ts) const {
+  if (ts.base == TB_TYPEDEF && ts.tag) {
+    const int outer_ptr_level = ts.ptr_level;
+    const bool outer_lref = ts.is_lvalue_ref;
+    const bool outer_rref = ts.is_rvalue_ref;
+    const bool outer_const = ts.is_const;
+    const bool outer_volatile = ts.is_volatile;
+    auto it = tpl_bindings.find(ts.tag);
+    if (it != tpl_bindings.end()) {
+      ts = it->second;
+      ts.ptr_level += outer_ptr_level;
+      ts.is_lvalue_ref = ts.is_lvalue_ref || outer_lref;
+      ts.is_rvalue_ref = !ts.is_lvalue_ref && (ts.is_rvalue_ref || outer_rref);
+      ts.is_const = ts.is_const || outer_const;
+      ts.is_volatile = ts.is_volatile || outer_volatile;
+    }
+  }
+  return ts;
+}
+
+bool HirTemplateArgMaterializer::decode_type_ref(const std::string& ref,
+                                                 TypeSpec* out_type) const {
+  if (!out_type || ref.empty()) return false;
+  auto tit = tpl_bindings.find(ref);
+  if (tit != tpl_bindings.end()) {
+    *out_type = tit->second;
+    return true;
+  }
+
+  std::string base_ref = ref;
+  TypeSpec suffix_ts{};
+  suffix_ts.array_size = -1;
+  suffix_ts.inner_rank = -1;
+  while (base_ref.size() >= 4 &&
+         base_ref.compare(base_ref.size() - 4, 4, "_ptr") == 0) {
+    suffix_ts.ptr_level++;
+    base_ref.resize(base_ref.size() - 4);
+  }
+  if (base_ref.size() >= 5 &&
+      base_ref.compare(base_ref.size() - 5, 5, "_rref") == 0) {
+    suffix_ts.is_rvalue_ref = true;
+    base_ref.resize(base_ref.size() - 5);
+  } else if (base_ref.size() >= 4 &&
+             base_ref.compare(base_ref.size() - 4, 4, "_ref") == 0) {
+    suffix_ts.is_lvalue_ref = true;
+    base_ref.resize(base_ref.size() - 4);
+  }
+  if (base_ref.size() >= 6 && base_ref.compare(0, 6, "const_") == 0) {
+    suffix_ts.is_const = true;
+    base_ref.erase(0, 6);
+  }
+  if (base_ref.size() >= 9 && base_ref.compare(0, 9, "volatile_") == 0) {
+    suffix_ts.is_volatile = true;
+    base_ref.erase(0, 9);
+  }
+
+  TypeSpec resolved{};
+  resolved.array_size = -1;
+  resolved.inner_rank = -1;
+  auto base_it = tpl_bindings.find(base_ref);
+  if (base_it != tpl_bindings.end()) {
+    resolved = base_it->second;
+  } else if (parse_builtin_typespec_text(base_ref, &resolved)) {
+  } else if (auto sit = struct_def_nodes.find(base_ref);
+             sit != struct_def_nodes.end()) {
+    resolved.base = TB_STRUCT;
+    resolved.tag = sit->first.c_str();
+  } else if (base_ref.size() > 7 &&
+             base_ref.compare(0, 7, "struct_") == 0 &&
+             struct_def_nodes.count(base_ref.substr(7)) != 0) {
+    resolved.base = TB_STRUCT;
+    resolved.tag = struct_def_nodes.find(base_ref.substr(7))->first.c_str();
+  } else if (base_ref.size() > 6 &&
+             base_ref.compare(0, 6, "union_") == 0 &&
+             struct_def_nodes.count(base_ref.substr(6)) != 0) {
+    resolved.base = TB_UNION;
+    resolved.tag = struct_def_nodes.find(base_ref.substr(6))->first.c_str();
+  } else if (base_ref.size() > 5 &&
+             base_ref.compare(0, 5, "enum_") == 0) {
+    resolved.base = TB_ENUM;
+    resolved.tag = ::strdup(base_ref.substr(5).c_str());
+  } else {
+    return false;
+  }
+
+  resolved.ptr_level += suffix_ts.ptr_level;
+  resolved.is_lvalue_ref = resolved.is_lvalue_ref || suffix_ts.is_lvalue_ref;
+  resolved.is_rvalue_ref =
+      !resolved.is_lvalue_ref &&
+      (resolved.is_rvalue_ref || suffix_ts.is_rvalue_ref);
+  resolved.is_const = resolved.is_const || suffix_ts.is_const;
+  resolved.is_volatile = resolved.is_volatile || suffix_ts.is_volatile;
+  *out_type = resolved;
+  return true;
+}
+
+bool HirTemplateArgMaterializer::can_bind_value_param(const std::string& ref) const {
+  if (is_deferred_nttp_expr_ref(ref)) return true;
+  if (nttp_bindings.count(ref)) return true;
+  if (ref == "true" || ref == "false") return true;
+  try {
+    (void)std::stoll(ref);
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+bool HirTemplateArgMaterializer::can_bind_type_param(const std::string& ref) const {
+  if (ref.size() > 1 && ref[0] == '@') return true;
+  TypeSpec decoded{};
+  return decode_type_ref(ref, &decoded);
+}
+
+bool HirTemplateArgMaterializer::resolve_any_arg_ref(const std::string& ref,
+                                                     HirTemplateArg* out_arg) {
+  if (!out_arg) return false;
+  auto nit = nttp_bindings.find(ref);
+  if (nit != nttp_bindings.end()) {
+    out_arg->is_value = true;
+    out_arg->value = nit->second;
+    return true;
+  }
+  if (ref == "true" || ref == "false") {
+    out_arg->is_value = true;
+    out_arg->value = (ref == "true") ? 1 : 0;
+    return true;
+  }
+  try {
+    out_arg->is_value = true;
+    out_arg->value = std::stoll(ref);
+    return true;
+  } catch (...) {
+  }
+
+  if (ref.size() > 1 && ref[0] == '@') {
+    const size_t colon = ref.find(':', 1);
+    if (colon == std::string::npos) return false;
+    const std::string inner_origin = ref.substr(1, colon - 1);
+    const size_t member_sep = ref.find('$', colon + 1);
+    const std::string inner_args =
+        member_sep == std::string::npos
+            ? ref.substr(colon + 1)
+            : ref.substr(colon + 1, member_sep - (colon + 1));
+    TypeSpec nested_ts{};
+    nested_ts.base = TB_STRUCT;
+    nested_ts.array_size = -1;
+    nested_ts.inner_rank = -1;
+    nested_ts.tpl_struct_origin = ::strdup(inner_origin.c_str());
+    if (!inner_args.empty()) {
+      std::vector<HirTemplateArg> nested_args;
+      const auto parts = split_deferred_template_arg_refs(inner_args);
+      nested_args.reserve(parts.size());
+      for (const auto& part : parts) {
+        HirTemplateArg nested_arg{};
+        if (!resolve_any_arg_ref(part, &nested_arg)) return false;
+        nested_args.push_back(nested_arg);
+      }
+      assign_template_arg_refs_from_hir_args(&nested_ts, nested_args);
+    }
+    if (member_sep != std::string::npos && member_sep + 1 < ref.size()) {
+      nested_ts.deferred_member_type_name =
+          ::strdup(ref.substr(member_sep + 1).c_str());
+    }
+    resolve_pending_type(nested_ts);
+    out_arg->is_value = false;
+    out_arg->type = nested_ts;
+    return true;
+  }
+
+  auto tit = tpl_bindings.find(ref);
+  if (tit != tpl_bindings.end()) {
+    out_arg->is_value = false;
+    out_arg->type = tit->second;
+    return true;
+  }
+  TypeSpec decoded{};
+  if (decode_type_ref(ref, &decoded)) {
+    out_arg->is_value = false;
+    out_arg->type = decoded;
+    return true;
+  }
+  return false;
+}
+
+bool HirTemplateArgMaterializer::resolve_explicit_string_arg(
+    int pi, const std::string& ref, HirTemplateArg* out_arg) {
+  if (!out_arg) return false;
+  out_arg->is_value =
+      primary_tpl->template_param_is_nttp &&
+      primary_tpl->template_param_is_nttp[pi];
+  if (out_arg->is_value) {
+    if (is_deferred_nttp_expr_ref(ref)) {
+      long long eval_val = 0;
+      std::string expr = deferred_nttp_expr_text(ref);
+      const auto type_env = merged_type_bindings();
+      const auto nttp_env = merged_nttp_bindings();
+      if (!eval_deferred_nttp(
+              primary_tpl, pi, type_env, nttp_env, &expr, &eval_val)) {
+        return false;
+      }
+      out_arg->value = eval_val;
+      return true;
+    }
+    auto nit = nttp_bindings.find(ref);
+    if (nit != nttp_bindings.end()) {
+      out_arg->value = nit->second;
+      return true;
+    }
+    if (ref == "true" || ref == "false") {
+      out_arg->value = (ref == "true") ? 1 : 0;
+      return true;
+    }
     try {
-      (void)std::stoll(ref);
+      out_arg->value = std::stoll(ref);
       return true;
     } catch (...) {
       return false;
     }
-  };
-  auto can_bind_type_param = [&](const std::string& ref) {
-    if (ref.size() > 1 && ref[0] == '@') return true;
-    if (tpl_bindings.count(ref)) return true;
-    TypeSpec builtin{};
-    if (parse_builtin_typespec_text(ref, &builtin)) return true;
-    return struct_def_nodes_.count(ref) != 0;
-  };
-  auto resolve_explicit_arg = [&](int pi, const std::string& ref,
-                                  HirTemplateArg* out_arg) {
-    if (!out_arg) return false;
-    out_arg->is_value =
-        primary_tpl->template_param_is_nttp &&
-        primary_tpl->template_param_is_nttp[pi];
-    if (out_arg->is_value) {
-      if (is_deferred_nttp_expr_ref(ref)) {
-        long long eval_val = 0;
-        std::string expr = deferred_nttp_expr_text(ref);
-        const auto type_env = merged_type_bindings();
-        const auto nttp_env = merged_nttp_bindings();
-        if (!eval_deferred_nttp_expr_hir(primary_tpl, pi, type_env, nttp_env,
-                                         &expr, &eval_val)) {
-          return false;
-        }
-        out_arg->value = eval_val;
-        return true;
+  }
+
+  HirTemplateArg resolved{};
+  if (!resolve_any_arg_ref(ref, &resolved) || resolved.is_value) return false;
+  out_arg->type = resolved.type;
+  return true;
+}
+
+bool HirTemplateArgMaterializer::resolve_explicit_typed_arg(
+    int pi, const TemplateArgRef& ref, HirTemplateArg* out_arg) {
+  if (!out_arg) return false;
+  const bool is_nttp =
+      primary_tpl->template_param_is_nttp &&
+      primary_tpl->template_param_is_nttp[pi];
+  out_arg->is_value = is_nttp;
+  if (is_nttp) {
+    if (ref.kind != TemplateArgKind::Value) return false;
+    const std::string debug_text =
+        ref.debug_text ? std::string(ref.debug_text) : std::string{};
+    if (!debug_text.empty() && is_deferred_nttp_expr_ref(debug_text)) {
+      long long eval_val = 0;
+      std::string expr = deferred_nttp_expr_text(debug_text);
+      const auto type_env = merged_type_bindings();
+      const auto nttp_env = merged_nttp_bindings();
+      if (!eval_deferred_nttp(
+              primary_tpl, pi, type_env, nttp_env, &expr, &eval_val)) {
+        return false;
       }
-      auto nit = nttp_bindings.find(ref);
+      out_arg->value = eval_val;
+      return true;
+    }
+    if (!debug_text.empty()) {
+      auto nit = nttp_bindings.find(debug_text);
       if (nit != nttp_bindings.end()) {
         out_arg->value = nit->second;
         return true;
       }
-      if (ref == "true" || ref == "false") {
-        out_arg->value = (ref == "true") ? 1 : 0;
+      if (debug_text == "true" || debug_text == "false") {
+        out_arg->value = (debug_text == "true") ? 1 : 0;
         return true;
       }
       try {
-        out_arg->value = std::stoll(ref);
+        out_arg->value = std::stoll(debug_text);
         return true;
       } catch (...) {
-        return false;
       }
     }
+    out_arg->value = ref.value;
+    return true;
+  }
 
-    if (ref.size() > 1 && ref[0] == '@') {
-      size_t colon = ref.find(':', 1);
-      std::string inner_origin =
-          ref.substr(1, colon == std::string::npos ? std::string::npos : colon - 1);
-      std::string inner_args =
-          (colon != std::string::npos) ? ref.substr(colon + 1) : "";
-      TypeSpec nested_ts{};
-      nested_ts.base = TB_STRUCT;
-      nested_ts.array_size = -1;
-      nested_ts.inner_rank = -1;
-      nested_ts.tpl_struct_origin = ::strdup(inner_origin.c_str());
-      nested_ts.tpl_struct_arg_refs = ::strdup(inner_args.c_str());
-      seed_and_resolve_pending_template_type_if_needed(
-          nested_ts, tpl_bindings, nttp_bindings, nullptr,
-          PendingTemplateTypeKind::OwnerStruct, "nested-tpl-arg");
-      out_arg->type = nested_ts;
-      return true;
+  if (ref.kind == TemplateArgKind::Type &&
+      (has_concrete_type(ref.type) || ref.type.tpl_struct_origin)) {
+    out_arg->type = substitute_bound_type(ref.type);
+    return true;
+  }
+  return false;
+}
+
+void HirTemplateArgMaterializer::append_default_arg(int pi, const char* param_name) {
+  const bool is_nttp =
+      primary_tpl->template_param_is_nttp &&
+      primary_tpl->template_param_is_nttp[pi];
+  HirTemplateArg arg;
+  arg.is_value = is_nttp;
+  if (arg.is_value) {
+    if (primary_tpl->template_param_default_values[pi] != LLONG_MIN) {
+      arg.value = primary_tpl->template_param_default_values[pi];
+    } else {
+      long long eval_val = 0;
+      const auto type_env = merged_type_bindings();
+      const auto nttp_env = merged_nttp_bindings();
+      if (!eval_deferred_nttp(
+              primary_tpl, pi, type_env, nttp_env, nullptr, &eval_val)) {
+        return;
+      }
+      arg.value = eval_val;
     }
+    if (!has_nttp_binding(param_name))
+      result.nttp_bindings.push_back({param_name, arg.value});
+  } else {
+    arg.type = primary_tpl->template_param_default_types[pi];
+    if (!has_type_binding(param_name))
+      result.type_bindings.push_back({param_name, arg.type});
+  }
+  result.concrete_args.push_back(arg);
+}
 
-    auto tit = tpl_bindings.find(ref);
-    if (tit != tpl_bindings.end()) {
-      out_arg->type = tit->second;
-      return true;
-    }
-
-    TypeSpec builtin{};
-    if (parse_builtin_typespec_text(ref, &builtin)) {
-      out_arg->type = builtin;
-      return true;
-    }
-
-    auto sit = struct_def_nodes_.find(ref);
-    if (sit != struct_def_nodes_.end()) {
-      TypeSpec st{};
-      st.base = TB_STRUCT;
-      st.tag = sit->first.c_str();
-      st.array_size = -1;
-      st.inner_rank = -1;
-      out_arg->type = st;
-      return true;
-    }
-
-    return false;
-  };
+ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_strings(
+    const std::vector<std::string>& arg_refs) {
   auto count_explicit_suffix_args = [&](int start_param_idx, int start_arg_idx) {
     int suffix_matches = 0;
     for (int pi = primary_tpl->n_template_params - 1;
@@ -1396,24 +1944,11 @@ ResolvedTemplateArgs Lowerer::materialize_template_args(
     }
     return suffix_matches;
   };
-  auto has_type_binding = [&](const char* param_name) {
-    for (const auto& [name, _] : result.type_bindings) {
-      if (name == param_name) return true;
-    }
-    return false;
-  };
-  auto has_nttp_binding = [&](const char* param_name) {
-    for (const auto& [name, _] : result.nttp_bindings) {
-      if (name == param_name) return true;
-    }
-    return false;
-  };
 
   int ai = 0;
   for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
     const char* param_name = primary_tpl->template_param_names[pi];
     if (!param_name) continue;
-
     const bool is_nttp =
         primary_tpl->template_param_is_nttp &&
         primary_tpl->template_param_is_nttp[pi];
@@ -1427,11 +1962,11 @@ ResolvedTemplateArgs Lowerer::materialize_template_args(
           std::max(ai, static_cast<int>(arg_refs.size()) - suffix_explicit_args);
       for (int pack_index = 0; ai < pack_arg_end; ++pack_index, ++ai) {
         HirTemplateArg arg;
-        if (!resolve_explicit_arg(pi, arg_refs[ai], &arg)) break;
+        if (!resolve_explicit_string_arg(pi, arg_refs[ai], &arg)) break;
         result.concrete_args.push_back(arg);
-        const std::string pack_name = pack_binding_name(param_name, pack_index);
-        if (arg.is_value) result.nttp_bindings.push_back({pack_name, arg.value});
-        else result.type_bindings.push_back({pack_name, arg.type});
+        const std::string packed_name = make_pack_name(param_name, pack_index);
+        if (arg.is_value) result.nttp_bindings.push_back({packed_name, arg.value});
+        else result.type_bindings.push_back({packed_name, arg.type});
       }
       continue;
     }
@@ -1442,7 +1977,7 @@ ResolvedTemplateArgs Lowerer::materialize_template_args(
                   : can_bind_type_param(arg_refs[ai]);
       if (matches_kind) {
         HirTemplateArg arg;
-        if (resolve_explicit_arg(pi, arg_refs[ai], &arg)) {
+        if (resolve_explicit_string_arg(pi, arg_refs[ai], &arg)) {
           ++ai;
           result.concrete_args.push_back(arg);
           if (arg.is_value) result.nttp_bindings.push_back({param_name, arg.value});
@@ -1456,33 +1991,92 @@ ResolvedTemplateArgs Lowerer::materialize_template_args(
         !primary_tpl->template_param_has_default[pi]) {
       continue;
     }
+    append_default_arg(pi, param_name);
+  }
+  return result;
+}
 
-    HirTemplateArg arg;
-    arg.is_value = is_nttp;
-    if (arg.is_value) {
-      if (primary_tpl->template_param_default_values[pi] != LLONG_MIN) {
-        arg.value = primary_tpl->template_param_default_values[pi];
-      } else {
-        long long eval_val = 0;
-        const auto type_env = merged_type_bindings();
-        const auto nttp_env = merged_nttp_bindings();
-        if (!eval_deferred_nttp_expr_hir(primary_tpl, pi, type_env, nttp_env,
-                                         nullptr, &eval_val)) {
-          continue;
-        }
-        arg.value = eval_val;
-      }
-      if (!has_nttp_binding(param_name))
-        result.nttp_bindings.push_back({param_name, arg.value});
-    } else {
-      arg.type = primary_tpl->template_param_default_types[pi];
-      if (!has_type_binding(param_name))
-        result.type_bindings.push_back({param_name, arg.type});
-    }
-    result.concrete_args.push_back(arg);
+ResolvedTemplateArgs HirTemplateArgMaterializer::materialize_from_typed(
+    const TypeSpec& owner_ts) {
+  auto fallback_refs = [&]() { return encode_template_arg_ref_list_hir(owner_ts); };
+  if (!owner_ts.tpl_struct_args.data || owner_ts.tpl_struct_args.size <= 0) {
+    return materialize_from_strings({});
   }
 
+  int ai = 0;
+  for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+    const char* param_name = primary_tpl->template_param_names[pi];
+    if (!param_name) continue;
+    const bool is_pack =
+        primary_tpl->template_param_is_pack &&
+        primary_tpl->template_param_is_pack[pi];
+
+    if (is_pack) {
+      int pack_index = 0;
+      while (ai < owner_ts.tpl_struct_args.size) {
+        HirTemplateArg arg{};
+        if (!resolve_explicit_typed_arg(pi, owner_ts.tpl_struct_args.data[ai], &arg)) {
+          break;
+        }
+        ++ai;
+        result.concrete_args.push_back(arg);
+        const std::string packed_name = make_pack_name(param_name, pack_index++);
+        if (arg.is_value) result.nttp_bindings.push_back({packed_name, arg.value});
+        else result.type_bindings.push_back({packed_name, arg.type});
+      }
+      continue;
+    }
+
+    if (ai < owner_ts.tpl_struct_args.size) {
+      HirTemplateArg arg{};
+      if (resolve_explicit_typed_arg(pi, owner_ts.tpl_struct_args.data[ai], &arg)) {
+        ++ai;
+        result.concrete_args.push_back(arg);
+        if (arg.is_value) result.nttp_bindings.push_back({param_name, arg.value});
+        else result.type_bindings.push_back({param_name, arg.type});
+        continue;
+      }
+      return materialize_from_strings(fallback_refs());
+    }
+
+    if (!primary_tpl->template_param_has_default ||
+        !primary_tpl->template_param_has_default[pi]) {
+      continue;
+    }
+    append_default_arg(pi, param_name);
+  }
   return result;
+}
+
+}  // namespace
+
+ResolvedTemplateArgs Lowerer::materialize_template_args(
+    const Node* primary_tpl,
+    const TypeSpec& owner_ts,
+    const TypeBindings& tpl_bindings,
+    const NttpBindings& nttp_bindings) {
+  HirTemplateArgMaterializer materializer{
+      primary_tpl,
+      tpl_bindings,
+      nttp_bindings,
+      struct_def_nodes_,
+      [this](const Node* owner_tpl, int param_idx,
+             const std::vector<std::pair<std::string, TypeSpec>>& type_env,
+             const std::vector<std::pair<std::string, long long>>& nttp_env,
+             const std::string* expr_override,
+             long long* out) {
+        return eval_deferred_nttp_expr_hir(
+            owner_tpl, param_idx, type_env, nttp_env, expr_override, out);
+      },
+      [this, &tpl_bindings, &nttp_bindings](TypeSpec& ts) {
+        seed_and_resolve_pending_template_type_if_needed(
+            ts, tpl_bindings, nttp_bindings, nullptr,
+            PendingTemplateTypeKind::OwnerStruct, "nested-tpl-arg");
+      },
+      [this](const std::string& base, int index) {
+        return pack_binding_name(base, index);
+      }};
+  return materializer.materialize_from_typed(owner_ts);
 }
 
 PreparedTemplateStructInstance Lowerer::prepare_template_struct_instance(
@@ -1566,6 +2160,8 @@ std::string Lowerer::build_template_mangled_name(
       tpl_def->template_origin_name ? tpl_def->template_origin_name : std::string(origin);
   std::string mangled(family_name);
   auto append_type_suffix = [&](const TypeSpec& pts) {
+    if (pts.is_const) mangled += "const_";
+    if (pts.is_volatile) mangled += "volatile_";
     switch (pts.base) {
       case TB_INT: mangled += "int"; break;
       case TB_UINT: mangled += "uint"; break;
@@ -1717,11 +2313,21 @@ void Lowerer::append_instantiated_template_struct_bases(
     TypeSpec base_ts = tpl_def->base_types[bi];
     apply_template_typedef_bindings(base_ts, method_tpl_bindings);
     if (base_ts.tpl_struct_origin) {
-      seed_template_type_dependency_if_needed(
-          base_ts, method_tpl_bindings, method_nttp_bindings,
-          PendingTemplateTypeKind::BaseType, "instantiation-base");
+      const Node* base_primary = find_template_struct_primary(base_ts.tpl_struct_origin);
+      seed_and_resolve_pending_template_type_if_needed(
+          base_ts, method_tpl_bindings, method_nttp_bindings, tpl_def,
+          PendingTemplateTypeKind::BaseType, "instantiation-base",
+          base_primary);
     }
-    resolve_struct_member_typedef_if_ready(&base_ts);
+    while (resolve_struct_member_typedef_if_ready(&base_ts)) {
+    }
+    if (base_ts.deferred_member_type_name && base_ts.tag && base_ts.tag[0]) {
+      TypeSpec resolved_member{};
+      if (resolve_struct_member_typedef_type(
+              base_ts.tag, base_ts.deferred_member_type_name, &resolved_member)) {
+        base_ts = resolved_member;
+      }
+    }
     if (base_ts.tag && base_ts.tag[0]) def.base_tags.push_back(base_ts.tag);
   }
 }
@@ -1846,11 +2452,23 @@ const Node* Lowerer::find_template_struct_primary(const std::string& name) const
   return it != template_struct_defs_.end() ? it->second : nullptr;
 }
 
+const Node* Lowerer::find_template_global_primary(const std::string& name) const {
+  auto it = template_global_defs_.find(name);
+  return it != template_global_defs_.end() ? it->second : nullptr;
+}
+
 const std::vector<const Node*>* Lowerer::find_template_struct_specializations(
     const Node* primary_tpl) const {
   if (!primary_tpl || !primary_tpl->name) return nullptr;
   auto it = template_struct_specializations_.find(primary_tpl->name);
   return it != template_struct_specializations_.end() ? &it->second : nullptr;
+}
+
+const std::vector<const Node*>* Lowerer::find_template_global_specializations(
+    const Node* primary_tpl) const {
+  if (!primary_tpl || !primary_tpl->name) return nullptr;
+  auto it = template_global_specializations_.find(primary_tpl->name);
+  return it != template_global_specializations_.end() ? &it->second : nullptr;
 }
 
 TemplateStructEnv Lowerer::build_template_struct_env(const Node* primary_tpl) const {
@@ -1874,6 +2492,403 @@ void Lowerer::register_template_struct_specialization(
   if (!primary_tpl || !primary_tpl->name || !node) return;
   template_struct_specializations_[primary_tpl->name].push_back(node);
   ct_state_->register_template_struct_specialization(primary_tpl, node);
+}
+
+std::optional<GlobalId> Lowerer::ensure_template_global_instance(
+    FunctionCtx* ctx,
+    const Node* ref) {
+  if (!ref || ref->kind != NK_VAR || !ref->name || !ref->name[0] ||
+      !(ref->n_template_args > 0 || ref->has_template_args)) {
+    return std::nullopt;
+  }
+
+  const Node* primary = find_template_global_primary(ref->name);
+  if (!primary) return std::nullopt;
+
+  std::vector<HirTemplateArg> actual_args;
+  actual_args.reserve(ref->n_template_args);
+  for (int i = 0; i < ref->n_template_args; ++i) {
+    HirTemplateArg arg{};
+    arg.is_value = ref->template_arg_is_value && ref->template_arg_is_value[i];
+    if (arg.is_value) {
+      resolve_ast_template_value_arg(primary, ref, i, ctx, &arg.value);
+    } else if (ref->template_arg_types) {
+      TypeSpec ts = ref->template_arg_types[i];
+      if (ctx && ts.base == TB_TYPEDEF && ts.tag) {
+        const int outer_ptr_level = ts.ptr_level;
+        const bool outer_lref = ts.is_lvalue_ref;
+        const bool outer_rref = ts.is_rvalue_ref;
+        const bool outer_const = ts.is_const;
+        const bool outer_volatile = ts.is_volatile;
+        auto it = ctx->tpl_bindings.find(ts.tag);
+        if (it != ctx->tpl_bindings.end()) {
+          ts = it->second;
+          ts.ptr_level += outer_ptr_level;
+          ts.is_lvalue_ref = ts.is_lvalue_ref || outer_lref;
+          ts.is_rvalue_ref = !ts.is_lvalue_ref && (ts.is_rvalue_ref || outer_rref);
+          ts.is_const = ts.is_const || outer_const;
+          ts.is_volatile = ts.is_volatile || outer_volatile;
+        }
+      }
+      TypeBindings tpl_empty;
+      NttpBindings nttp_empty;
+      seed_and_resolve_pending_template_type_if_needed(
+          ts, ctx ? ctx->tpl_bindings : tpl_empty,
+          ctx ? ctx->nttp_bindings : nttp_empty, ref,
+          PendingTemplateTypeKind::DeclarationType, "template-global-arg");
+      while (resolve_struct_member_typedef_if_ready(&ts)) {
+      }
+      if (ts.deferred_member_type_name && ts.tag && ts.tag[0]) {
+        TypeSpec resolved_member{};
+        if (resolve_struct_member_typedef_type(ts.tag, ts.deferred_member_type_name,
+                                               &resolved_member)) {
+          ts = resolved_member;
+        }
+      }
+      resolve_typedef_to_struct(ts);
+      arg.type = ts;
+    }
+    actual_args.push_back(arg);
+  }
+
+  TemplateStructEnv env;
+  env.primary_def = primary;
+  env.specialization_patterns = find_template_global_specializations(primary);
+  SelectedTemplateStructPattern selected =
+      select_template_struct_pattern_hir(actual_args, env);
+  if (!selected.selected_pattern) return std::nullopt;
+
+  const auto param_order =
+      get_template_param_order(primary, &selected.type_bindings, &selected.nttp_bindings);
+  const SpecializationKey spec_key =
+      selected.nttp_bindings.empty()
+          ? make_specialization_key(primary->name, param_order, selected.type_bindings)
+          : make_specialization_key(primary->name, param_order, selected.type_bindings,
+                                    selected.nttp_bindings);
+
+  TemplateStructInstanceKey instance_key{primary, spec_key};
+  auto existing = instantiated_template_globals_.find(instance_key);
+  if (existing != instantiated_template_globals_.end()) return existing->second;
+
+  std::string mangled = primary->name;
+  for (const auto& pname : param_order) {
+    mangled += "_";
+    mangled += pname;
+    mangled += "_";
+    auto tit = selected.type_bindings.find(pname);
+    if (tit != selected.type_bindings.end()) {
+      mangled += type_suffix_for_mangling(tit->second);
+      continue;
+    }
+    auto nit = selected.nttp_bindings.find(pname);
+    if (nit != selected.nttp_bindings.end()) {
+      mangled += std::to_string(nit->second);
+    }
+  }
+
+  auto existing_global = module_->global_index.find(mangled);
+  if (existing_global != module_->global_index.end()) {
+    instantiated_template_globals_[instance_key] = existing_global->second;
+    return existing_global->second;
+  }
+
+  const Node* chosen = selected.selected_pattern;
+  const TypeBindings* tpl_ptr = selected.type_bindings.empty() ? nullptr : &selected.type_bindings;
+  const NttpBindings* nttp_ptr =
+      selected.nttp_bindings.empty() ? nullptr : &selected.nttp_bindings;
+  lower_global(chosen, &mangled, tpl_ptr, nttp_ptr);
+  auto git = module_->global_index.find(mangled);
+  if (git == module_->global_index.end()) return std::nullopt;
+  instantiated_template_globals_[instance_key] = git->second;
+  return git->second;
+}
+
+void Lowerer::assign_template_arg_refs_from_ast_args(
+    TypeSpec* ts,
+    const Node* ref,
+    const Node* owner_tpl,
+    const FunctionCtx* ctx,
+    const Node* span_node,
+    PendingTemplateTypeKind kind,
+    const std::string& context_name) {
+  if (!ts) return;
+  ts->tpl_struct_args.data = nullptr;
+  ts->tpl_struct_args.size = 0;
+  if (!ref || ref->n_template_args <= 0) return;
+
+  std::vector<HirTemplateArg> actual_args;
+  actual_args.reserve(ref->n_template_args);
+  for (int i = 0; i < ref->n_template_args; ++i) {
+    HirTemplateArg arg{};
+    arg.is_value = ref->template_arg_is_value && ref->template_arg_is_value[i];
+    if (arg.is_value) {
+      if (!resolve_ast_template_value_arg(owner_tpl, ref, i, ctx, &arg.value)) {
+        arg.value = ref->template_arg_values ? ref->template_arg_values[i] : 0;
+      }
+    } else if (ref->template_arg_types) {
+      TypeSpec arg_ts = ref->template_arg_types[i];
+      if (ctx && arg_ts.base == TB_TYPEDEF && arg_ts.tag) {
+        const int outer_ptr_level = arg_ts.ptr_level;
+        const bool outer_lref = arg_ts.is_lvalue_ref;
+        const bool outer_rref = arg_ts.is_rvalue_ref;
+        const bool outer_const = arg_ts.is_const;
+        const bool outer_volatile = arg_ts.is_volatile;
+        auto it = ctx->tpl_bindings.find(arg_ts.tag);
+        if (it != ctx->tpl_bindings.end()) {
+          arg_ts = it->second;
+          arg_ts.ptr_level += outer_ptr_level;
+          arg_ts.is_lvalue_ref = arg_ts.is_lvalue_ref || outer_lref;
+          arg_ts.is_rvalue_ref =
+              !arg_ts.is_lvalue_ref && (arg_ts.is_rvalue_ref || outer_rref);
+          arg_ts.is_const = arg_ts.is_const || outer_const;
+          arg_ts.is_volatile = arg_ts.is_volatile || outer_volatile;
+        }
+      }
+      TypeBindings tpl_empty;
+      NttpBindings nttp_empty;
+      seed_and_resolve_pending_template_type_if_needed(
+          arg_ts, ctx ? ctx->tpl_bindings : tpl_empty,
+          ctx ? ctx->nttp_bindings : nttp_empty, span_node, kind, context_name);
+      while (resolve_struct_member_typedef_if_ready(&arg_ts)) {
+      }
+      if (arg_ts.deferred_member_type_name && arg_ts.tag && arg_ts.tag[0]) {
+        TypeSpec resolved_member{};
+        if (resolve_struct_member_typedef_type(
+                arg_ts.tag, arg_ts.deferred_member_type_name, &resolved_member)) {
+          arg_ts = resolved_member;
+        }
+      }
+      resolve_typedef_to_struct(arg_ts);
+      arg.type = arg_ts;
+    }
+    actual_args.push_back(arg);
+  }
+
+  assign_template_arg_refs_from_hir_args(ts, actual_args);
+}
+
+bool Lowerer::resolve_ast_template_value_arg(
+    const Node* owner_tpl,
+    const Node* ref,
+    int index,
+    const FunctionCtx* ctx,
+    long long* out_value,
+    const char** out_debug_ref) {
+  if (!ref || index < 0 || index >= ref->n_template_args || !out_value) return false;
+  const char* nttp_name =
+      (ref->template_arg_nttp_names && ref->template_arg_nttp_names[index])
+          ? ref->template_arg_nttp_names[index]
+          : nullptr;
+  if (out_debug_ref) *out_debug_ref = nttp_name;
+  if (ctx && nttp_name && nttp_name[0]) {
+    auto it = ctx->nttp_bindings.find(nttp_name);
+    if (it != ctx->nttp_bindings.end()) {
+      *out_value = it->second;
+      return true;
+    }
+    if (owner_tpl && owner_tpl->n_template_params > 0 &&
+        is_deferred_nttp_expr_ref(nttp_name)) {
+      std::vector<std::pair<std::string, TypeSpec>> type_env;
+      std::vector<std::pair<std::string, long long>> nttp_env;
+      if (ctx) {
+        type_env.reserve(ctx->tpl_bindings.size());
+        for (const auto& [name, ts] : ctx->tpl_bindings) type_env.push_back({name, ts});
+        nttp_env.reserve(ctx->nttp_bindings.size());
+        for (const auto& [name, val] : ctx->nttp_bindings) nttp_env.push_back({name, val});
+      }
+      std::string expr = deferred_nttp_expr_text(nttp_name);
+      if (eval_deferred_nttp_expr_hir(
+              owner_tpl, 0, type_env, nttp_env, &expr, out_value)) {
+        return true;
+      }
+    }
+  }
+  *out_value = ref->template_arg_values ? ref->template_arg_values[index] : 0;
+  return ref->template_arg_values != nullptr;
+}
+
+std::optional<long long> Lowerer::try_eval_template_static_member_const(
+    FunctionCtx* ctx,
+    const std::string& tpl_name,
+    const Node* ref,
+    const std::string& member) {
+  const Node* primary = find_template_struct_primary(tpl_name);
+  if (!primary && tpl_name.find("::") == std::string::npos) {
+    const Node* unique_match = nullptr;
+    const std::string suffix = "::" + tpl_name;
+    for (const auto& [registered_name, registered_node] : template_struct_defs_) {
+      if (registered_name == tpl_name ||
+          (registered_name.size() > suffix.size() &&
+           registered_name.compare(
+               registered_name.size() - suffix.size(),
+               suffix.size(), suffix) == 0)) {
+        if (unique_match && unique_match != registered_node) {
+          unique_match = nullptr;
+          break;
+        }
+        unique_match = registered_node;
+      }
+    }
+    primary = unique_match;
+  }
+  if (!primary || !ref) return std::nullopt;
+
+  std::vector<HirTemplateArg> actual_args;
+  actual_args.reserve(ref->n_template_args);
+  for (int i = 0; i < ref->n_template_args; ++i) {
+    HirTemplateArg arg{};
+    arg.is_value = ref->template_arg_is_value && ref->template_arg_is_value[i];
+    if (arg.is_value) {
+      resolve_ast_template_value_arg(primary, ref, i, ctx, &arg.value);
+    } else if (ref->template_arg_types) {
+      TypeSpec ts = ref->template_arg_types[i];
+      if (ctx && ts.base == TB_TYPEDEF && ts.tag) {
+        const int outer_ptr_level = ts.ptr_level;
+        const bool outer_lref = ts.is_lvalue_ref;
+        const bool outer_rref = ts.is_rvalue_ref;
+        const bool outer_const = ts.is_const;
+        const bool outer_volatile = ts.is_volatile;
+        auto it = ctx->tpl_bindings.find(ts.tag);
+        if (it != ctx->tpl_bindings.end()) {
+          ts = it->second;
+          ts.ptr_level += outer_ptr_level;
+          ts.is_lvalue_ref = ts.is_lvalue_ref || outer_lref;
+          ts.is_rvalue_ref = !ts.is_lvalue_ref && (ts.is_rvalue_ref || outer_rref);
+          ts.is_const = ts.is_const || outer_const;
+          ts.is_volatile = ts.is_volatile || outer_volatile;
+        }
+      }
+      TypeBindings tpl_empty;
+      NttpBindings nttp_empty;
+      seed_and_resolve_pending_template_type_if_needed(
+          ts, ctx ? ctx->tpl_bindings : tpl_empty,
+          ctx ? ctx->nttp_bindings : nttp_empty, ref,
+          PendingTemplateTypeKind::DeclarationType, "template-static-member");
+      while (resolve_struct_member_typedef_if_ready(&ts)) {
+      }
+      if (ts.deferred_member_type_name && ts.tag && ts.tag[0]) {
+        TypeSpec resolved_member{};
+        if (resolve_struct_member_typedef_type(ts.tag, ts.deferred_member_type_name,
+                                               &resolved_member)) {
+          ts = resolved_member;
+        }
+      }
+      resolve_typedef_to_struct(ts);
+      arg.type = ts;
+    }
+    actual_args.push_back(arg);
+  }
+
+  if (member == "value" && actual_args.size() == 1 && !actual_args[0].is_value) {
+    if (matches_trait_family(tpl_name, "is_signed")) {
+      return is_signed_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+    if (matches_trait_family(tpl_name, "is_unsigned")) {
+      return is_unsigned_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+    if (matches_trait_family(tpl_name, "is_const")) {
+      return is_const_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+    if (matches_trait_family(tpl_name, "is_enum")) {
+      return is_enum_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+    if (matches_trait_family(tpl_name, "is_reference")) {
+      if (is_reference_trait_type(actual_args[0].type)) {
+        return 1LL;
+      }
+      if (actual_args[0].type.tag && actual_args[0].type.tag[0]) {
+        const std::string owner_tag = actual_args[0].type.tag;
+        TypeSpec resolved_member{};
+        if (resolve_struct_member_typedef_type(
+                owner_tag, "type", &resolved_member)) {
+          return is_reference_trait_type(resolved_member) ? 1LL : 0LL;
+        }
+        auto owner_it = struct_def_nodes_.find(owner_tag);
+        if (owner_it != struct_def_nodes_.end() && owner_it->second) {
+          const Node* owner = owner_it->second;
+          const char* origin =
+              (owner->template_origin_name && owner->template_origin_name[0])
+                  ? owner->template_origin_name
+                  : owner->name;
+          if (origin &&
+              (matches_trait_family(origin, "add_lvalue_reference") ||
+               matches_trait_family(origin, "add_rvalue_reference"))) {
+            return 1LL;
+          }
+        }
+        if (owner_tag.find("::add_lvalue_reference_") != std::string::npos ||
+            owner_tag.find("::add_rvalue_reference_") != std::string::npos) {
+          return 1LL;
+        }
+      }
+      return 0LL;
+    }
+  }
+  if (member == "value" && actual_args.size() == 2 &&
+      !actual_args[0].is_value && !actual_args[1].is_value) {
+    if (matches_trait_family(tpl_name, "is_same")) {
+      return canonical_type_str(actual_args[0].type) ==
+                     canonical_type_str(actual_args[1].type)
+                 ? 1LL
+                 : 0LL;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<long long> Lowerer::try_eval_instantiated_struct_static_member_const(
+    const std::string& tag,
+    const std::string& member) const {
+  auto it = struct_def_nodes_.find(tag);
+  if (it == struct_def_nodes_.end() || !it->second) return std::nullopt;
+  const Node* owner = it->second;
+  const char* origin =
+      (owner->template_origin_name && owner->template_origin_name[0])
+          ? owner->template_origin_name
+          : nullptr;
+  if (!origin || owner->n_template_args <= 0) return std::nullopt;
+
+  std::vector<HirTemplateArg> actual_args;
+  actual_args.reserve(owner->n_template_args);
+  for (int i = 0; i < owner->n_template_args; ++i) {
+    HirTemplateArg arg{};
+    arg.is_value =
+        owner->template_arg_is_value && owner->template_arg_is_value[i];
+    if (arg.is_value) {
+      arg.value = owner->template_arg_values ? owner->template_arg_values[i] : 0;
+    } else if (owner->template_arg_types) {
+      arg.type = owner->template_arg_types[i];
+    }
+    actual_args.push_back(arg);
+  }
+
+  const std::string tpl_name = origin;
+  if (member == "value" && actual_args.size() == 1 && !actual_args[0].is_value) {
+    if (matches_trait_family(tpl_name, "is_signed")) {
+      return is_signed_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+    if (matches_trait_family(tpl_name, "is_unsigned")) {
+      return is_unsigned_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+    if (matches_trait_family(tpl_name, "is_const")) {
+      return is_const_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+    if (matches_trait_family(tpl_name, "is_enum")) {
+      return is_enum_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+    if (matches_trait_family(tpl_name, "is_reference")) {
+      return is_reference_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+  }
+  if (member == "value" && actual_args.size() == 2 &&
+      !actual_args[0].is_value && !actual_args[1].is_value &&
+      matches_trait_family(tpl_name, "is_same")) {
+    return canonical_type_str(actual_args[0].type) ==
+                   canonical_type_str(actual_args[1].type)
+               ? 1LL
+               : 0LL;
+  }
+  return std::nullopt;
 }
 
 void Lowerer::seed_pending_template_type(const TypeSpec& ts,
@@ -2081,32 +3096,152 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
                                                  TypeSpec* out) {
   if (tag.empty() || member.empty() || !out) return false;
 
-  auto apply_bindings = [&](TypeSpec ts,
-                            const TypeBindings& type_bindings,
-                            const NttpBindings& nttp_bindings) -> TypeSpec {
+  std::function<TypeSpec(TypeSpec,
+                         const TypeBindings&,
+                         const NttpBindings&,
+                         bool*)> apply_bindings =
+      [&](TypeSpec ts,
+          const TypeBindings& type_bindings,
+          const NttpBindings& nttp_bindings,
+          bool* substituted_type = nullptr) -> TypeSpec {
+    if (substituted_type) *substituted_type = false;
     if (ts.base == TB_TYPEDEF && ts.tag) {
+      const int outer_ptr_level = ts.ptr_level;
+      const bool outer_lref = ts.is_lvalue_ref;
+      const bool outer_rref = ts.is_rvalue_ref;
+      const bool outer_const = ts.is_const;
+      const bool outer_volatile = ts.is_volatile;
       auto it = type_bindings.find(ts.tag);
-      if (it != type_bindings.end()) ts = it->second;
+      if (it != type_bindings.end()) {
+        ts = it->second;
+        ts.ptr_level += outer_ptr_level;
+        ts.is_lvalue_ref = ts.is_lvalue_ref || outer_lref;
+        ts.is_rvalue_ref = !ts.is_lvalue_ref &&
+                           (ts.is_rvalue_ref || outer_rref);
+        ts.is_const = ts.is_const || outer_const;
+        ts.is_volatile = ts.is_volatile || outer_volatile;
+        if (substituted_type) *substituted_type = true;
+      }
+    }
+    if (ts.tpl_struct_origin && ts.tpl_struct_args.data &&
+        ts.tpl_struct_args.size > 0) {
+      TemplateArgRef* rebound_args =
+          new TemplateArgRef[ts.tpl_struct_args.size]();
+      bool rebound_any = false;
+      for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+        const TemplateArgRef& src_arg = ts.tpl_struct_args.data[i];
+        TemplateArgRef& dst_arg = rebound_args[i];
+        dst_arg = src_arg;
+        if (src_arg.kind == TemplateArgKind::Type) {
+          bool nested_substituted = false;
+          if (has_concrete_type(src_arg.type) || src_arg.type.tpl_struct_origin) {
+            dst_arg.type = apply_bindings(
+                src_arg.type, type_bindings, nttp_bindings, &nested_substituted);
+          } else if (src_arg.debug_text && src_arg.debug_text[0]) {
+            auto tit = type_bindings.find(src_arg.debug_text);
+            if (tit != type_bindings.end()) {
+              dst_arg.type = tit->second;
+              nested_substituted = true;
+            }
+          }
+          rebound_any = rebound_any || nested_substituted;
+          const std::string debug_text = has_concrete_type(dst_arg.type) ||
+                                                 dst_arg.type.tpl_struct_origin
+                                             ? encode_template_type_arg_ref_hir(dst_arg.type)
+                                             : encode_template_arg_ref_hir(src_arg);
+          dst_arg.debug_text =
+              debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
+        } else {
+          bool rebound_value = false;
+          if (src_arg.debug_text && src_arg.debug_text[0]) {
+            auto nit = nttp_bindings.find(src_arg.debug_text);
+            if (nit != nttp_bindings.end()) {
+              dst_arg.value = nit->second;
+              rebound_value = true;
+            }
+          }
+          const std::string debug_text =
+              (!rebound_value && src_arg.debug_text && src_arg.debug_text[0])
+                  ? std::string(src_arg.debug_text)
+                  : std::to_string(dst_arg.value);
+          dst_arg.debug_text =
+              debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
+        }
+      }
+      ts.tpl_struct_args.data = rebound_args;
+      if (rebound_any && substituted_type) *substituted_type = true;
+      seed_and_resolve_pending_template_type_if_needed(
+          ts, type_bindings, nttp_bindings, nullptr,
+          PendingTemplateTypeKind::MemberTypedef,
+          "member-typedef-binding");
+      return ts;
     }
     if (ts.tpl_struct_origin) {
-      std::vector<std::string> refs;
-      if (ts.tpl_struct_arg_refs) {
-        refs = split_deferred_template_arg_refs(ts.tpl_struct_arg_refs);
-      }
-      std::string updated_refs;
-      for (size_t i = 0; i < refs.size(); ++i) {
-        std::string part = refs[i];
+      std::vector<std::string> updated_refs;
+      updated_refs.reserve(ts.tpl_struct_args.size);
+      for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+        std::string part = encode_template_arg_ref_hir(ts.tpl_struct_args.data[i]);
         auto tit = type_bindings.find(part);
         if (tit != type_bindings.end()) {
           part = encode_template_type_arg_ref_hir(tit->second);
         } else {
+          std::string base_part = part;
+          TypeSpec suffix_ts{};
+          suffix_ts.array_size = -1;
+          suffix_ts.inner_rank = -1;
+          while (base_part.size() >= 4 &&
+                 base_part.compare(base_part.size() - 4, 4, "_ptr") == 0) {
+            suffix_ts.ptr_level++;
+            base_part.resize(base_part.size() - 4);
+          }
+          if (base_part.size() >= 5 &&
+              base_part.compare(base_part.size() - 5, 5, "_rref") == 0) {
+            suffix_ts.is_rvalue_ref = true;
+            base_part.resize(base_part.size() - 5);
+          } else if (base_part.size() >= 4 &&
+                     base_part.compare(base_part.size() - 4, 4, "_ref") == 0) {
+            suffix_ts.is_lvalue_ref = true;
+            base_part.resize(base_part.size() - 4);
+          }
+          if (base_part.size() >= 6 &&
+              base_part.compare(0, 6, "const_") == 0) {
+            suffix_ts.is_const = true;
+            base_part.erase(0, 6);
+          }
+          if (base_part.size() >= 9 &&
+              base_part.compare(0, 9, "volatile_") == 0) {
+            suffix_ts.is_volatile = true;
+            base_part.erase(0, 9);
+          }
+          auto nested_tit = type_bindings.find(base_part);
+          if (nested_tit != type_bindings.end()) {
+            TypeSpec rebound = nested_tit->second;
+            rebound.ptr_level += suffix_ts.ptr_level;
+            rebound.is_lvalue_ref =
+                rebound.is_lvalue_ref || suffix_ts.is_lvalue_ref;
+            rebound.is_rvalue_ref =
+                !rebound.is_lvalue_ref &&
+                (rebound.is_rvalue_ref || suffix_ts.is_rvalue_ref);
+            rebound.is_const = rebound.is_const || suffix_ts.is_const;
+            rebound.is_volatile =
+                rebound.is_volatile || suffix_ts.is_volatile;
+            part = encode_template_type_arg_ref_hir(rebound);
+          } else {
           auto nit = nttp_bindings.find(part);
           if (nit != nttp_bindings.end()) part = std::to_string(nit->second);
+          }
         }
-        if (i) updated_refs += ",";
-        updated_refs += part;
+        updated_refs.push_back(part);
       }
-      if (!updated_refs.empty()) ts.tpl_struct_arg_refs = ::strdup(updated_refs.c_str());
+      if (!updated_refs.empty()) {
+        ts.tpl_struct_args.data = new TemplateArgRef[updated_refs.size()]();
+        ts.tpl_struct_args.size = static_cast<int>(updated_refs.size());
+        for (size_t i = 0; i < updated_refs.size(); ++i) {
+          ts.tpl_struct_args.data[i].kind = TemplateArgKind::Type;
+          ts.tpl_struct_args.data[i].debug_text =
+              updated_refs[i].empty() ? nullptr : ::strdup(updated_refs[i].c_str());
+        }
+      }
       seed_and_resolve_pending_template_type_if_needed(
           ts, type_bindings, nttp_bindings, nullptr,
           PendingTemplateTypeKind::MemberTypedef,
@@ -2123,8 +3258,15 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
             for (int i = 0; i < sdef->n_member_typedefs; ++i) {
               const char* alias_name = sdef->member_typedef_names[i];
               if (!alias_name || member != alias_name) continue;
+              bool substituted_type = false;
               *resolved = apply_bindings(sdef->member_typedef_types[i],
-                                         type_bindings, nttp_bindings);
+                                         type_bindings,
+                                         nttp_bindings,
+                                         &substituted_type);
+              if (!substituted_type && member == "type" &&
+                  type_bindings.size() == 1) {
+                *resolved = type_bindings.begin()->second;
+              }
               if (resolved->deferred_member_type_name &&
                   resolved->tag && resolved->tag[0]) {
                 TypeSpec nested{};
@@ -2163,6 +3305,48 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
     }
   }
 
+  auto search_selected_pattern = [&](const Node* owner) -> bool {
+    if (!owner) return false;
+
+    const Node* primary_tpl = nullptr;
+    if (owner->template_origin_name && owner->template_origin_name[0]) {
+      primary_tpl = find_template_struct_primary(owner->template_origin_name);
+    } else if (is_primary_template_struct_def(owner)) {
+      primary_tpl = owner;
+    } else if (owner->name && owner->name[0]) {
+      primary_tpl = find_template_struct_primary(owner->name);
+    }
+    if (!primary_tpl || owner->n_template_args <= 0) return false;
+
+    std::vector<HirTemplateArg> actual_args;
+    actual_args.reserve(owner->n_template_args);
+    for (int i = 0; i < owner->n_template_args; ++i) {
+      HirTemplateArg arg{};
+      arg.is_value =
+          owner->template_arg_is_value && owner->template_arg_is_value[i];
+      if (arg.is_value) {
+        arg.value = owner->template_arg_values[i];
+      } else if (owner->template_arg_types) {
+        arg.type = owner->template_arg_types[i];
+      }
+      actual_args.push_back(arg);
+    }
+
+    SelectedTemplateStructPattern selected =
+        select_template_struct_pattern_hir(actual_args,
+                                           build_template_struct_env(primary_tpl));
+    if (!selected.selected_pattern) return false;
+    if (auto trait_result = try_resolve_unary_type_transform_trait(
+            primary_tpl->name ? primary_tpl->name : std::string{},
+            member, actual_args)) {
+      *out = *trait_result;
+      return true;
+    }
+    return search_node(selected.selected_pattern, selected.type_bindings,
+                       selected.nttp_bindings, out);
+  };
+
+  if (search_selected_pattern(sdef)) return true;
   if (search_node(sdef, type_bindings, nttp_bindings, out)) return true;
   if (sdef->template_origin_name) {
     auto origin_it = struct_def_nodes_.find(sdef->template_origin_name);
@@ -2175,9 +3359,137 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
 }
 
 bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
-  if (!ts || !ts->deferred_member_type_name || !ts->tag || !ts->tag[0]) {
+  const bool has_tag = ts && ts->tag && ts->tag[0];
+  const bool has_origin = ts && ts->tpl_struct_origin && ts->tpl_struct_origin[0];
+  if (!ts || !ts->deferred_member_type_name || (!has_tag && !has_origin)) {
     return false;
   }
+  auto apply_bindings = [&](TypeSpec resolved_member,
+                            const TypeBindings& type_bindings,
+                            const NttpBindings& nttp_bindings,
+                            bool* substituted_type = nullptr) -> TypeSpec {
+    if (substituted_type) *substituted_type = false;
+    if (resolved_member.base == TB_TYPEDEF && resolved_member.tag) {
+      const int outer_ptr_level = resolved_member.ptr_level;
+      const bool outer_lref = resolved_member.is_lvalue_ref;
+      const bool outer_rref = resolved_member.is_rvalue_ref;
+      const bool outer_const = resolved_member.is_const;
+      const bool outer_volatile = resolved_member.is_volatile;
+      auto it = type_bindings.find(resolved_member.tag);
+      if (it != type_bindings.end()) {
+        resolved_member = it->second;
+        resolved_member.ptr_level += outer_ptr_level;
+        resolved_member.is_lvalue_ref =
+            resolved_member.is_lvalue_ref || outer_lref;
+        resolved_member.is_rvalue_ref =
+            !resolved_member.is_lvalue_ref &&
+            (resolved_member.is_rvalue_ref || outer_rref);
+        resolved_member.is_const = resolved_member.is_const || outer_const;
+        resolved_member.is_volatile =
+            resolved_member.is_volatile || outer_volatile;
+        if (substituted_type) *substituted_type = true;
+      }
+    }
+    if (resolved_member.array_size_expr &&
+        resolved_member.array_size_expr->kind == NK_VAR &&
+        resolved_member.array_size_expr->name) {
+      auto nit = nttp_bindings.find(resolved_member.array_size_expr->name);
+      if (nit != nttp_bindings.end()) {
+        if (resolved_member.array_rank > 0) {
+          resolved_member.array_dims[0] = nit->second;
+          resolved_member.array_size = nit->second;
+        }
+        resolved_member.array_size_expr = nullptr;
+      }
+    }
+    return resolved_member;
+  };
+  auto try_resolve_from_origin = [&]() -> bool {
+    if (!ts->tpl_struct_origin || !ts->tpl_struct_origin[0]) return false;
+    const Node* primary_tpl = find_template_struct_primary(ts->tpl_struct_origin);
+    if (!primary_tpl) return false;
+    const std::string deferred_member_name =
+        ts->deferred_member_type_name ? ts->deferred_member_type_name : "";
+
+    TypeBindings empty_tb;
+    NttpBindings empty_nb;
+    ResolvedTemplateArgs resolved =
+        materialize_template_args(primary_tpl, *ts, empty_tb, empty_nb);
+
+    SelectedTemplateStructPattern selected;
+    if (template_struct_has_pack_params(primary_tpl)) {
+      selected.primary_def = primary_tpl;
+      selected.selected_pattern = primary_tpl;
+      for (const auto& [name, type] : resolved.type_bindings) {
+        selected.type_bindings[name] = type;
+      }
+      for (const auto& [name, value] : resolved.nttp_bindings) {
+        selected.nttp_bindings[name] = value;
+      }
+    } else {
+      selected = select_template_struct_pattern_hir(
+          resolved.concrete_args, build_template_struct_env(primary_tpl));
+    }
+
+    const Node* owner =
+        selected.selected_pattern ? selected.selected_pattern : primary_tpl;
+    if (auto trait_result = try_resolve_unary_type_transform_trait(
+            primary_tpl->name ? primary_tpl->name : std::string{},
+            deferred_member_name,
+            resolved.concrete_args)) {
+      *ts = *trait_result;
+      return true;
+    }
+
+    if (owner && owner->n_member_typedefs > 0) {
+      for (int i = 0; i < owner->n_member_typedefs; ++i) {
+        const char* alias_name = owner->member_typedef_names[i];
+        if (!alias_name || std::string(alias_name) != deferred_member_name) {
+          continue;
+        }
+        bool substituted_type = false;
+        TypeSpec resolved_member = apply_bindings(
+            owner->member_typedef_types[i],
+            selected.type_bindings,
+            selected.nttp_bindings,
+            &substituted_type);
+        if (!substituted_type &&
+            std::string(alias_name) == "type" &&
+            selected.type_bindings.size() == 1) {
+          resolved_member = selected.type_bindings.begin()->second;
+        }
+        if (resolved_member.deferred_member_type_name &&
+            ((resolved_member.tpl_struct_origin &&
+              resolved_member.tpl_struct_origin[0]) ||
+             (resolved_member.tag && resolved_member.tag[0]))) {
+          while (resolve_struct_member_typedef_if_ready(&resolved_member)) {
+          }
+        }
+        *ts = resolved_member;
+        return true;
+      }
+    }
+
+    // Some aliases, especially `::type` on trait helpers, are inherited from
+    // realized base structs rather than declared on the selected pattern
+    // itself. Materialize the owner and then resolve through its concrete
+    // base-tag chain instead of giving up while we still only have origin args.
+    TypeSpec owner_ts = *ts;
+    owner_ts.deferred_member_type_name = nullptr;
+    realize_template_struct_if_needed(owner_ts, empty_tb, empty_nb, primary_tpl);
+    if (owner_ts.tag && owner_ts.tag[0]) {
+      TypeSpec resolved_member{};
+      if (resolve_struct_member_typedef_type(
+              owner_ts.tag, deferred_member_name, &resolved_member)) {
+        *ts = resolved_member;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  if (try_resolve_from_origin()) return true;
+  if (!ts->tag || !ts->tag[0]) return false;
   TypeSpec resolved_member{};
   if (!resolve_struct_member_typedef_type(
           ts->tag, ts->deferred_member_type_name, &resolved_member)) {
@@ -2199,13 +3511,8 @@ void Lowerer::realize_template_struct(
   if (!origin) origin = primary_tpl->name;
   if (primary_tpl->name) ts.tpl_struct_origin = primary_tpl->name;
 
-  std::vector<std::string> arg_refs;
-  if (ts.tpl_struct_arg_refs) {
-    arg_refs = split_deferred_template_arg_refs(ts.tpl_struct_arg_refs);
-  }
-
   ResolvedTemplateArgs resolved =
-      materialize_template_args(primary_tpl, arg_refs, tpl_bindings, nttp_bindings);
+      materialize_template_args(primary_tpl, ts, tpl_bindings, nttp_bindings);
 
   for (const auto& arg : resolved.concrete_args) {
     if (!arg.is_value && arg.type.tpl_struct_origin) return;
@@ -2239,9 +3546,13 @@ void Lowerer::realize_template_struct(
 
   ts.tag = module_->struct_defs.count(mangled) ?
       module_->struct_defs.at(mangled).tag.c_str() : nullptr;
-  ts.tpl_struct_origin = nullptr;
-  ts.tpl_struct_arg_refs = nullptr;
-  resolve_struct_member_typedef_if_ready(&ts);
+  while (resolve_struct_member_typedef_if_ready(&ts)) {
+  }
+  if (!ts.deferred_member_type_name) {
+    ts.tpl_struct_origin = nullptr;
+    ts.tpl_struct_args.data = nullptr;
+    ts.tpl_struct_args.size = 0;
+  }
 }
 
 }  // namespace c4c::hir

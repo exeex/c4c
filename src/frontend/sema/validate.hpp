@@ -8,7 +8,9 @@
 namespace c4c::sema {
 
 struct Diagnostic {
+  const char* file = nullptr;
   int line = 0;
+  int column = 1;
   std::string message;
 };
 

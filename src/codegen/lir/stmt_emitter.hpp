@@ -146,7 +146,11 @@ bool sig_has_void_param_list(const FnPtrSig& sig);
 bool sig_has_meaningful_prototype(const FnPtrSig& sig);
 std::string llvm_fn_type_suffix_str(const hir::Module& mod, const FnPtrSig& sig);
 std::string llvm_fn_type_suffix_str(const hir::Module& mod, const Function& fn);
+int llvm_struct_field_slot(const hir::Module& mod, const HirStructDef& sd,
+                           int target_llvm_idx);
 int llvm_struct_field_slot(const HirStructDef& sd, int target_llvm_idx);
+int llvm_struct_base_slot(const hir::Module& mod, const HirStructDef& sd,
+                          size_t base_index);
 int llvm_struct_field_slot_by_name(const HirStructDef& sd, const std::string& field_name);
 
 struct Aarch64HomogeneousFpAggregateInfo {

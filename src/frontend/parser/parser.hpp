@@ -154,17 +154,37 @@ class Parser {
   };
 
   // ── tentative parse snapshot / guard ─────────────────────────────────────
-  // Snapshot of all speculative parser state fields.  Used by TentativeParseGuard
-  // to automatically roll back on failure without each call site having to
-  // enumerate which fields it touched.
-  struct ParserSnapshot {
+  enum class TentativeParseMode {
+    Heavy,
+    Lite,
+  };
+
+  // Cheap speculative parser state used by lite tentative parsing. This is
+  // the rollback surface that remains safe for syntax-only probes.
+  struct ParserLiteSnapshot {
     int pos;
+    std::string last_resolved_typedef;
+    int template_arg_expr_depth = 0;
+    size_t token_mutation_count = 0;
+  };
+
+  // Snapshot of all speculative parser state fields. Used by the heavy guard
+  // to automatically roll back semantic environment mutations when needed.
+  struct ParserSnapshot {
+    ParserLiteSnapshot lite;
     std::set<std::string> typedefs;
     std::set<std::string> user_typedefs;
     std::unordered_map<std::string, TypeSpec> typedef_types;
     std::unordered_map<std::string, TypeSpec> var_types;
-    std::string last_resolved_typedef;
-    int template_arg_expr_depth = 0;
+  };
+
+  struct TentativeParseStats {
+    int heavy_enter = 0;
+    int heavy_commit = 0;
+    int heavy_rollback = 0;
+    int lite_enter = 0;
+    int lite_commit = 0;
+    int lite_rollback = 0;
   };
 
   // RAII guard that saves parser state on construction and restores it on
@@ -176,13 +196,16 @@ class Parser {
     bool committed = false;
 
     explicit TentativeParseGuard(Parser& p)
-        : parser(p), snapshot(p.save_state()), start_pos(snapshot.pos) {
-      parser.note_tentative_parse_event("tentative_enter", start_pos, start_pos);
+        : parser(p), snapshot(p.save_state()), start_pos(snapshot.lite.pos) {
+      parser.note_tentative_parse_event(TentativeParseMode::Heavy,
+                                        "tentative_enter", start_pos,
+                                        start_pos);
     }
 
     ~TentativeParseGuard() {
       if (!committed) {
-        parser.note_tentative_parse_event("tentative_rollback", start_pos,
+        parser.note_tentative_parse_event(TentativeParseMode::Heavy,
+                                          "tentative_rollback", start_pos,
                                           parser.pos_);
         parser.restore_state(snapshot);
       }
@@ -190,12 +213,60 @@ class Parser {
 
     void commit() {
       if (committed) return;
-      parser.note_tentative_parse_event("tentative_commit", start_pos,
+      parser.note_tentative_parse_event(TentativeParseMode::Heavy,
+                                        "tentative_commit", start_pos,
                                         parser.pos_);
       committed = true;
     }
   };
 
+  struct TentativeParseGuardLite {
+    Parser& parser;
+    ParserLiteSnapshot snapshot;
+    int start_pos = -1;
+    bool committed = false;
+
+    explicit TentativeParseGuardLite(Parser& p)
+        : parser(p), snapshot(p.save_lite_state()), start_pos(snapshot.pos) {
+      parser.note_tentative_parse_event(TentativeParseMode::Lite,
+                                        "tentative_enter", start_pos,
+                                        start_pos);
+    }
+
+    ~TentativeParseGuardLite() {
+      if (!committed) {
+        parser.note_tentative_parse_event(TentativeParseMode::Lite,
+                                          "tentative_rollback", start_pos,
+                                          parser.pos_);
+        parser.restore_lite_state(snapshot);
+      }
+    }
+
+    void commit() {
+      if (committed) return;
+      parser.note_tentative_parse_event(TentativeParseMode::Lite,
+                                        "tentative_commit", start_pos,
+                                        parser.pos_);
+      committed = true;
+    }
+  };
+
+  struct LocalVarBindingSuppressionGuard {
+    Parser& parser;
+    bool old = false;
+
+    explicit LocalVarBindingSuppressionGuard(Parser& p)
+        : parser(p), old(p.suppress_local_var_bindings_) {
+      parser.suppress_local_var_bindings_ = true;
+    }
+
+    ~LocalVarBindingSuppressionGuard() {
+      parser.suppress_local_var_bindings_ = old;
+    }
+  };
+
+  ParserLiteSnapshot save_lite_state() const;
+  void restore_lite_state(const ParserLiteSnapshot& snap);
   ParserSnapshot save_state() const;
   void restore_state(const ParserSnapshot& snap);
 
@@ -211,6 +282,11 @@ class Parser {
   // ── core parser state ─────────────────────────────────────────────────────
   // Token stream + cursor are the parser's single source of truth.
   std::vector<Token> tokens_;
+  struct TokenMutation {
+    int pos = -1;
+    Token token;
+  };
+  std::vector<TokenMutation> token_mutations_;
   int pos_;
   Arena& arena_;
   SourceProfile source_profile_;
@@ -247,6 +323,7 @@ class Parser {
   // Variable name → TypeSpec (populated as variables are declared).
   // Used to resolve typeof(variable) in type expressions.
   std::unordered_map<std::string, TypeSpec> var_types_;
+  bool suppress_local_var_bindings_ = false;
   // Qualified function names (populated as functions are declared/defined).
   // Used by lookup_value_in_context for namespace-aware function lookup.
   std::set<std::string> known_fn_names_;
@@ -288,6 +365,10 @@ class Parser {
   struct AliasTemplateInfo {
     std::vector<const char*> param_names;
     std::vector<bool> param_is_nttp;
+    std::vector<bool> param_is_pack;
+    std::vector<bool> param_has_default;
+    std::vector<TypeSpec> param_default_types;
+    std::vector<long long> param_default_values;
     TypeSpec aliased_type;  // TypeSpec from parse_type_name() (has tpl_struct_origin/arg_refs)
   };
   std::unordered_map<std::string, AliasTemplateInfo> alias_template_info_;
@@ -334,6 +415,7 @@ class Parser {
   ParseFailure best_parse_failure_;
   int best_parse_stack_token_index_ = -1;
   std::vector<std::string> best_parse_stack_trace_;
+  TentativeParseStats tentative_parse_stats_;
   std::chrono::steady_clock::time_point parse_debug_started_at_{};
   std::chrono::steady_clock::time_point parse_debug_last_progress_at_{};
 
@@ -366,7 +448,10 @@ class Parser {
                                   const char* function_name,
                                   const char* detail = nullptr);
   void maybe_emit_parse_debug_progress();
-  void note_tentative_parse_event(const char* kind, int start_pos, int end_pos);
+  void note_tentative_parse_event(TentativeParseMode mode,
+                                  const char* kind,
+                                  int start_pos,
+                                  int end_pos);
   void note_parse_failure(const char* expected,
                           const char* detail = nullptr,
                           bool committed = true);
@@ -375,7 +460,10 @@ class Parser {
   std::vector<std::string> best_debug_summary_stack() const;
   std::string format_best_parse_failure() const;
   void dump_parse_debug_trace() const;
-  std::string format_tentative_parse_detail(int start_pos, int end_pos) const;
+  std::string format_tentative_parse_detail(TentativeParseMode mode,
+                                            const char* kind,
+                                            int start_pos,
+                                            int end_pos) const;
   std::string format_parse_failure_token_window(const ParseFailure& failure) const;
 
   // ── token cursor / shared token utilities ────────────────────────────────
@@ -476,6 +564,20 @@ class Parser {
   bool parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
                                     const Node* primary_tpl = nullptr,
                                     const std::vector<bool>* explicit_param_is_nttp = nullptr);
+  bool ensure_template_struct_instantiated_from_args(
+      const std::string& template_name,
+      const Node* primary_tpl,
+      const std::vector<TemplateArgParseResult>& args,
+      int line,
+      std::string* out_mangled,
+      const char* debug_reason = nullptr,
+      TypeSpec* out_resolved = nullptr);
+  std::string build_template_struct_mangled_name(
+      const std::string& template_name,
+      const Node* primary_tpl,
+      const Node* selected_tpl,
+      const std::vector<TemplateArgParseResult>& args) const;
+  bool decode_type_ref_text(const std::string& text, TypeSpec* out);
   TypenameTemplateParamKind classify_typename_template_parameter() const;
   void push_template_scope(TemplateScopeKind kind,
                            const std::vector<TemplateScopeParam>& params);
@@ -771,8 +873,11 @@ bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& c
                     long long* out);
 bool is_dependent_enum_expr(Node* n,
                             const std::unordered_map<std::string, long long>& consts);
+TypeBase effective_scalar_base(const TypeSpec& ts);
 long long sizeof_base(TypeBase b);
 long long align_base(TypeBase b, int ptr_level);
+long long sizeof_type_spec(const TypeSpec& ts);
+long long alignof_type_spec(const TypeSpec& ts);
 bool eval_const_int(Node* n, long long* out,
                     const std::unordered_map<std::string, Node*>* struct_map = nullptr,
                     const std::unordered_map<std::string, long long>* named_consts = nullptr);

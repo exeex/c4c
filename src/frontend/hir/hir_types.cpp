@@ -347,7 +347,7 @@ std::optional<TypeSpec> Lowerer::find_struct_method_return_type(
 }
 
 std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
-    FunctionCtx* ctx, const Node* callee) {
+    const FunctionCtx* ctx, const Node* callee) {
   if (!callee) return std::nullopt;
   if (callee->kind == NK_DEREF) {
     return infer_call_result_type_from_callee(ctx, callee->left);
@@ -379,6 +379,60 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
     return module_->functions[fit->second.value].return_type.spec;
   }
   return std::nullopt;
+}
+
+std::optional<TypeSpec> Lowerer::infer_call_result_type(
+    const FunctionCtx* ctx, const Node* call) {
+  if (!call || call->kind != NK_CALL || !call->left) return std::nullopt;
+
+  if (auto dit = deduced_template_calls_.find(call);
+      dit != deduced_template_calls_.end()) {
+    auto fit = module_->fn_index.find(dit->second.mangled_name);
+    if (fit != module_->fn_index.end() &&
+        fit->second.value < module_->functions.size()) {
+      return module_->functions[fit->second.value].return_type.spec;
+    }
+  }
+
+  if (call->left->kind == NK_VAR && call->left->name &&
+      (call->left->n_template_args > 0 || call->left->has_template_args) &&
+      ct_state_->has_template_def(call->left->name) &&
+      !ct_state_->has_consteval_def(call->left->name)) {
+    const TypeBindings* enc =
+        (ctx && !ctx->tpl_bindings.empty()) ? &ctx->tpl_bindings : nullptr;
+    const NttpBindings* enc_nttp =
+        (ctx && !ctx->nttp_bindings.empty()) ? &ctx->nttp_bindings : nullptr;
+    const Node* tpl_fn = ct_state_->find_template_def(call->left->name);
+    if (tpl_fn) {
+      TypeBindings bindings =
+          merge_explicit_and_deduced_type_bindings(call, call->left, tpl_fn, enc);
+      NttpBindings nttp_bindings =
+          build_call_nttp_bindings(call->left, tpl_fn, enc_nttp);
+      std::string resolved_name =
+          mangle_template_name(call->left->name, bindings, nttp_bindings);
+      const auto param_order =
+          get_template_param_order(tpl_fn, &bindings, &nttp_bindings);
+      const SpecializationKey spec_key = nttp_bindings.empty()
+          ? make_specialization_key(call->left->name, param_order, bindings)
+          : make_specialization_key(call->left->name, param_order, bindings,
+                                    nttp_bindings);
+      if (const auto* inst_list = registry_.find_instances(call->left->name)) {
+        for (const auto& inst : *inst_list) {
+          if (inst.spec_key == spec_key) {
+            resolved_name = inst.mangled_name;
+            break;
+          }
+        }
+      }
+      auto fit = module_->fn_index.find(resolved_name);
+      if (fit != module_->fn_index.end() &&
+          fit->second.value < module_->functions.size()) {
+        return module_->functions[fit->second.value].return_type.spec;
+      }
+    }
+  }
+
+  return infer_call_result_type_from_callee(ctx, call->left);
 }
 
 std::optional<TypeSpec> Lowerer::storage_type_for_declref(
@@ -847,6 +901,9 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
   if (sit != struct_static_member_const_values_.end()) {
     auto mit = sit->second.find(member);
     if (mit != sit->second.end()) return mit->second;
+  }
+  if (auto trait_value = try_eval_instantiated_struct_static_member_const(tag, member)) {
+    return trait_value;
   }
   auto dit = module_->struct_defs.find(tag);
   if (dit != module_->struct_defs.end()) {
@@ -1401,9 +1458,30 @@ void Lowerer::lower_struct_def(const Node* sd) {
   }
 }
 
-void Lowerer::lower_global(const Node* gv) {
+void Lowerer::lower_global(const Node* gv,
+                           const std::string* name_override,
+                           const TypeBindings* tpl_override,
+                           const NttpBindings* nttp_override) {
   GlobalInit computed_init{};
   bool has_init = false;
+  const bool has_tpl_overrides =
+      tpl_override != nullptr || nttp_override != nullptr;
+  FunctionCtx init_ctx{};
+  if (nttp_override) init_ctx.nttp_bindings = *nttp_override;
+  if (tpl_override) {
+    init_ctx.tpl_bindings = *tpl_override;
+    for (auto& [name, bound_ts] : init_ctx.tpl_bindings) {
+      (void)name;
+      seed_and_resolve_pending_template_type_if_needed(
+          bound_ts, *tpl_override,
+          nttp_override ? *nttp_override : NttpBindings{}, gv,
+          PendingTemplateTypeKind::DeclarationType,
+          "template-global-binding");
+      while (resolve_struct_member_typedef_if_ready(&bound_ts)) {
+      }
+      resolve_typedef_to_struct(bound_ts);
+    }
+  }
 
   // Handle compound literal at global scope: `T *p = &(T){...};`
   // The compound literal must be lowered to a separate static global, and
@@ -1423,20 +1501,21 @@ void Lowerer::lower_global(const Node* gv) {
   GlobalInit early_init{};
   bool early_init_done = false;
   if (!has_init && gv->init) {
-    early_init = lower_global_init(gv->init, nullptr, gv->type.is_const || gv->is_constexpr);
+    early_init = lower_global_init(
+        gv->init, has_tpl_overrides ? &init_ctx : nullptr,
+        gv->type.is_const || gv->is_constexpr);
     early_init_done = true;
   }
 
   GlobalVar g{};
   g.id = next_global_id();
-  g.name = gv->name ? gv->name : "<anon_global>";
+  g.name = name_override ? *name_override : (gv->name ? gv->name : "<anon_global>");
   g.ns_qual = make_ns_qual(gv);
   {
-    TypeBindings empty_tpl_bindings;
-    NttpBindings empty_nttp_bindings;
     TypeSpec global_ts = gv->type;
     seed_and_resolve_pending_template_type_if_needed(
-        global_ts, empty_tpl_bindings, empty_nttp_bindings, gv,
+        global_ts, tpl_override ? *tpl_override : TypeBindings{},
+        nttp_override ? *nttp_override : NttpBindings{}, gv,
         PendingTemplateTypeKind::DeclarationType,
         std::string("global-decl:") + g.name);
     resolve_typedef_to_struct(global_ts);
@@ -1484,7 +1563,16 @@ void Lowerer::lower_global(const Node* gv) {
 
 TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
   if (!n) return {};
-  if (has_concrete_type(n->type)) return n->type;
+  if (has_concrete_type(n->type)) {
+    const bool needs_tpl_typedef_substitution =
+        ctx && !ctx->tpl_bindings.empty() &&
+        n->type.base == TB_TYPEDEF && n->type.tag &&
+        ctx->tpl_bindings.count(n->type.tag) > 0;
+    const bool needs_pending_template_resolution =
+        ctx && !ctx->tpl_bindings.empty() && n->type.tpl_struct_origin;
+    if (!needs_tpl_typedef_substitution && !needs_pending_template_resolution)
+      return n->type;
+  }
   switch (n->kind) {
     case NK_INT_LIT:
       return infer_int_literal_type(n);
@@ -1518,26 +1606,16 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
       }
       if (n->name && n->name[0] &&
           n->has_template_args && find_template_struct_primary(n->name)) {
-        std::string arg_refs;
-        for (int i = 0; i < n->n_template_args; ++i) {
-          if (!arg_refs.empty()) arg_refs += ",";
-          if (n->template_arg_is_value && n->template_arg_is_value[i]) {
-            const char* fwd_name = n->template_arg_nttp_names ?
-                n->template_arg_nttp_names[i] : nullptr;
-            if (fwd_name && fwd_name[0]) arg_refs += fwd_name;
-            else arg_refs += std::to_string(n->template_arg_values[i]);
-          } else if (n->template_arg_types) {
-            const TypeSpec& arg_ts = n->template_arg_types[i];
-            arg_refs += encode_template_type_arg_ref_hir(arg_ts);
-          }
-        }
         TypeSpec tmp_ts{};
         tmp_ts.base = TB_STRUCT;
         tmp_ts.array_size = -1;
         tmp_ts.inner_rank = -1;
         tmp_ts.tpl_struct_origin = n->name;
-        tmp_ts.tpl_struct_arg_refs = ::strdup(arg_refs.c_str());
         const Node* primary_tpl = find_template_struct_primary(n->name);
+        assign_template_arg_refs_from_ast_args(
+            &tmp_ts, n, primary_tpl, ctx, n,
+            PendingTemplateTypeKind::OwnerStruct,
+            "generic-ctrl-type-var-arg");
         TypeBindings tpl_empty;
         NttpBindings nttp_empty;
         seed_and_resolve_pending_template_type_if_needed(

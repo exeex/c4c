@@ -67,6 +67,27 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
     ParseContextGuard trace(this, __func__);
     if (!out_arg) return false;
     const int start_pos = pos_;
+    const auto starts_template_id_type_head = [&]() -> bool {
+        int probe = pos_;
+        if (probe >= static_cast<int>(tokens_.size())) return false;
+        if (tokens_[probe].kind == TokenKind::KwTypename) ++probe;
+        if (probe < static_cast<int>(tokens_.size()) &&
+            tokens_[probe].kind == TokenKind::ColonColon) {
+            ++probe;
+        }
+        if (probe >= static_cast<int>(tokens_.size()) ||
+            tokens_[probe].kind != TokenKind::Identifier) {
+            return false;
+        }
+        ++probe;
+        while (probe + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[probe].kind == TokenKind::ColonColon &&
+               tokens_[probe + 1].kind == TokenKind::Identifier) {
+            probe += 2;
+        }
+        return probe < static_cast<int>(tokens_.size()) &&
+               tokens_[probe].kind == TokenKind::Less;
+    };
 
     const auto is_simple_known_template_type_head = [&]() -> bool {
         if (check(TokenKind::KwTypename)) return true;
@@ -86,7 +107,8 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
                typedef_types_.count(resolved) > 0;
     };
 
-    if (is_simple_known_template_type_head()) {
+    if (is_simple_known_template_type_head() &&
+        !starts_template_id_type_head()) {
         TentativeParseGuard fast_guard(*this);
         try {
             TypeSpec ts = parse_base_type();
@@ -255,6 +277,13 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
             primary_tpl->template_param_is_nttp &&
             primary_tpl->template_param_is_nttp[arg_idx];
     }
+    if (check(TokenKind::Identifier)) {
+        const std::string resolved = resolve_visible_type_name(cur().lexeme);
+        if (alias_template_info_.count(cur().lexeme) > 0 ||
+            alias_template_info_.count(resolved) > 0) {
+            return false;
+        }
+    }
     if (starts_with_value_like_template_expr(*this, tokens_, pos_)) return true;
     return expect_value && (
         check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
@@ -286,7 +315,7 @@ bool Parser::consume_qualified_type_spelling_with_typename(
     std::string* out_name,
     QualifiedNameRef* out_qn) {
     ParseContextGuard trace(this, __func__);
-    TentativeParseGuard guard(*this);
+    TentativeParseGuardLite guard(*this);
     if (require_typename) {
         if (!is_cpp_mode() || !check(TokenKind::KwTypename))
             return false;
@@ -307,7 +336,7 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
                                              std::string* out_name,
                                              QualifiedNameRef* out_qn) {
     ParseContextGuard trace(this, __func__);
-    TentativeParseGuard guard(*this);
+    TentativeParseGuardLite guard(*this);
     const int start_pos = guard.snapshot.pos;
     QualifiedNameRef qn;
 
@@ -456,12 +485,12 @@ bool Parser::consume_member_pointer_owner_prefix() {
     if (!is_cpp_mode()) return false;
 
     TentativeParseGuard guard(*this);
+    if (check(TokenKind::KwTypename)) consume();
     if (!consume_qualified_type_spelling(/*allow_global=*/true,
-                                         /*consume_final_template_args=*/false,
+                                         /*consume_final_template_args=*/true,
                                          nullptr, nullptr)) {
         return false;
     }
-    consume_template_args_before_scope();
     if (!(check(TokenKind::ColonColon) &&
           pos_ + 1 < static_cast<int>(tokens_.size()) &&
           tokens_[pos_ + 1].kind == TokenKind::Star)) {
@@ -503,18 +532,221 @@ void Parser::apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
 
 bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     ParseContextGuard trace(this, __func__);
+    const int start_pos = pos_;
     std::string dep_name;
+    QualifiedNameRef qn;
     if (!consume_qualified_type_spelling_with_typename(
             /*require_typename=*/true,
             /*allow_global=*/true,
             /*consume_final_template_args=*/true,
-            &dep_name, nullptr)) {
+            &dep_name, &qn)) {
         return false;
     }
 
     if (out_name) {
+        auto join_token_lexemes = [&](int start, int end) -> std::string {
+            std::string out;
+            for (int i = start; i < end; ++i) out += tokens_[i].lexeme;
+            return out;
+        };
+        const int owner_start =
+            (start_pos < pos_ && tokens_[start_pos].kind == TokenKind::KwTypename)
+                ? (start_pos + 1)
+                : start_pos;
+        const std::string spelled_name = join_token_lexemes(owner_start, pos_);
         std::string resolved = resolve_visible_type_name(dep_name);
-        if (typedef_types_.count(resolved) == 0) resolved = dep_name;
+        if (typedef_types_.count(resolved) == 0) {
+            bool preserved_template_owner_member = false;
+            if (spelled_name.find('<') != std::string::npos &&
+                qn.base_name == "type") {
+                int final_scope_pos = -1;
+                for (int i = owner_start; i + 1 < pos_; ++i) {
+                    if (tokens_[i].kind == TokenKind::ColonColon &&
+                        tokens_[i + 1].kind == TokenKind::Identifier) {
+                        final_scope_pos = i;
+                    }
+                }
+                if (final_scope_pos > owner_start) {
+                    TypeSpec owner_ts{};
+                    owner_ts.array_size = -1;
+                    owner_ts.inner_rank = -1;
+                    std::vector<Token> inject_toks;
+                    inject_toks.reserve(static_cast<size_t>(final_scope_pos - owner_start + 1));
+                    for (int i = owner_start; i < final_scope_pos; ++i) {
+                        inject_toks.push_back(tokens_[i]);
+                    }
+                    Token sentinel{};
+                    sentinel.kind = TokenKind::Semi;
+                    sentinel.lexeme = ";";
+                    inject_toks.push_back(sentinel);
+
+                    int saved_pos = pos_;
+                    auto saved_toks = std::move(tokens_);
+                    tokens_ = std::move(inject_toks);
+                    pos_ = 0;
+                    try {
+                        owner_ts = parse_base_type();
+                    } catch (...) {
+                    }
+                    tokens_ = std::move(saved_toks);
+                    pos_ = saved_pos;
+
+                    if ((owner_ts.tpl_struct_origin &&
+                         owner_ts.tpl_struct_origin[0]) ||
+                        (owner_ts.tag && owner_ts.tag[0])) {
+                        owner_ts.deferred_member_type_name =
+                            arena_.strdup(tokens_[final_scope_pos + 1].lexeme.c_str());
+                        typedef_types_[spelled_name] = owner_ts;
+                        resolved = spelled_name;
+                        preserved_template_owner_member = true;
+                    }
+                }
+            }
+            if (preserved_template_owner_member) {
+                *out_name = resolved;
+                return true;
+            }
+            resolved = dep_name;
+            if (typedef_types_.count(resolved) == 0 &&
+                !qn.qualifier_segments.empty()) {
+                auto resolve_struct_like = [&](TypeSpec ts) -> TypeSpec {
+                    ts = resolve_typedef_chain(ts, typedef_types_);
+                    if (ts.base == TB_TYPEDEF && ts.tag &&
+                        typedef_types_.count(ts.tag) > 0) {
+                        ts = typedef_types_.at(ts.tag);
+                    }
+                    return ts;
+                };
+                auto follow_nested_owner =
+                    [&](const std::vector<std::string>& owner_chain,
+                        bool global_qualified) -> const Node* {
+                    if (owner_chain.empty()) return nullptr;
+
+                    for (size_t owner_start = 0; owner_start < owner_chain.size();
+                         ++owner_start) {
+                        std::string owner_tag = owner_chain[owner_start];
+                        if (owner_start > 0 || global_qualified) {
+                            QualifiedNameRef ns_qn;
+                            ns_qn.is_global_qualified = global_qualified;
+                            ns_qn.qualifier_segments.assign(owner_chain.begin(),
+                                                            owner_chain.begin() + owner_start);
+                            int context_id = resolve_namespace_context(ns_qn);
+                            if (context_id < 0) continue;
+                            owner_tag =
+                                canonical_name_in_context(context_id, owner_tag);
+                        }
+                        if (typedef_types_.count(owner_tag) > 0) {
+                            TypeSpec owner_ts =
+                                resolve_struct_like(typedef_types_.at(owner_tag));
+                            if (owner_ts.tag && owner_ts.tag[0]) owner_tag = owner_ts.tag;
+                        }
+                        auto owner_it = struct_tag_def_map_.find(owner_tag);
+                        if (owner_it == struct_tag_def_map_.end() || !owner_it->second)
+                            continue;
+
+                        const Node* owner = owner_it->second;
+                        bool ok = true;
+                        for (size_t i = owner_start + 1; i < owner_chain.size(); ++i) {
+                            const Node* nested_decl = nullptr;
+                            const Node* nested_owner = nullptr;
+                            auto matches_owner_segment = [&](const Node* candidate) -> bool {
+                                if (!candidate) return false;
+                                const char* candidate_name = candidate->name;
+                                const char* candidate_unqualified =
+                                    candidate->unqualified_name;
+                                if (candidate_name && owner_chain[i] == candidate_name)
+                                    return true;
+                                if (candidate_unqualified &&
+                                    owner_chain[i] == candidate_unqualified) {
+                                    return true;
+                                }
+                                if (candidate_name) {
+                                    const char* tail = std::strrchr(candidate_name, ':');
+                                    if (tail && tail[1] && owner_chain[i] == (tail + 1))
+                                        return true;
+                                }
+                                return false;
+                            };
+                            for (int fi = 0; fi < owner->n_fields; ++fi) {
+                                const Node* field = owner->fields[fi];
+                                if (!field || field->kind != NK_DECL ||
+                                    !matches_owner_segment(field)) {
+                                    continue;
+                                }
+                                nested_decl = field;
+                                break;
+                            }
+                            if (!nested_decl) {
+                                for (int ci = 0; ci < owner->n_children; ++ci) {
+                                    const Node* child = owner->children[ci];
+                                    if (!child || child->kind != NK_STRUCT_DEF ||
+                                        !matches_owner_segment(child)) {
+                                        continue;
+                                    }
+                                    nested_owner = child;
+                                    break;
+                                }
+                            }
+                            if (nested_owner) {
+                                owner = nested_owner;
+                                continue;
+                            }
+                            if (!nested_decl || !nested_decl->type.tag ||
+                                !nested_decl->type.tag[0]) {
+                                ok = false;
+                                break;
+                            }
+                            std::string nested_owner_tag = nested_decl->type.tag;
+                            owner_it = struct_tag_def_map_.find(nested_owner_tag);
+                            if (owner_it == struct_tag_def_map_.end() ||
+                                !owner_it->second) {
+                                const int nested_context =
+                                    nested_decl->namespace_context_id >= 0
+                                        ? nested_decl->namespace_context_id
+                                        : owner->namespace_context_id;
+                                nested_owner_tag = canonical_name_in_context(
+                                    nested_context, nested_decl->type.tag);
+                                owner_it = struct_tag_def_map_.find(nested_owner_tag);
+                            }
+                            if (owner_it == struct_tag_def_map_.end() ||
+                                !owner_it->second) {
+                                ok = false;
+                                break;
+                            }
+                            owner = owner_it->second;
+                        }
+                        if (ok) return owner;
+                    }
+                    return nullptr;
+                };
+
+                TypeSpec resolved_member{};
+                if (const Node* owner =
+                        follow_nested_owner(qn.qualifier_segments,
+                                            qn.is_global_qualified)) {
+                    bool found_member = false;
+                    if (owner->name && owner->name[0]) {
+                        const std::string scoped_name =
+                            std::string(owner->name) + "::" + qn.base_name;
+                        auto scoped_it = typedef_types_.find(scoped_name);
+                        if (scoped_it != typedef_types_.end()) {
+                            resolved_member = scoped_it->second;
+                            found_member = true;
+                        }
+                    }
+                    for (int i = 0; !found_member && i < owner->n_member_typedefs; ++i) {
+                        const char* name = owner->member_typedef_names[i];
+                        if (!name || qn.base_name != name) continue;
+                        resolved_member = owner->member_typedef_types[i];
+                        found_member = true;
+                    }
+                    if (found_member) {
+                        typedef_types_[dep_name] = resolved_member;
+                        resolved = dep_name;
+                    }
+                }
+            }
+        }
         *out_name = resolved;
     }
     return true;
@@ -657,8 +889,19 @@ bool Parser::parse_operator_declarator_name(std::string* out_name) {
         op_name = extra_mangled;
         consume();
     } else if (is_type_start() || can_start_parameter_type() ||
+               check(TokenKind::Identifier) ||
                check(TokenKind::ColonColon)) {
-        TypeSpec conv_ts = parse_base_type();
+        TypeSpec conv_ts{};
+        if (check(TokenKind::Identifier) && !is_type_start() &&
+            !can_start_parameter_type()) {
+            conv_ts.base = TB_TYPEDEF;
+            conv_ts.tag = arena_.strdup(cur().lexeme);
+            conv_ts.array_size = -1;
+            conv_ts.inner_rank = -1;
+            consume();
+        } else {
+            conv_ts = parse_base_type();
+        }
         parse_attributes(&conv_ts);
         while (check(TokenKind::Star)) {
             consume();
@@ -795,7 +1038,8 @@ bool Parser::is_parenthesized_pointer_declarator_start() {
 
     if (!is_cpp_mode() ||
         (lookahead != TokenKind::Identifier &&
-         lookahead != TokenKind::ColonColon)) {
+         lookahead != TokenKind::ColonColon &&
+         lookahead != TokenKind::KwTypename)) {
         return false;
     }
 
@@ -959,9 +1203,19 @@ void Parser::parse_parenthesized_function_pointer_suffix(
     bool fn_ptr_variadic = false;
     parse_declarator_parameter_list(&fn_ptr_params, &fn_ptr_variadic);
 
-    // C++ pointer-to-member-function may have cv-qualifiers after params:
-    // R (T::*pm)() const  or  R (T::*pm)() volatile
+    // C++ pointer-to-member-function declarators may carry trailing
+    // cv/ref-qualifiers after the parameter list:
+    // R (T::*pm)() const, R (T::*pm)() volatile,
+    // R (T::*pm)() &, or R (T::*pm)() &&
     while (is_qualifier(cur().kind)) consume();
+    if (is_cpp_mode()) {
+        if (match(TokenKind::AmpAmp)) {
+            // Parse-only: preserve declaration disambiguation even though
+            // TypeSpec does not currently model member-function ref-qualifiers.
+        } else if (match(TokenKind::Amp)) {
+            // Same as above for lvalue-qualified member-function-pointer forms.
+        }
+    }
     ts.is_fn_ptr = true;  // confirmed function pointer: (*name)(params)
 
     if (is_nested_fn_ptr) {

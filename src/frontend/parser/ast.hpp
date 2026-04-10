@@ -15,6 +15,7 @@
 #include <cctype>
 #include <cstddef>
 #include <cstring>
+#include <string>
 
 #include "../builtin.hpp"
 
@@ -78,8 +79,21 @@ enum TypeBase {
     TB_AUTO,               // C++ auto type deduction placeholder
 };
 
+enum class TemplateArgKind : uint8_t {
+    Type = 0,
+    Value = 1,
+};
+
+struct TemplateArgRef;
+
+struct TemplateArgRefList {
+    TemplateArgRef* data;
+    int size;
+};
+
 struct TypeSpec {
     TypeBase base;
+    TypeBase enum_underlying_base; // fixed underlying base for TB_ENUM, or TB_VOID when unknown/default
     const char* tag;         // struct/union/enum tag or typedef name (may be null)
     const char** qualifier_segments; // structured qualifier path for tagged/typedef names
     int n_qualifier_segments;        // qualifier segment count (excludes base name)
@@ -109,8 +123,15 @@ struct TypeSpec {
     // depends on unresolved template type params (e.g., Pair<T> inside a
     // template function body).  The HIR resolves it during instantiation.
     const char* tpl_struct_origin;     // original template struct name (e.g., "Pair")
-    const char* tpl_struct_arg_refs;   // comma-sep arg refs in param order (e.g., "T" or "T,4")
+    TemplateArgRefList tpl_struct_args; // structured template arg payload
     const char* deferred_member_type_name; // pending `StructLike::type`-style member typedef
+};
+
+struct TemplateArgRef {
+    TemplateArgKind kind;
+    TypeSpec type;
+    long long value;
+    const char* debug_text;
 };
 
 // ── OperatorKind ─────────────────────────────────────────────────────────────
@@ -255,6 +276,8 @@ enum NodeKind {
 struct Node {
     NodeKind kind;
     int line;
+    int column;
+    const char* file;
     int namespace_context_id; // owning namespace for declarations / resolved namespace for refs
 
     // --- type (for NK_DECL, NK_GLOBAL_VAR, NK_FUNCTION ret, NK_CAST,
@@ -364,6 +387,7 @@ struct Node {
     bool is_const_method; // NK_FUNCTION: const-qualified member function
     bool is_lvalue_ref_method; // NK_FUNCTION: member function ref-qualified with &
     bool is_rvalue_ref_method; // NK_FUNCTION: member function ref-qualified with &&
+    bool is_concept_id;   // NK_VAR: parsed as a C++ concept-id expression
     bool is_explicit_specialization; // NK_FUNCTION: template<> explicit specialization
     uint8_t visibility; // 0=default, 1=hidden, 2=protected (from #pragma GCC visibility)
     bool is_volatile_asm; // NK_ASM
@@ -399,7 +423,10 @@ inline bool is_primary_template_struct_def(const Node* node) {
     return node &&
            node->kind == NK_STRUCT_DEF &&
            node->n_template_params > 0 &&
-           (!node->template_origin_name || !node->template_origin_name[0]);
+           node->n_template_args == 0 &&
+           (!node->template_origin_name || !node->template_origin_name[0] ||
+            (node->name && node->template_origin_name &&
+             std::strcmp(node->name, node->template_origin_name) == 0));
 }
 
 inline bool node_has_template_param_name(const Node* node, const char* name) {
@@ -436,9 +463,77 @@ inline bool text_mentions_template_param(const Node* node, const char* text) {
     return false;
 }
 
+inline bool typespec_mentions_template_param(const TypeSpec& ts, const Node* node);
+
+inline bool template_arg_list_mentions_template_param(const TypeSpec& ts,
+                                                      const Node* node) {
+    if (!node || ts.tpl_struct_args.size <= 0 || !ts.tpl_struct_args.data) return false;
+    for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+        const TemplateArgRef& arg = ts.tpl_struct_args.data[i];
+        if (arg.kind == TemplateArgKind::Type &&
+            typespec_mentions_template_param(arg.type, node)) {
+            return true;
+        }
+        if (text_mentions_template_param(node, arg.debug_text)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+inline std::string encode_template_arg_debug_ref(const TypeSpec& ts) {
+    std::string out;
+    out += "base=" + std::to_string(static_cast<int>(ts.base));
+    out += ",tag=";
+    out += ts.tag ? ts.tag : "";
+    out += ",ptr=" + std::to_string(ts.ptr_level);
+    out += ",arr=" + std::to_string(ts.array_rank);
+    return out;
+}
+
+inline std::string encode_template_arg_debug_list(const TypeSpec& ts) {
+    std::string out;
+    if (!ts.tpl_struct_args.data) return out;
+    for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+        const TemplateArgRef& arg = ts.tpl_struct_args.data[i];
+        if (i > 0) out += ",";
+        if (arg.debug_text && arg.debug_text[0]) {
+            out += arg.debug_text;
+            continue;
+        }
+        if (arg.kind == TemplateArgKind::Value) {
+            out += std::to_string(arg.value);
+            continue;
+        }
+        if (arg.kind == TemplateArgKind::Type) {
+            out += "{";
+            out += encode_template_arg_debug_ref(arg.type);
+            out += "}";
+        } else {
+            out += "?";
+        }
+    }
+    return out;
+}
+
+inline std::string template_arg_debug_text_at(const TypeSpec& ts, int index) {
+    if (index < 0 || index >= ts.tpl_struct_args.size || !ts.tpl_struct_args.data) {
+        return {};
+    }
+    const TemplateArgRef& arg = ts.tpl_struct_args.data[index];
+    if (arg.debug_text && arg.debug_text[0]) {
+        return arg.debug_text;
+    }
+    if (arg.kind == TemplateArgKind::Value) {
+        return std::to_string(arg.value);
+    }
+    if (arg.kind == TemplateArgKind::Type) return encode_template_arg_debug_ref(arg.type);
+    return {};
+}
+
 inline bool typespec_mentions_template_param(const TypeSpec& ts, const Node* node) {
     return node_has_template_param_name(node, ts.tag) ||
-           text_mentions_template_param(node, ts.tpl_struct_arg_refs) ||
+           template_arg_list_mentions_template_param(ts, node) ||
            text_mentions_template_param(node, ts.deferred_member_type_name);
 }
 
