@@ -422,6 +422,8 @@ std::optional<std::string> try_emit_minimal_repeated_printf_immediates_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_local_buffer_string_copy_printf_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_counted_printf_ternary_loop_module(
+    const c4c::codegen::lir::LirModule& module);
 c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
     const c4c::backend::LivenessInput& liveness_input);
 
