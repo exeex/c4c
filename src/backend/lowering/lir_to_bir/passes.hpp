@@ -57,6 +57,8 @@ std::optional<bir::Module> try_lower_minimal_repeated_zero_arg_call_compare_zero
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_local_i32_inc_dec_compare_return_zero_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_local_i32_unary_not_minus_zero_return_module(
+    const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_short_circuit_effect_zero_return_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_dual_identity_direct_call_sub_module(

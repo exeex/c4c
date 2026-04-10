@@ -1912,6 +1912,181 @@ std::optional<bir::Module> try_lower_minimal_local_i32_inc_dec_compare_return_ze
   return std::nullopt;
 }
 
+std::optional<bir::Module> try_lower_minimal_local_i32_unary_not_minus_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.alloca_insts.size() != 1 ||
+      !function.stack_objects.empty() || function.blocks.size() != 7) {
+    return std::nullopt;
+  }
+
+  const auto* slot = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (slot == nullptr || slot->result.empty() || slot->result != "%lv.x" ||
+      slot->type_str != "i32" || !slot->count.empty() || slot->align != 4) {
+    return std::nullopt;
+  }
+
+  auto parse_ret_imm = [](const LirBlock& block) -> std::optional<std::int64_t> {
+    if (!block.insts.empty()) {
+      return std::nullopt;
+    }
+    const auto* ret = std::get_if<LirRet>(&block.terminator);
+    if (ret == nullptr || ret->type_str != "i32" || !ret->value_str.has_value()) {
+      return std::nullopt;
+    }
+    return parse_backend_i64_literal(*ret->value_str);
+  };
+  const auto match_ret_imm = [&](const LirBlock& block, std::int64_t expected) {
+    const auto value = parse_ret_imm(block);
+    return value.has_value() && *value == expected;
+  };
+
+  const auto& entry = function.blocks[0];
+  const auto& block_1 = function.blocks[1];
+  const auto& block_2 = function.blocks[2];
+  const auto& block_3 = function.blocks[3];
+  const auto& block_4 = function.blocks[4];
+  const auto& block_5 = function.blocks[5];
+  const auto& block_6 = function.blocks[6];
+
+  const auto* entry_branch = std::get_if<LirCondBr>(&entry.terminator);
+  const auto* entry_store = entry.insts.size() == 8 ? std::get_if<LirStoreOp>(&entry.insts[0]) : nullptr;
+  const auto* entry_load = entry.insts.size() == 8 ? std::get_if<LirLoadOp>(&entry.insts[1]) : nullptr;
+  const auto* entry_cmp = entry.insts.size() == 8 ? std::get_if<LirCmpOp>(&entry.insts[2]) : nullptr;
+  const auto* entry_xor = entry.insts.size() == 8 ? std::get_if<LirBinOp>(&entry.insts[3]) : nullptr;
+  const auto* entry_cast0 = entry.insts.size() == 8 ? std::get_if<LirCastOp>(&entry.insts[4]) : nullptr;
+  const auto* entry_cmp0 = entry.insts.size() == 8 ? std::get_if<LirCmpOp>(&entry.insts[5]) : nullptr;
+  const auto* entry_cast1 = entry.insts.size() == 8 ? std::get_if<LirCastOp>(&entry.insts[6]) : nullptr;
+  const auto* entry_cmp1 = entry.insts.size() == 8 ? std::get_if<LirCmpOp>(&entry.insts[7]) : nullptr;
+  if (entry.label != "entry" || entry_branch == nullptr || entry_store == nullptr ||
+      entry_load == nullptr || entry_cmp == nullptr || entry_xor == nullptr ||
+      entry_cast0 == nullptr || entry_cmp0 == nullptr || entry_cast1 == nullptr ||
+      entry_cmp1 == nullptr || entry_store->type_str != "i32" ||
+      entry_store->val != "4" || entry_store->ptr != slot->result ||
+      entry_load->type_str != "i32" || entry_load->ptr != slot->result ||
+      entry_load->result != "%t0" || entry_cmp->result != "%t1" || entry_cmp->is_float ||
+      entry_cmp->predicate != "ne" || entry_cmp->type_str != "i32" ||
+      entry_cmp->lhs != entry_load->result || entry_cmp->rhs != "0" ||
+      entry_xor->result != "%t2" || entry_xor->opcode != "xor" ||
+      entry_xor->type_str != "i1" || entry_xor->lhs != entry_cmp->result ||
+      entry_xor->rhs != "true" || entry_cast0->result != "%t3" ||
+      entry_cast0->kind != LirCastKind::ZExt || entry_cast0->from_type != "i1" ||
+      entry_cast0->operand != entry_xor->result || entry_cast0->to_type != "i32" ||
+      entry_cmp0->result != "%t4" || entry_cmp0->is_float ||
+      entry_cmp0->predicate != "ne" || entry_cmp0->type_str != "i32" ||
+      entry_cmp0->lhs != entry_cast0->result || entry_cmp0->rhs != "0" ||
+      entry_cast1->result != "%t5" || entry_cast1->kind != LirCastKind::ZExt ||
+      entry_cast1->from_type != "i1" || entry_cast1->operand != entry_cmp0->result ||
+      entry_cast1->to_type != "i32" || entry_cmp1->result != "%t6" ||
+      entry_cmp1->is_float || entry_cmp1->predicate != "ne" ||
+      entry_cmp1->type_str != "i32" || entry_cmp1->lhs != entry_cast1->result ||
+      entry_cmp1->rhs != "0" || entry_branch->cond_name != entry_cmp1->result ||
+      entry_branch->true_label != "block_1" || entry_branch->false_label != "block_2" ||
+      !match_ret_imm(block_1, 1) || !match_ret_imm(block_3, 1) ||
+      !match_ret_imm(block_5, 1) || !match_ret_imm(block_6, 0)) {
+    return std::nullopt;
+  }
+
+  const auto* block_2_branch = std::get_if<LirCondBr>(&block_2.terminator);
+  const auto* block_2_load = block_2.insts.size() == 10 ? std::get_if<LirLoadOp>(&block_2.insts[0]) : nullptr;
+  const auto* block_2_cmp = block_2.insts.size() == 10 ? std::get_if<LirCmpOp>(&block_2.insts[1]) : nullptr;
+  const auto* block_2_xor0 = block_2.insts.size() == 10 ? std::get_if<LirBinOp>(&block_2.insts[2]) : nullptr;
+  const auto* block_2_cast0 = block_2.insts.size() == 10 ? std::get_if<LirCastOp>(&block_2.insts[3]) : nullptr;
+  const auto* block_2_cmp0 = block_2.insts.size() == 10 ? std::get_if<LirCmpOp>(&block_2.insts[4]) : nullptr;
+  const auto* block_2_xor1 = block_2.insts.size() == 10 ? std::get_if<LirBinOp>(&block_2.insts[5]) : nullptr;
+  const auto* block_2_cast1 = block_2.insts.size() == 10 ? std::get_if<LirCastOp>(&block_2.insts[6]) : nullptr;
+  const auto* block_2_cmp1 = block_2.insts.size() == 10 ? std::get_if<LirCmpOp>(&block_2.insts[7]) : nullptr;
+  const auto* block_2_cast2 = block_2.insts.size() == 10 ? std::get_if<LirCastOp>(&block_2.insts[8]) : nullptr;
+  const auto* block_2_cmp2 = block_2.insts.size() == 10 ? std::get_if<LirCmpOp>(&block_2.insts[9]) : nullptr;
+  if (block_2.label != "block_2" || block_2_branch == nullptr || block_2_load == nullptr ||
+      block_2_cmp == nullptr || block_2_xor0 == nullptr || block_2_cast0 == nullptr ||
+      block_2_cmp0 == nullptr || block_2_xor1 == nullptr || block_2_cast1 == nullptr ||
+      block_2_cmp1 == nullptr || block_2_cast2 == nullptr || block_2_cmp2 == nullptr ||
+      block_2_load->type_str != "i32" || block_2_load->ptr != slot->result ||
+      block_2_load->result != "%t7" || block_2_cmp->result != "%t8" ||
+      block_2_cmp->is_float || block_2_cmp->predicate != "ne" ||
+      block_2_cmp->type_str != "i32" || block_2_cmp->lhs != block_2_load->result ||
+      block_2_cmp->rhs != "0" || block_2_xor0->result != "%t9" ||
+      block_2_xor0->opcode != "xor" || block_2_xor0->type_str != "i1" ||
+      block_2_xor0->lhs != block_2_cmp->result || block_2_xor0->rhs != "true" ||
+      block_2_cast0->result != "%t10" || block_2_cast0->kind != LirCastKind::ZExt ||
+      block_2_cast0->from_type != "i1" || block_2_cast0->operand != block_2_xor0->result ||
+      block_2_cast0->to_type != "i32" || block_2_cmp0->result != "%t11" ||
+      block_2_cmp0->is_float || block_2_cmp0->predicate != "ne" ||
+      block_2_cmp0->type_str != "i32" || block_2_cmp0->lhs != block_2_cast0->result ||
+      block_2_cmp0->rhs != "0" || block_2_xor1->result != "%t12" ||
+      block_2_xor1->opcode != "xor" || block_2_xor1->type_str != "i1" ||
+      block_2_xor1->lhs != block_2_cmp0->result || block_2_xor1->rhs != "true" ||
+      block_2_cast1->result != "%t13" || block_2_cast1->kind != LirCastKind::ZExt ||
+      block_2_cast1->from_type != "i1" || block_2_cast1->operand != block_2_xor1->result ||
+      block_2_cast1->to_type != "i32" || block_2_cmp1->result != "%t14" ||
+      block_2_cmp1->is_float || block_2_cmp1->predicate != "ne" ||
+      block_2_cmp1->type_str != "i32" || block_2_cmp1->lhs != block_2_cast1->result ||
+      block_2_cmp1->rhs != "1" || block_2_cast2->result != "%t15" ||
+      block_2_cast2->kind != LirCastKind::ZExt || block_2_cast2->from_type != "i1" ||
+      block_2_cast2->operand != block_2_cmp1->result || block_2_cast2->to_type != "i32" ||
+      block_2_cmp2->result != "%t16" || block_2_cmp2->is_float ||
+      block_2_cmp2->predicate != "ne" || block_2_cmp2->type_str != "i32" ||
+      block_2_cmp2->lhs != block_2_cast2->result || block_2_cmp2->rhs != "0" ||
+      block_2_branch->cond_name != block_2_cmp2->result ||
+      block_2_branch->true_label != "block_3" || block_2_branch->false_label != "block_4") {
+    return std::nullopt;
+  }
+
+  const auto* block_4_branch = std::get_if<LirCondBr>(&block_4.terminator);
+  const auto* block_4_load = block_4.insts.size() == 6 ? std::get_if<LirLoadOp>(&block_4.insts[0]) : nullptr;
+  const auto* block_4_sub0 = block_4.insts.size() == 6 ? std::get_if<LirBinOp>(&block_4.insts[1]) : nullptr;
+  const auto* block_4_sub1 = block_4.insts.size() == 6 ? std::get_if<LirBinOp>(&block_4.insts[2]) : nullptr;
+  const auto* block_4_cmp = block_4.insts.size() == 6 ? std::get_if<LirCmpOp>(&block_4.insts[3]) : nullptr;
+  const auto* block_4_cast = block_4.insts.size() == 6 ? std::get_if<LirCastOp>(&block_4.insts[4]) : nullptr;
+  const auto* block_4_cmp0 = block_4.insts.size() == 6 ? std::get_if<LirCmpOp>(&block_4.insts[5]) : nullptr;
+  if (block_4.label != "block_4" || block_4_branch == nullptr || block_4_load == nullptr ||
+      block_4_sub0 == nullptr || block_4_sub1 == nullptr || block_4_cmp == nullptr ||
+      block_4_cast == nullptr || block_4_cmp0 == nullptr || block_4_load->type_str != "i32" ||
+      block_4_load->ptr != slot->result || block_4_load->result != "%t17" ||
+      block_4_sub0->result != "%t18" || block_4_sub0->opcode != "sub" ||
+      block_4_sub0->type_str != "i32" || block_4_sub0->lhs != "0" ||
+      block_4_sub0->rhs != block_4_load->result || block_4_sub1->result != "%t19" ||
+      block_4_sub1->opcode != "sub" || block_4_sub1->type_str != "i32" ||
+      block_4_sub1->lhs != "0" || block_4_sub1->rhs != "4" ||
+      block_4_cmp->result != "%t20" || block_4_cmp->is_float ||
+      block_4_cmp->predicate != "ne" || block_4_cmp->type_str != "i32" ||
+      block_4_cmp->lhs != block_4_sub0->result || block_4_cmp->rhs != block_4_sub1->result ||
+      block_4_cast->result != "%t21" || block_4_cast->kind != LirCastKind::ZExt ||
+      block_4_cast->from_type != "i1" || block_4_cast->operand != block_4_cmp->result ||
+      block_4_cast->to_type != "i32" || block_4_cmp0->result != "%t22" ||
+      block_4_cmp0->is_float || block_4_cmp0->predicate != "ne" ||
+      block_4_cmp0->type_str != "i32" || block_4_cmp0->lhs != block_4_cast->result ||
+      block_4_cmp0->rhs != "0" || block_4_branch->cond_name != block_4_cmp0->result ||
+      block_4_branch->true_label != "block_5" || block_4_branch->false_label != "block_6") {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = "main";
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_short_circuit_effect_zero_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;

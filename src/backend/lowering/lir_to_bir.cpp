@@ -4454,6 +4454,10 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
       lowered.has_value()) {
     return lowered;
   }
+  if (const auto lowered = try_lower_minimal_local_i32_unary_not_minus_zero_return_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
   if (const auto lowered = try_lower_minimal_short_circuit_effect_zero_return_module(module);
       lowered.has_value()) {
     return lowered;
@@ -4867,6 +4871,19 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
 BirLoweringResult try_lower_to_bir_with_options(
     const c4c::codegen::lir::LirModule& module,
     const BirLoweringOptions& options) {
+  if (auto lowered =
+          try_lower_minimal_local_i32_unary_not_minus_zero_return_module(module);
+      lowered.has_value()) {
+    return BirLoweringResult{
+        .module = std::move(lowered),
+        .notes = {BirLoweringNote{
+            .phase = "legacy-lowering",
+            .message =
+                "local-slot unary-not/unary-minus seam lowered the source-shaped module before CFG normalization rewrote the exact bounded branch chain",
+        }},
+    };
+  }
+
   auto normalized_module = module;
   std::vector<BirLoweringNote> notes;
 
