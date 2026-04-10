@@ -7,26 +7,26 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: keep `eastl_type_traits_simple.cpp` as the active EASTL frontier, but
-  treat the remaining workflow mismatch as a variable-template trait
-  normalization gap for alias-transformed types.
+  treat the next remaining workflow mismatch as the bounded `is_enum`
+  trait-classification follow-up rather than the already-fixed reference-trait
+  path.
 - Iteration focus: keep the focused runtime coverage for alias-backed member
-  typedef selection current while the broader remaining blocker is spun out as
-  the generic normalization/owner-resolution follow-up in
-  `ideas/open/48_template_trait_normalization_and_owner_resolution.md`.
-- Iteration target: preserve the repaired direct alias-member path
-  (`enable_if_t`, `conditional_t`, and the focused `add_lvalue_reference_t`
-  runtime repro) while recording that the remaining `eastl::type_traits`
-  mismatch is no longer a small alias-template-only slice.
-- Reduced repro: the focused internal runtime case
-  `template_variable_alias_member_typedef_runtime.cpp` now proves the direct
-  alias-member path for `add_lvalue_reference_t<int>` alongside the earlier
-  `enable_if_t` / `conditional_t` checks, but the standalone EASTL workflow
-  still exits `22` in `check_reference_transforms<int>()`.
-- Current blocker: the remaining `eastl::add_lvalue_reference_t<T>` failure is
-  tied to broader generic template-trait normalization and owner-resolution
-  behavior beyond the narrowed alias-member substitution fix. Keep follow-up
-  investigation under `ideas/open/48_template_trait_normalization_and_owner_resolution.md`
-  instead of silently growing this EASTL slice.
+  typedef selection current, preserve the new inherited-owner reduction for
+  `add_lvalue_reference_t`, and resume the EASTL workflow from the later
+  `eastl::is_enum<Color>::value` runtime mismatch.
+- Iteration target: record that the old `exit 22` reference-transform failure
+  is gone, the standalone EASTL workflow now reaches `exit 3`, and the next
+  slice should reduce `is_enum<Color>` to a smallest generic trait repro before
+  touching unrelated EASTL cases.
+- Reduced repro: the focused internal runtime cases
+  `template_variable_alias_member_typedef_runtime.cpp` and
+  `template_variable_alias_inherited_member_typedef_runtime.cpp` now both pass,
+  proving the direct alias-member path and the inherited `decltype(...)->type`
+  owner path, while the standalone EASTL workflow now exits `3` in the later
+  `is_enum<Color>::value` check.
+- Current blocker: `eastl::is_enum<Color>::value` still folds false in the
+  standalone workflow after the reference-transform path was repaired. Treat
+  that as the next bounded generic trait-family slice.
 
 ## Completed
 
@@ -34,6 +34,24 @@ Source Plan: plan.md
   `tests/cpp/internal/postive_case/template_variable_alias_member_typedef_runtime.cpp`
   and confirmed the reduced alias-backed `enable_if_t` / `conditional_t`
   variable-template repro now passes.
+- Added focused runtime coverage in
+  `tests/cpp/internal/postive_case/template_variable_alias_inherited_member_typedef_runtime.cpp`
+  so the `decltype(...)->type_identity<T&>` owner chain behind
+  `add_lvalue_reference_t<int>` stays covered too.
+- Taught compile-time `is_reference` evaluation to treat instantiated
+  `add_lvalue_reference` / `add_rvalue_reference` owners as reference
+  transforms even when the inherited member typedef is not fully materialized
+  yet, which repairs the reduced inherited-owner repro and the old final
+  `eastl_type_traits_simple` `exit 22` mismatch.
+- Re-ran the focused alias-member runtime regression, the new inherited-owner
+  runtime regression, and `cmake --build build --target
+  eastl_type_traits_simple_workflow -j8`; the standalone EASTL workflow now
+  advances from `exit 22` to `exit 3`, so the next blocker is
+  `eastl::is_enum<Color>::value`.
+- Re-ran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  compared `test_fail_before.log` vs `test_fail_after.log`; the regression
+  guard passed monotonically at 3296/3298 passing tests versus the earlier
+  3289/3297 baseline, with zero newly failing tests.
 - Extended
   `tests/cpp/internal/postive_case/template_variable_alias_member_typedef_runtime.cpp`
   to cover the direct alias-backed `add_lvalue_reference_t<int>` /

@@ -2203,7 +2203,35 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
       return is_const_trait_type(actual_args[0].type) ? 1LL : 0LL;
     }
     if (matches_trait_family(tpl_name, "is_reference")) {
-      return is_reference_trait_type(actual_args[0].type) ? 1LL : 0LL;
+      if (is_reference_trait_type(actual_args[0].type)) {
+        return 1LL;
+      }
+      if (actual_args[0].type.tag && actual_args[0].type.tag[0]) {
+        const std::string owner_tag = actual_args[0].type.tag;
+        TypeSpec resolved_member{};
+        if (resolve_struct_member_typedef_type(
+                owner_tag, "type", &resolved_member)) {
+          return is_reference_trait_type(resolved_member) ? 1LL : 0LL;
+        }
+        auto owner_it = struct_def_nodes_.find(owner_tag);
+        if (owner_it != struct_def_nodes_.end() && owner_it->second) {
+          const Node* owner = owner_it->second;
+          const char* origin =
+              (owner->template_origin_name && owner->template_origin_name[0])
+                  ? owner->template_origin_name
+                  : owner->name;
+          if (origin &&
+              (matches_trait_family(origin, "add_lvalue_reference") ||
+               matches_trait_family(origin, "add_rvalue_reference"))) {
+            return 1LL;
+          }
+        }
+        if (owner_tag.find("::add_lvalue_reference_") != std::string::npos ||
+            owner_tag.find("::add_rvalue_reference_") != std::string::npos) {
+          return 1LL;
+        }
+      }
+      return 0LL;
     }
   }
   if (member == "value" && actual_args.size() == 2 &&
