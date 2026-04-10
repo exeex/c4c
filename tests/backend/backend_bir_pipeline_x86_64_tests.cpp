@@ -9252,6 +9252,36 @@ void test_x86_peephole_fuses_compare_setcc_test_branch_sequence() {
                   "x86 peephole should fuse cmp/setcc/test/jne into the direct conditional jump");
 }
 
+void test_x86_peephole_eliminates_dead_register_move() {
+  const std::string input =
+      ".text\n"
+      "helper:\n"
+      "  movq %r8, %r9\n"
+      "  movq %r10, %r9\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_not_contains(optimized, "  movq %r8, %r9\n",
+                      "x86 peephole should drop a dead register move when the translated dead-code pass sees the destination overwritten before any read");
+  expect_contains(optimized, "  movq %r10, %r9\n",
+                  "x86 peephole should keep the later overwrite that makes the earlier move dead");
+}
+
+void test_x86_peephole_eliminates_overwritten_stack_store() {
+  const std::string input =
+      ".text\n"
+      "helper:\n"
+      "  movq %r8, -8(%rbp)\n"
+      "  movq %r9, -8(%rbp)\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_not_contains(optimized, "  movq %r8, -8(%rbp)\n",
+                      "x86 peephole should drop an overwritten stack store when the translated dead-code pass proves the earlier slot write is never read");
+  expect_contains(optimized, "  movq %r9, -8(%rbp)\n",
+                  "x86 peephole should keep the later store that overwrites the same stack slot");
+}
+
 void test_x86_peephole_redirects_single_entry_loop_trampoline() {
   const std::string input =
       ".intel_syntax noprefix\n"
@@ -9988,6 +10018,8 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_peephole_eliminates_jump_to_immediately_following_label);
   RUN_TEST(test_x86_peephole_eliminates_redundant_push_pop_pair);
   RUN_TEST(test_x86_peephole_fuses_compare_setcc_test_branch_sequence);
+  RUN_TEST(test_x86_peephole_eliminates_dead_register_move);
+  RUN_TEST(test_x86_peephole_eliminates_overwritten_stack_store);
   RUN_TEST(test_x86_peephole_redirects_single_entry_loop_trampoline);
   RUN_TEST(test_x86_peephole_coalesces_single_register_loop_trampoline_copy);
   RUN_TEST(test_x86_peephole_coalesces_movslq_loop_trampoline_copy);

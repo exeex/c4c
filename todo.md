@@ -9,11 +9,12 @@ Source Plan: plan.md
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
   first live optimization round
 - immediate target:
-  evaluate the next translated peephole integration candidate outside the
-  currently parked stack-load family
-  - keep the stack-load remainder parked until a new slice can prove another
-    explicit predecessor-store or fallthrough rule instead of widening the
-    matcher ad hoc
+  wire the translated dead-code cleanup pass into the live peephole
+  orchestration with direct regression coverage for dead reg-move and
+  overwritten stack-store elimination
+  - keep the parked stack-load remainder untouched for this slice; this
+    iteration is about enabling another translated pass file rather than
+    widening loop-trampoline matching again
 
 ## Next Slice
 
@@ -24,6 +25,9 @@ Source Plan: plan.md
   passes are live enough for frame shrinking to be meaningful
 - continue evaluating which remaining translated peephole units can be compiled
   into the real path without widening into unrelated x86 top-level ownership
+- if the translated dead-code slice lands cleanly, evaluate whether the next
+  bounded candidate should be store-forwarding, copy-propagation, or tail-call
+  orchestration instead of more loop-trampoline shape growth
 
 ## Current Iteration Notes
 
@@ -66,6 +70,20 @@ Source Plan: plan.md
   mixed safe/unsafe shuffle handling: the current C++ pass still bails out of
   the whole trampoline when one sibling move cannot be coalesced, while the
   reference keeps the unsafe sibling parked and still applies the safe rewrite
+- this iteration intentionally pivots away from that matcher growth lane:
+  `dead_code.cpp` is already translated but still disconnected from the real
+  orchestration/build, so Step 3 can make progress by activating another
+  existing pass file with focused peephole-only coverage
+- the translated dead-code slice landed as a bounded orchestration/build step:
+  `peephole/passes/dead_code.cpp` now compiles into the real x86 backend and
+  runs inside the live peephole round without widening unrelated matcher logic
+- the aggregate `backend_bir_tests` runner still times out on pre-existing
+  typed-LIR validation failures, so this iteration validated the new pass with
+  direct filtered backend test invocations plus the full-suite regression guard
+- the full-suite regression guard stayed monotonic for this slice:
+  `2723` passed / `181` failed before and after, with no newly failing tests;
+  the guard reported one `>30s` test (`backend_bir_tests`), matching the
+  existing harness-timeout situation rather than a new regression
 - this iteration closes the simplest parked stack-load gap: the live pass now
   recognizes a single-slot `%rax` spill in the predecessor plus an immediate
   trampoline reload/copy-back pair and rewrites that shape onto the
@@ -208,3 +226,14 @@ Source Plan: plan.md
 - rebuilt and reran the full ctest suite for this test-only safety slice with
   monotonic results: `181` failures before, `181` failures after, no newly
   failing tests
+- compiled the translated `peephole/passes/dead_code.cpp` unit into the real
+  x86 backend and test builds
+- wired the translated dead register-move and overwritten stack-store cleanup
+  passes into the live x86 peephole optimization loop
+- added direct regression tests that prove the live x86 peephole now drops a
+  dead `movq` whose destination is overwritten before any read and removes an
+  earlier `(%rbp)` store when a later store overwrites the same slot before any
+  read
+- rebuilt, ran the filtered `test_x86_peephole_` backend subset plus the new
+  direct dead-code test filters, and reran the full ctest suite with monotonic
+  results: `181` failures before, `181` failures after, no newly failing tests

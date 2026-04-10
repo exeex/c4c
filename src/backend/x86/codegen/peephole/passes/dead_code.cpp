@@ -1,8 +1,9 @@
 // Mechanical C++-shaped translation of ref/claudes-c-compiler/src/backend/x86/codegen/peephole/passes/dead_code.rs
 // Dead code elimination passes.
 
+#include "../peephole.hpp"
+
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -10,185 +11,144 @@
 
 namespace c4c::backend::x86::codegen::peephole::passes {
 
-struct LineInfo;
-struct LineStore;
+namespace {
 
-enum class LineKind {
-  Nop,
-  Empty,
-  StoreRbp,
-  LoadRbp,
-  SelfMove,
-  Label,
-  Jmp,
-  JmpIndirect,
-  CondJmp,
-  Call,
-  Ret,
-  Push,
-  Pop,
-  SetCC,
-  Cmp,
-  Directive,
-  Other,
-};
+constexpr std::size_t kDeadMoveWindow = 24;
+constexpr std::size_t kDeadStoreWindow = 16;
 
-using RegId = std::uint8_t;
-constexpr RegId REG_NONE = 255;
-constexpr RegId REG_GP_MAX = 15;
-constexpr std::int32_t RBP_OFFSET_NONE = std::numeric_limits<std::int32_t>::min();
-
-bool is_read_modify_write(std::string_view trimmed);
-bool has_implicit_reg_usage(std::string_view trimmed);
-bool line_references_reg_fast(const LineInfo& info, RegId reg);
-bool is_near_epilogue(const LineInfo* infos, std::size_t pos);
-std::optional<std::uint32_t> parse_label_number(std::string_view label_with_colon);
-std::optional<std::uint32_t> parse_dotl_number(std::string_view s);
-std::optional<std::string_view> extract_jump_target(std::string_view s);
-void mark_nop(LineInfo& info);
-
-static std::string trimmed_line(const LineStore* store, const LineInfo& info, std::size_t index) {
-  return std::string(store->get(index).substr(info.trim_start));
+std::string_view trimmed_line(const LineStore* store, const LineInfo& info,
+                              std::size_t index) {
+  return std::string_view(store->get(index)).substr(info.trim_start);
 }
 
-static bool ranges_overlap(std::int32_t a_off, std::int32_t a_bytes, std::int32_t b_off, std::int32_t b_bytes) {
+bool ranges_overlap(std::int32_t a_off, std::int32_t a_bytes, std::int32_t b_off,
+                    std::int32_t b_bytes) {
   return a_off < b_off + b_bytes && b_off < a_off + a_bytes;
 }
 
-static std::string write_rbp_pattern(std::int32_t offset) {
-  if (offset < 0) {
-    return std::to_string(offset) + "(%rbp)";
-  }
-  return std::to_string(offset) + "(%rbp)";
+void mark_nop(LineInfo& info) {
+  info.kind = LineKind::Nop;
+  info.dest_reg = REG_NONE;
+  info.reg_refs = 0;
+  info.rbp_offset = RBP_OFFSET_NONE;
+  info.has_indirect_mem = false;
 }
+
+}  // namespace
 
 bool eliminate_dead_reg_moves(const LineStore* store, LineInfo* infos) {
   bool changed = false;
   const std::size_t len = store->len();
+
   for (std::size_t i = 0; i < len; ++i) {
-    if (infos[i].kind == LineKind::Nop || infos[i].kind == LineKind::Label || infos[i].kind == LineKind::Directive ||
-        infos[i].kind == LineKind::Jmp || infos[i].kind == LineKind::JmpIndirect || infos[i].kind == LineKind::CondJmp ||
-        infos[i].kind == LineKind::Call || infos[i].kind == LineKind::Ret) {
+    if (infos[i].is_nop() || infos[i].is_barrier()) {
       continue;
     }
 
-    const auto line = trimmed_line(store, infos[i], i);
-    if (!line.starts_with("movq ")) {
+    const auto trimmed = trimmed_line(store, infos[i], i);
+    const auto move = parse_reg_to_reg_movq(infos[i], trimmed);
+    if (!move.has_value()) {
       continue;
     }
-    const auto comma = line.find(',');
-    if (comma == std::string_view::npos) {
-      continue;
-    }
-    const auto dst = line.substr(comma + 1);
-    const auto dst_reg = infos[i].dest_reg;
+
+    const RegId dst_reg = move->second;
     if (dst_reg == REG_NONE || dst_reg > REG_GP_MAX || dst_reg == 4 || dst_reg == 5) {
       continue;
     }
 
-    const std::size_t scan_end = std::min(i + 24, len);
+    const std::uint16_t dst_mask = static_cast<std::uint16_t>(1u << dst_reg);
     bool dead = false;
+    const std::size_t scan_end = std::min(i + kDeadMoveWindow, len);
+
     for (std::size_t j = i + 1; j < scan_end; ++j) {
-      if (infos[j].kind == LineKind::Nop) {
+      if (infos[j].is_nop()) {
         continue;
       }
-      if (infos[j].kind == LineKind::Label || infos[j].kind == LineKind::Directive || infos[j].kind == LineKind::Jmp ||
-          infos[j].kind == LineKind::JmpIndirect || infos[j].kind == LineKind::CondJmp || infos[j].kind == LineKind::Call ||
-          infos[j].kind == LineKind::Ret) {
+      if (infos[j].is_barrier()) {
         break;
       }
-      if (has_implicit_reg_usage(trimmed_line(store, infos[j], j))) {
+
+      const auto scan_trimmed = trimmed_line(store, infos[j], j);
+      if (has_implicit_reg_usage(scan_trimmed)) {
         break;
       }
-      if (line_references_reg_fast(infos[j], dst_reg)) {
-        if (infos[j].dest_reg == dst_reg && !is_read_modify_write(trimmed_line(store, infos[j], j))) {
-          dead = true;
+
+      const bool refs_dst = (infos[j].reg_refs & dst_mask) != 0;
+      const bool writes_dst = get_dest_reg(infos[j]) == dst_reg;
+
+      if (writes_dst) {
+        const bool also_reads =
+            refs_dst &&
+            ((infos[j].kind == LineKind::Other && is_read_modify_write(scan_trimmed)) ||
+             infos[j].kind == LineKind::Cmp);
+        if (also_reads) {
+          break;
         }
+        dead = true;
+        break;
+      }
+
+      if (refs_dst) {
         break;
       }
     }
+
     if (dead) {
       mark_nop(infos[i]);
       changed = true;
     }
   }
+
   return changed;
 }
 
 bool eliminate_dead_stores(const LineStore* store, LineInfo* infos) {
   bool changed = false;
   const std::size_t len = store->len();
+
   for (std::size_t i = 0; i < len; ++i) {
-    if (infos[i].kind != LineKind::StoreRbp) {
+    if (infos[i].kind != LineKind::StoreRbp || infos[i].rbp_offset == RBP_OFFSET_NONE) {
       continue;
     }
-    const std::size_t scan_end = std::min(i + 16, len);
+
     bool slot_read = false;
     bool slot_overwritten = false;
+    const std::size_t scan_end = std::min(i + kDeadStoreWindow, len);
+
     for (std::size_t j = i + 1; j < scan_end; ++j) {
-      if (infos[j].kind == LineKind::Nop) {
+      if (infos[j].is_nop()) {
         continue;
       }
-      if (infos[j].kind == LineKind::Label || infos[j].kind == LineKind::Directive || infos[j].kind == LineKind::Jmp ||
-          infos[j].kind == LineKind::JmpIndirect || infos[j].kind == LineKind::CondJmp || infos[j].kind == LineKind::Call ||
-          infos[j].kind == LineKind::Ret) {
+      if (infos[j].is_barrier()) {
         slot_read = true;
         break;
       }
-      if (infos[j].kind == LineKind::LoadRbp) {
-        if (ranges_overlap(infos[i].rbp_offset, 8, infos[j].rbp_offset, 8)) {
-          slot_read = true;
-          break;
-        }
+
+      if (infos[j].kind == LineKind::LoadRbp && infos[j].rbp_offset != RBP_OFFSET_NONE &&
+          ranges_overlap(infos[i].rbp_offset, 8, infos[j].rbp_offset, 8)) {
+        slot_read = true;
+        break;
       }
-      if (infos[j].kind == LineKind::StoreRbp) {
-        if (ranges_overlap(infos[i].rbp_offset, 8, infos[j].rbp_offset, 8)) {
-          slot_overwritten = true;
-          break;
-        }
+
+      if (infos[j].kind == LineKind::StoreRbp && infos[j].rbp_offset != RBP_OFFSET_NONE &&
+          ranges_overlap(infos[i].rbp_offset, 8, infos[j].rbp_offset, 8)) {
+        slot_overwritten = true;
+        break;
       }
-      if (infos[j].kind == LineKind::Other || infos[j].kind == LineKind::Cmp) {
-        const auto line = trimmed_line(store, infos[j], j);
-        if (line.find(write_rbp_pattern(infos[i].rbp_offset)) != std::string::npos) {
-          slot_read = true;
-          break;
-        }
+
+      if ((infos[j].kind == LineKind::Other || infos[j].kind == LineKind::Cmp) &&
+          trimmed_line(store, infos[j], j).find("(%rbp)") != std::string_view::npos) {
+        slot_read = true;
+        break;
       }
     }
+
     if (slot_overwritten && !slot_read) {
       mark_nop(infos[i]);
       changed = true;
     }
   }
-  return changed;
-}
 
-bool eliminate_never_read_stores(const LineStore* store, LineInfo* infos) {
-  bool changed = false;
-  const std::size_t len = store->len();
-  for (std::size_t i = 0; i < len; ++i) {
-    if (infos[i].kind != LineKind::StoreRbp) {
-      continue;
-    }
-    const auto pattern = write_rbp_pattern(infos[i].rbp_offset);
-    bool read_anywhere = false;
-    for (std::size_t j = i + 1; j < len; ++j) {
-      if (infos[j].kind == LineKind::Nop) {
-        continue;
-      }
-      if (infos[j].kind == LineKind::Label && is_near_epilogue(infos, j)) {
-        continue;
-      }
-      if (trimmed_line(store, infos[j], j).find(pattern) != std::string::npos) {
-        read_anywhere = true;
-        break;
-      }
-    }
-    if (!read_anywhere) {
-      mark_nop(infos[i]);
-      changed = true;
-    }
-  }
   return changed;
 }
 
