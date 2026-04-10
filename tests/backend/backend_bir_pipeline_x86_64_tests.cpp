@@ -1053,6 +1053,93 @@ c4c::codegen::lir::LirModule make_global_x_y_pointer_compare_zero_return_module(
   return module;
 }
 
+c4c::codegen::lir::LirModule make_global_anonymous_struct_field_compare_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+  module.type_decls.push_back("%struct._anon_0 = type { i32, i32, i32 }");
+  module.globals.push_back(LirGlobal{LirGlobalId{0},
+                                     "s",
+                                     {},
+                                     false,
+                                     false,
+                                     "",
+                                     "global ",
+                                     "%struct._anon_0",
+                                     "{ i32 1, i32 2, i32 3 }",
+                                     4,
+                                     false});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "%struct._anon_0", "@s", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t1", "i32", "%t0"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "1"});
+  entry.insts.push_back(LirCastOp{"%t3", LirCastKind::ZExt, "i1", "%t2", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t4", false, "ne", "i32", "%t3", "0"});
+  entry.terminator = LirCondBr{"%t4", "block_1", "block_2"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock block1;
+  block1.id = LirBlockId{1};
+  block1.label = "block_1";
+  block1.terminator = LirRet{std::string("1"), "i32"};
+  function.blocks.push_back(std::move(block1));
+
+  LirBlock block2;
+  block2.id = LirBlockId{2};
+  block2.label = "block_2";
+  block2.insts.push_back(LirGepOp{"%t5", "%struct._anon_0", "@s", false, {"i32 0", "i32 1"}});
+  block2.insts.push_back(LirLoadOp{"%t6", "i32", "%t5"});
+  block2.insts.push_back(LirCmpOp{"%t7", false, "ne", "i32", "%t6", "2"});
+  block2.insts.push_back(LirCastOp{"%t8", LirCastKind::ZExt, "i1", "%t7", "i32"});
+  block2.insts.push_back(LirCmpOp{"%t9", false, "ne", "i32", "%t8", "0"});
+  block2.terminator = LirCondBr{"%t9", "block_3", "block_4"};
+  function.blocks.push_back(std::move(block2));
+
+  LirBlock block3;
+  block3.id = LirBlockId{3};
+  block3.label = "block_3";
+  block3.terminator = LirRet{std::string("2"), "i32"};
+  function.blocks.push_back(std::move(block3));
+
+  LirBlock block4;
+  block4.id = LirBlockId{4};
+  block4.label = "block_4";
+  block4.insts.push_back(LirGepOp{"%t10", "%struct._anon_0", "@s", false, {"i32 0", "i32 2"}});
+  block4.insts.push_back(LirLoadOp{"%t11", "i32", "%t10"});
+  block4.insts.push_back(LirCmpOp{"%t12", false, "ne", "i32", "%t11", "3"});
+  block4.insts.push_back(LirCastOp{"%t13", LirCastKind::ZExt, "i1", "%t12", "i32"});
+  block4.insts.push_back(LirCmpOp{"%t14", false, "ne", "i32", "%t13", "0"});
+  block4.terminator = LirCondBr{"%t14", "block_5", "block_6"};
+  function.blocks.push_back(std::move(block4));
+
+  LirBlock block5;
+  block5.id = LirBlockId{5};
+  block5.label = "block_5";
+  block5.terminator = LirRet{std::string("3"), "i32"};
+  function.blocks.push_back(std::move(block5));
+
+  LirBlock block6;
+  block6.id = LirBlockId{6};
+  block6.label = "block_6";
+  block6.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(block6));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_nested_anonymous_aggregate_alias_compare_zero_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -6406,6 +6493,29 @@ void test_backend_bir_pipeline_drives_x86_lir_global_x_y_pointer_compare_zero_th
                       "x86 LIR three-global load-and-pointer-compare input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_global_anonymous_struct_field_compare_zero_through_bir_end_to_end() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_global_anonymous_struct_field_compare_zero_return_module());
+  expect_true(lowered.has_value(),
+              "x86 LIR global anonymous-struct field compare input should lower into direct BIR before native x86 emission");
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty(),
+              "x86 LIR global anonymous-struct field compare lowering should collapse the bounded source-shaped slice to one constant-return BIR block");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_global_anonymous_struct_field_compare_zero_return_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "x86 LIR global anonymous-struct field compare input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR global anonymous-struct field compare input should preserve the folded zero return after bounded shared lowering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR global anonymous-struct field compare input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_nested_anonymous_aggregate_alias_compare_zero_through_bir_end_to_end() {
   const auto lowered = c4c::backend::try_lower_to_bir(
       make_nested_anonymous_aggregate_alias_compare_zero_return_module());
@@ -7620,6 +7730,8 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_nested_struct_i32_sum_compare_six_zero_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_struct_shadow_store_compare_two_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_global_x_y_pointer_compare_zero_through_bir_end_to_end);
+  RUN_TEST(
+      test_backend_bir_pipeline_drives_x86_lir_global_anonymous_struct_field_compare_zero_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_nested_anonymous_aggregate_alias_compare_zero_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_two_slot_sum_sub_three_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_second_slot_pointer_store_zero_load_return_through_bir_end_to_end);

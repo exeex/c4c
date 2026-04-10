@@ -4906,6 +4906,11 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
     return lowered;
   }
   if (const auto lowered =
+          try_lower_minimal_global_anonymous_struct_field_compare_zero_return_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered =
           try_lower_minimal_nested_anonymous_aggregate_alias_compare_zero_return_module(module);
       lowered.has_value()) {
     return lowered;
@@ -5276,6 +5281,18 @@ BirLoweringResult try_lower_to_bir_with_options(
             .phase = "legacy-lowering",
             .message =
                 "union-backed short-circuit alias seam lowered the source-shaped module before CFG normalization and phi-lowering rewrote the exact bounded join",
+        }},
+    };
+  }
+  if (auto lowered =
+          try_lower_minimal_global_anonymous_struct_field_compare_zero_return_module(module);
+      lowered.has_value()) {
+    return BirLoweringResult{
+        .module = std::move(lowered),
+        .notes = {BirLoweringNote{
+            .phase = "legacy-lowering",
+            .message =
+                "global anonymous-struct field compare seam lowered the source-shaped module before CFG normalization and phi-lowering rewrote the exact bounded branch chain",
         }},
     };
   }

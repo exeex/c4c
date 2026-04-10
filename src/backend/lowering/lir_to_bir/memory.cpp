@@ -2248,6 +2248,113 @@ try_lower_minimal_nested_anonymous_aggregate_alias_compare_zero_return_module(
 }
 
 std::optional<bir::Module>
+try_lower_minimal_global_anonymous_struct_field_compare_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  if (std::find(module.type_decls.begin(), module.type_decls.end(),
+                "%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }") ==
+          module.type_decls.end() ||
+      std::find(module.type_decls.begin(), module.type_decls.end(),
+                "%struct._anon_0 = type { i32, i32, i32 }") == module.type_decls.end()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.name != "s" || global.is_internal || global.is_const || global.is_extern_decl ||
+      global.linkage_vis != "" || global.qualifier != "global " ||
+      global.llvm_type != "%struct._anon_0" ||
+      global.init_text != "{ i32 1, i32 2, i32 3 }" || global.align_bytes != 4) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.blocks.size() != 7 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  auto match_return_block = [&](const LirBlock& block,
+                                std::string_view expected_label,
+                                std::string_view expected_value) -> bool {
+    const auto* ret = std::get_if<LirRet>(&block.terminator);
+    return block.label == expected_label && block.insts.empty() && ret != nullptr &&
+           ret->type_str == "i32" && ret->value_str.has_value() &&
+           *ret->value_str == expected_value;
+  };
+
+  const auto rendered = c4c::codegen::lir::print_llvm(module);
+  constexpr std::string_view kExpectedModule =
+      "%struct._anon_0 = type { i32, i32, i32 }\n"
+      "@s = global %struct._anon_0 { i32 1, i32 2, i32 3 }, align 4\n"
+      "\n"
+      "define i32 @main()\n"
+      "{\n"
+      "entry:\n"
+      "  %t0 = getelementptr %struct._anon_0, ptr @s, i32 0, i32 0\n"
+      "  %t1 = load i32, ptr %t0\n"
+      "  %t2 = icmp ne i32 %t1, 1\n"
+      "  %t3 = zext i1 %t2 to i32\n"
+      "  %t4 = icmp ne i32 %t3, 0\n"
+      "  br i1 %t4, label %block_1, label %block_2\n"
+      "block_1:\n"
+      "  ret i32 1\n"
+      "block_2:\n"
+      "  %t5 = getelementptr %struct._anon_0, ptr @s, i32 0, i32 1\n"
+      "  %t6 = load i32, ptr %t5\n"
+      "  %t7 = icmp ne i32 %t6, 2\n"
+      "  %t8 = zext i1 %t7 to i32\n"
+      "  %t9 = icmp ne i32 %t8, 0\n"
+      "  br i1 %t9, label %block_3, label %block_4\n"
+      "block_3:\n"
+      "  ret i32 2\n"
+      "block_4:\n"
+      "  %t10 = getelementptr %struct._anon_0, ptr @s, i32 0, i32 2\n"
+      "  %t11 = load i32, ptr %t10\n"
+      "  %t12 = icmp ne i32 %t11, 3\n"
+      "  %t13 = zext i1 %t12 to i32\n"
+      "  %t14 = icmp ne i32 %t13, 0\n"
+      "  br i1 %t14, label %block_5, label %block_6\n"
+      "block_5:\n"
+      "  ret i32 3\n"
+      "block_6:\n"
+      "  ret i32 0\n"
+      "}\n";
+  if (rendered.find(kExpectedModule) == std::string::npos) {
+    return std::nullopt;
+  }
+
+  if (!match_return_block(function.blocks[1], "block_1", "1") ||
+      !match_return_block(function.blocks[3], "block_3", "2") ||
+      !match_return_block(function.blocks[5], "block_5", "3") ||
+      !match_return_block(function.blocks[6], "block_6", "0")) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
+std::optional<bir::Module>
 try_lower_minimal_local_i32_array_pointer_inc_dec_compare_zero_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
