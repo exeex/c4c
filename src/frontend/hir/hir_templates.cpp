@@ -3130,10 +3130,10 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
       return ts;
     }
     if (ts.tpl_struct_origin) {
-      std::vector<std::string> refs = collect_template_arg_debug_refs(ts);
-      std::string updated_refs;
-      for (size_t i = 0; i < refs.size(); ++i) {
-        std::string part = refs[i];
+      std::vector<std::string> updated_refs;
+      updated_refs.reserve(ts.tpl_struct_args.size);
+      for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+        std::string part = template_arg_debug_text_at(ts, i);
         auto tit = type_bindings.find(part);
         if (tit != type_bindings.end()) {
           part = encode_template_type_arg_ref_hir(tit->second);
@@ -3184,12 +3184,16 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
           if (nit != nttp_bindings.end()) part = std::to_string(nit->second);
           }
         }
-        if (i) updated_refs += ",";
-        updated_refs += part;
+        updated_refs.push_back(part);
       }
       if (!updated_refs.empty()) {
-        assign_template_arg_debug_refs(
-            &ts, split_deferred_template_arg_refs(updated_refs));
+        ts.tpl_struct_args.data = new TemplateArgRef[updated_refs.size()]();
+        ts.tpl_struct_args.size = static_cast<int>(updated_refs.size());
+        for (size_t i = 0; i < updated_refs.size(); ++i) {
+          ts.tpl_struct_args.data[i].kind = TemplateArgKind::Type;
+          ts.tpl_struct_args.data[i].debug_text =
+              updated_refs[i].empty() ? nullptr : ::strdup(updated_refs[i].c_str());
+        }
       }
       seed_and_resolve_pending_template_type_if_needed(
           ts, type_bindings, nttp_bindings, nullptr,

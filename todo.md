@@ -60,6 +60,10 @@ Source Plan: plan.md
   hits are gone, and the remaining deprecated call sites are now concentrated
   in the single `resolve_struct_member_typedef_type(...)` fallback branch in
   `hir_templates.cpp`.
+- Current warning state after the latest slice: the HIR deprecated probe no
+  longer reports any call sites for the marked string-fallback helpers during
+  `c4cll` build, so remaining cleanup can focus on deleting or narrowing those
+  helpers rather than hunting more users.
 
 ## Completed
 
@@ -158,3 +162,7 @@ Source Plan: plan.md
   materializer helper: `materialize_from_typed(...)` now handles the no-arg
   default case directly and only falls back by rebuilding refs locally, so the
   remaining deprecated hits are confined to the member-typedef fallback path.
+- Replaced the last deprecated HIR helper usage in
+  `resolve_struct_member_typedef_type(...)` with a local `TemplateArgRef`
+  rebuild, so the current `c4cll` build no longer reports deprecated
+  call sites for the marked string-fallback helpers.
