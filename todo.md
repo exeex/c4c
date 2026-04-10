@@ -10,23 +10,22 @@ Source Plan: plan.md
   helper surface after the legacy matcher body removal in
   `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  follow the landed `LargeStructStack` direct-emitter slice with the next
-  bounded caller-stack aggregate case through the same native prepared-LIR
-  seam
-  - prefer an explicit `ParamClass::StructStack`-classifying SysV by-value
-    aggregate if the minimal LIR shape can stay isolated to the x86 direct
-    helper path
-  - keep the assertion surface on `%lv.param.*` slot population plus one field
-    load, not on broader translated prologue-owner activation
+  land the first bounded prepared-LIR direct-emitter regression for a true
+  SysV `ParamClass::StructStack` case by exhausting the six GP arg registers
+  with scalar parameters before a small by-value aggregate
+  - keep the helper assertion surface on `%lv.param.*` slot population plus
+    one field load from the stacked aggregate
+  - keep the caller assertion surface on staging the small aggregate in a
+    local slot and copying one qword into the outgoing stack area
   - keep the translated prologue owner parked out of build until the public
     x86 codegen header exposes enough complete backend surface for a broader
     prologue-owner cutover
 
 ## Next Slice
 
-- follow the landed caller-stack `LargeStructStack` direct-emitter regression
-  with the first bounded end-to-end `StructStack` case through the same native
-  prepared-LIR seam if a minimal memory-class aggregate can be isolated
+- decide whether the next aggregate follow-on should cover a second small
+  stack aggregate shape with a different field/load pattern or return to
+  broader translated-owner wiring around the parked prologue owner
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -38,6 +37,30 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration added the first bounded prepared-LIR direct-emitter coverage
+  for a true SysV `ParamClass::StructStack` case:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now includes a helper
+  with six leading integer params followed by a small `%struct.Pair` by-value
+  aggregate so the trailing aggregate is forced onto the caller stack while
+  still flowing through the native direct x86 emitter seam
+- `src/backend/x86/codegen/direct_calls.cpp`, `direct_dispatch.cpp`, and
+  `x86_codegen.hpp` now recognize and emit that bounded helper/main shape,
+  copying one incoming qword from `[rbp + 16]` into `%lv.param.p` on the
+  callee side and staging one outgoing qword into a 16-byte caller stack area
+  after the first six SysV integer arg registers are filled
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_bir_tests`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_small_struct_stack_param_slot_slice`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_register_aggregate_param_slot_slice`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_stack_aggregate_param_slot_slice`
+- broad validation note:
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure` is not a
+  clean owned signal here because the single `backend_bir_tests` binary still
+  times out around existing unrelated failures already outside this bounded
+  x86 direct-emitter aggregate slice; monotonic full-suite guard remains
+  deferred per the active plan note until a larger owner-path cutover lands
 
 - this iteration added the first backend-facing x86 caller-stack aggregate
   param-slot regression through the native prepared-LIR emitter seam:
