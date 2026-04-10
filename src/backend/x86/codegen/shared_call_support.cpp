@@ -220,6 +220,30 @@ void X86Codegen::store_rax_rdx_to(const Value& dest) {
   this->state.reg_cache.invalidate_all();
 }
 
+void X86Codegen::emit_f128_fldt(const SlotAddr& addr, std::uint32_t ptr_id, std::int64_t offset) {
+  (void)addr;
+  (void)ptr_id;
+  (void)offset;
+  this->state.emit("    fldt <f128-source>");
+}
+
+void X86Codegen::emit_f128_fstpt(const SlotAddr& addr, std::uint32_t ptr_id, std::int64_t offset) {
+  (void)addr;
+  (void)ptr_id;
+  (void)offset;
+  this->state.emit("    fstpt <f128-dest>");
+}
+
+void X86Codegen::emit_f128_load_finish(const Value& dest) {
+  (void)dest;
+  this->state.emit("    <finish-f128-load>");
+}
+
+void X86Codegen::emit_f128_load_to_x87(const Operand& operand) {
+  (void)operand;
+  this->state.emit("    <load-f128-to-x87>");
+}
+
 const char* X86Codegen::reg_for_type(const char* reg, IrType ty) const {
   switch (ty) {
     case IrType::I32:

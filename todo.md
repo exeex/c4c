@@ -7,29 +7,56 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner build-wiring follow-on after landing the bounded
-  `calls.cpp` slice: keep the newly linked translated call owner shippable
-  after replacing the placeholder shared x86 state/output hooks with real
-  bounded semantics, then use that upgraded helper layer to expose the next
-  parked translated owner frontier without widening into the still-blocked
-  prologue/runtime-owner cutover
+  `memory.cpp` slice: keep the newly linked translated memory owner shippable
+  after replacing the remaining missing shared f128 helper link points with
+  bounded transitional semantics, then use the now-linked owner cluster to
+  choose the next parked translated file that can advance without widening
+  into the still-blocked prologue/runtime-owner cutover
 - immediate target:
-  keep the landed `src/backend/x86/codegen/memory.cpp` reg-assignment surface
-  shippable after proving the minimal shared-state exposure does not break the
-  public x86 header boundary, then use the now-clean compile probe to expose
-  the next post-parser blocker tier before considering real build wiring
+  preserve the newly wired `src/backend/x86/codegen/memory.cpp` build path
+  after the bounded shared f128 helper backfill, then inventory whether the
+  next Step 3 move should be another translated owner wire-in or shared helper
+  tightening around the still-parked f128/prologue surfaces
 
 ## Next Slice
 
-- use the now-passing `src/backend/x86/codegen/memory.cpp` syntax probe to
-  decide whether the next bounded move is temporary target wiring for
-  `memory.cpp` itself or a different parked owner that can expose a cleaner
-  next blocker tier without widening into translated prologue ownership
-- if `memory.cpp` target wiring surfaces linker-only gaps in already-shared
-  helper/state seams, treat those as the next Step 3 frontier; if it instead
-  pulls in parked prologue/runtime state, leave `memory.cpp` out of the build
-  and pivot to a different owner that stays on the shared helper lane
+- inspect whether the next bounded Step 3 frontier is wiring another parked
+  translated owner that already compiles against the current shared surface or
+  tightening the transitional shared f128 helper/header contract without
+  pulling the not-yet-buildable `src/backend/x86/codegen/f128.cpp` owner into
+  the active targets
+- if the next candidate owner depends on the same placeholder-only f128 layer,
+  treat the missing semantic parity as a separate bounded helper-upgrade slice
+  rather than widening straight into the parked translated f128 owner file
 
 ## Current Iteration Notes
+
+- this iteration wires `src/backend/x86/codegen/memory.cpp` into both active
+  x86 source lists in `CMakeLists.txt` and keeps the owner linkable by adding
+  the missing bounded shared f128 helper definitions directly to
+  `src/backend/x86/codegen/shared_call_support.cpp` instead of widening into
+  the still-inconsistent parked `src/backend/x86/codegen/f128.cpp` owner
+- implementation note:
+  `tests/backend/backend_shared_util_tests.cpp` now exercises linked
+  translated memory-owner helper behavior directly, covering segment-symbol
+  stores, offset/GEP/memcpy helper emission, and one F128 load path that
+  records translated load provenance through shared state
+- concrete blocker result from the temporary wire-in:
+  `memory.cpp` itself compiled cleanly with the active x86 include surface,
+  but linking it immediately exposed four missing shared f128 helpers
+  (`emit_f128_load_to_x87`, `emit_f128_fstpt`, `emit_f128_fldt`, and
+  `emit_f128_load_finish`); the parked `f128.cpp` file remains out of build
+  because it still does not match the public x86 header contract
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_memory_owner_surface`, and
+  `./build/backend_shared_util_tests`
+- broad validation passed:
+  `cmake --build --preset default --target c4cll -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and one new `>30s` note on `backend_bir_tests`
 
 - this iteration confirms the minimal `reg_assignments` exposure needed by the
   parked translated memory owner is still a bounded Step 3 move without

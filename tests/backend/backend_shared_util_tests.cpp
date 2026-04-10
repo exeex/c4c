@@ -393,6 +393,49 @@ void test_x86_codegen_state_tracks_translated_reg_assignments() {
               "shared x86 translated state should expose bounded register-assignment lookup for parked owner files");
 }
 
+void test_x86_translated_memory_owner_emits_linked_helper_text() {
+  using AddressSpace = c4c::backend::x86::AddressSpace;
+  using IrType = c4c::backend::x86::IrType;
+  using Operand = c4c::backend::x86::Operand;
+  using StackSlot = c4c::backend::x86::StackSlot;
+
+  c4c::backend::x86::X86Codegen codegen;
+  codegen.state.slots.emplace(5, StackSlot{-24});
+  codegen.state.slots.emplace(7, StackSlot{-40});
+  codegen.state.slots.emplace(9, StackSlot{-56});
+
+  codegen.emit_seg_store_symbol_impl(Operand{5}, "tls_anchor", IrType::I64, AddressSpace::SegGs);
+  codegen.emit_add_offset_to_addr_reg_impl(8);
+  codegen.emit_gep_direct_const_impl(StackSlot{-32}, 16);
+  codegen.emit_memcpy_impl_impl(24);
+  codegen.emit_load_impl(c4c::backend::x86::Value{9}, c4c::backend::x86::Value{7}, IrType::F128);
+
+  std::string asm_text;
+  for (const auto& line : codegen.state.asm_lines) {
+    asm_text += line;
+    asm_text.push_back('\n');
+  }
+
+  expect_contains(asm_text, "    movq -24(%rbp), %rax",
+                  "wired translated memory owner should load the source operand into the accumulator before a segment-symbol store");
+  expect_contains(asm_text, "    movq %rax, %gs:tls_anchor(%rip)",
+                  "wired translated memory owner should emit segment-symbol stores through the linked owner body");
+  expect_contains(asm_text, "    addq $8, %rcx",
+                  "wired translated memory owner should keep offset-add helpers linked through the active x86 build");
+  expect_contains(asm_text, "    leaq -16(%rbp), %rax",
+                  "wired translated memory owner should keep direct-const GEP helpers linked through the active x86 build");
+  expect_contains(asm_text, "    movq $24, %rcx",
+                  "wired translated memory owner should keep memcpy size setup linked through the active x86 build");
+  expect_contains(asm_text, "    rep movsb",
+                  "wired translated memory owner should keep memcpy emission linked through the active x86 build");
+  expect_contains(asm_text, "    fldt <f128-source>",
+                  "wired translated memory owner should keep the bounded shared f128 load helper linked for parked memory-owner F128 loads");
+  expect_contains(asm_text, "    <finish-f128-load>",
+                  "wired translated memory owner should keep the bounded shared f128 load-finish helper linked for parked memory-owner F128 loads");
+  expect_true(codegen.state.get_f128_source(9).has_value() && *codegen.state.get_f128_source(9) == 7,
+              "wired translated memory owner should preserve F128 load provenance through the shared translated state");
+}
+
 void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {
   using X86Codegen = c4c::backend::x86::X86Codegen;
 
@@ -4377,6 +4420,7 @@ int main(int argc, char* argv[]) {
   test_x86_translated_shared_call_support_tracks_real_state_and_output();
   test_x86_codegen_header_exports_translated_memory_owner_surface();
   test_x86_codegen_state_tracks_translated_reg_assignments();
+  test_x86_translated_memory_owner_emits_linked_helper_text();
   test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
   test_x86_translated_regalloc_pruning_helpers_match_shared_contract();
