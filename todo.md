@@ -6,31 +6,55 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 ownership-removal follow-up after landing the direct-globals helper
-  migration for the remaining bounded scalar-global BIR routes
+- Step 3 translated-owner cutover for the remaining direct dispatcher surface
+  in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  reassess the remaining direct-BIR dispatcher-owned routes in
-  `src/backend/x86/codegen/emit.cpp` now that `direct_globals.cpp` owns the
-  scalar global store-reload and helper-store-plus-entry-return slices too
-  - prefer the next bounded helper/owner extraction or a translated top-level
-    owner-unit cutover that reduces real `emit.cpp` ownership instead of
-    re-opening already-finished scalar-global seams
-  - keep validation centered on focused backend regressions plus a matched
-    broad rerun when the stored baseline is stale
+  move the direct BIR and prepared-LIR dispatch ladders out of
+  `src/backend/x86/codegen/emit.cpp` into a sibling owner helper so `emit.cpp`
+  keeps only the public entrypoints plus the still-local parse/asm helpers
+  - add focused tests that call the new dispatcher helpers explicitly so the
+    ownership move stays observable apart from end-to-end x86 emission tests
+  - keep validation centered on backend-only targets and focused x86
+    regressions for this legacy-removal slice
 
 ## Next Slice
 
-- choose the next real ownership reduction in `emit.cpp` from the current live
-  tree rather than from the older scalar-global notes above
-- likely candidates:
-  another bounded direct-BIR helper route still dispatched only from
-  `emit.cpp`, or a translated top-level owner-unit cutover such as
-  `comparison.cpp` or `returns.cpp`
-- keep using focused backend regressions and compare against a matched current
-  full-suite baseline when broad validation is rerun
+- prune the next remaining `emit.cpp`-local ownership cluster after dispatcher
+  extraction, likely one of the parse/asm helpers still embedded in
+  `emit.cpp` or a translated top-level owner cutover that lets the public
+  entrypoint stop depending on legacy-local parsing
+- keep using focused backend regressions and only rerun the broad monotonic
+  guard once the bigger x86 owner switch settles
 
 ## Current Iteration Notes
 
+- this iteration moved the remaining helper-route dispatch ladders out of
+  `src/backend/x86/codegen/emit.cpp` into the new sibling owner file
+  `src/backend/x86/codegen/direct_dispatch.cpp` through
+  `try_emit_direct_bir_helper_module(...)` and
+  `try_emit_direct_prepared_lir_helper_module(...)`
+- `emit.cpp` now keeps the public x86 entrypoints plus the still-local
+  parse/asm helpers, while the helper-backed BIR and prepared-LIR route
+  ladders no longer live in that legacy owner file
+- added focused shared-util coverage that calls the new dispatcher owner
+  helpers explicitly for one helper-backed BIR route and one helper-backed
+  prepared-LIR route so the ownership move stays observable outside the
+  end-to-end backend tests
+- focused validation passed:
+  `cmake --build build -j8 --target backend_shared_util_tests backend_bir_tests`,
+  `./build/backend_shared_util_tests`,
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`,
+  `./build/backend_bir_tests test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_store_reload_end_to_end`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_direct_bir_global_store_return_and_entry_return_end_to_end`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_param_slot_add_slice`, and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_source_00080_void_helper_call_slice`
+- focused validation note:
+  `./build/backend_bir_tests test_x86_try_emit_module_reports_direct_bir_support_explicitly`
+  still fails on the current tree because its "unsupported" fixture is the
+  two-function immediate-return module from `make_unsupported_multi_function_bir_module()`,
+  which the long-standing local parser in `emit.cpp` already accepts; this run
+  did not modify that parse-backed path
 - this iteration moved the remaining bounded scalar-global BIR owner routes
   out of `src/backend/x86/codegen/emit.cpp` into
   `src/backend/x86/codegen/direct_globals.cpp` through the new

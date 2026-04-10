@@ -352,6 +352,94 @@ void test_x86_translated_globals_owner_handles_minimal_global_store_return_and_e
               "x86 translated globals owner helper should emit both the helper store-return body and the independent entry immediate return on the bounded global slice");
 }
 
+void test_x86_direct_dispatch_owner_handles_helper_backed_bir_slice() {
+  c4c::backend::bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.globals.push_back(c4c::backend::bir::Global{
+      .name = "dispatch_counter",
+      .type = c4c::backend::bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = c4c::backend::bir::Value::immediate_i32(3),
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::LoadGlobalInst{
+              .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+              .global_name = "dispatch_counter",
+              .byte_offset = 0,
+              .align_bytes = 4,
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto rendered = c4c::backend::x86::try_emit_direct_bir_helper_module(module);
+  expect_true(rendered.has_value(),
+              "the x86 direct dispatcher owner should accept helper-backed BIR slices after the route ladder moves out of emit.cpp");
+  expect_true(rendered->find(".globl dispatch_counter") != std::string::npos &&
+                  rendered->find("lea rax, dispatch_counter[rip]") != std::string::npos,
+              "the x86 direct dispatcher owner should still forward the bounded scalar global-load BIR slice into the translated globals helper route");
+}
+
+void test_x86_direct_dispatch_owner_handles_helper_backed_prepared_lir_slice() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction helper;
+  helper.name = "add_one";
+  helper.signature_text = "define i32 @add_one(i32 %p.x)\n";
+  helper.entry = LirBlockId{0};
+  helper.alloca_insts.push_back(LirAllocaOp{"%lv.param.x", "i32", "", 4});
+  helper.alloca_insts.push_back(LirStoreOp{"i32", "%p.x", "%lv.param.x"});
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.param.x"});
+  helper_entry.insts.push_back(LirBinOp{"%t1", LirBinaryOpcode::Add, "i32", "%t0", "1"});
+  helper_entry.insts.push_back(LirStoreOp{"i32", "%t1", "%lv.param.x"});
+  helper_entry.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.param.x"});
+  helper_entry.terminator = LirRet{std::string("%t2"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"%t0", "i32", "@add_one", "(i32)", "i32 5"});
+  main_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+
+  const auto prepared =
+      c4c::backend::prepare_lir_module_for_target(module, c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_direct_prepared_lir_helper_module(prepared);
+  expect_true(rendered.has_value(),
+              "the x86 direct dispatcher owner should accept helper-backed prepared-LIR slices after the route ladder moves out of emit.cpp");
+  expect_true(rendered->find(".globl add_one") != std::string::npos &&
+                  rendered->find("main:\n  mov edi, 5\n  call add_one\n  ret\n") !=
+                      std::string::npos,
+              "the x86 direct dispatcher owner should still forward the bounded param-slot prepared-LIR slice into the direct call helper route");
+}
+
 void test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module() {
   c4c::backend::bir::Module module;
   module.string_constants.push_back(c4c::backend::bir::StringConstant{
@@ -3639,6 +3727,8 @@ int main(int argc, char* argv[]) {
   test_x86_translated_globals_owner_handles_minimal_extern_scalar_global_load_slice();
   test_x86_translated_globals_owner_handles_minimal_scalar_global_store_reload_slice();
   test_x86_translated_globals_owner_handles_minimal_global_store_return_and_entry_return_slice();
+  test_x86_direct_dispatch_owner_handles_helper_backed_bir_slice();
+  test_x86_direct_dispatch_owner_handles_helper_backed_prepared_lir_slice();
   test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module();
   test_backend_shared_call_decode_parses_bir_minimal_void_direct_call_imm_return_module();
   test_backend_shared_call_decode_parses_bir_minimal_two_arg_direct_call_module();
