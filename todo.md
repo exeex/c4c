@@ -7,22 +7,25 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner cutover follow-on in the bounded prepared-LIR
-  direct-calls sibling seam after landing the bounded call-crossing helper
-  family ownership move out of `src/backend/x86/codegen/emit.cpp`
+  direct-calls sibling seam after landing the both-local double-rewrite
+  backend-entrypoint regression for the local/rewrite two-argument helper
+  family
 - immediate target:
-  move the first local-arg two-argument helper-call family onto the shared
-  backend entrypoint coverage surface now that the native prepared-LIR x86
-  emitter already owns the bounded matcher
+  choose the next still-direct-emitter-only public backend entrypoint
+  representative from the same `add_pair(i32, i32)` local/rewrite family so
+  the shared x86 backend path keeps shrinking the remaining uncovered native
+  matcher surface
   - add focused backend-entrypoint regression coverage for the bounded
-    `add_pair(i32, i32)` helper with a first-operand local-slot reload and
-    keep the slice limited to that one prepared-LIR family
+    second-local rewrite shape where the first operand stays immediate and the
+    second operand round-trips through the trivial rewrite/store/reload path
   - keep the broader translated prologue owner parked; this iteration is only
     about shrinking the remaining prepared-LIR direct-call matcher surface
 
 ## Next Slice
 
-- choose the next bounded prepared-LIR local-arg/rewrite direct-call family
-  after the first local-arg two-argument helper entrypoint slice
+- after the second-local rewrite entrypoint slice, choose the next public-
+  backend coverage representative from the remaining native prepared-LIR
+  helper families instead of adding more direct-emitter-only assertions
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -34,6 +37,15 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration adds shared backend entrypoint coverage for the bounded
+  both-local double-rewrite two-argument prepared-LIR helper family so the
+  public `c4c::backend::emit_module(...)` x86 path, not just the direct
+  emitter seam, now pins the native `add_pair(i32, i32)` ownership shape when
+  both operands reload from locals after trivial rewrite/store round-trips
+- focused validation passed for this slice:
+  `cmake --build --preset default --target backend_bir_tests -j8` and
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_rewrite_direct_call_on_native_x86_path`
 
 - this iteration extended the shared backend entrypoint coverage for the first
   local-arg two-argument prepared-LIR helper family:
