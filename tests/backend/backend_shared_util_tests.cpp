@@ -224,6 +224,21 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
   const auto escaped = c4c::backend::x86::escape_asm_string(decoded);
   expect_true(decoded == std::string("Hi\n\t\"") && escaped == "Hi\\n\\t\\\"",
               "x86 translated asm-emitter helpers should decode LLVM byte strings and re-escape them for asm string literals");
+  expect_true(c4c::backend::x86::x86_reg_name_to_64("r9d") == "r9" &&
+                  c4c::backend::x86::x86_reg_name_to_16("r10") == "r10w" &&
+                  c4c::backend::x86::x86_reg_name_to_8l("rbp") == "bpl" &&
+                  c4c::backend::x86::x86_reg_name_to_8h("rax") == "ah",
+              "x86 translated inline-asm register-width helpers should keep the ref 64-bit, 16-bit, low-8, and high-8 register mapping contract");
+  expect_true(c4c::backend::x86::x86_format_reg("rax", std::nullopt) == "rax" &&
+                  c4c::backend::x86::x86_format_reg("rax", 'k') == "eax" &&
+                  c4c::backend::x86::x86_format_reg("r8", 'w') == "r8w" &&
+                  c4c::backend::x86::x86_format_reg("xmm3", 'b') == "xmm3" &&
+                  c4c::backend::x86::x86_format_reg("st(1)", 'k') == "st(1)",
+              "x86 translated inline-asm register-format helpers should preserve xmm/x87 operands while formatting integer registers to the requested width");
+  expect_true(std::string(c4c::backend::x86::x86_gcc_cc_to_x86("c")) == "b" &&
+                  std::string(c4c::backend::x86::x86_gcc_cc_to_x86("nz")) == "ne" &&
+                  std::string(c4c::backend::x86::x86_gcc_cc_to_x86("ge")) == "ge",
+              "x86 translated inline-asm condition-code helpers should keep the ref GCC-to-SETcc suffix mapping contract");
 
   const auto linux_function =
       c4c::backend::x86::emit_function_prelude("x86_64-unknown-linux-gnu", "main");

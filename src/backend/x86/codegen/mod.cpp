@@ -36,6 +36,116 @@ const char* reg_name_to_32(std::string_view name) {
   return "";
 }
 
+std::string x86_reg_name_to_64(std::string_view reg) {
+  if (reg == "rax" || reg == "eax" || reg == "ax" || reg == "al" || reg == "ah") return "rax";
+  if (reg == "rbx" || reg == "ebx" || reg == "bx" || reg == "bl" || reg == "bh") return "rbx";
+  if (reg == "rcx" || reg == "ecx" || reg == "cx" || reg == "cl" || reg == "ch") return "rcx";
+  if (reg == "rdx" || reg == "edx" || reg == "dx" || reg == "dl" || reg == "dh") return "rdx";
+  if (reg == "rsi" || reg == "esi" || reg == "si" || reg == "sil") return "rsi";
+  if (reg == "rdi" || reg == "edi" || reg == "di" || reg == "dil") return "rdi";
+  if (reg == "rsp" || reg == "esp" || reg == "sp" || reg == "spl") return "rsp";
+  if (reg == "rbp" || reg == "ebp" || reg == "bp" || reg == "bpl") return "rbp";
+  if (reg == "r8" || reg == "r8d" || reg == "r8w" || reg == "r8b") return "r8";
+  if (reg == "r9" || reg == "r9d" || reg == "r9w" || reg == "r9b") return "r9";
+  if (reg == "r10" || reg == "r10d" || reg == "r10w" || reg == "r10b") return "r10";
+  if (reg == "r11" || reg == "r11d" || reg == "r11w" || reg == "r11b") return "r11";
+  if (reg == "r12" || reg == "r12d" || reg == "r12w" || reg == "r12b") return "r12";
+  if (reg == "r13" || reg == "r13d" || reg == "r13w" || reg == "r13b") return "r13";
+  if (reg == "r14" || reg == "r14d" || reg == "r14w" || reg == "r14b") return "r14";
+  if (reg == "r15" || reg == "r15d" || reg == "r15w" || reg == "r15b") return "r15";
+  return std::string(reg);
+}
+
+std::string x86_reg_name_to_16(std::string_view reg) {
+  const auto wide = x86_reg_name_to_64(reg);
+  if (wide == "rax") return "ax";
+  if (wide == "rbx") return "bx";
+  if (wide == "rcx") return "cx";
+  if (wide == "rdx") return "dx";
+  if (wide == "rsi") return "si";
+  if (wide == "rdi") return "di";
+  if (wide == "rsp") return "sp";
+  if (wide == "rbp") return "bp";
+  if (wide == "r8") return "r8w";
+  if (wide == "r9") return "r9w";
+  if (wide == "r10") return "r10w";
+  if (wide == "r11") return "r11w";
+  if (wide == "r12") return "r12w";
+  if (wide == "r13") return "r13w";
+  if (wide == "r14") return "r14w";
+  if (wide == "r15") return "r15w";
+  return std::string(reg);
+}
+
+std::string x86_reg_name_to_8l(std::string_view reg) {
+  const auto wide = x86_reg_name_to_64(reg);
+  if (wide == "rax") return "al";
+  if (wide == "rbx") return "bl";
+  if (wide == "rcx") return "cl";
+  if (wide == "rdx") return "dl";
+  if (wide == "rsi") return "sil";
+  if (wide == "rdi") return "dil";
+  if (wide == "rsp") return "spl";
+  if (wide == "rbp") return "bpl";
+  if (wide == "r8") return "r8b";
+  if (wide == "r9") return "r9b";
+  if (wide == "r10") return "r10b";
+  if (wide == "r11") return "r11b";
+  if (wide == "r12") return "r12b";
+  if (wide == "r13") return "r13b";
+  if (wide == "r14") return "r14b";
+  if (wide == "r15") return "r15b";
+  return std::string(reg);
+}
+
+std::string x86_reg_name_to_8h(std::string_view reg) {
+  const auto wide = x86_reg_name_to_64(reg);
+  if (wide == "rax") return "ah";
+  if (wide == "rbx") return "bh";
+  if (wide == "rcx") return "ch";
+  if (wide == "rdx") return "dh";
+  return std::string(reg);
+}
+
+std::string x86_format_reg(std::string_view reg, std::optional<char> modifier) {
+  if ((reg.size() >= 3 && reg.substr(0, 3) == "xmm") || reg == "st" ||
+      (reg.size() >= 3 && reg.substr(0, 3) == "st(")) {
+    return std::string(reg);
+  }
+  switch (modifier.value_or('q')) {
+    case 'k':
+    case 'l': {
+      const char* mapped = reg_name_to_32(x86_reg_name_to_64(reg));
+      return *mapped == '\0' ? std::string(reg) : std::string(mapped);
+    }
+    case 'w': return x86_reg_name_to_16(reg);
+    case 'b': return x86_reg_name_to_8l(reg);
+    case 'h': return x86_reg_name_to_8h(reg);
+    case 'q': return x86_reg_name_to_64(reg);
+    default: return std::string(reg);
+  }
+}
+
+const char* x86_gcc_cc_to_x86(std::string_view cond) {
+  if (cond == "e" || cond == "z") return "e";
+  if (cond == "ne" || cond == "nz") return "ne";
+  if (cond == "s") return "s";
+  if (cond == "ns") return "ns";
+  if (cond == "g") return "g";
+  if (cond == "ge") return "ge";
+  if (cond == "l") return "l";
+  if (cond == "le") return "le";
+  if (cond == "a") return "a";
+  if (cond == "ae") return "ae";
+  if (cond == "b" || cond == "c") return "b";
+  if (cond == "be") return "be";
+  if (cond == "o") return "o";
+  if (cond == "no") return "no";
+  if (cond == "p") return "p";
+  if (cond == "np") return "np";
+  return "";
+}
+
 const char* phys_reg_name(c4c::backend::PhysReg reg) {
   switch (reg.index) {
     case 1: return "rbx";

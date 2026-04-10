@@ -392,6 +392,12 @@ struct MinimalGlobalStoreReturnAndEntryReturnSlice {
 };
 
 const char* reg_name_to_32(std::string_view name);
+std::string x86_reg_name_to_64(std::string_view reg);
+std::string x86_reg_name_to_16(std::string_view reg);
+std::string x86_reg_name_to_8l(std::string_view reg);
+std::string x86_reg_name_to_8h(std::string_view reg);
+std::string x86_format_reg(std::string_view reg, std::optional<char> modifier);
+const char* x86_gcc_cc_to_x86(std::string_view cond);
 const char* phys_reg_name(c4c::backend::PhysReg reg);
 const char* phys_reg_name_32(c4c::backend::PhysReg reg);
 const char* x86_alu_mnemonic(c4c::backend::bir::BinaryOpcode op);

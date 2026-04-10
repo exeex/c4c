@@ -26,16 +26,16 @@ std::optional<char> X86Codegen::default_modifier_for_type(std::optional<IrType> 
 }
 
 std::string X86Codegen::format_x86_reg(const std::string& reg, std::optional<char> modifier) {
-  return reg;
+  return x86_format_reg(reg, modifier);
 }
 
-std::string X86Codegen::reg_to_32(const std::string& reg) { return reg; }
-std::string X86Codegen::reg_to_64(const std::string& reg) { return reg; }
-std::string X86Codegen::reg_to_16(const std::string& reg) { return reg; }
-std::string X86Codegen::reg_to_8l(const std::string& reg) { return reg; }
+std::string X86Codegen::reg_to_32(const std::string& reg) { return x86_format_reg(reg, 'k'); }
+std::string X86Codegen::reg_to_64(const std::string& reg) { return x86_reg_name_to_64(reg); }
+std::string X86Codegen::reg_to_16(const std::string& reg) { return x86_reg_name_to_16(reg); }
+std::string X86Codegen::reg_to_8l(const std::string& reg) { return x86_reg_name_to_8l(reg); }
 
 const char* X86Codegen::gcc_cc_to_x86(const std::string& cond) {
-  return "cc";
+  return x86_gcc_cc_to_x86(cond);
 }
 
 }  // namespace c4c::backend::x86
