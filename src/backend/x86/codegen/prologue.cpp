@@ -25,6 +25,14 @@ std::string_view scalar_param_ref_type_name(IrType ty) {
   }
 }
 
+std::optional<StackSlot> lookup_param_slot(X86Codegen& codegen, std::string_view param_name) {
+  const auto slot_name = x86_param_slot_name(param_name);
+  if (slot_name.empty()) {
+    return std::nullopt;
+  }
+  return codegen.state.get_slot(slot_name);
+}
+
 [[maybe_unused]] void emit_struct_sse_param_store(X86Codegen& codegen,
                                                   std::int64_t slot_offset,
                                                   std::size_t lo_fp_idx,
@@ -225,31 +233,45 @@ void X86Codegen::emit_store_params_impl(const IrFunction& func) {
 
   for (std::size_t index = 0; index < func.params.size() && index < classification.classes.size();
        ++index) {
+    const auto param_slot = lookup_param_slot(*this, func.params[index].name);
     const auto assigned = this->reg_assignments.find(func.params[index].name);
     if (assigned == this->reg_assignments.end()) {
+      if (param_slot.has_value()) {
+        if (const auto* reg =
+                std::get_if<ParamClass::StructSseReg>(&classification.classes[index].data)) {
+          emit_struct_sse_param_store(*this, param_slot->0, reg->lo_fp_idx, reg->hi_fp_idx);
+        } else if (const auto* reg = std::get_if<ParamClass::StructMixedIntSseReg>(
+                       &classification.classes[index].data)) {
+          emit_struct_mixed_int_sse_param_store(
+              *this, param_slot->0, reg->int_reg_idx, reg->fp_reg_idx);
+        } else if (const auto* reg = std::get_if<ParamClass::StructMixedSseIntReg>(
+                       &classification.classes[index].data)) {
+          emit_struct_mixed_sse_int_param_store(
+              *this, param_slot->0, reg->fp_reg_idx, reg->int_reg_idx);
+        }
+      }
       continue;
     }
     const auto assigned_param_count = reg_param_use_counts[assigned->second.index];
-    if (!x86_param_can_prestore_direct_to_reg(false, assigned->second, assigned_param_count)) {
-      continue;
-    }
-    if (const auto* reg = std::get_if<ParamClass::IntReg>(&classification.classes[index].data)) {
-      const auto* move_instr = x86_param_prestore_move_instr();
-      const auto* src_reg = x86_param_prestore_arg_reg(reg->reg_idx);
-      const auto* dest_reg = x86_param_prestore_dest_reg(assigned->second);
-      if (move_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
-        this->state.emit_fmt(format_args!("    {} %{}, %{}", move_instr, src_reg, dest_reg));
-        x86_mark_param_prestored(this->state.param_pre_stored, index);
-      }
-    } else if (const auto* reg =
-                   std::get_if<ParamClass::FloatReg>(&classification.classes[index].data)) {
-      const auto scalar_type = scalar_param_ref_type_name(func.params[index].type);
-      const auto* move_instr = x86_param_prestore_float_move_instr(scalar_type);
-      const auto* src_reg = x86_param_prestore_float_arg_reg(reg->reg_idx, scalar_type);
-      const auto* dest_reg = x86_param_prestore_dest_reg(assigned->second, scalar_type);
-      if (move_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
-        this->state.emit_fmt(format_args!("    {} %{}, %{}", move_instr, src_reg, dest_reg));
-        x86_mark_param_prestored(this->state.param_pre_stored, index);
+    if (x86_param_can_prestore_direct_to_reg(false, assigned->second, assigned_param_count)) {
+      if (const auto* reg = std::get_if<ParamClass::IntReg>(&classification.classes[index].data)) {
+        const auto* move_instr = x86_param_prestore_move_instr();
+        const auto* src_reg = x86_param_prestore_arg_reg(reg->reg_idx);
+        const auto* dest_reg = x86_param_prestore_dest_reg(assigned->second);
+        if (move_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
+          this->state.emit_fmt(format_args!("    {} %{}, %{}", move_instr, src_reg, dest_reg));
+          x86_mark_param_prestored(this->state.param_pre_stored, index);
+        }
+      } else if (const auto* reg =
+                     std::get_if<ParamClass::FloatReg>(&classification.classes[index].data)) {
+        const auto scalar_type = scalar_param_ref_type_name(func.params[index].type);
+        const auto* move_instr = x86_param_prestore_float_move_instr(scalar_type);
+        const auto* src_reg = x86_param_prestore_float_arg_reg(reg->reg_idx, scalar_type);
+        const auto* dest_reg = x86_param_prestore_dest_reg(assigned->second, scalar_type);
+        if (move_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
+          this->state.emit_fmt(format_args!("    {} %{}, %{}", move_instr, src_reg, dest_reg));
+          x86_mark_param_prestored(this->state.param_pre_stored, index);
+        }
       }
     }
   }

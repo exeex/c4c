@@ -10,33 +10,53 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  reconstruct the parked translated x86 param-slot lookup seam for aggregate
-  parameter allocas, then use that seam to wire the first real slot-backed
-  prologue storage branch for `ParamClass::StructSseReg`,
-  `ParamClass::StructMixedIntSseReg`, and
-  `ParamClass::StructMixedSseIntReg` without pulling the parked translated
-  prologue owner into the active build yet
-  - keep this slice on parked aggregate storage owner wiring rather than
-    reopening scalar, peephole, or call-lowering work
-  - lock the new seam with focused shared-helper coverage before considering a
-    wider prologue-owner cutover
+  widen the newly landed helper-backed aggregate param-slot seam from parked
+  prologue consumer logic into the next active slot-backed owner branches
+  without pulling the full translated prologue owner into build yet
+  - keep this slice on aggregate storage owner wiring rather than reopening
+    scalar, peephole, or call-lowering work
+  - continue using focused shared-helper / backend-slice coverage until the
+    current x86 frontend entry exposes a real end-to-end aggregate regression
+    surface for these classes
 
 ## Next Slice
 
-- consume the landed x86 param-slot naming bridge from
-  `src/backend/x86/codegen/prologue.cpp` by wiring the first real slot-backed
-  aggregate parameter store path for
-  `ParamClass::StructSseReg`, `ParamClass::StructMixedIntSseReg`, and
-  `ParamClass::StructMixedSseIntReg`
+- widen the active slot-backed aggregate parameter storage owner beyond the
+  newly landed `StructSseReg`, `StructMixedIntSseReg`, and
+  `StructMixedSseIntReg` branches, likely on the remaining stack-backed or
+  split aggregate classes
 - keep the translated prologue owner parked out of build until the public
-  x86 codegen header exposes enough complete backend surface for
-  `src/backend/x86/codegen/prologue.cpp` to compile cleanly
-- continue using build-active direct-emitter slices to lock the intended x86
-  parameter-stack behavior meanwhile, with the next widening point remaining on
-  parked aggregate storage owner wiring rather than a new ownership switch
+  x86 codegen header exposes enough complete backend surface for a broader
+  prologue-owner cutover
+- look for the first x86 backend-facing lowering route that can expose a real
+  end-to-end aggregate asm regression, so future active-branch iterations are
+  not limited to compile coverage plus helper/backend-slice tests
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration consumed the landed x86 param-slot naming bridge in the live
+  translated prologue entry path:
+  `src/backend/x86/codegen/prologue.cpp` now resolves `%lv.param.*` slots from
+  ABI parameter names and wires the first active slot-backed aggregate store
+  branches for `ParamClass::StructSseReg`,
+  `ParamClass::StructMixedIntSseReg`, and
+  `ParamClass::StructMixedSseIntReg` instead of leaving those shapes parked
+  behind helper-only consumers
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests backend_bir_tests`,
+  `./build/backend_shared_util_tests test_x86_translated_asm_emitter_helpers_match_shared_contract`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_param_slot_add_slice`
+- validation note:
+  a new end-to-end x86 aggregate regression was attempted but the current x86
+  backend entry still rejects those aggregate LIR modules before the translated
+  prologue path is exercised, so this slice is currently locked by compile
+  coverage plus the focused shared-helper and existing backend-slice tests
+- broad validation note:
+  skipped for this still-bounded owner-wiring slice per the current plan note
+  to defer the monotonic full-suite guard until a larger owner-path cutover
+  lands
 
 - this iteration reconstructed the parked translated x86 param-slot naming
   bridge the aggregate prologue store helpers will consume next:
