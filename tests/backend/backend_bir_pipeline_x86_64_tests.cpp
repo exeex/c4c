@@ -564,6 +564,50 @@ c4c::codegen::lir::LirModule make_local_i32_pointer_gep_zero_store_slot_load_ret
   return module;
 }
 
+c4c::codegen::lir::LirModule make_local_i32_pointer_alias_compare_two_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.p", "ptr", "", 8});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "2", "%lv.x"});
+  entry.insts.push_back(LirStoreOp{"ptr", "%lv.x", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t0", "ptr", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t1", "i32", "%t0"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "2"});
+  entry.insts.push_back(LirCastOp{"%t3", LirCastKind::ZExt, "i1", "%t2", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t4", false, "ne", "i32", "%t3", "0"});
+  entry.terminator = LirCondBr{"%t4", "block_1", "block_2"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock block1;
+  block1.id = LirBlockId{1};
+  block1.label = "block_1";
+  block1.terminator = LirRet{std::string("1"), "i32"};
+  function.blocks.push_back(std::move(block1));
+
+  LirBlock block2;
+  block2.id = LirBlockId{2};
+  block2.label = "block_2";
+  block2.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(block2));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_local_i32_array_two_slot_sum_sub_three_module() {
   using namespace c4c::codegen::lir;
 
@@ -5650,6 +5694,31 @@ void test_backend_bir_pipeline_drives_x86_lir_local_i32_array_second_slot_pointe
                       "x86 LIR local-array second-slot pointer-store-zero-load-return input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_alias_compare_two_zero_through_bir_end_to_end() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_local_i32_pointer_alias_compare_two_zero_return_module());
+  expect_true(lowered.has_value(),
+              "x86 LIR local void-pointer alias compare-to-two input should lower into direct BIR before native x86 emission");
+  if (!lowered.has_value()) {
+    return;
+  }
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty(),
+              "x86 LIR local void-pointer alias compare-to-two lowering should collapse the bounded `00039.c` source slice to one constant-return BIR block");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_local_i32_pointer_alias_compare_two_zero_return_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "x86 LIR local void-pointer alias compare-to-two input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR local void-pointer alias compare-to-two input should preserve the folded zero return after bounded shared lowering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR local void-pointer alias compare-to-two input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_inc_dec_compare_zero_through_bir_end_to_end() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(
@@ -6832,6 +6901,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_store_zero_load_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_gep_zero_load_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_gep_zero_store_slot_load_return_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_alias_compare_two_zero_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_two_slot_sum_sub_three_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_second_slot_pointer_store_zero_load_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_inc_dec_compare_zero_through_bir_end_to_end);

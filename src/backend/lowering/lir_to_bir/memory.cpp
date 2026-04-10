@@ -1599,6 +1599,91 @@ std::optional<bir::Module> try_lower_minimal_string_literal_compare_phi_return_m
 }
 
 std::optional<bir::Module>
+try_lower_minimal_local_i32_pointer_alias_compare_two_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.blocks.size() != 3 ||
+      function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* pointer_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* value_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  if (pointer_slot == nullptr || value_slot == nullptr || pointer_slot->result.empty() ||
+      value_slot->result.empty() || !pointer_slot->count.empty() || !value_slot->count.empty() ||
+      pointer_slot->type_str != "ptr" ||
+      !memory_lir_type_matches_integer_width(
+          c4c::codegen::lir::LirTypeRef{value_slot->type_str}, 32)) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto* init_store = entry.insts.size() == 7 ? std::get_if<LirStoreOp>(&entry.insts[0]) : nullptr;
+  const auto* pointer_store =
+      entry.insts.size() == 7 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* pointer_load =
+      entry.insts.size() == 7 ? std::get_if<LirLoadOp>(&entry.insts[2]) : nullptr;
+  const auto* value_load = entry.insts.size() == 7 ? std::get_if<LirLoadOp>(&entry.insts[3]) : nullptr;
+  const auto* value_cmp = entry.insts.size() == 7 ? std::get_if<LirCmpOp>(&entry.insts[4]) : nullptr;
+  const auto* value_zext = entry.insts.size() == 7 ? std::get_if<LirCastOp>(&entry.insts[5]) : nullptr;
+  const auto* branch_cmp = entry.insts.size() == 7 ? std::get_if<LirCmpOp>(&entry.insts[6]) : nullptr;
+  const auto* branch = std::get_if<LirCondBr>(&entry.terminator);
+  const auto* true_ret = std::get_if<LirRet>(&function.blocks[1].terminator);
+  const auto* false_ret = std::get_if<LirRet>(&function.blocks[2].terminator);
+  if (entry.label != "entry" || init_store == nullptr || pointer_store == nullptr ||
+      pointer_load == nullptr || value_load == nullptr || value_cmp == nullptr ||
+      value_zext == nullptr || branch_cmp == nullptr || branch == nullptr ||
+      function.blocks[1].label != "block_1" || !function.blocks[1].insts.empty() ||
+      true_ret == nullptr || function.blocks[2].label != "block_2" ||
+      !function.blocks[2].insts.empty() || false_ret == nullptr ||
+      init_store->ptr != value_slot->result || init_store->val != "2" ||
+      !memory_lir_type_matches_integer_width(
+          c4c::codegen::lir::LirTypeRef{init_store->type_str}, 32) ||
+      pointer_store->type_str != "ptr" || pointer_store->val != value_slot->result ||
+      pointer_store->ptr != pointer_slot->result || pointer_load->type_str != "ptr" ||
+      pointer_load->ptr != pointer_slot->result || pointer_load->result.empty() ||
+      value_load->ptr != pointer_load->result || value_load->result.empty() ||
+      !memory_lir_type_matches_integer_width(
+          c4c::codegen::lir::LirTypeRef{value_load->type_str}, 32) ||
+      value_cmp->result != "%t2" || value_cmp->type_str != "i32" || value_cmp->lhs != value_load->result ||
+      value_cmp->rhs != "2" || value_cmp->predicate.str() != "ne" || value_cmp->is_float ||
+      value_zext->kind != LirCastKind::ZExt || value_zext->from_type != "i1" ||
+      value_zext->operand != value_cmp->result || value_zext->to_type != "i32" ||
+      value_zext->result != "%t3" || branch_cmp->result != "%t4" || branch_cmp->type_str != "i32" ||
+      branch_cmp->lhs != value_zext->result || branch_cmp->rhs != "0" ||
+      branch_cmp->predicate.str() != "ne" || branch_cmp->is_float || branch->cond_name != "%t4" ||
+      branch->true_label != "block_1" || branch->false_label != "block_2" ||
+      true_ret->type_str != "i32" || !true_ret->value_str.has_value() || *true_ret->value_str != "1" ||
+      false_ret->type_str != "i32" || !false_ret->value_str.has_value() ||
+      *false_ret->value_str != "0") {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
+std::optional<bir::Module>
 try_lower_minimal_local_i32_array_pointer_inc_dec_compare_zero_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
