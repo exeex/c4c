@@ -1697,6 +1697,23 @@ TypeSpec Parser::parse_base_type() {
                     const Node* primary_tpl = find_template_struct_primary(tpl_name);
                     std::vector<ParsedTemplateArg> actual_args;
                     if (!parse_template_argument_list(&actual_args, primary_tpl)) return ts;
+                    for (auto& arg : actual_args) {
+                        if (arg.is_value) continue;
+                        TypeSpec& arg_ts = arg.type;
+                        if (!arg_ts.deferred_member_type_name ||
+                            !arg_ts.tag || !arg_ts.tag[0]) {
+                            continue;
+                        }
+                        TypeSpec resolved_member{};
+                        if (!lookup_struct_member_typedef_recursive(
+                                arg_ts.tag,
+                                arg_ts.deferred_member_type_name,
+                                &resolved_member)) {
+                            continue;
+                        }
+                        resolved_member.deferred_member_type_name = nullptr;
+                        arg_ts = resolved_member;
+                    }
                     bool has_pack_param = false;
                     if (primary_tpl && primary_tpl->template_param_is_pack) {
                         for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
@@ -1718,6 +1735,11 @@ TypeSpec Parser::parse_base_type() {
                                 arg_refs += arg.type.tpl_struct_origin;
                                 arg_refs += ":";
                                 arg_refs += arg.type.tpl_struct_arg_refs ? arg.type.tpl_struct_arg_refs : "";
+                                if (arg.type.deferred_member_type_name &&
+                                    arg.type.deferred_member_type_name[0]) {
+                                    arg_refs += "$";
+                                    arg_refs += arg.type.deferred_member_type_name;
+                                }
                             } else if (arg.type.tag) {
                                 arg_refs += arg.type.tag;
                             } else {
@@ -1963,6 +1985,11 @@ TypeSpec Parser::parse_base_type() {
                                         arg_refs += ats.tpl_struct_origin;
                                         arg_refs += ":";
                                         arg_refs += ats.tpl_struct_arg_refs ? ats.tpl_struct_arg_refs : "";
+                                        if (ats.deferred_member_type_name &&
+                                            ats.deferred_member_type_name[0]) {
+                                            arg_refs += "$";
+                                            arg_refs += ats.deferred_member_type_name;
+                                        }
                                     } else if (ats.tag) {
                                         arg_refs += ats.tag;
                                     } else {

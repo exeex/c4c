@@ -34,9 +34,11 @@ constexpr bool is_same_v = is_same<T, U>::value;
 }  // namespace ns
 
 int main() {
-  if (!ns::is_signed_v<typename ns::holder<int>::type>)
+  if (!ns::is_signed<typename ns::holder<int>::type>::value)
     return 1;
-  if (!ns::is_same_v<typename ns::holder<int>::type, int>)
+  if (!ns::is_signed_v<typename ns::holder<int>::type>)
     return 2;
+  if (!ns::is_same_v<typename ns::holder<int>::type, int>)
+    return 3;
   return 0;
 }

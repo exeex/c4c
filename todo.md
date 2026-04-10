@@ -6,14 +6,12 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: Generalize trait and variable-template normalization
-- Current slice: tighten the remaining direct trait `::value` normalization gap
-  for member-typedef operands after the `_v` and direct `typename ...::type`
-  path stopped collapsing template-owner args
+- Step 3: Complete scoped-enum semantics
+- Current slice: identify the narrowest explicit-underlying-type behavior that
+  is still accepted syntactically but not preserved semantically
 
 ## Pending Items
 
-- Step 3: Complete scoped-enum semantics
 - Step 4: Replace heuristic owner recovery
 
 ## Completed Items
@@ -48,6 +46,12 @@ Source Plan: plan.md
   materialization so variable-template and direct `typename ...::type`
   normalization can reuse the instantiated owner args instead of collapsing back
   to `Owner<T>`.
+- Added focused runtime coverage proving direct
+  `is_signed<typename holder<int>::type>::value` follows the same normalized
+  member-typedef path as the existing `_v` and `is_same_v` checks, and resolved
+  deferred member-typedef template arguments during parser-side template
+  instantiation so direct trait `::value` specialization selection sees the
+  concrete member type instead of its owner wrapper.
 
 ## Notes
 
@@ -77,6 +81,8 @@ Source Plan: plan.md
   `typename ...::type` paths. A narrower follow-up still remains for direct
   `Trait<typename Owner<...>::type>::value` specialization selection, which is a
   separate path from the variable-template normalization fixed here.
+- The direct `Trait<typename Owner<...>::type>::value` specialization-selection
+  gap is now covered and fixed for parser-instantiated member-typedef operands.
 - A separate pack-specialization issue still exists for direct variadic class
   template specialization selection; keep that out of this Step 1 alias slice
   unless it becomes required for the next targeted alias regression.

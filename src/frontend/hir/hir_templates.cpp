@@ -104,6 +104,10 @@ std::string encode_template_type_arg_ref_hir(const TypeSpec& ts) {
     ref += ts.tpl_struct_origin;
     ref += ":";
     ref += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
+    if (ts.deferred_member_type_name && ts.deferred_member_type_name[0]) {
+      ref += "$";
+      ref += ts.deferred_member_type_name;
+    }
     return ref;
   }
 
