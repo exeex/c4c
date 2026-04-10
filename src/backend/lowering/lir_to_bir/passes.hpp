@@ -129,6 +129,9 @@ std::optional<bir::Module> try_lower_minimal_string_literal_compare_phi_return_m
 std::optional<bir::Module>
 try_lower_minimal_local_i32_array_pointer_inc_dec_compare_zero_return_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module>
+try_lower_minimal_local_i32_array_pointer_add_deref_diff_zero_return_module(
+    const c4c::codegen::lir::LirModule& module);
 bir::LoadLocalInst make_memory_load_local(bir::Value result,
                                           std::string slot_name,
                                           std::size_t byte_offset = 0,

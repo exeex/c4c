@@ -808,6 +808,86 @@ c4c::codegen::lir::LirModule make_local_i32_array_pointer_inc_dec_compare_zero_r
   return module;
 }
 
+c4c::codegen::lir::LirModule make_local_i32_array_pointer_add_deref_diff_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "[2 x i32]", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.p", "ptr", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "[2 x i32]", "%lv.x", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i32", "%t0", false, {"i64 %t1"}});
+  entry.insts.push_back(LirStoreOp{"i32", "7", "%t2"});
+  entry.insts.push_back(LirGepOp{"%t3", "[2 x i32]", "%lv.x", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t4", LirCastKind::SExt, "i32", "0", "i64"});
+  entry.insts.push_back(LirGepOp{"%t5", "i32", "%t3", false, {"i64 %t4"}});
+  entry.insts.push_back(LirStoreOp{"ptr", "%t5", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t6", "ptr", "%lv.p"});
+  entry.insts.push_back(LirCastOp{"%t7", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t8", "i32", "%t6", false, {"i64 %t7"}});
+  entry.insts.push_back(LirStoreOp{"ptr", "%t8", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t9", "ptr", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t10", "i32", "%t9"});
+  entry.insts.push_back(LirCmpOp{"%t11", false, "ne", "i32", "%t10", "7"});
+  entry.insts.push_back(LirCastOp{"%t12", LirCastKind::ZExt, "i1", "%t11", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t13", false, "ne", "i32", "%t12", "0"});
+  entry.terminator = LirCondBr{"%t13", "block_1", "block_2"};
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{1};
+  block_1.label = "block_1";
+  block_1.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{2};
+  block_2.label = "block_2";
+  block_2.insts.push_back(LirGepOp{"%t14", "[2 x i32]", "%lv.x", false, {"i64 0", "i64 0"}});
+  block_2.insts.push_back(LirCastOp{"%t15", LirCastKind::SExt, "i32", "1", "i64"});
+  block_2.insts.push_back(LirGepOp{"%t16", "i32", "%t14", false, {"i64 %t15"}});
+  block_2.insts.push_back(LirGepOp{"%t17", "[2 x i32]", "%lv.x", false, {"i64 0", "i64 0"}});
+  block_2.insts.push_back(LirCastOp{"%t18", LirCastKind::SExt, "i32", "0", "i64"});
+  block_2.insts.push_back(LirGepOp{"%t19", "i32", "%t17", false, {"i64 %t18"}});
+  block_2.insts.push_back(LirCastOp{"%t20", LirCastKind::PtrToInt, "ptr", "%t16", "i64"});
+  block_2.insts.push_back(LirCastOp{"%t21", LirCastKind::PtrToInt, "ptr", "%t19", "i64"});
+  block_2.insts.push_back(LirBinOp{"%t22", LirBinaryOpcode::Sub, "i64", "%t20", "%t21"});
+  block_2.insts.push_back(LirBinOp{"%t23", LirBinaryOpcode::SDiv, "i64", "%t22", "4"});
+  block_2.insts.push_back(LirCastOp{"%t24", LirCastKind::SExt, "i32", "1", "i64"});
+  block_2.insts.push_back(LirCmpOp{"%t25", false, "ne", "i64", "%t23", "%t24"});
+  block_2.insts.push_back(LirCastOp{"%t26", LirCastKind::ZExt, "i1", "%t25", "i32"});
+  block_2.insts.push_back(LirCmpOp{"%t27", false, "ne", "i32", "%t26", "0"});
+  block_2.terminator = LirCondBr{"%t27", "block_3", "block_4"};
+
+  LirBlock block_3;
+  block_3.id = LirBlockId{3};
+  block_3.label = "block_3";
+  block_3.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock block_4;
+  block_4.id = LirBlockId{4};
+  block_4.label = "block_4";
+  block_4.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  function.blocks.push_back(std::move(block_3));
+  function.blocks.push_back(std::move(block_4));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_local_two_field_struct_sub_sub_two_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -4364,6 +4444,28 @@ void test_bir_lowering_accepts_local_i32_array_pointer_inc_dec_compare_zero_retu
                   "the lowered local-array pointer increment-decrement compare module should normalize the bounded pointer walk to a single immediate zero return");
 }
 
+void test_bir_lowering_accepts_local_i32_array_pointer_add_deref_diff_zero_return_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(
+          make_local_i32_array_pointer_add_deref_diff_zero_return_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded local-array pointer-add dereference plus pointer-diff compare slice through the shared constant-return contract");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered local-array pointer-add dereference plus pointer-diff compare module should collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered local-array pointer-add dereference plus pointer-diff compare module should normalize the bounded `00037.c` source route to a single immediate zero return");
+}
+
 void test_bir_lowering_accepts_local_two_field_struct_sub_sub_two_return_module() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_local_two_field_struct_sub_sub_two_return_module());
@@ -7266,6 +7368,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_two_slot_sum_sub_three_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_second_slot_pointer_store_zero_load_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_pointer_inc_dec_compare_zero_return_module);
+  RUN_TEST(test_bir_lowering_accepts_local_i32_array_pointer_add_deref_diff_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_two_field_struct_sub_sub_two_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_struct_pointer_alias_add_sub_three_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_self_referential_struct_pointer_chain_zero_return_module);

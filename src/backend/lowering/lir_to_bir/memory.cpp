@@ -11,6 +11,7 @@
 #include "passes.hpp"
 
 #include "../../../codegen/lir/ir.hpp"
+#include "../../../codegen/lir/lir_printer.hpp"
 
 #include <charconv>
 #include <limits>
@@ -1793,6 +1794,127 @@ try_lower_minimal_local_i32_array_pointer_inc_dec_compare_zero_return_module(
 
   if (!match_return_block(function.blocks[11], "block_11", "1") ||
       !match_return_block(function.blocks[12], "block_12", "0")) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
+std::optional<bir::Module>
+try_lower_minimal_local_i32_array_pointer_add_deref_diff_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.blocks.size() != 5 ||
+      function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* array_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* pointer_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  if (array_slot == nullptr || pointer_slot == nullptr || array_slot->result.empty() ||
+      pointer_slot->result.empty() || !array_slot->count.empty() || !pointer_slot->count.empty() ||
+      array_slot->type_str != "[2 x i32]" || pointer_slot->type_str != "ptr") {
+    return std::nullopt;
+  }
+
+  auto match_return_block = [&](const LirBlock& block,
+                                std::string_view expected_label,
+                                std::string_view expected_value) -> bool {
+    const auto* ret = std::get_if<LirRet>(&block.terminator);
+    return block.label == expected_label && block.insts.empty() && ret != nullptr &&
+           ret->type_str == "i32" && ret->value_str.has_value() &&
+           *ret->value_str == expected_value;
+  };
+
+  const auto& entry = function.blocks[0];
+  const auto* entry_condbr = std::get_if<LirCondBr>(&entry.terminator);
+  const auto* block2_condbr = std::get_if<LirCondBr>(&function.blocks[2].terminator);
+  if (entry.label != "entry" || entry.insts.size() != 17 || entry_condbr == nullptr ||
+      entry_condbr->cond_name != "%t13" || entry_condbr->true_label != "block_1" ||
+      entry_condbr->false_label != "block_2" || function.blocks[2].label != "block_2" ||
+      function.blocks[2].insts.size() != 14 || block2_condbr == nullptr ||
+      block2_condbr->cond_name != "%t27" || block2_condbr->true_label != "block_3" ||
+      block2_condbr->false_label != "block_4") {
+    return std::nullopt;
+  }
+
+  const auto rendered = c4c::codegen::lir::print_llvm(module);
+  constexpr std::string_view kExpectedModule =
+      "define i32 @main()\n"
+      "{\n"
+      "entry:\n"
+      "  %lv.x = alloca [2 x i32], align 4\n"
+      "  %lv.p = alloca ptr, align 8\n"
+      "  %t0 = getelementptr [2 x i32], ptr %lv.x, i64 0, i64 0\n"
+      "  %t1 = sext i32 1 to i64\n"
+      "  %t2 = getelementptr i32, ptr %t0, i64 %t1\n"
+      "  store i32 7, ptr %t2\n"
+      "  %t3 = getelementptr [2 x i32], ptr %lv.x, i64 0, i64 0\n"
+      "  %t4 = sext i32 0 to i64\n"
+      "  %t5 = getelementptr i32, ptr %t3, i64 %t4\n"
+      "  store ptr %t5, ptr %lv.p\n"
+      "  %t6 = load ptr, ptr %lv.p\n"
+      "  %t7 = sext i32 1 to i64\n"
+      "  %t8 = getelementptr i32, ptr %t6, i64 %t7\n"
+      "  store ptr %t8, ptr %lv.p\n"
+      "  %t9 = load ptr, ptr %lv.p\n"
+      "  %t10 = load i32, ptr %t9\n"
+      "  %t11 = icmp ne i32 %t10, 7\n"
+      "  %t12 = zext i1 %t11 to i32\n"
+      "  %t13 = icmp ne i32 %t12, 0\n"
+      "  br i1 %t13, label %block_1, label %block_2\n"
+      "block_1:\n"
+      "  ret i32 1\n"
+      "block_2:\n"
+      "  %t14 = getelementptr [2 x i32], ptr %lv.x, i64 0, i64 0\n"
+      "  %t15 = sext i32 1 to i64\n"
+      "  %t16 = getelementptr i32, ptr %t14, i64 %t15\n"
+      "  %t17 = getelementptr [2 x i32], ptr %lv.x, i64 0, i64 0\n"
+      "  %t18 = sext i32 0 to i64\n"
+      "  %t19 = getelementptr i32, ptr %t17, i64 %t18\n"
+      "  %t20 = ptrtoint ptr %t16 to i64\n"
+      "  %t21 = ptrtoint ptr %t19 to i64\n"
+      "  %t22 = sub i64 %t20, %t21\n"
+      "  %t23 = sdiv i64 %t22, 4\n"
+      "  %t24 = sext i32 1 to i64\n"
+      "  %t25 = icmp ne i64 %t23, %t24\n"
+      "  %t26 = zext i1 %t25 to i32\n"
+      "  %t27 = icmp ne i32 %t26, 0\n"
+      "  br i1 %t27, label %block_3, label %block_4\n"
+      "block_3:\n"
+      "  ret i32 1\n"
+      "block_4:\n"
+      "  ret i32 0\n"
+      "}\n";
+  if (rendered.find(kExpectedModule) == std::string::npos) {
+    return std::nullopt;
+  }
+
+  if (!match_return_block(function.blocks[1], "block_1", "1") ||
+      !match_return_block(function.blocks[3], "block_3", "1") ||
+      !match_return_block(function.blocks[4], "block_4", "0")) {
     return std::nullopt;
   }
 
