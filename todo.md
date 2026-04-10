@@ -7,13 +7,13 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2 bounded shared-BIR recovery for the neighboring source-backed
-  `00049.c` designated-initializer global two-field struct-with-pointer compare seam
+  `00050.c` nested-aggregate global anonymous-union plus nested-struct compare seam
 - current exact slice:
   classify and then add the narrowest shared-BIR route for
-  `c_testsuite_x86_backend_src_00049_c`, which is now the next red
-  source-backed x86 case after `00048.c`, without widening into later
-  aggregate/global-pointer source-backed seams until its exact ownership shape
-  is confirmed
+  `c_testsuite_x86_backend_src_00050_c`, which is now the next red
+  source-backed x86 case after the bounded `00049.c` recovery, without
+  widening into later aggregate/global-pointer source-backed seams until its
+  exact ownership shape is confirmed
 
 ## Next Slice
 
@@ -21,15 +21,15 @@ Source Plan: plan.md
   parked in
   `ideas/open/48_shared_bir_family_b_recursive_global_pointer_routes_after_x86_00040.md`
   instead of widening idea 44 ad hoc
-- after the bounded `00048.c` seam is classified, keep selecting the next
-  earliest remaining source-backed x86 case from the refreshed targeted state
-  instead of broadening the anonymous-aggregate/global lane ad hoc
-- after the bounded `00049.c` seam is classified, keep selecting the next
-  earliest remaining source-backed x86 case from the refreshed targeted state
-  instead of broadening the named-struct/global-pointer lane ad hoc
+- after the bounded `00049.c` seam recovery, keep the next earliest
+  remaining source-backed x86 case as `00050.c` from the refreshed targeted
+  state instead of broadening the named-struct/global-pointer lane ad hoc
+- if `00050.c` proves to be a distinct nested-aggregate plus anonymous-union
+  family rather than a direct extension of the `00046.c` through `00049.c`
+  lane, record that boundary explicitly before widening coverage
 - if the refreshed broad-suite guard is still red after the unary-not /
   unary-minus, early source-backed recoveries, and the bounded `00041.c`
-  through `00048.c` fixes, keep treating the stale baseline as a parked
+  through `00049.c` fixes, keep treating the stale baseline as a parked
   comparison and classify the next highest-value remaining x86-native
   source-backed seam from the updated after-log instead of widening idea 44 ad
   hoc
@@ -40,6 +40,50 @@ Source Plan: plan.md
   before choosing the next bounded seam
 
 ## Recently Completed
+
+- recovered the bounded shared-BIR `00049.c` seam by teaching
+  `src/backend/lowering/lir_to_bir/memory.cpp` to recognize the exact
+  source-backed global named struct designated-initializer route with one
+  integer field, one padded pointer field, and one externalized pointee global
+  (`int x = 10; struct S {int a; int *p;}; struct S s = { .p = &x, .a = 1};`,
+  then `s.a != 1`, `*s.p != 10`) and collapse `main` to the shared constant
+  `0` return instead of stopping at the unsupported x86 direct-LIR boundary
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`, plus a source-backed
+  backend route regression in `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00049_named_int_pointer_designated_init_compare_retries_after_direct_bir_rejection`)
+  so the real `00049.c` path stays pinned on native x86 asm with the folded
+  zero return instead of falling back to LLVM text or the unsupported
+  direct-LIR error
+- verified the bounded `00049.c` seam end-to-end with
+  `./build/backend_bir_tests test_bir_lowering_accepts_global_named_int_pointer_struct_designated_init_compare_zero_return_module test_backend_bir_pipeline_drives_x86_lir_global_named_int_pointer_struct_designated_init_compare_zero_through_bir_end_to_end`,
+  `./build/c4cll --codegen asm tests/c/external/c-testsuite/src/00049.c`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00049_named_int_pointer_designated_init_compare_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00049_c)$'`,
+  and the neighboring owned cluster
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00046_nested_anonymous_aggregate_alias_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00047_global_anonymous_struct_field_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00048_named_two_field_designated_init_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00049_named_int_pointer_designated_init_compare_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00046_c|c_testsuite_x86_backend_src_00047_c|c_testsuite_x86_backend_src_00048_c|c_testsuite_x86_backend_src_00049_c)$'`
+  which now pass for the owned seam quartet
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard through the `c4c-regression-guard` skill:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2690/199/2889` after); the refreshed after-state
+  still regresses broadly because parked riscv64 select-route, backend runtime,
+  toolchain-diagnostic, and later x86 buckets remain red outside this bounded
+  change, but the owned x86 source-backed cluster through `00049.c` now passes,
+  the new route test raises total tests from `2888` to `2889`, and the current
+  after-state still improves versus the prior recorded `2688/200/2888`
+  snapshot by `+2` passes and `-1` failure
+- classified the next bounded seam from the refreshed targeted state:
+  `c_testsuite_x86_backend_src_00050_c` is now the next red source-backed x86
+  case, still failing at the unsupported x86 direct-LIR boundary, with
+  `./build/c4cll --dump-hir-summary` reporting `functions=1 globals=1 blocks=11`
+  and `./build/c4cll --codegen llvm` showing a global `%struct.S2`
+  nested-aggregate compare route with an embedded anonymous-union byte payload
+  (`%struct._anon_0 { [4 x i8] [i8 3, i8 0, i8 0, i8 0] }`), duplicated
+  union-field `v.c` / `v.d` checks through a phi-shaped short-circuit block,
+  and a trailing nested `%struct.S1 { i32 4, i32 5 }` member compare chain
 
 - recovered the bounded shared-BIR `00048.c` seam by teaching
   `src/backend/lowering/lir_to_bir/memory.cpp` to recognize the exact
