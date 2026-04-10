@@ -182,6 +182,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call_target.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call_vaarg_amd64_registers.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_stmt.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/const_init_emitter.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/hir_to_lir.cpp"

@@ -347,6 +347,19 @@ if(EXISTS "${EXAMPLE_C}")
       LABELS "internal;backend")
 
   add_test(
+      NAME backend_ir_x86_64_variadic_mixed_int_double_amd64_vaarg
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_module_case/variadic_mixed_int_double_bytes.c
+              -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend_ir/variadic_mixed_int_double_x86_64.ll
+              "-DREQUIRED_SNIPPETS=%t15 = getelementptr i8, ptr %t4, i64 %t13|store i32 %t16, ptr %t0|%t17 = getelementptr i8, ptr %t4, i64 %t14|store i32 %t18, ptr %t1|%t26 = phi %struct.MixedIntDouble [ %t21, %vaarg.amd64.reg.10 ], [ %t25, %vaarg.amd64.stack.11 ]"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_llvm_ir_snippet_case.cmake"
+  )
+  set_tests_properties(backend_ir_x86_64_variadic_mixed_int_double_amd64_vaarg PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
       NAME backend_lir_aarch64_variadic_bigints_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>

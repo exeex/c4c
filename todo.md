@@ -6,11 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4/5: use the refreshed direct-TU timings to choose the next extraction
-  seam between the new AMD64 vararg TU and the remaining frontend leaders;
-  `stmt_emitter_call_vaarg_amd64.cpp` now measures 3.613s, ahead of
-  `hir_templates.cpp` at 2.878s, `hir_expr.cpp` at 2.717s, and `hir_stmt.cpp`
-  at 2.528s.
+- Step 5: preserve the nineteenth extraction slice findings and hand off the
+  refreshed direct-TU comparison, which now puts `hir_expr.cpp` narrowly back
+  ahead of the reduced AMD64 `va_arg` TU.
 
 ## Completed
 
@@ -461,11 +459,9 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Measure the refreshed optimized hotspot order now that
-  `src/codegen/lir/stmt_emitter_call.cpp` has been reduced again.
-- If the ranking still leaves `stmt_emitter_call.cpp` in the lead, inspect
-  the remaining call-target-resolution or AMD64 `va_arg` seam next; otherwise
-  move back to the measured top frontend TU.
+- Inspect `src/frontend/hir/hir_expr.cpp` next, because the refreshed direct
+  comparison now puts it narrowly back in front of `hir_templates.cpp`,
+  `hir_stmt.cpp`, and the reduced AMD64 `va_arg` TU.
 
 ## Blockers
 
@@ -674,3 +670,33 @@ Source Plan: plan.md
   remaining cohesive seam is the AMD64 `va_arg` helper family, the next
   highest-value slice should stay in `stmt_emitter_call.cpp` before returning
   to the frontend hotspots.
+- Added focused x86_64 LLVM IR coverage in
+  `backend_ir_x86_64_variadic_mixed_int_double_amd64_vaarg` to pin mixed
+  integer/SSE AMD64 `va_arg` register reconstruction, offset updates, and the
+  register/stack join.
+- Executed the nineteenth Step 4 slice by moving
+  `emit_amd64_va_arg_from_registers` out of
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` into the new
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64_registers.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `backend_ir_x86_64_variadic_pair_amd64_vaarg`,
+  `backend_ir_x86_64_variadic_mixed_int_double_amd64_vaarg`,
+  `backend_runtime_variadic_double_bytes`,
+  `backend_runtime_variadic_pair_second`,
+  `abi_abi_variadic_forward_wrapper_c`,
+  `abi_abi_variadic_struct_result_c`,
+  `abi_abi_variadic_va_copy_accumulate_c`, and
+  `positive_sema_ok_call_variadic_aggregate_runtime_c`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard
+  passed with 3330/3330 tests passing before and 3338/3338 after, with no new
+  failures.
+- Recorded the nineteenth before/after extraction measurement: compiling the
+  pre-split `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` from `HEAD`
+  on the direct optimized command took 3.664s, the reduced
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` took 3.076s, and the
+  new `src/codegen/lir/stmt_emitter_call_vaarg_amd64_registers.cpp` compiled
+  in 2.707s.
+- Refreshed the direct comparison against the remaining frontend leaders:
+  `hir_expr.cpp` measured 3.277s, `hir_templates.cpp` 3.166s,
+  `hir_stmt.cpp` 3.159s, and the reduced
+  `stmt_emitter_call_vaarg_amd64.cpp` 3.076s.

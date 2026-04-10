@@ -815,6 +815,66 @@ Follow-on note:
   iteration should stay in `stmt_emitter_call.cpp` before returning to the
   frontend hotspots
 
+## 2026-04-10 Step 4 Nineteenth Extraction Slice
+
+The active direct-TU comparison between the new AMD64 `va_arg` TU and the
+remaining frontend leaders still left
+`src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` ahead at `3.613s`, above
+`src/frontend/hir/hir_templates.cpp` at `2.878s`,
+`src/frontend/hir/hir_expr.cpp` at `2.717s`, and
+`src/frontend/hir/hir_stmt.cpp` at `2.528s`.
+
+That kept the next extraction inside the AMD64 `va_arg` lowering family, with
+the register-path helper body chosen as the smallest cohesive seam.
+
+Executed the AMD64 register-path split:
+
+- moved `emit_amd64_va_arg_from_registers` into the new
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64_registers.cpp`
+- kept the remaining control-flow, overflow-path, and `va_list` pointer-load
+  logic in `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp`, so the slice
+  remains a translation-unit ownership split rather than a semantic rewrite
+- added `backend_ir_x86_64_variadic_mixed_int_double_amd64_vaarg` as focused
+  x86_64 LLVM IR coverage for mixed integer/SSE register reconstruction,
+  `gp_offset` / `fp_offset` updates, and the register/stack join
+
+Measured result:
+
+- compiling the pre-split
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` from `HEAD` on the
+  generated optimized command took `3.664s`
+- the direct post-split rerun of
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` took `3.076s`
+- the new
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64_registers.cpp` compiles in
+  `2.707s`
+- this means the slice did demonstrate a single-TU compile-time win for the
+  main hotspot TU, reducing the original AMD64 `va_arg` TU by `0.588s`
+  (about `16.0%`) on the direct comparison
+
+Validation result:
+
+- focused coverage passed:
+  `backend_ir_x86_64_variadic_pair_amd64_vaarg`,
+  `backend_ir_x86_64_variadic_mixed_int_double_amd64_vaarg`,
+  `backend_runtime_variadic_double_bytes`,
+  `backend_runtime_variadic_pair_second`,
+  `abi_abi_variadic_forward_wrapper_c`,
+  `abi_abi_variadic_struct_result_c`,
+  `abi_abi_variadic_va_copy_accumulate_c`, and
+  `positive_sema_ok_call_variadic_aggregate_runtime_c`
+- full-suite regression guard passed with `3330/3330` tests passing before and
+  `3338/3338` after, with no new failures
+
+Follow-on note:
+
+- the refreshed direct comparison now reads
+  `src/frontend/hir/hir_expr.cpp` at `3.277s`,
+  `src/frontend/hir/hir_templates.cpp` at `3.166s`,
+  `src/frontend/hir/hir_stmt.cpp` at `3.159s`, and the reduced
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `3.076s`, so the
+  next iteration should move back to `hir_expr.cpp`
+
 ## Non-Goals
 
 - no backend architecture work
