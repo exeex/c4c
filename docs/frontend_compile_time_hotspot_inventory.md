@@ -287,3 +287,39 @@ Interpretation:
   hotspot timing for `hir_stmt.cpp` moved in the wrong direction.
 - It should therefore be treated as structure-only groundwork and not as a
   compile-time win.
+
+## Step 4: Sixth Executed Slice
+
+- Extracted the template-struct instantiation/body helper cluster
+  (`apply_template_typedef_bindings`,
+  `materialize_template_array_extent`,
+  `append_instantiated_template_struct_bases`,
+  `register_instantiated_template_struct_methods`,
+  `record_instantiated_template_struct_field_metadata`,
+  `instantiate_template_struct_field`,
+  `append_instantiated_template_struct_fields`, and
+  `instantiate_template_struct_body`) out of
+  `src/frontend/hir/hir_templates.cpp` into the new
+  `src/frontend/hir/hir_templates_struct_instantiation.cpp`.
+- Kept the logic as existing `Lowerer` methods, so this remains a
+  translation-unit ownership split rather than a semantic rewrite.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_struct_body_instantiation_hir.cpp` to
+  pin inherited member access, NTTP array extent materialization, and the
+  instantiated method body shape exercised by the extracted helper family.
+
+## Step 4: Sixth Slice Measurements
+
+Optimized single-TU compile timings for the struct-instantiation split:
+
+| Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
+| --- | ---: | ---: | --- |
+| `src/frontend/hir/hir_templates.cpp` | 5.087 | 4.241 | before compiled from `HEAD`, after from the working tree |
+| `src/frontend/hir/hir_templates_struct_instantiation.cpp` | n/a | 1.384 | new extracted TU |
+
+Interpretation:
+
+- Unlike the earlier member-typedef split, this `hir_templates.cpp` slice did
+  produce a measured hotspot reduction on the main TU.
+- The main `hir_templates.cpp` rebuild surface dropped by `0.846s`, about
+  `16.6%`, while preserving the template-struct body/materialization behavior.

@@ -6,9 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: Choose the next post-range-for HIR seam, keeping `hir_stmt.cpp` in
-  focus only if the candidate looks more promising than the range-for helper
-  split; otherwise move to the next cohesive `hir_templates.cpp` slice.
+- Step 5: Refresh the optimized single-TU hotspot ranking after the
+  `hir_templates.cpp` struct-instantiation split, then choose whether the next
+  extraction should stay in `hir_templates.cpp` or move back to a different
+  `hir_stmt.cpp` cluster.
 
 ## Completed
 
@@ -143,15 +144,46 @@ Source Plan: plan.md
   optimized command took 5.231s, the post-split
   `src/frontend/hir/hir_stmt.cpp` took 10.111s, and the new
   `src/frontend/hir/hir_stmt_range_for.cpp` took 1.958s.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_struct_body_instantiation_hir.cpp`
+  and wired the new `cpp_hir_template_struct_body_instantiation` test into
+  `tests/cpp/internal/InternalTests.cmake`.
+- Executed the sixth Step 4 slice by moving the template-struct
+  instantiation/body helper cluster
+  (`apply_template_typedef_bindings`, `materialize_template_array_extent`,
+  `append_instantiated_template_struct_bases`,
+  `register_instantiated_template_struct_methods`,
+  `record_instantiated_template_struct_field_metadata`,
+  `instantiate_template_struct_field`,
+  `append_instantiated_template_struct_fields`, and
+  `instantiate_template_struct_body`) out of
+  `src/frontend/hir/hir_templates.cpp` into the new
+  `src/frontend/hir/hir_templates_struct_instantiation.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_template_struct_body_instantiation`,
+  `cpp_hir_template_struct_inherited_method_binding`,
+  `cpp_hir_template_struct_field_array_extent`,
+  `cpp_hir_template_method_param_reentrant_lowering`,
+  `cpp_positive_sema_template_member_owner_resolution_cpp`, and
+  `cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard passed
+  with 3324/3324 tests passing after the new focused HIR test was added and no
+  new failures.
+- Recorded the sixth before/after extraction measurement: compiling the
+  pre-split `src/frontend/hir/hir_templates.cpp` from `HEAD` on the generated
+  optimized command took 5.087s, the post-split
+  `src/frontend/hir/hir_templates.cpp` took 4.241s, and the new
+  `src/frontend/hir/hir_templates_struct_instantiation.cpp` took 1.384s.
 
 ## Next Slice
 
-- Treat the range-for extraction as structure-only groundwork rather than a
-  compile-time improvement and avoid claiming a hotspot win from it.
-- If `hir_stmt.cpp` remains the next target, prefer a different cluster with a
-  better chance of shrinking the main TU than the range-for branch did.
-- Otherwise revisit the next cohesive `hir_templates.cpp` seam with a focused
-  HIR regression surface.
+- Refresh the hotspot ranking before committing to another HIR extraction so
+  the next slice is chosen from the current post-split data rather than the
+  earlier `hir_stmt.cpp`-led order.
+- If `hir_templates.cpp` remains near the top, prefer another cohesive helper
+  family there before returning to `hir_stmt.cpp`.
+- If `hir_stmt.cpp` retakes the lead, avoid the already-measured range-for
+  branch and choose a different statement-lowering cluster.
 
 ## Blockers
 
@@ -168,7 +200,7 @@ Source Plan: plan.md
 - Step 2 is complete: the top-five hotspot tier is optimizer heavy rather than
   parse-heavy, though all five keep a meaningful `-fsyntax-only` floor.
 - The latest `ctest --test-dir build -j --output-on-failure` rerun passes
-  3322/3322 tests, and the monotonic regression guard remains green.
+  3324/3324 tests, and the monotonic regression guard remains green.
 - The first executed extraction slice reduced the hottest TU,
   `src/codegen/lir/stmt_emitter_expr.cpp`, by 1.219s on the optimized
   single-TU compile command.
@@ -190,3 +222,7 @@ Source Plan: plan.md
   coverage, but the compile-time measurement moved in the wrong direction, so
   no compile-time win should be claimed from the `hir_stmt.cpp` range-for
   split.
+- The sixth extraction slice improved `src/frontend/hir/hir_templates.cpp`
+  from 5.087s to 4.241s on the generated optimized single-TU compile command,
+  so unlike the earlier member-typedef split it does count as a measured
+  hotspot reduction for that TU.

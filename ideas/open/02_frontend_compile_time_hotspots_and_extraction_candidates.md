@@ -419,6 +419,47 @@ Validation result:
 - full-suite regression guard passed with `3321/3321` tests passing before and
   `3323/3323` after, with no new failures
 
+## 2026-04-10 Step 4 Sixth Extraction Slice
+
+Executed the `hir_templates.cpp` struct-instantiation split:
+
+- moved the template-struct instantiation/body helper cluster
+  (`apply_template_typedef_bindings`, `materialize_template_array_extent`,
+  `append_instantiated_template_struct_bases`,
+  `register_instantiated_template_struct_methods`,
+  `record_instantiated_template_struct_field_metadata`,
+  `instantiate_template_struct_field`,
+  `append_instantiated_template_struct_fields`, and
+  `instantiate_template_struct_body`) into the new
+  `src/frontend/hir/hir_templates_struct_instantiation.cpp`
+- kept the logic as existing `Lowerer` methods so the slice remains a
+  translation-unit ownership split rather than a semantic rewrite
+- added `tests/cpp/internal/hir_case/template_struct_body_instantiation_hir.cpp`
+  as focused HIR coverage for inherited member access, NTTP array extent
+  materialization, and instantiated method lowering
+
+Measured result:
+
+- compiling the pre-split `src/frontend/hir/hir_templates.cpp` from `HEAD` on
+  the generated optimized command took `5.087s`
+- the post-split `src/frontend/hir/hir_templates.cpp` took `4.241s`
+- the new `src/frontend/hir/hir_templates_struct_instantiation.cpp` compiles
+  in `1.384s`
+- this means the slice did demonstrate a single-TU compile-time win for the
+  main hotspot TU, reducing `hir_templates.cpp` by `0.846s` (about `16.6%`)
+
+Validation result:
+
+- focused coverage passed:
+  `cpp_hir_template_struct_body_instantiation`,
+  `cpp_hir_template_struct_inherited_method_binding`,
+  `cpp_hir_template_struct_field_array_extent`,
+  `cpp_hir_template_method_param_reentrant_lowering`,
+  `cpp_positive_sema_template_member_owner_resolution_cpp`, and
+  `cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp`
+- full-suite regression guard passed with `3321/3321` tests passing before and
+  `3324/3324` after, with no new failures
+
 ## Non-Goals
 
 - no backend architecture work

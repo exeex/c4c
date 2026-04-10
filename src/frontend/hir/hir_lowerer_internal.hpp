@@ -14,6 +14,7 @@
 // - hir_functions.cpp: callable/global lowering
 // - hir_stmt.cpp: statement lowering and cleanup emission
 // - hir_expr.cpp: expression lowering and operator dispatch
+// - hir_templates_struct_instantiation.cpp: template struct body realization
 // - hir_types.cpp: type/layout/init normalization
 // - hir_lowering_core.cpp: shared source/span/string helpers
 

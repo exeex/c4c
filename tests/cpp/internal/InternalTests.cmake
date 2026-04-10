@@ -1407,6 +1407,15 @@ set_tests_properties(cpp_hir_template_method_param_reentrant_lowering PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_struct_body_instantiation
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_struct_body_instantiation_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_struct_body_instantiation PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "struct Buffer_T_int_N_3 size=20 align=4.*field data: int\\[3\\] llvm_idx=0 offset=4 size=12 align=4.*field tail: int llvm_idx=1 offset=16 size=4 align=4.*fn Buffer_T_int_N_3__sum_const\\(this: struct Buffer_T_int_N_3\\*\\) -> int.*return \\(\\(this#P0->value \\+ this#P0->data\\[1\\]\\) \\+ this#P0->tail\\)"
+)
+
+add_test(
   NAME cpp_hir_template_function_pack_signature_binding
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_function_pack_signature_hir.cpp"
 )
