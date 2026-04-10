@@ -1451,6 +1451,44 @@ c4c::codegen::lir::LirModule make_bir_declared_direct_call_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_string_literal_strlen_sub_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "hello", 6});
+
+  LirFunction callee;
+  callee.name = "strlen";
+  callee.is_declaration = true;
+  callee.signature_text = "declare i32 @strlen(ptr)\n";
+  callee.return_type.base = c4c::TB_INT;
+  callee.params.push_back({"%arg0", c4c::TypeSpec{.base = c4c::TB_CHAR, .ptr_level = 1}});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.p", "ptr", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "[6 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirStoreOp{"ptr", "%t0", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t1", "ptr", "%lv.p"});
+  entry.insts.push_back(LirCallOp{"%t2", "i32", "@strlen", "(ptr)", "ptr %t1"});
+  entry.insts.push_back(LirBinOp{"%t3", "sub", "i32", "%t2", "5"});
+  entry.terminator = LirRet{std::string("%t3"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(callee));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_declared_direct_call_inferred_params_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -2435,6 +2473,25 @@ void test_bir_lowering_accepts_minimal_declared_direct_call_lir_module() {
                   parsed->args.front().operand == "@msg" &&
                   !parsed->return_call_result && parsed->return_imm == 7,
               "the lowered BIR module should preserve the pointer argument and fixed return immediate");
+}
+
+void test_bir_lowering_accepts_string_literal_strlen_sub_lir_module() {
+  const auto lowered = c4c::backend::try_lower_to_bir(make_bir_string_literal_strlen_sub_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded string-literal strlen/sub source-like LIR slice");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().name == "main" &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return &&
+                  lowered->functions.front().blocks.front().terminator.value ==
+                      c4c::backend::bir::Value::immediate_i32(0),
+              "the lowered string-literal strlen/sub BIR module should collapse to the exact constant return implied by the private string bytes");
 }
 
 void test_bir_lowering_infers_extern_decl_params_from_typed_call_lir_module() {
@@ -6054,6 +6111,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_two_param_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_two_param_staged_affine_chain);
   RUN_TEST(test_bir_lowering_accepts_minimal_declared_direct_call_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_string_literal_strlen_sub_lir_module);
   RUN_TEST(test_bir_lowering_infers_extern_decl_params_from_typed_call_lir_module);
   RUN_TEST(test_bir_lowering_uses_typed_declared_direct_call_metadata_when_text_is_stale);
   RUN_TEST(test_bir_lowering_uses_typed_extern_declared_direct_call_metadata_when_text_is_stale);

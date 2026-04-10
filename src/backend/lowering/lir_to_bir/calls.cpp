@@ -1805,6 +1805,112 @@ std::optional<bir::Module> try_lower_minimal_call_crossing_direct_call_module(
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_string_literal_strlen_sub_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (!module.globals.empty() || module.string_pool.size() != 1 || !module.extern_decls.empty() ||
+      module.functions.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto& string_constant = module.string_pool.front();
+  if (string_constant.pool_name.empty() || string_constant.byte_length <= 0) {
+    return std::nullopt;
+  }
+
+  const std::string string_array_type =
+      "[" + std::to_string(string_constant.byte_length) + " x i8]";
+  const std::string decoded_bytes = decode_call_llvm_byte_string(string_constant.raw_bytes);
+  std::size_t string_length = decoded_bytes.size();
+  for (std::size_t index = 0; index < decoded_bytes.size(); ++index) {
+    if (decoded_bytes[index] == '\0') {
+      string_length = index;
+      break;
+    }
+  }
+
+  const auto try_match =
+      [&](const LirFunction& main_function,
+          const LirFunction& declared_callee) -> std::optional<std::tuple<std::string, std::int64_t>> {
+    if (main_function.is_declaration || !declared_callee.is_declaration ||
+        declared_callee.name != "strlen" ||
+        !lir_function_matches_minimal_no_param_integer_return(main_function, 32) ||
+        main_function.entry.value != 0 || main_function.blocks.size() != 1 ||
+        main_function.alloca_insts.size() != 1 || !main_function.stack_objects.empty()) {
+      return std::nullopt;
+    }
+
+    if (lir_to_bir::legalize_function_decl_return_type(declared_callee) != bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+    const auto* slot = std::get_if<LirAllocaOp>(&main_function.alloca_insts.front());
+    if (slot == nullptr || slot->result.empty() || slot->type_str != "ptr" || !slot->count.empty()) {
+      return std::nullopt;
+    }
+
+    const auto& entry = main_function.blocks.front();
+    const auto* ret = std::get_if<LirRet>(&entry.terminator);
+    const auto* base_gep = entry.insts.size() == 5 ? std::get_if<LirGepOp>(&entry.insts[0]) : nullptr;
+    const auto* store = entry.insts.size() == 5 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+    const auto* reload = entry.insts.size() == 5 ? std::get_if<LirLoadOp>(&entry.insts[2]) : nullptr;
+    const auto* call = entry.insts.size() == 5 ? std::get_if<LirCallOp>(&entry.insts[3]) : nullptr;
+    const auto* sub = entry.insts.size() == 5 ? std::get_if<LirBinOp>(&entry.insts[4]) : nullptr;
+    const auto sub_opcode = sub == nullptr ? std::nullopt : sub->opcode.typed();
+    const auto call_operand =
+        call == nullptr ? std::nullopt : parse_backend_single_typed_call_operand(*call, "ptr");
+    if (entry.label != "entry" || ret == nullptr || base_gep == nullptr || store == nullptr ||
+        reload == nullptr || call == nullptr || sub == nullptr || !call_operand.has_value() ||
+        sub_opcode != LirBinaryOpcode::Sub || !ret->value_str.has_value() ||
+        *ret->value_str != sub->result || ret->type_str != "i32" ||
+        lower_function_return_type(main_function, *ret) != bir::TypeKind::I32 ||
+        !match_memory_string_base_gep_zero(*base_gep, string_constant.pool_name, string_array_type) ||
+        store->type_str != "ptr" || store->val != base_gep->result || store->ptr != slot->result ||
+        reload->type_str != "ptr" || reload->ptr != slot->result || call->callee != "@strlen" ||
+        *call_operand != reload->result || call->return_type != "i32" || call->result.empty() ||
+        sub->lhs != call->result ||
+        !backend_lir_type_is_i32(sub->type_str)) {
+      return std::nullopt;
+    }
+
+    const auto sub_imm = parse_backend_i64_literal(sub->rhs);
+    if (!sub_imm.has_value()) {
+      return std::nullopt;
+    }
+
+    return std::tuple<std::string, std::int64_t>{
+        main_function.name,
+        static_cast<std::int64_t>(string_length) - *sub_imm,
+    };
+  };
+
+  auto parsed = try_match(module.functions[0], module.functions[1]);
+  if (!parsed.has_value()) {
+    parsed = try_match(module.functions[1], module.functions[0]);
+  }
+  if (!parsed.has_value() || std::get<1>(*parsed) < std::numeric_limits<std::int32_t>::min() ||
+      std::get<1>(*parsed) > std::numeric_limits<std::int32_t>::max()) {
+    return std::nullopt;
+  }
+
+  const auto& [main_name, return_imm] = *parsed;
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function main_function;
+  main_function.name = main_name;
+  main_function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator.value = bir::Value::immediate_i32(static_cast<std::int32_t>(return_imm));
+  main_function.blocks.push_back(std::move(entry));
+  lowered.functions.push_back(std::move(main_function));
+  return lowered;
+}
+
 void record_call_lowering_scaffold_notes(const c4c::codegen::lir::LirModule& module,
                                          std::vector<BirLoweringNote>* notes) {
   (void)module;
