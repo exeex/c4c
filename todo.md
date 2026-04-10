@@ -6,17 +6,15 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: continue through the remaining vector-only canonical/sema cluster
-  after clearing the free-operator overload conflict path.
-- Iteration target: reduce the remaining allocator-facing follow-up in
-  `tests/cpp/eastl/eastl_vector_simple.cpp`, starting from
-  `EASTL/allocator.h:210:16` incompatible return type before revisiting the
-  dependent `base_type::allocator_type` cast fallout at `EASTL/vector.h:438:61`.
-- Reduced repro: `tests/cpp/eastl/eastl_vector_simple.cpp --dump-canonical`
-  now fails only at `EASTL/allocator.h:210:16` and
-  `EASTL/vector.h:438:61`. The earlier `vector.h` `operator_eq` /
-  `operator_neq` conflicts are gone after treating free operator functions as
-  ordinary C++ overload-set members in sema.
+- Step 3: move past the finished vector canonical/sema slice and resume from
+  the next remaining EASTL semantic frontier.
+- Iteration target: re-reduce the surviving
+  `tests/cpp/eastl/eastl_type_traits_simple.cpp --dump-canonical` failure
+  cluster, starting from the current `mPart0` / `mPart1` follow-up recorded in
+  `tests/cpp/eastl/README.md`.
+- Reduced repro: the old vector-only allocator cluster is gone. The active
+  EASTL ladder now needs a smaller generic repro for the type-traits /
+  `function_detail.h`-adjacent sema path rather than more vector work.
 
 ## Completed
 
@@ -257,30 +255,44 @@ Source Plan: plan.md
   cluster: `tests/cpp/eastl/eastl_memory_simple.cpp --dump-canonical` now
   succeeds, and `tests/cpp/eastl/eastl_vector_simple.cpp --dump-canonical`
   narrows to vector/allocator-only diagnostics.
+- Added focused frontend coverage in
+  `tests/cpp/internal/postive_case/qualified_member_typedef_functional_cast_frontend.cpp`
+  and strengthened
+  `tests/cpp/internal/postive_case/namespaced_out_of_class_method_context_frontend.cpp`
+  so out-of-class methods keep the correct owner record even when another
+  namespace defines the same unqualified type name.
+- Fixed sema owner resolution for out-of-class methods by preferring struct
+  definitions in the method's namespace context, and let owner-qualified cast
+  targets inside methods defer through sema instead of rejecting
+  `base_type::allocator_type(...)` immediately.
+- Fixed C++ functional-cast parsing so record types, including typedef-like
+  spellings that resolve to known records, take the constructor-call path even
+  with a single argument instead of lowering as scalar-style casts.
+- Confirmed `#include <EASTL/vector.h>` now canonicalizes, and
+  `tests/cpp/eastl/eastl_vector_simple.cpp --dump-canonical` now completes.
+- Re-ran the focused owner-context / functional-cast regressions plus the full
+  `ctest --test-dir build -j8 --output-on-failure` suite; the regression guard
+  remains monotonic at 3292/3292 passing tests versus the earlier
+  3291/3291 baseline, with zero new failing tests.
 
 ## Next Slice
 
-- keep the new structured-binding feature gate in place and work from the
-  moved `eastl_vector_simple.cpp` canonical-sema frontier, starting from the
-  vector-only `operator_eq` / `operator_neq` conflict path before revisiting
-  the allocator-return and `base_type::allocator_type` follow-ups
-- keep the new HIR re-entrant method-lowering regression green while working
-  back outward from the remaining EASTL canonical/sema cases
-- reduce the leading `eastl_vector_simple.cpp` semantic errors
-  (`operator_eq` / `operator_neq`, allocator return, or
-  `base_type::allocator_type`)
-  to the smallest generic reproducer before touching broader container follow-up
+- keep the structured-binding feature gate in place and treat vector as
+  revalidated rather than active
+- re-baseline `eastl_type_traits_simple.cpp` and confirm whether its current
+  `mPart0` / `mPart1` cluster is still the smallest remaining EASTL sema case
+- keep the new owner-context and qualified functional-cast regressions green
+  while reducing the next type-traits blocker to one generic frontend/HIR
+  mechanism before touching broader container follow-up
 
 ## Blockers
 
 - structured bindings themselves are still unsupported in the frontend, so the
   compiler must continue advertising `EA_COMPILER_NO_STRUCTURED_BINDING` until
   a dedicated structured-binding implementation lands
-- `eastl_vector_simple.cpp` still reaches a mixed later cluster under
-  `--dump-canonical`: `vector.h` comparison operators, the remaining
-  allocator-return diagnostic that does not reproduce from
-  `#include <EASTL/allocator.h>`, and a follow-on `base_type::allocator_type`
-  cast failure
+- `eastl_type_traits_simple.cpp` still reaches the older later-semantic
+  `mPart0` / `mPart1` cluster from EASTL internals, so the next slice needs a
+  fresh reduced repro there instead of more vector work
 
 ## Resume Notes
 
@@ -290,8 +302,9 @@ Source Plan: plan.md
 - `eastl_utility_simple.cpp` now passes both `--parse-only` and
   `--dump-canonical`
 - `eastl_tuple_simple.cpp` now also passes `--dump-canonical`, so the next
-  active EASTL frontier is no longer parse-only; `eastl_vector_simple.cpp`
-  parses and now fails later in canonical/sema alongside `eastl_memory_simple.cpp`
+  active EASTL frontier is no longer parse-only
+- `eastl_vector_simple.cpp` now also passes `--dump-canonical`, so vector is no
+  longer the active EASTL frontier
 - focused parser coverage now exists for shadowed-name assignment dispatch
   under `tests/cpp/internal/postive_case/local_value_shadows_*`
 - focused parser coverage now also exists for out-of-class constructor-template

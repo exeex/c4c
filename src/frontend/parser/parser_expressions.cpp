@@ -40,6 +40,21 @@ static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& t
     if (ts.is_rvalue_ref) out += "_rref";
 }
 
+static bool resolves_to_record_ctor_type(
+    TypeSpec ts,
+    const std::unordered_map<std::string, TypeSpec>& typedef_types,
+    const std::set<std::string>& defined_struct_tags,
+    const std::unordered_map<std::string, Node*>& template_struct_defs) {
+    ts = resolve_typedef_chain(ts, typedef_types);
+    if (ts.base == TB_TYPEDEF && ts.tag) {
+        if (defined_struct_tags.count(ts.tag) > 0 ||
+            template_struct_defs.count(ts.tag) > 0) {
+            return true;
+        }
+    }
+    return ts.base == TB_STRUCT || ts.base == TB_UNION;
+}
+
 int Parser::bin_prec(TokenKind k) {
     switch (k) {
         case TokenKind::PipePipe:       return 4;
@@ -1278,10 +1293,11 @@ Node* Parser::parse_primary() {
                 }
             }
             expect(TokenKind::RParen);
-            const bool ctor_like_type =
-                cast_ts.base == TB_STRUCT || cast_ts.base == TB_UNION ||
-                cast_ts.base == TB_TYPEDEF;
-            if (ctor_like_type && args.size() != 1) {
+            const bool record_ctor_like =
+                resolves_to_record_ctor_type(
+                    cast_ts, typedef_types_, defined_struct_tags_, template_struct_defs_);
+            const bool multi_arg_typedef_cast = cast_ts.base == TB_TYPEDEF && args.size() != 1;
+            if (record_ctor_like || multi_arg_typedef_cast) {
                 Node* callee =
                     make_var(cast_ts.tag ? cast_ts.tag
                                          : direct_resolved_type_name.c_str(),
@@ -1311,31 +1327,26 @@ Node* Parser::parse_primary() {
             }
             return parse_postfix(n);
         }
-        auto resolve_type_name_for_qn = [&](const QualifiedNameRef& type_qn) -> std::string {
-            std::string resolved;
-            if (!type_qn.qualifier_segments.empty()) {
-                std::string scoped;
-                for (size_t i = 0; i < type_qn.qualifier_segments.size(); ++i) {
-                    if (i) scoped += "::";
-                    scoped += type_qn.qualifier_segments[i];
-                }
-                if (!scoped.empty()) scoped += "::";
-                scoped += type_qn.base_name;
-                if (typedef_types_.count(scoped) > 0) return scoped;
-                int context_id = resolve_namespace_context(type_qn);
-                if (context_id >= 0) {
-                    resolved = canonical_name_in_context(context_id, type_qn.base_name);
-                    if (typedef_types_.count(resolved) > 0) return resolved;
-                }
-                return scoped;
-            }
-            resolved = resolve_visible_type_name(type_qn.base_name);
-            return resolved.empty() ? type_qn.base_name : resolved;
+        auto qualified_name_starts_from_type_owner =
+            [&](const QualifiedNameRef& type_qn) -> bool {
+            if (type_qn.qualifier_segments.empty()) return false;
+
+            const std::string first_qualifier =
+                resolve_visible_type_name(type_qn.qualifier_segments.front());
+            if (first_qualifier.empty()) return false;
+
+            return typedef_types_.count(first_qualifier) > 0 ||
+                   template_struct_defs_.count(first_qualifier) > 0 ||
+                   defined_struct_tags_.count(first_qualifier) > 0;
         };
         if (is_cpp_mode() && (check(TokenKind::Less) || check(TokenKind::LParen))) {
-            const std::string candidate_type_name = resolve_type_name_for_qn(qn);
-            if (!candidate_type_name.empty() &&
-                typedef_types_.count(candidate_type_name) > 0) {
+            const QualifiedTypeProbe type_probe = probe_qualified_type(*this, qn);
+            const std::string candidate_type_name =
+                !type_probe.resolved_typedef_name.empty()
+                    ? type_probe.resolved_typedef_name
+                    : type_probe.spelled_name;
+            if (type_probe.has_resolved_typedef ||
+                qualified_name_starts_from_type_owner(qn)) {
                 pos_ = ident_start;
                 std::vector<Token> saved_tokens = tokens_;
                 std::string saved_typedef = last_resolved_typedef_;
@@ -1367,10 +1378,12 @@ Node* Parser::parse_primary() {
                         }
                     }
                     expect(TokenKind::RParen);
-                    const bool ctor_like_type =
-                        cast_ts.base == TB_STRUCT || cast_ts.base == TB_UNION ||
-                        cast_ts.base == TB_TYPEDEF;
-                    if (ctor_like_type && args.size() != 1) {
+                    const bool record_ctor_like =
+                        resolves_to_record_ctor_type(
+                            cast_ts, typedef_types_, defined_struct_tags_, template_struct_defs_);
+                    const bool multi_arg_typedef_cast =
+                        cast_ts.base == TB_TYPEDEF && args.size() != 1;
+                    if (record_ctor_like || multi_arg_typedef_cast) {
                         Node* callee = make_var(cast_ts.tag ? cast_ts.tag : candidate_type_name.c_str(), ln);
                         Node* call = make_node(NK_CALL, ln);
                         call->left = callee;
@@ -1672,10 +1685,12 @@ Node* Parser::parse_primary() {
                 }
             }
             expect(TokenKind::RParen);
-            const bool ctor_like_type =
-                cast_ts.base == TB_STRUCT || cast_ts.base == TB_UNION ||
-                cast_ts.base == TB_TYPEDEF;
-            if (ctor_like_type && args.size() != 1) {
+            const bool record_ctor_like =
+                resolves_to_record_ctor_type(
+                    cast_ts, typedef_types_, defined_struct_tags_, template_struct_defs_);
+            const bool multi_arg_typedef_cast =
+                cast_ts.base == TB_TYPEDEF && args.size() != 1;
+            if (record_ctor_like || multi_arg_typedef_cast) {
                 Node* callee = make_var(cast_ts.tag ? cast_ts.tag : "<ctor>", ln);
                 Node* call = make_node(NK_CALL, ln);
                 call->left = callee;

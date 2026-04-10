@@ -1,5 +1,9 @@
 // Frontend regression: namespaced out-of-class methods should keep the owning
 // record context for implicit member lookup and `return *this;`.
+namespace other {
+struct allocator {};
+}
+
 namespace eastl {
 struct allocator {
     int value;

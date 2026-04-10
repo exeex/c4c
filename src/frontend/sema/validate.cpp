@@ -266,6 +266,21 @@ bool same_tagged_type(const TypeSpec& a, const TypeSpec& b) {
   return std::string(a.tag) == std::string(b.tag);
 }
 
+std::string unqualified_tag_name(const TypeSpec& ts) {
+  if (!ts.tag || !ts.tag[0]) return {};
+  const std::string tag(ts.tag);
+  const size_t sep = tag.rfind("::");
+  return sep == std::string::npos ? tag : tag.substr(sep + 2);
+}
+
+bool same_tagged_type_ignoring_qualification(const TypeSpec& a, const TypeSpec& b) {
+  if (a.base != b.base) return false;
+  if (a.base != TB_STRUCT && a.base != TB_UNION && a.base != TB_ENUM) return false;
+  const std::string a_name = unqualified_tag_name(a);
+  const std::string b_name = unqualified_tag_name(b);
+  return !a_name.empty() && a_name == b_name;
+}
+
 // C11 6.3.2.3p3: null pointer constant is an integer constant expression with value 0,
 // or such an expression cast to void*.
 bool is_null_pointer_constant_expr(const Node* n) {
@@ -277,6 +292,11 @@ bool is_null_pointer_constant_expr(const Node* n) {
     if (cast_to_void_ptr) return is_null_pointer_constant_expr(n->left);
   }
   return false;
+}
+
+bool is_deref_of_this_expr(const Node* n) {
+  return n && n->kind == NK_DEREF && n->left && n->left->kind == NK_VAR &&
+         n->left->name && std::strcmp(n->left->name, "this") == 0;
 }
 
 std::optional<std::string> qualified_method_owner_struct(const Node* fn) {
@@ -410,6 +430,7 @@ class Validator {
   std::unordered_set<std::string> complete_structs_;
   std::unordered_set<std::string> complete_unions_;
   std::unordered_map<const Node*, const Node*> method_owner_records_;
+  std::unordered_map<std::string, std::vector<const Node*>> struct_defs_by_unqualified_name_;
   // Struct field names for implicit member lookup in out-of-class method bodies.
   std::unordered_map<std::string, std::unordered_set<std::string>> struct_field_names_;
   std::unordered_map<std::string, std::unordered_map<std::string, TypeSpec>> struct_static_member_types_;
@@ -596,10 +617,16 @@ class Validator {
     return complete_unions_.count(tag) > 0;
   }
 
+  static std::string unqualified_name(const std::string& name) {
+    const size_t sep = name.rfind("::");
+    return sep == std::string::npos ? name : name.substr(sep + 2);
+  }
+
   void note_struct_def(const Node* n) {
     if (!n || n->kind != NK_STRUCT_DEF || !n->name || !n->name[0]) return;
     // Zero-sized structs/unions are a GCC extension; treat them as complete.
     const std::string tag(n->name);
+    struct_defs_by_unqualified_name_[unqualified_name(tag)].push_back(n);
     if (n->is_union) {
       complete_unions_.insert(tag);
     } else {
@@ -650,8 +677,40 @@ class Validator {
     return false;
   }
 
+  std::optional<std::string> resolve_owner_in_namespace_context(
+      const std::string& owner, int namespace_context_id) const {
+    if (owner.empty() || namespace_context_id < 0) return std::nullopt;
+
+    auto it = struct_defs_by_unqualified_name_.find(unqualified_name(owner));
+    if (it == struct_defs_by_unqualified_name_.end()) return std::nullopt;
+
+    const Node* match = nullptr;
+    for (const Node* candidate : it->second) {
+      if (!candidate || candidate->namespace_context_id != namespace_context_id ||
+          !candidate->name || !candidate->name[0]) {
+        continue;
+      }
+      if (owner.find("::") != std::string::npos) {
+        const std::string candidate_name(candidate->name);
+        if (candidate_name.size() < owner.size() ||
+            candidate_name.compare(candidate_name.size() - owner.size(), owner.size(), owner) != 0) {
+          continue;
+        }
+      }
+      if (match && match != candidate) return std::nullopt;
+      match = candidate;
+    }
+    if (!match) return std::nullopt;
+    return std::string(match->name);
+  }
+
   std::optional<std::string> enclosing_method_owner_struct(const Node* fn) const {
     if (auto owner = qualified_method_owner_struct(fn); owner.has_value()) {
+      if (auto contextual =
+              resolve_owner_in_namespace_context(*owner, fn ? fn->namespace_context_id : -1);
+          contextual.has_value()) {
+        return contextual;
+      }
       if (complete_structs_.count(*owner) || complete_unions_.count(*owner)) return owner;
 
       std::optional<std::string> resolved;
@@ -695,6 +754,12 @@ class Validator {
       return std::nullopt;
     }
     return std::string(it->second->name);
+  }
+
+  bool can_defer_owner_qualified_cast_typedef(const TypeSpec& ts) const {
+    if (current_method_struct_tag_.empty() || !ts.tag || !ts.tag[0]) return false;
+    if (ts.is_global_qualified) return false;
+    return std::strstr(ts.tag, "::") != nullptr;
   }
 
   void bind_template_nttps(const Node* n, int line) {
@@ -1191,9 +1256,13 @@ class Validator {
           }
           const TypeSpec return_check_ts =
               is_any_ref_ty(current_fn_ret_) ? referred_type(current_fn_ret_) : current_fn_ret_;
+          const bool self_return_compatible =
+              is_deref_of_this_expr(rv) &&
+              same_tagged_type_ignoring_qualification(return_check_ts, rv_info.type);
           if (!fn_returns_void && rv_info.valid &&
               !implicit_convertible(
-                  return_check_ts, rv_info.type, is_null_pointer_constant_expr(n->left))) {
+                  return_check_ts, rv_info.type, is_null_pointer_constant_expr(n->left)) &&
+              !self_return_compatible) {
             emit(n, "incompatible return type");
           }
         }
@@ -1719,6 +1788,8 @@ class Validator {
                               out.type.ptr_level == 0 &&
                               out.type.array_rank == 0;
         if (n->type.base == TB_TYPEDEF) {
+          const bool is_owner_qualified_cast_typedef =
+              can_defer_owner_qualified_cast_typedef(n->type);
           // Suppress for template type parameters — they're resolved at instantiation.
           bool is_tpl_type_param = false;
           if (current_fn_node_ && n->type.tag) {
@@ -1750,7 +1821,7 @@ class Validator {
                n->type.is_lvalue_ref || n->type.is_rvalue_ref)) {
             is_tpl_type_param = true;
           }
-          if (!is_tpl_type_param) {
+          if (!is_tpl_type_param && !is_owner_qualified_cast_typedef) {
             const std::string tname = n->type.tag ? n->type.tag : "<anonymous>";
             emit(n, "cast to unknown type name '" + tname + "'");
           }
