@@ -499,6 +499,7 @@ class Parser {
       const Node* primary_tpl,
       const Node* selected_tpl,
       const std::vector<TemplateArgParseResult>& args) const;
+  bool decode_type_ref_text(const std::string& text, TypeSpec* out);
   TypenameTemplateParamKind classify_typename_template_parameter() const;
   void push_template_scope(TemplateScopeKind kind,
                            const std::vector<TemplateScopeParam>& params);

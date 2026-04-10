@@ -32,6 +32,10 @@ Source Plan: plan.md
 - Next intended slice: move more of the concrete struct realization logic
   behind the new parser seam so the remaining injected-parse fallback becomes a
   small internal detail rather than the default path.
+- Next intended slice: keep shrinking parser-side string-derived semantic
+  fallback by routing more `text -> TypeSpec` recovery through the new shared
+  decode seam, then convert another common instantiation case to a true typed
+  fast path.
 
 ## Completed
 
@@ -91,3 +95,6 @@ Source Plan: plan.md
   `Parser::ensure_template_struct_instantiated_from_args(...)`: explicit full
   specializations can now register/use their existing concrete struct node
   directly without going through injected parse.
+- Added `Parser::decode_type_ref_text(...)` and routed both deferred parser
+  type-trait decoding and one major template-base rebuild path through that
+  shared seam instead of open-coded `struct_/enum_/mangled` string recovery.

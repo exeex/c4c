@@ -163,6 +163,79 @@ std::string Parser::build_template_struct_mangled_name(
     return mangled;
 }
 
+bool Parser::decode_type_ref_text(const std::string& text, TypeSpec* out) {
+    if (!out || text.empty()) return false;
+
+    auto tit = typedef_types_.find(text);
+    if (tit != typedef_types_.end()) {
+        *out = tit->second;
+        return true;
+    }
+
+    const std::string resolved_name = resolve_visible_type_name(text);
+    if (!resolved_name.empty()) {
+        auto rit = typedef_types_.find(resolved_name);
+        if (rit != typedef_types_.end()) {
+            *out = rit->second;
+            return true;
+        }
+    }
+
+    if (parse_mangled_type_suffix(text, out)) return true;
+
+    auto init_tag = [&](TypeBase base, size_t prefix_len) {
+        *out = {};
+        out->array_size = -1;
+        out->inner_rank = -1;
+        out->base = base;
+        out->tag = arena_.strdup(text.substr(prefix_len).c_str());
+        out->array_rank = 0;
+    };
+    if (text.rfind("struct_", 0) == 0) {
+        init_tag(TB_STRUCT, 7);
+        return true;
+    }
+    if (text.rfind("union_", 0) == 0) {
+        init_tag(TB_UNION, 6);
+        return true;
+    }
+    if (text.rfind("enum_", 0) == 0) {
+        init_tag(TB_ENUM, 5);
+        return true;
+    }
+
+    ParserSnapshot snapshot = save_state();
+    const int saved_pos = pos_;
+    auto saved_tokens = std::move(tokens_);
+
+    Lexer lexer(text, lex_profile_from(source_profile_));
+    std::vector<Token> injected_toks = lexer.scan_all();
+    if (injected_toks.empty()) {
+        restore_state(snapshot);
+        tokens_ = std::move(saved_tokens);
+        pos_ = saved_pos;
+        return false;
+    }
+    tokens_ = std::move(injected_toks);
+    pos_ = 0;
+
+    bool ok = false;
+    try {
+        *out = parse_type_name();
+        *out = resolve_typedef_chain(*out, typedef_types_);
+        ok = pos_ > 0 &&
+             pos_ >= static_cast<int>(tokens_.size()) - 1;
+    } catch (...) {
+        ok = false;
+    }
+
+    restore_state(snapshot);
+    tokens_ = std::move(saved_tokens);
+    pos_ = saved_pos;
+    if (ok) return true;
+    return parse_builtin_typespec_text(text, out);
+}
+
 bool Parser::eval_deferred_nttp_expr_tokens(
     const std::string& tpl_name,
     const std::vector<Token>& toks,
@@ -233,78 +306,9 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             }
         }
 
-        auto init_prefixed_tag_type = [&](const std::string& text, TypeSpec* parsed) -> bool {
-            if (!parsed) return false;
-            auto init_tag = [&](TypeBase base, size_t prefix_len) {
-                *parsed = {};
-                parsed->array_size = -1;
-                parsed->inner_rank = -1;
-                parsed->base = base;
-                parsed->tag = arena_.strdup(text.substr(prefix_len).c_str());
-                parsed->array_rank = 0;
-            };
-            if (text.rfind("struct_", 0) == 0) {
-                init_tag(TB_STRUCT, 7);
-                return true;
-            }
-            if (text.rfind("union_", 0) == 0) {
-                init_tag(TB_UNION, 6);
-                return true;
-            }
-            if (text.rfind("enum_", 0) == 0) {
-                init_tag(TB_ENUM, 5);
-                return true;
-            }
-            return false;
-        };
-
-        auto try_parse_type_name_from_tokens = [&](TypeSpec* parsed) -> bool {
-            if (!parsed) return false;
-            ParserSnapshot snapshot = save_state();
-            const int saved_pos = pos_;
-            auto saved_tokens = std::move(tokens_);
-
-            std::vector<Token> injected_toks;
-            injected_toks.reserve(end - start + 1);
-            for (size_t i = start; i < end; ++i) {
-                injected_toks.push_back(toks[i]);
-            }
-            Token eof{};
-            eof.kind = TokenKind::EndOfFile;
-            if (!injected_toks.empty()) {
-                eof.file = injected_toks.back().file;
-                eof.line = injected_toks.back().line;
-                eof.column = injected_toks.back().column;
-            }
-            injected_toks.push_back(std::move(eof));
-
-            tokens_ = std::move(injected_toks);
-            pos_ = 0;
-            for (const auto& [pn, pts] : type_bindings) {
-                typedef_types_[pn] = pts;
-            }
-
-            bool ok = false;
-            try {
-                *parsed = parse_type_name();
-                *parsed = resolve_typedef_chain(*parsed, typedef_types_);
-                ok = pos_ > 0 &&
-                     pos_ >= static_cast<int>(tokens_.size()) - 1;
-            } catch (...) {
-                ok = false;
-            }
-
-            restore_state(snapshot);
-            tokens_ = std::move(saved_tokens);
-            pos_ = saved_pos;
-            return ok;
-        };
-
         std::string text = capture_template_arg_expr_text(
             toks, static_cast<int>(start), static_cast<int>(end));
-        if (init_prefixed_tag_type(text, out)) return true;
-        if (try_parse_type_name_from_tokens(out)) return true;
-        return parse_builtin_typespec_text(text, out);
+        return decode_type_ref_text(text, out);
     };
 
     auto eval_builtin_type_trait = [&](long long* val) -> bool {
