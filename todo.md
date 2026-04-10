@@ -7,24 +7,23 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner cutover follow-on in the bounded prepared-LIR
-  direct-calls sibling seam after landing the bounded dual-helper subtraction
-  ownership move out of `src/backend/x86/codegen/emit.cpp`
+  direct-calls sibling seam after landing the bounded call-crossing helper
+  family ownership move out of `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  return to the next bounded direct-calls follow-on after the new dual-helper
-  subtraction family: move the remaining call-crossing prepared-LIR helper
-  family onto the native x86 direct-emitter path without reopening broader
+  return to the next bounded direct-calls follow-on after the new call-
+  crossing helper family: pick the next remaining prepared-LIR direct-call
+  matcher family that still falls back or throws, without reopening broader
   translated prologue-owner work
   - keep the next slice limited to one direct-call family; do not bundle the
-    remaining call-crossing route with unrelated prepared-LIR direct-call or
-    parked translated-prologue work
+    next prepared-LIR route with unrelated parked translated-prologue work
   - keep the broader translated prologue-owner work parked; this iteration is
     only about shrinking the remaining prepared-LIR direct-call matcher surface
 
 ## Next Slice
 
-- land the bounded call-crossing prepared-LIR direct-call family next:
-  preserve one live source value across a helper call on the native x86 path
-  without routing through shared BIR lowering
+- choose the next bounded prepared-LIR direct-call family that still lacks a
+  native x86 direct-emitter owner after the dual-helper subtraction and
+  call-crossing slices
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -36,6 +35,28 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration moved the bounded call-crossing prepared-LIR helper family
+  into `src/backend/x86/codegen/direct_calls.cpp`: the native x86 path now
+  accepts the `2 + 3`, `call add_one(%t0)`, `%t0 + %t1` shape directly,
+  preserving the pre-call source value in `rbx` across the helper call
+  instead of throwing before the prepared-LIR seam can own it
+- `src/backend/x86/codegen/direct_dispatch.cpp` now routes both the prepared-
+  LIR and direct-BIR call-crossing helper family through the same native x86
+  asm owner, and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pins the native
+  prepared-LIR slice plus the aligned direct-BIR/native-prelude expectations
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_bir_tests`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_direct_bir_minimal_call_crossing_direct_call_end_to_end`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice`
+- broad validation note:
+  skipped for this still-bounded direct-call owner slice per the active plan
+  note to defer the monotonic full-suite guard until a larger owner-path
+  cutover lands
 
 - this iteration moved the bounded dual-helper subtraction family into
   `src/backend/x86/codegen/direct_calls.cpp`: the native prepared-LIR path now

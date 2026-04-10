@@ -34,6 +34,10 @@ std::optional<std::string> try_emit_direct_bir_helper_module(
       asm_text.has_value()) {
     return asm_text;
   }
+  if (const auto asm_text = try_emit_minimal_call_crossing_direct_call_bir_module(module);
+      asm_text.has_value()) {
+    return asm_text;
+  }
   return std::nullopt;
 }
 
@@ -97,6 +101,10 @@ std::optional<std::string> try_emit_direct_prepared_lir_helper_module(
     return asm_text;
   }
   if (const auto asm_text = try_emit_minimal_dual_identity_direct_call_sub_module(module);
+      asm_text.has_value()) {
+    return asm_text;
+  }
+  if (const auto asm_text = try_emit_minimal_call_crossing_direct_call_module(module);
       asm_text.has_value()) {
     return asm_text;
   }

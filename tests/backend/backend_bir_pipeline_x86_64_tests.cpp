@@ -7156,7 +7156,7 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_call_crossing_direc
       c4c::backend::emit_module(c4c::backend::BackendModuleInput{module},
                                 make_bir_pipeline_options(c4c::backend::Target::X86_64));
 
-  expect_contains(rendered, ".type add_one, %function\nadd_one:\n",
+  expect_contains(rendered, ".globl add_one\n.type add_one, @function\nadd_one:\n",
                   "direct BIR call-crossing input should emit the helper definition on the x86 backend path");
   expect_contains(rendered, ".globl main",
                   "direct BIR call-crossing input should emit the caller definition on the x86 backend path");
@@ -8044,14 +8044,14 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_
       c4c::backend::BackendModuleInput{make_lir_minimal_call_crossing_direct_call_module()},
       make_bir_pipeline_options(c4c::backend::Target::X86_64));
 
-  expect_contains(rendered, ".type add_one, %function\nadd_one:\n",
-                  "x86 LIR call-crossing input should still emit the helper definition after routing through the shared BIR path");
+  expect_contains(rendered, ".globl add_one\n.type add_one, @function\nadd_one:\n",
+                  "x86 LIR call-crossing input should now emit the helper definition on the native prepared-LIR path");
   expect_contains(rendered, "mov ebx, 5",
-                  "x86 LIR call-crossing input should preserve the source value in the shared callee-saved register assignment");
+                  "x86 LIR call-crossing input should preserve the source value in the native callee-saved register assignment");
   expect_contains(rendered, "call add_one",
-                  "x86 LIR call-crossing input should stay on the shared BIR-owned direct-call emitter path");
+                  "x86 LIR call-crossing input should lower the helper call on the native x86 path");
   expect_contains(rendered, "add eax, ebx",
-                  "x86 LIR call-crossing input should preserve the final add against the source value after BIR lowering");
+                  "x86 LIR call-crossing input should preserve the final add against the source value on the native x86 path");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR call-crossing input should stay on native asm emission instead of falling back to LLVM text");
 }
@@ -10526,6 +10526,25 @@ void test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice(
                       "x86 direct emitter should stay on native asm emission for the bounded dual-helper subtraction slice");
 }
 
+void test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice() {
+  auto module = make_lir_minimal_call_crossing_direct_call_module();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded call-crossing helper family through the native prepared-LIR seam");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, ".globl add_one",
+                  "x86 direct emitter should still emit the helper definition for the bounded call-crossing direct-LIR slice");
+  expect_contains(*rendered, "add_one:\n  mov eax, edi\n  add eax, 1\n  ret\n",
+                  "x86 direct emitter should keep the helper add-immediate body on the native direct-LIR path");
+  expect_contains(*rendered, "main:\n  push rbx\n  mov ebx, 5\n  mov edi, ebx\n  call add_one\n  add eax, ebx\n  pop rbx\n  ret\n",
+                  "x86 direct emitter should preserve the source value across the helper call and add it back on the native x86 path");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded call-crossing helper slice");
+}
+
 void test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice() {
   auto module = make_lir_minimal_two_arg_local_arg_direct_call_module();
 
@@ -10887,6 +10906,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_identity_helper_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_rewrite_call_slice);

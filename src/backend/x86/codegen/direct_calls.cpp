@@ -85,6 +85,13 @@ struct MinimalDualIdentityDirectCallSubSlice {
   std::int64_t rhs_call_arg_imm = 0;
 };
 
+struct MinimalCallCrossingDirectCallSlice {
+  std::string helper_name;
+  std::string entry_name;
+  std::int64_t source_imm = 0;
+  std::int64_t helper_add_imm = 0;
+};
+
 struct MinimalExternZeroArgCallSlice {
   std::string extern_name;
   std::string function_name;
@@ -562,6 +569,93 @@ parse_minimal_dual_identity_direct_call_sub_slice(const c4c::codegen::lir::LirMo
       .lhs_call_arg_imm = *lhs_call_arg_imm,
       .rhs_call_arg_imm = *rhs_call_arg_imm,
   };
+}
+
+std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() || !module.extern_decls.empty() ||
+      !module.string_pool.empty()) {
+    return std::nullopt;
+  }
+
+  const auto try_match =
+      [](const LirFunction& helper,
+         const LirFunction& entry) -> std::optional<MinimalCallCrossingDirectCallSlice> {
+    if (entry.is_declaration || helper.is_declaration || entry.entry.value != 0 ||
+        helper.entry.value != 0 || entry.blocks.size() != 1 || helper.blocks.size() != 1 ||
+        !entry.alloca_insts.empty() || !helper.alloca_insts.empty() || !entry.stack_objects.empty() ||
+        !helper.stack_objects.empty() ||
+        !c4c::backend::backend_lir_signature_matches(entry.signature_text,
+                                                     "define",
+                                                     "i32",
+                                                     entry.name,
+                                                     {}) ||
+        !c4c::backend::backend_lir_signature_matches(helper.signature_text,
+                                                     "define",
+                                                     "i32",
+                                                     helper.name,
+                                                     {"i32"})) {
+      return std::nullopt;
+    }
+
+    const auto parsed_helper =
+        c4c::backend::parse_backend_single_add_imm_function(helper, helper.name);
+    if (!parsed_helper.has_value() || parsed_helper->add == nullptr) {
+      return std::nullopt;
+    }
+    const auto helper_add_imm = parse_i64(parsed_helper->add->rhs);
+    if (!helper_add_imm.has_value() ||
+        *helper_add_imm < std::numeric_limits<std::int32_t>::min() ||
+        *helper_add_imm > std::numeric_limits<std::int32_t>::max()) {
+      return std::nullopt;
+    }
+
+    const auto& block = entry.blocks.front();
+    const auto* ret = std::get_if<LirRet>(&block.terminator);
+    const auto* source_add = block.insts.size() == 3 ? std::get_if<LirBinOp>(&block.insts[0]) : nullptr;
+    const auto* call = block.insts.size() == 3 ? std::get_if<LirCallOp>(&block.insts[1]) : nullptr;
+    const auto* final_add = block.insts.size() == 3 ? std::get_if<LirBinOp>(&block.insts[2]) : nullptr;
+    if (block.label != "entry" || source_add == nullptr || call == nullptr || final_add == nullptr ||
+        ret == nullptr || source_add->opcode.typed() != LirBinaryOpcode::Add ||
+        source_add->type_str != "i32" || final_add->opcode.typed() != LirBinaryOpcode::Add ||
+        final_add->type_str != "i32" || !ret->value_str.has_value() ||
+        *ret->value_str != final_add->result || ret->type_str != "i32") {
+      return std::nullopt;
+    }
+
+    const auto source_lhs_imm = parse_i64(source_add->lhs);
+    const auto source_rhs_imm = parse_i64(source_add->rhs);
+    if (!source_lhs_imm.has_value() || !source_rhs_imm.has_value()) {
+      return std::nullopt;
+    }
+    const auto source_imm = *source_lhs_imm + *source_rhs_imm;
+    if (source_imm < std::numeric_limits<std::int32_t>::min() ||
+        source_imm > std::numeric_limits<std::int32_t>::max()) {
+      return std::nullopt;
+    }
+
+    const auto call_operand =
+        c4c::backend::parse_backend_direct_global_single_typed_call_operand(*call, helper.name, "i32");
+    if (!call_operand.has_value() || *call_operand != source_add->result || final_add->lhs != source_add->result ||
+        final_add->rhs != call->result) {
+      return std::nullopt;
+    }
+
+    return MinimalCallCrossingDirectCallSlice{
+        .helper_name = helper.name,
+        .entry_name = entry.name,
+        .source_imm = source_imm,
+        .helper_add_imm = *helper_add_imm,
+    };
+  };
+
+  if (const auto parsed = try_match(module.functions.front(), module.functions.back());
+      parsed.has_value()) {
+    return parsed;
+  }
+  return try_match(module.functions.back(), module.functions.front());
 }
 
 std::optional<MinimalTwoArgHelperCallSlice> parse_minimal_two_arg_local_arg_call_slice(
@@ -2147,6 +2241,33 @@ std::string emit_minimal_dual_identity_direct_call_sub_asm(
   return out.str();
 }
 
+std::string emit_minimal_call_crossing_direct_call_asm(
+    std::string_view target_triple,
+    const MinimalCallCrossingDirectCallSlice& slice) {
+  const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << ".text\n"
+      << emit_function_prelude(target_triple, helper_symbol)
+      << "  mov eax, edi\n";
+  if (slice.helper_add_imm > 0) {
+    out << "  add eax, " << slice.helper_add_imm << "\n";
+  } else if (slice.helper_add_imm < 0) {
+    out << "  sub eax, " << -slice.helper_add_imm << "\n";
+  }
+  out << "  ret\n"
+      << emit_function_prelude(target_triple, entry_symbol)
+      << "  push rbx\n"
+      << "  mov ebx, " << slice.source_imm << "\n"
+      << "  mov edi, ebx\n"
+      << "  call " << helper_symbol << "\n"
+      << "  add eax, ebx\n"
+      << "  pop rbx\n"
+      << "  ret\n";
+  return out.str();
+}
+
 }  // namespace
 
 std::optional<std::string> try_emit_minimal_param_slot_add_module(
@@ -2242,6 +2363,30 @@ std::optional<std::string> try_emit_minimal_dual_identity_direct_call_sub_module
     return emit_minimal_dual_identity_direct_call_sub_asm(module.target_triple, *slice);
   }
   return std::nullopt;
+}
+
+std::optional<std::string> try_emit_minimal_call_crossing_direct_call_module(
+    const c4c::codegen::lir::LirModule& module) {
+  if (const auto slice = parse_minimal_call_crossing_direct_call_slice(module); slice.has_value()) {
+    return emit_minimal_call_crossing_direct_call_asm(module.target_triple, *slice);
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> try_emit_minimal_call_crossing_direct_call_bir_module(
+    const c4c::backend::bir::Module& module) {
+  const auto parsed = c4c::backend::parse_bir_minimal_call_crossing_direct_call_module(module);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+  return emit_minimal_call_crossing_direct_call_asm(
+      module.target_triple,
+      MinimalCallCrossingDirectCallSlice{
+          .helper_name = parsed->helper->name,
+          .entry_name = parsed->main_function->name,
+          .source_imm = parsed->source_imm,
+          .helper_add_imm = parsed->helper_add_imm,
+      });
 }
 
 std::optional<std::string> try_emit_minimal_two_arg_local_arg_call_module(
