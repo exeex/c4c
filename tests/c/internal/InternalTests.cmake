@@ -334,6 +334,19 @@ if(EXISTS "${EXAMPLE_C}")
       LABELS "internal;backend")
 
   add_test(
+      NAME backend_ir_x86_64_variadic_pair_amd64_vaarg
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/variadic_pair_second.c
+              -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend_ir/variadic_pair_second_x86_64.ll
+              "-DREQUIRED_SNIPPETS=br i1 %t6, label %vaarg.amd64.reg.|call void @llvm.memcpy.p0.p0.i64(ptr %t13, ptr %t11, i64 8, i1 false)|%t19 = phi %struct.Pair [ %t14, %vaarg.amd64.reg.7 ], [ %t18, %vaarg.amd64.stack.8 ]"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_llvm_ir_snippet_case.cmake"
+  )
+  set_tests_properties(backend_ir_x86_64_variadic_pair_amd64_vaarg PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
       NAME backend_lir_aarch64_variadic_bigints_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>

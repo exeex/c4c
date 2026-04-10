@@ -6,13 +6,40 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4/5: keep the next extraction inside `stmt_emitter_call.cpp` and split
-  the remaining AMD64 `va_arg` helper family, since the refreshed optimized
-  hotspot order still leaves `stmt_emitter_call.cpp` ahead of the leading
-  frontend TUs.
+- Step 4/5: use the refreshed direct-TU timings to choose the next extraction
+  seam between the new AMD64 vararg TU and the remaining frontend leaders;
+  `stmt_emitter_call_vaarg_amd64.cpp` now measures 3.613s, ahead of
+  `hir_templates.cpp` at 2.878s, `hir_expr.cpp` at 2.717s, and `hir_stmt.cpp`
+  at 2.528s.
 
 ## Completed
 
+- Added focused x86_64 LLVM IR coverage in
+  `backend_ir_x86_64_variadic_pair_amd64_vaarg` to pin the AMD64 register /
+  stack `va_arg` join emitted for `tests/c/internal/backend_case/variadic_pair_second.c`.
+- Executed the sixteenth Step 4 slice by moving the remaining AMD64 `va_arg`
+  helper family (`load_amd64_va_list_ptrs`, `emit_amd64_va_arg`,
+  `emit_amd64_va_arg_from_registers`, and
+  `emit_amd64_va_arg_from_overflow`) out of
+  `src/codegen/lir/stmt_emitter_call.cpp` into the new
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `backend_ir_x86_64_variadic_pair_amd64_vaarg`,
+  `backend_runtime_variadic_double_bytes`,
+  `backend_runtime_variadic_pair_second`,
+  `backend_runtime_variadic_sum2`,
+  `abi_abi_variadic_forward_wrapper_c`,
+  `abi_abi_variadic_struct_result_c`, and
+  `abi_abi_variadic_va_copy_accumulate_c`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard passed
+  with 3330/3330 tests passing before and 3337/3337 after, with no new
+  failures.
+- Recorded the sixteenth before/after extraction measurement: compiling the
+  pre-split `src/codegen/lir/stmt_emitter_call.cpp` from `HEAD` on the
+  generated optimized command took 3.368s, the reduced
+  `src/codegen/lir/stmt_emitter_call.cpp` took 0.545s, and the new
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` took 3.017s on the
+  direct comparison rerun and 3.613s on the refreshed hotspot pass.
 - Activated the lowest-numbered eligible idea from `ideas/open/` into
   `plan.md`.
 - Created `todo.md` aligned to the same source idea.
