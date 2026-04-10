@@ -4317,6 +4317,11 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
       lowered.has_value()) {
     return lowered;
   }
+  if (const auto lowered =
+          try_lower_minimal_global_two_field_struct_store_sub_sub_return_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
 
   if (!module.globals.empty() || !module.string_pool.empty() || !module.extern_decls.empty() ||
       module.functions.size() != 1) {

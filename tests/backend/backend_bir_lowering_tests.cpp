@@ -1342,6 +1342,53 @@ c4c::codegen::lir::LirModule make_bir_minimal_scalar_global_store_reload_lir_mod
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_minimal_global_two_field_struct_store_sub_sub_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct._anon_0 = type { i32, i32 }");
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "v",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "%struct._anon_0",
+      "{ i32 zeroinitializer, i32 zeroinitializer }",
+      4,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "%struct._anon_0", "@v", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirStoreOp{"i32", "1", "%t0"});
+  entry.insts.push_back(LirGepOp{"%t1", "%struct._anon_0", "@v", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirStoreOp{"i32", "2", "%t1"});
+  entry.insts.push_back(LirGepOp{"%t2", "%struct._anon_0", "@v", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t3", "i32", "%t2"});
+  entry.insts.push_back(LirBinOp{"%t4", "sub", "i32", "3", "%t3"});
+  entry.insts.push_back(LirGepOp{"%t5", "%struct._anon_0", "@v", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirLoadOp{"%t6", "i32", "%t5"});
+  entry.insts.push_back(LirBinOp{"%t7", "sub", "i32", "%t4", "%t6"});
+  entry.terminator = LirRet{std::string("%t7"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_direct_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -3751,6 +3798,43 @@ void test_bir_lowering_accepts_zero_initialized_scalar_global_store_reload_lir_m
                   "the lowered zero-initialized scalar global store-reload BIR module should keep the bounded store/load contract");
 }
 
+void test_bir_lowering_accepts_global_two_field_struct_store_sub_sub_lir_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_minimal_global_two_field_struct_store_sub_sub_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded global two-field struct store/sub/sub LIR slice");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->globals.size() == 1 && lowered->functions.size() == 1 &&
+                  lowered->globals.front().name == "v" &&
+                  lowered->globals.front().size_bytes == 8 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.size() == 6,
+              "the lowered global two-field struct store/sub/sub BIR module should keep one 8-byte global plus the bounded field-store/load arithmetic sequence");
+  if (lowered->functions.front().blocks.front().insts.size() != 6) {
+    return;
+  }
+
+  const auto& insts = lowered->functions.front().blocks.front().insts;
+  const auto* store_field0 = std::get_if<c4c::backend::bir::StoreGlobalInst>(&insts[0]);
+  const auto* store_field1 = std::get_if<c4c::backend::bir::StoreGlobalInst>(&insts[1]);
+  const auto* load_field0 = std::get_if<c4c::backend::bir::LoadGlobalInst>(&insts[2]);
+  const auto* first_sub = std::get_if<c4c::backend::bir::BinaryInst>(&insts[3]);
+  const auto* load_field1 = std::get_if<c4c::backend::bir::LoadGlobalInst>(&insts[4]);
+  const auto* second_sub = std::get_if<c4c::backend::bir::BinaryInst>(&insts[5]);
+  expect_true(store_field0 != nullptr && store_field1 != nullptr && load_field0 != nullptr &&
+                  first_sub != nullptr && load_field1 != nullptr && second_sub != nullptr &&
+                  store_field0->global_name == "v" && store_field0->byte_offset == 0 &&
+                  store_field1->global_name == "v" && store_field1->byte_offset == 4 &&
+                  load_field0->global_name == "v" && load_field0->byte_offset == 0 &&
+                  load_field1->global_name == "v" && load_field1->byte_offset == 4 &&
+                  first_sub->opcode == c4c::backend::bir::BinaryOpcode::Sub &&
+                  second_sub->opcode == c4c::backend::bir::BinaryOpcode::Sub,
+              "the lowered global two-field struct store/sub/sub BIR module should route both fields through explicit global byte offsets plus two subtraction steps");
+}
+
 void test_bir_printer_renders_minimal_lshr_scaffold() {
   using namespace c4c::backend::bir;
 
@@ -5989,6 +6073,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_scalar_global_store_reload_lir_module);
   RUN_TEST(test_bir_lowering_accepts_typed_minimal_scalar_global_store_reload_lir_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_zero_initialized_scalar_global_store_reload_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_global_two_field_struct_store_sub_sub_lir_module);
   RUN_TEST(test_bir_validator_rejects_returning_undefined_named_value);
   RUN_TEST(test_bir_validator_rejects_return_type_mismatch);
   RUN_TEST(test_bir_validator_rejects_non_widening_sext);

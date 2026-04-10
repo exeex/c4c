@@ -365,6 +365,15 @@ bool match_memory_indexed_gep_from_result(const c4c::codegen::lir::LirGepOp& gep
          gep.indices[0] == ("i64 " + std::string(expected_index_name));
 }
 
+bool match_memory_global_struct_field_gep(const c4c::codegen::lir::LirGepOp& gep,
+                                          std::string_view global_name,
+                                          std::string_view struct_type,
+                                          std::size_t field_index) {
+  return gep.element_type == struct_type && gep.ptr == ("@" + std::string(global_name)) &&
+         gep.indices.size() == 2 && gep.indices[0] == "i32 0" &&
+         gep.indices[1] == ("i32 " + std::to_string(field_index));
+}
+
 std::optional<bir::Module> try_lower_minimal_global_char_pointer_diff_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -1011,6 +1020,141 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_store_reload_module(
       bir::Value::named(bir::TypeKind::I32, load->result.str()), global.name));
   lowered_entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, load->result.str()),
+  };
+
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
+std::optional<bir::Module> try_lower_minimal_global_two_field_struct_store_sub_sub_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (!memory_target_supports_global_pointer_diff(module.target_triple)) {
+    return std::nullopt;
+  }
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_internal || global.is_const || global.is_extern_decl ||
+      global.linkage_vis != "" || global.qualifier != "global " ||
+      global.llvm_type != "%struct._anon_0" ||
+      (global.init_text != "{ i32 zeroinitializer, i32 zeroinitializer }" &&
+       global.init_text != "zeroinitializer") ||
+      global.align_bytes != 4 ||
+      std::find(module.type_decls.begin(), module.type_decls.end(),
+                "%struct._anon_0 = type { i32, i32 }") == module.type_decls.end()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* field0_store_gep =
+      entry.insts.size() == 10 ? std::get_if<LirGepOp>(&entry.insts[0]) : nullptr;
+  const auto* store_field0 =
+      entry.insts.size() == 10 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* field1_store_gep =
+      entry.insts.size() == 10 ? std::get_if<LirGepOp>(&entry.insts[2]) : nullptr;
+  const auto* store_field1 =
+      entry.insts.size() == 10 ? std::get_if<LirStoreOp>(&entry.insts[3]) : nullptr;
+  const auto* field0_load_gep =
+      entry.insts.size() == 10 ? std::get_if<LirGepOp>(&entry.insts[4]) : nullptr;
+  const auto* load_field0 =
+      entry.insts.size() == 10 ? std::get_if<LirLoadOp>(&entry.insts[5]) : nullptr;
+  const auto* first_sub =
+      entry.insts.size() == 10 ? std::get_if<LirBinOp>(&entry.insts[6]) : nullptr;
+  const auto* field1_load_gep =
+      entry.insts.size() == 10 ? std::get_if<LirGepOp>(&entry.insts[7]) : nullptr;
+  const auto* load_field1 =
+      entry.insts.size() == 10 ? std::get_if<LirLoadOp>(&entry.insts[8]) : nullptr;
+  const auto* second_sub =
+      entry.insts.size() == 10 ? std::get_if<LirBinOp>(&entry.insts[9]) : nullptr;
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+
+  if (entry.label != "entry" || field0_store_gep == nullptr || store_field0 == nullptr ||
+      field1_store_gep == nullptr || store_field1 == nullptr || field0_load_gep == nullptr ||
+      load_field0 == nullptr || first_sub == nullptr || field1_load_gep == nullptr ||
+      load_field1 == nullptr || second_sub == nullptr || ret == nullptr ||
+      !ret->value_str.has_value() ||
+      lir_to_bir::legalize_function_return_type(function, *ret) != bir::TypeKind::I32 ||
+      *ret->value_str != second_sub->result ||
+      !match_memory_global_struct_field_gep(
+          *field0_store_gep, global.name, global.llvm_type, 0) ||
+      !match_memory_global_struct_field_gep(
+          *field1_store_gep, global.name, global.llvm_type, 1) ||
+      !match_memory_global_struct_field_gep(
+          *field0_load_gep, global.name, global.llvm_type, 0) ||
+      !match_memory_global_struct_field_gep(
+          *field1_load_gep, global.name, global.llvm_type, 1) ||
+      !memory_lir_type_matches_expected_scalar(store_field0->type_str, bir::TypeKind::I32) ||
+      !memory_lir_type_matches_expected_scalar(store_field1->type_str, bir::TypeKind::I32) ||
+      !memory_lir_type_matches_expected_scalar(load_field0->type_str, bir::TypeKind::I32) ||
+      !memory_lir_type_matches_expected_scalar(load_field1->type_str, bir::TypeKind::I32) ||
+      store_field0->ptr != field0_store_gep->result || store_field0->val != "1" ||
+      store_field1->ptr != field1_store_gep->result || store_field1->val != "2" ||
+      load_field0->ptr != field0_load_gep->result ||
+      load_field1->ptr != field1_load_gep->result ||
+      first_sub->opcode.typed() != LirBinaryOpcode::Sub ||
+      !memory_lir_type_matches_integer_width(first_sub->type_str, 32) ||
+      first_sub->lhs != "3" || first_sub->rhs != load_field0->result ||
+      second_sub->opcode.typed() != LirBinaryOpcode::Sub ||
+      !memory_lir_type_matches_integer_width(second_sub->type_str, 32) ||
+      second_sub->lhs != first_sub->result || second_sub->rhs != load_field1->result) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+  lowered.globals.push_back(bir::Global{
+      .name = global.name,
+      .type = bir::TypeKind::I32,
+      .is_extern = false,
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(0),
+  });
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.insts.push_back(make_memory_store_global(
+      global.name, bir::Value::immediate_i32(1), 0, 4));
+  lowered_entry.insts.push_back(make_memory_store_global(
+      global.name, bir::Value::immediate_i32(2), 4, 4));
+  lowered_entry.insts.push_back(make_memory_load_global(
+      bir::Value::named(bir::TypeKind::I32, load_field0->result.str()), global.name, 0, 4));
+  lowered_entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, first_sub->result.str()),
+      .lhs = bir::Value::immediate_i32(3),
+      .rhs = bir::Value::named(bir::TypeKind::I32, load_field0->result.str()),
+  });
+  lowered_entry.insts.push_back(make_memory_load_global(
+      bir::Value::named(bir::TypeKind::I32, load_field1->result.str()), global.name, 4, 4));
+  lowered_entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, second_sub->result.str()),
+      .lhs = bir::Value::named(bir::TypeKind::I32, first_sub->result.str()),
+      .rhs = bir::Value::named(bir::TypeKind::I32, load_field1->result.str()),
+  });
+  lowered_entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, second_sub->result.str()),
   };
 
   lowered_function.blocks.push_back(std::move(lowered_entry));

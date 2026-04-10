@@ -1908,6 +1908,53 @@ c4c::codegen::lir::LirModule make_lir_minimal_scalar_global_store_reload_module(
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_global_two_field_struct_store_sub_sub_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct._anon_0 = type { i32, i32 }");
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "v",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "%struct._anon_0",
+      "{ i32 zeroinitializer, i32 zeroinitializer }",
+      4,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "%struct._anon_0", "@v", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirStoreOp{"i32", "1", "%t0"});
+  entry.insts.push_back(LirGepOp{"%t1", "%struct._anon_0", "@v", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirStoreOp{"i32", "2", "%t1"});
+  entry.insts.push_back(LirGepOp{"%t2", "%struct._anon_0", "@v", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t3", "i32", "%t2"});
+  entry.insts.push_back(LirBinOp{"%t4", "sub", "i32", "3", "%t3"});
+  entry.insts.push_back(LirGepOp{"%t5", "%struct._anon_0", "@v", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirLoadOp{"%t6", "i32", "%t5"});
+  entry.insts.push_back(LirBinOp{"%t7", "sub", "i32", "%t4", "%t6"});
+  entry.terminator = LirRet{std::string("%t7"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::backend::bir::Module make_bir_minimal_scalar_global_load_module() {
   using namespace c4c::backend::bir;
 
@@ -3809,6 +3856,38 @@ void test_backend_bir_pipeline_drives_x86_lir_zero_initialized_scalar_global_sto
                       "x86 LIR zero-initialized scalar global store-reload input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_global_two_field_struct_store_sub_sub_through_bir_end_to_end() {
+  const auto lowered_bir =
+      c4c::backend::try_lower_to_bir(make_lir_minimal_global_two_field_struct_store_sub_sub_module());
+  expect_true(lowered_bir.has_value(),
+              "x86 LIR global two-field struct store/sub/sub input should now lower into the bounded shared BIR global-field route");
+  if (!lowered_bir.has_value()) {
+    return;
+  }
+
+  expect_true(lowered_bir->globals.size() == 1 && lowered_bir->globals.front().name == "v" &&
+                  lowered_bir->globals.front().size_bytes == 8 &&
+                  lowered_bir->functions.size() == 1 &&
+                  lowered_bir->functions.front().blocks.size() == 1 &&
+                  lowered_bir->functions.front().blocks.front().insts.size() == 6,
+              "x86 LIR global two-field struct store/sub/sub lowering should preserve the bounded shared BIR field-store/load arithmetic sequence");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_global_two_field_struct_store_sub_sub_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl v",
+                  "x86 LIR global two-field struct store/sub/sub input should still emit the global definition after routing through the shared BIR path");
+  expect_contains(rendered, "mov dword ptr [rax], 1",
+                  "x86 LIR global two-field struct store/sub/sub input should materialize the first field store on the native x86 path");
+  expect_contains(rendered, "mov dword ptr [rax + 4], 2",
+                  "x86 LIR global two-field struct store/sub/sub input should materialize the second field store on the native x86 path");
+  expect_contains(rendered, "sub ecx, dword ptr [rax + 4]",
+                  "x86 LIR global two-field struct store/sub/sub input should reload the second field through its global byte offset on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR global two-field struct store/sub/sub input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_do_while_through_bir_end_to_end() {
   const auto lowered_bir = c4c::backend::try_lower_to_bir(make_lir_minimal_countdown_do_while_module());
   expect_true(lowered_bir.has_value(),
@@ -5206,6 +5285,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_global_int_pointer_diff_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_scalar_global_store_reload_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_zero_initialized_scalar_global_store_reload_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_global_two_field_struct_store_sub_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_do_while_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_double_countdown_guarded_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end);

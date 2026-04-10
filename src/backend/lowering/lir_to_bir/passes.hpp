@@ -104,6 +104,8 @@ std::optional<bir::Module> try_lower_minimal_extern_global_array_load_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_scalar_global_store_reload_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_global_two_field_struct_store_sub_sub_return_module(
+    const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_string_literal_compare_phi_return_module(
     const c4c::codegen::lir::LirModule& module);
 bir::LoadLocalInst make_memory_load_local(bir::Value result,

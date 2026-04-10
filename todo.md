@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 5 full-suite monotonic validation and next-slice selection after the
-  bounded shared-BIR `00023.c` zero-initialized scalar global store-reload seam
+  bounded shared-BIR `00024.c` global two-field struct store/sub/sub seam
   landed
 - current exact slice:
   preserve the refreshed focused-x86 and full-suite validation results after
-  the `00023.c` recovery; the early source-backed cluster through `00023.c`
+  the `00024.c` recovery; the early source-backed cluster through `00024.c`
   is now green, while the broad-suite comparison against `test_fail_before.log`
   remains a parked non-monotonic lane and should not be silently treated as
   Step 5 complete because the refreshed after-log still reports unrelated broad
@@ -22,11 +22,11 @@ Source Plan: plan.md
 ## Next Slice
 
 - keep the ownership split explicit for the remaining early x86 source cases:
-  `00011.c` through `00023.c` are now green, so `c_testsuite_x86_backend_src_00024_c`
+  `00011.c` through `00024.c` are now green, so `c_testsuite_x86_backend_src_00025_c`
   is the next earliest failing source-backed seam to classify from the refreshed
-  after-log instead of widening the `00023.c` slice ad hoc; its source body is
-  the compact global two-field struct arithmetic seam (`typedef struct { int x;
-  int y; } s; s v; v.x = 1; v.y = 2; return 3 - v.x - v.y;`)
+  neighboring lane instead of widening the `00024.c` slice ad hoc; its source
+  body is the compact string-literal direct-call seam (`char *p; p = "hello";
+  return strlen(p) - 5;`)
 - if the refreshed broad-suite guard is still red after the branch-family
   and early source-backed recoveries, keep treating the stale baseline as a
   parked comparison and classify the next highest-value remaining x86-native
@@ -40,6 +40,39 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- recovered the bounded shared-BIR `00024.c` seam by teaching
+  `src/backend/lowering/lir_to_bir/memory.cpp` to recognize the exact
+  source-backed global two-field struct route (`@v` with `%struct._anon_0`,
+  field-0 store `1`, field-1 store `2`, reload field `0`, `sub 3, field0`,
+  reload field `1`, `sub prior, field1`, `ret`) and lower that direct-LIR
+  module into explicit shared-BIR global byte-offset stores/loads plus the
+  two subtraction steps instead of stopping at the unsupported x86 direct-LIR
+  boundary
+- taught `src/backend/x86/codegen/emit.cpp` the matching bounded direct-BIR
+  x86 asm slice for that recovered route so the shared-BIR `00024.c` path
+  still emits native x86 text with one 8-byte global symbol, two field stores,
+  and the exact subtraction tail instead of falling back to LLVM text
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`, plus a source-backed
+  backend route regression in `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00024_global_two_field_struct_store_sub_sub_retries_after_direct_bir_rejection`)
+  so the real `00024.c` path stays pinned on native x86 asm and preserves the
+  explicit global field byte offsets instead of falling back to LLVM text or
+  the unsupported direct-LIR error
+- verified the bounded `00024.c` seam end-to-end with focused route tests:
+  `./build/c4cll --codegen asm tests/c/external/c-testsuite/src/00024.c -o /tmp/00024.s`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00024_global_two_field_struct_store_sub_sub_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00024_c)$'`,
+  and
+  `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00023_c|c_testsuite_x86_backend_src_00024_c)$'`
+  which now pass for the owned seam cluster; the broad `backend_bir_tests`
+  binary remains a parked red lane outside this bounded slice and was not used
+  as a gate for this source-backed x86 seam
+- classified the next bounded seam from the refreshed targeted state:
+  `c_testsuite_x86_backend_src_00025_c` is now the next red source-backed x86
+  case, with `c_testsuite_x86_backend_src_00026_c` still red immediately after
+  it; `00025.c` stays a compact string-literal direct-call slice
+  (`char *p; p = "hello"; return strlen(p) - 5;`)
 - recovered the bounded shared-BIR `00023.c` seam by extending
   `src/backend/lowering/lir_to_bir/memory.cpp` so the existing scalar-global
   store-reload matcher accepts zero-initialized globals (`zeroinitializer`) in

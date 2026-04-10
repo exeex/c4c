@@ -835,6 +835,16 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00024_global_two_field_struct_store_sub_sub_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00024.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00024_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.data|.globl v|.text|.globl main|mov dword ptr [rax], 1|mov dword ptr [rax + 4], 2|sub ecx, dword ptr [rax + 4]|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_i686_c_testsuite_00012_retries_after_direct_bir_rejection
       SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00012.c"
       TARGET_TRIPLE i686-unknown-linux-gnu
