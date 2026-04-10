@@ -153,12 +153,6 @@ struct MinimalLocalBufferStringCopyPrintfSlice {
   std::string format_raw_bytes;
 };
 
-struct MinimalRepeatedPrintfImmediatesSlice {
-  std::string function_name;
-  std::string pool_name;
-  std::string raw_bytes;
-};
-
 struct MinimalRepeatedPrintfLocalI32CallsBirSlice {
   std::string function_name;
   std::string first_pool_name;
@@ -2425,96 +2419,6 @@ parse_minimal_local_buffer_string_copy_printf_slice(
   };
 }
 
-std::optional<MinimalRepeatedPrintfImmediatesSlice>
-parse_minimal_repeated_printf_immediates_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  using namespace c4c::codegen::lir;
-
-  const auto* format_string = [&]() -> const LirStringConst* {
-    for (const auto& candidate : module.string_pool) {
-      if (candidate.raw_bytes == "%d %d\\0A" || candidate.raw_bytes == "%d %d\n") {
-        return &candidate;
-      }
-    }
-    return nullptr;
-  }();
-  if (format_string == nullptr) {
-    return std::nullopt;
-  }
-
-  const bool has_printf_decl =
-      [&]() {
-        for (const auto& decl : module.extern_decls) {
-          if (decl.name == "printf" &&
-              (decl.return_type_str == "i32" || decl.return_type.str() == "i32")) {
-            return true;
-          }
-        }
-        for (const auto& function : module.functions) {
-          if (function.is_declaration && function.name == "printf" &&
-              function.signature_text.find("declare i32 @printf(") != std::string::npos) {
-            return true;
-          }
-        }
-        return false;
-      }();
-  if (!has_printf_decl) {
-    return std::nullopt;
-  }
-
-  const auto* function = [&]() -> const LirFunction* {
-    for (const auto& candidate : module.functions) {
-      if (!candidate.is_declaration && candidate.name == "main") {
-        return &candidate;
-      }
-    }
-    return nullptr;
-  }();
-  if (function == nullptr || function->entry.value != 0 || function->blocks.size() != 1 ||
-      function->signature_text != "define i32 @main()\n" ||
-      function->stack_objects.size() > 2 || function->alloca_insts.size() > 2) {
-    return std::nullopt;
-  }
-
-  const auto& entry = function->blocks.front();
-  const auto* first_gep =
-      entry.insts.size() == 4 ? std::get_if<LirGepOp>(&entry.insts[0]) : nullptr;
-  const auto* first_call =
-      entry.insts.size() == 4 ? std::get_if<LirCallOp>(&entry.insts[1]) : nullptr;
-  const auto* second_gep =
-      entry.insts.size() == 4 ? std::get_if<LirGepOp>(&entry.insts[2]) : nullptr;
-  const auto* second_call =
-      entry.insts.size() == 4 ? std::get_if<LirCallOp>(&entry.insts[3]) : nullptr;
-  const auto* ret = std::get_if<LirRet>(&entry.terminator);
-  if (entry.label != "entry" || first_gep == nullptr || first_call == nullptr ||
-      second_gep == nullptr || second_call == nullptr || ret == nullptr ||
-      !ret->value_str.has_value() || *ret->value_str != "0" || ret->type_str != "i32") {
-    return std::nullopt;
-  }
-
-  const auto format_array_type =
-      "[" + std::to_string(format_string->byte_length) + " x i8]";
-  if (first_gep->ptr != format_string->pool_name || first_gep->element_type != format_array_type ||
-      first_gep->indices.size() != 2 || first_gep->indices[0] != "i64 0" ||
-      first_gep->indices[1] != "i64 0" || first_call->callee != "@printf" ||
-      first_call->return_type != "i32" || first_call->callee_type_suffix != "(ptr, ...)" ||
-      first_call->args_str != ("ptr " + first_gep->result.str() + ", i64 1, i64 1") ||
-      second_gep->ptr != format_string->pool_name ||
-      second_gep->element_type != format_array_type || second_gep->indices.size() != 2 ||
-      second_gep->indices[0] != "i64 0" || second_gep->indices[1] != "i64 0" ||
-      second_call->callee != "@printf" || second_call->return_type != "i32" ||
-      second_call->callee_type_suffix != "(ptr, ...)" ||
-      second_call->args_str != ("ptr " + second_gep->result.str() + ", i64 2, i64 2")) {
-    return std::nullopt;
-  }
-
-  return MinimalRepeatedPrintfImmediatesSlice{
-      .function_name = function->name,
-      .pool_name = format_string->pool_name,
-      .raw_bytes = format_string->raw_bytes,
-  };
-}
-
 std::string emit_function_prelude(std::string_view target_triple,
                                   std::string_view symbol_name) {
   std::ostringstream out;
@@ -2934,38 +2838,6 @@ std::string emit_minimal_local_buffer_string_copy_printf_asm(
   return out.str();
 }
 
-std::string emit_minimal_repeated_printf_immediates_asm(
-    std::string_view target_triple,
-    const MinimalRepeatedPrintfImmediatesSlice& slice) {
-  const auto string_label = asm_private_data_label(target_triple, slice.pool_name);
-  const auto symbol = asm_symbol_name(target_triple, slice.function_name);
-  const auto decoded_bytes = decode_llvm_byte_string(slice.raw_bytes);
-
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n"
-      << ".section .rodata\n"
-      << string_label << ":\n"
-      << "  .asciz \"" << escape_asm_string(decoded_bytes) << "\"\n";
-  if (target_triple.find("apple-darwin") == std::string::npos) {
-    out << ".extern printf\n";
-  }
-  out << ".text\n"
-      << emit_function_prelude(target_triple, symbol)
-      << "  lea rdi, " << string_label << "[rip]\n"
-      << "  mov rsi, 1\n"
-      << "  mov rdx, 1\n"
-      << "  mov eax, 0\n"
-      << "  call printf\n"
-      << "  lea rdi, " << string_label << "[rip]\n"
-      << "  mov rsi, 2\n"
-      << "  mov rdx, 2\n"
-      << "  mov eax, 0\n"
-      << "  call printf\n"
-      << "  mov eax, 0\n"
-      << "  ret\n";
-  return out.str();
-}
-
 std::optional<MinimalRepeatedPrintfLocalI32CallsBirSlice>
 parse_minimal_repeated_printf_local_i32_calls_bir_slice(
     const c4c::backend::bir::Module& module) {
@@ -3230,9 +3102,9 @@ std::optional<std::string> try_emit_prepared_lir_module(
       slice.has_value()) {
     return emit_minimal_local_buffer_string_copy_printf_asm(module.target_triple, *slice);
   }
-  if (const auto slice = parse_minimal_repeated_printf_immediates_slice(module);
-      slice.has_value()) {
-    return emit_minimal_repeated_printf_immediates_asm(module.target_triple, *slice);
+  if (const auto asm_text = try_emit_minimal_repeated_printf_immediates_module(module);
+      asm_text.has_value()) {
+    return asm_text;
   }
   if (const auto slice = parse_minimal_string_literal_char_slice(module);
       slice.has_value()) {

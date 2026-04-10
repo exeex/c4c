@@ -7,12 +7,12 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 4 continue transferring one bounded x86 top-level ownership seam out of
-  `emit.cpp` now that the new direct-variadic sibling file owns the prepared
-  variadic runtime slices
+  `emit.cpp` after the repeated `printf` immediate direct-LIR route moved into
+  `src/backend/x86/codegen/direct_printf.cpp`
 - immediate target:
   identify the next bounded top-level ownership transfer that can move out of
-  `emit.cpp` after the prepared variadic sum2/double-byte routes landed in
-  `src/backend/x86/codegen/direct_variadic.cpp`
+  `emit.cpp` after the first direct `printf` sibling seam joined the existing
+  direct global and variadic helper files
   - keep translated `variadic.cpp` itself parked until `X86Codegen` grows the
     state/method surface it still references
   - keep `frame_compact.cpp` parked until a future iteration can prove a real
@@ -22,11 +22,11 @@ Source Plan: plan.md
 
 - continue Step 4 by identifying the next bounded top-level x86 ownership
   transfer that can compile cleanly against the current transitional headers
-  after `direct_variadic.cpp` joins `direct_globals.cpp` as another reachable
-  Step 4 sibling seam
-- check whether one bounded source-like string/printf route can move behind a
-  dedicated direct sibling file next without widening unrelated direct-emitter
-  helpers or forcing shared string utility exports
+  after `direct_printf.cpp` joins `direct_variadic.cpp` and
+  `direct_globals.cpp` as another reachable Step 4 sibling seam
+- check whether one additional bounded string/printf route can move behind the
+  new dedicated direct sibling file next without widening unrelated
+  direct-emitter helpers or forcing shared string utility exports
 - keep translated `variadic.cpp` parked until a future iteration can expose
   the missing `X86Codegen` state/method surface intentionally instead of
   compiling placeholder member bodies by accident
@@ -43,6 +43,19 @@ Source Plan: plan.md
 - this plan was activated by explicit user priority override
 - idea 44 remains open as the parked shared-BIR cleanup and legacy-matcher
   consolidation lane
+- this iteration extends Step 4 with the first dedicated direct-printf sibling
+  seam: the bounded repeated `printf` immediate direct-LIR route now lives in
+  `src/backend/x86/codegen/direct_printf.cpp` instead of `emit.cpp`
+- added a focused backend regression that calls the new direct `printf` helper
+  seam explicitly so the Step 4 ownership move stays observable apart from the
+  broader x86 pipeline path
+- focused checks passed:
+  `./build/backend_bir_tests test_x86_direct_printf_helper_accepts_repeated_printf_immediates_slice`
+  plus the existing source-like repeated-`printf` native-path regression and
+  the direct variadic helper guard
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
+  monotonic against `test_fail_before.log`; the regression guard reported
+  `2723` passed / `181` failed before and after with no newly failing tests
 - this iteration extends Step 4 with another bounded sibling seam: the
   prepared direct-LIR variadic sum2 and variadic double-byte runtime slices now
   live in `src/backend/x86/codegen/direct_variadic.cpp` instead of `emit.cpp`
