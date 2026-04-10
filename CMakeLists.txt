@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(tiny_c2ll LANGUAGES CXX)
 
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type" FORCE)
+endif()
+
 option(ENABLE_HEAVY_TENTATIVE_SNAPSHOT
        "Use full parser-state snapshots in TentativeParseGuard speculative parses"
        ON)
