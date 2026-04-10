@@ -7311,6 +7311,23 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_param_slot_add_on_native_x
                       "x86 LIR single-parameter slot helper input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_minimal_seventh_param_stack_add_on_native_x86_path() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_seventh_param_stack_add_lir_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_stack_param",
+                  "x86 LIR seventh-parameter stack-scalar helper input should still emit the helper definition on the native x86 path");
+  expect_contains(rendered,
+                  "add_stack_param:\n  push rbp\n  mov rbp, rsp\n  mov eax, DWORD PTR [rbp + 16]\n  add eax, 1\n  pop rbp\n  ret\n",
+                  "x86 LIR seventh-parameter stack-scalar helper input should still load the incoming caller-stack argument before applying the bounded affine adjustment on the public x86 path");
+  expect_contains(rendered,
+                  "main:\n  mov edi, 1\n  mov esi, 2\n  mov edx, 3\n  mov ecx, 4\n  mov r8d, 5\n  mov r9d, 6\n  push 7\n  call add_stack_param\n  add rsp, 8\n  ret\n",
+                  "x86 LIR seventh-parameter stack-scalar helper input should still stage the first six integer arguments in registers, spill the seventh on the stack, and clean up the outgoing caller stack slot on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR seventh-parameter stack-scalar helper input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_local_arg_direct_call_on_native_x86_path() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_x86_local_arg_call_lir_module()},
@@ -10988,6 +11005,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_param_slot_add_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_seventh_param_stack_add_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_local_arg_direct_call_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_on_native_x86_path);

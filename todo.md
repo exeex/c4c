@@ -9,23 +9,26 @@ Source Plan: plan.md
 - Step 3 translated-owner cutover follow-on in the bounded prepared-LIR
   direct-calls sibling seam after landing the next public backend-entrypoint
   regression for a still-direct-emitter-only helper family; the helper-only
-  `00080.c` `voidfn` body slice is now covered at the shared backend entry
-  surface alongside the existing two-function and main-only `00080.c` routes
+  `00080.c` `voidfn` body slice and the seventh-parameter caller-stack helper
+  slice are now covered at the shared backend entry surface alongside the
+  existing two-function and main-only `00080.c` routes
 - immediate target:
   choose the next still-direct-emitter-only public backend representative from
   the remaining SysV argument-lowering helper families after the
-  single-parameter slot slice confirmed the shared backend entry already
-  canonicalizes that helper body while preserving native x86 ownership; the
-  next smallest candidate is the seventh-parameter caller-stack helper family
+  seventh-parameter caller-stack helper slice confirmed the shared backend
+  entry already preserves the native x86 owner path for one caller-stack
+  scalar family; the next smallest candidate is the mixed register-plus-stack
+  helper family
 
 ## Next Slice
 
-- after the single-parameter slot helper slice, choose the next
+- after the seventh-parameter caller-stack helper slice, choose the next
   still-direct-emitter-only public backend representative from the remaining
   SysV argument-lowering helper families instead of adding more
-  direct-emitter-only assertions; the next obvious candidates are the
-  seventh-stack-param and mixed register-plus-stack helper families if Step 3
-  keeps prioritizing public-entry coverage over matcher expansion
+  direct-emitter-only assertions; the next obvious candidates are the mixed
+  register-plus-stack helper families, followed by the aggregate param-slot
+  families if Step 3 keeps prioritizing public-entry coverage over matcher
+  expansion
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -37,6 +40,28 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration adds the missing shared backend entrypoint coverage for the
+  bounded seventh-parameter caller-stack scalar helper family:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pins
+  `make_x86_seventh_param_stack_add_lir_module()` at
+  `c4c::backend::emit_module(...)` so the public x86 backend entry surface,
+  not just the direct-emitter seam, owns the SysV route that keeps the first
+  six integer arguments in registers and spills the seventh through the
+  caller stack slot
+- public-path behavior note:
+  the shared BIR route preserves the same native x86 owner shape for this
+  bounded helper family, including the helper-side `[rbp + 16]` stack load and
+  the caller-side `push 7` / `add rsp, 8` sequence around `call add_stack_param`
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_seventh_param_stack_add_on_native_x86_path`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_seventh_param_stack_add_slice`
+- broad validation note:
+  still deferred for this bounded prepared-LIR helper-family coverage slice per
+  the active plan note to wait for a larger owner-path cutover before
+  rerunning the monotonic full-suite guard
 
 - this iteration adds the missing shared backend entrypoint coverage for the
   still-direct-emitter-only single-parameter slot helper-call family:
