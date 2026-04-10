@@ -297,6 +297,16 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                       c4c::backend::PhysReg{1}, "f32")) == "ebx" &&
                   std::string(c4c::backend::x86::x86_param_prestore_dest_reg(
                       c4c::backend::PhysReg{5}, "f64")) == "r15" &&
+                  c4c::backend::x86::x86_param_aggregate_copy_qword_count(0) == 0 &&
+                  c4c::backend::x86::x86_param_aggregate_copy_qword_count(1) == 1 &&
+                  c4c::backend::x86::x86_param_aggregate_copy_qword_count(8) == 1 &&
+                  c4c::backend::x86::x86_param_aggregate_copy_qword_count(9) == 2 &&
+                  c4c::backend::x86::x86_param_aggregate_copy_qword_count(16) == 2 &&
+                  c4c::backend::x86::x86_param_aggregate_copy_qword_count(17) == 3 &&
+                  c4c::backend::x86::x86_param_aggregate_copy_src_offset(0, 0) == 16 &&
+                  c4c::backend::x86::x86_param_aggregate_copy_src_offset(8, 1) == 32 &&
+                  c4c::backend::x86::x86_param_aggregate_copy_dest_offset(-40, 0) == -40 &&
+                  c4c::backend::x86::x86_param_aggregate_copy_dest_offset(-40, 2) == -24 &&
                   c4c::backend::x86::x86_variadic_gp_save_offset(-176, 0) == -176 &&
                   c4c::backend::x86::x86_variadic_gp_save_offset(-176, 5) == -136 &&
                   c4c::backend::x86::x86_variadic_sse_save_offset(-176, 0) == -128 &&

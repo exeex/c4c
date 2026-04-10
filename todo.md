@@ -10,14 +10,14 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  keep the parked translated prologue helper seam coherent after the landed
-  non-alloca-backed integer and float-register pre-store owner slices by
-  recording pre-stored param indices through a shared helper contract without
-  pulling the parked translated prologue owner into the active build yet
+  widen the parked translated prologue helper seam into the first aggregate
+  stack-copy storage contract without pulling the parked translated prologue
+  owner into the active build yet
   - keep the slice helper-focused: shared helper contract plus parked
     translated `prologue.cpp` usage only
-  - keep the active build on direct-emitter-backed parameter slices while the
-    next widening point stays on aggregate or split-register pre-store support
+  - target the qword-wise caller-stack copy shape used by aggregate stack
+    parameter classes so the next owner widening point stays on aggregate or
+    split-register handling instead of reopening scalar work
 
 ## Next Slice
 
@@ -34,6 +34,27 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration added a shared aggregate stack-copy helper seam for the
+  parked translated x86 prologue owner path: `src/backend/x86/codegen/mod.cpp`
+  and `x86_codegen.hpp` now expose qword-copy count plus source/destination
+  offset helpers for aggregate parameter classes that arrive from the caller
+  stack
+- `tests/backend/backend_shared_util_tests.cpp` now locks that contract,
+  including ceil-to-qword copy counts and the caller-stack/base-slot offset
+  progression used by the translated `StructStack` / `LargeStructStack` copy
+  shape
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation passed with the regression guard:
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log 2>&1`
+  plus
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  reported `3177` passed / `199` failed before and `3190` passed / `186`
+  failed after, with no newly failing tests; the checker did note one new
+  `>30s` case `backend_bir_tests`
 
 - this iteration added a shared parked-prologue bookkeeping seam for
   non-alloca-backed parameter pre-store tracking:
