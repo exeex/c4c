@@ -6,15 +6,16 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: move past the finished vector canonical/sema slice and resume from
-  the next remaining EASTL semantic frontier.
-- Iteration target: re-reduce the surviving
-  `tests/cpp/eastl/eastl_type_traits_simple.cpp --dump-canonical` failure
-  cluster, starting from the current `mPart0` / `mPart1` follow-up recorded in
-  `tests/cpp/eastl/README.md`.
-- Reduced repro: the old vector-only allocator cluster is gone. The active
-  EASTL ladder now needs a smaller generic repro for the type-traits /
-  `function_detail.h`-adjacent sema path rather than more vector work.
+- Step 3: keep `eastl_type_traits_simple.cpp` as the active EASTL frontier, but
+  treat it as a backend workflow blocker rather than a canonical/sema blocker.
+- Iteration target: reduce the remaining
+  `cmake --build build --target eastl_type_traits_simple_workflow -j8`
+  failure to the smallest generic LLVM IR/codegen mechanism behind the current
+  `%\"struct.std::byte\"` vs `or i32` mismatch.
+- Reduced repro: the earlier EASTL type-traits/frontend blockers are gone.
+  `#include <EABase/eabase.h>` now compiles through c4cll, so the next slice
+  should focus on the later `std::byte` backend handoff rather than more
+  parser/sema work.
 
 ## Completed
 
@@ -274,25 +275,51 @@ Source Plan: plan.md
   `ctest --test-dir build -j8 --output-on-failure` suite; the regression guard
   remains monotonic at 3292/3292 passing tests versus the earlier
   3291/3291 baseline, with zero new failing tests.
+- Added focused runtime coverage in
+  `tests/cpp/internal/postive_case/inherited_base_method_call_runtime.cpp`
+  so derived objects calling inherited zero-arg base methods stay covered.
+- Fixed HIR member-call lowering to resolve inherited base methods through
+  `find_struct_method_mangled(...)` instead of checking only the immediate
+  record tag, which now lets calls like `tempDivisor.IsZero()` lower as real
+  method calls instead of bogus field accesses.
+- Fixed unary address-of lowering for concrete prvalues in codegen so
+  `&<prvalue>` materializes temporary storage generically instead of failing in
+  `StmtEmitter::emit_lval`, which moved the old
+  `#include <EABase/eabase.h>` / `eastl_type_traits_simple.cpp` frontend
+  blocker forward.
+- Confirmed the reduced `#include <EABase/eabase.h>` compile now succeeds with
+  `build/c4cll`, the new inherited-base runtime regression passes, and the
+  focused EASTL parse recipes remain green.
+- Re-ran the full `ctest --test-dir build -j8 --output-on-failure` suite after
+  the new runtime regression was discovered by CMake globbing; the regression
+  guard is monotonic at 3293/3293 passing tests, with zero failing tests.
+- Re-ran `cmake --build build --target eastl_type_traits_simple_workflow -j8`
+  and confirmed the active type-traits blocker has shifted from frontend
+  failure to a later backend handoff: clang now rejects the emitted IR at
+  `build/eastl_type_traits_simple/eastl_type_traits_simple.ll:316` because
+  `%p.__l` has type `%\"struct.std::byte\"` while `or i32` expects an integer
+  operand.
 
 ## Next Slice
 
 - keep the structured-binding feature gate in place and treat vector as
   revalidated rather than active
-- re-baseline `eastl_type_traits_simple.cpp` and confirm whether its current
-  `mPart0` / `mPart1` cluster is still the smallest remaining EASTL sema case
-- keep the new owner-context and qualified functional-cast regressions green
-  while reducing the next type-traits blocker to one generic frontend/HIR
-  mechanism before touching broader container follow-up
+- reduce the remaining `eastl_type_traits_simple_workflow` backend failure to a
+  smallest `std::byte` IR reproducer that does not depend on the whole EASTL
+  testcase
+- keep the new inherited-base-method runtime regression green while fixing the
+  `std::byte` value/category/type-lowering mismatch before touching broader
+  container follow-up
 
 ## Blockers
 
 - structured bindings themselves are still unsupported in the frontend, so the
   compiler must continue advertising `EA_COMPILER_NO_STRUCTURED_BINDING` until
   a dedicated structured-binding implementation lands
-- `eastl_type_traits_simple.cpp` still reaches the older later-semantic
-  `mPart0` / `mPart1` cluster from EASTL internals, so the next slice needs a
-  fresh reduced repro there instead of more vector work
+- `eastl_type_traits_simple.cpp` no longer fails in sema, but its standalone
+  workflow still fails during clang IR consumption because the emitted
+  `std::byte` path mixes `%\"struct.std::byte\"` values with integer bitwise IR
+  operators
 
 ## Resume Notes
 
@@ -305,6 +332,8 @@ Source Plan: plan.md
   active EASTL frontier is no longer parse-only
 - `eastl_vector_simple.cpp` now also passes `--dump-canonical`, so vector is no
   longer the active EASTL frontier
+- `eastl_type_traits_simple.cpp` now also passes `--dump-canonical`; the active
+  frontier is the standalone workflow backend failure, not the old sema cluster
 - focused parser coverage now exists for shadowed-name assignment dispatch
   under `tests/cpp/internal/postive_case/local_value_shadows_*`
 - focused parser coverage now also exists for out-of-class constructor-template

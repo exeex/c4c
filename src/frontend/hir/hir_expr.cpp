@@ -588,24 +588,17 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
       base_ts.ptr_level--;
     const char* tag = base_ts.tag;
     if (tag) {
-      std::string base_key = std::string(tag) + "::" + method_name;
-      std::string const_key = base_key + "_const";
-      decltype(struct_methods_)::iterator mit;
-      if (base_ts.is_const) {
-        mit = struct_methods_.find(const_key);
-        if (mit == struct_methods_.end())
-          mit = struct_methods_.find(base_key);
-      } else {
-        mit = struct_methods_.find(base_key);
-        if (mit == struct_methods_.end())
-          mit = struct_methods_.find(const_key);
-      }
-      if (mit != struct_methods_.end()) {
+      const std::string base_key = std::string(tag) + "::" + method_name;
+      if (auto resolved_method_opt =
+              find_struct_method_mangled(tag, method_name, base_ts.is_const)) {
         DeclRef dr{};
-        std::string resolved_method = mit->second;
-        auto ovit = ref_overload_set_.find(mit->first);
+        std::string resolved_method = *resolved_method_opt;
+        auto ovit = ref_overload_set_.find(base_key);
+        if (ovit == ref_overload_set_.end()) {
+          ovit = ref_overload_set_.find(base_key + "_const");
+        }
         if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
-          resolved_method = resolve_ref_overload(mit->first, n, ctx);
+          resolved_method = resolve_ref_overload(ovit->first, n, ctx);
         }
         dr.name = resolved_method;
         auto fit = module_->fn_index.find(dr.name);

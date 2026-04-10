@@ -693,7 +693,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const
     } catch (const std::runtime_error&) {
       TypeSpec obj_ts{};
       const std::string rval = emit_rval_id(ctx, u.operand, obj_ts);
-      if (obj_ts.base != TB_STRUCT && obj_ts.base != TB_UNION) throw;
+      if (!has_concrete_type(obj_ts) || llvm_ty(obj_ts) == "void") throw;
       const std::string slot = fresh_tmp(ctx) + ".addrtmp";
       ctx.alloca_insts.push_back(lir::LirAllocaOp{slot, llvm_alloca_ty(obj_ts), "", 0});
       emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(obj_ts), rval, slot});
