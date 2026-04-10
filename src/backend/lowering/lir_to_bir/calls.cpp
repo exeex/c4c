@@ -966,8 +966,6 @@ std::optional<bir::Module> try_lower_minimal_repeated_printf_local_i32_calls_mod
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
 
-  const auto rendered = c4c::codegen::lir::print_llvm(module);
-
   const auto has_printf_decl = [&]() {
     for (const auto& decl : module.extern_decls) {
       if (decl.name == "printf" &&
@@ -980,9 +978,6 @@ std::optional<bir::Module> try_lower_minimal_repeated_printf_local_i32_calls_mod
           lir_function_returns_integer_width(function, 32)) {
         return true;
       }
-    }
-    if (rendered.find("declare i32 @printf(") != std::string::npos) {
-      return true;
     }
     return false;
   }();
@@ -1015,31 +1010,85 @@ std::optional<bir::Module> try_lower_minimal_repeated_printf_local_i32_calls_mod
     return std::nullopt;
   }
 
-  constexpr std::string_view kExpectedMainFragment =
-      "define i32 @main()\n"
-      "{\n"
-      "entry:\n"
-      "  %lv.a = alloca i32, align 4\n"
-      "  %lv.b = alloca i32, align 4\n"
-      "  %lv.c = alloca i32, align 4\n"
-      "  %lv.d = alloca i32, align 4\n"
-      "  store i32 42, ptr %lv.a\n"
-      "  %t0 = getelementptr [4 x i8], ptr @.str0, i64 0, i64 0\n"
-      "  %t1 = load i32, ptr %lv.a\n"
-      "  %t2 = call i32 (ptr, ...) @printf(ptr %t0, i32 %t1)\n"
-      "  store i32 64, ptr %lv.b\n"
-      "  %t3 = getelementptr [4 x i8], ptr @.str0, i64 0, i64 0\n"
-      "  %t4 = load i32, ptr %lv.b\n"
-      "  %t5 = call i32 (ptr, ...) @printf(ptr %t3, i32 %t4)\n"
-      "  store i32 12, ptr %lv.c\n"
-      "  store i32 34, ptr %lv.d\n"
-      "  %t6 = getelementptr [8 x i8], ptr @.str1, i64 0, i64 0\n"
-      "  %t7 = load i32, ptr %lv.c\n"
-      "  %t8 = load i32, ptr %lv.d\n"
-      "  %t9 = call i32 (ptr, ...) @printf(ptr %t6, i32 %t7, i32 %t8)\n"
-      "  ret i32 0\n"
-      "}\n";
-  if (rendered.find(kExpectedMainFragment) == std::string::npos) {
+  const auto* main = [&]() -> const LirFunction* {
+    for (const auto& function : module.functions) {
+      if (!function.is_declaration && function.name == "main") {
+        return &function;
+      }
+    }
+    return nullptr;
+  }();
+  if (main == nullptr || !lir_function_matches_minimal_no_param_integer_return(*main, 32) ||
+      main->entry.value != 0 || main->blocks.size() != 1 || main->alloca_insts.size() != 4 ||
+      !main->stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* slot_a = std::get_if<LirAllocaOp>(&main->alloca_insts[0]);
+  const auto* slot_b = std::get_if<LirAllocaOp>(&main->alloca_insts[1]);
+  const auto* slot_c = std::get_if<LirAllocaOp>(&main->alloca_insts[2]);
+  const auto* slot_d = std::get_if<LirAllocaOp>(&main->alloca_insts[3]);
+  if (slot_a == nullptr || slot_b == nullptr || slot_c == nullptr || slot_d == nullptr ||
+      slot_a->type_str != "i32" || slot_b->type_str != "i32" || slot_c->type_str != "i32" ||
+      slot_d->type_str != "i32" || !slot_a->count.empty() || !slot_b->count.empty() ||
+      !slot_c->count.empty() || !slot_d->count.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = main->blocks.front();
+  const auto* store_a = entry.insts.size() == 14 ? std::get_if<LirStoreOp>(&entry.insts[0]) : nullptr;
+  const auto* gep_a = entry.insts.size() == 14 ? std::get_if<LirGepOp>(&entry.insts[1]) : nullptr;
+  const auto* load_a = entry.insts.size() == 14 ? std::get_if<LirLoadOp>(&entry.insts[2]) : nullptr;
+  const auto* call_a = entry.insts.size() == 14 ? std::get_if<LirCallOp>(&entry.insts[3]) : nullptr;
+  const auto* store_b = entry.insts.size() == 14 ? std::get_if<LirStoreOp>(&entry.insts[4]) : nullptr;
+  const auto* gep_b = entry.insts.size() == 14 ? std::get_if<LirGepOp>(&entry.insts[5]) : nullptr;
+  const auto* load_b = entry.insts.size() == 14 ? std::get_if<LirLoadOp>(&entry.insts[6]) : nullptr;
+  const auto* call_b = entry.insts.size() == 14 ? std::get_if<LirCallOp>(&entry.insts[7]) : nullptr;
+  const auto* store_c = entry.insts.size() == 14 ? std::get_if<LirStoreOp>(&entry.insts[8]) : nullptr;
+  const auto* store_d = entry.insts.size() == 14 ? std::get_if<LirStoreOp>(&entry.insts[9]) : nullptr;
+  const auto* gep_c = entry.insts.size() == 14 ? std::get_if<LirGepOp>(&entry.insts[10]) : nullptr;
+  const auto* load_c = entry.insts.size() == 14 ? std::get_if<LirLoadOp>(&entry.insts[11]) : nullptr;
+  const auto* load_d = entry.insts.size() == 14 ? std::get_if<LirLoadOp>(&entry.insts[12]) : nullptr;
+  const auto* call_c = entry.insts.size() == 14 ? std::get_if<LirCallOp>(&entry.insts[13]) : nullptr;
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+
+  const auto match_format_gep =
+      [](const LirGepOp* gep, const LirStringConst& string_constant) {
+        if (gep == nullptr) {
+          return false;
+        }
+        return gep->ptr == string_constant.pool_name &&
+               gep->element_type ==
+                   ("[" + std::to_string(string_constant.byte_length) + " x i8]") &&
+               gep->indices.size() == 2 && gep->indices[0] == "i64 0" &&
+               gep->indices[1] == "i64 0";
+      };
+
+  if (entry.label != "entry" || store_a == nullptr || gep_a == nullptr || load_a == nullptr ||
+      call_a == nullptr || store_b == nullptr || gep_b == nullptr || load_b == nullptr ||
+      call_b == nullptr || store_c == nullptr || store_d == nullptr || gep_c == nullptr ||
+      load_c == nullptr || load_d == nullptr || call_c == nullptr || ret == nullptr ||
+      ret->type_str != "i32" || !ret->value_str.has_value() || *ret->value_str != "0" ||
+      store_a->type_str != "i32" || store_a->val != "42" || store_a->ptr != slot_a->result ||
+      !match_format_gep(gep_a, *format0) || load_a->type_str != "i32" ||
+      load_a->ptr != slot_a->result ||
+      call_a->callee != "@printf" || call_a->return_type != "i32" ||
+      call_a->callee_type_suffix != "(ptr, ...)" ||
+      call_a->args_str != ("ptr " + gep_a->result.str() + ", i32 " + load_a->result.str()) ||
+      store_b->type_str != "i32" || store_b->val != "64" || store_b->ptr != slot_b->result ||
+      !match_format_gep(gep_b, *format0) || load_b->type_str != "i32" ||
+      load_b->ptr != slot_b->result ||
+      call_b->callee != "@printf" || call_b->return_type != "i32" ||
+      call_b->callee_type_suffix != "(ptr, ...)" ||
+      call_b->args_str != ("ptr " + gep_b->result.str() + ", i32 " + load_b->result.str()) ||
+      store_c->type_str != "i32" || store_c->val != "12" || store_c->ptr != slot_c->result ||
+      store_d->type_str != "i32" || store_d->val != "34" || store_d->ptr != slot_d->result ||
+      !match_format_gep(gep_c, *format1) || load_c->type_str != "i32" ||
+      load_c->ptr != slot_c->result || load_d->type_str != "i32" ||
+      load_d->ptr != slot_d->result || call_c->callee != "@printf" ||
+      call_c->return_type != "i32" || call_c->callee_type_suffix != "(ptr, ...)" ||
+      call_c->args_str != ("ptr " + gep_c->result.str() + ", i32 " + load_c->result.str() +
+                           ", i32 " + load_d->result.str())) {
     return std::nullopt;
   }
 

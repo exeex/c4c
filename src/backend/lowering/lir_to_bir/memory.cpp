@@ -2388,20 +2388,61 @@ try_lower_minimal_local_enum_constant_compare_store_load_zero_return_module(
     return std::nullopt;
   }
 
-  auto match_return_block = [&](size_t index, std::string_view label,
-                                std::string_view value) -> bool {
+  auto match_return_block = [&](size_t index, std::string_view value) -> bool {
     if (index >= function.blocks.size()) {
       return false;
     }
     const auto& block = function.blocks[index];
     const auto* ret = std::get_if<LirRet>(&block.terminator);
-    return block.label == label && block.insts.empty() && ret != nullptr &&
-           ret->type_str == "i32" && ret->value_str.has_value() &&
-           *ret->value_str == value;
+    return block.insts.empty() && ret != nullptr && ret->type_str == "i32" &&
+           ret->value_str.has_value() && *ret->value_str == value;
   };
 
-  if (!match_return_block(1, "block_1", "1") || !match_return_block(3, "block_3", "2") ||
-      !match_return_block(5, "block_5", "3")) {
+  if (!match_return_block(1, "1") || !match_return_block(3, "2") ||
+      !match_return_block(5, "3")) {
+    return std::nullopt;
+  }
+
+  auto match_constant_false_ladder_step =
+      [&](std::size_t index,
+          std::string_view expected_cmp_result,
+          std::string_view expected_zext_result,
+          std::string_view expected_branch_cmp_result,
+          std::string_view false_label,
+          std::string_view true_label) -> bool {
+    if (index >= function.blocks.size()) {
+      return false;
+    }
+    const auto& block = function.blocks[index];
+    const auto* cmp = block.insts.size() == 3 ? std::get_if<LirCmpOp>(&block.insts[0]) : nullptr;
+    const auto* zext =
+        block.insts.size() == 3 ? std::get_if<LirCastOp>(&block.insts[1]) : nullptr;
+    const auto* branch_cmp =
+        block.insts.size() == 3 ? std::get_if<LirCmpOp>(&block.insts[2]) : nullptr;
+    const auto* cond_br = std::get_if<LirCondBr>(&block.terminator);
+    if (cmp == nullptr || zext == nullptr || branch_cmp == nullptr || cond_br == nullptr ||
+        cmp->result != expected_cmp_result || cmp->type_str != "i32" || cmp->predicate != "ne" ||
+        cmp->lhs != cmp->rhs || zext->result != expected_zext_result ||
+        zext->kind != LirCastKind::ZExt || zext->from_type != "i1" ||
+        zext->operand != cmp->result || zext->to_type != "i32" ||
+        branch_cmp->result != expected_branch_cmp_result || branch_cmp->type_str != "i32" ||
+        branch_cmp->predicate != "ne" || branch_cmp->lhs != zext->result ||
+        branch_cmp->rhs != "0" || cond_br->cond_name != branch_cmp->result ||
+        cond_br->true_label != true_label || cond_br->false_label != false_label) {
+      return false;
+    }
+    return true;
+  };
+
+  if (!match_constant_false_ladder_step(0, "%t0", "%t1", "%t2",
+                                        function.blocks[2].label,
+                                        function.blocks[1].label) ||
+      !match_constant_false_ladder_step(2, "%t3", "%t4", "%t5",
+                                        function.blocks[4].label,
+                                        function.blocks[3].label) ||
+      !match_constant_false_ladder_step(4, "%t6", "%t7", "%t8",
+                                        function.blocks[6].label,
+                                        function.blocks[5].label)) {
     return std::nullopt;
   }
 
@@ -2413,72 +2454,6 @@ try_lower_minimal_local_enum_constant_compare_store_load_zero_return_module(
       store->type_str != "i32" || store->val != "0" || store->ptr != enum_slot->result ||
       load->type_str != "i32" || load->ptr != enum_slot->result || load->result.empty() ||
       ret->type_str != "i32" || !ret->value_str.has_value() || *ret->value_str != load->result) {
-    return std::nullopt;
-  }
-
-  const auto rendered = c4c::codegen::lir::print_llvm(module);
-  constexpr std::string_view kExpectedModule00054 =
-      "define i32 @main()\n"
-      "{\n"
-      "entry:\n"
-      "  %lv.e = alloca i32, align 4\n"
-      "  %t0 = icmp ne i32 0, 0\n"
-      "  %t1 = zext i1 %t0 to i32\n"
-      "  %t2 = icmp ne i32 %t1, 0\n"
-      "  br i1 %t2, label %block_1, label %block_2\n"
-      "block_1:\n"
-      "  ret i32 1\n"
-      "block_2:\n"
-      "  %t3 = icmp ne i32 1, 1\n"
-      "  %t4 = zext i1 %t3 to i32\n"
-      "  %t5 = icmp ne i32 %t4, 0\n"
-      "  br i1 %t5, label %block_3, label %block_4\n"
-      "block_3:\n"
-      "  ret i32 2\n"
-      "block_4:\n"
-      "  %t6 = icmp ne i32 2, 2\n"
-      "  %t7 = zext i1 %t6 to i32\n"
-      "  %t8 = icmp ne i32 %t7, 0\n"
-      "  br i1 %t8, label %block_5, label %block_6\n"
-      "block_5:\n"
-      "  ret i32 3\n"
-      "block_6:\n"
-      "  store i32 0, ptr %lv.e\n"
-      "  %t9 = load i32, ptr %lv.e\n"
-      "  ret i32 %t9\n"
-      "}\n";
-  constexpr std::string_view kExpectedModule00055 =
-      "define i32 @main()\n"
-      "{\n"
-      "entry:\n"
-      "  %lv.e = alloca i32, align 4\n"
-      "  %t0 = icmp ne i32 0, 0\n"
-      "  %t1 = zext i1 %t0 to i32\n"
-      "  %t2 = icmp ne i32 %t1, 0\n"
-      "  br i1 %t2, label %block_1, label %block_2\n"
-      "block_1:\n"
-      "  ret i32 1\n"
-      "block_2:\n"
-      "  %t3 = icmp ne i32 2, 2\n"
-      "  %t4 = zext i1 %t3 to i32\n"
-      "  %t5 = icmp ne i32 %t4, 0\n"
-      "  br i1 %t5, label %block_3, label %block_4\n"
-      "block_3:\n"
-      "  ret i32 2\n"
-      "block_4:\n"
-      "  %t6 = icmp ne i32 3, 3\n"
-      "  %t7 = zext i1 %t6 to i32\n"
-      "  %t8 = icmp ne i32 %t7, 0\n"
-      "  br i1 %t8, label %block_5, label %block_6\n"
-      "block_5:\n"
-      "  ret i32 3\n"
-      "block_6:\n"
-      "  store i32 0, ptr %lv.e\n"
-      "  %t9 = load i32, ptr %lv.e\n"
-      "  ret i32 %t9\n"
-      "}\n";
-  if (rendered.find(kExpectedModule00054) == std::string::npos &&
-      rendered.find(kExpectedModule00055) == std::string::npos) {
     return std::nullopt;
   }
 

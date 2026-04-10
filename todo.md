@@ -6,15 +6,20 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2 bounded shared-BIR classification and recovery planning for the next
-  source-backed x86 case after recovering `00080.c`
+- Step 2 cleanup pass over recently recovered shared-BIR seams so idea 44 does
+  not keep accumulating exact testcase-text matchers
 - current exact slice:
-  refresh the post-`00080.c` targeted state and recover the next
-  earliest remaining non-parked source-backed x86 case from the updated
-  after-log without widening idea 44 ad hoc
+  replace the lowest-risk `print_llvm()` / full-fragment matcher paths in the
+  recent `00054.c` / `00055.c` and repeated-`printf` recovery seams with
+  instruction-structured matching, then revalidate the owned lowering and x86
+  routes before resuming new case recovery
 
 ## Next Slice
 
+- after this cleanup slice lands, return to the parked post-`00080.c`
+  classification flow and recover the next earliest remaining non-parked
+  source-backed x86 case from the refreshed after-log instead of widening idea
+  44 ad hoc
 - keep the broader `00040.c` multi-function/global-pointer recursion route
   parked in
   `ideas/open/48_shared_bir_family_b_recursive_global_pointer_routes_after_x86_00040.md`
@@ -42,6 +47,10 @@ Source Plan: plan.md
 
 ## Current Iteration Notes
 
+- this cleanup slice is intentionally paying down plan-owned technical debt in
+  the recently recovered shared-BIR seams before adding more x86 case-specific
+  routes; the immediate goal is to preserve current `00054.c` / `00055.c` and
+  repeated-`printf` coverage while removing exact rendered-IR text matching
 - the bounded `00080.c` seam is now recovered on native x86 asm, but the next
   earliest remaining non-parked source-backed x86 failure still needs to be
   reclassified from a refreshed `test_fail_after.log`;
@@ -54,6 +63,29 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- cleaned up two high-signal overfit matchers in the shared BIR lowering path
+  without changing the owned behavior surface: `src/backend/lowering/lir_to_bir/memory.cpp`
+  no longer requires the exact rendered LLVM text for the `00054.c` /
+  `00055.c` local enum ladder seam, and
+  `src/backend/lowering/lir_to_bir/calls.cpp` no longer requires one exact
+  rendered `main` fragment for the repeated local-`i32` variadic `printf`
+  seam; both routes now match the underlying instruction structure directly
+- revalidated the cleanup locally with
+  `./build/backend_bir_tests test_bir_lowering_accepts_repeated_printf_local_i32_calls_lir_module`,
+  `./build/backend_bir_tests test_bir_lowering_accepts_local_enum_constant_compare_store_load_zero_return_module`,
+  `./build/backend_bir_tests test_bir_lowering_accepts_local_shifted_enum_constant_compare_store_load_zero_return_module`,
+  `./build/backend_shared_util_tests test_backend_bir_pipeline_drives_x86_lir_repeated_printf_local_i32_calls_through_bir_end_to_end`,
+  `./build/backend_shared_util_tests test_backend_bir_pipeline_drives_x86_lir_local_enum_constant_compare_store_load_zero_through_bir_end_to_end`,
+  `./build/backend_shared_util_tests test_backend_bir_pipeline_drives_x86_lir_shifted_local_enum_constant_compare_store_load_zero_through_bir_end_to_end`,
+  and
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00054_local_enum_constant_compare_store_load_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00055_shifted_local_enum_constant_compare_store_load_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00054_c|c_testsuite_x86_backend_src_00055_c)$'`,
+  all of which now pass after the matcher cleanup
+- refreshed `test_after.log` with `ctest --test-dir build -j8 --output-on-failure > test_after.log`;
+  the broad suite remains red for the known non-owned riscv64 select-route,
+  runtime/toolchain, cpp, and later x86 buckets, and the aggregate ctest run
+  still reports `backend_bir_tests` as a failing suite entry, but the cleaned
+  `00054.c` / `00055.c` source, route, and shared-pipeline coverage all remain
+  green inside that broad run
 - recovered the bounded x86 `00080.c` seam by teaching
   `src/backend/x86/codegen/emit.cpp` to own the exact native direct-LIR
   fallback shape that `c4cll --codegen asm` emits for this case: the
