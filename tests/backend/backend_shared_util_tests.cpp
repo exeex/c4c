@@ -170,6 +170,22 @@ void test_x86_codegen_header_exports_translated_globals_owner_helper_symbols() {
 }
 
 void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
+  const auto callee_saved = c4c::backend::x86::x86_callee_saved_regs();
+  const auto caller_saved = c4c::backend::x86::x86_caller_saved_regs();
+  expect_true(callee_saved.size() == 5 && callee_saved.front().index == 1 &&
+                  callee_saved.back().index == 5 && caller_saved.size() == 6 &&
+                  caller_saved.front().index == 10 && caller_saved.back().index == 15,
+              "x86 translated register-pool helpers should keep the ref callee-saved and caller-saved allocation order for the future prologue/regalloc owner path");
+  expect_true(c4c::backend::x86::x86_constraint_to_callee_saved("{r14}").has_value() &&
+                  c4c::backend::x86::x86_constraint_to_callee_saved("{r14}")->index == 4 &&
+                  c4c::backend::x86::x86_constraint_to_callee_saved("=&b").has_value() &&
+                  c4c::backend::x86::x86_constraint_to_callee_saved("=&b")->index == 1 &&
+                  !c4c::backend::x86::x86_constraint_to_callee_saved("{r10}").has_value() &&
+                  c4c::backend::x86::x86_clobber_name_to_callee_saved("r15b").has_value() &&
+                  c4c::backend::x86::x86_clobber_name_to_callee_saved("r15b")->index == 5 &&
+                  !c4c::backend::x86::x86_clobber_name_to_callee_saved("r11").has_value(),
+              "x86 translated inline-asm register helpers should keep the ref callee-saved constraint and clobber mapping contract for the future prologue save/restore inventory");
+
   expect_true(std::string(c4c::backend::x86::phys_reg_name(c4c::backend::PhysReg{1})) == "rbx" &&
                   std::string(c4c::backend::x86::phys_reg_name(c4c::backend::PhysReg{12})) == "r8" &&
                   std::string(c4c::backend::x86::phys_reg_name_32(c4c::backend::PhysReg{5})) == "r15d" &&

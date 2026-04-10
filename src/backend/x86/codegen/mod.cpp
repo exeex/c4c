@@ -69,6 +69,62 @@ const char* phys_reg_name_32(c4c::backend::PhysReg reg) {
   }
 }
 
+std::vector<c4c::backend::PhysReg> x86_callee_saved_regs() {
+  return {{1}, {2}, {3}, {4}, {5}};
+}
+
+std::vector<c4c::backend::PhysReg> x86_caller_saved_regs() {
+  return {{10}, {11}, {12}, {13}, {14}, {15}};
+}
+
+std::optional<c4c::backend::PhysReg> x86_constraint_to_callee_saved(std::string_view constraint) {
+  if (constraint.size() >= 3 && constraint.front() == '{' && constraint.back() == '}') {
+    const auto reg = constraint.substr(1, constraint.size() - 2);
+    if (reg == "rbx" || reg == "ebx" || reg == "bx" || reg == "bl" || reg == "bh") {
+      return c4c::backend::PhysReg{1};
+    }
+    if (reg == "r12" || reg == "r12d" || reg == "r12w" || reg == "r12b") {
+      return c4c::backend::PhysReg{2};
+    }
+    if (reg == "r13" || reg == "r13d" || reg == "r13w" || reg == "r13b") {
+      return c4c::backend::PhysReg{3};
+    }
+    if (reg == "r14" || reg == "r14d" || reg == "r14w" || reg == "r14b") {
+      return c4c::backend::PhysReg{4};
+    }
+    if (reg == "r15" || reg == "r15d" || reg == "r15w" || reg == "r15b") {
+      return c4c::backend::PhysReg{5};
+    }
+    return std::nullopt;
+  }
+
+  for (const char ch : constraint) {
+    if (ch == 'b') {
+      return c4c::backend::PhysReg{1};
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<c4c::backend::PhysReg> x86_clobber_name_to_callee_saved(std::string_view name) {
+  if (name == "rbx" || name == "ebx" || name == "bx" || name == "bl" || name == "bh") {
+    return c4c::backend::PhysReg{1};
+  }
+  if (name == "r12" || name == "r12d" || name == "r12w" || name == "r12b") {
+    return c4c::backend::PhysReg{2};
+  }
+  if (name == "r13" || name == "r13d" || name == "r13w" || name == "r13b") {
+    return c4c::backend::PhysReg{3};
+  }
+  if (name == "r14" || name == "r14d" || name == "r14w" || name == "r14b") {
+    return c4c::backend::PhysReg{4};
+  }
+  if (name == "r15" || name == "r15d" || name == "r15w" || name == "r15b") {
+    return c4c::backend::PhysReg{5};
+  }
+  return std::nullopt;
+}
+
 std::string decode_llvm_byte_string(std::string_view text) {
   std::string bytes;
   bytes.reserve(text.size());

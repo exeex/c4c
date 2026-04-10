@@ -393,6 +393,10 @@ struct MinimalGlobalStoreReturnAndEntryReturnSlice {
 const char* reg_name_to_32(std::string_view name);
 const char* phys_reg_name(c4c::backend::PhysReg reg);
 const char* phys_reg_name_32(c4c::backend::PhysReg reg);
+std::vector<c4c::backend::PhysReg> x86_callee_saved_regs();
+std::vector<c4c::backend::PhysReg> x86_caller_saved_regs();
+std::optional<c4c::backend::PhysReg> x86_constraint_to_callee_saved(std::string_view constraint);
+std::optional<c4c::backend::PhysReg> x86_clobber_name_to_callee_saved(std::string_view name);
 std::string decode_llvm_byte_string(std::string_view text);
 std::string escape_asm_string(std::string_view raw_bytes);
 std::string asm_symbol_name(std::string_view target_triple, std::string_view logical_name);
