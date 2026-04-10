@@ -37,6 +37,25 @@ Source Plan: plan.md
 
 ## Current Iteration Notes
 
+- this iteration widened the build-active x86 direct-emitter parameter coverage
+  from the prior stack-only seventh-argument helper into a mixed
+  register-plus-stack slice: `src/backend/x86/codegen/direct_calls.cpp` and
+  `direct_dispatch.cpp` now recognize a bounded
+  `add_first_and_stack_param(i32 %p.a, ..., i32 %p.g)` helper and emit the
+  real SysV calling sequence with `%edi` preserved for the first parameter plus
+  `%rbp+16` loading for the seventh incoming stack parameter in the same
+  helper body
+- added focused x86 backend coverage in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` that locks both the
+  helper-side `mov eax, edi` plus `add eax, DWORD PTR [rbp + 16]` sequence and
+  the caller-side six-register-plus-one-stack argument setup for the mixed
+  parameter path
+- next owner-path note:
+  keep using these build-active direct-emitter parameter slices to pin the
+  intended ABI behavior while the translated `prologue.cpp` owner stays out of
+  build, then resume the helper-surface work needed for the first real
+  translated `emit_param_ref_impl(...)` cutover
+
 - this iteration added a build-active x86 direct-emitter stack-scalar slice
   for the first incoming stack argument beyond the six SysV integer arg
   registers: `src/backend/x86/codegen/direct_calls.cpp` now recognizes a

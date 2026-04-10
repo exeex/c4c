@@ -3075,6 +3075,52 @@ c4c::codegen::lir::LirModule make_x86_seventh_param_stack_add_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_x86_mixed_reg_stack_param_add_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction helper;
+  helper.name = "add_first_and_stack_param";
+  helper.signature_text =
+      "define i32 @add_first_and_stack_param(i32 %p.a, i32 %p.b, i32 %p.c, i32 %p.d, i32 %p.e, i32 %p.f, i32 %p.g)\n";
+  helper.entry = LirBlockId{0};
+  helper.alloca_insts.push_back(LirAllocaOp{"%lv.param.g", "i32", "", 4});
+  helper.alloca_insts.push_back(LirStoreOp{"i32", "%p.g", "%lv.param.g"});
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.param.g"});
+  helper_entry.insts.push_back(
+      LirBinOp{"%t1", LirBinaryOpcode::Add, "i32", "%p.a", "%t0"});
+  helper_entry.terminator = LirRet{std::string("%t1"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"%t0",
+                                       "i32",
+                                       "@add_first_and_stack_param",
+                                       "(i32, i32, i32, i32, i32, i32, i32)",
+                                       "i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7"});
+  main_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_x86_local_arg_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -9948,6 +9994,27 @@ void test_x86_direct_emitter_lowers_minimal_seventh_param_stack_add_slice() {
                       "x86 direct emitter should stay on native asm emission for the bounded seventh-parameter stack-scalar slice");
 }
 
+void test_x86_direct_emitter_lowers_minimal_mixed_reg_stack_param_add_slice() {
+  auto module = make_x86_mixed_reg_stack_param_add_lir_module();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded mixed register-plus-stack parameter helper through the native prepared-LIR seam");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, ".globl add_first_and_stack_param",
+                  "x86 direct emitter should still emit the helper definition for the bounded mixed register-plus-stack parameter slice");
+  expect_contains(*rendered,
+                  "add_first_and_stack_param:\n  push rbp\n  mov rbp, rsp\n  mov eax, edi\n  add eax, DWORD PTR [rbp + 16]\n  pop rbp\n  ret\n",
+                  "x86 direct emitter should preserve the first integer parameter in its ABI register while loading the seventh parameter from the incoming stack slot in the same helper");
+  expect_contains(*rendered,
+                  "main:\n  mov edi, 1\n  mov esi, 2\n  mov edx, 3\n  mov ecx, 4\n  mov r8d, 5\n  mov r9d, 6\n  push 7\n  call add_first_and_stack_param\n  add rsp, 8\n  ret\n",
+                  "x86 direct emitter should keep the mixed register-plus-stack call setup aligned with the SysV register order plus one outgoing stack argument");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded mixed register-plus-stack parameter slice");
+}
+
 void test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice() {
   auto module = make_x86_declared_zero_arg_call_lir_module();
 
@@ -10405,6 +10472,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_seventh_param_stack_add_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_minimal_mixed_reg_stack_param_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_source_00080_void_helper_only_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_source_00080_void_helper_call_slice);
