@@ -7,23 +7,23 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner build-wiring follow-on after landing the bounded
-  `returns.cpp` slice: normalize the next `calls.cpp` translated-body syntax
-  tier now that the public `x86_codegen.hpp` surfacing cluster moved the file
-  past the incomplete ABI/type/state blockers, then rerun the direct compile
-  probe to record whether another parser-level blocker remains before choosing
-  build wiring
+  `returns.cpp` slice: surface the next shared x86 helper/state ownership tier
+  that blocks real `src/backend/x86/codegen/calls.cpp` build wiring now that
+  the file passes both direct syntax-only and standalone object compilation
+  with the current public `x86_codegen.hpp` surface
 - immediate target:
-  replace the parked Rust-tuple field accesses in `src/backend/x86/codegen/calls.cpp`
-  with the current public `Value::raw` / `StackSlot::raw` contract, add a
-  narrow shared-header compile-surface check for those fields, and rerun the
-  direct `clang++ -fsyntax-only` probe to capture the next blocker boundary
+  record the exact unresolved shared helper/state definitions exposed by the
+  temporary `calls.cpp` target-wire experiment, then choose the smallest
+  follow-on owner slice that moves those helpers out of compile-only
+  declarations and into real x86 shared support code without silently widening
+  the active plan
 
 ## Next Slice
 
 - decide whether the next bounded Step 3 slice is real `CMakeLists.txt`
-  wire-in for `src/backend/x86/codegen/calls.cpp` or a narrower object-build
-  probe that checks for link-time/helper-definition gaps before touching the
-  active x86 source lists
+  wire-in for `src/backend/x86/codegen/calls.cpp` after the shared helper/state
+  surface becomes linkable, or a bounded shared-owner support slice that
+  defines the missing x86 helper/state methods first
 - if future wiring exposes missing translated helper bodies shared with other
   parked owner files, treat that as a separate surfaced blocker tier rather
   than reverting this now-clean parser normalization work
@@ -57,10 +57,27 @@ Source Plan: plan.md
   now passes, so the parked translated call owner is past both the earlier
   incomplete header barrier and the first parser-level translated-body syntax
   tier
+- real target-wire result after a temporary `CMakeLists.txt` experiment:
+  adding `src/backend/x86/codegen/calls.cpp` to the active x86 source lists
+  still fails at link time, not parse time; the file itself compiles, but the
+  current public/transitional `x86_codegen.hpp` surface only declares shared
+  helper/state methods that do not yet have active x86 definitions
+- concrete unresolved shared-owner blockers from the failed link:
+  `X86Codegen::operand_to_rax`, `X86Codegen::store_rax_to`,
+  `X86Codegen::store_rax_rdx_to`, `X86CodegenState::emit`,
+  `X86CodegenState::get_slot`, `X86CodegenOutput::emit_instr_imm_reg`,
+  `X86CodegenOutput::emit_instr_rbp_reg`, `X86CodegenOutput::emit_instr_rbp`,
+  `X86CodegenRegCache::invalidate_all`, and `X86CodegenRegCache::set_acc`
+- shippable-scope note:
+  the temporary target-wire change was reverted after the probe because it was
+  only used to expose the next blocker tier; the tree remains on the prior
+  shippable state while this runbook now records the exact shared-support
+  frontier required before `calls.cpp` can enter the real build
 - focused validation passed:
   `cmake --build --preset default --target backend_shared_util_tests -j8`,
   `./build/backend_shared_util_tests translated_call_owner_surface`, and the
-  direct `clang++ -fsyntax-only` probe for
+  direct standalone `clang++ -c` plus earlier `clang++ -fsyntax-only` probes
+  for
   `src/backend/x86/codegen/calls.cpp`
 - this iteration lands the planned bounded public-surface slice in
   `src/backend/x86/codegen/x86_codegen.hpp` for the translated call-owner
