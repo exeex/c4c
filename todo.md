@@ -6,18 +6,15 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: migrate the next narrow speculative/state-management call sites onto
-  grouped parser symbol-table accessors instead of direct top-level member
-  storage assumptions, continuing into the next parser-local typedef/template
-  helper surface after the dependent-typename owner cleanup
-- Current slice: remove the remaining raw typedef-map threading from the
-  template specialization-pattern helpers by routing
-  `select_template_struct_pattern_for_args()` and the shared
-  `types_helpers.hpp` pattern matcher through parser-owned typedef resolution
-  and compatibility helpers
-- Iteration target: keep reducing parser call sites that still need raw
-  typedef-map parameters, without widening into namespace-state grouping,
-  non-parser storage redesign, or backend work
+- Step 4: validate the typedef/value symbol-table grouping work as complete
+  for this runbook and record the deferred parser-state follow-on surface
+- Current slice: close out the typedef/value compatibility-bridge cleanup
+  after removing the flattened `Parser` bridge references that were kept while
+  parser implementation files migrated onto parser-owned helpers
+- Iteration target: keep the plan focused on parser-local typedef/value state
+  compaction, record any remaining deferred namespace-state or other parser
+  storage work explicitly, and avoid widening into backend or non-parser
+  redesign
 
 ## Completed Items
 
@@ -299,18 +296,30 @@ Source Plan: plan.md
   full `ctest --test-dir build -j8 --output-on-failure`, and regression
   guard:
   3357/3357 tests passed, no new failures
+- Added positive C++ regression
+  `tests/cpp/internal/postive_case/template_specialization_visible_typedef_chain_parse.cpp`
+  and registered it in `tests/cpp/internal/InternalTests.cmake` to cover a
+  namespace-visible typedef chain flowing through template specialization
+  selection and the typedef-owned functional-cast path
+- Removed the compatibility-only flattened typedef/value bridge members from
+  `src/frontend/parser/parser.hpp`, leaving grouped `ParserSymbolTables`
+  storage as the owned parser state surface after the helper migrations
+- Revalidated this slice with
+  `ctest --test-dir build -R 'cpp_positive_sema_(template_specialization_visible_typedef_chain_parse|template_specialization_typedef_chain_parse|template_specialization_member_typedef_trait_parse|template_visible_typedef_type_arg_parse|typedef_owned_functional_cast_parse)_cpp' --output-on-failure`,
+  clean rebuild, full `ctest --test-dir build -j8 --output-on-failure`, and
+  regression guard:
+  3360/3360 tests passed, no new failures
 
 ## Next Intended Slice
 
-- Audit whether the parser-side typedef/value grouping work is ready to retire
-  some `parser.hpp` compatibility-reference members now that parser
-  implementation files no longer thread raw typedef maps through template
-  helper signatures
-- If that cleanup is still too wide for the next slice, record the remaining
-  compatibility-only surfaces explicitly and shift Step 4 toward closing the
-  typedef/value-table wrapper work as complete
-- Keep namespace-state grouping deferred to a later slice unless it becomes
-  necessary for one of those parser-local wrapper migrations
+- Audit whether the current runbook is ready for closeout now that the
+  typedef/value grouping work no longer depends on flattened compatibility
+  bridge members in `Parser`
+- If a follow-on parser compaction slice is still warranted, write it down as
+  an explicit deferred surface instead of silently expanding this typedef/value
+  runbook
+- Keep namespace-state grouping deferred unless a future idea or activation
+  explicitly makes it the active plan
 
 ## Blockers
 
@@ -346,6 +355,7 @@ Source Plan: plan.md
 - `parser_types_base.cpp`, `parser_types_template.cpp`, and
   `parser_expressions.cpp` now use parser-owned template-selection,
   typedef-compatibility, and record-constructor helpers; the likely next
-  cleanup is narrowing or removing compatibility-reference members in
-  `parser.hpp`, not more raw typedef-map threading in parser implementation
-  files
+  cleanup had been narrowing or removing compatibility-reference members in
+  `parser.hpp`; that bridge is now gone, so any further parser-state compaction
+  should be treated as a new explicitly recorded follow-on surface rather than
+  more typedef/value bridge cleanup

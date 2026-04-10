@@ -482,7 +482,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
     };
     for (int i = 0; seed[i]; ++i) symbol_tables.typedefs.insert(seed[i]);
 
-    // Seed typedef_types_ for well-known types so they resolve to correct LLVM types
+    // Seed grouped typedef type storage for well-known names so they resolve
+    // to correct LLVM types.
     // instead of the TB_TYPEDEF fallback (which emits i32).
     {
         TypeSpec va_ts{};

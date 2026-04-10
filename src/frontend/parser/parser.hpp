@@ -336,13 +336,6 @@ class Parser {
 
   // ── name / type knowledge accumulated during parsing ─────────────────────
   ParserSymbolTables symbol_tables_;
-  std::set<std::string>& typedefs_ = symbol_tables_.typedefs;  // known typedef names
-  // Typedef names declared in the current translation unit (not pre-seeded).
-  std::set<std::string>& user_typedefs_ = symbol_tables_.user_typedefs;
-  // Maps typedef name → resolved TypeSpec (populated when registering typedefs)
-  // so subsequent uses of the typedef name resolve to the actual struct/base type.
-  std::unordered_map<std::string, TypeSpec>& typedef_types_ =
-      symbol_tables_.typedef_types;
   // Declared concept names visible to the parser. Kept separate from typedef
   // tracking so concept-ids do not get mistaken for type names.
   std::set<std::string> concept_names_;
@@ -364,9 +357,6 @@ class Parser {
   std::unordered_map<std::string, long long> enum_consts_;
   // Global const/constexpr integer bindings visible to parser-time constant folding.
   std::unordered_map<std::string, long long> const_int_bindings_;
-  // Variable name → TypeSpec (populated as variables are declared).
-  // Used to resolve typeof(variable) in type expressions.
-  std::unordered_map<std::string, TypeSpec>& var_types_ = symbol_tables_.var_types;
   bool suppress_local_var_bindings_ = false;
   // Qualified function names (populated as functions are declared/defined).
   // Used by lookup_value_in_context for namespace-aware function lookup.
