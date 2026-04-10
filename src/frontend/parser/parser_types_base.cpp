@@ -2418,95 +2418,10 @@ TypeSpec Parser::parse_base_type() {
                                         // Trigger instantiation if needed
                                         if (!instantiated_template_struct_keys_.count(base_instance_key) &&
                                             !struct_tag_def_map_.count(base_mangled)) {
-                                            // Inject tokens to trigger parse_base_type instantiation
-                                            // by building: origin < arg1, arg2, ... >
-                                            std::vector<Token> inject_toks;
-                                            Token t; t.line = tpl_def->line; t.column = 0;
-                                            t.kind = TokenKind::Identifier;
-                                            t.lexeme = origin;
-                                            inject_toks.push_back(t);
-                                            t.kind = TokenKind::Less; t.lexeme = "<";
-                                            inject_toks.push_back(t);
-                                            for (int ai = 0; ai < (int)base_args.size(); ++ai) {
-                                                if (ai > 0) {
-                                                    t.kind = TokenKind::Comma; t.lexeme = ",";
-                                                    inject_toks.push_back(t);
-                                                }
-                                                if (base_args[ai].is_value) {
-                                                    if (base_args[ai].value == 0) {
-                                                        t.kind = TokenKind::KwFalse; t.lexeme = "false";
-                                                    } else if (base_args[ai].value == 1) {
-                                                        t.kind = TokenKind::KwTrue; t.lexeme = "true";
-                                                    } else {
-                                                        t.kind = TokenKind::IntLit;
-                                                        t.lexeme = std::to_string(base_args[ai].value);
-                                                    }
-                                                    inject_toks.push_back(t);
-                                                } else {
-                                                    const TypeSpec& ats = base_args[ai].type;
-                                                    if (ats.tag) {
-                                                        t.kind = TokenKind::Identifier; t.lexeme = ats.tag;
-                                                    } else {
-                                                        // Emit proper keyword tokens for builtin types.
-                                                        auto emit_kw = [&](TokenKind k, const char* lex) {
-                                                            Token kt; kt.line = tpl_def->line; kt.column = 0;
-                                                            kt.kind = k; kt.lexeme = lex;
-                                                            inject_toks.push_back(kt);
-                                                        };
-                                                        bool emitted = true;
-                                                        switch (ats.base) {
-                                                            case TB_VOID: emit_kw(TokenKind::KwVoid, "void"); break;
-                                                            case TB_BOOL: emit_kw(TokenKind::KwBool, "bool"); break;
-                                                            case TB_CHAR: emit_kw(TokenKind::KwChar, "char"); break;
-                                                            case TB_SCHAR: emit_kw(TokenKind::KwSigned, "signed"); emit_kw(TokenKind::KwChar, "char"); break;
-                                                            case TB_UCHAR: emit_kw(TokenKind::KwUnsigned, "unsigned"); emit_kw(TokenKind::KwChar, "char"); break;
-                                                            case TB_SHORT: emit_kw(TokenKind::KwShort, "short"); break;
-                                                            case TB_USHORT: emit_kw(TokenKind::KwUnsigned, "unsigned"); emit_kw(TokenKind::KwShort, "short"); break;
-                                                            case TB_INT: emit_kw(TokenKind::KwInt, "int"); break;
-                                                            case TB_UINT: emit_kw(TokenKind::KwUnsigned, "unsigned"); emit_kw(TokenKind::KwInt, "int"); break;
-                                                            case TB_LONG: emit_kw(TokenKind::KwLong, "long"); break;
-                                                            case TB_ULONG: emit_kw(TokenKind::KwUnsigned, "unsigned"); emit_kw(TokenKind::KwLong, "long"); break;
-                                                            case TB_LONGLONG: emit_kw(TokenKind::KwLong, "long"); emit_kw(TokenKind::KwLong, "long"); break;
-                                                            case TB_ULONGLONG: emit_kw(TokenKind::KwUnsigned, "unsigned"); emit_kw(TokenKind::KwLong, "long"); emit_kw(TokenKind::KwLong, "long"); break;
-                                                            case TB_FLOAT: emit_kw(TokenKind::KwFloat, "float"); break;
-                                                            case TB_DOUBLE: emit_kw(TokenKind::KwDouble, "double"); break;
-                                                            default: t.kind = TokenKind::Identifier; t.lexeme = "int"; emitted = false; break;
-                                                        }
-                                                        if (emitted) continue;  // tokens already pushed
-                                                    }
-                                                    inject_toks.push_back(t);
-                                                }
-                                            }
-                                            t.kind = TokenKind::Greater; t.lexeme = ">";
-                                            inject_toks.push_back(t);
-                                            // Add a sentinel
-                                            t.kind = TokenKind::Semi; t.lexeme = ";";
-                                            inject_toks.push_back(t);
-
-                                            // Token injection: temporarily swap tokens_ to parse injected text.
-                                            // TentativeParseGuard does not snapshot tokens_, so manual
-                                            // save/restore of tokens_ and pos_ is intentionally kept here.
-                                            int saved_pos = pos_;
-                                            const std::string injected_detail =
-                                                "reason=template_base_instantiation saved_pos=" +
-                                                std::to_string(saved_pos) +
-                                                " token_count=" +
-                                                std::to_string(inject_toks.size());
-                                            auto saved_toks = std::move(tokens_);
-                                            tokens_ = std::move(inject_toks);
-                                            pos_ = 0;
-                                            note_parse_debug_event_for("injected_parse_begin",
-                                                                       "parse_base_type",
-                                                                       injected_detail.c_str());
-                                            try {
-                                                TypeSpec resolved_base = parse_base_type();
-                                                inst->base_types[bi] = resolved_base;
-                                            } catch (...) {}
-                                            note_parse_debug_event_for("injected_parse_end",
-                                                                       "parse_base_type",
-                                                                       injected_detail.c_str());
-                                            tokens_ = std::move(saved_toks);
-                                            pos_ = saved_pos;
+                                            (void)instantiate_template_struct_via_injected_parse(
+                                                *this, origin, base_args, tpl_def->line,
+                                                "template_base_instantiation",
+                                                &inst->base_types[bi]);
                                         } else if (struct_tag_def_map_.count(base_mangled)) {
                                             inst->base_types[bi] = TypeSpec{};
                                             inst->base_types[bi].array_size = -1;

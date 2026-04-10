@@ -22,6 +22,9 @@ Source Plan: plan.md
 - Next intended slice: continue on `parser_types_template.cpp`, especially the
   `Trait<args>::member` token-injection path, so instantiated lookup no longer
   has to re-spell complex type args back into ad hoc tokens in the common case.
+- Next intended slice: replace the remaining injected-parse instantiation seam
+  with a typed helper that can realize template structs without rebuilding a
+  token stream, now that both parser call sites share one injection helper.
 
 ## Completed
 
@@ -66,3 +69,6 @@ Source Plan: plan.md
 - Introduced a shared parser-side `TypeSpec -> token` helper and switched the
   deferred `Trait<args>::member` token-injection path to use it, replacing the
   old ad hoc subset emitter for injected type args.
+- Introduced a shared parser-side `instantiate_template_struct_via_injected_parse(...)`
+  helper and moved both template-base instantiation and deferred
+  `Trait<args>::member` instantiation onto that single seam.

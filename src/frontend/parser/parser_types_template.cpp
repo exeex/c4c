@@ -510,37 +510,9 @@ bool Parser::eval_deferred_nttp_expr_tokens(
 
         // Ensure the referenced struct is instantiated via token injection.
         if (!struct_tag_def_map_.count(ref_mangled)) {
-            std::vector<Token> inject_toks;
-            Token t; t.line = ref_primary->line; t.column = 0;
-            append_qualified_name_tokens(&inject_toks, t, resolved_ref_tpl_name);
-            t.kind = TokenKind::Less; t.lexeme = "<";
-            inject_toks.push_back(t);
-            for (int ai = 0; ai < (int)ref_args.size(); ++ai) {
-                if (ai > 0) { t.kind = TokenKind::Comma; t.lexeme = ","; inject_toks.push_back(t); }
-                if (ref_args[ai].is_value) {
-                    if (ref_args[ai].value == 0) { t.kind = TokenKind::KwFalse; t.lexeme = "false"; }
-                    else if (ref_args[ai].value == 1) { t.kind = TokenKind::KwTrue; t.lexeme = "true"; }
-                    else { t.kind = TokenKind::IntLit; t.lexeme = std::to_string(ref_args[ai].value); }
-                    inject_toks.push_back(t);
-                } else {
-                    append_typespec_reparse_tokens(&inject_toks, t, ref_args[ai].type);
-                }
-            }
-            t.kind = TokenKind::Greater; t.lexeme = ">";
-            inject_toks.push_back(t);
-            t.kind = TokenKind::Semi; t.lexeme = ";";
-            inject_toks.push_back(t);
-
-            // Token injection: temporarily swap tokens_ to parse injected text.
-            // TentativeParseGuard does not snapshot tokens_, so manual
-            // save/restore of tokens_ and pos_ is intentionally kept here.
-            int saved_pos = pos_;
-            auto saved_parser_toks = std::move(tokens_);
-            tokens_ = std::move(inject_toks);
-            pos_ = 0;
-            try { (void)parse_base_type(); } catch (...) {}
-            tokens_ = std::move(saved_parser_toks);
-            pos_ = saved_pos;
+            (void)instantiate_template_struct_via_injected_parse(
+                *this, resolved_ref_tpl_name, ref_args, ref_primary->line,
+                "template_member_lookup_instantiation");
         }
 
         auto sdef_it = struct_tag_def_map_.find(ref_mangled);

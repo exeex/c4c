@@ -208,6 +208,77 @@ void append_typespec_reparse_tokens(std::vector<Token>* out,
     if (ts.is_rvalue_ref) emit(TokenKind::AmpAmp, "&&");
 }
 
+bool instantiate_template_struct_via_injected_parse(
+    Parser& parser,
+    const std::string& template_name,
+    const std::vector<ParsedTemplateArg>& args,
+    int line,
+    const char* debug_reason = nullptr,
+    TypeSpec* out_resolved = nullptr) {
+    std::vector<Token> inject_toks;
+    Token t{};
+    t.line = line;
+    t.column = 0;
+    append_qualified_name_tokens(&inject_toks, t, template_name);
+    t.kind = TokenKind::Less;
+    t.lexeme = "<";
+    inject_toks.push_back(t);
+    for (int ai = 0; ai < static_cast<int>(args.size()); ++ai) {
+        if (ai > 0) {
+            t.kind = TokenKind::Comma;
+            t.lexeme = ",";
+            inject_toks.push_back(t);
+        }
+        if (args[ai].is_value) {
+            if (args[ai].value == 0) {
+                t.kind = TokenKind::KwFalse;
+                t.lexeme = "false";
+            } else if (args[ai].value == 1) {
+                t.kind = TokenKind::KwTrue;
+                t.lexeme = "true";
+            } else {
+                t.kind = TokenKind::IntLit;
+                t.lexeme = std::to_string(args[ai].value);
+            }
+            inject_toks.push_back(t);
+        } else {
+            append_typespec_reparse_tokens(&inject_toks, t, args[ai].type);
+        }
+    }
+    t.kind = TokenKind::Greater;
+    t.lexeme = ">";
+    inject_toks.push_back(t);
+    t.kind = TokenKind::Semi;
+    t.lexeme = ";";
+    inject_toks.push_back(t);
+
+    const int saved_pos = parser.pos_;
+    const std::string injected_detail =
+        std::string("reason=") + (debug_reason ? debug_reason : "template_instantiation") +
+        " saved_pos=" + std::to_string(saved_pos) +
+        " token_count=" + std::to_string(inject_toks.size());
+    auto saved_toks = std::move(parser.tokens_);
+    parser.tokens_ = std::move(inject_toks);
+    parser.pos_ = 0;
+    parser.note_parse_debug_event_for("injected_parse_begin",
+                                      "parse_base_type",
+                                      injected_detail.c_str());
+    bool ok = false;
+    try {
+        TypeSpec resolved = parser.parse_base_type();
+        if (out_resolved) *out_resolved = resolved;
+        ok = true;
+    } catch (...) {
+        ok = false;
+    }
+    parser.note_parse_debug_event_for("injected_parse_end",
+                                      "parse_base_type",
+                                      injected_detail.c_str());
+    parser.tokens_ = std::move(saved_toks);
+    parser.pos_ = saved_pos;
+    return ok;
+}
+
 bool is_known_simple_type_head(const Parser& parser, const std::string& name) {
     if (match_floatn_keyword_base(name, nullptr)) return true;
     if (parser.is_template_scope_type_param(name)) return true;
