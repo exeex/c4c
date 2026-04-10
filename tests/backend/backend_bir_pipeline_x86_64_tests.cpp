@@ -7285,6 +7285,23 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call
                       "x86 LIR folded two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_on_native_x86_path() {
+  const auto module = make_lir_minimal_two_arg_local_arg_direct_call_module();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_pair",
+                  "x86 LIR first-local two-argument direct-call input should still emit the helper definition on the native x86 path");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 LIR first-local two-argument direct-call input should preserve the helper add body on the native x86 path");
+  expect_contains(rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "x86 LIR first-local two-argument direct-call input should reload the first operand locally and still lower the helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR first-local two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_repeated_zero_arg_call_compare_zero_return_through_bir_end_to_end() {
   const auto lowered_bir = c4c::backend::try_lower_to_bir(
       make_lir_minimal_repeated_zero_arg_call_compare_zero_return_module());
@@ -10779,6 +10796,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_repeated_zero_arg_call_compare_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_loop_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_scalar_global_load_through_bir_end_to_end);

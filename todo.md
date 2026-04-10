@@ -10,20 +10,19 @@ Source Plan: plan.md
   direct-calls sibling seam after landing the bounded call-crossing helper
   family ownership move out of `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  return to the next bounded direct-calls follow-on after the new call-
-  crossing helper family: move the folded two-arg `fold_pair` helper family
-  onto the native prepared-LIR x86 emitter path without reopening broader
-  translated prologue-owner work
-  - add focused native prepared-LIR regression coverage for the bounded
-    `fold_pair(i32, i32)` helper shape and keep the slice limited to that one
-    helper family
+  move the first local-arg two-argument helper-call family onto the shared
+  backend entrypoint coverage surface now that the native prepared-LIR x86
+  emitter already owns the bounded matcher
+  - add focused backend-entrypoint regression coverage for the bounded
+    `add_pair(i32, i32)` helper with a first-operand local-slot reload and
+    keep the slice limited to that one prepared-LIR family
   - keep the broader translated prologue owner parked; this iteration is only
     about shrinking the remaining prepared-LIR direct-call matcher surface
 
 ## Next Slice
 
-- choose the next bounded prepared-LIR direct-call family that still lacks a
-  native x86 direct-emitter owner after the folded two-arg `fold_pair` slice
+- choose the next bounded prepared-LIR local-arg/rewrite direct-call family
+  after the first local-arg two-argument helper entrypoint slice
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -35,6 +34,23 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration extended the shared backend entrypoint coverage for the first
+  local-arg two-argument prepared-LIR helper family:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pins that
+  `add_pair(i32, i32)` shape at `c4c::backend::emit_module(...)` so the
+  first-operand local reload still reaches native x86 asm emission through the
+  public backend entry surface instead of only through the direct-emitter-only
+  slice test
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_bir_tests`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_on_native_x86_path`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice`
+- broad validation note:
+  skipped for this still-bounded prepared-LIR direct-call coverage slice per
+  the active plan note to defer the monotonic full-suite guard until a larger
+  owner-path cutover lands
 
 - this iteration moved the bounded folded two-arg `fold_pair(i32, i32)`
   helper family onto the native prepared-LIR x86 emitter path:
