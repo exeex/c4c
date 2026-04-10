@@ -112,6 +112,8 @@ std::optional<bir::Module> try_lower_minimal_global_two_field_struct_store_sub_s
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_local_i32_store_and_sub_return_immediate_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_local_i32_store_xor_sub_return_immediate_module(
+    const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_local_i32_store_or_sub_return_immediate_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_string_literal_compare_phi_return_module(

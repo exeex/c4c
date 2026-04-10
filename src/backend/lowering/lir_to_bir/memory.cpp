@@ -1321,6 +1321,86 @@ std::optional<bir::Module> try_lower_minimal_local_i32_store_and_sub_return_imme
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_local_i32_store_xor_sub_return_immediate_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* slot = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (slot == nullptr || slot->result.empty() || !slot->count.empty() ||
+      !memory_lir_type_matches_integer_width(slot->type_str, 32)) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* init_store = entry.insts.size() == 6 ? std::get_if<LirStoreOp>(&entry.insts[0]) : nullptr;
+  const auto* first_load = entry.insts.size() == 6 ? std::get_if<LirLoadOp>(&entry.insts[1]) : nullptr;
+  const auto* xor_inst = entry.insts.size() == 6 ? std::get_if<LirBinOp>(&entry.insts[2]) : nullptr;
+  const auto* update_store = entry.insts.size() == 6 ? std::get_if<LirStoreOp>(&entry.insts[3]) : nullptr;
+  const auto* second_load = entry.insts.size() == 6 ? std::get_if<LirLoadOp>(&entry.insts[4]) : nullptr;
+  const auto* sub_inst = entry.insts.size() == 6 ? std::get_if<LirBinOp>(&entry.insts[5]) : nullptr;
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (entry.label != "entry" || init_store == nullptr || first_load == nullptr || xor_inst == nullptr ||
+      update_store == nullptr || second_load == nullptr || sub_inst == nullptr || ret == nullptr ||
+      !ret->value_str.has_value() || *ret->value_str != sub_inst->result ||
+      lir_to_bir::legalize_function_return_type(function, *ret) != bir::TypeKind::I32 ||
+      !memory_lir_type_matches_expected_scalar(init_store->type_str, bir::TypeKind::I32) ||
+      !memory_lir_type_matches_expected_scalar(first_load->type_str, bir::TypeKind::I32) ||
+      !memory_lir_type_matches_integer_width(xor_inst->type_str, 32) ||
+      !memory_lir_type_matches_expected_scalar(update_store->type_str, bir::TypeKind::I32) ||
+      !memory_lir_type_matches_expected_scalar(second_load->type_str, bir::TypeKind::I32) ||
+      !memory_lir_type_matches_integer_width(sub_inst->type_str, 32) ||
+      init_store->ptr != slot->result || first_load->ptr != slot->result ||
+      xor_inst->opcode.typed() != LirBinaryOpcode::Xor || xor_inst->lhs != first_load->result ||
+      update_store->ptr != slot->result || update_store->val != xor_inst->result ||
+      second_load->ptr != slot->result || sub_inst->opcode.typed() != LirBinaryOpcode::Sub ||
+      sub_inst->lhs != second_load->result) {
+    return std::nullopt;
+  }
+
+  const auto init_imm = parse_memory_immediate(init_store->val);
+  const auto xor_rhs_imm = parse_memory_immediate(xor_inst->rhs);
+  const auto sub_rhs_imm = parse_memory_immediate(sub_inst->rhs);
+  if (!init_imm.has_value() || !xor_rhs_imm.has_value() || !sub_rhs_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto folded_value = (*init_imm ^ *xor_rhs_imm) - *sub_rhs_imm;
+  if (folded_value < std::numeric_limits<std::int32_t>::min() ||
+      folded_value > std::numeric_limits<std::int32_t>::max()) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::immediate_i32(static_cast<std::int32_t>(folded_value)),
+  };
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_string_literal_compare_phi_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
