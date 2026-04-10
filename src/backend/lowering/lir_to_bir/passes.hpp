@@ -141,6 +141,9 @@ std::optional<bir::Module>
 try_lower_minimal_global_x_y_pointer_compare_zero_return_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module>
+try_lower_minimal_nested_anonymous_aggregate_alias_compare_zero_return_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module>
 try_lower_minimal_local_i32_array_pointer_inc_dec_compare_zero_return_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module>
