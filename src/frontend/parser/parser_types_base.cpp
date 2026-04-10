@@ -1375,6 +1375,13 @@ TypeSpec Parser::parse_base_type() {
                                             *out = parsed;
                                             return true;
                                         }
+                                        if (ref.rfind("$expr:", 0) == 0) {
+                                            parsed.is_value = true;
+                                            parsed.nttp_name = arena_.strdup(ref.c_str());
+                                            parsed.value = 0;
+                                            *out = parsed;
+                                            return true;
+                                        }
                                         parsed.is_value = false;
                                         if (ref[0] == '@') {
                                             const size_t sep = ref.find(':', 1);
@@ -1938,8 +1945,20 @@ TypeSpec Parser::parse_base_type() {
                                          pi < primary_tpl->n_template_params; ++pi) {
                             const char* pn = primary_tpl->template_param_names[pi];
                             if (primary_tpl->template_param_is_nttp[pi]) {
-                                if (actual_args[pi].is_value)
+                                if (actual_args[pi].is_value) {
+                                    if (actual_args[pi].nttp_name &&
+                                        std::strncmp(actual_args[pi].nttp_name, "$expr:", 6) == 0) {
+                                        std::vector<Token> expr_toks = lex_template_expr_text(
+                                            actual_args[pi].nttp_name + 6, source_profile_);
+                                        long long ev = 0;
+                                        if (eval_deferred_nttp_expr_tokens(
+                                                tpl_name, expr_toks,
+                                                prelim_tb, prelim_nb, &ev)) {
+                                            actual_args[pi].value = ev;
+                                        }
+                                    }
                                     prelim_nb.push_back({pn, actual_args[pi].value});
+                                }
                             } else {
                                 if (!actual_args[pi].is_value)
                                     prelim_tb.push_back({pn, actual_args[pi].type});

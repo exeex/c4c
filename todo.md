@@ -104,6 +104,11 @@ Source Plan: plan.md
   no longer routes nested arg emission through the generic debug-list helper
   and instead builds its compatibility string from structured `TemplateArgRef`
   entries directly.
+- HIR object-call fallback now covers `integral_constant`-style trait objects:
+  zero-arg `operator()` calls on struct objects with a known static `value`
+  fold directly through the existing static-member const path, which keeps
+  inherited trait object calls stable even when base method realization lags
+  behind base-value transport.
 
 ## Completed
 
@@ -264,3 +269,8 @@ Source Plan: plan.md
   so `encode_template_type_arg_ref_hir(...)` now emits nested compatibility
   refs from structured `TemplateArgRef` payloads directly instead of routing
   them through `encode_template_arg_debug_list(...)`.
+- Reworked [hir_expr.cpp](/workspaces/c4c/src/frontend/hir/hir_expr.cpp) so
+  zero-arg `operator()` calls on struct objects can fold straight to a known
+  static `value`, fixing the EASTL signed-helper base-expression regression
+  without depending on inherited base-method lowering to materialize the exact
+  `integral_constant<bool, v>` specialization first.

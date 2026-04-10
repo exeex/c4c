@@ -1098,6 +1098,19 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
     return ExprId::invalid();
   }
 
+  if (std::strcmp(op_method_name, "operator_call") == 0 && arg_nodes.empty()) {
+    if (auto value = find_struct_static_member_const_value(obj_ts.tag, "value")) {
+      TypeSpec value_ts{};
+      if (const Node* decl = find_struct_static_member_decl(obj_ts.tag, "value")) {
+        value_ts = decl->type;
+      } else {
+        value_ts.base = TB_BOOL;
+      }
+      if (value_ts.base == TB_VOID) value_ts.base = TB_INT;
+      return append_expr(result_node, IntLiteral{*value, false}, value_ts);
+    }
+  }
+
   std::optional<std::string> resolved =
       find_struct_method_mangled(obj_ts.tag, op_method_name, obj_ts.is_const);
   if (!resolved) return ExprId::invalid();
