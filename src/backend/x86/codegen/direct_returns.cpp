@@ -65,17 +65,6 @@ std::optional<std::int64_t> parse_i64(const c4c::backend::bir::Value& value) {
   return value.immediate;
 }
 
-std::string emit_function_prelude(std::string_view target_triple,
-                                  std::string_view symbol_name) {
-  std::ostringstream out;
-  out << ".globl " << symbol_name << "\n";
-  if (target_triple.find("apple-darwin") == std::string::npos) {
-    out << ".type " << symbol_name << ", @function\n";
-  }
-  out << symbol_name << ":\n";
-  return out.str();
-}
-
 const c4c::backend::bir::BinaryInst* get_binary_inst(
     const c4c::backend::bir::Inst& inst) {
   return std::get_if<c4c::backend::bir::BinaryInst>(&inst);

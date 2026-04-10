@@ -37,24 +37,6 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
   return value;
 }
 
-std::string emit_function_prelude(std::string_view target_triple,
-                                  std::string_view symbol_name) {
-  std::ostringstream out;
-  out << ".globl " << symbol_name << "\n";
-  if (target_triple.find("apple-darwin") == std::string::npos) {
-    out << ".type " << symbol_name << ", @function\n";
-  }
-  out << symbol_name << ":\n";
-  return out.str();
-}
-
-std::string direct_symbol_name(std::string_view target_triple, std::string_view logical_name) {
-  if (target_triple.find("apple-darwin") != std::string::npos) {
-    return "_" + std::string(logical_name);
-  }
-  return std::string(logical_name);
-}
-
 std::optional<MinimalVoidHelperCallSlice> parse_minimal_void_helper_call_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -196,8 +178,8 @@ std::optional<MinimalVoidExternCallReturnImmSlice> parse_minimal_void_extern_cal
 
 std::string emit_minimal_void_helper_call_asm(std::string_view target_triple,
                                               const MinimalVoidHelperCallSlice& slice) {
-  const auto helper_symbol = direct_symbol_name(target_triple, slice.helper_name);
-  const auto entry_symbol = direct_symbol_name(target_triple, slice.entry_name);
+  const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n"
       << ".text\n"
@@ -212,7 +194,7 @@ std::string emit_minimal_void_helper_call_asm(std::string_view target_triple,
 
 std::string emit_minimal_void_return_asm(std::string_view target_triple,
                                          const MinimalVoidReturnSlice& slice) {
-  const auto function_symbol = direct_symbol_name(target_triple, slice.function_name);
+  const auto function_symbol = asm_symbol_name(target_triple, slice.function_name);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n"
       << ".text\n"
@@ -224,8 +206,8 @@ std::string emit_minimal_void_return_asm(std::string_view target_triple,
 std::string emit_minimal_void_extern_call_return_imm_asm(
     std::string_view target_triple,
     const MinimalVoidExternCallReturnImmSlice& slice) {
-  const auto extern_symbol = direct_symbol_name(target_triple, slice.extern_name);
-  const auto function_symbol = direct_symbol_name(target_triple, slice.function_name);
+  const auto extern_symbol = asm_symbol_name(target_triple, slice.extern_name);
+  const auto function_symbol = asm_symbol_name(target_triple, slice.function_name);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
   if (target_triple.find("apple-darwin") == std::string::npos) {

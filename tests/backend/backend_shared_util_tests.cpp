@@ -169,6 +169,45 @@ void test_x86_codegen_header_exports_translated_globals_owner_helper_symbols() {
               "x86 translated globals owner helper methods should remain compile/link reachable while globals.cpp starts carrying real behavior");
 }
 
+void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
+  const auto linux_symbol =
+      c4c::backend::x86::asm_symbol_name("x86_64-unknown-linux-gnu", "main");
+  const auto darwin_symbol =
+      c4c::backend::x86::asm_symbol_name("x86_64-apple-darwin", "main");
+  expect_true(linux_symbol == "main" && darwin_symbol == "_main",
+              "x86 translated asm-emitter helpers should keep the shared symbol prefix contract across Linux and Darwin triples");
+
+  const auto linux_label =
+      c4c::backend::x86::asm_private_data_label("x86_64-unknown-linux-gnu", "@pool");
+  const auto darwin_label =
+      c4c::backend::x86::asm_private_data_label("x86_64-apple-darwin", "@pool");
+  expect_true(linux_label == ".L.pool" && darwin_label == "Lpool",
+              "x86 translated asm-emitter helpers should normalize private pool labels consistently across Linux and Darwin triples");
+
+  const auto decoded = c4c::backend::x86::decode_llvm_byte_string("Hi\\0A\\09\\22");
+  const auto escaped = c4c::backend::x86::escape_asm_string(decoded);
+  expect_true(decoded == std::string("Hi\n\t\"") && escaped == "Hi\\n\\t\\\"",
+              "x86 translated asm-emitter helpers should decode LLVM byte strings and re-escape them for asm string literals");
+
+  const auto linux_function =
+      c4c::backend::x86::emit_function_prelude("x86_64-unknown-linux-gnu", "main");
+  const auto darwin_function =
+      c4c::backend::x86::emit_function_prelude("x86_64-apple-darwin", "_main");
+  expect_true(linux_function.find(".type main, @function") != std::string::npos &&
+                  darwin_function.find(".type _main, @function") == std::string::npos,
+              "x86 translated asm-emitter function preludes should keep ELF-only .type directives while preserving the shared global label prelude");
+
+  const auto zero_global = c4c::backend::x86::emit_global_symbol_prelude(
+      "x86_64-unknown-linux-gnu", "g_counter", 4, true);
+  const auto data_global = c4c::backend::x86::emit_global_symbol_prelude(
+      "x86_64-apple-darwin", "_g_counter", 2, false);
+  expect_true(zero_global.find(".bss\n.globl g_counter\n.type g_counter, @object\n.p2align 2\n") !=
+                      std::string::npos &&
+                  data_global.find(".data\n.globl _g_counter\n.p2align 1\n") != std::string::npos &&
+                  data_global.find("@object") == std::string::npos,
+              "x86 translated asm-emitter global preludes should keep the section, alignment, and object-directive contract across ELF and Darwin targets");
+}
+
 void test_x86_translated_globals_owner_handles_minimal_scalar_global_load_slice() {
   c4c::backend::bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3780,6 +3819,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_call_decode_parses_bir_minimal_direct_call_module();
   test_x86_codegen_header_exports_translated_globals_owner_symbols();
   test_x86_codegen_header_exports_translated_globals_owner_helper_symbols();
+  test_x86_translated_asm_emitter_helpers_match_shared_contract();
   test_x86_translated_globals_owner_handles_minimal_scalar_global_load_slice();
   test_x86_translated_globals_owner_handles_minimal_extern_scalar_global_load_slice();
   test_x86_translated_globals_owner_handles_minimal_scalar_global_store_reload_slice();

@@ -64,24 +64,6 @@ std::optional<bool> evaluate_minimal_i32_cmp(std::string_view predicate,
   return std::nullopt;
 }
 
-std::string emit_function_prelude(std::string_view target_triple,
-                                  std::string_view symbol_name) {
-  std::ostringstream out;
-  out << ".globl " << symbol_name << "\n";
-  if (target_triple.find("apple-darwin") == std::string::npos) {
-    out << ".type " << symbol_name << ", @function\n";
-  }
-  out << symbol_name << ":\n";
-  return out.str();
-}
-
-std::string direct_symbol_name(std::string_view target_triple, std::string_view logical_name) {
-  if (target_triple.find("apple-darwin") != std::string::npos) {
-    return "_" + std::string(logical_name);
-  }
-  return std::string(logical_name);
-}
-
 std::optional<MinimalLocalTempSlice> parse_minimal_local_temp_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -233,7 +215,7 @@ std::optional<MinimalConstantBranchReturnSlice> parse_minimal_constant_branch_re
 std::string emit_minimal_local_temp_asm(std::string_view target_triple,
                                         std::string_view function_name,
                                         std::int64_t stored_imm) {
-  const auto symbol = direct_symbol_name(target_triple, function_name);
+  const auto symbol = asm_symbol_name(target_triple, function_name);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n"
       << ".text\n"
@@ -255,7 +237,7 @@ std::optional<std::string> try_emit_minimal_local_temp_module(
 std::string emit_minimal_constant_branch_return_asm(std::string_view target_triple,
                                                     std::string_view function_name,
                                                     std::int64_t returned_imm) {
-  const auto symbol = direct_symbol_name(target_triple, function_name);
+  const auto symbol = asm_symbol_name(target_triple, function_name);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n"
       << ".text\n"

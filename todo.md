@@ -7,27 +7,58 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner cutover for the remaining direct dispatcher surface
-  in `src/backend/x86/codegen/emit.cpp`
+  around the x86 entry/support helper surface after the legacy matcher body
+  removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  move one bounded direct-BIR parse/asm family out of
-  `src/backend/x86/codegen/emit.cpp`, with the immediate preference on the
-  minimal immediate-return cluster
-  - add focused direct-helper tests for the moved BIR owner path and keep one
-    dispatcher-visible regression so the extraction remains observable outside
-    end-to-end x86 emission tests
-  - keep validation centered on backend-only targets and focused x86
-    regressions for this legacy-removal slice
+  consolidate the shared x86 asm string/symbol/prelude helpers into a
+  non-`emit.cpp` support unit so the direct helper owners stop duplicating
+  those entry-surface utilities locally
+  - add focused shared-util coverage for the shared helper contract across
+    Linux and Darwin triples
+  - keep validation centered on backend-only targets plus the current-tree
+    full-suite monotonic guard
 
 ## Next Slice
 
-- prune the next remaining `emit.cpp`-local ownership cluster after this local
-  helper extraction, likely the bounded direct-BIR minimal immediate-return
-  family
+- prune the next remaining x86 owner surface that still depends on legacy
+  entry routing semantics after the shared asm helper consolidation, likely a
+  bounded direct-dispatch family or stale unsupported-path contract
 - keep using focused backend regressions and only rerun the broad monotonic
   guard once the bigger x86 owner switch settles
 
 ## Current Iteration Notes
 
+- this iteration moved the shared x86 asm string/symbol/prelude helpers out of
+  `src/backend/x86/codegen/emit.cpp` into the already-built support unit
+  `src/backend/x86/codegen/mod.cpp`, and the direct helper owners now reuse
+  that shared surface instead of carrying duplicate local helper definitions
+- touched direct helper owners:
+  `src/backend/x86/codegen/direct_calls.cpp`,
+  `src/backend/x86/codegen/direct_globals.cpp`,
+  `src/backend/x86/codegen/direct_locals.cpp`,
+  `src/backend/x86/codegen/direct_loops.cpp`,
+  `src/backend/x86/codegen/direct_printf.cpp`,
+  `src/backend/x86/codegen/direct_returns.cpp`,
+  `src/backend/x86/codegen/direct_variadic.cpp`, and
+  `src/backend/x86/codegen/direct_void.cpp`
+- added focused shared-util coverage for the shared asm helper contract through
+  `test_x86_translated_asm_emitter_helpers_match_shared_contract`
+- focused validation passed:
+  `cmake --build build -j8 --target backend_shared_util_tests backend_bir_tests`,
+  `./build/backend_shared_util_tests test_x86_translated_asm_emitter_helpers_match_shared_contract`,
+  `./build/backend_shared_util_tests test_x86_direct_dispatch_owner_handles_helper_backed_prepared_lir_slice`,
+  `./build/backend_bir_tests test_x86_direct_printf_helper_accepts_repeated_printf_immediates_slice`,
+  `./build/backend_bir_tests test_x86_direct_local_helper_accepts_local_temp_slice`,
+  `./build/backend_bir_tests test_x86_direct_variadic_helper_accepts_variadic_sum2_runtime_slice`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_param_slot_add_slice`,
+  `./build/backend_bir_tests test_x86_direct_void_helper_accepts_void_direct_call_return_slice`, and
+  `./build/backend_bir_tests test_x86_direct_bir_return_helper_accepts_affine_return_slice`
+- broad validation rerun stayed matched against the current-tree baseline:
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after_rerun.log 2>&1`
+  plus
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_matched_before.log --after test_fail_after_rerun.log --allow-non-decreasing-passed`
+  reported `3194` passed / `182` failed before and after, with no newly
+  failing tests and no new `>30s` cases
 - this iteration moved the remaining direct-BIR immediate/affine-return
   parse/asm owner out of `src/backend/x86/codegen/emit.cpp` into the new
   sibling owner file `src/backend/x86/codegen/direct_returns.cpp` through

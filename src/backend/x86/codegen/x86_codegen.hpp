@@ -392,8 +392,15 @@ struct MinimalGlobalStoreReturnAndEntryReturnSlice {
 
 const char* phys_reg_name(c4c::backend::PhysReg reg);
 const char* phys_reg_name_32(c4c::backend::PhysReg reg);
+std::string decode_llvm_byte_string(std::string_view text);
+std::string escape_asm_string(std::string_view raw_bytes);
 std::string asm_symbol_name(std::string_view target_triple, std::string_view logical_name);
 std::string asm_private_data_label(std::string_view target_triple, std::string_view pool_name);
+std::string emit_function_prelude(std::string_view target_triple, std::string_view symbol_name);
+std::string emit_global_symbol_prelude(std::string_view target_triple,
+                                       std::string_view symbol_name,
+                                       std::size_t align_bytes,
+                                       bool is_zero_init);
 std::optional<std::string> try_emit_minimal_affine_return_module(
     const c4c::backend::bir::Module& module);
 std::string emit_minimal_scalar_global_load_slice_asm(std::string_view target_triple,

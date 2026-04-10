@@ -17,13 +17,6 @@ struct MinimalCountdownLoopSlice {
   std::int64_t initial_imm = 0;
 };
 
-std::string direct_symbol_name(std::string_view target_triple, std::string_view logical_name) {
-  if (target_triple.find("apple-darwin") != std::string::npos) {
-    return "_" + std::string(logical_name);
-  }
-  return std::string(logical_name);
-}
-
 std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
     const c4c::backend::bir::Module& module) {
   using namespace c4c::backend::bir;
@@ -120,7 +113,7 @@ std::optional<std::string> try_emit_minimal_countdown_loop_module(
     return std::nullopt;
   }
 
-  const auto symbol = direct_symbol_name(module.target_triple, slice->function_name);
+  const auto symbol = asm_symbol_name(module.target_triple, slice->function_name);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n"
       << ".text\n"

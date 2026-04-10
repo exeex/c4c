@@ -5,7 +5,6 @@
 #include "../../../codegen/lir/ir.hpp"
 
 #include <charconv>
-#include <cctype>
 #include <sstream>
 
 namespace c4c::backend::x86 {
@@ -57,105 +56,6 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
     return std::nullopt;
   }
   return value;
-}
-
-std::string decode_llvm_byte_string(std::string_view text) {
-  std::string bytes;
-  bytes.reserve(text.size());
-  for (std::size_t index = 0; index < text.size(); ++index) {
-    if (text[index] == '\\' && index + 2 < text.size()) {
-      auto hex_val = [](char c) -> int {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        return -1;
-      };
-      const int hi = hex_val(text[index + 1]);
-      const int lo = hex_val(text[index + 2]);
-      if (hi >= 0 && lo >= 0) {
-        bytes.push_back(static_cast<char>(hi * 16 + lo));
-        index += 2;
-        continue;
-      }
-    }
-    bytes.push_back(text[index]);
-  }
-  return bytes;
-}
-
-std::string escape_asm_string(std::string_view raw_bytes) {
-  std::ostringstream out;
-  for (unsigned char ch : raw_bytes) {
-    switch (ch) {
-      case '\\': out << "\\\\"; break;
-      case '"': out << "\\\""; break;
-      case '\n': out << "\\n"; break;
-      case '\t': out << "\\t"; break;
-      default:
-        if (std::isprint(ch) != 0) {
-          out << static_cast<char>(ch);
-        } else {
-          constexpr char kHex[] = "0123456789ABCDEF";
-          out << '\\' << kHex[(ch >> 4) & 0xF] << kHex[ch & 0xF];
-        }
-        break;
-    }
-  }
-  return out.str();
-}
-
-std::string emit_function_prelude(std::string_view target_triple, std::string_view symbol_name) {
-  std::ostringstream out;
-  out << ".globl " << symbol_name << "\n";
-  if (target_triple.find("apple-darwin") == std::string::npos) {
-    out << ".type " << symbol_name << ", @function\n";
-  }
-  out << symbol_name << ":\n";
-  return out.str();
-}
-
-std::string direct_symbol_name(std::string_view target_triple, std::string_view logical_name) {
-  if (target_triple.find("apple-darwin") != std::string::npos) {
-    return "_" + std::string(logical_name);
-  }
-  return std::string(logical_name);
-}
-
-std::string direct_private_data_label(std::string_view target_triple, std::string_view pool_name) {
-  std::string label(pool_name);
-  if (!label.empty() && label.front() == '@') {
-    label.erase(label.begin());
-  }
-  while (!label.empty() && label.front() == '.') {
-    label.erase(label.begin());
-  }
-
-  if (target_triple.find("apple-darwin") != std::string::npos) {
-    return "L" + label;
-  }
-  return ".L." + label;
-}
-
-std::string asm_symbol_name(std::string_view target_triple, std::string_view logical_name) {
-  if (target_triple.find("apple-darwin") != std::string::npos) {
-    return "_" + std::string(logical_name);
-  }
-  return std::string(logical_name);
-}
-
-std::string asm_private_data_label(std::string_view target_triple, std::string_view pool_name) {
-  std::string label(pool_name);
-  if (!label.empty() && label.front() == '@') {
-    label.erase(label.begin());
-  }
-  while (!label.empty() && label.front() == '.') {
-    label.erase(label.begin());
-  }
-
-  if (target_triple.find("apple-darwin") != std::string::npos) {
-    return "L" + label;
-  }
-  return ".L." + label;
 }
 
 std::optional<MinimalRepeatedPrintfImmediatesSlice> parse_minimal_repeated_printf_immediates_slice(
@@ -731,8 +631,8 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
 std::string emit_minimal_repeated_printf_immediates_asm(
     std::string_view target_triple,
     const MinimalRepeatedPrintfImmediatesSlice& slice) {
-  const auto string_label = direct_private_data_label(target_triple, slice.pool_name);
-  const auto symbol = direct_symbol_name(target_triple, slice.function_name);
+  const auto string_label = asm_private_data_label(target_triple, slice.pool_name);
+  const auto symbol = asm_symbol_name(target_triple, slice.function_name);
   const auto decoded_bytes = decode_llvm_byte_string(slice.raw_bytes);
 
   std::ostringstream out;
@@ -800,9 +700,9 @@ std::string emit_minimal_repeated_printf_local_i32_calls_bir_asm(
 std::string emit_minimal_local_buffer_string_copy_printf_asm(
     std::string_view target_triple,
     const MinimalLocalBufferStringCopyPrintfSlice& slice) {
-  const auto copy_label = direct_private_data_label(target_triple, slice.copy_pool_name);
-  const auto format_label = direct_private_data_label(target_triple, slice.format_pool_name);
-  const auto symbol = direct_symbol_name(target_triple, slice.function_name);
+  const auto copy_label = asm_private_data_label(target_triple, slice.copy_pool_name);
+  const auto format_label = asm_private_data_label(target_triple, slice.format_pool_name);
+  const auto symbol = asm_symbol_name(target_triple, slice.function_name);
   const auto copy_bytes = decode_llvm_byte_string(slice.copy_raw_bytes);
   const auto format_bytes = decode_llvm_byte_string(slice.format_raw_bytes);
 
@@ -836,8 +736,8 @@ std::string emit_minimal_local_buffer_string_copy_printf_asm(
 std::string emit_minimal_counted_printf_ternary_loop_asm(
     std::string_view target_triple,
     const MinimalCountedPrintfTernaryLoopSlice& slice) {
-  const auto string_label = direct_private_data_label(target_triple, slice.pool_name);
-  const auto symbol = direct_symbol_name(target_triple, slice.function_name);
+  const auto string_label = asm_private_data_label(target_triple, slice.pool_name);
+  const auto symbol = asm_symbol_name(target_triple, slice.function_name);
   const auto decoded_bytes = decode_llvm_byte_string(slice.raw_bytes);
 
   std::ostringstream out;
@@ -879,8 +779,8 @@ std::string emit_minimal_counted_printf_ternary_loop_asm(
 std::string emit_minimal_string_literal_char_asm(
     std::string_view target_triple,
     const MinimalStringLiteralCharSlice& slice) {
-  const auto string_label = direct_private_data_label(target_triple, slice.pool_name);
-  const auto symbol = direct_symbol_name(target_triple, slice.function_name);
+  const auto string_label = asm_private_data_label(target_triple, slice.pool_name);
+  const auto symbol = asm_symbol_name(target_triple, slice.function_name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n"

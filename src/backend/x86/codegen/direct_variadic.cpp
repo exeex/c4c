@@ -18,38 +18,6 @@ struct MinimalVariadicDoubleBytesSlice {
   std::string entry_name;
 };
 
-std::string emit_function_prelude(std::string_view target_triple, std::string_view symbol_name) {
-  std::ostringstream out;
-  out << ".globl " << symbol_name << "\n";
-  if (target_triple.find("apple-darwin") == std::string::npos) {
-    out << ".type " << symbol_name << ", @function\n";
-  }
-  out << symbol_name << ":\n";
-  return out.str();
-}
-
-std::string direct_symbol_name(std::string_view target_triple, std::string_view logical_name) {
-  if (target_triple.find("apple-darwin") != std::string::npos) {
-    return "_" + std::string(logical_name);
-  }
-  return std::string(logical_name);
-}
-
-std::string direct_private_data_label(std::string_view target_triple, std::string_view pool_name) {
-  std::string label(pool_name);
-  if (!label.empty() && label.front() == '@') {
-    label.erase(label.begin());
-  }
-  while (!label.empty() && label.front() == '.') {
-    label.erase(label.begin());
-  }
-
-  if (target_triple.find("apple-darwin") != std::string::npos) {
-    return "L" + label;
-  }
-  return ".L." + label;
-}
-
 std::optional<MinimalVariadicSum2Slice> parse_minimal_variadic_sum2_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -432,8 +400,8 @@ std::optional<MinimalVariadicDoubleBytesSlice> parse_minimal_variadic_double_byt
 
 std::string emit_minimal_variadic_sum2_asm(std::string_view target_triple,
                                            const MinimalVariadicSum2Slice& slice) {
-  const auto helper_symbol = direct_symbol_name(target_triple, slice.helper_name);
-  const auto entry_symbol = direct_symbol_name(target_triple, slice.entry_name);
+  const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n"
@@ -453,10 +421,10 @@ std::string emit_minimal_variadic_sum2_asm(std::string_view target_triple,
 std::string emit_minimal_variadic_double_bytes_asm(
     std::string_view target_triple,
     const MinimalVariadicDoubleBytesSlice& slice) {
-  const auto helper_symbol = direct_symbol_name(target_triple, slice.helper_name);
-  const auto entry_symbol = direct_symbol_name(target_triple, slice.entry_name);
+  const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
   const auto constant_label =
-      direct_private_data_label(target_triple, slice.helper_name + ".double.2_25");
+      asm_private_data_label(target_triple, slice.helper_name + ".double.2_25");
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n"
