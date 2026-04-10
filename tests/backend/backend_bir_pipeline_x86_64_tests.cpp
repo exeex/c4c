@@ -1361,6 +1361,142 @@ c4c::codegen::lir::LirModule make_lir_minimal_repeated_zero_arg_call_compare_zer
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_local_i32_inc_dec_compare_return_zero_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto make_helper = [](std::string name, std::string value) {
+    LirFunction function;
+    function.name = std::move(name);
+    function.signature_text = "define i32 @" + function.name + "()\n";
+    function.entry = LirBlockId{0};
+
+    LirBlock entry;
+    entry.id = LirBlockId{0};
+    entry.label = "entry";
+    entry.terminator = LirRet{std::move(value), "i32"};
+    function.blocks.push_back(std::move(entry));
+    return function;
+  };
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+  main_function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+  main_function.alloca_insts.push_back(LirAllocaOp{"%lv.y", "i32", "", 4});
+
+  auto append_phase = [](LirFunction& function,
+                         unsigned phase_index,
+                         std::string block_label,
+                         std::string helper_name,
+                         std::string call_result,
+                         std::string load_result,
+                         std::string add_result,
+                         std::string x_cmp_result,
+                         std::string x_cast_result,
+                         std::string x_branch_result,
+                         std::string y_load_result,
+                         std::string y_cmp_result,
+                         std::string y_cast_result,
+                         std::string y_branch_result,
+                         std::string x_expected,
+                         std::string y_expected,
+                         std::string delta,
+                         bool store_updated_to_y,
+                         std::string x_true_label,
+                         std::string y_check_label,
+                         std::string y_true_label,
+                         std::string next_label) {
+    const std::string x_true_label_copy = x_true_label;
+    const std::string y_check_label_copy = y_check_label;
+    const std::string y_true_label_copy = y_true_label;
+    const std::string next_label_copy = next_label;
+    const std::string y_load_result_copy = y_load_result;
+
+    LirBlock block;
+    block.id = LirBlockId{phase_index * 4};
+    block.label = std::move(block_label);
+    block.insts.push_back(LirCallOp{std::move(call_result), "i32", "@" + helper_name, "", ""});
+    const auto& call = std::get<LirCallOp>(block.insts.back());
+    block.insts.push_back(LirStoreOp{"i32", call.result.str(), "%lv.x"});
+    block.insts.push_back(LirLoadOp{std::move(load_result), "i32", "%lv.x"});
+    const auto& load = std::get<LirLoadOp>(block.insts.back());
+    block.insts.push_back(LirBinOp{std::move(add_result), "add", "i32", load.result.str(), std::move(delta)});
+    const auto& add = std::get<LirBinOp>(block.insts.back());
+    block.insts.push_back(LirStoreOp{"i32", add.result.str(), "%lv.x"});
+    block.insts.push_back(
+        LirStoreOp{"i32", store_updated_to_y ? add.result.str() : load.result.str(), "%lv.y"});
+    block.insts.push_back(LirLoadOp{std::move(y_load_result), "i32", "%lv.x"});
+    const auto& x_load = std::get<LirLoadOp>(block.insts.back());
+    block.insts.push_back(
+        LirCmpOp{std::move(x_cmp_result), false, "ne", "i32", x_load.result.str(), std::move(x_expected)});
+    const auto& x_cmp = std::get<LirCmpOp>(block.insts.back());
+    block.insts.push_back(LirCastOp{std::move(x_cast_result), LirCastKind::ZExt, "i1", x_cmp.result.str(), "i32"});
+    const auto& x_cast = std::get<LirCastOp>(block.insts.back());
+    block.insts.push_back(LirCmpOp{std::move(x_branch_result), false, "ne", "i32", x_cast.result.str(), "0"});
+    const auto& x_branch_cmp = std::get<LirCmpOp>(block.insts.back());
+    block.terminator =
+        LirCondBr{x_branch_cmp.result.str(), x_true_label_copy, y_check_label_copy};
+    function.blocks.push_back(std::move(block));
+
+    LirBlock x_true;
+    x_true.id = LirBlockId{phase_index * 4 + 1};
+    x_true.label = x_true_label_copy;
+    x_true.terminator = LirRet{std::string("1"), "i32"};
+    function.blocks.push_back(std::move(x_true));
+
+    LirBlock y_check;
+    y_check.id = LirBlockId{phase_index * 4 + 2};
+    y_check.label = y_check_label_copy;
+    y_check.insts.push_back(LirLoadOp{y_load_result_copy, "i32", "%lv.y"});
+    const auto& y_load = std::get<LirLoadOp>(y_check.insts.back());
+    y_check.insts.push_back(
+        LirCmpOp{std::move(y_cmp_result), false, "ne", "i32", y_load.result.str(), std::move(y_expected)});
+    const auto& y_cmp = std::get<LirCmpOp>(y_check.insts.back());
+    y_check.insts.push_back(LirCastOp{std::move(y_cast_result), LirCastKind::ZExt, "i1", y_cmp.result.str(), "i32"});
+    const auto& y_cast = std::get<LirCastOp>(y_check.insts.back());
+    y_check.insts.push_back(LirCmpOp{std::move(y_branch_result), false, "ne", "i32", y_cast.result.str(), "0"});
+    const auto& y_branch_cmp = std::get<LirCmpOp>(y_check.insts.back());
+    y_check.terminator = LirCondBr{y_branch_cmp.result.str(), y_true_label_copy, next_label_copy};
+    function.blocks.push_back(std::move(y_check));
+
+    LirBlock y_true;
+    y_true.id = LirBlockId{phase_index * 4 + 3};
+    y_true.label = y_true_label_copy;
+    y_true.terminator = LirRet{std::string("1"), "i32"};
+    function.blocks.push_back(std::move(y_true));
+  };
+
+  append_phase(main_function, 0, "entry", "zero", "%t0", "%t1", "%t2", "%t4", "%t5", "%t6",
+               "%t7", "%t8", "%t9", "%t10", "1", "1", "1", true, "block_1", "block_2",
+               "block_3", "block_4");
+  append_phase(main_function, 1, "block_4", "one", "%t11", "%t12", "%t13", "%t15", "%t16",
+               "%t17", "%t18", "%t19", "%t20", "%t21", "0", "0", "-1", true, "block_5",
+               "block_6", "block_7", "block_8");
+  append_phase(main_function, 2, "block_8", "zero", "%t22", "%t23", "%t24", "%t26", "%t27",
+               "%t28", "%t29", "%t30", "%t31", "%t32", "1", "0", "1", false, "block_9",
+               "block_10", "block_11", "block_12");
+  append_phase(main_function, 3, "block_12", "one", "%t33", "%t34", "%t35", "%t37", "%t38",
+               "%t39", "%t40", "%t41", "%t42", "%t43", "0", "1", "-1", false, "block_13",
+               "block_14", "block_15", "block_16");
+
+  LirBlock final_block;
+  final_block.id = LirBlockId{16};
+  final_block.label = "block_16";
+  final_block.terminator = LirRet{std::string("0"), "i32"};
+  main_function.blocks.push_back(std::move(final_block));
+
+  module.functions.push_back(make_helper("zero", "0"));
+  module.functions.push_back(make_helper("one", "1"));
+  module.functions.push_back(std::move(main_function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_direct_call_with_dead_entry_alloca_module() {
   auto module = make_lir_minimal_direct_call_module();
   module.functions.front().alloca_insts.push_back(
@@ -3981,6 +4117,50 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_repeated_zero_arg_call_com
                       "x86 LIR repeated zero-arg call compare input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_minimal_local_i32_inc_dec_compare_return_zero_through_bir_end_to_end() {
+  const auto lowered_bir = c4c::backend::try_lower_to_bir(
+      make_lir_minimal_local_i32_inc_dec_compare_return_zero_module());
+  expect_true(lowered_bir.has_value(),
+              "x86 LIR local-slot inc/dec compare input should now lower into the bounded shared helper-plus-immediate-return shape");
+  if (!lowered_bir.has_value()) {
+    return;
+  }
+
+  expect_true(lowered_bir->functions.size() == 3 &&
+                  lowered_bir->functions[0].name == "zero" &&
+                  lowered_bir->functions[1].name == "one" &&
+                  lowered_bir->functions[2].name == "main" &&
+                  lowered_bir->functions[0].blocks.front().terminator.value ==
+                      c4c::backend::bir::Value::immediate_i32(0) &&
+                  lowered_bir->functions[1].blocks.front().terminator.value ==
+                      c4c::backend::bir::Value::immediate_i32(1) &&
+                  lowered_bir->functions[2].blocks.front().terminator.value ==
+                      c4c::backend::bir::Value::immediate_i32(0),
+              "x86 LIR local-slot inc/dec compare lowering should preserve both helpers while folding main to the shared zero return");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_lir_minimal_local_i32_inc_dec_compare_return_zero_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".type zero, @function\nzero:\n",
+                  "x86 LIR local-slot inc/dec compare input should still emit the zero helper definition after routing through the shared BIR path");
+  expect_contains(rendered, ".type one, @function\none:\n",
+                  "x86 LIR local-slot inc/dec compare input should still emit the one helper definition after routing through the shared BIR path");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR local-slot inc/dec compare input should materialize the folded zero return on the native x86 path");
+  expect_contains(rendered, "mov eax, 1",
+                  "x86 LIR local-slot inc/dec compare input should preserve the one helper immediate return on the native x86 path");
+  expect_not_contains(rendered, "cmp eax, 1",
+                      "x86 LIR local-slot inc/dec compare input should stop emitting the repeated compare chain once the shared fold owns the seam");
+  expect_not_contains(rendered, "call zero",
+                      "x86 LIR local-slot inc/dec compare input should stop depending on the unsupported direct-LIR helper-call chain once the shared fold owns the seam");
+  expect_not_contains(rendered, "call one",
+                      "x86 LIR local-slot inc/dec compare input should stop depending on the unsupported direct-LIR helper-call chain once the shared fold owns the seam");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR local-slot inc/dec compare input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_loop_through_bir_end_to_end() {
   const auto lowered_bir = c4c::backend::try_lower_to_bir(make_lir_minimal_countdown_loop_module());
   expect_true(lowered_bir.has_value(),
@@ -5741,6 +5921,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_store_or_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_store_and_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_store_xor_sub_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_local_i32_inc_dec_compare_return_zero_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_through_bir_end_to_end);

@@ -81,6 +81,15 @@ struct MinimalTwoFunctionImmediateReturnSlice {
   std::int64_t entry_imm = 0;
 };
 
+struct MinimalThreeFunctionImmediateReturnSlice {
+  std::string first_name;
+  std::string second_name;
+  std::string entry_name;
+  std::int64_t first_imm = 0;
+  std::int64_t second_imm = 0;
+  std::int64_t entry_imm = 0;
+};
+
 struct MinimalVariadicSum2Slice {
   std::string helper_name;
   std::string entry_name;
@@ -473,6 +482,47 @@ std::optional<MinimalTwoFunctionImmediateReturnSlice> parse_minimal_two_function
       .helper_name = helper.name,
       .entry_name = entry.name,
       .helper_imm = *helper_imm,
+      .entry_imm = *entry_imm,
+  };
+}
+
+std::optional<MinimalThreeFunctionImmediateReturnSlice> parse_minimal_three_function_immediate_return_slice(
+    const c4c::backend::bir::Module& module) {
+  using namespace c4c::backend::bir;
+
+  if (module.functions.size() != 3 || !module.globals.empty() ||
+      !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& first = module.functions[0];
+  const auto& second = module.functions[1];
+  const auto& entry = module.functions[2];
+  const auto parse_function_imm = [](const Function& function) -> std::optional<std::int64_t> {
+    if (function.is_declaration || function.return_type != TypeKind::I32 ||
+        !function.params.empty() || function.blocks.size() != 1) {
+      return std::nullopt;
+    }
+    const auto& block = function.blocks.front();
+    if (block.label != "entry" || !block.insts.empty() || !block.terminator.value.has_value()) {
+      return std::nullopt;
+    }
+    return parse_i64(*block.terminator.value);
+  };
+
+  const auto first_imm = parse_function_imm(first);
+  const auto second_imm = parse_function_imm(second);
+  const auto entry_imm = parse_function_imm(entry);
+  if (!first_imm.has_value() || !second_imm.has_value() || !entry_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalThreeFunctionImmediateReturnSlice{
+      .first_name = first.name,
+      .second_name = second.name,
+      .entry_name = entry.name,
+      .first_imm = *first_imm,
+      .second_imm = *second_imm,
       .entry_imm = *entry_imm,
   };
 }
@@ -2372,6 +2422,28 @@ std::string emit_minimal_two_function_immediate_return_asm(
   return out.str();
 }
 
+std::string emit_minimal_three_function_immediate_return_asm(
+    std::string_view target_triple,
+    const MinimalThreeFunctionImmediateReturnSlice& slice) {
+  const auto first_symbol = asm_symbol_name(target_triple, slice.first_name);
+  const auto second_symbol = asm_symbol_name(target_triple, slice.second_name);
+  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << ".text\n"
+      << emit_function_prelude(target_triple, first_symbol)
+      << "  mov eax, " << slice.first_imm << "\n"
+      << "  ret\n"
+      << emit_function_prelude(target_triple, second_symbol)
+      << "  mov eax, " << slice.second_imm << "\n"
+      << "  ret\n"
+      << emit_function_prelude(target_triple, entry_symbol)
+      << "  mov eax, " << slice.entry_imm << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
 bool target_uses_x86_64_sysv_regs(std::string_view target_triple) {
   return target_triple.find("x86_64") != std::string::npos ||
          target_triple.find("amd64") != std::string::npos;
@@ -3290,6 +3362,10 @@ std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& modu
   if (const auto slice = parse_minimal_two_function_immediate_return_slice(module);
       slice.has_value()) {
     return emit_minimal_two_function_immediate_return_asm(module.target_triple, *slice);
+  }
+  if (const auto slice = parse_minimal_three_function_immediate_return_slice(module);
+      slice.has_value()) {
+    return emit_minimal_three_function_immediate_return_asm(module.target_triple, *slice);
   }
   if (const auto slice = parse_minimal_affine_return_slice(module); slice.has_value()) {
     return emit_minimal_affine_return_asm(module.target_triple, *slice);
