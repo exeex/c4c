@@ -51,3 +51,6 @@ Source Plan: plan.md
 - Updated deferred alias-member preservation paths to attach structured template
   args directly from `ParsedTemplateArg` vectors before handing off to later
   stages.
+- Updated HIR nested `@origin:args` materialization to rebuild recursive typed
+  `TemplateArgRef` payloads from `HirTemplateArg`, so HIR no longer needs to
+  reattach nested pending args as debug-text-only lists in that common path.

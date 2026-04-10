@@ -7,6 +7,8 @@
 
 namespace c4c::hir {
 
+std::string encode_template_type_arg_ref_hir(const TypeSpec& ts);
+
 namespace {
 
 bool matches_trait_family(const std::string& name, const char* suffix);
@@ -117,6 +119,31 @@ void assign_template_arg_debug_refs(TypeSpec* ts,
   for (size_t i = 0; i < refs.size(); ++i) {
     ts->tpl_struct_args.data[i].kind = TemplateArgKind::Type;
     ts->tpl_struct_args.data[i].debug_text = ::strdup(refs[i].c_str());
+  }
+}
+
+void assign_template_arg_refs_from_hir_args(
+    TypeSpec* ts,
+    const std::vector<HirTemplateArg>& args) {
+  if (!ts) return;
+  ts->tpl_struct_args.data = nullptr;
+  ts->tpl_struct_args.size = 0;
+  if (args.empty()) return;
+
+  ts->tpl_struct_args.data = new TemplateArgRef[args.size()]();
+  ts->tpl_struct_args.size = static_cast<int>(args.size());
+  for (size_t i = 0; i < args.size(); ++i) {
+    const HirTemplateArg& arg = args[i];
+    TemplateArgRef& out = ts->tpl_struct_args.data[i];
+    out.kind = arg.is_value ? TemplateArgKind::Value
+                            : TemplateArgKind::Type;
+    out.type = arg.is_value ? TypeSpec{} : arg.type;
+    out.value = arg.is_value ? arg.value : 0;
+    const std::string debug_text =
+        arg.is_value ? std::to_string(arg.value)
+                     : encode_template_type_arg_ref_hir(arg.type);
+    out.debug_text =
+        debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
   }
 }
 
@@ -1562,6 +1589,78 @@ ResolvedTemplateArgs Lowerer::materialize_template_args(
     TypeSpec decoded{};
     return decode_type_ref(ref, &decoded);
   };
+  std::function<bool(const std::string&, HirTemplateArg*)> resolve_any_arg_ref;
+  resolve_any_arg_ref = [&](const std::string& ref, HirTemplateArg* out_arg) {
+    if (!out_arg) return false;
+    auto nit = nttp_bindings.find(ref);
+    if (nit != nttp_bindings.end()) {
+      out_arg->is_value = true;
+      out_arg->value = nit->second;
+      return true;
+    }
+    if (ref == "true" || ref == "false") {
+      out_arg->is_value = true;
+      out_arg->value = (ref == "true") ? 1 : 0;
+      return true;
+    }
+    try {
+      out_arg->is_value = true;
+      out_arg->value = std::stoll(ref);
+      return true;
+    } catch (...) {
+    }
+
+    if (ref.size() > 1 && ref[0] == '@') {
+      const size_t colon = ref.find(':', 1);
+      if (colon == std::string::npos) return false;
+      const std::string inner_origin = ref.substr(1, colon - 1);
+      const size_t member_sep = ref.find('$', colon + 1);
+      const std::string inner_args =
+          member_sep == std::string::npos
+              ? ref.substr(colon + 1)
+              : ref.substr(colon + 1, member_sep - (colon + 1));
+      TypeSpec nested_ts{};
+      nested_ts.base = TB_STRUCT;
+      nested_ts.array_size = -1;
+      nested_ts.inner_rank = -1;
+      nested_ts.tpl_struct_origin = ::strdup(inner_origin.c_str());
+      if (!inner_args.empty()) {
+        std::vector<HirTemplateArg> nested_args;
+        const auto parts = split_deferred_template_arg_refs(inner_args);
+        nested_args.reserve(parts.size());
+        for (const auto& part : parts) {
+          HirTemplateArg nested_arg{};
+          if (!resolve_any_arg_ref(part, &nested_arg)) return false;
+          nested_args.push_back(nested_arg);
+        }
+        assign_template_arg_refs_from_hir_args(&nested_ts, nested_args);
+      }
+      if (member_sep != std::string::npos && member_sep + 1 < ref.size()) {
+        nested_ts.deferred_member_type_name =
+            ::strdup(ref.substr(member_sep + 1).c_str());
+      }
+      seed_and_resolve_pending_template_type_if_needed(
+          nested_ts, tpl_bindings, nttp_bindings, nullptr,
+          PendingTemplateTypeKind::OwnerStruct, "nested-tpl-arg");
+      out_arg->is_value = false;
+      out_arg->type = nested_ts;
+      return true;
+    }
+
+    auto tit = tpl_bindings.find(ref);
+    if (tit != tpl_bindings.end()) {
+      out_arg->is_value = false;
+      out_arg->type = tit->second;
+      return true;
+    }
+    TypeSpec decoded{};
+    if (decode_type_ref(ref, &decoded)) {
+      out_arg->is_value = false;
+      out_arg->type = decoded;
+      return true;
+    }
+    return false;
+  };
   auto resolve_explicit_arg = [&](int pi, const std::string& ref,
                                   HirTemplateArg* out_arg) {
     if (!out_arg) return false;
@@ -1598,44 +1697,10 @@ ResolvedTemplateArgs Lowerer::materialize_template_args(
       }
     }
 
-    if (ref.size() > 1 && ref[0] == '@') {
-      size_t colon = ref.find(':', 1);
-      std::string inner_origin =
-          ref.substr(1, colon == std::string::npos ? std::string::npos : colon - 1);
-      size_t member_sep =
-          (colon != std::string::npos) ? ref.find('$', colon + 1)
-                                       : std::string::npos;
-      std::string inner_args =
-          (colon == std::string::npos)
-              ? ""
-              : (member_sep == std::string::npos
-                     ? ref.substr(colon + 1)
-                     : ref.substr(colon + 1, member_sep - (colon + 1)));
-      TypeSpec nested_ts{};
-      nested_ts.base = TB_STRUCT;
-      nested_ts.array_size = -1;
-      nested_ts.inner_rank = -1;
-      nested_ts.tpl_struct_origin = ::strdup(inner_origin.c_str());
-      assign_template_arg_debug_refs(
-          &nested_ts, split_deferred_template_arg_refs(inner_args));
-      if (member_sep != std::string::npos && member_sep + 1 < ref.size()) {
-        nested_ts.deferred_member_type_name =
-            ::strdup(ref.substr(member_sep + 1).c_str());
-      }
-      seed_and_resolve_pending_template_type_if_needed(
-          nested_ts, tpl_bindings, nttp_bindings, nullptr,
-          PendingTemplateTypeKind::OwnerStruct, "nested-tpl-arg");
-      out_arg->type = nested_ts;
-      return true;
-    }
-
-    TypeSpec decoded{};
-    if (decode_type_ref(ref, &decoded)) {
-      out_arg->type = decoded;
-      return true;
-    }
-
-    return false;
+    HirTemplateArg resolved{};
+    if (!resolve_any_arg_ref(ref, &resolved) || resolved.is_value) return false;
+    out_arg->type = resolved.type;
+    return true;
   };
   auto count_explicit_suffix_args = [&](int start_param_idx, int start_arg_idx) {
     int suffix_matches = 0;
