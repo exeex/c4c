@@ -258,6 +258,57 @@ Interpretation:
 
 - The targeted `hir_expr.cpp` hotspot dropped by `5.732s`, about `61.8%`,
   after moving the call-lowering cluster behind its own `.cpp` boundary.
+- The refreshed comparison tier after that split showed `hir_templates.cpp`
+  and `hir_stmt.cpp` still close enough to justify returning to HIR helper
+  extraction rather than shifting back to parser work.
+
+## Step 4: Seventh Executed Slice
+
+- Refreshed the targeted optimized single-TU ranking after the
+  `hir_templates.cpp` struct-instantiation split:
+
+| Rank | Translation unit | Optimized compile (s) |
+| --- | --- | ---: |
+| 1 | `src/frontend/hir/hir_templates.cpp` | 4.237 |
+| 2 | `src/codegen/lir/stmt_emitter_call.cpp` | 3.996 |
+| 3 | `src/frontend/hir/hir_stmt.cpp` | 3.901 |
+| 4 | `src/frontend/hir/hir_expr.cpp` | 3.834 |
+| 5 | `src/codegen/lir/stmt_emitter_expr.cpp` | 3.261 |
+
+- Because `hir_templates.cpp` remained the hottest unit, extracted the
+  template member-typedef type-resolution cluster
+  (`resolve_struct_member_typedef_type` and
+  `resolve_struct_member_typedef_if_ready`) into the new
+  `src/frontend/hir/hir_templates_type_resolution.cpp`.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_inherited_member_typedef_trait_hir.cpp`
+  to pin inherited trait-style `::type` resolution through a realized base
+  struct.
+
+## Step 4: Seventh Slice Measurements
+
+Optimized single-TU compile timings after the split, using regenerated
+`build/compile_commands.json` commands:
+
+| Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
+| --- | ---: | ---: | --- |
+| `src/frontend/hir/hir_templates.cpp` | 4.283 | 4.021 | direct `HEAD` vs post-split comparison |
+| `src/frontend/hir/hir_templates_type_resolution.cpp` | n/a | 1.581 | new extracted helper TU |
+
+Interpretation:
+
+- This slice preserved behavior and reduced the lead hotspot TU by `0.262s`,
+  about `6.1%`, which makes it another measured compile-time improvement for
+  `hir_templates.cpp`.
+- The refreshed current hotspot tier is now:
+
+| Rank | Translation unit | Optimized compile (s) |
+| --- | --- | ---: |
+| 1 | `src/frontend/hir/hir_templates.cpp` | 4.247 |
+| 2 | `src/codegen/lir/stmt_emitter_call.cpp` | 4.097 |
+| 3 | `src/frontend/hir/hir_stmt.cpp` | 4.063 |
+| 4 | `src/frontend/hir/hir_expr.cpp` | 3.641 |
+| 5 | `src/codegen/lir/stmt_emitter_expr.cpp` | 3.258 |
 - The refreshed tier now shifts leadership to `hir_stmt.cpp` and
   `hir_templates.cpp`, so a subsequent Step 4 slice should likely move there
   rather than returning immediately to `hir_expr.cpp`.

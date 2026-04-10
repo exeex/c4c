@@ -6,10 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: Refresh the optimized single-TU hotspot ranking after the
-  `hir_templates.cpp` struct-instantiation split, then choose whether the next
-  extraction should stay in `hir_templates.cpp` or move back to a different
-  `hir_stmt.cpp` cluster.
+- Step 5: Start from the refreshed post-split ranking led by
+  `hir_templates.cpp` and choose the next smallest extraction from the
+  remaining template value-argument or static-member-const helper family.
 
 ## Completed
 
@@ -174,16 +173,51 @@ Source Plan: plan.md
   optimized command took 5.087s, the post-split
   `src/frontend/hir/hir_templates.cpp` took 4.241s, and the new
   `src/frontend/hir/hir_templates_struct_instantiation.cpp` took 1.384s.
+- Refreshed the optimized hotspot ranking after the struct-instantiation split:
+  `hir_templates.cpp` is now 4.237s, `stmt_emitter_call.cpp` 3.996s,
+  `hir_stmt.cpp` 3.901s, `hir_expr.cpp` 3.834s, and
+  `stmt_emitter_expr.cpp` 3.261s.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_inherited_member_typedef_trait_hir.cpp`
+  and wired the new `cpp_hir_template_inherited_member_typedef_trait` test
+  into `tests/cpp/internal/InternalTests.cmake`.
+- Executed the seventh Step 4 slice by moving the template member-typedef type
+  resolution cluster (`resolve_struct_member_typedef_type` and
+  `resolve_struct_member_typedef_if_ready`) out of
+  `src/frontend/hir/hir_templates.cpp` into the new
+  `src/frontend/hir/hir_templates_type_resolution.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_template_inherited_member_typedef_trait`,
+  `cpp_hir_template_member_owner_chain`,
+  `cpp_hir_template_member_owner_field_and_local`,
+  `cpp_hir_template_member_owner_signature_local`,
+  `cpp_positive_sema_template_variable_alias_inherited_member_typedef_runtime_cpp`,
+  `cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp`,
+  `cpp_positive_sema_template_alias_member_typedef_dependent_ref_runtime_cpp`,
+  `cpp_positive_sema_template_alias_member_typedef_reordered_owner_runtime_cpp`,
+  and `cpp_positive_sema_template_member_owner_resolution_cpp`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard passed
+  with 3325/3325 tests passing after the new focused HIR test was added and no
+  new failures.
+- Recorded the seventh before/after extraction measurement: compiling the
+  pre-split `src/frontend/hir/hir_templates.cpp` from `HEAD` on the generated
+  optimized command took 4.283s, the post-split
+  `src/frontend/hir/hir_templates.cpp` took 4.021s, and the new
+  `src/frontend/hir/hir_templates_type_resolution.cpp` took 1.581s.
 
 ## Next Slice
 
-- Refresh the hotspot ranking before committing to another HIR extraction so
-  the next slice is chosen from the current post-split data rather than the
-  earlier `hir_stmt.cpp`-led order.
-- If `hir_templates.cpp` remains near the top, prefer another cohesive helper
-  family there before returning to `hir_stmt.cpp`.
-- If `hir_stmt.cpp` retakes the lead, avoid the already-measured range-for
-  branch and choose a different statement-lowering cluster.
+- `hir_templates.cpp` still leads the refreshed ranking at 4.247s, so prefer
+  one more cohesive helper family there before returning to `hir_stmt.cpp`.
+- The next best seam is the template value-argument and static-member-const
+  path (`assign_template_arg_refs_from_ast_args`,
+  `resolve_ast_template_value_arg`,
+  `try_eval_template_static_member_const`, and
+  `try_eval_instantiated_struct_static_member_const`) because it stays near
+  the member-typedef logic already split but has its own focused validation
+  surface.
+- If that cluster proves too interleaved on inspection, fall back to
+  `stmt_emitter_call.cpp` before opening another `hir_stmt.cpp` slice.
 
 ## Blockers
 
@@ -226,3 +260,15 @@ Source Plan: plan.md
   from 5.087s to 4.241s on the generated optimized single-TU compile command,
   so unlike the earlier member-typedef split it does count as a measured
   hotspot reduction for that TU.
+- The refreshed post-seventh-slice hotspot order is now led by
+  `src/frontend/hir/hir_templates.cpp` at 4.247s, followed by
+  `src/codegen/lir/stmt_emitter_call.cpp` at 4.097s,
+  `src/frontend/hir/hir_stmt.cpp` at 4.063s,
+  `src/frontend/hir/hir_expr.cpp` at 3.641s, and
+  `src/codegen/lir/stmt_emitter_expr.cpp` at 3.258s.
+- The seventh extraction slice reduced `src/frontend/hir/hir_templates.cpp`
+  from 4.283s to 4.021s on the generated optimized single-TU compile command,
+  so this type-resolution split counts as another measured hotspot reduction
+  for that TU.
+- The latest full-suite rerun passes 3325/3325 tests, and the monotonic
+  regression guard remains green.

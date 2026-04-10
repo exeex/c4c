@@ -215,6 +215,37 @@ heavy units are:
    deferred-template-resolution cluster around
    `resolve_struct_member_typedef_type` into narrower helper entry points.
 
+## 2026-04-10 Latest Step 4 Follow-On
+
+After the `hir_templates.cpp` struct-instantiation split, a refreshed targeted
+ranking still put `src/frontend/hir/hir_templates.cpp` first at `4.237s`, just
+ahead of `src/codegen/lir/stmt_emitter_call.cpp` at `3.996s` and
+`src/frontend/hir/hir_stmt.cpp` at `3.901s`.
+
+That kept the next extraction inside `hir_templates.cpp`:
+
+- moved `resolve_struct_member_typedef_type` and
+  `resolve_struct_member_typedef_if_ready` into the new
+  `src/frontend/hir/hir_templates_type_resolution.cpp`
+- added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_inherited_member_typedef_trait_hir.cpp`
+  for inherited trait-style `::type` lookup through a realized base struct
+- measured `src/frontend/hir/hir_templates.cpp` at `4.283s` from `HEAD`
+  before the split and `4.021s` after the split, while the new
+  `src/frontend/hir/hir_templates_type_resolution.cpp` compiles in `1.581s`
+
+Current follow-on direction:
+
+- `hir_templates.cpp` still leads the refreshed tier at `4.247s`, so one more
+  cohesive helper family there is still justified before shifting back to
+  `hir_stmt.cpp`
+- the next seam should target the template value-argument and static-member-
+  const path (`assign_template_arg_refs_from_ast_args`,
+  `resolve_ast_template_value_arg`,
+  `try_eval_template_static_member_const`, and
+  `try_eval_instantiated_struct_static_member_const`) unless inspection shows
+  that `stmt_emitter_call.cpp` has become the lower-risk next slice
+
 ## 2026-04-10 Step 4 First Extraction Slice
 
 Executed the first low-risk slice from that ranking:

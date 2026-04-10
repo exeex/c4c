@@ -1524,6 +1524,15 @@ set_tests_properties(cpp_hir_template_deferred_nttp_static_member_expr PROPERTIE
 )
 
 add_test(
+  NAME cpp_hir_template_inherited_member_typedef_trait
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_inherited_member_typedef_trait_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_inherited_member_typedef_trait PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "global ns::is_reference_v_T_Tns::add_lvalue_reference_T_int: const bool.* const = 1"
+)
+
+add_test(
   NAME cpp_hir_template_deferred_nttp_sizeof_pack_expr
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_sizeof_pack_expr_hir.cpp"
 )
