@@ -98,3 +98,54 @@ Method:
   other hot HIR units rather than prioritizing header-only cleanup first.
 - Header extractions still matter, but the current data says they are unlikely
   to erase the largest hotspot costs on their own.
+
+## Step 3: Prioritized Extraction Seams
+
+1. `src/codegen/lir/stmt_emitter_expr.cpp`: move the AArch64 `va_arg` lowering
+   path (`emit_aarch64_vaarg_gp_src_ptr`, `emit_aarch64_vaarg_fp_src_ptr`, and
+   `emit_rval_payload(..., const VaArgExpr&, ...)`) into a dedicated
+   implementation file. This cluster is already declared in
+   `stmt_emitter.hpp`, is ABI-local rather than expression-generic, and has a
+   narrow validation surface through the existing AArch64/runtime variadic
+   tests.
+2. `src/codegen/lir/stmt_emitter_expr.cpp`: split the remaining unary/binary
+   lowering dispatchers into smaller out-of-line helper families, especially
+   the complex-arithmetic/comparison and cast-heavy branches inside
+   `emit_rval_payload(..., const UnaryExpr&, ...)` and
+   `emit_rval_payload(..., const BinaryExpr&, ...)`.
+3. `src/frontend/hir/hir_templates.cpp`: isolate the member-typedef and
+   pending-template-resolution cluster around
+   `resolve_struct_member_typedef_type` and
+   `resolve_struct_member_typedef_if_ready` behind narrower helper entry
+   points. This area is large, stateful, and internally cohesive enough to
+   split without mixing parser work into the same slice.
+
+## Step 4: First Executed Slice
+
+- Extracted the AArch64 `va_arg` lowering cluster from
+  `src/codegen/lir/stmt_emitter_expr.cpp` into the new
+  `src/codegen/lir/stmt_emitter_vaarg.cpp` translation unit and wired it into
+  CMake.
+- Kept the ABI-sensitive logic inside `StmtEmitter` methods so the change is a
+  file-boundary extraction, not a semantic rewrite.
+- Reused existing variadic coverage rather than introducing new tests because
+  the move preserved behavior without changing syntax or emitted semantics.
+
+## Step 4 Measurements
+
+Optimized single-TU compile timings after the split, using the generated
+`build/compile_commands.json` commands:
+
+| Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Delta (s) |
+| --- | ---: | ---: | ---: |
+| `src/codegen/lir/stmt_emitter_expr.cpp` | 6.712 | 5.493 | -1.219 |
+| `src/codegen/lir/stmt_emitter_vaarg.cpp` | n/a | 2.799 | n/a |
+
+Interpretation:
+
+- The hottest expression TU dropped by about `18%` after moving the AArch64
+  variadic lowering cluster behind its own `.cpp` boundary.
+- This measurement is directly comparable for rebuilds that touch
+  `stmt_emitter_expr.cpp`. A full clean build now also compiles the new
+  `stmt_emitter_vaarg.cpp`, so the result should be read as a reduced hotspot
+  rebuild surface rather than a claim about total whole-project compile time.

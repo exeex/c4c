@@ -6,8 +6,8 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: Identify the first low-risk extraction seam in the optimizer-heavy
-  HIR/LIR hotspot tier.
+- Step 4: Identify the next low-risk out-of-line extraction inside the
+  remaining `stmt_emitter_expr.cpp` unary/binary lowering cluster.
 
 ## Completed
 
@@ -33,14 +33,28 @@ Source Plan: plan.md
 - Sampled `-ftime-report` on `stmt_emitter_expr.cpp` and `hir_templates.cpp`;
   both spend most total wall time in `phase opt and generate`, with
   `callgraph functions expansion` as the largest reported pass family.
+- Ranked the first concrete Step 3 extraction seams and recorded them in
+  `docs/frontend_compile_time_hotspot_inventory.md` and the source idea.
+- Executed the first Step 4 slice by moving the AArch64 `va_arg` lowering
+  cluster out of `src/codegen/lir/stmt_emitter_expr.cpp` into
+  `src/codegen/lir/stmt_emitter_vaarg.cpp`.
+- Rebuilt after the split and re-ran focused variadic coverage:
+  `backend_lir_aarch64_variadic_*`, `backend_runtime_variadic_*`,
+  `abi_abi_variadic_*`, and the `llvm_gcc_c_torture` `stdarg`/`va_arg` subset.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard passed
+  with 3319/3319 tests passing before and after and no new failures.
+- Recorded the first before/after extraction measurement: the optimized
+  single-TU compile for `src/codegen/lir/stmt_emitter_expr.cpp` improved from
+  6.712s to 5.493s after the split, and the new
+  `src/codegen/lir/stmt_emitter_vaarg.cpp` compiles in 2.799s.
 
 ## Next Slice
 
 - Inspect `stmt_emitter_expr.cpp` and `hir_templates.cpp` for large
-  dispatcher/helper bodies that can be split behind behavior-preserving helper
-  boundaries.
-- Prefer a first slice that reduces optimizer pressure without widening header
-  fan-out or mixing parser/HIR/LIR refactors together.
+- dispatcher/helper bodies that can be split behind behavior-preserving helper
+  boundaries now that the AArch64 variadic path has been removed.
+- Prefer the next slice inside the remaining unary/binary expression lowering
+  cluster before switching to the HIR template-resolution candidate.
 
 ## Blockers
 
@@ -57,3 +71,6 @@ Source Plan: plan.md
   parse-heavy, though all five keep a meaningful `-fsyntax-only` floor.
 - The latest `ctest --test-dir build -j --output-on-failure` rerun still
   passes 3319/3319 tests, and the monotonic regression guard remains green.
+- The first executed extraction slice reduced the hottest TU,
+  `src/codegen/lir/stmt_emitter_expr.cpp`, by 1.219s on the optimized
+  single-TU compile command.

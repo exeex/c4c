@@ -199,6 +199,51 @@ Current Step 3 direction:
 - treat header cleanup as a supporting follow-up unless a concrete seam clearly
   reduces both frontend and optimizer cost
 
+## 2026-04-10 Step 3 Seam Ranking
+
+The first prioritized extraction seams after inspecting the hottest optimizer-
+heavy units are:
+
+1. `src/codegen/lir/stmt_emitter_expr.cpp`: move the AArch64 `va_arg` lowering
+   cluster into its own implementation file. The cluster is already declared in
+   `stmt_emitter.hpp`, ABI-local, and covered by existing AArch64/runtime
+   variadic tests, which makes it the lowest-risk out-of-line split.
+2. `src/codegen/lir/stmt_emitter_expr.cpp`: split the remaining unary/binary
+   expression lowering dispatchers into narrower helpers, especially the
+   complex arithmetic/comparison branches and cast-heavy paths.
+3. `src/frontend/hir/hir_templates.cpp`: extract the member-typedef and
+   deferred-template-resolution cluster around
+   `resolve_struct_member_typedef_type` into narrower helper entry points.
+
+## 2026-04-10 Step 4 First Extraction Slice
+
+Executed the first low-risk slice from that ranking:
+
+- moved the AArch64 `va_arg` lowering cluster
+  (`emit_aarch64_vaarg_gp_src_ptr`, `emit_aarch64_vaarg_fp_src_ptr`, and
+  `emit_rval_payload(..., const VaArgExpr&, ...)`) out of
+  `src/codegen/lir/stmt_emitter_expr.cpp` into the new
+  `src/codegen/lir/stmt_emitter_vaarg.cpp`
+- added the new translation unit to CMake and kept the logic as existing
+  `StmtEmitter` methods, so the slice changes file ownership rather than
+  behavior
+- validated the move with focused variadic tests plus a full-suite rerun
+
+Measured result:
+
+- `src/codegen/lir/stmt_emitter_expr.cpp` improved from `6.712s` to `5.493s`
+  on the optimized single-TU compile command (`-1.219s`, about `18%`)
+- the new `src/codegen/lir/stmt_emitter_vaarg.cpp` compiles in `2.799s`
+
+Validation result:
+
+- targeted tests passed:
+  `backend_lir_aarch64_variadic_*`,
+  `backend_runtime_variadic_*`,
+  `abi_abi_variadic_*`, and the `llvm_gcc_c_torture` `stdarg`/`va_arg` subset
+- full-suite regression guard passed with `3319/3319` tests passing before and
+  after, with no new failures
+
 ## Non-Goals
 
 - no backend architecture work
