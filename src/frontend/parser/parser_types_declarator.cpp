@@ -595,7 +595,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                         (owner_ts.tag && owner_ts.tag[0])) {
                         owner_ts.deferred_member_type_name =
                             arena_.strdup(tokens_[final_scope_pos + 1].lexeme.c_str());
-                        typedef_types_[spelled_name] = owner_ts;
+                        cache_typedef_type(spelled_name, owner_ts);
                         resolved = spelled_name;
                         preserved_template_owner_member = true;
                     }
@@ -635,9 +635,10 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                             owner_tag =
                                 canonical_name_in_context(context_id, owner_tag);
                         }
-                        if (typedef_types_.count(owner_tag) > 0) {
+                        if (const TypeSpec* owner_typedef =
+                                find_typedef_type(owner_tag)) {
                             TypeSpec owner_ts =
-                                resolve_struct_like(typedef_types_.at(owner_tag));
+                                resolve_struct_like(*owner_typedef);
                             if (owner_ts.tag && owner_ts.tag[0]) owner_tag = owner_ts.tag;
                         }
                         auto owner_it = struct_tag_def_map_.find(owner_tag);
@@ -741,7 +742,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                         found_member = true;
                     }
                     if (found_member) {
-                        typedef_types_[dep_name] = resolved_member;
+                        cache_typedef_type(dep_name, resolved_member);
                         resolved = dep_name;
                     }
                 }

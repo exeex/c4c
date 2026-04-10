@@ -534,9 +534,9 @@ TypeSpec Parser::parse_base_type() {
                     return ts;
                 };
                 auto try_lookup = [&](const std::string& scoped) -> bool {
-                    auto it = typedef_types_.find(scoped);
-                    if (it == typedef_types_.end()) return false;
-                    *out = it->second;
+                    const TypeSpec* type = find_typedef_type(scoped);
+                    if (!type) return false;
+                    *out = *type;
                     return true;
                 };
                 auto try_node_member_typedefs = [&](const Node* sdef) -> bool {
@@ -690,9 +690,8 @@ TypeSpec Parser::parse_base_type() {
                         return false;
                     };
                 std::string resolved_tag = tag;
-                auto typedef_it = typedef_types_.find(tag);
-                if (typedef_it != typedef_types_.end()) {
-                    TypeSpec resolved = resolve_struct_like(typedef_it->second);
+                if (const TypeSpec* typedef_type = find_typedef_type(tag)) {
+                    TypeSpec resolved = resolve_struct_like(*typedef_type);
                     if (resolved.tag && resolved.tag[0])
                         resolved_tag = resolved.tag;
                 }
@@ -2652,9 +2651,8 @@ TypeSpec Parser::parse_base_type() {
                                     inst->member_typedef_names[ti][0]) {
                                     std::string scoped =
                                         mangled + "::" + inst->member_typedef_names[ti];
-                                    struct_typedefs_[scoped] = member_ts;
-                                    typedefs_.insert(scoped);
-                                    typedef_types_[scoped] = member_ts;
+                                    register_struct_member_typedef_binding(
+                                        scoped, member_ts);
                                 }
                             }
                         }

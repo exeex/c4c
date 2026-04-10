@@ -309,6 +309,17 @@ void Parser::register_typedef_binding(const std::string& name,
     symbol_tables_.typedef_types[name] = type;
 }
 
+void Parser::cache_typedef_type(const std::string& name, const TypeSpec& type) {
+    symbol_tables_.typedef_types[name] = type;
+}
+
+void Parser::register_struct_member_typedef_binding(
+    const std::string& scoped_name, const TypeSpec& type) {
+    struct_typedefs_[scoped_name] = type;
+    symbol_tables_.typedefs.insert(scoped_name);
+    symbol_tables_.typedef_types[scoped_name] = type;
+}
+
 bool Parser::has_var_type(const std::string& name) const {
     return symbol_tables_.var_types.count(name) > 0;
 }

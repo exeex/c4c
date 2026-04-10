@@ -10,10 +10,9 @@ Source Plan: plan.md
   grouped parser symbol-table accessors instead of direct top-level member
   storage assumptions, starting with typedef/value registration and
   namespace-aware lookup helpers
-- Current slice: continue migrating the remaining direct typedef lookup and
-  mutation sites in the type parser, especially dependent member typedef
-  caching and struct-member typedef registration paths in
-  `parser_types_declarator.cpp` and `parser_types_base.cpp`
+- Current slice: migrate record-body typedef and `using` member registration in
+  `parser_types_struct.cpp` onto the parser-local typedef helpers, reusing the
+  scoped-member helper surface added for the type parser
 
 ## Completed Items
 
@@ -72,13 +71,33 @@ Source Plan: plan.md
 - Revalidated this slice with targeted type-parser tests plus full
   `ctest --test-dir build -j8 --output-on-failure` and regression guard:
   3345/3345 tests passed, no new failures
+- Added parser-local typedef cache and scoped struct-member typedef helpers in
+  `src/frontend/parser/parser.hpp` and `src/frontend/parser/parser_core.cpp`
+  for type-parser mutation sites that should not directly reach into the
+  grouped symbol tables
+- Migrated dependent member typedef caching in
+  `src/frontend/parser/parser_types_declarator.cpp` onto those helpers,
+  including the preserved `Owner::type` cache path and dependent member typedef
+  resolution cache fill
+- Migrated template-instantiation scoped member typedef registration in
+  `src/frontend/parser/parser_types_base.cpp` onto the new scoped-member helper
+  and routed nearby typedef reads through existing parser-local lookup helpers
+- Added parse-only regression
+  `tests/cpp/internal/postive_case/template_member_typedef_cache_roundtrip_parse.cpp`
+  and registered it in `tests/cpp/internal/InternalTests.cmake` to cover both
+  dependent member typedef caching and concrete `Template<Args>::type`
+  registration
+- Revalidated this slice with targeted template/member typedef parser tests,
+  `cpp_hir_template_member_owner_resolution`, full
+  `ctest --test-dir build -j8 --output-on-failure`, and regression guard:
+  3346/3346 tests passed, no new failures
 
 ## Next Intended Slice
 
-- Continue migrating the remaining direct typedef mutation and cache-population
-  sites in `parser_types_declarator.cpp` and `parser_types_base.cpp`,
-  especially dependent member typedef preservation and struct-member typedef
-  registration
+- Continue migrating direct typedef mutation paths in
+  `src/frontend/parser/parser_types_struct.cpp`, especially record-body
+  `typedef` and `using` member registration that still updates
+  `typedefs_`/`typedef_types_`/`struct_typedefs_` directly
 - Leave namespace-state grouping for a separate slice unless it becomes
   necessary for the chosen accessor migration
 
@@ -98,6 +117,7 @@ Source Plan: plan.md
   behind parser helpers and now covers the statement parser's local alias and
   declaration-disambiguation probes, but intentionally leaves many type-parser
   mutation and cache-population paths for later Step 3 slices
-- Read-only type-parser probes now use parser-local visible typedef/value
-  helpers; the remaining direct accesses are the write paths and a few
-  typedef-map plumbing helpers that still intentionally operate on raw storage
+- Read-only type-parser probes and the targeted dependent-member cache writes
+  now use parser-local typedef helpers; the remaining raw accesses are mostly
+  typedef-map plumbing helpers plus record-body typedef registration in
+  `parser_types_struct.cpp`

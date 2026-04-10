@@ -78,6 +78,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     unresolved_by_value_param_type_parse
     template_friend_record_member_parse
     template_member_type_direct_parse
+    template_member_typedef_cache_roundtrip_parse
     template_member_type_inherited_parse
     dependent_template_typename_member_parse
     record_base_template_member_alias_parse
