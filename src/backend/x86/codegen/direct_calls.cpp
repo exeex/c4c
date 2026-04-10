@@ -33,6 +33,13 @@ struct MinimalMixedRegStackParamAddSlice {
   std::int64_t seventh_arg_imm = 0;
 };
 
+struct MinimalRegisterAggregateParamSlotSlice {
+  std::string helper_name;
+  std::string entry_name;
+  std::int64_t first_field_imm = 0;
+  std::int64_t second_field_imm = 0;
+};
+
 struct MinimalLocalArgCallSlice {
   std::string helper_name;
   std::string entry_name;
@@ -1282,6 +1289,120 @@ std::optional<MinimalLocalArgCallSlice> parse_minimal_local_arg_call_slice(
   return try_match(module.functions.back(), module.functions.front());
 }
 
+std::optional<MinimalRegisterAggregateParamSlotSlice>
+parse_minimal_register_aggregate_param_slot_slice(const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() || !module.extern_decls.empty() ||
+      !module.string_pool.empty() || module.type_decls.size() != 1 ||
+      module.type_decls.front() != "%struct.Pair = type { [2 x i32] }") {
+    return std::nullopt;
+  }
+
+  const auto& helper = module.functions.front();
+  const auto& entry = module.functions.back();
+  if (helper.name != "get_second" || entry.name != "main" || helper.is_declaration ||
+      entry.is_declaration || helper.entry.value != 0 || entry.entry.value != 0 ||
+      helper.blocks.size() != 1 || entry.blocks.size() != 1 || helper.alloca_insts.size() != 2 ||
+      entry.alloca_insts.size() != 1 || !helper.stack_objects.empty() ||
+      !entry.stack_objects.empty() ||
+      helper.signature_text != "define i32 @get_second(%struct.Pair %p.p)\n" ||
+      entry.signature_text != "define i32 @main()\n") {
+    return std::nullopt;
+  }
+
+  const auto* helper_slot = std::get_if<LirAllocaOp>(&helper.alloca_insts.front());
+  const auto* helper_store = std::get_if<LirStoreOp>(&helper.alloca_insts[1]);
+  if (helper_slot == nullptr || helper_store == nullptr ||
+      helper_slot->result.str() != "%lv.param.p" || helper_slot->type_str != "%struct.Pair" ||
+      !helper_slot->count.str().empty() || helper_slot->align != 4 ||
+      helper_store->type_str != "%struct.Pair" || helper_store->val != "%p.p" ||
+      helper_store->ptr != "%lv.param.p") {
+    return std::nullopt;
+  }
+
+  const auto& helper_entry = helper.blocks.front();
+  const auto* helper_ret = std::get_if<LirRet>(&helper_entry.terminator);
+  if (helper_entry.label != "entry" || helper_entry.insts.size() != 5 || helper_ret == nullptr ||
+      helper_ret->type_str != "i32" || !helper_ret->value_str.has_value()) {
+    return std::nullopt;
+  }
+  const auto* helper_gep0 = std::get_if<LirGepOp>(&helper_entry.insts[0]);
+  const auto* helper_gep1 = std::get_if<LirGepOp>(&helper_entry.insts[1]);
+  const auto* helper_cast = std::get_if<LirCastOp>(&helper_entry.insts[2]);
+  const auto* helper_gep2 = std::get_if<LirGepOp>(&helper_entry.insts[3]);
+  const auto* helper_load = std::get_if<LirLoadOp>(&helper_entry.insts[4]);
+  if (helper_gep0 == nullptr || helper_gep1 == nullptr || helper_cast == nullptr ||
+      helper_gep2 == nullptr || helper_load == nullptr ||
+      helper_gep0->ptr != "%lv.param.p" || helper_cast->kind != LirCastKind::SExt ||
+      helper_cast->operand != "1" || helper_load->type_str != "i32" ||
+      *helper_ret->value_str != helper_load->result) {
+    return std::nullopt;
+  }
+
+  const auto* entry_slot = std::get_if<LirAllocaOp>(&entry.alloca_insts.front());
+  if (entry_slot == nullptr || entry_slot->result.str() != "%lv.p" ||
+      entry_slot->type_str != "%struct.Pair" || !entry_slot->count.str().empty() ||
+      entry_slot->align != 4) {
+    return std::nullopt;
+  }
+
+  const auto& entry_block = entry.blocks.front();
+  const auto* entry_ret = std::get_if<LirRet>(&entry_block.terminator);
+  if (entry_block.label != "entry" || entry_block.insts.size() != 12 || entry_ret == nullptr ||
+      entry_ret->type_str != "i32" || !entry_ret->value_str.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* entry_gep0 = std::get_if<LirGepOp>(&entry_block.insts[0]);
+  const auto* entry_gep1 = std::get_if<LirGepOp>(&entry_block.insts[1]);
+  const auto* entry_cast0 = std::get_if<LirCastOp>(&entry_block.insts[2]);
+  const auto* entry_gep2 = std::get_if<LirGepOp>(&entry_block.insts[3]);
+  const auto* entry_store0 = std::get_if<LirStoreOp>(&entry_block.insts[4]);
+  const auto* entry_gep3 = std::get_if<LirGepOp>(&entry_block.insts[5]);
+  const auto* entry_gep4 = std::get_if<LirGepOp>(&entry_block.insts[6]);
+  const auto* entry_cast1 = std::get_if<LirCastOp>(&entry_block.insts[7]);
+  const auto* entry_gep5 = std::get_if<LirGepOp>(&entry_block.insts[8]);
+  const auto* entry_store1 = std::get_if<LirStoreOp>(&entry_block.insts[9]);
+  if (entry_gep0 == nullptr || entry_gep1 == nullptr || entry_cast0 == nullptr ||
+      entry_gep2 == nullptr || entry_store0 == nullptr || entry_gep3 == nullptr ||
+      entry_gep4 == nullptr || entry_cast1 == nullptr || entry_gep5 == nullptr ||
+      entry_store1 == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto first_field_imm = parse_i64(entry_store0->val);
+  const auto second_field_imm = parse_i64(entry_store1->val);
+  if (!first_field_imm.has_value() || !second_field_imm.has_value() ||
+      *first_field_imm < std::numeric_limits<std::int32_t>::min() ||
+      *first_field_imm > std::numeric_limits<std::int32_t>::max() ||
+      *second_field_imm < std::numeric_limits<std::int32_t>::min() ||
+      *second_field_imm > std::numeric_limits<std::int32_t>::max()) {
+    return std::nullopt;
+  }
+
+  const auto* entry_load = std::get_if<LirLoadOp>(&entry_block.insts[10]);
+  const auto* entry_call = std::get_if<LirCallOp>(&entry_block.insts[11]);
+  if (entry_gep0->ptr != "%lv.p" || entry_cast0->kind != LirCastKind::SExt ||
+      entry_cast0->operand != "0" || entry_store0->type_str != "i32" ||
+      entry_gep3->ptr != "%lv.p" || entry_cast1->kind != LirCastKind::SExt ||
+      entry_cast1->operand != "1" || entry_store1->type_str != "i32" ||
+      entry_load == nullptr || entry_load->result != "%t8" ||
+      entry_load->type_str != "%struct.Pair" || entry_load->ptr != "%lv.p" ||
+      entry_call == nullptr || entry_call->result != "%t9" || entry_call->callee != "@get_second" ||
+      entry_call->return_type != "i32" || entry_call->callee_type_suffix != "(%struct.Pair)" ||
+      entry_call->args_str != "%struct.Pair %t8" || *entry_ret->value_str != entry_call->result) {
+    return std::nullopt;
+  }
+
+  return MinimalRegisterAggregateParamSlotSlice{
+      .helper_name = helper.name,
+      .entry_name = entry.name,
+      .first_field_imm = *first_field_imm,
+      .second_field_imm = *second_field_imm,
+  };
+}
+
 std::string emit_minimal_param_slot_add_asm(std::string_view target_triple,
                                             const MinimalParamSlotAddSlice& slice) {
   const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
@@ -1406,6 +1527,35 @@ std::string emit_minimal_local_arg_call_asm(std::string_view target_triple,
   return out.str();
 }
 
+std::string emit_minimal_register_aggregate_param_slot_asm(
+    std::string_view target_triple,
+    const MinimalRegisterAggregateParamSlotSlice& slice) {
+  const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << ".text\n"
+      << emit_function_prelude(target_triple, helper_symbol)
+      << "  push rbp\n"
+      << "  mov rbp, rsp\n"
+      << "  sub rsp, 16\n"
+      << "  mov QWORD PTR [rbp - 8], rdi\n"
+      << "  mov eax, DWORD PTR [rbp - 4]\n"
+      << "  pop rbp\n"
+      << "  ret\n"
+      << emit_function_prelude(target_triple, entry_symbol)
+      << "  push rbp\n"
+      << "  mov rbp, rsp\n"
+      << "  sub rsp, 16\n"
+      << "  mov DWORD PTR [rbp - 8], " << slice.first_field_imm << "\n"
+      << "  mov DWORD PTR [rbp - 4], " << slice.second_field_imm << "\n"
+      << "  mov rdi, QWORD PTR [rbp - 8]\n"
+      << "  call " << helper_symbol << "\n"
+      << "  pop rbp\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_two_arg_helper_call_asm(
     std::string_view target_triple,
     const MinimalTwoArgHelperCallSlice& slice) {
@@ -1448,6 +1598,15 @@ std::optional<std::string> try_emit_minimal_mixed_reg_stack_param_add_module(
     const c4c::codegen::lir::LirModule& module) {
   if (const auto slice = parse_minimal_mixed_reg_stack_param_add_slice(module); slice.has_value()) {
     return emit_minimal_mixed_reg_stack_param_add_asm(module.target_triple, *slice);
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> try_emit_minimal_register_aggregate_param_slot_module(
+    const c4c::codegen::lir::LirModule& module) {
+  if (const auto slice = parse_minimal_register_aggregate_param_slot_slice(module);
+      slice.has_value()) {
+    return emit_minimal_register_aggregate_param_slot_asm(module.target_triple, *slice);
   }
   return std::nullopt;
 }

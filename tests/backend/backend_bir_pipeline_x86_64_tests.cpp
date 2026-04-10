@@ -3167,6 +3167,72 @@ c4c::codegen::lir::LirModule make_x86_mixed_reg_stack_param_add_i64_lir_module()
   return module;
 }
 
+c4c::codegen::lir::LirModule make_x86_register_aggregate_param_slot_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.Pair = type { [2 x i32] }");
+
+  LirFunction helper;
+  helper.name = "get_second";
+  helper.signature_text = "define i32 @get_second(%struct.Pair %p.p)\n";
+  helper.entry = LirBlockId{0};
+  helper.alloca_insts.push_back(LirAllocaOp{"%lv.param.p", "%struct.Pair", "", 4});
+  helper.alloca_insts.push_back(LirStoreOp{"%struct.Pair", "%p.p", "%lv.param.p"});
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Pair", "%lv.param.p", false, {"i32 0", "i32 0"}});
+  helper_entry.insts.push_back(
+      LirGepOp{"%t1", "[2 x i32]", "%t0", false, {"i64 0", "i64 0"}});
+  helper_entry.insts.push_back(
+      LirCastOp{"%t2", LirCastKind::SExt, "i32", "1", "i64"});
+  helper_entry.insts.push_back(LirGepOp{"%t3", "i32", "%t1", false, {"i64 %t2"}});
+  helper_entry.insts.push_back(LirLoadOp{"%t4", "i32", "%t3"});
+  helper_entry.terminator = LirRet{std::string("%t4"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+  main_fn.alloca_insts.push_back(LirAllocaOp{"%lv.p", "%struct.Pair", "", 4});
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Pair", "%lv.p", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t1", "[2 x i32]", "%t0", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirCastOp{"%t2", LirCastKind::SExt, "i32", "0", "i64"});
+  main_entry.insts.push_back(LirGepOp{"%t3", "i32", "%t1", false, {"i64 %t2"}});
+  main_entry.insts.push_back(LirStoreOp{"i32", "4", "%t3"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t4", "%struct.Pair", "%lv.p", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t5", "[2 x i32]", "%t4", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirCastOp{"%t6", LirCastKind::SExt, "i32", "1", "i64"});
+  main_entry.insts.push_back(LirGepOp{"%t7", "i32", "%t5", false, {"i64 %t6"}});
+  main_entry.insts.push_back(LirStoreOp{"i32", "6", "%t7"});
+  main_entry.insts.push_back(LirLoadOp{"%t8", "%struct.Pair", "%lv.p"});
+  main_entry.insts.push_back(
+      LirCallOp{"%t9", "i32", "@get_second", "(%struct.Pair)", "%struct.Pair %t8"});
+  main_entry.terminator = LirRet{std::string("%t9"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_x86_local_arg_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -10082,6 +10148,27 @@ void test_x86_direct_emitter_lowers_minimal_mixed_reg_stack_param_add_i64_slice(
                       "x86 direct emitter should stay on native asm emission for the bounded i64 mixed register-plus-stack parameter slice");
 }
 
+void test_x86_direct_emitter_lowers_register_aggregate_param_slot_slice() {
+  auto module = make_x86_register_aggregate_param_slot_lir_module();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded register-backed aggregate param-slot helper through the native prepared-LIR seam");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, ".globl get_second",
+                  "x86 direct emitter should still emit the helper definition for the bounded register-backed aggregate param-slot slice");
+  expect_contains(*rendered,
+                  "get_second:\n  push rbp\n  mov rbp, rsp\n  sub rsp, 16\n  mov QWORD PTR [rbp - 8], rdi\n  mov eax, DWORD PTR [rbp - 4]\n  pop rbp\n  ret\n",
+                  "x86 direct emitter should copy the incoming by-value aggregate from its integer argument register into the `%lv.param.*` slot before loading the second i32 field");
+  expect_contains(*rendered,
+                  "main:\n  push rbp\n  mov rbp, rsp\n  sub rsp, 16\n  mov DWORD PTR [rbp - 8], 4\n  mov DWORD PTR [rbp - 4], 6\n  mov rdi, QWORD PTR [rbp - 8]\n  call get_second\n  pop rbp\n  ret\n",
+                  "x86 direct emitter should stage the caller-side aggregate in a local slot, reload it as one integer register argument, and keep the call on the native direct-LIR path");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded register-backed aggregate param-slot slice");
+}
+
 void test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice() {
   auto module = make_x86_declared_zero_arg_call_lir_module();
 
@@ -10541,6 +10628,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_seventh_param_stack_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_mixed_reg_stack_param_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_mixed_reg_stack_param_add_i64_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_register_aggregate_param_slot_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_source_00080_void_helper_only_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_source_00080_void_helper_call_slice);
