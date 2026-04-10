@@ -375,6 +375,15 @@ bool match_memory_global_struct_field_gep(const c4c::codegen::lir::LirGepOp& gep
          gep.indices[1] == ("i32 " + std::to_string(field_index));
 }
 
+bool match_memory_local_struct_field_gep(const c4c::codegen::lir::LirGepOp& gep,
+                                         std::string_view slot_name,
+                                         std::string_view struct_type,
+                                         std::size_t field_index) {
+  return gep.element_type == struct_type && gep.ptr == slot_name &&
+         gep.indices.size() == 2 && gep.indices[0] == "i32 0" &&
+         gep.indices[1] == ("i32 " + std::to_string(field_index));
+}
+
 std::optional<bir::Module> try_lower_minimal_global_char_pointer_diff_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -2229,26 +2238,33 @@ try_lower_minimal_local_struct_shadow_store_compare_two_zero_return_module(
            *ret->value_str == expected_value;
   };
 
-  const auto rendered = c4c::codegen::lir::print_llvm(module);
-  constexpr std::string_view kExpectedModule =
-      "define i32 @main()\n"
-      "{\n"
-      "entry:\n"
-      "  %lv.v = alloca %struct.T, align 4\n"
-      "  %t0 = getelementptr %struct.T, ptr %lv.v, i32 0, i32 0\n"
-      "  store i32 2, ptr %t0\n"
-      "  %t1 = getelementptr %struct.T, ptr %lv.v, i32 0, i32 0\n"
-      "  %t2 = load i32, ptr %t1\n"
-      "  %t3 = icmp ne i32 %t2, 2\n"
-      "  %t4 = zext i1 %t3 to i32\n"
-      "  %t5 = icmp ne i32 %t4, 0\n"
-      "  br i1 %t5, label %block_1, label %block_2\n"
-      "block_1:\n"
-      "  ret i32 1\n"
-      "block_2:\n"
-      "  ret i32 0\n"
-      "}\n";
-  if (rendered.find(kExpectedModule) == std::string::npos) {
+  const auto& entry = function.blocks.front();
+  const auto* first_gep = entry.insts.size() == 7 ? std::get_if<LirGepOp>(&entry.insts[0]) : nullptr;
+  const auto* store = entry.insts.size() == 7 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* second_gep =
+      entry.insts.size() == 7 ? std::get_if<LirGepOp>(&entry.insts[2]) : nullptr;
+  const auto* load = entry.insts.size() == 7 ? std::get_if<LirLoadOp>(&entry.insts[3]) : nullptr;
+  const auto* cmp = entry.insts.size() == 7 ? std::get_if<LirCmpOp>(&entry.insts[4]) : nullptr;
+  const auto* zext = entry.insts.size() == 7 ? std::get_if<LirCastOp>(&entry.insts[5]) : nullptr;
+  const auto* branch_cmp =
+      entry.insts.size() == 7 ? std::get_if<LirCmpOp>(&entry.insts[6]) : nullptr;
+  const auto* cond_br = std::get_if<LirCondBr>(&entry.terminator);
+  if (entry.label != "entry" || first_gep == nullptr || store == nullptr || second_gep == nullptr ||
+      load == nullptr || cmp == nullptr || zext == nullptr || branch_cmp == nullptr ||
+      cond_br == nullptr || !match_memory_local_struct_field_gep(
+                                *first_gep, struct_slot->result.str(), "%struct.T", 0) ||
+      first_gep->result.empty() || store->ptr != first_gep->result || store->val != "2" ||
+      !memory_lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{store->type_str}, 32) ||
+      !match_memory_local_struct_field_gep(*second_gep, struct_slot->result.str(), "%struct.T", 0) ||
+      second_gep->result.empty() || load->ptr != second_gep->result || load->result.empty() ||
+      !memory_lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{load->type_str}, 32) ||
+      cmp->is_float || cmp->predicate != "ne" || cmp->type_str != "i32" ||
+      cmp->lhs != load->result || cmp->rhs != "2" || zext->kind != LirCastKind::ZExt ||
+      zext->from_type != "i1" || zext->operand != cmp->result || zext->to_type != "i32" ||
+      branch_cmp->is_float || branch_cmp->predicate != "ne" || branch_cmp->type_str != "i32" ||
+      branch_cmp->lhs != zext->result || branch_cmp->rhs != "0" ||
+      cond_br->cond_name != branch_cmp->result || cond_br->true_label != "block_1" ||
+      cond_br->false_label != "block_2") {
     return std::nullopt;
   }
 
@@ -2315,32 +2331,15 @@ try_lower_minimal_local_single_field_struct_store_load_zero_return_module(
   if (entry.label != "entry" || first_gep == nullptr || store == nullptr || second_gep == nullptr ||
       load == nullptr || ret == nullptr || !ret->value_str.has_value() ||
       ret->type_str != "i32" ||
-      *ret->value_str != load->result || first_gep->ptr != struct_slot->result ||
-      first_gep->element_type != "%struct.T" || first_gep->result.empty() ||
-      first_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+      *ret->value_str != load->result ||
+      !match_memory_local_struct_field_gep(*first_gep, struct_slot->result.str(), "%struct.T", 0) ||
+      first_gep->result.empty() ||
       store->ptr != first_gep->result || store->val != "0" ||
       !memory_lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{store->type_str}, 32) ||
-      second_gep->ptr != struct_slot->result || second_gep->element_type != "%struct.T" ||
+      !match_memory_local_struct_field_gep(*second_gep, struct_slot->result.str(), "%struct.T", 0) ||
       second_gep->result.empty() ||
-      second_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
       load->ptr != second_gep->result || load->result.empty() ||
       !memory_lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{load->type_str}, 32)) {
-    return std::nullopt;
-  }
-
-  const auto rendered = c4c::codegen::lir::print_llvm(module);
-  constexpr std::string_view kExpectedModule =
-      "define i32 @main()\n"
-      "{\n"
-      "entry:\n"
-      "  %lv.s = alloca %struct.T, align 4\n"
-      "  %t0 = getelementptr %struct.T, ptr %lv.s, i32 0, i32 0\n"
-      "  store i32 0, ptr %t0\n"
-      "  %t1 = getelementptr %struct.T, ptr %lv.s, i32 0, i32 0\n"
-      "  %t2 = load i32, ptr %t1\n"
-      "  ret i32 %t2\n"
-      "}\n";
-  if (rendered.find(kExpectedModule) == std::string::npos) {
     return std::nullopt;
   }
 
@@ -2408,32 +2407,64 @@ try_lower_minimal_local_paired_single_field_struct_compare_sub_zero_return_modul
     return std::nullopt;
   }
 
-  const auto rendered = c4c::codegen::lir::print_llvm(module);
-  constexpr std::string_view kExpectedModule =
-      "define i32 @main()\n"
-      "{\n"
-      "entry:\n"
-      "  %lv.s1 = alloca %struct.T, align 4\n"
-      "  %lv.s2 = alloca %struct.T.__shadow_0, align 4\n"
-      "  %t0 = getelementptr %struct.T, ptr %lv.s1, i32 0, i32 0\n"
-      "  store i32 1, ptr %t0\n"
-      "  %t1 = getelementptr %struct.T.__shadow_0, ptr %lv.s2, i32 0, i32 0\n"
-      "  store i32 1, ptr %t1\n"
-      "  %t2 = getelementptr %struct.T, ptr %lv.s1, i32 0, i32 0\n"
-      "  %t3 = load i32, ptr %t2\n"
-      "  %t4 = getelementptr %struct.T.__shadow_0, ptr %lv.s2, i32 0, i32 0\n"
-      "  %t5 = load i32, ptr %t4\n"
-      "  %t6 = sub i32 %t3, %t5\n"
-      "  %t7 = icmp ne i32 %t6, 0\n"
-      "  %t8 = zext i1 %t7 to i32\n"
-      "  %t9 = icmp ne i32 %t8, 0\n"
-      "  br i1 %t9, label %block_1, label %block_2\n"
-      "block_1:\n"
-      "  ret i32 1\n"
-      "block_2:\n"
-      "  ret i32 0\n"
-      "}\n";
-  if (rendered.find(kExpectedModule) == std::string::npos) {
+  const auto& entry = function.blocks[0];
+  const auto* first_gep = entry.insts.size() == 12 ? std::get_if<LirGepOp>(&entry.insts[0]) : nullptr;
+  const auto* first_store =
+      entry.insts.size() == 12 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* second_gep =
+      entry.insts.size() == 12 ? std::get_if<LirGepOp>(&entry.insts[2]) : nullptr;
+  const auto* second_store =
+      entry.insts.size() == 12 ? std::get_if<LirStoreOp>(&entry.insts[3]) : nullptr;
+  const auto* third_gep =
+      entry.insts.size() == 12 ? std::get_if<LirGepOp>(&entry.insts[4]) : nullptr;
+  const auto* first_load =
+      entry.insts.size() == 12 ? std::get_if<LirLoadOp>(&entry.insts[5]) : nullptr;
+  const auto* fourth_gep =
+      entry.insts.size() == 12 ? std::get_if<LirGepOp>(&entry.insts[6]) : nullptr;
+  const auto* second_load =
+      entry.insts.size() == 12 ? std::get_if<LirLoadOp>(&entry.insts[7]) : nullptr;
+  const auto* sub = entry.insts.size() == 12 ? std::get_if<LirBinOp>(&entry.insts[8]) : nullptr;
+  const auto* cmp = entry.insts.size() == 12 ? std::get_if<LirCmpOp>(&entry.insts[9]) : nullptr;
+  const auto* zext = entry.insts.size() == 12 ? std::get_if<LirCastOp>(&entry.insts[10]) : nullptr;
+  const auto* branch_cmp =
+      entry.insts.size() == 12 ? std::get_if<LirCmpOp>(&entry.insts[11]) : nullptr;
+  const auto* cond_br = std::get_if<LirCondBr>(&entry.terminator);
+  if (first_gep == nullptr || first_store == nullptr || second_gep == nullptr ||
+      second_store == nullptr || third_gep == nullptr || first_load == nullptr ||
+      fourth_gep == nullptr || second_load == nullptr || sub == nullptr || cmp == nullptr ||
+      zext == nullptr || branch_cmp == nullptr || cond_br == nullptr ||
+      !match_memory_local_struct_field_gep(*first_gep, first_slot->result.str(), "%struct.T", 0) ||
+      first_gep->result.empty() || first_store->ptr != first_gep->result ||
+      first_store->val != "1" ||
+      !memory_lir_type_matches_integer_width(
+          c4c::codegen::lir::LirTypeRef{first_store->type_str}, 32) ||
+      !match_memory_local_struct_field_gep(
+          *second_gep, second_slot->result.str(), "%struct.T.__shadow_0", 0) ||
+      second_gep->result.empty() || second_store->ptr != second_gep->result ||
+      second_store->val != "1" ||
+      !memory_lir_type_matches_integer_width(
+          c4c::codegen::lir::LirTypeRef{second_store->type_str}, 32) ||
+      !match_memory_local_struct_field_gep(*third_gep, first_slot->result.str(), "%struct.T", 0) ||
+      third_gep->result.empty() || first_load->ptr != third_gep->result ||
+      first_load->result.empty() ||
+      !memory_lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{first_load->type_str},
+                                             32) ||
+      !match_memory_local_struct_field_gep(
+          *fourth_gep, second_slot->result.str(), "%struct.T.__shadow_0", 0) ||
+      fourth_gep->result.empty() || second_load->ptr != fourth_gep->result ||
+      second_load->result.empty() ||
+      !memory_lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{second_load->type_str},
+                                             32) ||
+      sub->opcode.typed() != LirBinaryOpcode::Sub ||
+      !memory_lir_type_matches_integer_width(sub->type_str, 32) ||
+      sub->lhs != first_load->result || sub->rhs != second_load->result || cmp->is_float ||
+      cmp->predicate != "ne" || cmp->type_str != "i32" || cmp->lhs != sub->result ||
+      cmp->rhs != "0" || zext->kind != LirCastKind::ZExt || zext->from_type != "i1" ||
+      zext->operand != cmp->result || zext->to_type != "i32" || branch_cmp->is_float ||
+      branch_cmp->predicate != "ne" || branch_cmp->type_str != "i32" ||
+      branch_cmp->lhs != zext->result || branch_cmp->rhs != "0" ||
+      cond_br->cond_name != branch_cmp->result || cond_br->true_label != "block_1" ||
+      cond_br->false_label != "block_2") {
     return std::nullopt;
   }
 
