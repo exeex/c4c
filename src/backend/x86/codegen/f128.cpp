@@ -47,7 +47,36 @@ void X86Codegen::emit_f128_store_raw_bytes(const SlotAddr& addr, std::uint32_t p
 }
 
 void X86Codegen::emit_f128_store_f64_via_x87(const SlotAddr& addr, std::uint32_t ptr_id, std::int64_t offset) {
-  this->state.emit("    <store-f64-via-x87>");
+  switch (addr.kind) {
+    case SlotAddr::Kind::Direct:
+      this->state.emit("    pushq %rax");
+      this->state.emit("    fldl (%rsp)");
+      this->state.emit("    addq $8, %rsp");
+      this->state.out.emit_instr_rbp("    fstpt", addr.slot.raw + offset);
+      return;
+    case SlotAddr::Kind::OverAligned:
+      this->state.emit("    movq %rax, %rdx");
+      this->emit_alloca_aligned_addr_impl(addr.slot, addr.value_id);
+      if (offset != 0) {
+        this->state.out.emit_instr_imm_reg("    addq", offset, "rcx");
+      }
+      this->state.emit("    pushq %rdx");
+      this->state.emit("    fldl (%rsp)");
+      this->state.emit("    addq $8, %rsp");
+      this->state.emit("    fstpt (%rcx)");
+      return;
+    case SlotAddr::Kind::Indirect:
+      this->state.emit("    movq %rax, %rdx");
+      this->emit_load_ptr_from_slot_impl(addr.slot, ptr_id);
+      if (offset != 0) {
+        this->state.out.emit_instr_imm_reg("    addq", offset, "rcx");
+      }
+      this->state.emit("    pushq %rdx");
+      this->state.emit("    fldl (%rsp)");
+      this->state.emit("    addq $8, %rsp");
+      this->state.emit("    fstpt (%rcx)");
+      return;
+  }
 }
 
 void X86Codegen::emit_f128_load_finish(const Value& dest) {

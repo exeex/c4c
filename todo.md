@@ -7,30 +7,59 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner follow-on after landing the bounded
-  `src/backend/x86/codegen/f128.cpp` helper-backed build wiring slice:
-  continue tightening the parked translated `f128.cpp` support layer around
-  the remaining shared helper bodies or the next bounded address/store helper
-  path without widening into the broader prologue/runtime-owner cutover
+  translated F128 direct-slot store plus bounded fallback-store slice:
+  continue tightening the parked `src/backend/x86/codegen/f128.cpp` helper
+  layer around the next surfaced non-store helper body without widening into
+  raw-byte constant staging or prologue/runtime-owner work
 - immediate target:
-  inspect whether the next bounded Step 3 move should keep advancing the
-  parked translated `src/backend/x86/codegen/f128.cpp` helper surface
-  (`emit_f128_store_f64_via_x87`, raw-byte staging, or the first non-stub cast
-  helper) or instead return to the remaining `returns.cpp` local-epilogue
-  boundary without widening into prologue ownership
+  inspect the next bounded translated `f128.cpp` helper move after the store
+  fallback cutover, preferring the first helper already surfaced by
+  `cast_ops.cpp` or another active x86 owner path over reopening
+  `returns.cpp` or broad constant-staging work
 
 ## Next Slice
 
-- if the next slice stays in `returns.cpp`, keep it bounded to replacing the
-  temporary local epilogue text with a shared helper path plus any missing
-  tracked-source coverage, rather than widening into unrelated prologue
-  ownership
-- if the next slice moves to `f128.cpp`, keep it limited to the shared helper
-  functions already surfaced by `memory.cpp` and the new returns-owner path
-  instead of wiring the whole parked owner into the build
+- keep the next `f128.cpp` work limited to the remaining bounded helper bodies
+  already surfaced by the active x86 memory/cast paths, rather than wiring the
+  whole parked owner into the build
+- treat `emit_f128_store_raw_bytes` as deferred until the active public x86
+  operand surface can express the needed constant-form inputs cleanly, instead
+  of inventing a local one-off constant channel
+- keep the `returns.cpp` local epilogue boundary parked until the shared
+  prologue/epilogue owner surface is explicitly chosen as the next bounded
+  Step 3 move
 - keep `emit_tls_global_addr_impl` and unrelated TLS/PIC work out of scope
   unless a later translated-owner cutover proves that state is already exposed
 
 ## Current Iteration Notes
+
+- this iteration ports the bounded translated F128 store-owner shape now
+  surfaced by the active x86 memory path: `src/backend/x86/codegen/memory.cpp`
+  now preserves the direct-slot `fldt`/`fstpt` fast path for tracked x87
+  values and otherwise falls back through the translated
+  `emit_f128_store_f64_via_x87` helper instead of routing every F128 store
+  through the generic reload/store path
+- implementation note:
+  `src/backend/x86/codegen/f128.cpp` now carries the real translated
+  `%rax`-via-x87 fallback store helper for direct, over-aligned, and indirect
+  destinations, and `tests/backend/backend_shared_util_tests.cpp` now pins the
+  direct-slot precision-preserving store path plus the bounded fallback-store
+  text contract across direct, over-aligned, and indirect address forms
+- surfaced boundary note:
+  `emit_f128_store_raw_bytes` remains parked because the active public x86
+  `Operand` surface still only exposes raw value ids, so constant-byte staging
+  would require a wider ownership decision rather than another bounded helper
+  port
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_memory_owner`, and
+  `./build/backend_shared_util_tests`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and one new `>30s` note on `backend_bir_tests`
 
 - this iteration wires the parked translated
   `src/backend/x86/codegen/f128.cpp` helper surface into both active x86 source

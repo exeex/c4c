@@ -571,6 +571,63 @@ void test_x86_translated_memory_owner_emits_linked_helper_text() {
               "wired translated memory owner should mark parked F128 load destinations as direct-slot x87 values");
 }
 
+void test_x86_translated_memory_owner_preserves_f128_store_precision_paths() {
+  using IrType = c4c::backend::x86::IrType;
+  using Operand = c4c::backend::x86::Operand;
+  using SlotAddr = c4c::backend::x86::SlotAddr;
+  using StackSlot = c4c::backend::x86::StackSlot;
+  using Value = c4c::backend::x86::Value;
+
+  c4c::backend::x86::X86Codegen codegen;
+  codegen.state.slots.emplace(5, StackSlot{-24});
+  codegen.state.slots.emplace(7, StackSlot{-40});
+  codegen.state.slots.emplace(11, StackSlot{-72});
+  codegen.state.slots.emplace(13, StackSlot{-88});
+  codegen.state.slots.emplace(15, StackSlot{-104});
+  codegen.state.f128_direct_slots.insert(5);
+  codegen.state.allocas.insert(13);
+  codegen.state.allocas.insert(15);
+  codegen.state.over_aligned_allocas.emplace(13, 32);
+
+  codegen.emit_store_impl(Operand{5}, Value{7}, IrType::F128);
+  codegen.emit_store_with_const_offset_impl(Operand{11}, Value{7}, 8, IrType::F128);
+  codegen.emit_store_with_const_offset_impl(Operand{11}, Value{13}, 16, IrType::F128);
+  codegen.emit_store_with_const_offset_impl(Operand{11}, Value{15}, 24, IrType::F128);
+
+  std::string asm_text;
+  for (const auto& line : codegen.state.asm_lines) {
+    asm_text += line;
+    asm_text.push_back('\n');
+  }
+
+  expect_contains(asm_text, "    fldt -24(%rbp)",
+                  "wired translated memory owner should keep the direct-slot F128 fast path when the source already carries x87-backed precision");
+  expect_contains(asm_text, "    fstpt -40(%rbp)",
+                  "wired translated memory owner should store direct-slot F128 values through the resolved-address helper path");
+  expect_contains(asm_text, "    movq -72(%rbp), %rax",
+                  "wired translated memory owner should fall back through the bounded accumulator load path when the source is not a direct-slot F128 value");
+  expect_contains(asm_text, "    pushq %rax",
+                  "wired translated memory owner should convert bounded fallback stores through a stack-staged x87 reload for direct destinations");
+  expect_contains(asm_text, "    fldl (%rsp)",
+                  "wired translated memory owner should reload bounded fallback F64 payloads into x87 before storing as F128");
+  expect_contains(asm_text, "    fstpt -32(%rbp)",
+                  "wired translated memory owner should fold constant offsets into direct-slot fallback F128 stores");
+  expect_contains(asm_text, "    movq %rax, %rdx",
+                  "wired translated memory owner should preserve the fallback payload while resolving over-aligned or indirect destinations");
+  expect_contains(asm_text, "    leaq -88(%rbp), %rcx",
+                  "wired translated memory owner should resolve over-aligned fallback F128 store destinations through the shared alloca helper");
+  expect_contains(asm_text, "    andq $-32, %rcx",
+                  "wired translated memory owner should keep over-aligned fallback F128 stores aligned through the shared helper path");
+  expect_contains(asm_text, "    addq $16, %rcx",
+                  "wired translated memory owner should apply the bounded constant offset after over-aligned address resolution");
+  expect_contains(asm_text, "    fstpt (%rcx)",
+                  "wired translated memory owner should store fallback F128 values through the resolved indirect-address form");
+  expect_contains(asm_text, "    movq -104(%rbp), %rcx",
+                  "wired translated memory owner should resolve indirect fallback F128 store destinations through the shared pointer-load helper");
+  expect_contains(asm_text, "    addq $24, %rcx",
+                  "wired translated memory owner should apply constant offsets on indirect fallback F128 stores");
+}
+
 void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {
   using X86Codegen = c4c::backend::x86::X86Codegen;
 
@@ -4601,6 +4658,7 @@ int main(int argc, char* argv[]) {
   test_x86_codegen_header_exports_translated_memory_owner_surface();
   test_x86_codegen_state_tracks_translated_reg_assignments();
   test_x86_translated_memory_owner_emits_linked_helper_text();
+  test_x86_translated_memory_owner_preserves_f128_store_precision_paths();
   test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
   test_x86_translated_regalloc_pruning_helpers_match_shared_contract();
