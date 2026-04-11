@@ -155,6 +155,79 @@ void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
 #endif
 }
 
+void test_parser_keeps_qualified_bindings_string_keyed() {
+  c4c::Arena arena;
+  c4c::Parser parser({}, arena);
+
+  c4c::Parser::QualifiedNameRef qn;
+  qn.is_global_qualified = true;
+  qn.qualifier_segments = {"ns", "inner"};
+  qn.base_name = "Type";
+
+  expect_true(!qn.is_unqualified_atom(),
+              "qualified names should not be treated as source-atom symbols");
+  expect_eq(qn.spelled(), "ns::inner::Type",
+            "qualified lookup spelling should remain segment-joined text");
+  expect_eq(qn.spelled(/*include_global_prefix=*/true), "::ns::inner::Type",
+            "qualified spelling should preserve global qualification when requested");
+
+  c4c::TypeSpec typedef_ts{};
+  typedef_ts.array_size = -1;
+  typedef_ts.inner_rank = -1;
+  typedef_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec var_ts{};
+  var_ts.array_size = -1;
+  var_ts.inner_rank = -1;
+  var_ts.base = c4c::TB_DOUBLE;
+
+  const int symbol_count_before =
+      static_cast<int>(parser.parser_symbols_.size());
+
+  parser.register_typedef_binding("ns::Type", typedef_ts, true);
+  parser.register_var_type_binding("ns::value", var_ts);
+
+  expect_true(parser.has_typedef_name("ns::Type"),
+              "qualified typedef membership should remain lookupable");
+  expect_true(parser.has_typedef_type("ns::Type"),
+              "qualified typedef types should remain lookupable");
+  expect_true(parser.find_typedef_type("ns::Type") != nullptr &&
+                  parser.find_typedef_type("ns::Type")->base == c4c::TB_INT,
+              "qualified typedef type lookup should recover the stored TypeSpec");
+  expect_true(parser.has_var_type("ns::value"),
+              "qualified value bindings should remain lookupable");
+  expect_true(parser.find_var_type("ns::value") != nullptr &&
+                  parser.find_var_type("ns::value")->base == c4c::TB_DOUBLE,
+              "qualified value lookup should recover the stored TypeSpec");
+  expect_true(parser.parser_name_tables_.find_identifier("ns::Type") ==
+                  c4c::Parser::kInvalidSymbol,
+              "qualified typedef names should not intern composed strings");
+  expect_true(parser.parser_name_tables_.find_identifier("ns::value") ==
+                  c4c::Parser::kInvalidSymbol,
+              "qualified value names should not intern composed strings");
+  expect_eq_int(static_cast<int>(parser.parser_symbols_.size()),
+                symbol_count_before,
+                "qualified bindings should not change the atom-symbol table size");
+
+#if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
+  const auto snapshot = parser.save_state();
+
+  c4c::TypeSpec temp_ts{};
+  temp_ts.array_size = -1;
+  temp_ts.inner_rank = -1;
+  temp_ts.base = c4c::TB_FLOAT;
+
+  parser.register_typedef_binding("ns::Temp", temp_ts, true);
+  parser.register_var_type_binding("ns::scratch", temp_ts);
+  parser.restore_state(snapshot);
+
+  expect_true(!parser.has_typedef_type("ns::Temp"),
+              "restore_state should roll back qualified typedefs from fallback storage");
+  expect_true(!parser.has_var_type("ns::scratch"),
+              "restore_state should roll back qualified values from fallback storage");
+#endif
+}
+
 }  // namespace
 
 int main() {
@@ -162,6 +235,7 @@ int main() {
   test_parser_symbol_helper_falls_back_to_lexeme_without_text_id();
   test_parser_string_wrappers_use_symbol_id_keyed_name_tables();
   test_parser_heavy_snapshot_restores_symbol_id_keyed_tables();
+  test_parser_keeps_qualified_bindings_string_keyed();
 
   std::cout << "PASS: frontend_parser_tests\n";
   return 0;

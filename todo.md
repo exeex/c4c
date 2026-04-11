@@ -6,8 +6,9 @@ Source Plan: plan.md
 
 ## Current Slice
 
-Active item: Step 5A, review qualified-name helpers and keep full-name /
-composed-name paths string-keyed unless they are truly atom-segment based.
+Active item: Warning-Driven Convergence A, audit direct parser-layer
+`Token::lexeme` / `Token::file` bridge uses that are still on the current
+qualified-name migration path.
 
 Why this slice:
 - Step 4A landed behind the existing parser wrapper surface, so the next risk
@@ -69,8 +70,13 @@ Why this slice:
       rather than raw spelling first
 - [x] Step 4A: migrate `typedefs_`, `user_typedefs_`, `typedef_types_`, and the
       atom-keyed subset of `var_types_` to `SymbolId`
-- [ ] Step 5A: review qualified-name helpers and keep full-name/composed-name
+- [x] Step 5A: review qualified-name helpers and keep full-name/composed-name
       paths string-keyed unless they are truly atom-segment based
+      Current slice: add a narrow parser test for qualified/composed bindings,
+      route non-atom typedef/var wrappers to string-keyed fallback storage, and
+      keep that fallback rollback-safe under heavy snapshots
+- [x] Step 6A: validate the qualified-name boundary slice and record the
+      remaining atom-segment follow-on work back into the source idea
 
 ## Warning-Driven Convergence
 
@@ -86,6 +92,10 @@ Why this slice:
 - [x] Re-run the narrow lexer/parser slice after each connection point lands
 - [x] Defer broad suite churn until Step 2 or Step 4 lands behaviorally useful
       changes
+- [x] Re-ran the full suite for the qualified-name boundary slice and passed
+      the monotonic guard with `3375` passed / `0` failed before and after via
+      `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
+      checker
 
 ## Resume Notes
 
@@ -102,5 +112,9 @@ Why this slice:
   unknown names do not create semantic entries
 - prefixed string and char literals (`L`, `u`, `U`, `u8`) now intern the full
   prefixed raw spelling directly at token construction time
-- next edit should audit qualified-name helpers and keep full-name /
-  synthesized-name paths on strings unless they are truly per-segment atoms
+- qualified/composed typedef and var bindings now stay in string-keyed fallback
+  maps, heavy snapshot save/restore includes that fallback state, and
+  `QualifiedNameRef` owns the shared string spelling helper used by the parser
+- next edit should decide whether any qualified-name segment sites should carry
+  per-segment atom ids directly, while leaving full-name lookup and synthesized
+  names string-keyed

@@ -1,6 +1,7 @@
 #include "parser.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -136,6 +137,24 @@ bool is_top_level_qualified_probe_merge_target(
     const std::string& function_name) {
     return function_name == "parse_next_template_argument" ||
            function_name == "parse_top_level_parameter_list";
+}
+
+bool is_identifier_start(char ch) {
+    const unsigned char uch = static_cast<unsigned char>(ch);
+    return std::isalpha(uch) || ch == '_';
+}
+
+bool is_identifier_continue(char ch) {
+    const unsigned char uch = static_cast<unsigned char>(ch);
+    return std::isalnum(uch) || ch == '_';
+}
+
+bool uses_symbol_identity(std::string_view name) {
+    if (name.empty() || !is_identifier_start(name.front())) return false;
+    for (size_t i = 1; i < name.size(); ++i) {
+        if (!is_identifier_continue(name[i])) return false;
+    }
+    return true;
 }
 
 std::vector<std::string> merge_leading_top_level_qualified_probe(
@@ -287,16 +306,26 @@ Parser::SymbolId Parser::symbol_id_for_token(const Token& token) {
 }
 
 bool Parser::has_typedef_name(const std::string& name) const {
+    if (!uses_symbol_identity(name)) {
+        return non_atom_typedefs_.count(name) > 0;
+    }
     return parser_name_tables_.is_typedef(
         parser_name_tables_.find_identifier(name));
 }
 
 bool Parser::has_typedef_type(const std::string& name) const {
+    if (!uses_symbol_identity(name)) {
+        return non_atom_typedef_types_.count(name) > 0;
+    }
     return parser_name_tables_.has_typedef_type(
         parser_name_tables_.find_identifier(name));
 }
 
 const TypeSpec* Parser::find_typedef_type(const std::string& name) const {
+    if (!uses_symbol_identity(name)) {
+        const auto it = non_atom_typedef_types_.find(name);
+        return it == non_atom_typedef_types_.end() ? nullptr : &it->second;
+    }
     return parser_name_tables_.lookup_typedef_type(
         parser_name_tables_.find_identifier(name));
 }
@@ -386,6 +415,9 @@ bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
 }
 
 bool Parser::is_user_typedef_name(const std::string& name) const {
+    if (!uses_symbol_identity(name)) {
+        return non_atom_user_typedefs_.count(name) > 0;
+    }
     const SymbolId id = parser_name_tables_.find_identifier(name);
     return id != kInvalidSymbol && parser_name_tables_.user_typedefs.count(id) > 0;
 }
@@ -399,6 +431,11 @@ bool Parser::has_conflicting_user_typedef_binding(const std::string& name,
 
 void Parser::register_typedef_name(const std::string& name,
                                    bool is_user_typedef) {
+    if (!uses_symbol_identity(name)) {
+        non_atom_typedefs_.insert(name);
+        if (is_user_typedef) non_atom_user_typedefs_.insert(name);
+        return;
+    }
     const SymbolId id = parser_name_tables_.intern_identifier(name);
     if (id == kInvalidSymbol) return;
     parser_name_tables_.typedefs.insert(id);
@@ -408,6 +445,12 @@ void Parser::register_typedef_name(const std::string& name,
 void Parser::register_typedef_binding(const std::string& name,
                                       const TypeSpec& type,
                                       bool is_user_typedef) {
+    if (!uses_symbol_identity(name)) {
+        non_atom_typedefs_.insert(name);
+        if (is_user_typedef) non_atom_user_typedefs_.insert(name);
+        non_atom_typedef_types_[name] = type;
+        return;
+    }
     const SymbolId id = parser_name_tables_.intern_identifier(name);
     if (id == kInvalidSymbol) return;
     parser_name_tables_.typedefs.insert(id);
@@ -416,6 +459,12 @@ void Parser::register_typedef_binding(const std::string& name,
 }
 
 void Parser::unregister_typedef_binding(const std::string& name) {
+    if (!uses_symbol_identity(name)) {
+        non_atom_typedefs_.erase(name);
+        non_atom_user_typedefs_.erase(name);
+        non_atom_typedef_types_.erase(name);
+        return;
+    }
     const SymbolId id = parser_name_tables_.find_identifier(name);
     if (id == kInvalidSymbol) return;
     parser_name_tables_.typedefs.erase(id);
@@ -452,6 +501,10 @@ void Parser::register_tag_type_binding(const std::string& name,
 }
 
 void Parser::cache_typedef_type(const std::string& name, const TypeSpec& type) {
+    if (!uses_symbol_identity(name)) {
+        non_atom_typedef_types_[name] = type;
+        return;
+    }
     const SymbolId id = parser_name_tables_.intern_identifier(name);
     if (id == kInvalidSymbol) return;
     parser_name_tables_.typedef_types[id] = type;
@@ -464,11 +517,18 @@ void Parser::register_struct_member_typedef_binding(
 }
 
 bool Parser::has_var_type(const std::string& name) const {
+    if (!uses_symbol_identity(name)) {
+        return non_atom_var_types_.count(name) > 0;
+    }
     const SymbolId id = parser_name_tables_.find_identifier(name);
     return id != kInvalidSymbol && parser_name_tables_.var_types.count(id) > 0;
 }
 
 const TypeSpec* Parser::find_var_type(const std::string& name) const {
+    if (!uses_symbol_identity(name)) {
+        const auto it = non_atom_var_types_.find(name);
+        return it == non_atom_var_types_.end() ? nullptr : &it->second;
+    }
     const SymbolId id = parser_name_tables_.find_identifier(name);
     if (id == kInvalidSymbol) return nullptr;
     const auto it = parser_name_tables_.var_types.find(id);
@@ -485,6 +545,10 @@ const TypeSpec* Parser::find_visible_var_type(const std::string& name) const {
 
 void Parser::register_var_type_binding(const std::string& name,
                                        const TypeSpec& type) {
+    if (!uses_symbol_identity(name)) {
+        non_atom_var_types_[name] = type;
+        return;
+    }
     const SymbolId id = parser_name_tables_.intern_identifier(name);
     if (id == kInvalidSymbol) return;
     parser_name_tables_.var_types[id] = type;

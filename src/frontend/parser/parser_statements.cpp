@@ -859,14 +859,7 @@ Node* Parser::parse_stmt() {
                     starts_parenthesized_member_pointer_declarator(*this, after_pos)) {
                     return parse_local_decl();
                 }
-                // Build the full qualified name
-                std::string full_name;
-                for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-                    if (i) full_name += "::";
-                    full_name += qn.qualifier_segments[i];
-                }
-                full_name += "::";
-                full_name += qn.base_name;
+                const std::string full_name = qn.spelled();
                 // Check if the full qualified name is a known type
                 bool is_known_type = is_typedef_name(full_name) ||
                     has_typedef_type(full_name) ||

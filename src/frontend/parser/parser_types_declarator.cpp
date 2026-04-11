@@ -400,15 +400,7 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
     }
 
     if (out_name) {
-        std::string spelled;
-        if (qn.is_global_qualified) spelled = "::";
-        for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-            if (!spelled.empty() && spelled != "::") spelled += "::";
-            spelled += qn.qualifier_segments[i];
-        }
-        if (!spelled.empty() && spelled != "::") spelled += "::";
-        spelled += qn.base_name;
-        *out_name = std::move(spelled);
+        *out_name = qn.spelled(/*include_global_prefix=*/true);
     }
     if (out_qn) *out_qn = std::move(qn);
     guard.commit();

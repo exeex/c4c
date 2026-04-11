@@ -380,14 +380,7 @@ struct QualifiedTypeProbe {
 };
 
 std::string spell_qualified_name_for_lookup(const Parser::QualifiedNameRef& qn) {
-    std::string name;
-    for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-        if (i) name += "::";
-        name += qn.qualifier_segments[i];
-    }
-    if (!name.empty()) name += "::";
-    name += qn.base_name;
-    return name;
+    return qn.spelled();
 }
 
 std::string resolve_qualified_typedef_name(const Parser& parser,

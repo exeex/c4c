@@ -155,6 +155,22 @@ class Parser {
     bool is_global_qualified = false;
     std::vector<std::string> qualifier_segments;
     std::string base_name;
+
+    bool is_unqualified_atom() const {
+      return !is_global_qualified && qualifier_segments.empty();
+    }
+
+    std::string spelled(bool include_global_prefix = false) const {
+      std::string name;
+      if (include_global_prefix && is_global_qualified) name = "::";
+      for (size_t i = 0; i < qualifier_segments.size(); ++i) {
+        if (!name.empty() && name != "::") name += "::";
+        name += qualifier_segments[i];
+      }
+      if (!name.empty() && name != "::") name += "::";
+      name += base_name;
+      return name;
+    }
   };
 
   // Result container for one parsed template argument after type-vs-value
@@ -266,6 +282,10 @@ class Parser {
   struct ParserSnapshot {
     ParserLiteSnapshot lite;
     ParserSymbolTables symbol_tables;
+    std::set<std::string> non_atom_typedefs;
+    std::set<std::string> non_atom_user_typedefs;
+    std::unordered_map<std::string, TypeSpec> non_atom_typedef_types;
+    std::unordered_map<std::string, TypeSpec> non_atom_var_types;
   };
 
   struct TentativeParseStats {
@@ -450,6 +470,12 @@ class Parser {
   // Qualified function names (populated as functions are declared/defined).
   // Used by lookup_value_in_context for namespace-aware function lookup.
   std::set<std::string> known_fn_names_;
+  // String-keyed fallback storage for composed or synthesized names that are
+  // not eligible for source-atom SymbolId identity.
+  std::set<std::string> non_atom_typedefs_;
+  std::set<std::string> non_atom_user_typedefs_;
+  std::unordered_map<std::string, TypeSpec> non_atom_typedef_types_;
+  std::unordered_map<std::string, TypeSpec> non_atom_var_types_;
   // Struct member typedef scoped names: "StructTag::TypeName" → TypeSpec.
   // Populated when parsing typedef inside struct bodies.
   std::unordered_map<std::string, TypeSpec> struct_typedefs_;

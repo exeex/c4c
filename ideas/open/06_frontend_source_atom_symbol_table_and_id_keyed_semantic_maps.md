@@ -289,6 +289,15 @@ Those are either composed names or generated names, not plain source-atom
 identifiers. They deserve a later dedicated design instead of being forced into
 the atom-symbol slice.
 
+The current migration direction should make that boundary explicit in parser
+wrappers:
+
+- plain identifier atoms use `SymbolId`-keyed parser tables
+- qualified/composed typedef and value bindings stay in dedicated string-keyed
+  fallback storage
+- heavy tentative snapshots must preserve both the atom-keyed and fallback
+  string-keyed parser-name state
+
 ## Tentative Parsing Implications
 
 Because heavy tentative parsing currently snapshots parser typedef/type tables by
