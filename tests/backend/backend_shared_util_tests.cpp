@@ -734,6 +734,48 @@ void test_x86_translated_memory_owner_routes_constant_f128_stores_through_raw_by
                       "wired translated memory owner should not lower constant long-double stores through the fallback x87 store path");
 }
 
+void test_x86_translated_f128_helper_reloads_constant_raw_bytes() {
+  using Operand = c4c::backend::x86::Operand;
+
+  c4c::backend::x86::X86Codegen nonzero_hi_codegen;
+  nonzero_hi_codegen.state.set_f128_constant_words(21, 0x0123456789ABCDEFULL, 0x1357);
+  nonzero_hi_codegen.emit_f128_load_to_x87(Operand{21});
+
+  std::string nonzero_hi_asm;
+  for (const auto& line : nonzero_hi_codegen.state.asm_lines) {
+    nonzero_hi_asm += line;
+    nonzero_hi_asm.push_back('\n');
+  }
+
+  expect_contains(nonzero_hi_asm, "    subq $16, %rsp",
+                  "translated f128 helper should stage constant raw bytes on the stack before the shared x87 reload");
+  expect_contains(nonzero_hi_asm, "    movabsq $81985529216486895, %rax",
+                  "translated f128 helper should materialize the low raw-byte fragment for constant long-double inputs");
+  expect_contains(nonzero_hi_asm, "    movq $4951, %rax",
+                  "translated f128 helper should materialize the non-zero high raw-byte fragment for constant long-double inputs");
+  expect_contains(nonzero_hi_asm, "    fldt (%rsp)",
+                  "translated f128 helper should reload constant long-double inputs through the shared raw-byte x87 path");
+  expect_contains(nonzero_hi_asm, "    addq $16, %rsp",
+                  "translated f128 helper should pop the temporary raw-byte staging area after the x87 reload");
+  expect_not_contains(nonzero_hi_asm, "    fldl (%rsp)",
+                      "translated f128 helper should not mis-handle constant long-double inputs as staged f64 payloads");
+
+  c4c::backend::x86::X86Codegen zero_hi_codegen;
+  zero_hi_codegen.state.set_f128_constant_words(23, 0x0FEDCBA987654321ULL, 0);
+  zero_hi_codegen.emit_f128_load_to_x87(Operand{23});
+
+  std::string zero_hi_asm;
+  for (const auto& line : zero_hi_codegen.state.asm_lines) {
+    zero_hi_asm += line;
+    zero_hi_asm.push_back('\n');
+  }
+
+  expect_contains(zero_hi_asm, "    xorl %eax, %eax",
+                  "translated f128 helper should preserve the zero-high fast path when reloading constant long-double raw bytes");
+  expect_contains(zero_hi_asm, "    movq %rax, 8(%rsp)",
+                  "translated f128 helper should still stage the zeroed high fragment before the x87 reload");
+}
+
 void test_x86_translated_f128_helpers_reload_integer_conversion_sources() {
   using IrType = c4c::backend::x86::IrType;
   using SlotAddr = c4c::backend::x86::SlotAddr;
@@ -5017,6 +5059,7 @@ int main(int argc, char* argv[]) {
   test_x86_translated_memory_owner_emits_linked_helper_text();
   test_x86_translated_memory_owner_preserves_f128_store_precision_paths();
   test_x86_translated_memory_owner_routes_constant_f128_stores_through_raw_byte_helper();
+  test_x86_translated_f128_helper_reloads_constant_raw_bytes();
   test_x86_translated_f128_helpers_reload_integer_conversion_sources();
   test_x86_translated_f128_helpers_emit_st0_integer_conversion_text();
   test_x86_translated_f128_cast_helpers_dispatch_x87_paths();

@@ -22,8 +22,8 @@ Source Plan: plan.md
 - keep the next `f128.cpp` work limited to the remaining caller-side constant
   long-double seams already surfaced by the active x86 memory/cast paths,
   now reusing the landed state-backed raw-byte lookup for the next narrow
-  caller, most likely a constant-backed cast-owner path, rather than widening
-  `Operand` into a richer enum
+  active caller once the translated cast/float/comparison owners are wired
+  into the live build, rather than widening `Operand` into a richer enum
 - keep constant-backed long-double caller work bounded to bridge consumers that
   can reuse the raw-id keyed state payload cleanly; avoid broad public x86
   operand/header redesign in this slice
@@ -34,6 +34,33 @@ Source Plan: plan.md
   unless a later translated-owner cutover proves that state is already exposed
 
 ## Current Iteration Notes
+
+- this iteration lands the bounded translated constant long-double reload
+  bridge inside `src/backend/x86/codegen/f128.cpp`: `emit_f128_load_to_x87`
+  now recognizes the existing state-backed raw-byte payload map and stages
+  constant `F128` operands through a temporary stack `fldt` path instead of
+  misrouting them through the legacy `f64`-shaped fallback reload
+- implementation note:
+  `tests/backend/backend_shared_util_tests.cpp` now pins the non-zero-high and
+  zero-high constant reload assembly contract directly, including the shared
+  `fldt (%rsp)` path, stack cleanup, and zero-high fast path
+- surfaced boundary note:
+  the translated x86 cast/float/comparison owners that would consume this
+  helper are still not wired into the active build/test source lists, so this
+  slice intentionally lands the shared helper seam first and leaves the next
+  caller-side constant long-double bridge to the first owner that gets wired
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_f128_helper_reloads_constant_raw_bytes`,
+  `./build/backend_shared_util_tests translated_memory_owner`,
+  `./build/backend_shared_util_tests translated_f128_store_raw_bytes`, and
+  `./build/backend_shared_util_tests translated_f128_helpers`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and one new `>30s` note on `backend_bir_tests`
 
 - this iteration lands the bounded translated constant long-double caller
   bridge for the active x86 memory owner: `src/backend/x86/codegen/memory.cpp`

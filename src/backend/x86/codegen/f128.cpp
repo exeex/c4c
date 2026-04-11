@@ -470,6 +470,22 @@ void X86Codegen::emit_u64_to_float(bool to_f64) {
   }
 }
 void X86Codegen::emit_f128_load_to_x87(const Operand& operand) {
+  if (const auto words = this->state.get_f128_constant_words(operand.raw)) {
+    this->state.emit("    subq $16, %rsp");
+    this->state.out.emit_instr_imm_reg("    movabsq", static_cast<std::int64_t>((*words)[0]), "rax");
+    this->state.emit("    movq %rax, (%rsp)");
+    if ((*words)[1] != 0) {
+      this->state.out.emit_instr_imm_reg("    movq", static_cast<std::int64_t>((*words)[1]), "rax");
+    } else {
+      this->state.emit("    xorl %eax, %eax");
+    }
+    this->state.emit("    movq %rax, 8(%rsp)");
+    this->state.emit("    fldt (%rsp)");
+    this->state.emit("    addq $16, %rsp");
+    this->state.reg_cache.invalidate_all();
+    return;
+  }
+
   if (this->state.f128_direct_slots.find(operand.raw) != this->state.f128_direct_slots.end()) {
     if (const auto slot = this->state.get_slot(operand.raw)) {
       this->state.out.emit_instr_rbp("    fldt", slot->raw);
