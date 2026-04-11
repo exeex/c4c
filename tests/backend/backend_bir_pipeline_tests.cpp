@@ -416,6 +416,14 @@ c4c::codegen::lir::LirModule make_supported_x86_two_arg_helper_call_lir_module_w
   return module;
 }
 
+c4c::codegen::lir::LirModule make_supported_x86_two_arg_helper_call_lir_module_with_suffix_spacing() {
+  auto module = make_supported_x86_two_arg_helper_call_lir_module_with_spacing();
+  auto& call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.back());
+  call.callee_type_suffix = "( i32 , i32 )";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_supported_x86_two_arg_local_arg_call_lir_module_with_spacing() {
   auto module = make_supported_x86_two_arg_local_arg_call_lir_module();
   auto& call =
@@ -2037,6 +2045,18 @@ void test_x86_direct_call_helper_accepts_two_arg_call_slice_with_spacing() {
               "the direct x86 call helper seam should accept the bounded immediate/immediate two-arg helper-call slice even when typed-call spacing drifts");
   expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
                   "the direct x86 call helper seam should trim typed-call spacing while still lowering the bounded two-immediate helper call on the native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_two_arg_call_slice_with_suffix_spacing() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_two_arg_helper_call_lir_module_with_suffix_spacing(),
+      c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_minimal_two_arg_helper_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded immediate/immediate two-arg helper-call slice when typed-call suffix spacing drifts");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "the direct x86 call helper seam should trim typed-call suffix spacing while still lowering the bounded two-immediate helper call on the native x86 path");
 }
 
 void test_x86_direct_call_helper_accepts_two_arg_local_arg_call_slice() {
@@ -3786,6 +3806,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_direct_call_helper_accepts_local_arg_call_slice_with_suffix_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_call_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_call_slice_with_spacing);
+  RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_call_slice_with_suffix_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_local_arg_call_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_local_arg_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_local_arg_call_slice_with_suffix_spacing);
