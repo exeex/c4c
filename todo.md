@@ -6,20 +6,20 @@ Source Plan: plan.md
 
 ## Current Slice
 
-Active item: Warning-Driven Convergence L, trim the next nearby read-only
-post-pointer qualifier probe in `parser_types_declarator.cpp`, starting with
-`consume_declarator_post_pointer_qualifiers()` where the lookahead still
-compares deprecated identifier bridge spellings against `_Nullable`,
-`_Nonnull`, `restrict`, and nearby qualifier-like identifiers.
+Active item: Warning-Driven Convergence M, trim the next nearby identifier
+spelling materialization in `parser_types_declarator.cpp`, starting with
+`parse_qualified_declarator_name()` where composed declarator-name assembly
+still appends deprecated bridge lexemes for identifier segments.
 
 Why this slice:
-- Warning-Driven Convergence K landed cleanly and moved the nearby
-  `typename` template-parameter classifier onto `parser.token_spelling(...)`
+- Warning-Driven Convergence L landed cleanly and moved the nearby
+  post-pointer qualifier identifier filter onto `parser.token_spelling(...)`
 - the next visible deprecated bridge reads on the current migration path still
-  sit in parser-local declarator qualifier lookahead, where the logic remains
-  read-only and token-classification-only
-- the post-pointer qualifier filter is narrow enough to migrate without
-  widening semantic-table scope or disturbing parser-state rollback behavior
+  sit in the same parser declarator file, but now in composed-name spelling
+  materialization rather than semantic-table mutation
+- the qualified declarator-name builder is narrow enough to migrate with one
+  injected-token regression without widening semantic-table scope or
+  disturbing parser-state rollback behavior
 - compiler warnings still show broader deprecated bridge traffic elsewhere, but
   those sites remain outside the current incremental path
 
@@ -169,6 +169,16 @@ Why this slice:
       failed before and after via `test_fail_before.log`,
       `test_fail_after.log`, with the regression guard passing under the
       allowed non-decreasing pass-count policy
+- [x] Moved the nearby read-only post-pointer qualifier identifier probe in
+      [src/frontend/parser/parser_types_declarator.cpp](/workspaces/c4c/src/frontend/parser/parser_types_declarator.cpp)
+      onto `parser.token_spelling(...)`, added narrow parser coverage for
+      injected `_Nullable` / `restrict` qualifiers whose deprecated bridge
+      lexemes are intentionally corrupted in
+      [tests/frontend/frontend_parser_tests.cpp](/workspaces/c4c/tests/frontend/frontend_parser_tests.cpp),
+      and re-ran the full-suite monotonic guard with `3375` passed / `0`
+      failed before and after via `test_fail_before.log`,
+      `test_fail_after.log`, with the regression guard passing under the
+      allowed non-decreasing pass-count policy
 
 ## Next Steps
 
@@ -224,10 +234,13 @@ Why this slice:
       `typename` template-parameter classification probe in
       `parser_types_declarator.cpp` onto parser-owned token helpers without
       widening semantic-table scope
-- [ ] Warning-Driven Convergence L: move the next nearby read-only
+- [x] Warning-Driven Convergence L: move the next nearby read-only
       post-pointer qualifier identifier probes in
       `parser_types_declarator.cpp` onto parser-owned token helpers without
       widening semantic-table scope
+- [ ] Warning-Driven Convergence M: move the next nearby identifier spelling
+      materialization in `parse_qualified_declarator_name()` onto
+      parser-owned token helpers without widening semantic-table scope
 
 ## Warning-Driven Convergence
 
@@ -283,6 +296,10 @@ Why this slice:
       monotonic guard with `3375` passed / `0` failed before and after via
       `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
       checker with `--allow-non-decreasing-passed`
+- [x] Re-ran the full suite for Warning-Driven Convergence L and passed the
+      monotonic guard with `3375` passed / `0` failed before and after via
+      `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
+      checker with `--allow-non-decreasing-passed`
 
 ## Resume Notes
 
@@ -329,10 +346,14 @@ Why this slice:
   `classify_typename_template_parameter()` lookahead, with injected trailing
   `typename` coverage proving parser-owned spelling wins even when the
   deprecated bridge lexeme is corrupted
+- `parser_types_declarator.cpp` now also uses `token_spelling(...)` for the
+  `consume_declarator_post_pointer_qualifiers()` identifier filter, with
+  injected `_Nullable` / `restrict` coverage proving parser-owned spelling
+  wins even when the deprecated bridge lexeme is corrupted
 - `Token` now carries a parser-owned-spelling fast-path flag so injected tokens
   still prefer parser-owned text ids while ordinary lexer tokens avoid the
   extra parser spelling-map lookup on hot parse paths
 - the next nearby warning candidate in `parser_types_declarator.cpp` is the
-  `consume_declarator_post_pointer_qualifiers()` loop that still compares
-  identifier-token deprecated bridge spellings against nullability and
-  qualifier-like names
+  `parse_qualified_declarator_name()` builder that still appends
+  identifier-token deprecated bridge lexemes while materializing composed
+  declarator names

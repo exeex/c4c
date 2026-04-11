@@ -1058,7 +1058,7 @@ void Parser::parse_pointer_ref_qualifiers(TypeSpec& ts, TokenKind pointer_tok,
 
 void Parser::consume_declarator_post_pointer_qualifiers() {
     while (check(TokenKind::Identifier)) {
-        const std::string& lex = cur().lexeme;
+        const std::string_view lex = token_spelling(cur());
         if (lex == "_Nullable" || lex == "_Nonnull" ||
             lex == "_Null_unspecified" || lex == "__nullable" ||
             lex == "__nonnull" || lex == "__restrict" ||
