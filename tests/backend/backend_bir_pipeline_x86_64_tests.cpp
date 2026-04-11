@@ -6503,6 +6503,15 @@ c4c::codegen::lir::LirModule make_lir_minimal_call_crossing_direct_call_module_w
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_lir_minimal_call_crossing_direct_call_module_with_suffix_spacing() {
+  auto module = make_lir_minimal_call_crossing_direct_call_module_with_spacing();
+  auto& call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts[1]);
+  call.callee_type_suffix = "( i32 )";
+  return module;
+}
+
 void populate_bir_minimal_call_crossing_direct_call_module(c4c::backend::bir::Module& module) {
   module.target_triple = "x86_64-unknown-linux-gnu";
   module.data_layout =
@@ -11094,6 +11103,19 @@ void test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice_with
                   "x86 direct emitter should trim typed-call spacing while preserving the bounded call-crossing native x86 path");
 }
 
+void test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice_with_suffix_spacing() {
+  auto module = make_lir_minimal_call_crossing_direct_call_module_with_suffix_spacing();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded call-crossing helper family through the native prepared-LIR seam when typed-call suffix spacing drifts");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, "main:\n  push rbx\n  mov ebx, 5\n  mov edi, ebx\n  call add_one\n  add eax, ebx\n  pop rbx\n  ret\n",
+                  "x86 direct emitter should trim typed-call suffix spacing while preserving the bounded call-crossing native x86 path");
+}
+
 void test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice() {
   auto module = make_lir_minimal_two_arg_local_arg_direct_call_module();
 
@@ -11698,6 +11720,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice_with_spacing);
+  RUN_TEST(test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice_with_suffix_spacing);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice_with_suffix_spacing);
