@@ -12,16 +12,16 @@ Source Plan: plan.md
   parked branch/select or prologue/returns surfaces
 - immediate target:
   keep the prepared-LIR typed-call parsing follow-on on the already-landed
-  call-crossing direct-call helper family by adding a dedicated
-  suffix-spacing seam on both the helper and native x86 prepared-LIR paths
-  without widening matcher ownership
+  bounded immediate/immediate two-arg direct-call helper family by adding the
+  next dedicated helper-side spacing or suffix-spacing seam without widening
+  matcher ownership
 
 ## Next Slice
 
-- after the call-crossing suffix-spacing slice, keep the next direct-call
-  regression slice on another already-landed prepared-LIR helper family that
-  still lacks dedicated spacing or suffix-spacing seam coverage, without
-  widening into parked matcher ownership
+- after the bounded immediate/immediate two-arg helper-call spacing slice,
+  keep the next direct-call regression slice on another already-landed
+  prepared-LIR helper family that still lacks dedicated spacing or
+  suffix-spacing seam coverage, without widening into parked matcher ownership
 - do not widen into new helper ownership or unrelated control-flow matchers in
   the same commit
 - leave fused compare+branch, block branch lowering, select, and
@@ -30,6 +30,34 @@ Source Plan: plan.md
   of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with the
+  missing plain first-local two-arg typed-call spacing regression on the
+  helper seam: helper coverage now pins args-spacing-only drift on the
+  already-landed first-local two-arg direct-call family adjacent to the
+  already-covered native x86 prepared-LIR spacing route, without widening
+  matcher scope
+- implementation note:
+  `tests/backend/backend_bir_pipeline_tests.cpp` now adds explicit
+  `make_supported_x86_two_arg_local_arg_call_lir_module_with_spacing()` and
+  `test_x86_direct_call_helper_accepts_two_arg_local_arg_call_slice_with_spacing()`
+  coverage so the helper-side direct-call parser keeps a separately pinned
+  args-spacing seam next to the existing suffix-spacing variant
+- implementation note:
+  the existing direct-call parser/helper path already accepted that spaced
+  form, so this slice lands as focused regression coverage rather than a code
+  path rewrite
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_two_arg_local_arg_call_slice_with_spacing`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice_with_spacing`, and
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_two_arg_local_arg_call_slice_with_suffix_spacing`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration extends the active Step 4 direct-call ownership path with the
   missing call-crossing typed-call suffix-spacing regressions: helper and
