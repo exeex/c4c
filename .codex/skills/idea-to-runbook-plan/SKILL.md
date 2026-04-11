@@ -16,7 +16,7 @@ Expect these files:
 
 - one source file under `ideas/open/*.md`
 - current [`plan.md`](/workspaces/c4c/plan.md), if it exists
-- [`prompts/EXECUTE_PLAN.md`](/workspaces/c4c/prompts/EXECUTE_PLAN.md)
+- [`c4c-supervisor-orchestrator` execution control reference](/workspaces/c4c/.codex/skills/c4c-supervisor-orchestrator/references/execution-control.md)
 
 Read the current `plan.md` before rewriting it so you preserve useful runbook conventions already adopted in this repo.
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "C4C Supervisor Orchestrator"
+  short_description: "Own lifecycle, delegate bounded work, and prevent plan drift"
+  default_prompt: "Act as the c4c supervisor agent: manage plan.md and todo.md, convert plan state into bounded worker packets, integrate results, and keep execution aligned to the source idea."
