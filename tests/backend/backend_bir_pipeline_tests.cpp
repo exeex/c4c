@@ -693,12 +693,20 @@ make_supported_x86_two_arg_both_local_first_rewrite_call_lir_module() {
 }
 
 c4c::codegen::lir::LirModule
-make_supported_x86_two_arg_both_local_first_rewrite_call_lir_module_with_suffix_spacing() {
+make_supported_x86_two_arg_both_local_first_rewrite_call_lir_module_with_spacing() {
   auto module = make_supported_x86_two_arg_both_local_first_rewrite_call_lir_module();
   auto& call =
       std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.back());
-  call.callee_type_suffix = "( i32 , i32 )";
   call.args_str = " i32   %t2 ,   i32 %t3 ";
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_supported_x86_two_arg_both_local_first_rewrite_call_lir_module_with_suffix_spacing() {
+  auto module = make_supported_x86_two_arg_both_local_first_rewrite_call_lir_module_with_spacing();
+  auto& call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.back());
+  call.callee_type_suffix = "( i32 , i32 )";
   return module;
 }
 
@@ -750,12 +758,20 @@ make_supported_x86_two_arg_both_local_second_rewrite_call_lir_module() {
 }
 
 c4c::codegen::lir::LirModule
-make_supported_x86_two_arg_both_local_second_rewrite_call_lir_module_with_suffix_spacing() {
+make_supported_x86_two_arg_both_local_second_rewrite_call_lir_module_with_spacing() {
   auto module = make_supported_x86_two_arg_both_local_second_rewrite_call_lir_module();
   auto& call =
       std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.back());
-  call.callee_type_suffix = "( i32 , i32 )";
   call.args_str = " i32   %t2 ,   i32 %t3 ";
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_supported_x86_two_arg_both_local_second_rewrite_call_lir_module_with_suffix_spacing() {
+  auto module = make_supported_x86_two_arg_both_local_second_rewrite_call_lir_module_with_spacing();
+  auto& call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.back());
+  call.callee_type_suffix = "( i32 , i32 )";
   return module;
 }
 
@@ -810,12 +826,20 @@ make_supported_x86_two_arg_both_local_double_rewrite_call_lir_module() {
 }
 
 c4c::codegen::lir::LirModule
-make_supported_x86_two_arg_both_local_double_rewrite_call_lir_module_with_suffix_spacing() {
+make_supported_x86_two_arg_both_local_double_rewrite_call_lir_module_with_spacing() {
   auto module = make_supported_x86_two_arg_both_local_double_rewrite_call_lir_module();
   auto& call =
       std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.back());
-  call.callee_type_suffix = "( i32 , i32 )";
   call.args_str = " i32   %t4 ,   i32 %t5 ";
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_supported_x86_two_arg_both_local_double_rewrite_call_lir_module_with_suffix_spacing() {
+  auto module = make_supported_x86_two_arg_both_local_double_rewrite_call_lir_module_with_spacing();
+  auto& call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.back());
+  call.callee_type_suffix = "( i32 , i32 )";
   return module;
 }
 
@@ -2076,6 +2100,19 @@ void test_x86_direct_call_helper_accepts_two_arg_both_local_first_rewrite_call_s
                   "the direct x86 call helper seam should still fold the first local rewrite while reloading the second local before invoking the helper on the native x86 path");
 }
 
+void test_x86_direct_call_helper_accepts_two_arg_both_local_first_rewrite_call_slice_with_spacing() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_two_arg_both_local_first_rewrite_call_lir_module_with_spacing(),
+      c4c::backend::Target::X86_64);
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_two_arg_both_local_first_rewrite_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded both-local first-rewrite two-arg helper-call slice even when typed-call spacing drifts");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "the direct x86 call helper seam should trim typed-call spacing while still folding the first local rewrite and reloading the second local on the native x86 path");
+}
+
 void test_x86_direct_call_helper_accepts_two_arg_both_local_first_rewrite_call_slice_with_suffix_spacing() {
   const auto prepared = c4c::backend::prepare_lir_module_for_target(
       make_supported_x86_two_arg_both_local_first_rewrite_call_lir_module_with_suffix_spacing(),
@@ -2106,6 +2143,19 @@ void test_x86_direct_call_helper_accepts_two_arg_both_local_second_rewrite_call_
                   "the direct x86 call helper seam should still fold the second local rewrite while reloading the first local before invoking the helper on the native x86 path");
 }
 
+void test_x86_direct_call_helper_accepts_two_arg_both_local_second_rewrite_call_slice_with_spacing() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_two_arg_both_local_second_rewrite_call_lir_module_with_spacing(),
+      c4c::backend::Target::X86_64);
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_two_arg_both_local_second_rewrite_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded both-local second-rewrite two-arg helper-call slice even when typed-call spacing drifts");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "the direct x86 call helper seam should trim typed-call spacing while still folding the second local rewrite and reloading the first local on the native x86 path");
+}
+
 void test_x86_direct_call_helper_accepts_two_arg_both_local_second_rewrite_call_slice_with_suffix_spacing() {
   const auto prepared = c4c::backend::prepare_lir_module_for_target(
       make_supported_x86_two_arg_both_local_second_rewrite_call_lir_module_with_suffix_spacing(),
@@ -2134,6 +2184,19 @@ void test_x86_direct_call_helper_accepts_two_arg_both_local_double_rewrite_call_
                   "the direct x86 call helper seam should still lower the bounded both-local double-rewrite two-arg helper body on the native x86 path");
   expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
                   "the direct x86 call helper seam should still fold both local rewrites before invoking the helper on the native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_two_arg_both_local_double_rewrite_call_slice_with_spacing() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_two_arg_both_local_double_rewrite_call_lir_module_with_spacing(),
+      c4c::backend::Target::X86_64);
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_two_arg_both_local_double_rewrite_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded both-local double-rewrite two-arg helper-call slice even when typed-call spacing drifts");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "the direct x86 call helper seam should trim typed-call spacing while still folding both local rewrites on the native x86 path");
 }
 
 void test_x86_direct_call_helper_accepts_two_arg_both_local_double_rewrite_call_slice_with_suffix_spacing() {
@@ -3535,10 +3598,13 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_arg_call_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_arg_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_first_rewrite_call_slice);
+  RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_first_rewrite_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_first_rewrite_call_slice_with_suffix_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_second_rewrite_call_slice);
+  RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_second_rewrite_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_second_rewrite_call_slice_with_suffix_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_double_rewrite_call_slice);
+  RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_double_rewrite_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_double_rewrite_call_slice_with_suffix_spacing);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_accepts_pointer_phi_join_modules);
