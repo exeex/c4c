@@ -6,35 +6,49 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 translated-owner follow-on after the wired translated x86
-  float/cast/comparison owners: the bounded constant long-double compare
-  seam is now landed; the next owner move should stay out of the still
-  placeholder-heavy fused-branch/select surface unless that becomes the
-  explicitly chosen Step 3 slice
+- Step 4 prepared-LIR direct-call follow-on: keep the active x86 ownership move
+  on bounded direct-call helper slices already living in
+  `src/backend/x86/codegen/direct_calls.cpp` instead of widening back into the
+  parked branch/select or prologue/returns surfaces
 - immediate target:
-  keep the next translated-owner step bounded to another value-producing
-  x86 owner seam, or explicitly choose fused compare+branch/select as the
-  next planned cutover instead of widening it implicitly from compare work
+  lock whitespace-tolerant typed-call parsing on the newer both-local helper
+  families so the shared call decoder remains pinned across the simplest
+  both-local reload route and the richest double-rewrite route without changing
+  matcher scope
 
 ## Next Slice
 
-- keep the next translated-owner work limited to the remaining caller-side
-  or control-flow seams already surfaced by the active x86 comparison and
-  returns/prologue neighborhoods, without widening `Operand` into a richer
-  enum
-- leave fused compare+branch, block branch lowering, and select parked for
-  a later bounded owner step unless that surface is explicitly promoted to
-  the current active item
-- keep constant-backed long-double caller work bounded to bridge consumers that
-  can reuse the raw-id keyed state payload cleanly; avoid broad public x86
-  operand/header redesign in this slice
-- keep the `returns.cpp` local epilogue boundary parked until the shared
-  prologue/epilogue owner surface is explicitly chosen as the next bounded
-  Step 3 move
-- keep `emit_tls_global_addr_impl` and unrelated TLS/PIC work out of scope
-  unless a later translated-owner cutover proves that state is already exposed
+- keep the next direct-call regression slice on prepared-LIR typed-call parsing
+  or another already-landed direct-call helper family; do not widen into new
+  helper ownership or unrelated control-flow matchers in the same commit
+- leave fused compare+branch, block branch lowering, select, and
+  returns/prologue ownership parked for later explicit slices
+- keep constant-backed long-double caller work and unrelated TLS/PIC work out
+  of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with a
+  bounded both-local typed-call parsing regression slice: helper and native x86
+  prepared-LIR coverage now pin whitespace-tolerant `callee_type_suffix` and
+  `args_str` on the both-local reload route and the both-local double-rewrite
+  route without widening the matcher surface
+- implementation note:
+  `tests/backend/backend_bir_pipeline_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now cover those
+  spacing-drifted both-local forms directly, proving the shared trimmed
+  two-argument typed-call decoder still feeds the existing direct-call helper
+  seams for both the minimal reload family and the richer double-rewrite family
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_two_arg_both_local_arg_call_slice_with_spacing`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_two_arg_both_local_double_rewrite_call_slice_with_suffix_spacing`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_both_local_arg_call_slice_with_spacing`, and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_both_local_double_rewrite_call_slice_with_suffix_spacing`
+- broad validation note:
+  this slice intentionally stayed on focused `backend_bir_tests` coverage and
+  did not widen back into the known unstable aggregate `ctest -R backend_bir_tests`
+  lane
 
 - this iteration extends the active Step 4 direct-call ownership path with
   another bounded typed-call parsing regression slice: helper and native x86
