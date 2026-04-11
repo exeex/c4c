@@ -46,7 +46,9 @@ struct Operand {
 struct IrFunction;
 struct IntrinsicOp;
 struct AsmOperand;
-struct BlockId;
+struct BlockId {
+  std::uint32_t raw = 0;
+};
 
 struct StackSlot {
   std::int64_t raw = 0;

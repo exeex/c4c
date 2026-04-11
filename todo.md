@@ -7,26 +7,24 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner follow-on after the wired translated x86
-  float/cast owners: move to the next nearby caller-side constant
-  long-double seam without widening into the more placeholder-heavy
-  prologue/runtime surfaces
+  float/cast/comparison owners: the bounded constant long-double compare
+  seam is now landed; the next owner move should stay out of the still
+  placeholder-heavy fused-branch/select surface unless that becomes the
+  explicitly chosen Step 3 slice
 - immediate target:
-  shift the next move from the now-wired translated x86 cast owner to the
-  nearby comparison-owner seam only if the slice stays bounded to one
-  translated compare path that can reuse the same state-backed constant
-  long-double reload bridge instead of widening into the remaining
-  placeholder-heavy branch/select surface
+  keep the next translated-owner step bounded to another value-producing
+  x86 owner seam, or explicitly choose fused compare+branch/select as the
+  next planned cutover instead of widening it implicitly from compare work
 
 ## Next Slice
 
 - keep the next translated-owner work limited to the remaining caller-side
-  constant long-double seams already surfaced by the active x86 cast/
-  comparison paths, now reusing the landed state-backed raw-byte lookup for
-  the next narrow active caller rather than widening `Operand` into a richer
+  or control-flow seams already surfaced by the active x86 comparison and
+  returns/prologue neighborhoods, without widening `Operand` into a richer
   enum
-- prefer the first bounded comparison-owner seam that can prove real
-  constant-backed `F128` compare lowering without forcing the full fused
-  branch/select placeholder cluster into scope
+- leave fused compare+branch, block branch lowering, and select parked for
+  a later bounded owner step unless that surface is explicitly promoted to
+  the current active item
 - keep constant-backed long-double caller work bounded to bridge consumers that
   can reuse the raw-id keyed state payload cleanly; avoid broad public x86
   operand/header redesign in this slice
@@ -37,6 +35,40 @@ Source Plan: plan.md
   unless a later translated-owner cutover proves that state is already exposed
 
 ## Current Iteration Notes
+
+- this iteration wires the translated x86 comparison owner into both active
+  x86 source lists in `CMakeLists.txt` and keeps the scope bounded to
+  `src/backend/x86/codegen/comparison.cpp`: the live build now carries
+  `emit_float_cmp_impl`, `emit_f128_cmp_impl`, and `emit_int_cmp_impl`,
+  with constant-backed `F128` callers reusing the existing raw-byte reload
+  bridge for x87 compare lowering instead of the parked compare placeholder
+- implementation note:
+  `src/backend/x86/codegen/comparison.cpp` now mirrors the translated
+  value-producing compare sequences for scalar float, `F128`, and integer
+  compares, while leaving fused compare+branch, block-branch, and select
+  explicitly parked as placeholders for a later bounded owner slice
+- implementation note:
+  `src/backend/x86/codegen/x86_codegen.hpp` now defines the minimal
+  `BlockId` carrier already implied by the public comparison-owner
+  signatures so the newly linked comparison translation unit can compile
+  without widening the current branch/select behavior
+- implementation note:
+  `tests/backend/backend_shared_util_tests.cpp` now pins the translated
+  comparison-owner link surface and the constant-backed `F128` compare
+  contract, including raw-byte stack staging, `fldt (%rsp)` reload,
+  `fucomip`/`fstp` lowering, ordered-equality flag materialization, swapped
+  ordered-less-than lowering, and destination-slot boolean stores
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_comparison_owner_symbols`,
+  `./build/backend_shared_util_tests translated_comparison_owner_reuses_constant_f128_reload_bridge`, and
+  `./build/backend_shared_util_tests`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and one new `>30s` note on `backend_bir_tests`
 
 - this iteration wires the translated x86 cast owner into both active x86
   source lists in `CMakeLists.txt` and keeps the scope bounded to

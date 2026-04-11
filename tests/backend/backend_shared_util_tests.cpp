@@ -1098,6 +1098,81 @@ void test_x86_codegen_header_exports_translated_float_owner_symbols() {
               "x86 translated float owner methods should stay compile/link reachable through the public x86_codegen surface once float_ops.cpp enters the build");
 }
 
+void test_x86_codegen_header_exports_translated_comparison_owner_symbols() {
+  using X86Codegen = c4c::backend::x86::X86Codegen;
+
+  auto emit_float_cmp = &X86Codegen::emit_float_cmp_impl;
+  auto emit_f128_cmp = &X86Codegen::emit_f128_cmp_impl;
+  auto emit_int_cmp = &X86Codegen::emit_int_cmp_impl;
+
+  expect_true(emit_float_cmp != nullptr && emit_f128_cmp != nullptr &&
+                  emit_int_cmp != nullptr,
+              "x86 translated comparison owner methods should stay compile/link reachable through the public x86_codegen surface once comparison.cpp enters the build");
+}
+
+void test_x86_translated_comparison_owner_reuses_constant_f128_reload_bridge() {
+  using IrCmpOp = c4c::backend::x86::IrCmpOp;
+  using Operand = c4c::backend::x86::Operand;
+  using StackSlot = c4c::backend::x86::StackSlot;
+  using Value = c4c::backend::x86::Value;
+
+  c4c::backend::x86::X86Codegen eq_codegen;
+  eq_codegen.state.slots.emplace(13, StackSlot{-24});
+  eq_codegen.state.set_f128_constant_words(41, 0x0123456789ABCDEFULL, 0x2468);
+  eq_codegen.state.set_f128_constant_words(43, 0x0FEDCBA987654321ULL, 0x1357);
+
+  eq_codegen.emit_f128_cmp_impl(Value{13}, IrCmpOp::Eq, Operand{41}, Operand{43});
+
+  std::string eq_asm;
+  for (const auto& line : eq_codegen.state.asm_lines) {
+    eq_asm += line;
+    eq_asm.push_back('\n');
+  }
+
+  expect_contains(eq_asm, "    subq $16, %rsp",
+                  "wired translated comparison owner should stage constant long-double operands through the shared raw-byte stack bridge");
+  expect_contains(eq_asm, "    fldt (%rsp)",
+                  "wired translated comparison owner should reload constant long-double operands through the shared x87 helper before comparing");
+  expect_contains(eq_asm, "    fucomip %st(1), %st",
+                  "wired translated comparison owner should emit the translated x87 compare instruction for F128 equality");
+  expect_contains(eq_asm, "    fstp %st(0)",
+                  "wired translated comparison owner should pop the remaining x87 value after F128 comparison");
+  expect_contains(eq_asm, "    setnp %al",
+                  "wired translated comparison owner should preserve the translated ordered-equality guard");
+  expect_contains(eq_asm, "    sete %cl",
+                  "wired translated comparison owner should preserve the translated equality materialization path");
+  expect_contains(eq_asm, "    andb %cl, %al",
+                  "wired translated comparison owner should combine the ordered and equal flags for F128 equality");
+  expect_contains(eq_asm, "    movzbq %al, %rax",
+                  "wired translated comparison owner should zero-extend the boolean compare result");
+  expect_contains(eq_asm, "    movq %rax, -24(%rbp)",
+                  "wired translated comparison owner should store F128 compare booleans through the shared destination-slot path");
+  expect_not_contains(eq_asm, "    fldl (%rsp)",
+                      "wired translated comparison owner should not fall back to the f64 reload path for constant long-double compares");
+  expect_true(eq_codegen.state.reg_cache.acc_valid &&
+                  eq_codegen.state.reg_cache.acc_value_id == 13 &&
+                  !eq_codegen.state.reg_cache.acc_known_zero_extended,
+              "wired translated comparison owner should refresh the shared accumulator cache after F128 compare lowering");
+
+  c4c::backend::x86::X86Codegen lt_codegen;
+  lt_codegen.state.slots.emplace(15, StackSlot{-40});
+  lt_codegen.state.set_f128_constant_words(45, 0x1111222233334444ULL, 0x2468);
+  lt_codegen.state.set_f128_constant_words(47, 0x5555666677778888ULL, 0);
+
+  lt_codegen.emit_f128_cmp_impl(Value{15}, IrCmpOp::Slt, Operand{45}, Operand{47});
+
+  std::string lt_asm;
+  for (const auto& line : lt_codegen.state.asm_lines) {
+    lt_asm += line;
+    lt_asm.push_back('\n');
+  }
+
+  expect_contains(lt_asm, "    seta %al",
+                  "wired translated comparison owner should preserve the translated swapped x87 less-than materialization path");
+  expect_contains(lt_asm, "    movq %rax, -40(%rbp)",
+                  "wired translated comparison owner should store ordered less-than booleans through the shared destination-slot path");
+}
+
 void test_x86_translated_float_owner_reuses_constant_f128_reload_bridge() {
   using FloatOp = c4c::backend::x86::FloatOp;
   using IrType = c4c::backend::x86::IrType;
@@ -5209,6 +5284,8 @@ int main(int argc, char* argv[]) {
   test_x86_codegen_header_exports_translated_cast_owner_symbols();
   test_x86_translated_cast_owner_reuses_constant_f128_reload_bridge();
   test_x86_codegen_header_exports_translated_float_owner_symbols();
+  test_x86_codegen_header_exports_translated_comparison_owner_symbols();
+  test_x86_translated_comparison_owner_reuses_constant_f128_reload_bridge();
   test_x86_translated_float_owner_reuses_constant_f128_reload_bridge();
   test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
