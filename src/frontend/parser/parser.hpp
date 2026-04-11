@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 
 // Parser entry/index surface.
 //
@@ -32,19 +33,86 @@
 #include <functional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "arena.hpp"
 #include "ast.hpp"
 #include "source_profile.hpp"
 #include "token.hpp"
+#include "../string_id_table.hpp"
 
 namespace c4c {
 
 class Parser {
  public:
   // ── parser-side model types ───────────────────────────────────────────────
+  using SymbolId = uint32_t;
+
+  static constexpr SymbolId kInvalidSymbol = 0;
+
+  // Identifier-atom identity layer. Symbols reuse TextTable storage rather
+  // than maintaining a second owning copy of the spelling.
+  struct SymbolTable {
+    explicit SymbolTable(TextTable* texts = nullptr) : texts_(texts) {}
+
+    void attach_text_table(TextTable* texts) { texts_ = texts; }
+
+    SymbolId intern_identifier(TextId text_id) {
+      if (!texts_ || text_id == kInvalidText) return kInvalidSymbol;
+      return symbol_ids_.intern(text_id);
+    }
+
+    SymbolId intern_identifier(std::string_view text) {
+      if (!texts_) return kInvalidSymbol;
+      return intern_identifier(texts_->intern(text));
+    }
+
+    TextId text_id(SymbolId id) const {
+      const TextId* stored = symbol_ids_.lookup(id);
+      return stored ? *stored : kInvalidText;
+    }
+
+    std::string_view spelling(SymbolId id) const {
+      if (!texts_) return {};
+      return texts_->lookup(text_id(id));
+    }
+
+    size_t size() const { return symbol_ids_.size(); }
+
+    TextTable* texts_ = nullptr;
+    KeyIdTable<SymbolId, kInvalidSymbol, TextId> symbol_ids_;
+  };
+
+  // Parser-local semantic tables keyed by identifier atoms. Scope and binding
+  // stay outside this struct; this only centralizes atom-keyed parser facts.
+  struct ParserNameTables {
+    SymbolId intern_identifier(std::string_view text) {
+      return symbols ? symbols->intern_identifier(text) : kInvalidSymbol;
+    }
+
+    bool is_typedef(SymbolId id) const {
+      return id != kInvalidSymbol && typedefs.count(id) != 0;
+    }
+
+    bool has_typedef_type(SymbolId id) const {
+      return id != kInvalidSymbol && typedef_types.count(id) != 0;
+    }
+
+    const TypeSpec* lookup_typedef_type(SymbolId id) const {
+      const auto it = typedef_types.find(id);
+      return it == typedef_types.end() ? nullptr : &it->second;
+    }
+
+    SymbolTable* symbols = nullptr;
+    std::unordered_set<SymbolId> typedefs;
+    std::unordered_set<SymbolId> user_typedefs;
+    std::unordered_map<SymbolId, TypeSpec> typedef_types;
+    std::unordered_map<SymbolId, TypeSpec> var_types;
+  };
+
   // Namespace tree node used by C++ qualified-name lookup and using-directive
   // visibility tracking.
   struct NamespaceContext {
