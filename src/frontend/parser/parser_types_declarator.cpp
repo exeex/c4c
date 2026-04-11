@@ -280,8 +280,9 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
             primary_tpl->template_param_is_nttp[arg_idx];
     }
     if (check(TokenKind::Identifier)) {
-        const std::string resolved = resolve_visible_type_name(cur().lexeme);
-        if (alias_template_info_.count(cur().lexeme) > 0 ||
+        const std::string name(token_spelling(cur()));
+        const std::string resolved = resolve_visible_type_name(name);
+        if (alias_template_info_.count(name) > 0 ||
             alias_template_info_.count(resolved) > 0) {
             return false;
         }

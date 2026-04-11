@@ -723,6 +723,61 @@ void test_parser_template_type_arg_probes_use_token_spelling() {
   parser.pop_template_scope();
 }
 
+void test_parser_alias_template_value_probes_use_token_spelling() {
+  c4c::Arena arena;
+  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  parser.alias_template_info_["Alias"] = {};
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "0"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[0].lexeme = "bridge_only_alias";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  expect_true(!parser.is_clearly_value_template_arg(nullptr, 0),
+              "direct alias-template probes should use parser-owned spelling");
+
+  c4c::Parser resolved_parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+  resolved_parser.register_typedef_binding("ns::Alias", alias_ts, true);
+  resolved_parser.using_value_aliases_[0]["Alias"] = "ns::Alias";
+  resolved_parser.alias_template_info_["ns::Alias"] = {};
+  resolved_parser.tokens_ = {
+      resolved_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      resolved_parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      resolved_parser.make_injected_token(seed, c4c::TokenKind::IntLit, "0"),
+      resolved_parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      resolved_parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      resolved_parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  resolved_parser.tokens_[0].lexeme = "bridge_only_alias";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  expect_true(!resolved_parser.is_clearly_value_template_arg(nullptr, 0),
+              "resolved alias-template probes should use parser-owned spelling");
+}
+
 }  // namespace
 
 int main() {
@@ -741,6 +796,7 @@ int main() {
   test_parser_parse_base_type_identifier_probes_use_token_spelling();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
+  test_parser_alias_template_value_probes_use_token_spelling();
 
   std::cout << "PASS: frontend_parser_tests\n";
   return 0;
