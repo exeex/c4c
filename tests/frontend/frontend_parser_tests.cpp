@@ -828,6 +828,37 @@ void test_parser_post_pointer_qualifier_probes_use_token_spelling() {
             "post-pointer qualifier probes should use parser-owned spelling");
 }
 
+void test_parser_qualified_declarator_name_uses_token_spelling() {
+  c4c::Arena arena;
+  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ns"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "inner"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Value"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[1].lexeme = "bridge_only_ns";
+  parser.tokens_[3].lexeme = "bridge_only_inner";
+  parser.tokens_[5].lexeme = "bridge_only_value";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  std::string qualified_name;
+  expect_true(parser.parse_qualified_declarator_name(&qualified_name),
+              "qualified declarator names should parse from injected token spelling");
+  expect_eq(qualified_name, "::ns::inner::Value",
+            "qualified declarator names should materialize parser-owned spelling");
+}
+
 }  // namespace
 
 int main() {
@@ -849,6 +880,7 @@ int main() {
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
   test_parser_post_pointer_qualifier_probes_use_token_spelling();
+  test_parser_qualified_declarator_name_uses_token_spelling();
 
   std::cout << "PASS: frontend_parser_tests\n";
   return 0;

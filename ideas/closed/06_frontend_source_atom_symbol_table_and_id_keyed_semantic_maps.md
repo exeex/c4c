@@ -1,7 +1,31 @@
 # Frontend Source-Atom Symbol Table And Id-Keyed Semantic Maps
 
-Status: Open
+Status: Completed
+Completed: 2026-04-11
 Last Updated: 2026-04-11
+
+## Completion Summary
+
+- Landed shared stable-id storage plus lexer-populated `TextId` / `FileId`
+  token fields while keeping `Token::lexeme` / `Token::file` as deprecated
+  bridge storage.
+- Added parser-owned `SymbolId` / `SymbolTable` helpers and migrated the
+  parser's plain-identifier typedef/value semantic tables onto id-keyed
+  storage behind the existing wrappers.
+- Preserved composed-name boundaries by keeping qualified/composed typedef and
+  value bindings string-keyed while parsed qualified-name segments now carry
+  parser-owned atom ids.
+- Completed the warning-driven parser convergence path in scope, including
+  `parse_qualified_declarator_name()` now materializing identifier segments via
+  parser-owned token spelling helpers instead of deprecated bridge lexemes.
+
+## Deferred Follow-On
+
+- Deprecated `Token::lexeme` / `Token::file` reads still exist outside the
+  completed migration path, including broader parser sites such as
+  `parser_types_struct.cpp`, `parser_declarations.cpp`, and
+  `parser_types_template.cpp`; keep trimming those under a separate idea rather
+  than silently widening this closed runbook.
 
 ## Goal
 

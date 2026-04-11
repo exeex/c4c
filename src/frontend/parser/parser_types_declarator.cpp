@@ -939,7 +939,7 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name) {
     if (check(TokenKind::KwOperator)) {
         parsed_qualified = parse_operator_declarator_name(&qualified_name);
     } else if (check(TokenKind::Identifier)) {
-        qualified_name += cur().lexeme;
+        qualified_name += token_spelling(cur());
         consume();
         parsed_qualified = true;
         consume_template_args_before_scope();
@@ -948,7 +948,7 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name) {
     while (parsed_qualified && match(TokenKind::ColonColon)) {
         append_scope_sep();
         if (check(TokenKind::Identifier)) {
-            qualified_name += cur().lexeme;
+            qualified_name += token_spelling(cur());
             consume();
             consume_template_args_before_scope();
             continue;
