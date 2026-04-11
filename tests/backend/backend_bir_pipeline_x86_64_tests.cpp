@@ -8001,6 +8001,41 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_first_r
                       "x86 LIR both-local first-rewrite two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_first_rewrite_direct_call_with_spacing_on_native_x86_path() {
+  const auto module = make_lir_minimal_two_arg_both_local_first_rewrite_direct_call_module_with_spacing();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_pair",
+                  "x86 LIR both-local first-rewrite two-argument direct-call input should still emit the helper definition on the native x86 path when typed-call spacing drifts");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 LIR both-local first-rewrite two-argument direct-call input should preserve the helper add body on the native x86 path when typed-call spacing drifts");
+  expect_contains(rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "x86 LIR both-local first-rewrite two-argument direct-call input should trim spacing, fold the first local rewrite, reload the sibling local operand, and still lower the helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR both-local first-rewrite two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text when typed-call spacing drifts");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_first_rewrite_direct_call_with_suffix_spacing_on_native_x86_path() {
+  const auto module =
+      make_lir_minimal_two_arg_both_local_first_rewrite_direct_call_module_with_suffix_spacing();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_pair",
+                  "x86 LIR both-local first-rewrite two-argument direct-call input should still emit the helper definition on the native x86 path when typed-call suffix spacing drifts");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 LIR both-local first-rewrite two-argument direct-call input should preserve the helper add body on the native x86 path when typed-call suffix spacing drifts");
+  expect_contains(rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "x86 LIR both-local first-rewrite two-argument direct-call input should trim suffix spacing, fold the first local rewrite, reload the sibling local operand, and still lower the helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR both-local first-rewrite two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text when typed-call suffix spacing drifts");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_second_rewrite_direct_call_on_native_x86_path() {
   const auto module = make_lir_minimal_two_arg_both_local_second_rewrite_direct_call_module();
 
@@ -8018,6 +8053,41 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_second_
                       "x86 LIR both-local second-rewrite two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_second_rewrite_direct_call_with_spacing_on_native_x86_path() {
+  const auto module = make_lir_minimal_two_arg_both_local_second_rewrite_direct_call_module_with_spacing();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_pair",
+                  "x86 LIR both-local second-rewrite two-argument direct-call input should still emit the helper definition on the native x86 path when typed-call spacing drifts");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 LIR both-local second-rewrite two-argument direct-call input should preserve the helper add body on the native x86 path when typed-call spacing drifts");
+  expect_contains(rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "x86 LIR both-local second-rewrite two-argument direct-call input should trim spacing, reload the first operand locally, fold the second local rewrite, and still lower the helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR both-local second-rewrite two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text when typed-call spacing drifts");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_second_rewrite_direct_call_with_suffix_spacing_on_native_x86_path() {
+  const auto module =
+      make_lir_minimal_two_arg_both_local_second_rewrite_direct_call_module_with_suffix_spacing();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_pair",
+                  "x86 LIR both-local second-rewrite two-argument direct-call input should still emit the helper definition on the native x86 path when typed-call suffix spacing drifts");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 LIR both-local second-rewrite two-argument direct-call input should preserve the helper add body on the native x86 path when typed-call suffix spacing drifts");
+  expect_contains(rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "x86 LIR both-local second-rewrite two-argument direct-call input should trim suffix spacing, reload the first operand locally, fold the second local rewrite, and still lower the helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR both-local second-rewrite two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text when typed-call suffix spacing drifts");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_rewrite_direct_call_on_native_x86_path() {
   const auto module = make_lir_minimal_two_arg_both_local_double_rewrite_direct_call_module();
 
@@ -8033,6 +8103,41 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_
                   "x86 LIR both-local double-rewrite two-argument direct-call input should fold both local rewrites back to the stored immediates before lowering the helper call on the native x86 path");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR both-local double-rewrite two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_rewrite_direct_call_with_spacing_on_native_x86_path() {
+  const auto module = make_lir_minimal_two_arg_both_local_double_rewrite_direct_call_module_with_spacing();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_pair",
+                  "x86 LIR both-local double-rewrite two-argument direct-call input should still emit the helper definition on the native x86 path when typed-call spacing drifts");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 LIR both-local double-rewrite two-argument direct-call input should preserve the helper add body on the native x86 path when typed-call spacing drifts");
+  expect_contains(rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "x86 LIR both-local double-rewrite two-argument direct-call input should trim spacing, fold both local rewrites back to the stored immediates, and still lower the helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR both-local double-rewrite two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text when typed-call spacing drifts");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_rewrite_direct_call_with_suffix_spacing_on_native_x86_path() {
+  const auto module =
+      make_lir_minimal_two_arg_both_local_double_rewrite_direct_call_module_with_suffix_spacing();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_pair",
+                  "x86 LIR both-local double-rewrite two-argument direct-call input should still emit the helper definition on the native x86 path when typed-call suffix spacing drifts");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 LIR both-local double-rewrite two-argument direct-call input should preserve the helper add body on the native x86 path when typed-call suffix spacing drifts");
+  expect_contains(rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "x86 LIR both-local double-rewrite two-argument direct-call input should trim suffix spacing, fold both local rewrites back to the stored immediates, and still lower the helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR both-local double-rewrite two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text when typed-call suffix spacing drifts");
 }
 
 void test_backend_bir_pipeline_drives_x86_lir_declared_zero_arg_direct_call_on_native_x86_path() {
@@ -11958,8 +12063,14 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_arg_direct_call_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_arg_direct_call_with_suffix_spacing_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_first_rewrite_direct_call_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_first_rewrite_direct_call_with_spacing_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_first_rewrite_direct_call_with_suffix_spacing_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_second_rewrite_direct_call_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_second_rewrite_direct_call_with_spacing_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_second_rewrite_direct_call_with_suffix_spacing_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_rewrite_direct_call_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_rewrite_direct_call_with_spacing_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_rewrite_direct_call_with_suffix_spacing_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_zero_arg_direct_call_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_repeated_zero_arg_call_compare_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_loop_through_bir_end_to_end);

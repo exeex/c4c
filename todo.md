@@ -13,18 +13,19 @@ Source Plan: plan.md
 - immediate target:
   continue auditing whether any remaining direct-call sibling family still
   lacks native public-pipeline spacing/suffix coverage after landing the
-  first-local-rewrite spacing and suffix-spacing route regressions
+  both-local rewrite family spacing and suffix-spacing route regressions
 
 ## Next Slice
 
 - continue auditing whether any remaining direct-call sibling family still
   lacks native public-pipeline spacing/suffix coverage after this
-  second-local-rewrite route completion, without widening into parked matcher
+  both-local rewrite route completion, without widening into parked matcher
   ownership
 - likely next bounded slice:
-  native public-pipeline spacing/suffix coverage for whichever remaining
-  sibling family still has prepared-LIR coverage but no matching public x86
-  route regressions after the first-local-rewrite route is closed out
+  native public-pipeline args-spacing coverage for the remaining plain
+  two-arg `local_arg` and `both_local_arg` helper families, which already have
+  prepared-LIR spacing coverage but still lack matching public x86 native-path
+  regressions
 - do not widen into new helper ownership or unrelated control-flow matchers in
   the same commit
 - leave fused compare+branch, block branch lowering, select, and
@@ -33,6 +34,28 @@ Source Plan: plan.md
   of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with the
+  missing native public-pipeline spacing and suffix-spacing regressions for the
+  both-local first-rewrite, both-local second-rewrite, and both-local
+  double-rewrite two-arg helper families: the x86 route now pins typed-call
+  trimming on those already-landed sibling direct-call families without
+  widening matcher scope
+- implementation note:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now adds dedicated
+  native-path end-to-end regressions for
+  `make_lir_minimal_two_arg_both_local_{first,second,double}_rewrite_direct_call_module_{with_spacing,with_suffix_spacing}()`
+  so the public x86 backend route keeps those both-local rewrite helper
+  families live when either args spacing or `callee_type_suffix` spacing
+  drifts
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8` and
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_first_rewrite_direct_call_with_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_first_rewrite_direct_call_with_suffix_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_second_rewrite_direct_call_with_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_second_rewrite_direct_call_with_suffix_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_rewrite_direct_call_with_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_rewrite_direct_call_with_suffix_spacing_on_native_x86_path`
+- broad validation passed:
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration extends the active Step 4 direct-call ownership path with the
   missing native public-pipeline args-spacing and suffix-spacing regressions
