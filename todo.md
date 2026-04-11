@@ -11,18 +11,17 @@ Source Plan: plan.md
   `src/backend/x86/codegen/direct_calls.cpp` instead of widening back into the
   parked branch/select or prologue/returns surfaces
 - immediate target:
-  after landing the bounded helper-side base single-arg parity coverage for the
-  add-immediate and identity families, continue by auditing the next remaining
-  direct-call helper/native coverage gap that still stays within the existing
-  prepared-LIR single-arg ownership surface instead of widening into parked
-  matcher ownership
+  after landing the missing plain helper-side call-crossing direct-call
+  regression, continue auditing the next remaining direct-call helper/native
+  coverage gap that stays within the already-landed prepared-LIR helper
+  families instead of widening into parked matcher ownership
 
 ## Next Slice
 
-- keep the next direct-call regression slice on the same already-landed
-  single-arg helper family where helper-side and native prepared-LIR coverage
-  still lack parity after this base-case completion, without widening into
-  parked matcher ownership
+- keep the next direct-call regression slice on the already-landed
+  call-crossing or sibling direct-call helper family where helper-side and
+  native prepared-LIR coverage still lack parity after this plain helper-side
+  completion, without widening into parked matcher ownership
 - do not widen into new helper ownership or unrelated control-flow matchers in
   the same commit
 - leave fused compare+branch, block branch lowering, select, and
@@ -31,6 +30,42 @@ Source Plan: plan.md
   of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with the
+  missing plain helper-side call-crossing regression: helper and native x86
+  prepared-LIR coverage now pin the bounded call-crossing helper family on the
+  native helper seam for plain, args-spaced, and suffix-spaced typed calls
+  without widening matcher scope
+- implementation note:
+  `tests/backend/backend_bir_pipeline_tests.cpp` now adds
+  `make_supported_x86_call_crossing_direct_call_lir_module()` plus
+  `test_x86_direct_call_helper_accepts_call_crossing_slice()` and suite
+  registration so the direct-call helper seam explicitly keeps the unspaced
+  call-crossing form live next to the already-landed spacing and
+  suffix-spacing variants
+- implementation note:
+  the existing direct-call parser/helper path already accepted that plain form,
+  so this slice lands as focused regression coverage rather than a code path
+  rewrite
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_call_crossing_slice test_x86_direct_call_helper_accepts_call_crossing_slice_with_spacing test_x86_direct_call_helper_accepts_call_crossing_slice_with_suffix_spacing test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice_with_spacing test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice_with_suffix_spacing`
+- broad validation note:
+  comparing the fresh `test_fail_after.log` run against the older
+  `test_fail_matched_before.log` baseline was non-monotonic because the current
+  tree now reproducibly fails the unrelated x86 route cases
+  `backend_codegen_route_x86_64_c_testsuite_00030_repeated_call_compare_zero_return_retries_after_direct_bir_rejection`,
+  `backend_codegen_route_x86_64_c_testsuite_00031_local_i32_inc_dec_compare_retries_after_direct_bir_rejection`,
+  `c_testsuite_x86_backend_src_00030_c`, and
+  `c_testsuite_x86_backend_src_00031_c`
+- broad validation passed on a matched current-tree rerun:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after_rerun.log`,
+  and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_after.log --after test_fail_after_rerun.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration extends the active Step 4 direct-call ownership path with the
   missing helper-side base single-arg call regressions: direct x86 helper
