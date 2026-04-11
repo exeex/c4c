@@ -13,19 +13,19 @@ Source Plan: plan.md
 - immediate target:
   continue auditing whether any remaining direct-call sibling family still
   lacks native public-pipeline spacing/suffix coverage after landing the
-  both-local rewrite family spacing and suffix-spacing route regressions
+  plain two-arg `local_arg` and `both_local_arg` args-spacing regressions,
+  without widening into parked matcher ownership
 
 ## Next Slice
 
 - continue auditing whether any remaining direct-call sibling family still
-  lacks native public-pipeline spacing/suffix coverage after this
-  both-local rewrite route completion, without widening into parked matcher
-  ownership
+  lacks native public-pipeline spacing/suffix coverage after this plain
+  `local_arg`/`both_local_arg` args-spacing route completion, without widening
+  into parked matcher ownership
 - likely next bounded slice:
-  native public-pipeline args-spacing coverage for the remaining plain
-  two-arg `local_arg` and `both_local_arg` helper families, which already have
-  prepared-LIR spacing coverage but still lack matching public x86 native-path
-  regressions
+  confirm whether any direct-call sibling family still lacks native public
+  x86 route coverage outside the now-complete plain and rewrite two-arg
+  spacing/suffix matrix, then pick the smallest remaining direct-call-only gap
 - do not widen into new helper ownership or unrelated control-flow matchers in
   the same commit
 - leave fused compare+branch, block branch lowering, select, and
@@ -34,6 +34,25 @@ Source Plan: plan.md
   of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with the
+  missing native public-pipeline args-spacing regressions for the remaining
+  plain first-local and both-local two-arg helper families: the x86 route now
+  pins typed-call trimming on those already-landed sibling direct-call
+  families without widening matcher scope
+- implementation note:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now adds dedicated
+  native-path end-to-end regressions for
+  `make_lir_minimal_two_arg_{local_arg,both_local_arg}_direct_call_module_with_spacing()`
+  so the public x86 backend route keeps those plain two-arg helper families
+  live when args spacing drifts
+- focused validation passed:
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_with_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_arg_direct_call_with_spacing_on_native_x86_path test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice_with_spacing test_x86_direct_emitter_lowers_minimal_two_arg_both_local_arg_call_slice_with_spacing`
+- broad validation passed:
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration extends the active Step 4 direct-call ownership path with the
   missing native public-pipeline spacing and suffix-spacing regressions for the
