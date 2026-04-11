@@ -7,17 +7,16 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner follow-on after landing the bounded
-  `emit_return_impl` state-exposure slice inside `src/backend/x86/codegen/returns.cpp`:
-  either keep tightening the translated return-owner path around the remaining
-  local epilogue boundary or switch back to the still-parked `f128.cpp`
-  shared-helper surface without widening into the broader
-  prologue/runtime-owner cutover
+  `src/backend/x86/codegen/f128.cpp` helper-backed build wiring slice:
+  continue tightening the parked translated `f128.cpp` support layer around
+  the remaining shared helper bodies or the next bounded address/store helper
+  path without widening into the broader prologue/runtime-owner cutover
 - immediate target:
-  inspect whether the next bounded Step 3 move should lift the temporary
-  local epilogue text used by `src/backend/x86/codegen/returns.cpp`
-  into a shared/header-visible helper surface or instead return to the parked
-  translated `src/backend/x86/codegen/f128.cpp` support layer for the next
-  isolated helper-backed link/behavior slice
+  inspect whether the next bounded Step 3 move should keep advancing the
+  parked translated `src/backend/x86/codegen/f128.cpp` helper surface
+  (`emit_f128_store_f64_via_x87`, raw-byte staging, or the first non-stub cast
+  helper) or instead return to the remaining `returns.cpp` local-epilogue
+  boundary without widening into prologue ownership
 
 ## Next Slice
 
@@ -32,6 +31,35 @@ Source Plan: plan.md
   unless a later translated-owner cutover proves that state is already exposed
 
 ## Current Iteration Notes
+
+- this iteration wires the parked translated
+  `src/backend/x86/codegen/f128.cpp` helper surface into both active x86 source
+  lists in `CMakeLists.txt` and keeps the scope bounded to the helper methods
+  already used by `memory.cpp` and the translated returns path: direct,
+  indirect, and over-aligned F128 address resolution plus the linked
+  `fldt`/`fstpt`, load-finish, and x87 reload helpers now live in `f128.cpp`
+  instead of `shared_call_support.cpp`
+- implementation note:
+  `tests/backend/backend_shared_util_tests.cpp` now exercises the wired
+  helper-backed F128 memory-owner path directly, pinning direct-slot x87
+  reloads, resolved-address F128 stores/loads, destination-slot staging on
+  load finish, accumulator-cache refresh, and the direct-slot/provenance state
+  updates
+- bounded-scope note:
+  the rest of `src/backend/x86/codegen/f128.cpp` remains parked and stubbed;
+  this slice only advances the helper bodies already exposed through the active
+  public/shared x86 surface instead of reopening the full translated F128
+  owner or the prologue/runtime dependency chain
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_memory_owner_surface`, and
+  `./build/backend_shared_util_tests`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration exposes the bounded translated return-owner state needed by
   `src/backend/x86/codegen/returns.cpp` without widening into the parked

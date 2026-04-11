@@ -524,7 +524,9 @@ void test_x86_translated_memory_owner_emits_linked_helper_text() {
   codegen.state.slots.emplace(5, StackSlot{-24});
   codegen.state.slots.emplace(7, StackSlot{-40});
   codegen.state.slots.emplace(9, StackSlot{-56});
+  codegen.state.f128_direct_slots.insert(5);
 
+  codegen.emit_store_impl(Operand{5}, c4c::backend::x86::Value{7}, IrType::F128);
   codegen.emit_seg_store_symbol_impl(Operand{5}, "tls_anchor", IrType::I64, AddressSpace::SegGs);
   codegen.emit_add_offset_to_addr_reg_impl(8);
   codegen.emit_gep_direct_const_impl(StackSlot{-32}, 16);
@@ -541,6 +543,10 @@ void test_x86_translated_memory_owner_emits_linked_helper_text() {
                   "wired translated memory owner should load the source operand into the accumulator before a segment-symbol store");
   expect_contains(asm_text, "    movq %rax, %gs:tls_anchor(%rip)",
                   "wired translated memory owner should emit segment-symbol stores through the linked owner body");
+  expect_contains(asm_text, "    fldt -24(%rbp)",
+                  "wired translated memory owner should reload direct-slot f128 values through the parked helper-backed x87 path");
+  expect_contains(asm_text, "    fstpt -40(%rbp)",
+                  "wired translated memory owner should store F128 values through the parked helper-backed resolved-address path");
   expect_contains(asm_text, "    addq $8, %rcx",
                   "wired translated memory owner should keep offset-add helpers linked through the active x86 build");
   expect_contains(asm_text, "    leaq -16(%rbp), %rax",
@@ -549,12 +555,20 @@ void test_x86_translated_memory_owner_emits_linked_helper_text() {
                   "wired translated memory owner should keep memcpy size setup linked through the active x86 build");
   expect_contains(asm_text, "    rep movsb",
                   "wired translated memory owner should keep memcpy emission linked through the active x86 build");
-  expect_contains(asm_text, "    fldt <f128-source>",
-                  "wired translated memory owner should keep the bounded shared f128 load helper linked for parked memory-owner F128 loads");
-  expect_contains(asm_text, "    <finish-f128-load>",
-                  "wired translated memory owner should keep the bounded shared f128 load-finish helper linked for parked memory-owner F128 loads");
+  expect_contains(asm_text, "    fldt -40(%rbp)",
+                  "wired translated memory owner should load parked F128 values through the helper-backed resolved-address path");
+  expect_contains(asm_text, "    fstpt -56(%rbp)",
+                  "wired translated memory owner should preserve full F128 precision by staging the parked load through the destination slot");
+  expect_contains(asm_text, "    fldt -56(%rbp)",
+                  "wired translated memory owner should reload the staged F128 destination slot after the helper-backed parked load");
   expect_true(codegen.state.get_f128_source(9).has_value() && *codegen.state.get_f128_source(9) == 7,
               "wired translated memory owner should preserve F128 load provenance through the shared translated state");
+  expect_true(codegen.state.reg_cache.acc_valid &&
+                  codegen.state.reg_cache.acc_value_id == 9 &&
+                  !codegen.state.reg_cache.acc_known_zero_extended,
+              "wired translated memory owner should refresh the shared accumulator cache when finishing parked F128 loads");
+  expect_true(codegen.state.f128_direct_slots.find(9) != codegen.state.f128_direct_slots.end(),
+              "wired translated memory owner should mark parked F128 load destinations as direct-slot x87 values");
 }
 
 void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {
