@@ -1027,6 +1027,65 @@ void test_x86_translated_f128_unsigned_cast_helpers_emit_real_paths() {
                       "translated unsigned-int-to-float helper should no longer leave the helper body as placeholder text");
 }
 
+void test_x86_codegen_header_exports_translated_cast_owner_symbols() {
+  using X86Codegen = c4c::backend::x86::X86Codegen;
+
+  auto emit_cast_instrs = &X86Codegen::emit_cast_instrs_impl;
+  auto emit_cast = &X86Codegen::emit_cast_impl;
+
+  expect_true(emit_cast_instrs != nullptr && emit_cast != nullptr,
+              "x86 translated cast owner methods should stay compile/link reachable through the public x86_codegen surface once cast_ops.cpp enters the build");
+}
+
+void test_x86_translated_cast_owner_reuses_constant_f128_reload_bridge() {
+  using IrType = c4c::backend::x86::IrType;
+  using Operand = c4c::backend::x86::Operand;
+  using StackSlot = c4c::backend::x86::StackSlot;
+  using Value = c4c::backend::x86::Value;
+
+  c4c::backend::x86::X86Codegen f128_to_f64_codegen;
+  f128_to_f64_codegen.state.slots.emplace(9, StackSlot{-24});
+  f128_to_f64_codegen.state.set_f128_constant_words(31, 0x0123456789ABCDEFULL, 0x2468);
+
+  f128_to_f64_codegen.emit_cast_impl(Value{9}, Operand{31}, IrType::F128, IrType::F64);
+
+  std::string f128_to_f64_asm;
+  for (const auto& line : f128_to_f64_codegen.state.asm_lines) {
+    f128_to_f64_asm += line;
+    f128_to_f64_asm.push_back('\n');
+  }
+
+  expect_contains(f128_to_f64_asm, "    subq $16, %rsp",
+                  "wired translated cast owner should stage constant long-double operands through the shared raw-byte stack bridge before narrowing");
+  expect_contains(f128_to_f64_asm, "    fldt (%rsp)",
+                  "wired translated cast owner should reload constant long-double operands through the shared x87 helper before narrowing");
+  expect_contains(f128_to_f64_asm, "    fstpl (%rsp)",
+                  "wired translated cast owner should narrow constant long-double operands through the translated x87 store path");
+  expect_contains(f128_to_f64_asm, "    movq %rax, -24(%rbp)",
+                  "wired translated cast owner should store narrowed f64 results through the shared destination-slot path");
+
+  c4c::backend::x86::X86Codegen f128_to_i8_codegen;
+  f128_to_i8_codegen.state.slots.emplace(11, StackSlot{-40});
+  f128_to_i8_codegen.state.set_f128_constant_words(33, 0x0FEDCBA987654321ULL, 0x1357);
+
+  f128_to_i8_codegen.emit_cast_impl(Value{11}, Operand{33}, IrType::F128, IrType::I8);
+
+  std::string f128_to_i8_asm;
+  for (const auto& line : f128_to_i8_codegen.state.asm_lines) {
+    f128_to_i8_asm += line;
+    f128_to_i8_asm.push_back('\n');
+  }
+
+  expect_contains(f128_to_i8_asm, "    fldt (%rsp)",
+                  "wired translated cast owner should reuse the constant long-double reload bridge for integer casts");
+  expect_contains(f128_to_i8_asm, "    fisttpq (%rsp)",
+                  "wired translated cast owner should convert the reloaded x87 value through the shared integer helper");
+  expect_contains(f128_to_i8_asm, "    movsbq %al, %rax",
+                  "wired translated cast owner should preserve the translated narrow signed-fixup path after integer conversion");
+  expect_contains(f128_to_i8_asm, "    movq %rax, -40(%rbp)",
+                  "wired translated cast owner should store integer cast results through the shared destination-slot path");
+}
+
 void test_x86_codegen_header_exports_translated_float_owner_symbols() {
   using X86Codegen = c4c::backend::x86::X86Codegen;
 
@@ -5147,6 +5206,8 @@ int main(int argc, char* argv[]) {
   test_x86_translated_f128_cast_helpers_dispatch_x87_paths();
   test_x86_translated_f128_cast_helpers_cover_generic_scalar_casts();
   test_x86_translated_f128_unsigned_cast_helpers_emit_real_paths();
+  test_x86_codegen_header_exports_translated_cast_owner_symbols();
+  test_x86_translated_cast_owner_reuses_constant_f128_reload_bridge();
   test_x86_codegen_header_exports_translated_float_owner_symbols();
   test_x86_translated_float_owner_reuses_constant_f128_reload_bridge();
   test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols();
