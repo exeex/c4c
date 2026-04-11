@@ -6,26 +6,25 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 translated-owner follow-on after landing the bounded translated
-  x86 cast-helper bridge now reachable through the parked
+- Step 3 translated-owner follow-on inside the parked
   `src/backend/x86/codegen/f128.cpp` helper layer: keep the next move inside
-  the remaining helper bodies already surfaced by `cast_ops.cpp` without
-  widening into raw-byte constant staging or prologue/runtime-owner work
+  the remaining helper bodies already surfaced by the active cast-owner seam
+  without widening into prologue/runtime
+  owner work
 - immediate target:
-  decide the next smallest translated cast-helper slice after the signed/float
-  dispatcher bridge: either expose the minimal shared label/type surface
-  needed for the still-parked unsigned helper paths
-  (`emit_f128_to_u64_cast`, `emit_u64_to_float`) or widen the public x86
-  operand model enough to carry the constant-backed long-double cast branch
-  cleanly
+  decide whether the next bounded cast-owner slice is the still-deferred
+  constant-backed long-double operand path (`emit_f128_store_raw_bytes` /
+  constant `emit_f128_load_to_x87`) or another caller that can consume the now
+  real unsigned helper text without widening the public operand model
 
 ## Next Slice
 
 - keep the next `f128.cpp` work limited to the remaining bounded helper bodies
   already surfaced by the active x86 memory/cast paths, rather than wiring the
-  whole parked owner into the build; after the signed/float cast-helper slice,
-  re-evaluate whether the next bounded move is the unsigned helper bridge or
-  the constant-backed long-double operand path
+  whole parked owner into the build; after landing the unsigned helper bridge,
+  re-evaluate whether the next bounded move is the constant-backed long-double
+  operand path or another cast-owner caller that can consume the newly real
+  helper text
 - treat `emit_f128_store_raw_bytes` as deferred until the active public x86
   operand surface can express the needed constant-form inputs cleanly, instead
   of inventing a local one-off constant channel
@@ -36,6 +35,38 @@ Source Plan: plan.md
   unless a later translated-owner cutover proves that state is already exposed
 
 ## Current Iteration Notes
+
+- this iteration lands the bounded translated unsigned cast-helper bridge
+  already surfaced by the parked x86 cast-owner path:
+  `src/backend/x86/codegen/f128.cpp` now replaces the
+  `emit_f128_to_u64_cast`, `emit_float_to_unsigned`, and
+  `emit_u64_to_float` placeholder bodies with the translated threshold,
+  bias-recovery, and half-value SSE/x87 sequences while staying inside the
+  reduced shared x86 surface by emitting local branch labels directly in
+  `f128.cpp`
+- implementation note:
+  `tests/backend/backend_shared_util_tests.cpp` now pins the unsigned helper
+  contract directly, covering the bounded `f128` to `u64` threshold compare
+  path, `f64`/`f32` to unsigned integer truncation paths, and `u64` to
+  `f64`/`f32` recovery paths while asserting the old placeholder text is gone
+- surfaced boundary note:
+  the reduced public x86 helper surface still does not expose the translated
+  label-emitter helpers used by the fuller owner path, so this slice keeps the
+  bridge bounded by generating local labels in `f128.cpp` instead of widening
+  `x86_codegen.hpp`; constant-backed long-double operand staging remains the
+  next explicit `f128.cpp` boundary
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_f128_unsigned`,
+  `./build/backend_shared_util_tests translated_f128_cast_helpers`, and
+  `./build/backend_shared_util_tests`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_before.log`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration lands the bounded translated x86 cast-helper bridge already
   surfaced by `src/backend/x86/codegen/cast_ops.cpp`: the parked

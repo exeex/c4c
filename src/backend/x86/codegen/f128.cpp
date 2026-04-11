@@ -1,5 +1,7 @@
 #include "x86_codegen.hpp"
 
+#include <limits>
+
 namespace c4c::backend::x86 {
 
 namespace {
@@ -10,6 +12,11 @@ bool is_float_ty(IrType ty) {
 
 bool is_signed_ty(IrType ty) {
   return ty == IrType::I8 || ty == IrType::I32 || ty == IrType::I64 || ty == IrType::I128;
+}
+
+std::string fresh_local_label(std::string_view prefix) {
+  static std::uint64_t next_label_id = 0;
+  return std::string(".L") + std::string(prefix) + "_" + std::to_string(next_label_id++);
 }
 
 std::size_t type_size_bytes(IrType ty) {
@@ -218,7 +225,33 @@ void X86Codegen::emit_f128_to_int_cast(IrType to_ty) {
   }
 }
 
-void X86Codegen::emit_f128_to_u64_cast() { this->state.emit("    <f128-to-u64-cast>"); }
+void X86Codegen::emit_f128_to_u64_cast() {
+  const auto big_label = fresh_local_label("ld2u_big");
+  const auto done_label = fresh_local_label("ld2u_done");
+  this->state.emit("    subq $8, %rsp");
+  this->state.emit("    movq %rax, (%rsp)");
+  this->state.emit("    fldl (%rsp)");
+  this->state.out.emit_instr_imm_reg("    movabsq", 4890909195324358656LL, "rcx");
+  this->state.emit("    movq %rcx, (%rsp)");
+  this->state.emit("    fldl (%rsp)");
+  this->state.emit("    fcomip %st(1), %st");
+  this->state.emit("    jbe " + big_label);
+  this->state.emit("    fisttpq (%rsp)");
+  this->state.emit("    movq (%rsp), %rax");
+  this->state.emit("    addq $8, %rsp");
+  this->state.emit("    jmp " + done_label);
+  this->state.emit(big_label + ":");
+  this->state.out.emit_instr_imm_reg("    movabsq", 4890909195324358656LL, "rcx");
+  this->state.emit("    movq %rcx, (%rsp)");
+  this->state.emit("    fldl (%rsp)");
+  this->state.emit("    fsubrp %st, %st(1)");
+  this->state.emit("    fisttpq (%rsp)");
+  this->state.emit("    movq (%rsp), %rax");
+  this->state.emit("    addq $8, %rsp");
+  this->state.out.emit_instr_imm_reg("    movabsq", std::numeric_limits<std::int64_t>::min(), "rcx");
+  this->state.emit("    addq %rcx, %rax");
+  this->state.emit(done_label + ":");
+}
 
 void X86Codegen::emit_f128_to_f32_cast() {
   this->state.emit("    subq $8, %rsp");
@@ -323,10 +356,34 @@ void X86Codegen::emit_generic_cast(IrType from_ty, IrType to_ty) {
 }
 
 void X86Codegen::emit_float_to_unsigned(bool from_f64, bool to_u64, IrType to_ty) {
-  (void)from_f64;
-  (void)to_u64;
-  (void)to_ty;
-  this->state.emit("    <float-to-unsigned>");
+  if (from_f64) {
+    this->state.emit("    movq %rax, %xmm0");
+    if (to_u64) {
+      const auto big_label = fresh_local_label("f2u_big");
+      const auto done_label = fresh_local_label("f2u_done");
+      this->state.out.emit_instr_imm_reg("    movabsq", 4890909195324358656LL, "rcx");
+      this->state.emit("    movq %rcx, %xmm1");
+      this->state.emit("    ucomisd %xmm1, %xmm0");
+      this->state.emit("    jae " + big_label);
+      this->state.emit("    cvttsd2siq %xmm0, %rax");
+      this->state.emit("    jmp " + done_label);
+      this->state.emit(big_label + ":");
+      this->state.emit("    subsd %xmm1, %xmm0");
+      this->state.emit("    cvttsd2siq %xmm0, %rax");
+      this->state.out.emit_instr_imm_reg("    movabsq", std::numeric_limits<std::int64_t>::min(), "rcx");
+      this->state.emit("    addq %rcx, %rax");
+      this->state.emit(done_label + ":");
+    } else {
+      this->state.emit("    cvttsd2siq %xmm0, %rax");
+    }
+  } else {
+    this->state.emit("    movd %eax, %xmm0");
+    this->state.emit("    cvttss2siq %xmm0, %rax");
+  }
+
+  if (!to_u64) {
+    this->emit_zero_extend_to_rax(to_ty);
+  }
 }
 
 void X86Codegen::emit_int_to_float_conv(bool to_f64) {
@@ -341,8 +398,34 @@ void X86Codegen::emit_int_to_float_conv(bool to_f64) {
 }
 
 void X86Codegen::emit_u64_to_float(bool to_f64) {
-  (void)to_f64;
-  this->state.emit("    <u64-to-float>");
+  const auto big_label = fresh_local_label("u2f_big");
+  const auto done_label = fresh_local_label("u2f_done");
+  this->state.emit("    testq %rax, %rax");
+  this->state.emit("    js " + big_label);
+  if (to_f64) {
+    this->state.emit("    cvtsi2sdq %rax, %xmm0");
+  } else {
+    this->state.emit("    cvtsi2ssq %rax, %xmm0");
+  }
+  this->state.emit("    jmp " + done_label);
+  this->state.emit(big_label + ":");
+  this->state.emit("    movq %rax, %rcx");
+  this->state.emit("    shrq $1, %rax");
+  this->state.emit("    andq $1, %rcx");
+  this->state.emit("    orq %rcx, %rax");
+  if (to_f64) {
+    this->state.emit("    cvtsi2sdq %rax, %xmm0");
+    this->state.emit("    addsd %xmm0, %xmm0");
+  } else {
+    this->state.emit("    cvtsi2ssq %rax, %xmm0");
+    this->state.emit("    addss %xmm0, %xmm0");
+  }
+  this->state.emit(done_label + ":");
+  if (to_f64) {
+    this->state.emit("    movq %xmm0, %rax");
+  } else {
+    this->state.emit("    movd %xmm0, %eax");
+  }
 }
 void X86Codegen::emit_f128_load_to_x87(const Operand& operand) {
   if (this->state.f128_direct_slots.find(operand.raw) != this->state.f128_direct_slots.end()) {

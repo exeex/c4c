@@ -783,6 +783,102 @@ void test_x86_translated_f128_cast_helpers_cover_generic_scalar_casts() {
                   "translated generic cast helper should sign-extend narrow signed integer results after float conversion");
 }
 
+void test_x86_translated_f128_unsigned_cast_helpers_emit_real_paths() {
+  using IrType = c4c::backend::x86::IrType;
+
+  c4c::backend::x86::X86Codegen f128_to_u64_codegen;
+  f128_to_u64_codegen.emit_f128_to_u64_cast();
+
+  std::string f128_to_u64_asm;
+  for (const auto& line : f128_to_u64_codegen.state.asm_lines) {
+    f128_to_u64_asm += line;
+    f128_to_u64_asm.push_back('\n');
+  }
+
+  expect_contains(f128_to_u64_asm, "    movabsq $4890909195324358656, %rcx",
+                  "translated unsigned f128 helper should materialize the 2^63 threshold constant before the x87 compare");
+  expect_contains(f128_to_u64_asm, "    fcomip %st(1), %st",
+                  "translated unsigned f128 helper should branch on the translated x87 threshold compare");
+  expect_contains(f128_to_u64_asm, "    fsubrp %st, %st(1)",
+                  "translated unsigned f128 helper should subtract the threshold in the high-bit recovery path");
+  expect_contains(f128_to_u64_asm, "    addq %rcx, %rax",
+                  "translated unsigned f128 helper should restore the high-bit bias after the recovered integer conversion");
+  expect_not_contains(f128_to_u64_asm, "<f128-to-u64-cast>",
+                      "translated unsigned f128 helper should no longer leave the helper body as placeholder text");
+
+  c4c::backend::x86::X86Codegen f64_to_u64_codegen;
+  f64_to_u64_codegen.emit_float_to_unsigned(true, true, IrType::I64);
+
+  std::string f64_to_u64_asm;
+  for (const auto& line : f64_to_u64_codegen.state.asm_lines) {
+    f64_to_u64_asm += line;
+    f64_to_u64_asm.push_back('\n');
+  }
+
+  expect_contains(f64_to_u64_asm, "    movq %rax, %xmm0",
+                  "translated unsigned float helper should move staged f64 payloads into xmm0 before conversion");
+  expect_contains(f64_to_u64_asm, "    ucomisd %xmm1, %xmm0",
+                  "translated unsigned float helper should compare f64 inputs against the 2^63 threshold in xmm form");
+  expect_contains(f64_to_u64_asm, "    subsd %xmm1, %xmm0",
+                  "translated unsigned float helper should recover large f64 inputs through the translated subtract-and-add-bias path");
+  expect_contains(f64_to_u64_asm, "    addq %rcx, %rax",
+                  "translated unsigned float helper should restore the sign-bit bias after the large-value SSE truncate");
+
+  c4c::backend::x86::X86Codegen f32_to_u8_codegen;
+  f32_to_u8_codegen.emit_float_to_unsigned(false, false, IrType::I8);
+
+  std::string f32_to_u8_asm;
+  for (const auto& line : f32_to_u8_codegen.state.asm_lines) {
+    f32_to_u8_asm += line;
+    f32_to_u8_asm.push_back('\n');
+  }
+
+  expect_contains(f32_to_u8_asm, "    movd %eax, %xmm0",
+                  "translated unsigned float helper should move staged f32 payloads into xmm0 before truncation");
+  expect_contains(f32_to_u8_asm, "    cvttss2siq %xmm0, %rax",
+                  "translated unsigned float helper should truncate f32 payloads through the shared SSE path");
+  expect_contains(f32_to_u8_asm, "    movzbq %al, %rax",
+                  "translated unsigned float helper should zero-extend narrow unsigned results after conversion");
+  expect_not_contains(f32_to_u8_asm, "<float-to-unsigned>",
+                      "translated unsigned float helper should no longer leave the helper body as placeholder text");
+
+  c4c::backend::x86::X86Codegen u64_to_f64_codegen;
+  u64_to_f64_codegen.emit_u64_to_float(true);
+
+  std::string u64_to_f64_asm;
+  for (const auto& line : u64_to_f64_codegen.state.asm_lines) {
+    u64_to_f64_asm += line;
+    u64_to_f64_asm.push_back('\n');
+  }
+
+  expect_contains(u64_to_f64_asm, "    testq %rax, %rax",
+                  "translated unsigned-int-to-float helper should branch on the sign bit before choosing the fast or recovered path");
+  expect_contains(u64_to_f64_asm, "    cvtsi2sdq %rax, %xmm0",
+                  "translated unsigned-int-to-float helper should keep the direct signed-convert fast path for small values");
+  expect_contains(u64_to_f64_asm, "    addsd %xmm0, %xmm0",
+                  "translated unsigned-int-to-float helper should double the recovered half-value in the high-bit path");
+  expect_contains(u64_to_f64_asm, "    movq %xmm0, %rax",
+                  "translated unsigned-int-to-float helper should materialize f64 results back into the accumulator payload");
+
+  c4c::backend::x86::X86Codegen u64_to_f32_codegen;
+  u64_to_f32_codegen.emit_u64_to_float(false);
+
+  std::string u64_to_f32_asm;
+  for (const auto& line : u64_to_f32_codegen.state.asm_lines) {
+    u64_to_f32_asm += line;
+    u64_to_f32_asm.push_back('\n');
+  }
+
+  expect_contains(u64_to_f32_asm, "    cvtsi2ssq %rax, %xmm0",
+                  "translated unsigned-int-to-float helper should reuse the scalar signed-int-to-f32 conversion on the bounded fast path");
+  expect_contains(u64_to_f32_asm, "    addss %xmm0, %xmm0",
+                  "translated unsigned-int-to-float helper should double the recovered f32 half-value in the high-bit path");
+  expect_contains(u64_to_f32_asm, "    movd %xmm0, %eax",
+                  "translated unsigned-int-to-float helper should materialize f32 results back into eax");
+  expect_not_contains(u64_to_f32_asm, "<u64-to-float>",
+                      "translated unsigned-int-to-float helper should no longer leave the helper body as placeholder text");
+}
+
 void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {
   using X86Codegen = c4c::backend::x86::X86Codegen;
 
@@ -4818,6 +4914,7 @@ int main(int argc, char* argv[]) {
   test_x86_translated_f128_helpers_emit_st0_integer_conversion_text();
   test_x86_translated_f128_cast_helpers_dispatch_x87_paths();
   test_x86_translated_f128_cast_helpers_cover_generic_scalar_casts();
+  test_x86_translated_f128_unsigned_cast_helpers_emit_real_paths();
   test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
   test_x86_translated_regalloc_pruning_helpers_match_shared_contract();
