@@ -3422,6 +3422,15 @@ c4c::codegen::lir::LirModule make_x86_local_arg_call_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_x86_local_arg_call_lir_module_with_spacing() {
+  auto module = make_x86_local_arg_call_lir_module();
+  auto& call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.back());
+  call.args_str = "  i32   %t0  ";
+  call.callee_type_suffix = "( i32 )";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_x86_declared_zero_arg_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -10988,6 +10997,19 @@ void test_x86_direct_emitter_lowers_minimal_local_arg_call_slice() {
                       "x86 direct emitter should stay on native asm emission for the bounded local-arg direct-LIR slice");
 }
 
+void test_x86_direct_emitter_lowers_minimal_local_arg_call_slice_with_spacing() {
+  auto module = make_x86_local_arg_call_lir_module_with_spacing();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded single-local helper call through the native prepared-LIR seam even when typed-call spacing drifts");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  call add_one\n  ret\n",
+                  "x86 direct emitter should trim typed-call spacing and keep the native local-slot-fed helper call shape");
+}
+
 void test_x86_direct_emitter_lowers_minimal_single_arg_add_imm_helper_call_slice() {
   auto module = make_lir_minimal_direct_call_add_imm_module();
 
@@ -11755,6 +11777,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_source_00080_void_helper_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_source_00080_main_only_void_call_zero_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_arg_call_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_arg_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_add_imm_helper_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_identity_helper_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice);
