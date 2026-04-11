@@ -14,6 +14,8 @@ class Lexer {
   explicit Lexer(std::string source,
                  LexProfile profile = LexProfile::C);
   std::vector<Token> scan_all();
+  const TextTable& text_table() const { return text_table_; }
+  const FileTable& file_table() const { return file_table_; }
 
  private:
   char peek() const;
@@ -24,11 +26,11 @@ class Lexer {
   void skip_whitespace_and_comments();
   bool consume_line_marker();
 
-  Token make_token(TokenKind kind, std::string lexeme, int line, int col) const;
+  Token make_token(TokenKind kind, std::string lexeme, int line, int col);
   Token scan_identifier_or_keyword();
   Token scan_number();
-  Token scan_string();
-  Token scan_char();
+  Token scan_string(std::string prefix = {});
+  Token scan_char(std::string prefix = {});
   Token scan_punct();
 
   void scan_float_suffix(std::string &text, bool &is_float);
@@ -36,6 +38,8 @@ class Lexer {
 
   std::string source_;
   LexProfile  lex_profile_;
+  TextTable text_table_;
+  FileTable file_table_;
   std::size_t index_ = 0;
   int line_   = 1;
   int column_ = 1;

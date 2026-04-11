@@ -48,4 +48,25 @@ struct StringIdTable : KeyIdTable<Id, InvalidId, std::string> {
   }
 };
 
+// Immutable string storage for paths / file labels. Unlike StringIdTable, this
+// preserves empty strings so callers can still attach a stable "unknown file"
+// identity without inventing a placeholder spelling.
+template <typename Id, Id InvalidId>
+struct PathIdTable : KeyIdTable<Id, InvalidId, std::string> {
+  Id intern(std::string_view text) {
+    const auto it = this->id_by_key_.find(std::string(text));
+    if (it != this->id_by_key_.end()) return it->second;
+    this->key_by_id_.push_back(std::string(text));
+    const Id id = static_cast<Id>(this->key_by_id_.size());
+    this->id_by_key_.emplace(this->key_by_id_.back(), id);
+    return id;
+  }
+
+  std::string_view lookup(Id id) const {
+    const std::string* stored =
+        KeyIdTable<Id, InvalidId, std::string>::lookup(id);
+    return stored ? std::string_view(*stored) : std::string_view{};
+  }
+};
+
 }  // namespace c4c

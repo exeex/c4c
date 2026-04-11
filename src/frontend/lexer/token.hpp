@@ -15,7 +15,7 @@ constexpr TextId kInvalidText = 0;
 constexpr FileId kInvalidFile = 0;
 
 using TextTable = StringIdTable<TextId, kInvalidText>;
-using FileTable = StringIdTable<FileId, kInvalidFile>;
+using FileTable = PathIdTable<FileId, kInvalidFile>;
 
 // Token kinds mirroring ref/claudes-c-compiler/src/frontend/lexer/token.rs
 // Pure-C backport note: map to a plain enum + tagged union when porting.

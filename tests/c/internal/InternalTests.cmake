@@ -189,6 +189,13 @@ set_tests_properties(frontend_hir_tests PROPERTIES
     LABELS "internal;hir")
 
 add_test(
+    NAME frontend_lexer_tests
+    COMMAND frontend_lexer_tests
+)
+set_tests_properties(frontend_lexer_tests PROPERTIES
+    LABELS "internal;lex")
+
+add_test(
     NAME positive_split_llvm_pragma_exec
     COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:c4cll>

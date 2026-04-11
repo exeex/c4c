@@ -253,6 +253,20 @@ set_target_properties(frontend_hir_tests PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
+add_executable(frontend_lexer_tests
+    "${PROJECT_SOURCE_DIR}/tests/frontend/frontend_lexer_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/lexer/token.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/lexer/lexer.cpp"
+)
+target_include_directories(frontend_lexer_tests PRIVATE
+    "${PROJECT_SOURCE_DIR}/src/frontend"
+    "${PROJECT_SOURCE_DIR}/src/frontend/lexer"
+)
+set_target_properties(frontend_lexer_tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
 set(BACKEND_TEST_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/mod.cpp"
