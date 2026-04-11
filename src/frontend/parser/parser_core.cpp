@@ -274,6 +274,18 @@ int resolve_namespace_id_from_stack(const std::vector<int>& namespace_stack,
 
 }  // namespace
 
+Parser::SymbolId Parser::symbol_id_for_token(const Token& token) {
+    if (token.kind != TokenKind::Identifier) return kInvalidSymbol;
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+    return symbol_id_for_token_text(token.text_id, token.lexeme);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+}
+
 bool Parser::has_typedef_name(const std::string& name) const {
     return symbol_tables_.typedefs.count(name) > 0;
 }

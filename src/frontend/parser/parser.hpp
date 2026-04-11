@@ -89,6 +89,10 @@ class Parser {
   // Parser-local semantic tables keyed by identifier atoms. Scope and binding
   // stay outside this struct; this only centralizes atom-keyed parser facts.
   struct ParserNameTables {
+    SymbolId intern_identifier(TextId text_id) {
+      return symbols ? symbols->intern_identifier(text_id) : kInvalidSymbol;
+    }
+
     SymbolId intern_identifier(std::string_view text) {
       return symbols ? symbols->intern_identifier(text) : kInvalidSymbol;
     }
@@ -401,6 +405,10 @@ class Parser {
   Arena& arena_;
   SourceProfile source_profile_;
   std::string source_file_;  // source path used by diagnostics
+  TextTable parser_texts_;
+  std::unordered_map<TextId, TextId> parser_text_ids_;
+  SymbolTable parser_symbols_{&parser_texts_};
+  ParserNameTables parser_name_tables_{&parser_symbols_};
 
   // ── name / type knowledge accumulated during parsing ─────────────────────
   ParserSymbolTables symbol_tables_;
@@ -590,6 +598,28 @@ class Parser {
   bool is_type_start() const;            // can current token start a type?
   bool can_start_parameter_type() const;
   bool looks_like_unresolved_identifier_type_head(int pos) const;
+  TextId parser_text_id_for_token(TextId token_text_id,
+                                  std::string_view fallback = {}) {
+    if (token_text_id != kInvalidText) {
+      const auto it = parser_text_ids_.find(token_text_id);
+      if (it != parser_text_ids_.end()) return it->second;
+    }
+    if (fallback.empty()) return kInvalidText;
+    const TextId parser_text_id = parser_texts_.intern(fallback);
+    if (token_text_id != kInvalidText) {
+      parser_text_ids_.emplace(token_text_id, parser_text_id);
+    }
+    return parser_text_id;
+  }
+  SymbolId symbol_id_for_token_text(TextId token_text_id,
+                                    std::string_view fallback = {}) {
+    return parser_name_tables_.intern_identifier(
+        parser_text_id_for_token(token_text_id, fallback));
+  }
+  SymbolId symbol_id_for_token(const Token& token);
+  std::string_view symbol_spelling(SymbolId id) const {
+    return parser_symbols_.spelling(id);
+  }
   bool has_typedef_name(const std::string& name) const;
   bool has_typedef_type(const std::string& name) const;
   const TypeSpec* find_typedef_type(const std::string& name) const;
