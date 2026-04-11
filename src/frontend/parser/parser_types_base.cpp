@@ -2808,7 +2808,7 @@ TypeSpec Parser::parse_base_type() {
                 if (is_cpp_mode() && check(TokenKind::ColonColon) &&
                     pos_ + 1 < static_cast<int>(tokens_.size()) &&
                     tokens_[pos_ + 1].kind == TokenKind::Identifier) {
-                    std::string member = tokens_[pos_ + 1].lexeme;
+                    std::string member(token_spelling(tokens_[pos_ + 1]));
                     const bool should_preserve_deferred_template_member =
                         ts.tpl_struct_origin && ts.tpl_struct_args.size > 0 &&
                         member == "type";

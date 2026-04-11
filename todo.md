@@ -6,21 +6,20 @@ Source Plan: plan.md
 
 ## Current Slice
 
-Active item: Warning-Driven Convergence H, trim the next nearby read-only
-template-member suffix probe in `parser_types_base.cpp`, starting with the
-local `TemplateStruct<Args>::member` suffix read that still uses the deprecated
-token spelling bridge after the identifier/type-classification cleanup.
+Active item: Warning-Driven Convergence I, trim the next nearby read-only
+template-argument type-head probes in `parser_types_declarator.cpp`, starting
+with `is_simple_known_template_type_head()` and the forwarded-NTTP rejection
+path that still read deprecated identifier spellings during speculative
+parsing.
 
 Why this slice:
-- Warning-Driven Convergence F landed cleanly and moved the local
-  builtin-transform / typeof-like read-only probes onto
-  `parser.token_spelling(...)`
-- Warning-Driven Convergence G landed cleanly and removed the nearby
-  identifier/type classification bridge reads without widening semantic-table
-  scope
-- the next visible warning in the same file is still a narrow, read-only
-  template-member suffix probe, so the migration can stay local without
-  widening semantic-table scope
+- Warning-Driven Convergence H landed cleanly and moved the nearby
+  `TemplateStruct<Args>::member` suffix probe onto `parser.token_spelling(...)`
+- the next visible deprecated bridge reads on the current migration path sit in
+  parser-local declarator template-argument lookahead, where the logic is still
+  read-only and speculative
+- those probes remain narrow enough to migrate without widening semantic-table
+  scope or disturbing parser-state rollback behavior
 - compiler warnings still show broader deprecated bridge traffic elsewhere, but
   those sites remain outside the current incremental path
 
@@ -129,6 +128,16 @@ Why this slice:
       full-suite monotonic guard with `3375` passed / `0` failed before and
       after via `test_fail_before.log`, `test_fail_after.log`, and the
       regression-guard checker
+- [x] Moved the nearby read-only `TemplateStruct<Args>::member` suffix probe
+      in
+      [src/frontend/parser/parser_types_base.cpp](/workspaces/c4c/src/frontend/parser/parser_types_base.cpp)
+      onto `parser.token_spelling(...)`, added narrow parser coverage for an
+      injected `Trait<0>::type` suffix whose deprecated bridge lexeme is
+      intentionally corrupted in
+      [tests/frontend/frontend_parser_tests.cpp](/workspaces/c4c/tests/frontend/frontend_parser_tests.cpp),
+      and re-ran the full-suite monotonic guard with `3375` passed / `0`
+      failed before and after via `test_fail_before.log`,
+      `test_fail_after.log`, and the regression-guard checker
 
 ## Next Steps
 
@@ -170,9 +179,12 @@ Why this slice:
 - [x] Warning-Driven Convergence G: move the next nearby read-only
       identifier/type classification probes in `parser_types_base.cpp` onto
       parser-owned token helpers without widening semantic-table scope
-- [ ] Warning-Driven Convergence H: move the next nearby read-only
+- [x] Warning-Driven Convergence H: move the next nearby read-only
       template-member suffix probe in `parser_types_base.cpp` onto
       parser-owned token helpers without widening semantic-table scope
+- [ ] Warning-Driven Convergence I: move the next nearby read-only
+      template-argument type-head probes in `parser_types_declarator.cpp`
+      onto parser-owned token helpers without widening semantic-table scope
 
 ## Warning-Driven Convergence
 
@@ -212,6 +224,10 @@ Why this slice:
       monotonic guard with `3375` passed / `0` failed before and after via
       `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
       checker
+- [x] Re-ran the full suite for Warning-Driven Convergence H and passed the
+      monotonic guard with `3375` passed / `0` failed before and after via
+      `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
+      checker
 
 ## Resume Notes
 
@@ -238,6 +254,9 @@ Why this slice:
   text capture through `parser.token_spelling(...)`, with injected-token tests
   proving those helpers prefer parser-owned text ids over the deprecated bridge
 - `parser_types_base.cpp` now uses `token_spelling(...)` for the
+  `TemplateStruct<Args>::member` suffix probe, with injected `Trait<0>::type`
+  coverage proving parser-owned spelling wins even when the deprecated member
+  lexeme is corrupted
   identifier-classification / type-start probes plus the local
   `noexcept` / `throw` / GNU-attribute-name reads, the typeof-like probes, and
   the `parse_base_type()` fixed-width-float / typedef / unresolved identifier

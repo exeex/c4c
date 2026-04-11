@@ -651,6 +651,43 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
             "unresolved identifier fallback should use parser-owned spelling");
 }
 
+void test_parser_template_member_suffix_probe_uses_token_spelling() {
+  c4c::Lexer lexer(
+      "template<int N>\n"
+      "struct Trait { typedef int type; };\n",
+      c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, c4c::SourceProfile::CppSubset);
+
+  (void)parser.parse_top_level();
+  expect_true(parser.find_template_struct_primary("Trait") != nullptr,
+              "template struct fixture should register before injected suffix probing");
+
+  c4c::Token seed{};
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Trait"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "0"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "type"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[5].lexeme = "bridge_only_type";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  parser.pos_ = 0;
+  const c4c::TypeSpec member_ts = parser.parse_base_type();
+  expect_true(member_ts.base == c4c::TB_INT,
+              "template-member suffix probes should use parser-owned spelling");
+}
+
 }  // namespace
 
 int main() {
@@ -667,6 +704,7 @@ int main() {
   test_parser_exception_specs_and_attributes_use_token_spelling();
   test_parser_typeof_like_probes_use_token_spelling();
   test_parser_parse_base_type_identifier_probes_use_token_spelling();
+  test_parser_template_member_suffix_probe_uses_token_spelling();
 
   std::cout << "PASS: frontend_parser_tests\n";
   return 0;
