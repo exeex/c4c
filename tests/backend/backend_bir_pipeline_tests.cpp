@@ -786,6 +786,137 @@ make_supported_x86_call_crossing_direct_call_lir_module_with_suffix_spacing() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_supported_x86_folded_two_arg_direct_call_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction helper;
+  helper.name = "fold_pair";
+  helper.signature_text = "define i32 @fold_pair(i32 %lhs, i32 %rhs)\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirBinOp{"%t0", LirBinaryOpcode::Add, "i32", "10", "%lhs"});
+  helper_entry.insts.push_back(LirBinOp{"%t1", LirBinaryOpcode::Sub, "i32", "%t0", "%rhs"});
+  helper_entry.terminator = LirRet{std::string("%t1"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@fold_pair", "(i32, i32)", "i32 5, i32 7"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_fn.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_supported_x86_folded_two_arg_direct_call_lir_module_with_spacing() {
+  auto module = make_supported_x86_folded_two_arg_direct_call_lir_module();
+  auto& call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.front());
+  call.callee_type_suffix = "( i32 , i32 )";
+  call.args_str = " i32 5 ,   i32 7 ";
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_supported_x86_folded_two_arg_direct_call_lir_module_with_suffix_spacing() {
+  auto module = make_supported_x86_folded_two_arg_direct_call_lir_module_with_spacing();
+  auto& call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.front());
+  call.callee_type_suffix = "( i32 , i32 )";
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_supported_x86_dual_identity_direct_call_sub_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction lhs;
+  lhs.name = "f";
+  lhs.signature_text = "define i32 @f(i32 %arg0)\n";
+  lhs.entry = LirBlockId{0};
+  lhs.blocks.push_back(
+      LirBlock{.id = LirBlockId{0},
+               .label = "entry",
+               .insts = {},
+               .terminator = LirRet{std::string("%arg0"), "i32"}});
+
+  LirFunction rhs;
+  rhs.name = "g";
+  rhs.signature_text = "define i32 @g(i32 %arg0)\n";
+  rhs.entry = LirBlockId{0};
+  rhs.blocks.push_back(
+      LirBlock{.id = LirBlockId{0},
+               .label = "entry",
+               .insts = {},
+               .terminator = LirRet{std::string("%arg0"), "i32"}});
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@f", "(i32)", "i32 7"});
+  entry.insts.push_back(LirCallOp{"%t1", "i32", "@g", "(i32)", "i32 3"});
+  entry.insts.push_back(LirBinOp{"%t2", LirBinaryOpcode::Sub, "i32", "%t0", "%t1"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  main_fn.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(lhs));
+  module.functions.push_back(std::move(rhs));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_supported_x86_dual_identity_direct_call_sub_lir_module_with_spacing() {
+  auto module = make_supported_x86_dual_identity_direct_call_sub_lir_module();
+  auto& first_call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts[0]);
+  auto& second_call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts[1]);
+  first_call.callee_type_suffix = "( i32 )";
+  first_call.args_str = " i32  7 ";
+  second_call.callee_type_suffix = "( i32 )";
+  second_call.args_str = " i32  3 ";
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_supported_x86_dual_identity_direct_call_sub_lir_module_with_suffix_spacing() {
+  auto module = make_supported_x86_dual_identity_direct_call_sub_lir_module_with_spacing();
+  auto& first_call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts[0]);
+  auto& second_call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts[1]);
+  first_call.callee_type_suffix = "( i32 )";
+  second_call.callee_type_suffix = "( i32 )";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_supported_x86_two_arg_both_local_arg_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -2468,6 +2599,91 @@ void test_x86_direct_call_helper_accepts_call_crossing_slice_with_suffix_spacing
                   "the direct x86 call helper seam should trim typed-call suffix spacing while preserving the bounded call-crossing native x86 path");
 }
 
+void test_x86_direct_call_helper_accepts_folded_two_arg_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_folded_two_arg_direct_call_lir_module(), c4c::backend::Target::X86_64);
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_folded_two_arg_direct_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded folded two-arg helper family after ownership moves out of emit.cpp");
+  expect_contains(*rendered, ".globl fold_pair",
+                  "the direct x86 call helper seam should still emit the folded helper definition after the Step 4 ownership move");
+  expect_contains(*rendered, "fold_pair:\n  mov eax, 10\n  add eax, edi\n  sub eax, esi\n  ret\n",
+                  "the direct x86 call helper seam should still lower the bounded folded helper body on the native x86 path");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call fold_pair\n  ret\n",
+                  "the direct x86 call helper seam should still lower the bounded folded helper call through the native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_folded_two_arg_slice_with_spacing() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_folded_two_arg_direct_call_lir_module_with_spacing(),
+      c4c::backend::Target::X86_64);
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_folded_two_arg_direct_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded folded two-arg helper family when typed-call spacing drifts");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call fold_pair\n  ret\n",
+                  "the direct x86 call helper seam should trim typed-call spacing while preserving the bounded folded helper native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_folded_two_arg_slice_with_suffix_spacing() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_folded_two_arg_direct_call_lir_module_with_suffix_spacing(),
+      c4c::backend::Target::X86_64);
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_folded_two_arg_direct_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded folded two-arg helper family when typed-call suffix spacing drifts");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call fold_pair\n  ret\n",
+                  "the direct x86 call helper seam should trim typed-call suffix spacing while preserving the bounded folded helper native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_dual_identity_sub_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_dual_identity_direct_call_sub_lir_module(),
+      c4c::backend::Target::X86_64);
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_dual_identity_direct_call_sub_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded dual-identity subtraction helper family after ownership moves out of emit.cpp");
+  expect_contains(*rendered, ".globl f",
+                  "the direct x86 call helper seam should still emit the left identity helper definition after the Step 4 ownership move");
+  expect_contains(*rendered, ".globl g",
+                  "the direct x86 call helper seam should still emit the right identity helper definition after the Step 4 ownership move");
+  expect_contains(*rendered, "main:\n  push rbx\n  mov edi, 7\n  call f\n  mov ebx, eax\n  mov edi, 3\n  call g\n  sub ebx, eax\n  mov eax, ebx\n  pop rbx\n  ret\n",
+                  "the direct x86 call helper seam should still preserve the first helper result across the second call on the native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_dual_identity_sub_slice_with_spacing() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_dual_identity_direct_call_sub_lir_module_with_spacing(),
+      c4c::backend::Target::X86_64);
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_dual_identity_direct_call_sub_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded dual-identity subtraction helper family when typed-call spacing drifts");
+  expect_contains(*rendered, "main:\n  push rbx\n  mov edi, 7\n  call f\n  mov ebx, eax\n  mov edi, 3\n  call g\n  sub ebx, eax\n  mov eax, ebx\n  pop rbx\n  ret\n",
+                  "the direct x86 call helper seam should trim typed-call spacing while preserving the bounded dual-helper native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_dual_identity_sub_slice_with_suffix_spacing() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_dual_identity_direct_call_sub_lir_module_with_suffix_spacing(),
+      c4c::backend::Target::X86_64);
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_dual_identity_direct_call_sub_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded dual-identity subtraction helper family when typed-call suffix spacing drifts");
+  expect_contains(*rendered, "main:\n  push rbx\n  mov edi, 7\n  call f\n  mov ebx, eax\n  mov edi, 3\n  call g\n  sub ebx, eax\n  mov eax, ebx\n  pop rbx\n  ret\n",
+                  "the direct x86 call helper seam should trim typed-call suffix spacing while preserving the bounded dual-helper native x86 path");
+}
+
 void test_x86_direct_call_helper_accepts_two_arg_both_local_arg_call_slice() {
   const auto prepared = c4c::backend::prepare_lir_module_for_target(
       make_supported_x86_two_arg_both_local_arg_call_lir_module(),
@@ -4039,6 +4255,12 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_direct_call_helper_accepts_call_crossing_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_call_crossing_slice_with_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_call_crossing_slice_with_suffix_spacing);
+  RUN_TEST(test_x86_direct_call_helper_accepts_folded_two_arg_slice);
+  RUN_TEST(test_x86_direct_call_helper_accepts_folded_two_arg_slice_with_spacing);
+  RUN_TEST(test_x86_direct_call_helper_accepts_folded_two_arg_slice_with_suffix_spacing);
+  RUN_TEST(test_x86_direct_call_helper_accepts_dual_identity_sub_slice);
+  RUN_TEST(test_x86_direct_call_helper_accepts_dual_identity_sub_slice_with_spacing);
+  RUN_TEST(test_x86_direct_call_helper_accepts_dual_identity_sub_slice_with_suffix_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_arg_call_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_arg_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_both_local_arg_call_slice_with_suffix_spacing);

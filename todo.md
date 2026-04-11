@@ -6,22 +6,22 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 4 prepared-LIR direct-call follow-on: keep the active x86 ownership move
-  on bounded direct-call helper slices already living in
+- Step 4 prepared-LIR sibling direct-call follow-on: keep the active x86
+  ownership move on bounded direct-call helper slices already living in
   `src/backend/x86/codegen/direct_calls.cpp` instead of widening back into the
   parked branch/select or prologue/returns surfaces
 - immediate target:
-  after landing the missing plain helper-side call-crossing direct-call
-  regression, continue auditing the next remaining direct-call helper/native
-  coverage gap that stays within the already-landed prepared-LIR helper
-  families instead of widening into parked matcher ownership
+  after landing folded-two-arg and dual-identity typed-call spacing coverage,
+  audit whether any remaining direct-call sibling family still lacks
+  helper/native prepared-LIR parity before widening into parked matcher
+  ownership
 
 ## Next Slice
 
-- keep the next direct-call regression slice on the already-landed
-  call-crossing or sibling direct-call helper family where helper-side and
-  native prepared-LIR coverage still lack parity after this plain helper-side
-  completion, without widening into parked matcher ownership
+- keep the next direct-call regression slice on any still-uncovered
+  prepared-LIR sibling family only if helper-side and native spacing/suffix
+  coverage still lack parity after this folded/dual completion, without
+  widening into parked matcher ownership
 - do not widen into new helper ownership or unrelated control-flow matchers in
   the same commit
 - leave fused compare+branch, block branch lowering, select, and
@@ -30,6 +30,37 @@ Source Plan: plan.md
   of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with the
+  missing folded-two-arg and dual-identity typed-call spacing regressions:
+  helper and native x86 prepared-LIR coverage now pin args-spacing and
+  suffix-spacing drift on those already-landed sibling direct-call families
+  without widening matcher scope
+- implementation note:
+  `tests/backend/backend_bir_pipeline_tests.cpp` now adds dedicated
+  folded-two-arg and dual-identity helper fixtures plus matching helper
+  assertions so the direct-call helper seam explicitly keeps those sibling
+  families live for plain, args-spaced, and suffix-spaced typed calls
+- implementation note:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now adds matching
+  prepared-LIR folded-two-arg and dual-identity spacing fixtures plus native
+  emitter assertions so the x86 path keeps helper/native parity on those
+  sibling direct-call families
+- implementation note:
+  the existing direct-call parser/emitter path already accepted those spaced
+  forms, so this slice lands as focused regression coverage rather than a code
+  path rewrite
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_folded_two_arg_slice test_x86_direct_call_helper_accepts_folded_two_arg_slice_with_spacing test_x86_direct_call_helper_accepts_folded_two_arg_slice_with_suffix_spacing test_x86_direct_call_helper_accepts_dual_identity_sub_slice test_x86_direct_call_helper_accepts_dual_identity_sub_slice_with_spacing test_x86_direct_call_helper_accepts_dual_identity_sub_slice_with_suffix_spacing`, and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_folded_two_arg_direct_call_slice test_x86_direct_emitter_lowers_minimal_folded_two_arg_direct_call_slice_with_spacing test_x86_direct_emitter_lowers_minimal_folded_two_arg_direct_call_slice_with_suffix_spacing test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice_with_spacing test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice_with_suffix_spacing`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_before.log`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration extends the active Step 4 direct-call ownership path with the
   missing plain helper-side call-crossing regression: helper and native x86
