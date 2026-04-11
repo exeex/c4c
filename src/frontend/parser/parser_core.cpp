@@ -287,17 +287,18 @@ Parser::SymbolId Parser::symbol_id_for_token(const Token& token) {
 }
 
 bool Parser::has_typedef_name(const std::string& name) const {
-    return symbol_tables_.typedefs.count(name) > 0;
+    return parser_name_tables_.is_typedef(
+        parser_name_tables_.find_identifier(name));
 }
 
 bool Parser::has_typedef_type(const std::string& name) const {
-    return symbol_tables_.typedef_types.count(name) > 0;
+    return parser_name_tables_.has_typedef_type(
+        parser_name_tables_.find_identifier(name));
 }
 
 const TypeSpec* Parser::find_typedef_type(const std::string& name) const {
-    auto it = symbol_tables_.typedef_types.find(name);
-    if (it == symbol_tables_.typedef_types.end()) return nullptr;
-    return &it->second;
+    return parser_name_tables_.lookup_typedef_type(
+        parser_name_tables_.find_identifier(name));
 }
 
 bool Parser::has_visible_typedef_type(const std::string& name) const {
@@ -314,7 +315,20 @@ const TypeSpec* Parser::find_visible_typedef_type(const std::string& name) const
 }
 
 TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
-    return resolve_typedef_chain(ts, symbol_tables_.typedef_types);
+    for (int depth = 0; depth < 16; ++depth) {
+        if (ts.base != TB_TYPEDEF || ts.ptr_level > 0 || ts.array_rank > 0) {
+            break;
+        }
+        if (!ts.tag) break;
+        const TypeSpec* next = find_typedef_type(ts.tag);
+        if (!next) break;
+        const bool is_const = ts.is_const;
+        const bool is_volatile = ts.is_volatile;
+        ts = *next;
+        ts.is_const |= is_const;
+        ts.is_volatile |= is_volatile;
+    }
+    return ts;
 }
 
 TypeSpec Parser::resolve_struct_like_typedef_type(TypeSpec ts) const {
@@ -329,7 +343,36 @@ TypeSpec Parser::resolve_struct_like_typedef_type(TypeSpec ts) const {
 
 bool Parser::are_types_compatible(const TypeSpec& lhs,
                                   const TypeSpec& rhs) const {
-    return types_compatible_p(lhs, rhs, symbol_tables_.typedef_types);
+    TypeSpec a = resolve_typedef_type_chain(lhs);
+    TypeSpec b = resolve_typedef_type_chain(rhs);
+    if (a.ptr_level == 0 && a.array_rank == 0) {
+        a.is_const = false;
+        a.is_volatile = false;
+    }
+    if (b.ptr_level == 0 && b.array_rank == 0) {
+        b.is_const = false;
+        b.is_volatile = false;
+    }
+    if (a.is_vector != b.is_vector) return false;
+    if (a.is_vector &&
+        (a.vector_lanes != b.vector_lanes || a.vector_bytes != b.vector_bytes)) {
+        return false;
+    }
+    if (a.base != b.base) return false;
+    if (a.ptr_level != b.ptr_level) return false;
+    if (a.is_const != b.is_const || a.is_volatile != b.is_volatile) {
+        return false;
+    }
+    if (a.array_rank != b.array_rank) return false;
+    for (int i = 0; i < a.array_rank; ++i) {
+        const long long lhs_dim = a.array_dims[i];
+        const long long rhs_dim = b.array_dims[i];
+        if (lhs_dim != rhs_dim && lhs_dim != -2 && rhs_dim != -2) return false;
+    }
+    if (a.base == TB_STRUCT || a.base == TB_UNION || a.base == TB_ENUM) {
+        if (!a.tag || !b.tag || std::strcmp(a.tag, b.tag) != 0) return false;
+    }
+    return true;
 }
 
 bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
@@ -343,33 +386,41 @@ bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
 }
 
 bool Parser::is_user_typedef_name(const std::string& name) const {
-    return symbol_tables_.user_typedefs.count(name) > 0;
+    const SymbolId id = parser_name_tables_.find_identifier(name);
+    return id != kInvalidSymbol && parser_name_tables_.user_typedefs.count(id) > 0;
 }
 
 bool Parser::has_conflicting_user_typedef_binding(const std::string& name,
                                                   const TypeSpec& type) const {
     const TypeSpec* existing_typedef = find_typedef_type(name);
     return is_user_typedef_name(name) && existing_typedef &&
-           !types_compatible_p(*existing_typedef, type, symbol_tables_.typedef_types);
+           !are_types_compatible(*existing_typedef, type);
 }
 
 void Parser::register_typedef_name(const std::string& name,
                                    bool is_user_typedef) {
-    symbol_tables_.typedefs.insert(name);
-    if (is_user_typedef) symbol_tables_.user_typedefs.insert(name);
+    const SymbolId id = parser_name_tables_.intern_identifier(name);
+    if (id == kInvalidSymbol) return;
+    parser_name_tables_.typedefs.insert(id);
+    if (is_user_typedef) parser_name_tables_.user_typedefs.insert(id);
 }
 
 void Parser::register_typedef_binding(const std::string& name,
                                       const TypeSpec& type,
                                       bool is_user_typedef) {
-    register_typedef_name(name, is_user_typedef);
-    symbol_tables_.typedef_types[name] = type;
+    const SymbolId id = parser_name_tables_.intern_identifier(name);
+    if (id == kInvalidSymbol) return;
+    parser_name_tables_.typedefs.insert(id);
+    if (is_user_typedef) parser_name_tables_.user_typedefs.insert(id);
+    parser_name_tables_.typedef_types[id] = type;
 }
 
 void Parser::unregister_typedef_binding(const std::string& name) {
-    symbol_tables_.typedefs.erase(name);
-    symbol_tables_.user_typedefs.erase(name);
-    symbol_tables_.typedef_types.erase(name);
+    const SymbolId id = parser_name_tables_.find_identifier(name);
+    if (id == kInvalidSymbol) return;
+    parser_name_tables_.typedefs.erase(id);
+    parser_name_tables_.user_typedefs.erase(id);
+    parser_name_tables_.typedef_types.erase(id);
 }
 
 void Parser::register_synthesized_typedef_binding(const std::string& name) {
@@ -401,23 +452,27 @@ void Parser::register_tag_type_binding(const std::string& name,
 }
 
 void Parser::cache_typedef_type(const std::string& name, const TypeSpec& type) {
-    symbol_tables_.typedef_types[name] = type;
+    const SymbolId id = parser_name_tables_.intern_identifier(name);
+    if (id == kInvalidSymbol) return;
+    parser_name_tables_.typedef_types[id] = type;
 }
 
 void Parser::register_struct_member_typedef_binding(
     const std::string& scoped_name, const TypeSpec& type) {
     struct_typedefs_[scoped_name] = type;
-    symbol_tables_.typedefs.insert(scoped_name);
-    symbol_tables_.typedef_types[scoped_name] = type;
+    register_typedef_binding(scoped_name, type, false);
 }
 
 bool Parser::has_var_type(const std::string& name) const {
-    return symbol_tables_.var_types.count(name) > 0;
+    const SymbolId id = parser_name_tables_.find_identifier(name);
+    return id != kInvalidSymbol && parser_name_tables_.var_types.count(id) > 0;
 }
 
 const TypeSpec* Parser::find_var_type(const std::string& name) const {
-    auto it = symbol_tables_.var_types.find(name);
-    if (it == symbol_tables_.var_types.end()) return nullptr;
+    const SymbolId id = parser_name_tables_.find_identifier(name);
+    if (id == kInvalidSymbol) return nullptr;
+    const auto it = parser_name_tables_.var_types.find(id);
+    if (it == parser_name_tables_.var_types.end()) return nullptr;
     return &it->second;
 }
 
@@ -430,7 +485,9 @@ const TypeSpec* Parser::find_visible_var_type(const std::string& name) const {
 
 void Parser::register_var_type_binding(const std::string& name,
                                        const TypeSpec& type) {
-    symbol_tables_.var_types[name] = type;
+    const SymbolId id = parser_name_tables_.intern_identifier(name);
+    if (id == kInvalidSymbol) return;
+    parser_name_tables_.var_types[id] = type;
 }
 
 bool Parser::has_known_fn_name(const std::string& name) const {
@@ -457,7 +514,6 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
       source_file_(source_file),
       anon_counter_(0), had_error_(false), parsing_top_level_context_(false),
       last_enum_def_(nullptr) {
-    ParserSymbolTables& symbol_tables = parser_symbol_tables();
     namespace_contexts_.push_back(
         NamespaceContext{0, -1, false, arena_.strdup(""), arena_.strdup("")});
     namespace_stack_.push_back(0);
@@ -492,7 +548,7 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         "__true_type", "__false_type",
         nullptr
     };
-    for (int i = 0; seed[i]; ++i) symbol_tables.typedefs.insert(seed[i]);
+    for (int i = 0; seed[i]; ++i) register_typedef_name(seed[i], false);
 
     // Seed grouped typedef type storage for well-known names so they resolve
     // to correct LLVM types.
@@ -503,10 +559,10 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         va_ts.array_rank = 0;
         va_ts.is_ptr_to_array = false;
         va_ts.base = TB_VA_LIST;
-        symbol_tables.typedef_types["va_list"]           = va_ts;
-        symbol_tables.typedef_types["__va_list"]         = va_ts;
-        symbol_tables.typedef_types["__builtin_va_list"] = va_ts;
-        symbol_tables.typedef_types["__gnuc_va_list"]    = va_ts;
+        cache_typedef_type("va_list", va_ts);
+        cache_typedef_type("__va_list", va_ts);
+        cache_typedef_type("__builtin_va_list", va_ts);
+        cache_typedef_type("__gnuc_va_list", va_ts);
 
         // size_t / uintptr_t etc. → u64 on 64-bit platforms
         TypeSpec u64_ts{};
@@ -514,80 +570,80 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         u64_ts.array_rank = 0;
         u64_ts.is_ptr_to_array = false;
         u64_ts.base = TB_ULONGLONG;  // 64-bit unsigned
-        symbol_tables.typedef_types["size_t"]            = u64_ts;
-        symbol_tables.typedef_types["uintptr_t"]         = u64_ts;
-        symbol_tables.typedef_types["uintmax_t"]         = u64_ts;
-        symbol_tables.typedef_types["uint64_t"]          = u64_ts;
-        symbol_tables.typedef_types["uint_least64_t"]    = u64_ts;
-        symbol_tables.typedef_types["uint_fast64_t"]     = u64_ts;
+        cache_typedef_type("size_t", u64_ts);
+        cache_typedef_type("uintptr_t", u64_ts);
+        cache_typedef_type("uintmax_t", u64_ts);
+        cache_typedef_type("uint64_t", u64_ts);
+        cache_typedef_type("uint_least64_t", u64_ts);
+        cache_typedef_type("uint_fast64_t", u64_ts);
 
         TypeSpec i64_ts{};
         i64_ts.array_size = -1;
         i64_ts.array_rank = 0;
         i64_ts.is_ptr_to_array = false;
         i64_ts.base = TB_LONGLONG;
-        symbol_tables.typedef_types["ssize_t"]           = i64_ts;
-        symbol_tables.typedef_types["ptrdiff_t"]         = i64_ts;
-        symbol_tables.typedef_types["intptr_t"]          = i64_ts;
-        symbol_tables.typedef_types["intmax_t"]          = i64_ts;
-        symbol_tables.typedef_types["int64_t"]           = i64_ts;
-        symbol_tables.typedef_types["int_least64_t"]     = i64_ts;
-        symbol_tables.typedef_types["int_fast64_t"]      = i64_ts;
-        symbol_tables.typedef_types["off_t"]             = i64_ts;
+        cache_typedef_type("ssize_t", i64_ts);
+        cache_typedef_type("ptrdiff_t", i64_ts);
+        cache_typedef_type("intptr_t", i64_ts);
+        cache_typedef_type("intmax_t", i64_ts);
+        cache_typedef_type("int64_t", i64_ts);
+        cache_typedef_type("int_least64_t", i64_ts);
+        cache_typedef_type("int_fast64_t", i64_ts);
+        cache_typedef_type("off_t", i64_ts);
 
         TypeSpec u32_ts{};
         u32_ts.array_size = -1;
         u32_ts.array_rank = 0;
         u32_ts.is_ptr_to_array = false;
         u32_ts.base = TB_UINT;
-        symbol_tables.typedef_types["uint32_t"]          = u32_ts;
-        symbol_tables.typedef_types["uint_least32_t"]    = u32_ts;
-        symbol_tables.typedef_types["uint_fast32_t"]     = u32_ts;
+        cache_typedef_type("uint32_t", u32_ts);
+        cache_typedef_type("uint_least32_t", u32_ts);
+        cache_typedef_type("uint_fast32_t", u32_ts);
 
         TypeSpec i32_ts{};
         i32_ts.array_size = -1;
         i32_ts.array_rank = 0;
         i32_ts.is_ptr_to_array = false;
         i32_ts.base = TB_INT;
-        symbol_tables.typedef_types["int32_t"]           = i32_ts;
-        symbol_tables.typedef_types["int_least32_t"]     = i32_ts;
-        symbol_tables.typedef_types["int_fast32_t"]      = i32_ts;
+        cache_typedef_type("int32_t", i32_ts);
+        cache_typedef_type("int_least32_t", i32_ts);
+        cache_typedef_type("int_fast32_t", i32_ts);
 
         TypeSpec u16_ts{};
         u16_ts.array_size = -1;
         u16_ts.array_rank = 0;
         u16_ts.is_ptr_to_array = false;
         u16_ts.base = TB_USHORT;
-        symbol_tables.typedef_types["uint16_t"]          = u16_ts;
-        symbol_tables.typedef_types["uint_least16_t"]    = u16_ts;
-        symbol_tables.typedef_types["uint_fast16_t"]     = u16_ts;
+        cache_typedef_type("uint16_t", u16_ts);
+        cache_typedef_type("uint_least16_t", u16_ts);
+        cache_typedef_type("uint_fast16_t", u16_ts);
 
         TypeSpec i16_ts{};
         i16_ts.array_size = -1;
         i16_ts.array_rank = 0;
         i16_ts.is_ptr_to_array = false;
         i16_ts.base = TB_SHORT;
-        symbol_tables.typedef_types["int16_t"]           = i16_ts;
-        symbol_tables.typedef_types["int_least16_t"]     = i16_ts;
-        symbol_tables.typedef_types["int_fast16_t"]      = i16_ts;
+        cache_typedef_type("int16_t", i16_ts);
+        cache_typedef_type("int_least16_t", i16_ts);
+        cache_typedef_type("int_fast16_t", i16_ts);
 
         TypeSpec u8_ts{};
         u8_ts.array_size = -1;
         u8_ts.array_rank = 0;
         u8_ts.is_ptr_to_array = false;
         u8_ts.base = TB_UCHAR;
-        symbol_tables.typedef_types["uint8_t"]           = u8_ts;
-        symbol_tables.typedef_types["uint_least8_t"]     = u8_ts;
-        symbol_tables.typedef_types["uint_fast8_t"]      = u8_ts;
+        cache_typedef_type("uint8_t", u8_ts);
+        cache_typedef_type("uint_least8_t", u8_ts);
+        cache_typedef_type("uint_fast8_t", u8_ts);
 
         TypeSpec i8_ts{};
         i8_ts.array_size = -1;
         i8_ts.array_rank = 0;
         i8_ts.is_ptr_to_array = false;
         i8_ts.base = TB_SCHAR;
-        symbol_tables.typedef_types["int8_t"]            = i8_ts;
-        symbol_tables.typedef_types["int_least8_t"]      = i8_ts;
-        symbol_tables.typedef_types["int_fast8_t"]       = i8_ts;
+        cache_typedef_type("int8_t", i8_ts);
+        cache_typedef_type("int_least8_t", i8_ts);
+        cache_typedef_type("int_fast8_t", i8_ts);
 
         // wchar_t on macOS/ARM64 is i32
         TypeSpec wchar_ts{};
@@ -595,8 +651,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         wchar_ts.array_rank = 0;
         wchar_ts.is_ptr_to_array = false;
         wchar_ts.base = TB_INT;
-        symbol_tables.typedef_types["wchar_t"]           = wchar_ts;
-        symbol_tables.typedef_types["wint_t"]            = wchar_ts;
+        cache_typedef_type("wchar_t", wchar_ts);
+        cache_typedef_type("wint_t", wchar_ts);
 
         TypeSpec true_ts{};
         true_ts.array_size = -1;
@@ -604,9 +660,9 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         true_ts.is_ptr_to_array = false;
         true_ts.base = TB_STRUCT;
         true_ts.tag = arena_.strdup("__true_type");
-        symbol_tables.typedef_types["__true_type"]       = true_ts;
-        symbol_tables.typedef_types["std::__true_type"]  = true_ts;
-        symbol_tables.typedef_types["std::__8::__true_type"] = true_ts;
+        cache_typedef_type("__true_type", true_ts);
+        cache_typedef_type("std::__true_type", true_ts);
+        cache_typedef_type("std::__8::__true_type", true_ts);
 
         TypeSpec false_ts{};
         false_ts.array_size = -1;
@@ -614,9 +670,9 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         false_ts.is_ptr_to_array = false;
         false_ts.base = TB_STRUCT;
         false_ts.tag = arena_.strdup("__false_type");
-        symbol_tables.typedef_types["__false_type"]      = false_ts;
-        symbol_tables.typedef_types["std::__false_type"] = false_ts;
-        symbol_tables.typedef_types["std::__8::__false_type"] = false_ts;
+        cache_typedef_type("__false_type", false_ts);
+        cache_typedef_type("std::__false_type", false_ts);
+        cache_typedef_type("std::__8::__false_type", false_ts);
     }
     refresh_current_namespace_bridge();
 }

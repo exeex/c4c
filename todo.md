@@ -6,16 +6,17 @@ Source Plan: plan.md
 
 ## Current Slice
 
-Active item: Step 4A, migrate parser typedef / nearby identifier-keyed tables
-to `SymbolId` now that parser-owned symbol lookup helpers intern identifier
-tokens through token `TextId` values first.
+Active item: Step 5A, review qualified-name helpers and keep full-name /
+composed-name paths string-keyed unless they are truly atom-segment based.
 
 Why this slice:
-- parser-owned `SymbolId` lookup now has a narrow runtime seam
-- the next useful behavior change is swapping typedef / var-type tables behind
-  existing parser wrappers instead of widening lexer work again
-- Step 4A can now reuse one parser-owned helper path for repeated identifier
-  tokens and fallback spellings
+- Step 4A landed behind the existing parser wrapper surface, so the next risk
+  is letting composed or qualified names accidentally flow into atom-keyed
+  storage
+- Step 5A is the narrow review pass that keeps `SymbolId` scoped to identifier
+  atoms while leaving canonical / synthesized full-name strings alone
+- the next useful changes should be targeted qualified-name boundary checks, not
+  another broad storage migration
 
 ## Completed
 
@@ -43,6 +44,20 @@ Why this slice:
 - [x] Added narrow parser symbol-helper coverage in
       [tests/frontend/frontend_parser_tests.cpp](/workspaces/c4c/tests/frontend/frontend_parser_tests.cpp)
       plus CMake / CTest wiring
+- [x] Migrated parser typedef membership, typedef type lookup, user typedef
+      membership, and var-type wrapper storage to `SymbolId` behind the
+      existing string-facing parser helpers in
+      [src/frontend/parser/parser.hpp](/workspaces/c4c/src/frontend/parser/parser.hpp),
+      [src/frontend/parser/parser_core.cpp](/workspaces/c4c/src/frontend/parser/parser_core.cpp),
+      and [src/frontend/parser/parser_support.cpp](/workspaces/c4c/src/frontend/parser/parser_support.cpp)
+- [x] Added parser coverage for string-facing typedef / var-type wrappers over
+      symbol-keyed storage plus heavy snapshot restore of symbol-keyed parser
+      tables in
+      [tests/frontend/frontend_parser_tests.cpp](/workspaces/c4c/tests/frontend/frontend_parser_tests.cpp)
+- [x] Re-ran clean full-suite before/after regression logs and passed the
+      monotonic guard with `3375` passed / `0` failed before and after via
+      `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
+      checker
 
 ## Next Steps
 
@@ -52,7 +67,7 @@ Why this slice:
       while tokens start carrying ids
 - [x] Step 3A: attach parser-owned symbol lookup helpers to token `TextId`
       rather than raw spelling first
-- [ ] Step 4A: migrate `typedefs_`, `user_typedefs_`, `typedef_types_`, and the
+- [x] Step 4A: migrate `typedefs_`, `user_typedefs_`, `typedef_types_`, and the
       atom-keyed subset of `var_types_` to `SymbolId`
 - [ ] Step 5A: review qualified-name helpers and keep full-name/composed-name
       paths string-keyed unless they are truly atom-segment based
@@ -69,7 +84,7 @@ Why this slice:
 - [x] Add or update one narrow validation path for lexer token ids before broad
       parser-table migration
 - [x] Re-run the narrow lexer/parser slice after each connection point lands
-- [ ] Defer broad suite churn until Step 2 or Step 4 lands behaviorally useful
+- [x] Defer broad suite churn until Step 2 or Step 4 lands behaviorally useful
       changes
 
 ## Resume Notes
@@ -82,7 +97,10 @@ Why this slice:
   lexer runs
 - parser now keeps its own `TextTable` plus a token-`TextId` to parser-text-id
   cache so repeated identifier tokens reuse one parser-owned symbol path
+- parser typedef and var-type wrapper storage now lives in symbol-keyed parser
+  tables; string-facing helpers resolve through non-interning symbol lookup so
+  unknown names do not create semantic entries
 - prefixed string and char literals (`L`, `u`, `U`, `u8`) now intern the full
   prefixed raw spelling directly at token construction time
-- next edit should convert typedef / var-type wrapper storage to `SymbolId`
-  keys behind the existing parser helper surface
+- next edit should audit qualified-name helpers and keep full-name /
+  synthesized-name paths on strings unless they are truly per-segment atoms

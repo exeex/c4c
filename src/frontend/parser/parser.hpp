@@ -60,6 +60,19 @@ class Parser {
 
     void attach_text_table(TextTable* texts) { texts_ = texts; }
 
+    SymbolId find_identifier(TextId text_id) const {
+      if (!texts_ || text_id == kInvalidText) return kInvalidSymbol;
+      const auto it = symbol_ids_.id_by_key_.find(text_id);
+      return it == symbol_ids_.id_by_key_.end() ? kInvalidSymbol : it->second;
+    }
+
+    SymbolId find_identifier(std::string_view text) const {
+      if (!texts_ || text.empty()) return kInvalidSymbol;
+      const auto text_it = texts_->id_by_key_.find(std::string(text));
+      if (text_it == texts_->id_by_key_.end()) return kInvalidSymbol;
+      return find_identifier(text_it->second);
+    }
+
     SymbolId intern_identifier(TextId text_id) {
       if (!texts_ || text_id == kInvalidText) return kInvalidSymbol;
       return symbol_ids_.intern(text_id);
@@ -89,6 +102,14 @@ class Parser {
   // Parser-local semantic tables keyed by identifier atoms. Scope and binding
   // stay outside this struct; this only centralizes atom-keyed parser facts.
   struct ParserNameTables {
+    SymbolId find_identifier(TextId text_id) const {
+      return symbols ? symbols->find_identifier(text_id) : kInvalidSymbol;
+    }
+
+    SymbolId find_identifier(std::string_view text) const {
+      return symbols ? symbols->find_identifier(text) : kInvalidSymbol;
+    }
+
     SymbolId intern_identifier(TextId text_id) {
       return symbols ? symbols->intern_identifier(text_id) : kInvalidSymbol;
     }
@@ -116,6 +137,8 @@ class Parser {
     std::unordered_map<SymbolId, TypeSpec> typedef_types;
     std::unordered_map<SymbolId, TypeSpec> var_types;
   };
+
+  using ParserSymbolTables = ParserNameTables;
 
   // Namespace tree node used by C++ qualified-name lookup and using-directive
   // visibility tracking.
@@ -238,15 +261,6 @@ class Parser {
     std::string last_resolved_typedef;
     int template_arg_expr_depth = 0;
     size_t token_mutation_count = 0;
-  };
-
-  // Snapshot of all speculative parser state fields. Used by the heavy guard
-  // to automatically roll back semantic environment mutations when needed.
-  struct ParserSymbolTables {
-    std::set<std::string> typedefs;
-    std::set<std::string> user_typedefs;
-    std::unordered_map<std::string, TypeSpec> typedef_types;
-    std::unordered_map<std::string, TypeSpec> var_types;
   };
 
   struct ParserSnapshot {
@@ -411,7 +425,6 @@ class Parser {
   ParserNameTables parser_name_tables_{&parser_symbols_};
 
   // ── name / type knowledge accumulated during parsing ─────────────────────
-  ParserSymbolTables symbol_tables_;
   // Declared concept names visible to the parser. Kept separate from typedef
   // tracking so concept-ids do not get mistaken for type names.
   std::set<std::string> concept_names_;
