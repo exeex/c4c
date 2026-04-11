@@ -36,6 +36,30 @@ Source Plan: plan.md
 
 ## Current Iteration Notes
 
+- this iteration locks whitespace-tolerant typed-call parsing on the active
+  Step 4 direct-call ownership path without widening the matcher surface:
+  `tests/backend/backend_bir_pipeline_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now cover bounded
+  local-arg and first-local-rewrite helper-call slices whose
+  `callee_type_suffix` and `args_str` carry extra spacing, proving the native
+  x86 call-owner seams continue to accept the shared trimmed call syntax they
+  already rely on
+- implementation note:
+  the existing direct-call parser/emitter path already accepted those spaced
+  forms, so this slice lands as focused regression coverage rather than a code
+  path rewrite
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_local_arg_call_slice_with_spacing`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_two_arg_first_local_rewrite_call_slice_with_spacing`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice_with_spacing`, and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_first_local_rewrite_call_slice_with_spacing`
+- broad validation note:
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure` still hits
+  the existing `backend_bir_tests` crash path and exits with the same broad
+  blocker surface rather than a whitespace-route regression; this slice did not
+  attempt to widen into that separate failure lane
+
 - this iteration wires the translated x86 comparison owner into both active
   x86 source lists in `CMakeLists.txt` and keeps the scope bounded to
   `src/backend/x86/codegen/comparison.cpp`: the live build now carries
