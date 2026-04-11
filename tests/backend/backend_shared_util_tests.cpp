@@ -683,6 +683,57 @@ void test_x86_translated_f128_store_raw_bytes_emits_resolved_address_paths() {
                   "translated raw-byte f128 helper should materialize non-zero high bytes for indirect destinations");
 }
 
+void test_x86_translated_memory_owner_routes_constant_f128_stores_through_raw_byte_helper() {
+  using IrType = c4c::backend::x86::IrType;
+  using Operand = c4c::backend::x86::Operand;
+  using StackSlot = c4c::backend::x86::StackSlot;
+  using Value = c4c::backend::x86::Value;
+
+  c4c::backend::x86::X86Codegen codegen;
+  codegen.state.slots.emplace(7, StackSlot{-40});
+  codegen.state.slots.emplace(13, StackSlot{-88});
+  codegen.state.slots.emplace(15, StackSlot{-104});
+  codegen.state.allocas.insert(13);
+  codegen.state.allocas.insert(15);
+  codegen.state.over_aligned_allocas.emplace(13, 32);
+  codegen.state.set_f128_constant_words(21, 0x0123456789ABCDEFULL, 0x1357);
+  codegen.state.set_f128_constant_words(23, 0x0FEDCBA987654321ULL, 0);
+  codegen.state.set_f128_constant_words(25, 0x1111222233334444ULL, 0x2468);
+
+  codegen.emit_store_impl(Operand{21}, Value{7}, IrType::F128);
+  codegen.emit_store_with_const_offset_impl(Operand{23}, Value{13}, 16, IrType::F128);
+  codegen.emit_store_with_const_offset_impl(Operand{25}, Value{15}, 24, IrType::F128);
+
+  std::string asm_text;
+  for (const auto& line : codegen.state.asm_lines) {
+    asm_text += line;
+    asm_text.push_back('\n');
+  }
+
+  expect_contains(asm_text, "    movabsq $81985529216486895, %rax",
+                  "wired translated memory owner should materialize direct constant long-double low bytes through the raw-byte helper path");
+  expect_contains(asm_text, "    movq %rax, -40(%rbp)",
+                  "wired translated memory owner should route direct constant long-double stores through bounded raw-byte writes");
+  expect_contains(asm_text, "    movq $4951, %rax",
+                  "wired translated memory owner should preserve the non-zero high raw-byte fragment for direct constant long-double stores");
+  expect_contains(asm_text, "    leaq -88(%rbp), %rcx",
+                  "wired translated memory owner should still resolve over-aligned constant long-double destinations through the shared helper path");
+  expect_contains(asm_text, "    addq $16, %rcx",
+                  "wired translated memory owner should apply constant offsets before writing over-aligned constant long-double raw bytes");
+  expect_contains(asm_text, "    xorl %eax, %eax",
+                  "wired translated memory owner should keep the helper zero-high fast path for over-aligned constant long-double stores");
+  expect_contains(asm_text, "    movq -104(%rbp), %rcx",
+                  "wired translated memory owner should still resolve indirect constant long-double destinations through the shared pointer-load helper");
+  expect_contains(asm_text, "    addq $24, %rcx",
+                  "wired translated memory owner should apply constant offsets on indirect constant long-double stores");
+  expect_contains(asm_text, "    movq $9320, %rax",
+                  "wired translated memory owner should materialize indirect constant long-double high bytes through the raw-byte helper path");
+  expect_not_contains(asm_text, "    fldl (%rsp)",
+                      "wired translated memory owner should not route constant long-double stores back through the f64-via-x87 fallback");
+  expect_not_contains(asm_text, "    fstpt (%rcx)",
+                      "wired translated memory owner should not lower constant long-double stores through the fallback x87 store path");
+}
+
 void test_x86_translated_f128_helpers_reload_integer_conversion_sources() {
   using IrType = c4c::backend::x86::IrType;
   using SlotAddr = c4c::backend::x86::SlotAddr;
@@ -4965,6 +5016,7 @@ int main(int argc, char* argv[]) {
   test_x86_codegen_state_tracks_translated_reg_assignments();
   test_x86_translated_memory_owner_emits_linked_helper_text();
   test_x86_translated_memory_owner_preserves_f128_store_precision_paths();
+  test_x86_translated_memory_owner_routes_constant_f128_stores_through_raw_byte_helper();
   test_x86_translated_f128_helpers_reload_integer_conversion_sources();
   test_x86_translated_f128_helpers_emit_st0_integer_conversion_text();
   test_x86_translated_f128_cast_helpers_dispatch_x87_paths();

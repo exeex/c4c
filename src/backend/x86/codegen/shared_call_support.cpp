@@ -34,7 +34,8 @@ X86CodegenState::X86CodegenState(const X86CodegenState& other)
       reg_assignment_indices(other.reg_assignment_indices),
       allocas(other.allocas),
       over_aligned_allocas(other.over_aligned_allocas),
-      f128_load_sources(other.f128_load_sources) {}
+      f128_load_sources(other.f128_load_sources),
+      f128_constant_words(other.f128_constant_words) {}
 
 X86CodegenState& X86CodegenState::operator=(const X86CodegenState& other) {
   if (this == &other) {
@@ -48,6 +49,7 @@ X86CodegenState& X86CodegenState::operator=(const X86CodegenState& other) {
   allocas = other.allocas;
   over_aligned_allocas = other.over_aligned_allocas;
   f128_load_sources = other.f128_load_sources;
+  f128_constant_words = other.f128_constant_words;
   rebind_output();
   return *this;
 }
@@ -61,7 +63,8 @@ X86CodegenState::X86CodegenState(X86CodegenState&& other) noexcept
       reg_assignment_indices(std::move(other.reg_assignment_indices)),
       allocas(std::move(other.allocas)),
       over_aligned_allocas(std::move(other.over_aligned_allocas)),
-      f128_load_sources(std::move(other.f128_load_sources)) {}
+      f128_load_sources(std::move(other.f128_load_sources)),
+      f128_constant_words(std::move(other.f128_constant_words)) {}
 
 X86CodegenState& X86CodegenState::operator=(X86CodegenState&& other) noexcept {
   if (this == &other) {
@@ -75,6 +78,7 @@ X86CodegenState& X86CodegenState::operator=(X86CodegenState&& other) noexcept {
   allocas = std::move(other.allocas);
   over_aligned_allocas = std::move(other.over_aligned_allocas);
   f128_load_sources = std::move(other.f128_load_sources);
+  f128_constant_words = std::move(other.f128_constant_words);
   rebind_output();
   return *this;
 }
@@ -179,6 +183,21 @@ std::optional<std::uint32_t> X86CodegenState::get_f128_source(std::uint32_t valu
 std::optional<std::size_t> X86CodegenState::alloca_over_align(std::uint32_t value_id) const {
   const auto it = over_aligned_allocas.find(value_id);
   if (it == over_aligned_allocas.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+void X86CodegenState::set_f128_constant_words(std::uint32_t operand_id,
+                                              std::uint64_t lo,
+                                              std::uint64_t hi) {
+  f128_constant_words[operand_id] = {lo, hi};
+}
+
+std::optional<std::array<std::uint64_t, 2>>
+X86CodegenState::get_f128_constant_words(std::uint32_t operand_id) const {
+  const auto it = f128_constant_words.find(operand_id);
+  if (it == f128_constant_words.end()) {
     return std::nullopt;
   }
   return it->second;

@@ -27,6 +27,10 @@ void emit_load_default(X86Codegen& codegen, const Value& dest, const Value& ptr,
 void X86Codegen::emit_store_impl(const Operand& val, const Value& ptr, IrType ty) {
   if (ty == IrType::F128) {
     if (const auto addr = this->state.resolve_slot_addr(ptr.raw)) {
+      if (const auto words = this->state.get_f128_constant_words(val.raw)) {
+        this->emit_f128_store_raw_bytes(*addr, ptr.raw, 0, (*words)[0], (*words)[1]);
+        return;
+      }
       if (this->state.f128_direct_slots.find(val.raw) != this->state.f128_direct_slots.end()) {
         if (const auto src_slot = this->state.get_slot(val.raw)) {
           this->state.out.emit_instr_rbp("    fldt", src_slot->raw);
@@ -60,6 +64,10 @@ void X86Codegen::emit_store_with_const_offset_impl(const Operand& val,
                                                    IrType ty) {
   if (ty == IrType::F128) {
     if (const auto addr = this->state.resolve_slot_addr(base.raw)) {
+      if (const auto words = this->state.get_f128_constant_words(val.raw)) {
+        this->emit_f128_store_raw_bytes(*addr, base.raw, offset, (*words)[0], (*words)[1]);
+        return;
+      }
       if (this->state.f128_direct_slots.find(val.raw) != this->state.f128_direct_slots.end()) {
         if (const auto src_slot = this->state.get_slot(val.raw)) {
           this->state.out.emit_instr_rbp("    fldt", src_slot->raw);

@@ -2,6 +2,7 @@
 
 #include "../assembler/mod.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -150,6 +151,7 @@ struct X86CodegenState {
   std::unordered_set<std::uint32_t> allocas;
   std::unordered_map<std::uint32_t, std::size_t> over_aligned_allocas;
   std::unordered_map<std::uint32_t, std::uint32_t> f128_load_sources;
+  std::unordered_map<std::uint32_t, std::array<std::uint64_t, 2>> f128_constant_words;
 
   X86CodegenState();
   X86CodegenState(const X86CodegenState& other);
@@ -166,6 +168,8 @@ struct X86CodegenState {
   void track_f128_load(std::uint32_t dest_id, std::uint32_t ptr_id, std::int64_t offset);
   std::optional<std::uint32_t> get_f128_source(std::uint32_t value_id) const;
   std::optional<std::size_t> alloca_over_align(std::uint32_t value_id) const;
+  void set_f128_constant_words(std::uint32_t operand_id, std::uint64_t lo, std::uint64_t hi);
+  std::optional<std::array<std::uint64_t, 2>> get_f128_constant_words(std::uint32_t operand_id) const;
 };
 
 enum class AddressSpace : unsigned {

@@ -12,24 +12,21 @@ Source Plan: plan.md
   by the active memory/cast-owner paths without widening into prologue/runtime
   owner work
 - immediate target:
-  decide whether the next bounded slice is wiring the caller-side constant
-  long-double store/load path now that `emit_f128_store_raw_bytes` is real, or
-  another nearby caller that can consume the helper without widening the public
-  operand model past a narrow constant-form bridge
+  keep the next move on the same bounded constant long-double bridge, but
+  shift the follow-on target from the now-landed `memory.cpp` store path to
+  the next nearby caller that can reuse the state-backed raw-byte payload
+  lookup without widening the public operand model
 
 ## Next Slice
 
 - keep the next `f128.cpp` work limited to the remaining caller-side constant
   long-double seams already surfaced by the active x86 memory/cast paths,
-  rather than wiring the whole parked owner into the build; now that
-  `emit_f128_store_raw_bytes` is real, re-evaluate whether the next bounded
-  move is a narrow constant-form operand bridge for memory/cast callers or
-  another cast-owner caller that can consume the helper text without widening
-  public x86 state too far
-- treat constant-backed long-double caller wiring as deferred until the active
-  public x86 operand surface can express the needed constant-form inputs
-  cleanly, instead of inventing a broad local one-off channel beyond the now
-  linked helper
+  now reusing the landed state-backed raw-byte lookup for the next narrow
+  caller, most likely a constant-backed cast-owner path, rather than widening
+  `Operand` into a richer enum
+- keep constant-backed long-double caller work bounded to bridge consumers that
+  can reuse the raw-id keyed state payload cleanly; avoid broad public x86
+  operand/header redesign in this slice
 - keep the `returns.cpp` local epilogue boundary parked until the shared
   prologue/epilogue owner surface is explicitly chosen as the next bounded
   Step 3 move
@@ -37,6 +34,35 @@ Source Plan: plan.md
   unless a later translated-owner cutover proves that state is already exposed
 
 ## Current Iteration Notes
+
+- this iteration lands the bounded translated constant long-double caller
+  bridge for the active x86 memory owner: `src/backend/x86/codegen/memory.cpp`
+  now routes `F128` constant stores through the real
+  `emit_f128_store_raw_bytes` helper by consulting a minimal state-backed raw
+  byte payload map keyed by the existing operand id surface instead of
+  widening `Operand` into a richer enum
+- implementation note:
+  `src/backend/x86/codegen/x86_codegen.hpp` and
+  `src/backend/x86/codegen/shared_call_support.cpp` now carry the narrow
+  `f128_constant_words` state plus setter/getter helpers, and
+  `tests/backend/backend_shared_util_tests.cpp` now pins the direct,
+  over-aligned, and indirect constant-store assembly contract while asserting
+  the old `f64`-via-`x87` fallback text is absent
+- surfaced boundary note:
+  the bridge is still state-backed rather than a full public operand-model
+  expansion, so constant-backed cast/return callers remain the next bounded
+  follow-on only if they can consume the same raw-id keyed payload cleanly
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_memory_owner`,
+  `./build/backend_shared_util_tests translated_f128_store_raw_bytes`, and
+  `./build/backend_shared_util_tests`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration ports the bounded translated raw-byte long-double helper still
   parked in `src/backend/x86/codegen/f128.cpp`: `emit_f128_store_raw_bytes`
