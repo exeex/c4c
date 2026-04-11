@@ -263,8 +263,12 @@ std::optional<ExprId> Lowerer::try_lower_member_call_expr(FunctionCtx* ctx,
     fn_ts.ptr_level++;
     call.callee = append_expr(n->left, dr, fn_ts);
     ExprId base_id = lower_expr(ctx, base_node);
+    const QualType& base_qt = module_->expr_pool[base_id.value].type;
+    const bool base_has_reference_storage =
+        base_qt.spec.is_lvalue_ref || base_qt.spec.is_rvalue_ref;
     if (ctx && !n->left->is_arrow &&
-        module_->expr_pool[base_id.value].type.category != ValueCategory::LValue) {
+        base_qt.category != ValueCategory::LValue &&
+        !base_has_reference_storage) {
       LocalDecl tmp{};
       tmp.id = next_local_id();
       std::string tmp_name = "__member_call_tmp_" + std::to_string(tmp.id.value);
