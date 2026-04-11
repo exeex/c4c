@@ -6,20 +6,20 @@ Source Plan: plan.md
 
 ## Current Slice
 
-Active item: Warning-Driven Convergence I, trim the next nearby read-only
-template-argument type-head probes in `parser_types_declarator.cpp`, starting
-with `is_simple_known_template_type_head()` and the forwarded-NTTP rejection
-path that still read deprecated identifier spellings during speculative
-parsing.
+Active item: Warning-Driven Convergence J, trim the next nearby read-only
+value-vs-type template-argument probes in `parser_types_declarator.cpp`,
+starting with `is_clearly_value_template_arg()` where the alias-template
+lookup still reads deprecated identifier spellings during disambiguation.
 
 Why this slice:
-- Warning-Driven Convergence H landed cleanly and moved the nearby
-  `TemplateStruct<Args>::member` suffix probe onto `parser.token_spelling(...)`
-- the next visible deprecated bridge reads on the current migration path sit in
-  parser-local declarator template-argument lookahead, where the logic is still
-  read-only and speculative
-- those probes remain narrow enough to migrate without widening semantic-table
-  scope or disturbing parser-state rollback behavior
+- Warning-Driven Convergence I landed cleanly and moved the nearby template
+  type-head probe plus forwarded-NTTP rejection check onto
+  `parser.token_spelling(...)`
+- the next visible deprecated bridge reads on the current migration path still
+  sit in parser-local declarator template-argument disambiguation, where the
+  logic remains read-only and speculative
+- the alias-template/value-like probe is narrow enough to migrate without
+  widening semantic-table scope or disturbing parser-state rollback behavior
 - compiler warnings still show broader deprecated bridge traffic elsewhere, but
   those sites remain outside the current incremental path
 
@@ -138,6 +138,17 @@ Why this slice:
       and re-ran the full-suite monotonic guard with `3375` passed / `0`
       failed before and after via `test_fail_before.log`,
       `test_fail_after.log`, and the regression-guard checker
+- [x] Moved the nearby read-only template-argument type-head probe and the
+      forwarded-NTTP rejection check in
+      [src/frontend/parser/parser_types_declarator.cpp](/workspaces/c4c/src/frontend/parser/parser_types_declarator.cpp)
+      onto `parser.token_spelling(...)`, added narrow parser coverage for an
+      injected template-scope type parameter whose deprecated bridge lexeme is
+      intentionally corrupted in
+      [tests/frontend/frontend_parser_tests.cpp](/workspaces/c4c/tests/frontend/frontend_parser_tests.cpp),
+      and re-ran the full-suite monotonic guard with `3375` passed / `0`
+      failed before and after via `test_fail_before.log`,
+      `test_fail_after.log`, with the regression guard passing under the
+      allowed non-decreasing pass-count policy
 
 ## Next Steps
 
@@ -182,9 +193,13 @@ Why this slice:
 - [x] Warning-Driven Convergence H: move the next nearby read-only
       template-member suffix probe in `parser_types_base.cpp` onto
       parser-owned token helpers without widening semantic-table scope
-- [ ] Warning-Driven Convergence I: move the next nearby read-only
+- [x] Warning-Driven Convergence I: move the next nearby read-only
       template-argument type-head probes in `parser_types_declarator.cpp`
       onto parser-owned token helpers without widening semantic-table scope
+- [ ] Warning-Driven Convergence J: move the next nearby read-only
+      value-vs-type template-argument alias-template probes in
+      `parser_types_declarator.cpp` onto parser-owned token helpers without
+      widening semantic-table scope
 
 ## Warning-Driven Convergence
 
@@ -228,6 +243,10 @@ Why this slice:
       monotonic guard with `3375` passed / `0` failed before and after via
       `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
       checker
+- [x] Re-ran the full suite for Warning-Driven Convergence I and passed the
+      monotonic guard with `3375` passed / `0` failed before and after via
+      `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
+      checker with `--allow-non-decreasing-passed`
 
 ## Resume Notes
 
@@ -261,9 +280,13 @@ Why this slice:
   `noexcept` / `throw` / GNU-attribute-name reads, the typeof-like probes, and
   the `parse_base_type()` fixed-width-float / typedef / unresolved identifier
   classification path
+- `parser_types_declarator.cpp` now uses `token_spelling(...)` for the
+  simple template type-head probe and the forwarded-NTTP rejection check, with
+  injected template-scope type-parameter coverage proving parser-owned
+  spelling wins even when the deprecated bridge lexeme is corrupted
 - `Token` now carries a parser-owned-spelling fast-path flag so injected tokens
   still prefer parser-owned text ids while ordinary lexer tokens avoid the
   extra parser spelling-map lookup on hot parse paths
-- the next nearby warning candidate in `parser_types_base.cpp` is the local
-  `TemplateStruct<Args>::member` suffix read around the deferred member-typedef
-  path
+- the next nearby warning candidate in `parser_types_declarator.cpp` is the
+  local alias-template / resolved-type-name read in
+  `is_clearly_value_template_arg()`

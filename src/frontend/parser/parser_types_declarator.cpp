@@ -101,9 +101,10 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
             }
         }
         if (!check(TokenKind::Identifier)) return false;
-        return is_typedef_name(cur().lexeme) ||
-               is_template_scope_type_param(cur().lexeme) ||
-               has_visible_typedef_type(cur().lexeme);
+        const std::string_view name = token_spelling(cur());
+        return is_typedef_name(name) ||
+               is_template_scope_type_param(name) ||
+               has_visible_typedef_type(name);
     };
 
     if (is_simple_known_template_type_head() &&
@@ -140,10 +141,12 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
         // a declarator name. This happens for forwarded NTTP names like <N>
         // where N is not a type. Reject so non-type parsing can handle it.
         if (is_cpp_mode() && pos_ == start_pos + 1 &&
-            tokens_[start_pos].kind == TokenKind::Identifier &&
-            !is_typedef_name(tokens_[start_pos].lexeme) &&
-            !is_template_scope_type_param(tokens_[start_pos].lexeme)) {
+            tokens_[start_pos].kind == TokenKind::Identifier) {
+            const std::string_view start_name = token_spelling(tokens_[start_pos]);
+            if (!is_typedef_name(start_name) &&
+                !is_template_scope_type_param(start_name)) {
             return false;
+            }
         }
         out_arg->is_value = false;
         out_arg->type = ts;

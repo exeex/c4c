@@ -688,6 +688,41 @@ void test_parser_template_member_suffix_probe_uses_token_spelling() {
               "template-member suffix probes should use parser-owned spelling");
 }
 
+void test_parser_template_type_arg_probes_use_token_spelling() {
+  c4c::Arena arena;
+  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  parser.push_template_scope(
+      c4c::Parser::TemplateScopeKind::FreeFunctionTemplate,
+      {{.name = "T", .is_nttp = false}});
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "T"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[0].lexeme = "bridge_only_type_param";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  c4c::Parser::TemplateArgParseResult arg{};
+  expect_true(parser.try_parse_template_type_arg(&arg),
+              "template type-argument probes should use parser-owned spelling");
+  expect_true(!arg.is_value,
+              "template scope type parameters should stay classified as type arguments");
+  expect_true(arg.type.base == c4c::TB_TYPEDEF,
+              "template scope type parameters should parse as placeholder typedef types");
+  expect_eq(arg.type.tag, "T",
+            "template type-argument parsing should preserve the parser-owned spelling");
+  expect_eq_int(parser.pos_, 1,
+                "template type-argument parsing should stop before the template close");
+  parser.pop_template_scope();
+}
+
 }  // namespace
 
 int main() {
@@ -705,6 +740,7 @@ int main() {
   test_parser_typeof_like_probes_use_token_spelling();
   test_parser_parse_base_type_identifier_probes_use_token_spelling();
   test_parser_template_member_suffix_probe_uses_token_spelling();
+  test_parser_template_type_arg_probes_use_token_spelling();
 
   std::cout << "PASS: frontend_parser_tests\n";
   return 0;
