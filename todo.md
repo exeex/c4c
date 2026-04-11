@@ -11,17 +11,18 @@ Source Plan: plan.md
   `src/backend/x86/codegen/direct_calls.cpp` instead of widening back into the
   parked branch/select or prologue/returns surfaces
 - immediate target:
-  after landing the bounded single-arg helper typed-call spacing matrix,
-  continue on the next direct-call parity gap that stays within the existing
-  prepared-LIR single-arg helper ownership surface instead of widening into
-  parked matcher ownership
+  after landing the bounded helper-side base single-arg parity coverage for the
+  add-immediate and identity families, continue by auditing the next remaining
+  direct-call helper/native coverage gap that still stays within the existing
+  prepared-LIR single-arg ownership surface instead of widening into parked
+  matcher ownership
 
 ## Next Slice
 
-- after the bounded single-arg helper typed-call spacing matrix slice, keep
-  the next direct-call regression slice on the same already-landed single-arg
-  helper family where direct-BIR/native pipeline coverage still lacks typed-
-  call spacing parity, without widening into parked matcher ownership
+- keep the next direct-call regression slice on the same already-landed
+  single-arg helper family where helper-side and native prepared-LIR coverage
+  still lack parity after this base-case completion, without widening into
+  parked matcher ownership
 - do not widen into new helper ownership or unrelated control-flow matchers in
   the same commit
 - leave fused compare+branch, block branch lowering, select, and
@@ -30,6 +31,31 @@ Source Plan: plan.md
   of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with the
+  missing helper-side base single-arg call regressions: direct x86 helper
+  coverage now pins the unspaced add-immediate and identity single-arg helper
+  families so the helper/native prepared-LIR matrix is no longer only covered
+  on the native-emitter side
+- implementation note:
+  `tests/backend/backend_bir_pipeline_tests.cpp` now adds
+  `test_x86_direct_call_helper_accepts_single_arg_{add_imm,identity}_call_slice()`
+  plus suite registration so the direct-call helper seam explicitly keeps the
+  base single-arg add-immediate and identity forms live alongside the already-
+  landed spacing and suffix-spacing variants
+- implementation note:
+  the existing direct-call parser/helper path already accepted those base
+  forms, so this slice lands as focused regression coverage rather than a code
+  path rewrite
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8` and
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_single_arg_add_imm_call_slice test_x86_direct_call_helper_accepts_single_arg_identity_call_slice`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration extends the active Step 4 direct-call ownership path with the
   missing single-arg helper typed-call spacing regressions: helper and native

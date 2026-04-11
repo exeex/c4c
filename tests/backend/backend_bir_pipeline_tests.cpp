@@ -2050,6 +2050,22 @@ void test_x86_direct_call_helper_accepts_param_slot_add_slice() {
                   "the direct x86 call helper seam should still lower the bounded entry call through the native x86 path");
 }
 
+void test_x86_direct_call_helper_accepts_single_arg_add_imm_call_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_single_arg_add_imm_call_lir_module(),
+      c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_minimal_single_arg_helper_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded single-arg add-immediate helper slice after ownership moves out of emit.cpp");
+  expect_contains(*rendered, ".globl add_one",
+                  "the direct x86 call helper seam should still emit the single-arg add-immediate helper definition after the Step 4 ownership move");
+  expect_contains(*rendered, "add_one:\n  mov eax, edi\n  add eax, 1\n  ret\n",
+                  "the direct x86 call helper seam should still lower the bounded single-arg add-immediate helper body on the native x86 path");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  call add_one\n  ret\n",
+                  "the direct x86 call helper seam should still lower the bounded single-arg add-immediate helper call through the native x86 path");
+}
+
 void test_x86_direct_call_helper_accepts_single_arg_add_imm_call_slice_with_spacing() {
   const auto prepared = c4c::backend::prepare_lir_module_for_target(
       make_supported_x86_single_arg_add_imm_call_lir_module_with_spacing(),
@@ -2072,6 +2088,22 @@ void test_x86_direct_call_helper_accepts_single_arg_add_imm_call_slice_with_suff
               "the direct x86 call helper seam should accept the bounded single-arg add-immediate helper slice when typed-call suffix spacing drifts");
   expect_contains(*rendered, "main:\n  mov edi, 5\n  call add_one\n  ret\n",
                   "the direct x86 call helper seam should trim typed-call suffix spacing while still lowering the bounded single-arg add-immediate helper call on the native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_single_arg_identity_call_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_single_arg_identity_call_lir_module(),
+      c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_minimal_single_arg_helper_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded single-arg identity helper slice after ownership moves out of emit.cpp");
+  expect_contains(*rendered, ".globl f",
+                  "the direct x86 call helper seam should still emit the single-arg identity helper definition after the Step 4 ownership move");
+  expect_contains(*rendered, "f:\n  mov eax, edi\n  ret\n",
+                  "the direct x86 call helper seam should still lower the bounded single-arg identity helper body on the native x86 path");
+  expect_contains(*rendered, "main:\n  mov edi, 0\n  call f\n  ret\n",
+                  "the direct x86 call helper seam should still lower the bounded single-arg identity helper call through the native x86 path");
 }
 
 void test_x86_direct_call_helper_accepts_single_arg_identity_call_slice_with_spacing() {
@@ -3951,8 +3983,10 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_direct_printf_helper_accepts_string_literal_char_slice);
   RUN_TEST(test_x86_direct_void_helper_accepts_void_direct_call_return_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_param_slot_add_slice);
+  RUN_TEST(test_x86_direct_call_helper_accepts_single_arg_add_imm_call_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_single_arg_add_imm_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_single_arg_add_imm_call_slice_with_suffix_spacing);
+  RUN_TEST(test_x86_direct_call_helper_accepts_single_arg_identity_call_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_single_arg_identity_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_call_helper_accepts_single_arg_identity_call_slice_with_suffix_spacing);
   RUN_TEST(test_x86_direct_local_helper_accepts_local_temp_slice);
