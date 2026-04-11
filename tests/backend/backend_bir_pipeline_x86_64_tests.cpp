@@ -5843,6 +5843,16 @@ c4c::codegen::lir::LirModule make_lir_minimal_two_arg_second_local_arg_direct_ca
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_lir_minimal_two_arg_second_local_arg_direct_call_module_with_spacing() {
+  auto module = make_lir_minimal_two_arg_second_local_arg_direct_call_module();
+  auto& call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.front().blocks.front().insts.back());
+  call.callee_type_suffix = "( i32 , i32 )";
+  call.args_str = " i32 5 ,   i32 %t0 ";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_two_arg_second_local_rewrite_direct_call_module() {
   using namespace c4c::codegen::lir;
 
@@ -5883,6 +5893,16 @@ c4c::codegen::lir::LirModule make_lir_minimal_two_arg_second_local_rewrite_direc
 
   module.functions.push_back(std::move(main_function));
   module.functions.push_back(std::move(helper));
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_lir_minimal_two_arg_second_local_rewrite_direct_call_module_with_spacing() {
+  auto module = make_lir_minimal_two_arg_second_local_rewrite_direct_call_module();
+  auto& call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.front().blocks.front().insts.back());
+  call.callee_type_suffix = "( i32 , i32 )";
+  call.args_str = " i32 5 ,   i32 %t2 ";
   return module;
 }
 
@@ -11085,6 +11105,19 @@ void test_x86_direct_emitter_lowers_minimal_two_arg_second_local_arg_call_slice(
                       "x86 direct emitter should stay on native asm emission for the bounded second-local two-arg helper slice");
 }
 
+void test_x86_direct_emitter_lowers_minimal_two_arg_second_local_arg_call_slice_with_spacing() {
+  auto module = make_lir_minimal_two_arg_second_local_arg_direct_call_module_with_spacing();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded second-local two-arg helper call through the native prepared-LIR seam even when typed-call spacing drifts");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "x86 direct emitter should trim typed-call spacing while materializing the immediate first operand and reloaded local second operand on the native x86 path");
+}
+
 void test_x86_direct_emitter_lowers_minimal_two_arg_second_local_rewrite_call_slice() {
   auto module = make_lir_minimal_two_arg_second_local_rewrite_direct_call_module();
 
@@ -11102,6 +11135,19 @@ void test_x86_direct_emitter_lowers_minimal_two_arg_second_local_rewrite_call_sl
                   "x86 direct emitter should fold the second-local rewrite back to the stored immediate before invoking the helper on the native x86 path");
   expect_not_contains(*rendered, "target triple =",
                       "x86 direct emitter should stay on native asm emission for the bounded second-local rewrite two-arg helper slice");
+}
+
+void test_x86_direct_emitter_lowers_minimal_two_arg_second_local_rewrite_call_slice_with_spacing() {
+  auto module = make_lir_minimal_two_arg_second_local_rewrite_direct_call_module_with_spacing();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded second-local rewrite two-arg helper call through the native prepared-LIR seam even when typed-call spacing drifts");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "x86 direct emitter should trim typed-call spacing while still folding the second-local rewrite back to the stored immediate on the native x86 path");
 }
 
 void test_x86_direct_emitter_lowers_minimal_two_arg_first_local_rewrite_call_slice() {
@@ -11564,7 +11610,9 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_arg_call_slice_with_suffix_spacing);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_arg_call_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_arg_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_rewrite_call_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_rewrite_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_first_local_rewrite_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_first_local_rewrite_call_slice_with_spacing);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_first_local_rewrite_call_slice_with_suffix_spacing);
