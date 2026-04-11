@@ -6,18 +6,19 @@ Source Plan: plan.md
 
 ## Current Slice
 
-Active item: Warning-Driven Convergence F, trim the next nearby read-only
-token-spelling probes in `parser_types_base.cpp`, starting with the
-builtin-transform / typeof-like identifier reads (`__underlying_type`,
-`nullptr`, and adjacent read-only operand spelling probes) that still show up
-in compiler warnings after the exception-spec and attribute-name cleanup.
+Active item: Warning-Driven Convergence G, trim the next nearby read-only
+identifier/type classification probes in `parser_types_base.cpp`, starting with
+the local `match_floatn_keyword_base(...)`, typedef/type-param visibility
+checks, and unresolved identifier-type fallback reads that still use the
+deprecated token spelling bridge after the typeof-like cleanup.
 
 Why this slice:
-- Warning-Driven Convergence E landed cleanly and moved the local
-  exception-spec / GNU-attribute-name reads onto `parser.token_spelling(...)`
+- Warning-Driven Convergence F landed cleanly and moved the local
+  builtin-transform / typeof-like read-only probes onto
+  `parser.token_spelling(...)`
 - the next visible warnings in the same file are still narrow, read-only
-  bridge reads in builtin-transform / typeof-like parsing, so the migration can
-  stay local without widening semantic-table scope
+  identifier/type classification probes, so the migration can stay local
+  without widening semantic-table scope
 - compiler warnings still show broader deprecated bridge traffic elsewhere, but
   those sites remain outside the current incremental path
 
@@ -104,6 +105,16 @@ Why this slice:
       and re-ran the full-suite monotonic guard with `3375` passed / `0`
       failed before and after via `test_fail_before.log`,
       `test_fail_after.log`, and the regression-guard checker
+- [x] Moved the nearby read-only builtin-transform / typeof-like spelling
+      probes in
+      [src/frontend/parser/parser_types_base.cpp](/workspaces/c4c/src/frontend/parser/parser_types_base.cpp)
+      onto `parser.token_spelling(...)`, added narrow parser coverage for
+      injected `__underlying_type`, `nullptr`, identifier operands, and float
+      literal suffix inspection in
+      [tests/frontend/frontend_parser_tests.cpp](/workspaces/c4c/tests/frontend/frontend_parser_tests.cpp),
+      and re-ran the full-suite monotonic guard with `3375` passed / `0`
+      failed before and after via `test_fail_before.log`,
+      `test_fail_after.log`, and the regression-guard checker
 
 ## Next Steps
 
@@ -138,10 +149,13 @@ Why this slice:
       exception-spec and attribute-name spelling probes in
       `parser_types_base.cpp` onto parser-owned token helpers without widening
       semantic-table scope
-- [ ] Warning-Driven Convergence F: move the next nearby read-only
+- [x] Warning-Driven Convergence F: move the next nearby read-only
       builtin-transform / typeof-like spelling probes in
       `parser_types_base.cpp` onto parser-owned token helpers without widening
       semantic-table scope
+- [ ] Warning-Driven Convergence G: move the next nearby read-only
+      identifier/type classification probes in `parser_types_base.cpp` onto
+      parser-owned token helpers without widening semantic-table scope
 
 ## Warning-Driven Convergence
 
@@ -173,6 +187,10 @@ Why this slice:
       monotonic guard with `3375` passed / `0` failed before and after via
       `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
       checker
+- [x] Re-ran the full suite for Warning-Driven Convergence F and passed the
+      monotonic guard with `3375` passed / `0` failed before and after via
+      `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
+      checker
 
 ## Resume Notes
 
@@ -201,5 +219,6 @@ Why this slice:
 - `parser_types_base.cpp` now uses `token_spelling(...)` for the
   identifier-classification / type-start probes plus the local
   `noexcept` / `throw` / GNU-attribute-name reads, and the next nearby warning
-  candidates in that file are the read-only `__underlying_type`, `nullptr`,
-  and adjacent typeof-like operand spelling probes
+  candidates in that file now move past the typeof-like cleanup to the local
+  `match_floatn_keyword_base(...)`, typedef/type-param visibility checks,
+  unresolved identifier-type fallback reads, and adjacent member-name probe

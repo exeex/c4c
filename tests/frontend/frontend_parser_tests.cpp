@@ -477,6 +477,107 @@ void test_parser_exception_specs_and_attributes_use_token_spelling() {
                 "GNU attribute parsing should use parser-owned attribute spellings");
 }
 
+void test_parser_typeof_like_probes_use_token_spelling() {
+  c4c::Arena arena;
+  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::TypeSpec typedef_ts{};
+  typedef_ts.array_size = -1;
+  typedef_ts.inner_rank = -1;
+  typedef_ts.base = c4c::TB_INT;
+  parser.register_typedef_binding("TypeAlias", typedef_ts, true);
+
+  c4c::TypeSpec value_ts{};
+  value_ts.array_size = -1;
+  value_ts.inner_rank = -1;
+  value_ts.base = c4c::TB_DOUBLE;
+  parser.register_var_type_binding("value", value_ts);
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "__underlying_type"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "TypeAlias"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[0].lexeme = "bridge_only_underlying_type";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  parser.pos_ = 0;
+  (void)parser.parse_base_type();
+  expect_eq_int(parser.pos_, 4,
+                "builtin transform parsing should use parser-owned builtin spellings");
+  expect_eq(parser.token_spelling(parser.cur()), "after",
+            "builtin transform parsing should leave the next token in place");
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::KwTypeof, "typeof"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "nullptr"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[2].lexeme = "bridge_only_nullptr";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  parser.pos_ = 0;
+  c4c::TypeSpec nullptr_ts = parser.parse_base_type();
+  expect_true(nullptr_ts.base == c4c::TB_VOID && nullptr_ts.ptr_level == 1,
+              "typeof-like nullptr probes should use parser-owned spellings");
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::KwTypeof, "typeof"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[2].lexeme = "bridge_only_value";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  parser.pos_ = 0;
+  c4c::TypeSpec value_operand_ts = parser.parse_base_type();
+  expect_true(value_operand_ts.base == c4c::TB_DOUBLE,
+              "typeof-like identifier operand probes should use parser-owned spellings");
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::KwTypeof, "typeof"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::FloatLit, "1.0f"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[2].lexeme = "bridge_only_float";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  parser.pos_ = 0;
+  c4c::TypeSpec float_operand_ts = parser.parse_base_type();
+  expect_true(float_operand_ts.base == c4c::TB_FLOAT,
+              "typeof-like float literal suffix probes should use parser-owned spellings");
+}
+
 }  // namespace
 
 int main() {
@@ -491,6 +592,7 @@ int main() {
   test_parser_capture_template_arg_expr_uses_token_spelling();
   test_parser_type_start_probes_use_token_spelling();
   test_parser_exception_specs_and_attributes_use_token_spelling();
+  test_parser_typeof_like_probes_use_token_spelling();
 
   std::cout << "PASS: frontend_parser_tests\n";
   return 0;

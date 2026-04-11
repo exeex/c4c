@@ -734,7 +734,7 @@ TypeSpec Parser::parse_base_type() {
     bool base_set     = false;  // true when ts.base was set directly (KwBuiltin, KwInt128, etc.)
     auto parse_builtin_transform_type = [&](TypeSpec* out) -> bool {
         if (!out || !check(TokenKind::Identifier)) return false;
-        if (cur().lexeme != "__underlying_type") return false;
+        if (token_spelling(cur()) != "__underlying_type") return false;
 
         consume();
         expect(TokenKind::LParen);
@@ -766,7 +766,7 @@ TypeSpec Parser::parse_base_type() {
             pos_ = saved_pos;
         }
         if (check(TokenKind::KwNullptr) ||
-            (check(TokenKind::Identifier) && cur().lexeme == "nullptr")) {
+            (check(TokenKind::Identifier) && token_spelling(cur()) == "nullptr")) {
             out->base = TB_VOID;
             out->ptr_level = 1;
             consume();
@@ -784,7 +784,7 @@ TypeSpec Parser::parse_base_type() {
             return true;
         }
         if (check(TokenKind::Identifier)) {
-            std::string id = cur().lexeme;
+            std::string id(token_spelling(cur()));
             consume();
             if (const TypeSpec* var_type = find_visible_var_type(id)) {
                 *out = *var_type;
@@ -798,7 +798,7 @@ TypeSpec Parser::parse_base_type() {
             return true;
         }
         if (check(TokenKind::FloatLit)) {
-            const std::string lex = cur().lexeme;
+            const std::string lex(token_spelling(cur()));
             const bool is_f16 = lex.find("f16") != std::string::npos ||
                                 lex.find("F16") != std::string::npos;
             const bool is_f64 = lex.find("f64") != std::string::npos ||
