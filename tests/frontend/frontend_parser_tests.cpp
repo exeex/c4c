@@ -262,6 +262,37 @@ void test_parser_parse_qualified_name_populates_atom_symbol_ids() {
             "base atom id should resolve back to its spelling");
 }
 
+void test_parser_injected_token_helpers_preserve_qualified_name_spelling() {
+  c4c::Arena arena;
+  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+
+  c4c::Token seed{};
+  seed.line = 7;
+  seed.column = 3;
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ns"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Value"),
+  };
+
+  expect_true(parser.tokens_[0].text_id != c4c::kInvalidText,
+              "injected identifier tokens should receive a stable text id");
+  expect_eq(parser.token_spelling(parser.tokens_[0]), "ns",
+            "parser token spelling helper should recover injected identifier spelling");
+
+  c4c::Parser::QualifiedNameRef qn;
+  expect_true(parser.peek_qualified_name(&qn, /*allow_global=*/true),
+              "qualified-name peeking should accept helper-built injected tokens");
+  expect_eq(qn.spelled(), "ns::Value",
+            "qualified-name peeking should preserve helper-built injected spelling");
+
+  const c4c::Parser::SymbolId symbol = parser.symbol_id_for_token(parser.tokens_[2]);
+  expect_true(symbol != c4c::Parser::kInvalidSymbol,
+              "helper-built injected identifier tokens should intern to a SymbolId");
+  expect_eq(parser.symbol_spelling(symbol), "Value",
+            "helper-built injected identifier symbols should preserve spelling");
+}
+
 }  // namespace
 
 int main() {
@@ -271,6 +302,7 @@ int main() {
   test_parser_heavy_snapshot_restores_symbol_id_keyed_tables();
   test_parser_keeps_qualified_bindings_string_keyed();
   test_parser_parse_qualified_name_populates_atom_symbol_ids();
+  test_parser_injected_token_helpers_preserve_qualified_name_spelling();
 
   std::cout << "PASS: frontend_parser_tests\n";
   return 0;

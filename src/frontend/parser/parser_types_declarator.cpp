@@ -538,7 +538,9 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     if (out_name) {
         auto join_token_lexemes = [&](int start, int end) -> std::string {
             std::string out;
-            for (int i = start; i < end; ++i) out += tokens_[i].lexeme;
+            for (int i = start; i < end; ++i) {
+                out += token_spelling(tokens_[i]);
+            }
             return out;
         };
         const int owner_start =
@@ -567,9 +569,12 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                     for (int i = owner_start; i < final_scope_pos; ++i) {
                         inject_toks.push_back(tokens_[i]);
                     }
-                    Token sentinel{};
-                    sentinel.kind = TokenKind::Semi;
-                    sentinel.lexeme = ";";
+                    Token sentinel_seed{};
+                    if (owner_start < final_scope_pos) {
+                        sentinel_seed = tokens_[owner_start];
+                    }
+                    Token sentinel =
+                        make_injected_token(sentinel_seed, TokenKind::Semi, ";");
                     inject_toks.push_back(sentinel);
 
                     int saved_pos = pos_;
@@ -587,7 +592,9 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                          owner_ts.tpl_struct_origin[0]) ||
                         (owner_ts.tag && owner_ts.tag[0])) {
                         owner_ts.deferred_member_type_name =
-                            arena_.strdup(tokens_[final_scope_pos + 1].lexeme.c_str());
+                            arena_.strdup(std::string(token_spelling(
+                                              tokens_[final_scope_pos + 1]))
+                                              .c_str());
                         cache_typedef_type(spelled_name, owner_ts);
                         resolved = spelled_name;
                         preserved_template_owner_member = true;

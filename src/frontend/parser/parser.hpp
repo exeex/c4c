@@ -441,8 +441,8 @@ class Parser {
   Arena& arena_;
   SourceProfile source_profile_;
   std::string source_file_;  // source path used by diagnostics
-  TextTable parser_texts_;
-  std::unordered_map<TextId, TextId> parser_text_ids_;
+  mutable TextTable parser_texts_;
+  mutable std::unordered_map<TextId, TextId> parser_text_ids_;
   SymbolTable parser_symbols_{&parser_texts_};
   ParserNameTables parser_name_tables_{&parser_symbols_};
 
@@ -640,7 +640,7 @@ class Parser {
   bool can_start_parameter_type() const;
   bool looks_like_unresolved_identifier_type_head(int pos) const;
   TextId parser_text_id_for_token(TextId token_text_id,
-                                  std::string_view fallback = {}) {
+                                  std::string_view fallback = {}) const {
     if (token_text_id != kInvalidText) {
       const auto it = parser_text_ids_.find(token_text_id);
       if (it != parser_text_ids_.end()) return it->second;
@@ -652,6 +652,9 @@ class Parser {
     }
     return parser_text_id;
   }
+  std::string_view token_spelling(const Token& token) const;
+  Token make_injected_token(const Token& seed, TokenKind kind,
+                            std::string_view spelling);
   SymbolId symbol_id_for_token_text(TextId token_text_id,
                                     std::string_view fallback = {}) {
     return parser_name_tables_.intern_identifier(

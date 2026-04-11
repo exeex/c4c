@@ -305,6 +305,42 @@ Parser::SymbolId Parser::symbol_id_for_token(const Token& token) {
 #endif
 }
 
+std::string_view Parser::token_spelling(const Token& token) const {
+    if (token.text_id != kInvalidText) {
+        const auto it = parser_text_ids_.find(token.text_id);
+        if (it != parser_text_ids_.end()) {
+            return parser_texts_.lookup(it->second);
+        }
+    }
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+    return token.lexeme;
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+}
+
+Token Parser::make_injected_token(const Token& seed, TokenKind kind,
+                                  std::string_view spelling) {
+    Token token = seed;
+    token.kind = kind;
+    token.text_id = parser_texts_.intern(spelling);
+    if (token.text_id != kInvalidText) {
+        parser_text_ids_.emplace(token.text_id, token.text_id);
+    }
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+    token.lexeme = std::string(spelling);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+    return token;
+}
+
 void Parser::populate_qualified_name_symbol_ids(QualifiedNameRef* name) {
     if (!name) return;
     name->qualifier_symbol_ids.clear();
@@ -1523,13 +1559,13 @@ bool Parser::peek_qualified_name(QualifiedNameRef* out, bool allow_global) const
     if (p >= static_cast<int>(tokens_.size()) || tokens_[p].kind != TokenKind::Identifier) {
         return false;
     }
-    result.base_name = tokens_[p].lexeme;
+    result.base_name = std::string(token_spelling(tokens_[p]));
     ++p;
     while (p + 1 < static_cast<int>(tokens_.size()) &&
            tokens_[p].kind == TokenKind::ColonColon &&
            tokens_[p + 1].kind == TokenKind::Identifier) {
         result.qualifier_segments.push_back(result.base_name);
-        result.base_name = tokens_[p + 1].lexeme;
+        result.base_name = std::string(token_spelling(tokens_[p + 1]));
         p += 2;
     }
     *out = std::move(result);

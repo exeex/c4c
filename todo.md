@@ -6,9 +6,10 @@ Source Plan: plan.md
 
 ## Current Slice
 
-Active item: Warning-Driven Convergence B, trim parser-side deprecated-token
-bridge usage on helper and injected-token paths that still sit adjacent to the
-qualified-name migration surface.
+Active item: Warning-Driven Convergence C, trim the next read-only
+`Token::lexeme` helper lookahead sites in `types_helpers.hpp` now that
+qualified-name peeking and injected-token construction have narrow parser-owned
+helpers.
 
 Why this slice:
 - the qualified-name boundary now carries per-segment atom ids while preserving
@@ -71,6 +72,13 @@ Why this slice:
       qualified-name atom-id slice and passed the monotonic guard with `3375`
       passed / `0` failed before and after via `test_fail_before.log`,
       `test_fail_after.log`, and the regression-guard checker
+- [x] Centralized parser token spelling and injected-token construction for the
+      qualified-name boundary, switched `peek_qualified_name(...)` plus nearby
+      dependent-typename injected reparse assembly onto those helpers, added
+      narrow parser coverage for helper-built qualified-name tokens, and
+      re-ran the full-suite monotonic guard with `3375` passed / `0` failed
+      before and after via `test_before.log`, `test_after.log`, and the
+      regression-guard checker
 
 ## Next Steps
 
@@ -91,9 +99,12 @@ Why this slice:
       while preserving current string materialization for composed lookups
 - [x] Step 6A: validate the qualified-name boundary slice and record the
       remaining atom-segment follow-on work back into the source idea
-- [ ] Warning-Driven Convergence B: audit parser helper / injected-token paths
-      that still rely on deprecated token bridge fields near qualified-name
-      parsing and trim the narrowest safe subset next
+- [x] Warning-Driven Convergence B: add parser token spelling / injected-token
+      helpers, route qualified-name peeking plus nearby injected reparse paths
+      through them, and keep the bridge fallback centralized
+- [ ] Warning-Driven Convergence C: move the next read-only parser helper
+      lookahead sites in `types_helpers.hpp` off open-coded deprecated token
+      spelling access without reintroducing parser-state mutation during peeks
 
 ## Warning-Driven Convergence
 
@@ -141,4 +152,5 @@ Why this slice:
   full-name lookup plus synthesized names remain string-keyed
 - next edit should target the narrow parser helper / injected-token call sites
   that still rely on deprecated token bridge fields on the qualified-name
-  boundary, without widening the migration into unrelated parser subsystems
+  boundary; helper-backed token spelling must stay read-only during lookahead,
+  and the next safe subset is the remaining `types_helpers.hpp` read paths

@@ -104,36 +104,35 @@ bool token_can_follow_value_like_template_arg(TokenKind kind) {
     }
 }
 
-void append_qualified_name_tokens(std::vector<Token>* out,
+void append_qualified_name_tokens(Parser& parser,
+                                  std::vector<Token>* out,
                                   const Token& seed,
                                   const std::string& name) {
     if (!out || name.empty()) return;
     size_t start = 0;
     while (start < name.size()) {
         size_t sep = name.find("::", start);
-        Token name_tok = seed;
-        name_tok.kind = TokenKind::Identifier;
-        name_tok.lexeme = sep == std::string::npos
+        const std::string segment = sep == std::string::npos
             ? name.substr(start)
             : name.substr(start, sep - start);
+        Token name_tok =
+            parser.make_injected_token(seed, TokenKind::Identifier, segment);
         out->push_back(name_tok);
         if (sep == std::string::npos) break;
-        Token cc_tok = seed;
-        cc_tok.kind = TokenKind::ColonColon;
-        cc_tok.lexeme = "::";
+        Token cc_tok =
+            parser.make_injected_token(seed, TokenKind::ColonColon, "::");
         out->push_back(cc_tok);
         start = sep + 2;
     }
 }
 
-void append_typespec_reparse_tokens(std::vector<Token>* out,
+void append_typespec_reparse_tokens(Parser& parser,
+                                    std::vector<Token>* out,
                                     const Token& seed,
                                     const TypeSpec& ts) {
     if (!out) return;
     auto emit = [&](TokenKind kind, const char* lexeme) {
-        Token tok = seed;
-        tok.kind = kind;
-        tok.lexeme = lexeme;
+        Token tok = parser.make_injected_token(seed, kind, lexeme);
         out->push_back(tok);
     };
 
@@ -142,7 +141,7 @@ void append_typespec_reparse_tokens(std::vector<Token>* out,
 
     bool emitted_head = false;
     if (ts.tag && ts.tag[0]) {
-        append_qualified_name_tokens(out, seed, ts.tag);
+        append_qualified_name_tokens(parser, out, seed, ts.tag);
         emitted_head = true;
     } else {
         switch (ts.base) {
@@ -196,10 +195,8 @@ void append_typespec_reparse_tokens(std::vector<Token>* out,
     }
 
     if (!emitted_head) {
-        Token tok = seed;
-        tok.kind = TokenKind::Identifier;
-        tok.lexeme = "int";
-        out->push_back(tok);
+        out->push_back(
+            parser.make_injected_token(seed, TokenKind::Identifier, "int"));
         return;
     }
 
@@ -219,38 +216,31 @@ bool instantiate_template_struct_via_injected_parse(
     Token t{};
     t.line = line;
     t.column = 0;
-    append_qualified_name_tokens(&inject_toks, t, template_name);
-    t.kind = TokenKind::Less;
-    t.lexeme = "<";
-    inject_toks.push_back(t);
+    append_qualified_name_tokens(parser, &inject_toks, t, template_name);
+    inject_toks.push_back(parser.make_injected_token(t, TokenKind::Less, "<"));
     for (int ai = 0; ai < static_cast<int>(args.size()); ++ai) {
         if (ai > 0) {
-            t.kind = TokenKind::Comma;
-            t.lexeme = ",";
-            inject_toks.push_back(t);
+            inject_toks.push_back(
+                parser.make_injected_token(t, TokenKind::Comma, ","));
         }
         if (args[ai].is_value) {
             if (args[ai].value == 0) {
-                t.kind = TokenKind::KwFalse;
-                t.lexeme = "false";
+                inject_toks.push_back(
+                    parser.make_injected_token(t, TokenKind::KwFalse, "false"));
             } else if (args[ai].value == 1) {
-                t.kind = TokenKind::KwTrue;
-                t.lexeme = "true";
+                inject_toks.push_back(
+                    parser.make_injected_token(t, TokenKind::KwTrue, "true"));
             } else {
-                t.kind = TokenKind::IntLit;
-                t.lexeme = std::to_string(args[ai].value);
+                inject_toks.push_back(parser.make_injected_token(
+                    t, TokenKind::IntLit, std::to_string(args[ai].value)));
             }
-            inject_toks.push_back(t);
         } else {
-            append_typespec_reparse_tokens(&inject_toks, t, args[ai].type);
+            append_typespec_reparse_tokens(parser, &inject_toks, t,
+                                           args[ai].type);
         }
     }
-    t.kind = TokenKind::Greater;
-    t.lexeme = ">";
-    inject_toks.push_back(t);
-    t.kind = TokenKind::Semi;
-    t.lexeme = ";";
-    inject_toks.push_back(t);
+    inject_toks.push_back(parser.make_injected_token(t, TokenKind::Greater, ">"));
+    inject_toks.push_back(parser.make_injected_token(t, TokenKind::Semi, ";"));
 
     const int saved_pos = parser.pos_;
     const std::string injected_detail =
