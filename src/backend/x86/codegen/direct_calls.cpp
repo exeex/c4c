@@ -116,6 +116,25 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
   return value;
 }
 
+std::string translated_call_line(std::string_view helper_symbol) {
+  c4c::backend::x86::X86Codegen call_codegen;
+  call_codegen.emit_call_compute_stack_space_impl({}, {});
+  call_codegen.emit_call_reg_args_impl({}, {}, {}, 0, 0, 0, {});
+  call_codegen.emit_call_instruction_impl(std::optional<std::string>{std::string(helper_symbol)},
+                                          std::nullopt,
+                                          false,
+                                          0);
+  call_codegen.emit_call_cleanup_impl(0, 0, false);
+
+  std::string call_line = call_codegen.state.asm_lines.empty()
+                              ? std::string("  call ") + std::string(helper_symbol)
+                              : call_codegen.state.asm_lines.front();
+  if (call_line.rfind("    ", 0) == 0) {
+    call_line.replace(0, 4, "  ");
+  }
+  return call_line;
+}
+
 std::optional<MinimalParamSlotAddSlice> parse_minimal_param_slot_add_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -2142,21 +2161,7 @@ std::string emit_minimal_local_arg_call_asm(std::string_view target_triple,
                                             const MinimalLocalArgCallSlice& slice) {
   const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
   const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
-  // Route the call site through the translated owner surface while preserving
-  // the direct helper slice's emitted body.
-  c4c::backend::x86::X86Codegen call_codegen;
-  call_codegen.emit_call_compute_stack_space_impl({}, {});
-  call_codegen.emit_call_reg_args_impl({}, {}, {}, 0, 0, 0, {});
-  call_codegen.emit_call_instruction_impl(std::optional<std::string>{helper_symbol},
-                                          std::nullopt,
-                                          false,
-                                          0);
-  call_codegen.emit_call_cleanup_impl(0, 0, false);
-  std::string call_line = call_codegen.state.asm_lines.empty() ? std::string("  call ") + helper_symbol
-                                                               : call_codegen.state.asm_lines.front();
-  if (call_line.rfind("    ", 0) == 0) {
-    call_line.replace(0, 4, "  ");
-  }
+  const auto call_line = translated_call_line(helper_symbol);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n"
       << ".text\n"
@@ -2315,21 +2320,7 @@ std::string emit_minimal_two_arg_helper_call_asm(
     const MinimalTwoArgHelperCallSlice& slice) {
   const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
   const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
-  // Route the bounded helper call through the translated call-owner surface
-  // while preserving the direct helper slice's emitted body.
-  c4c::backend::x86::X86Codegen call_codegen;
-  call_codegen.emit_call_compute_stack_space_impl({}, {});
-  call_codegen.emit_call_reg_args_impl({}, {}, {}, 0, 0, 0, {});
-  call_codegen.emit_call_instruction_impl(std::optional<std::string>{helper_symbol},
-                                          std::nullopt,
-                                          false,
-                                          0);
-  call_codegen.emit_call_cleanup_impl(0, 0, false);
-  std::string call_line = call_codegen.state.asm_lines.empty() ? std::string("  call ") + helper_symbol
-                                                               : call_codegen.state.asm_lines.front();
-  if (call_line.rfind("    ", 0) == 0) {
-    call_line.replace(0, 4, "  ");
-  }
+  const auto call_line = translated_call_line(helper_symbol);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n"
       << ".text\n"
@@ -2350,21 +2341,7 @@ std::string emit_minimal_folded_two_arg_direct_call_asm(
     const MinimalFoldedTwoArgDirectCallSlice& slice) {
   const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
   const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
-  // Route the bounded folded two-arg call through the translated owner
-  // surface while preserving the direct helper slice's emitted body.
-  c4c::backend::x86::X86Codegen call_codegen;
-  call_codegen.emit_call_compute_stack_space_impl({}, {});
-  call_codegen.emit_call_reg_args_impl({}, {}, {}, 0, 0, 0, {});
-  call_codegen.emit_call_instruction_impl(std::optional<std::string>{helper_symbol},
-                                          std::nullopt,
-                                          false,
-                                          0);
-  call_codegen.emit_call_cleanup_impl(0, 0, false);
-  std::string call_line = call_codegen.state.asm_lines.empty() ? std::string("  call ") + helper_symbol
-                                                               : call_codegen.state.asm_lines.front();
-  if (call_line.rfind("    ", 0) == 0) {
-    call_line.replace(0, 4, "  ");
-  }
+  const auto call_line = translated_call_line(helper_symbol);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n"
       << ".text\n"
