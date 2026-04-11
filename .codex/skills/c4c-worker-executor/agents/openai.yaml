@@ -1,4 +1,0 @@
-interface:
-  display_name: "C4C Worker Executor"
-  short_description: "Execute one bounded packet without taking over lifecycle"
-  default_prompt: "Act as a c4c worker subagent: stay inside the delegated packet, run only narrow validation, and report concise ownership results back to the supervisor."
