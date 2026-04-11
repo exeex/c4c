@@ -36,6 +36,30 @@ Source Plan: plan.md
 
 ## Current Iteration Notes
 
+- this iteration extends the active Step 4 direct-call ownership path with
+  another bounded typed-call parsing regression slice: helper and native x86
+  prepared-LIR coverage now pin suffix-spaced `callee_type_suffix` and
+  whitespace-tolerant `args_str` on the single-local, first-local-rewrite, and
+  call-crossing helper-call families without widening the matcher surface
+- implementation note:
+  `tests/backend/backend_bir_pipeline_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now cover those
+  suffix-spacing and call-crossing spacing forms directly, proving both the
+  helper seam and the real `try_emit_prepared_lir_module(...)` x86 path keep
+  accepting the shared trimmed typed-call syntax they already rely on
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_local_arg_call_slice_with_suffix_spacing`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_two_arg_first_local_rewrite_call_slice_with_suffix_spacing`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_call_crossing_slice_with_spacing`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_local_arg_call_slice_with_suffix_spacing`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_first_local_rewrite_call_slice_with_suffix_spacing`, and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice_with_spacing`
+- broad validation note:
+  this slice intentionally stayed on focused `backend_bir_tests` coverage and
+  did not widen back into the known unstable aggregate `ctest -R backend_bir_tests`
+  lane
+
 - this iteration locks whitespace-tolerant typed-call parsing on the active
   Step 4 direct-call ownership path without widening the matcher surface:
   `tests/backend/backend_bir_pipeline_tests.cpp` and
