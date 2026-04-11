@@ -18,9 +18,15 @@ The supervisor owns:
 - source-idea intent from `ideas/open/*.md`
 - worker delegation and packet boundaries
 - anti-drift decisions when execution starts orbiting tests or local failures
-- broad validation and the final commit
+- code review of worker output via their handoff plus `git diff`
+- broad validation
+- whether, when, and how to create the final commit
 
 Workers own only their delegated slice.
+
+Supervisor does not edit implementation code. If a slice requires code changes,
+the supervisor must issue a bounded worker packet instead of patching files
+directly.
 
 ## Start Here
 
@@ -39,9 +45,15 @@ Workers own only their delegated slice.
 3. Never let a worker choose the next task from `todo.md`.
 4. If a newly discovered issue is not required for the current idea, record it
    and return to the owning slice.
-5. Prefer delegation for implementation work when the task can be bounded.
+5. Delegate all implementation work through a worker packet; do not make
+   implementation edits locally as supervisor.
 6. Do not allow test expansion to become the work queue unless one proof test
    is required for the current slice.
+7. Supervisor-local actions are limited to lifecycle edits, worker packets,
+   code review, `git diff`, targeted or broad validation, and final commit
+   preparation.
+8. Commit authority stays with the supervisor; workers do not decide commit
+   timing, commit contents, or commit boundaries.
 
 ## Anti-Drift Gate
 
@@ -68,6 +80,14 @@ Before spawning a worker:
 
 Use the packet format in
 [`references/worker-packet-template.md`](/workspaces/c4c/.codex/skills/c4c-supervisor-orchestrator/references/worker-packet-template.md).
+
+After the worker returns:
+
+1. Read the worker handoff carefully.
+2. Inspect the actual file delta with `git diff`.
+3. Decide whether to accept, reject, narrow, or re-issue the next packet.
+4. Keep review findings and next-step decisions in supervisor state, not in the
+   worker packet.
 
 ## Completion
 

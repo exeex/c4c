@@ -25,6 +25,8 @@ This role does not own repo strategy. It executes one packet and stops.
 3. Do not run broad validation unless the packet explicitly requires it.
 4. Do not create the final commit unless the parent explicitly requires it.
 5. Do not widen scope into another owner cluster, test family, or worker lane.
+6. Do not decide whether the current slice is commit-ready; that decision
+   belongs to the supervisor.
 
 ## Default Behavior
 

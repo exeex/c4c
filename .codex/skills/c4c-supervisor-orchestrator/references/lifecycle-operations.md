@@ -25,7 +25,8 @@ state.
    - `Source Idea: ...`
    - `Source Plan: plan.md`
 5. Do not edit implementation code during activation unless the user explicitly
-   asks.
+   asks, and even then prefer issuing the first worker packet rather than doing
+   code edits as supervisor.
 
 ## Generate Runbook
 

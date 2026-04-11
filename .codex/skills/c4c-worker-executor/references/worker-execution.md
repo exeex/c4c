@@ -27,6 +27,8 @@ Before editing:
 2. Do not silently expand into adjacent fixes.
 3. Do not convert "one proof test if required" into broad testcase expansion.
 4. Do not take over final integration, final regression, or lifecycle closure.
+5. Do not create a commit or judge commit readiness unless the parent packet
+   explicitly delegates that authority.
 
 ## Result Format
 
