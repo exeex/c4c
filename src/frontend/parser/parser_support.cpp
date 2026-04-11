@@ -7,6 +7,14 @@ namespace c4c {
 
 // ── ParserSnapshot save / restore ────────────────────────────────────────────
 
+Parser::ParserSymbolTables& Parser::parser_symbol_tables() {
+    return symbol_tables_;
+}
+
+const Parser::ParserSymbolTables& Parser::parser_symbol_tables() const {
+    return symbol_tables_;
+}
+
 Parser::ParserLiteSnapshot Parser::save_lite_state() const {
     ParserLiteSnapshot snap;
     snap.pos = pos_;
@@ -31,10 +39,7 @@ Parser::ParserSnapshot Parser::save_state() const {
     ParserSnapshot snap;
     snap.lite = save_lite_state();
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
-    snap.typedefs             = typedefs_;
-    snap.user_typedefs        = user_typedefs_;
-    snap.typedef_types        = typedef_types_;
-    snap.var_types            = var_types_;
+    snap.symbol_tables        = parser_symbol_tables();
 #endif
     return snap;
 }
@@ -42,10 +47,7 @@ Parser::ParserSnapshot Parser::save_state() const {
 void Parser::restore_state(const ParserSnapshot& snap) {
     restore_lite_state(snap.lite);
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
-    typedefs_              = snap.typedefs;
-    user_typedefs_         = snap.user_typedefs;
-    typedef_types_         = snap.typedef_types;
-    var_types_             = snap.var_types;
+    parser_symbol_tables()  = snap.symbol_tables;
 #endif
 }
 

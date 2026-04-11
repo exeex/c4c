@@ -3,7 +3,6 @@
 #include "hir_ir.hpp"
 
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace c4c::hir {
@@ -13,9 +12,9 @@ namespace c4c::hir {
 /// Context for cloning callee HIR nodes into a caller with fresh IDs.
 struct InlineCloneContext {
   Module* module = nullptr;
-  std::unordered_map<uint32_t, LocalId> local_map;
-  std::unordered_map<uint32_t, BlockId> block_map;
-  std::unordered_map<uint32_t, ExprId> expr_map;
+  OptionalDenseIdMap<LocalId, LocalId> local_map;
+  OptionalDenseIdMap<BlockId, BlockId> block_map;
+  OptionalDenseIdMap<ExprId, ExprId> expr_map;
   std::string debug_prefix;
 
   // Phase 3: parameter index → synthetic local for argument capture.

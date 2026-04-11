@@ -84,7 +84,7 @@ bool Parser::is_type_start() const {
         if (match_floatn_keyword_base(cur().lexeme, nullptr)) return true;
         if (is_template_scope_type_param(cur().lexeme)) return true;
         if (is_typedef_name(cur().lexeme)) return true;
-        if (typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) return true;
+        if (has_visible_typedef_type(cur().lexeme)) return true;
         // C++ fallback: identifier followed by < is likely a template type if
         // the name is registered as a template struct, or if we're inside a
         // struct body where namespace-scoped template names may not resolve.
@@ -527,16 +527,18 @@ TypeSpec Parser::parse_base_type() {
                 TypeSpec* out) -> bool {
                 if (tag.empty() || member.empty() || !out) return false;
                 auto resolve_struct_like = [&](TypeSpec ts) -> TypeSpec {
-                    ts = resolve_typedef_chain(ts, typedef_types_);
-                    if (ts.base == TB_TYPEDEF && ts.tag && typedef_types_.count(ts.tag) > 0) {
-                        ts = typedef_types_.at(ts.tag);
+                    ts = resolve_typedef_type_chain(ts);
+                    if (ts.base == TB_TYPEDEF && ts.tag) {
+                        if (const TypeSpec* nested = find_typedef_type(ts.tag)) {
+                            ts = *nested;
+                        }
                     }
                     return ts;
                 };
                 auto try_lookup = [&](const std::string& scoped) -> bool {
-                    auto it = typedef_types_.find(scoped);
-                    if (it == typedef_types_.end()) return false;
-                    *out = it->second;
+                    const TypeSpec* type = find_typedef_type(scoped);
+                    if (!type) return false;
+                    *out = *type;
                     return true;
                 };
                 auto try_node_member_typedefs = [&](const Node* sdef) -> bool {
@@ -625,9 +627,9 @@ TypeSpec Parser::parse_base_type() {
                         std::vector<std::pair<std::string, long long>> nttp_bindings;
                         const auto* specializations =
                             find_template_struct_specializations(primary_tpl);
-                        const Node* selected = select_template_struct_pattern(
+                        const Node* selected = select_template_struct_pattern_for_args(
                             actual_args, primary_tpl, specializations,
-                            typedef_types_, &type_bindings, &nttp_bindings);
+                            &type_bindings, &nttp_bindings);
                         if (selected && selected->template_arg_types &&
                             selected->template_arg_is_value) {
                             for (int ai = 0;
@@ -690,9 +692,8 @@ TypeSpec Parser::parse_base_type() {
                         return false;
                     };
                 std::string resolved_tag = tag;
-                auto typedef_it = typedef_types_.find(tag);
-                if (typedef_it != typedef_types_.end()) {
-                    TypeSpec resolved = resolve_struct_like(typedef_it->second);
+                if (const TypeSpec* typedef_type = find_typedef_type(tag)) {
+                    TypeSpec resolved = resolve_struct_like(*typedef_type);
                     if (resolved.tag && resolved.tag[0])
                         resolved_tag = resolved.tag;
                 }
@@ -784,9 +785,8 @@ TypeSpec Parser::parse_base_type() {
         if (check(TokenKind::Identifier)) {
             std::string id = cur().lexeme;
             consume();
-            auto vit = var_types_.find(id);
-            if (vit != var_types_.end()) {
-                *out = vit->second;
+            if (const TypeSpec* var_type = find_visible_var_type(id)) {
+                *out = *var_type;
             } else {
                 out->base = TB_INT;  // enum constants and unknowns → int
             }
@@ -1010,7 +1010,7 @@ TypeSpec Parser::parse_base_type() {
                           tokens_[pos_ + 1].kind == TokenKind::ColonColon) &&
                         (is_typedef_name(cur().lexeme) ||
                          is_template_scope_type_param(cur().lexeme) ||
-                         typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0);
+                         has_visible_typedef_type(cur().lexeme));
                     if (!simple_unqualified_known_type_head &&
                         try_parse_cpp_scoped_base_type(already_have_base, &ts)) {
                         has_typedef = true;
@@ -1024,7 +1024,7 @@ TypeSpec Parser::parse_base_type() {
                 }
                 if (is_typedef_name(cur().lexeme) ||
                     is_template_scope_type_param(cur().lexeme) ||
-                    typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) {
+                    has_visible_typedef_type(cur().lexeme)) {
                     // If we've already seen concrete type specifiers/modifiers,
                     // this identifier is the declarator name (e.g. `int s;` even
                     // when `s` is also a typedef name in outer scope).
@@ -1108,8 +1108,9 @@ TypeSpec Parser::parse_base_type() {
         Node* ed = parse_enum();
         last_enum_def_ = ed;
         if (ed && ed->name) {
-            auto it = typedef_types_.find(ed->name);
-            if (it != typedef_types_.end()) ts = it->second;
+            if (const TypeSpec* typedef_type = find_typedef_type(ed->name)) {
+                ts = *typedef_type;
+            }
         }
         ts.base = TB_ENUM;
         ts.tag  = ed ? ed->name : nullptr;
@@ -1137,11 +1138,10 @@ TypeSpec Parser::parse_base_type() {
         // Try to resolve the typedef to its underlying TypeSpec
         const char* tname = ts.tag;
         if (tname) {
-            auto it = typedef_types_.find(tname);
-            if (it != typedef_types_.end()) {
+            if (const TypeSpec* typedef_type = find_typedef_type(tname)) {
                 // Resolve: use the stored TypeSpec, preserving qualifiers from this context
                 bool save_const = ts.is_const, save_vol = ts.is_volatile;
-                ts = it->second;
+                ts = *typedef_type;
                 ts.is_const   |= save_const;
                 ts.is_volatile |= save_vol;
                 // Phase C: remember the typedef name for fn_ptr param propagation.
@@ -1434,9 +1434,9 @@ TypeSpec Parser::parse_base_type() {
                                             *out = parsed;
                                             return true;
                                         }
-                                        auto tit = typedef_types_.find(ref);
-                                        if (tit != typedef_types_.end()) {
-                                            parsed.type = tit->second;
+                                        if (const TypeSpec* typedef_type =
+                                                find_typedef_type(ref)) {
+                                            parsed.type = *typedef_type;
                                             *out = parsed;
                                             return true;
                                         }
@@ -1621,9 +1621,11 @@ TypeSpec Parser::parse_base_type() {
                                             if (it != template_struct_specializations_.end())
                                                 specializations = &it->second;
                                         }
-                                        const Node* selected = select_template_struct_pattern(
-                                            actual_args, primary_tpl, specializations,
-                                            typedef_types_, &type_bindings, &nttp_bindings);
+                                        const Node* selected =
+                                            select_template_struct_pattern_for_args(
+                                                actual_args, primary_tpl,
+                                                specializations, &type_bindings,
+                                                &nttp_bindings);
                                         if (!selected || selected->n_member_typedefs <= 0)
                                             return false;
                                         for (int mi = 0; mi < selected->n_member_typedefs; ++mi) {
@@ -2018,9 +2020,9 @@ TypeSpec Parser::parse_base_type() {
                     std::vector<std::pair<std::string, long long>> nttp_bindings;
                     const auto* specialization_patterns =
                         find_template_struct_specializations(primary_tpl);
-                    const Node* tpl_def = select_template_struct_pattern(
+                    const Node* tpl_def = select_template_struct_pattern_for_args(
                         actual_args, primary_tpl, specialization_patterns,
-                        typedef_types_, &type_bindings, &nttp_bindings);
+                        &type_bindings, &nttp_bindings);
                     if (!tpl_def) return ts;
                     std::vector<ParsedTemplateArg> concrete_args = actual_args;
                     while (primary_tpl && static_cast<int>(concrete_args.size()) < primary_tpl->n_template_params) {
@@ -2653,9 +2655,8 @@ TypeSpec Parser::parse_base_type() {
                                     inst->member_typedef_names[ti][0]) {
                                     std::string scoped =
                                         mangled + "::" + inst->member_typedef_names[ti];
-                                    struct_typedefs_[scoped] = member_ts;
-                                    typedefs_.insert(scoped);
-                                    typedef_types_[scoped] = member_ts;
+                                    register_struct_member_typedef_binding(
+                                        scoped, member_ts);
                                 }
                             }
                         }

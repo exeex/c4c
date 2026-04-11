@@ -179,9 +179,8 @@ Node* Parser::parse_stmt() {
                 }
                 return make_node(NK_INVALID_STMT, ln);
             }
-            // Register as typedef so subsequent code recognizes the name
-            typedefs_.insert(alias_name);
-            typedef_types_[alias_name] = alias_ts;
+            // Register as typedef so subsequent code recognizes the name.
+            register_typedef_binding(alias_name, alias_ts, true);
             return make_node(NK_EMPTY, ln);
         }
 
@@ -274,7 +273,7 @@ Node* Parser::parse_stmt() {
                 if (k != TokenKind::Identifier) return false;
                 if (is_template_scope_type_param(cur().lexeme)) return true;
                 if (is_typedef_name(cur().lexeme)) return true;
-                return typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0;
+                return has_typedef_type(resolve_visible_type_name(cur().lexeme));
             };
 
             auto can_use_lite_if_condition_decl = [&]() -> bool {
@@ -335,7 +334,7 @@ Node* Parser::parse_stmt() {
                         decl->type = ts;
                         decl->name = vname;
                         decl->init = init_node;
-                        var_types_[vname] = ts;
+                        register_var_type_binding(vname, ts);
                         guard.commit();
                         return decl;
                     };
@@ -821,9 +820,8 @@ Node* Parser::parse_stmt() {
         auto has_visible_value_binding = [&](const std::string& name) -> bool {
             if (name.empty()) return false;
             const std::string resolved = resolve_visible_value_name(name);
-            return var_types_.count(name) > 0 || known_fn_names_.count(name) > 0 ||
-                   var_types_.count(resolved) > 0 ||
-                   known_fn_names_.count(resolved) > 0;
+            return has_var_type(name) || has_known_fn_name(name) ||
+                   has_var_type(resolved) || has_known_fn_name(resolved);
         };
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
             has_visible_value_binding(cur().lexeme) &&
@@ -871,14 +869,14 @@ Node* Parser::parse_stmt() {
                 full_name += qn.base_name;
                 // Check if the full qualified name is a known type
                 bool is_known_type = is_typedef_name(full_name) ||
-                    typedef_types_.count(full_name) > 0 ||
-                    typedef_types_.count(resolve_visible_type_name(full_name)) > 0;
+                    has_typedef_type(full_name) ||
+                    has_typedef_type(resolve_visible_type_name(full_name));
                 // Also try namespace resolution
                 if (!is_known_type) {
                     int ctx = resolve_namespace_context(qn);
                     if (ctx >= 0) {
                         std::string ns_name = canonical_name_in_context(ctx, qn.base_name);
-                        is_known_type = typedef_types_.count(ns_name) > 0;
+                        is_known_type = has_typedef_type(ns_name);
                     }
                 }
                 if (!is_known_type) {

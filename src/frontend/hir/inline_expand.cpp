@@ -2,7 +2,6 @@
 
 #include <cassert>
 #include <cstdio>
-#include <unordered_map>
 
 namespace c4c::hir {
 
@@ -28,42 +27,30 @@ const char* inline_reject_reason_str(InlineRejectReason reason) {
 // ── Phase 2: InlineCloneContext ──────────────────────────────────────────────
 
 LocalId InlineCloneContext::remap_local(LocalId old_id) {
-  auto [it, inserted] = local_map.try_emplace(old_id.value, LocalId::invalid());
-  if (inserted) {
-    it->second = module->alloc_local_id();
-  }
-  return it->second;
+  return local_map.get_or_create(old_id, [&] { return module->alloc_local_id(); });
 }
 
 BlockId InlineCloneContext::remap_block(BlockId old_id) {
-  auto [it, inserted] = block_map.try_emplace(old_id.value, BlockId::invalid());
-  if (inserted) {
-    it->second = module->alloc_block_id();
-  }
-  return it->second;
+  return block_map.get_or_create(old_id, [&] { return module->alloc_block_id(); });
 }
 
 ExprId InlineCloneContext::remap_expr(ExprId old_id) {
-  auto [it, inserted] = expr_map.try_emplace(old_id.value, ExprId::invalid());
-  if (inserted) {
-    it->second = module->alloc_expr_id();
-  }
-  return it->second;
+  return expr_map.get_or_create(old_id, [&] { return module->alloc_expr_id(); });
 }
 
 LocalId InlineCloneContext::lookup_local(LocalId old_id) const {
-  auto it = local_map.find(old_id.value);
-  return it != local_map.end() ? it->second : LocalId::invalid();
+  if (const auto* mapped = local_map.find(old_id)) return *mapped;
+  return LocalId::invalid();
 }
 
 BlockId InlineCloneContext::lookup_block(BlockId old_id) const {
-  auto it = block_map.find(old_id.value);
-  return it != block_map.end() ? it->second : BlockId::invalid();
+  if (const auto* mapped = block_map.find(old_id)) return *mapped;
+  return BlockId::invalid();
 }
 
 ExprId InlineCloneContext::lookup_expr(ExprId old_id) const {
-  auto it = expr_map.find(old_id.value);
-  return it != expr_map.end() ? it->second : ExprId::invalid();
+  if (const auto* mapped = expr_map.find(old_id)) return *mapped;
+  return ExprId::invalid();
 }
 
 // ── clone_expr ───────────────────────────────────────────────────────────────
@@ -1252,7 +1239,7 @@ void run_inline_expansion(Module& module) {
   // Cap each callee at 16 expansions — enough for reasonable always_inline
   // depth but prevents runaway mutual recursion (A→B→A→B→...).
   constexpr int max_per_callee = 16;
-  std::unordered_map<uint32_t, int> callee_expand_count;
+  OptionalDenseIdMap<FunctionId, int> callee_expand_count;
   while (changed && max_iterations-- > 0) {
     changed = false;
     auto candidates = discover_inline_candidates(module);
@@ -1261,8 +1248,11 @@ void run_inline_expansion(Module& module) {
 
       // Skip callees that have already been expanded too many times
       // (mutual recursion guard).
-      auto callee_id = cand.callee->id.value;
-      if (callee_expand_count[callee_id] >= max_per_callee) continue;
+      FunctionId callee_id = cand.callee->id;
+      if (const int* expand_count = callee_expand_count.find(callee_id);
+          expand_count && *expand_count >= max_per_callee) {
+        continue;
+      }
 
       // Find the mutable caller function.
       Function* caller = nullptr;
@@ -1275,7 +1265,7 @@ void run_inline_expansion(Module& module) {
       if (!caller) continue;
 
       if (expand_inline_site(module, *caller, cand)) {
-        callee_expand_count[callee_id]++;
+        ++callee_expand_count.get_or_create(callee_id, [] { return 0; });
         changed = true;
         break;  // re-discover after each expansion
       }

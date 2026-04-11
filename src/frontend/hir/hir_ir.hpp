@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -43,6 +44,87 @@ namespace c4c::hir {
 // - Phase 5+: stable IDs, summaries, and debug dumps for parity tooling
 
 using SymbolName = std::string;
+
+template <typename Id, typename T>
+class DenseIdMap {
+ public:
+  [[nodiscard]] bool contains(Id id) const {
+    return id.valid() && id.index() < values_.size() && values_[id.index()].has_value();
+  }
+
+  [[nodiscard]] T& at(Id id) {
+    assert(contains(id) && "DenseIdMap access requires an assigned dense ID");
+    return *values_[id.index()];
+  }
+
+  [[nodiscard]] const T& at(Id id) const {
+    assert(contains(id) && "DenseIdMap access requires an assigned dense ID");
+    return *values_[id.index()];
+  }
+
+  void insert(Id id, T value) {
+    assert(id.valid() && "DenseIdMap insertion requires a valid ID");
+    ensure_slot(id);
+    values_[id.index()] = std::move(value);
+  }
+
+  [[nodiscard]] size_t size() const { return values_.size(); }
+
+ private:
+  void ensure_slot(Id id) {
+    if (values_.size() <= id.index()) {
+      values_.resize(id.index() + 1);
+    }
+  }
+
+  std::vector<std::optional<T>> values_;
+};
+
+template <typename Id, typename T>
+class OptionalDenseIdMap {
+ public:
+  [[nodiscard]] bool contains(Id id) const {
+    return id.valid() && id.index() < values_.size() && values_[id.index()].has_value();
+  }
+
+  [[nodiscard]] T* find(Id id) {
+    if (!contains(id)) return nullptr;
+    return &*values_[id.index()];
+  }
+
+  [[nodiscard]] const T* find(Id id) const {
+    if (!contains(id)) return nullptr;
+    return &*values_[id.index()];
+  }
+
+  void insert(Id id, T value) {
+    assert(id.valid() && "OptionalDenseIdMap insertion requires a valid ID");
+    ensure_slot(id);
+    values_[id.index()] = std::move(value);
+  }
+
+  template <typename Factory>
+  [[nodiscard]] T& get_or_create(Id id, Factory&& factory) {
+    assert(id.valid() && "OptionalDenseIdMap insertion requires a valid ID");
+    ensure_slot(id);
+    auto& slot = values_[id.index()];
+    if (!slot) {
+      slot.emplace(std::forward<Factory>(factory)());
+    }
+    return *slot;
+  }
+
+  [[nodiscard]] size_t size() const { return values_.size(); }
+
+ private:
+  void ensure_slot(Id id) {
+    if (values_.size() <= id.index()) {
+      values_.resize(id.index() + 1);
+    }
+  }
+
+  std::vector<std::optional<T>> values_;
+};
 
 /// Structured namespace qualifier preserved from the AST.
 /// Captures the qualifier path (e.g., ["math", "detail"] for math::detail::foo)
@@ -870,6 +952,7 @@ struct Module {
     size_t templates_resolved = 0;       // total template calls resolved
     size_t consteval_reduced = 0;        // total consteval calls reduced
     bool converged = false;
+    std::vector<std::string> diagnostics;
     // Materialization stats (populated by Stage 3: materialize_ready_functions).
     size_t materialized_functions = 0;      // functions marked for emission
     size_t non_materialized_functions = 0;  // compile-time-only functions

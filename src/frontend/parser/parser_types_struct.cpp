@@ -195,13 +195,7 @@ void Parser::parse_record_template_member_prelude(
             if (check(TokenKind::Identifier)) {
                 std::string pname = cur().lexeme;
                 consume();
-                typedefs_.insert(pname);
-                TypeSpec param_ts{};
-                param_ts.array_size = -1;
-                param_ts.inner_rank = -1;
-                param_ts.base = TB_TYPEDEF;
-                param_ts.tag = arena_.strdup(pname.c_str());
-                typedef_types_[pname] = param_ts;
+                register_synthesized_typedef_binding(pname);
                 injected_type_params->push_back(std::move(pname));
             }
             if (check(TokenKind::Assign)) {
@@ -253,13 +247,7 @@ void Parser::parse_record_template_member_prelude(
             if (check(TokenKind::Identifier)) {
                 std::string pname = cur().lexeme;
                 consume();
-                typedefs_.insert(pname);
-                TypeSpec param_ts{};
-                param_ts.array_size = -1;
-                param_ts.inner_rank = -1;
-                param_ts.base = TB_TYPEDEF;
-                param_ts.tag = arena_.strdup(pname.c_str());
-                typedef_types_[pname] = param_ts;
+                register_synthesized_typedef_binding(pname);
                 injected_type_params->push_back(std::move(pname));
             }
             if (check(TokenKind::Assign)) {
@@ -305,13 +293,7 @@ void Parser::parse_record_template_member_prelude(
                     if (check(TokenKind::Identifier)) {
                         std::string pname = cur().lexeme;
                         consume();
-                        typedefs_.insert(pname);
-                        TypeSpec param_ts{};
-                        param_ts.array_size = -1;
-                        param_ts.inner_rank = -1;
-                        param_ts.base = TB_TYPEDEF;
-                        param_ts.tag = arena_.strdup(pname.c_str());
-                        typedef_types_[pname] = param_ts;
+                        register_synthesized_typedef_binding(pname);
                         injected_type_params->push_back(std::move(pname));
                     }
                     if (check(TokenKind::Assign)) {
@@ -467,13 +449,7 @@ void Parser::parse_record_template_member_prelude(
                         if (check(TokenKind::Identifier)) {
                             std::string pname = cur().lexeme;
                             consume();
-                            typedefs_.insert(pname);
-                            TypeSpec param_ts{};
-                            param_ts.array_size = -1;
-                            param_ts.inner_rank = -1;
-                            param_ts.base = TB_TYPEDEF;
-                            param_ts.tag = arena_.strdup(pname.c_str());
-                            typedef_types_[pname] = param_ts;
+                            register_synthesized_typedef_binding(pname);
                             injected_type_params->push_back(std::move(pname));
                         }
                         if (check(TokenKind::Assign)) {
@@ -670,14 +646,12 @@ bool Parser::try_parse_record_using_member(
         TypeSpec alias_ts = parse_type_name();
         expect(TokenKind::Semi);
 
-        typedefs_.insert(alias_name);
-        typedef_types_[alias_name] = alias_ts;
+        register_typedef_binding(alias_name, alias_ts, false);
         member_typedef_names->push_back(arena_.strdup(alias_name.c_str()));
         member_typedef_types->push_back(alias_ts);
         if (!current_struct_tag_.empty()) {
             std::string scoped = current_struct_tag_ + "::" + alias_name;
-            typedefs_.insert(scoped);
-            typedef_types_[scoped] = alias_ts;
+            register_struct_member_typedef_binding(scoped, alias_ts);
         }
         return true;
     }
@@ -699,6 +673,23 @@ bool Parser::try_parse_record_typedef_member(
     consume(); // eat 'typedef'
     TypeSpec td_base = parse_base_type();
     parse_attributes(&td_base);
+    auto register_record_typedef = [&](const char* name, const TypeSpec& type,
+                                       Node** fn_ptr_params,
+                                       int n_fn_ptr_params,
+                                       bool fn_ptr_variadic) {
+        register_typedef_binding(name, type, true);
+        if (type.is_fn_ptr && (n_fn_ptr_params > 0 || fn_ptr_variadic)) {
+            typedef_fn_ptr_info_[name] = {
+                fn_ptr_params, n_fn_ptr_params, fn_ptr_variadic};
+        }
+        member_typedef_names->push_back(name);
+        member_typedef_types->push_back(type);
+        if (!current_struct_tag_.empty()) {
+            std::string scoped = current_struct_tag_ + "::" + name;
+            register_struct_member_typedef_binding(scoped, type);
+        }
+    };
+
     const char* tdname = nullptr;
     TypeSpec ts_copy = td_base;
     Node** td_fn_ptr_params = nullptr;
@@ -707,23 +698,8 @@ bool Parser::try_parse_record_typedef_member(
     parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
                      &td_n_fn_ptr_params, &td_fn_ptr_variadic);
     if (tdname) {
-        typedefs_.insert(tdname);
-        user_typedefs_.insert(tdname);
-        typedef_types_[tdname] = ts_copy;
-        if (ts_copy.is_fn_ptr &&
-            (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
-            typedef_fn_ptr_info_[tdname] = {
-                td_fn_ptr_params, td_n_fn_ptr_params,
-                td_fn_ptr_variadic};
-        }
-        member_typedef_names->push_back(tdname);
-        member_typedef_types->push_back(ts_copy);
-        if (!current_struct_tag_.empty()) {
-            std::string scoped = current_struct_tag_ + "::" + tdname;
-            struct_typedefs_[scoped] = ts_copy;
-            typedefs_.insert(scoped);
-            typedef_types_[scoped] = ts_copy;
-        }
+        register_record_typedef(tdname, ts_copy, td_fn_ptr_params,
+                                td_n_fn_ptr_params, td_fn_ptr_variadic);
     }
 
     while (match(TokenKind::Comma)) {
@@ -735,23 +711,8 @@ bool Parser::try_parse_record_typedef_member(
         parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
                          &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
         if (tdn2) {
-            typedefs_.insert(tdn2);
-            user_typedefs_.insert(tdn2);
-            typedef_types_[tdn2] = ts2;
-            if (ts2.is_fn_ptr &&
-                (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
-                typedef_fn_ptr_info_[tdn2] = {
-                    td2_fn_ptr_params, td2_n_fn_ptr_params,
-                    td2_fn_ptr_variadic};
-            }
-            member_typedef_names->push_back(tdn2);
-            member_typedef_types->push_back(ts2);
-            if (!current_struct_tag_.empty()) {
-                std::string scoped = current_struct_tag_ + "::" + tdn2;
-                struct_typedefs_[scoped] = ts2;
-                typedefs_.insert(scoped);
-                typedef_types_[scoped] = ts2;
-            }
+            register_record_typedef(tdn2, ts2, td2_fn_ptr_params,
+                                    td2_n_fn_ptr_params, td2_fn_ptr_variadic);
         }
     }
     expect(TokenKind::Semi);
@@ -843,9 +804,8 @@ bool Parser::try_parse_record_enum_member(
             // Prefer enum type tag if available
             fts.base = TB_ENUM;
             fts.tag  = ed->name;
-            auto it = typedef_types_.find(ed->name);
-            if (it != typedef_types_.end())
-                fts.enum_underlying_base = it->second.enum_underlying_base;
+            if (const TypeSpec* enum_type = find_typedef_type(ed->name))
+                fts.enum_underlying_base = enum_type->enum_underlying_base;
         }
         while (true) {
             TypeSpec cur_fts = fts;
@@ -1661,23 +1621,9 @@ bool Parser::try_parse_record_member_with_template_prelude(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
-    struct TemplateParamGuard {
-        std::set<std::string>& typedefs;
-        std::unordered_map<std::string, TypeSpec>& typedef_types;
-        std::vector<TemplateScopeFrame>& scope_stack;
-        std::vector<std::string> names;
-        bool pushed_scope = false;
-        ~TemplateParamGuard() {
-            if (pushed_scope) scope_stack.pop_back();
-            for (auto& n : names) {
-                typedefs.erase(n);
-                typedef_types.erase(n);
-            }
-        }
-    } tmpl_guard{typedefs_, typedef_types_, template_scope_stack_, {}};
-
-    parse_record_template_member_prelude(&tmpl_guard.names,
-                                         &tmpl_guard.pushed_scope);
+    RecordTemplatePreludeGuard tmpl_guard(this);
+    parse_record_template_member_prelude(&tmpl_guard.injected_type_params,
+                                         &tmpl_guard.pushed_template_scope);
     parse_optional_cpp20_requires_clause(*this);
     if (try_skip_record_friend_member()) return true;
     if (try_skip_record_static_assert_member(methods)) return true;
@@ -1743,7 +1689,7 @@ void Parser::begin_record_body_context(const char* tag,
     // Make the current record name available for self-type parsing within the
     // body before member dispatch starts.
     if (is_cpp_mode() && tag && tag[0])
-        typedefs_.insert(tag);
+        register_typedef_name(tag, false);
 
     if (saved_struct_tag)
         *saved_struct_tag = current_struct_tag_;
@@ -1759,14 +1705,9 @@ void Parser::begin_record_body_context(const char* tag,
     if (!is_cpp_mode())
         return;
 
-    typedefs_.insert(template_origin_name);
-    if (typedef_types_.count(template_origin_name) == 0) {
-        TypeSpec src_ts{};
-        src_ts.array_size = -1;
-        src_ts.inner_rank = -1;
-        src_ts.base = TB_STRUCT;
-        src_ts.tag = tag;
-    typedef_types_[template_origin_name] = src_ts;
+    register_typedef_name(template_origin_name, false);
+    if (!has_typedef_type(template_origin_name)) {
+        register_tag_type_binding(template_origin_name, TB_STRUCT, tag);
     }
 }
 
@@ -1961,13 +1902,9 @@ Node* Parser::parse_record_tag_setup(int line,
             ref->n_fields = -1;  // -1 = forward reference (no body)
         }
         if (is_cpp_mode() && resolved_tag && resolved_tag[0]) {
-            typedefs_.insert(resolved_tag);
-            TypeSpec injected_ts{};
-            injected_ts.array_size = -1;
-            injected_ts.array_rank = 0;
-            injected_ts.base = is_union ? TB_UNION : TB_STRUCT;
-            injected_ts.tag = resolved_tag;
-            typedef_types_[resolved_tag] = injected_ts;
+            register_tag_type_binding(resolved_tag,
+                                      is_union ? TB_UNION : TB_STRUCT,
+                                      resolved_tag);
         }
         if (is_cpp_mode() && parsing_top_level_context_)
             struct_defs_.push_back(ref);
@@ -2134,16 +2071,11 @@ void Parser::register_record_definition(Node* sd,
     if (!is_cpp_mode() || !(sd->name && sd->name[0]))
         return;
 
-    typedefs_.insert(sd->name);
-    TypeSpec injected_ts{};
-    injected_ts.array_size = -1;
-    injected_ts.array_rank = 0;
-    injected_ts.base = is_union ? TB_UNION : TB_STRUCT;
-    injected_ts.tag = sd->name;
-    typedef_types_[sd->name] = injected_ts;
+    register_tag_type_binding(sd->name, is_union ? TB_UNION : TB_STRUCT,
+                              sd->name);
     if (source_tag && source_tag[0] && std::strcmp(source_tag, sd->name) != 0) {
-        typedefs_.insert(source_tag);
-        typedef_types_[source_tag] = injected_ts;
+        register_tag_type_binding(source_tag, is_union ? TB_UNION : TB_STRUCT,
+                                  sd->name);
     }
 }
 
@@ -2214,7 +2146,7 @@ Node* Parser::parse_enum() {
     if (match(TokenKind::Colon)) {
         // Preserve fixed underlying-type metadata for layout-sensitive queries.
         TypeSpec underlying_ts = parse_base_type();
-        underlying_ts = resolve_typedef_chain(underlying_ts, typedef_types_);
+        underlying_ts = resolve_typedef_type_chain(underlying_ts);
         enum_underlying_base = effective_scalar_base(underlying_ts);
         skip_attributes();
     }
@@ -2222,20 +2154,11 @@ Node* Parser::parse_enum() {
     auto register_enum_type = [&](const char* source_tag, const char* canonical_tag) {
         if (!source_tag || !source_tag[0] || !canonical_tag || !canonical_tag[0])
             return;
-        TypeSpec enum_ts{};
-        enum_ts.array_size = -1;
-        enum_ts.array_rank = 0;
-        enum_ts.inner_rank = -1;
-        for (int i = 0; i < 8; ++i) enum_ts.array_dims[i] = -1;
-        enum_ts.base = TB_ENUM;
-        enum_ts.enum_underlying_base = enum_underlying_base;
-        enum_ts.tag = canonical_tag;
-        typedefs_.insert(source_tag);
-        typedef_types_[source_tag] = enum_ts;
-        if (strcmp(source_tag, canonical_tag) != 0) {
-            typedefs_.insert(canonical_tag);
-            typedef_types_[canonical_tag] = enum_ts;
-        }
+        register_tag_type_binding(source_tag, TB_ENUM, canonical_tag,
+                                  enum_underlying_base);
+        if (strcmp(source_tag, canonical_tag) != 0)
+            register_tag_type_binding(canonical_tag, TB_ENUM, canonical_tag,
+                                      enum_underlying_base);
     };
 
     if (!check(TokenKind::LBrace)) {

@@ -284,7 +284,7 @@ bool is_known_simple_type_head(const Parser& parser, const std::string& name) {
     if (parser.is_template_scope_type_param(name)) return true;
     if (parser.is_typedef_name(name)) return true;
     const std::string resolved = parser.resolve_visible_type_name(name);
-    return parser.typedef_types_.count(resolved) > 0 ||
+    return parser.has_typedef_type(resolved) ||
            parser.template_struct_defs_.count(name) > 0 ||
            parser.template_struct_defs_.count(resolved) > 0 ||
            parser.defined_struct_tags_.count(name) > 0 ||
@@ -393,7 +393,7 @@ std::string spell_qualified_name_for_lookup(const Parser::QualifiedNameRef& qn) 
 std::string resolve_qualified_typedef_name(const Parser& parser,
                                            const Parser::QualifiedNameRef& qn) {
     std::string resolved = spell_qualified_name_for_lookup(qn);
-    if (!resolved.empty() && parser.typedef_types_.count(resolved) > 0)
+    if (!resolved.empty() && parser.has_typedef_type(resolved))
         return resolved;
 
     if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
@@ -401,14 +401,14 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
         if (context_id >= 0) {
             std::string canonical =
                 parser.canonical_name_in_context(context_id, qn.base_name);
-            if (parser.typedef_types_.count(canonical) > 0)
+            if (parser.has_typedef_type(canonical))
                 return canonical;
         }
         return {};
     }
 
     resolved = parser.resolve_visible_type_name(qn.base_name);
-    if (parser.typedef_types_.count(resolved) > 0)
+    if (parser.has_typedef_type(resolved))
         return resolved;
     return {};
 }
@@ -451,7 +451,7 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
                                         const Parser::QualifiedNameRef& qn) {
     QualifiedTypeProbe probe;
     probe.resolved_typedef_name = resolve_qualified_known_type_name(parser, qn);
-    if (parser.typedef_types_.count(probe.resolved_typedef_name) > 0) {
+    if (parser.has_typedef_type(probe.resolved_typedef_name)) {
         probe.has_resolved_typedef = true;
         return probe;
     }
@@ -678,11 +678,10 @@ TypeSpec strip_pattern_qualifiers(TypeSpec ts, const TypeSpec& pattern) {
 }
 
 bool match_type_pattern(const TypeSpec& pattern_raw, const TypeSpec& actual_raw,
-                        const Node* tpl_def,
-                        std::unordered_map<std::string, TypeSpec>* type_bindings,
-                        const std::unordered_map<std::string, TypeSpec>& typedef_types) {
-    TypeSpec pattern = resolve_typedef_chain(pattern_raw, typedef_types);
-    TypeSpec actual = resolve_typedef_chain(actual_raw, typedef_types);
+                        const Node* tpl_def, const Parser& parser,
+                        std::unordered_map<std::string, TypeSpec>* type_bindings) {
+    TypeSpec pattern = parser.resolve_typedef_type_chain(pattern_raw);
+    TypeSpec actual = parser.resolve_typedef_type_chain(actual_raw);
     if (pattern.is_const && !actual.is_const) return false;
     if (pattern.is_volatile && !actual.is_volatile) return false;
     if (pattern.ptr_level > actual.ptr_level) return false;
@@ -698,10 +697,10 @@ bool match_type_pattern(const TypeSpec& pattern_raw, const TypeSpec& actual_raw,
             (*type_bindings)[pattern.tag] = bound;
             return true;
         }
-        return types_compatible_p(it->second, bound, typedef_types);
+        return parser.are_types_compatible(it->second, bound);
     }
 
-    return types_compatible_p(pattern, actual, typedef_types);
+    return parser.are_types_compatible(pattern, actual);
 }
 
 int specialization_match_score(const Node* spec) {
@@ -864,7 +863,7 @@ const Node* select_template_struct_pattern(
     const std::vector<ParsedTemplateArg>& actual_args,
     const Node* primary_tpl,
     const std::vector<Node*>* specialization_patterns,
-    const std::unordered_map<std::string, TypeSpec>& typedef_types,
+    const Parser& parser,
     std::vector<std::pair<std::string, TypeSpec>>* out_type_bindings,
     std::vector<std::pair<std::string, long long>>* out_nttp_bindings) {
     const Node* best = primary_tpl;
@@ -891,8 +890,8 @@ const Node* select_template_struct_pattern(
                     if (cand->template_arg_values[i] != actual.value) return;
                 }
             } else {
-                if (!match_type_pattern(cand->template_arg_types[i], actual.type, cand,
-                                        &type_bindings_map, typedef_types))
+                if (!match_type_pattern(cand->template_arg_types[i], actual.type,
+                                        cand, parser, &type_bindings_map))
                     return;
             }
         }

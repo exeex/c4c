@@ -182,6 +182,13 @@ set_tests_properties(frontend_cxx_preprocessor_tests PROPERTIES
     LABELS "internal;preprocessor")
 
 add_test(
+    NAME frontend_hir_tests
+    COMMAND frontend_hir_tests
+)
+set_tests_properties(frontend_hir_tests PROPERTIES
+    LABELS "internal;hir")
+
+add_test(
     NAME positive_split_llvm_pragma_exec
     COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:c4cll>
@@ -331,6 +338,32 @@ if(EXISTS "${EXAMPLE_C}")
               -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
   )
   set_tests_properties(backend_lir_aarch64_variadic_pair_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_ir_x86_64_variadic_pair_amd64_vaarg
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/variadic_pair_second.c
+              -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend_ir/variadic_pair_second_x86_64.ll
+              "-DREQUIRED_SNIPPETS=br i1 %t6, label %vaarg.amd64.reg.|call void @llvm.memcpy.p0.p0.i64(ptr %t13, ptr %t11, i64 8, i1 false)|%t19 = phi %struct.Pair [ %t14, %vaarg.amd64.reg.7 ], [ %t18, %vaarg.amd64.stack.8 ]"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_llvm_ir_snippet_case.cmake"
+  )
+  set_tests_properties(backend_ir_x86_64_variadic_pair_amd64_vaarg PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_ir_x86_64_variadic_mixed_int_double_amd64_vaarg
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_module_case/variadic_mixed_int_double_bytes.c
+              -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend_ir/variadic_mixed_int_double_x86_64.ll
+              "-DREQUIRED_SNIPPETS=%t15 = getelementptr i8, ptr %t4, i64 %t13|store i32 %t16, ptr %t0|%t17 = getelementptr i8, ptr %t4, i64 %t14|store i32 %t18, ptr %t1|%t26 = phi %struct.MixedIntDouble [ %t21, %vaarg.amd64.reg.10 ], [ %t25, %vaarg.amd64.stack.11 ]"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_llvm_ir_snippet_case.cmake"
+  )
+  set_tests_properties(backend_ir_x86_64_variadic_mixed_int_double_amd64_vaarg PROPERTIES
       LABELS "internal;backend")
 
   add_test(

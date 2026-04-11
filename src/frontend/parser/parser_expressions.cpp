@@ -40,21 +40,6 @@ static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& t
     if (ts.is_rvalue_ref) out += "_rref";
 }
 
-static bool resolves_to_record_ctor_type(
-    TypeSpec ts,
-    const std::unordered_map<std::string, TypeSpec>& typedef_types,
-    const std::set<std::string>& defined_struct_tags,
-    const std::unordered_map<std::string, Node*>& template_struct_defs) {
-    ts = resolve_typedef_chain(ts, typedef_types);
-    if (ts.base == TB_TYPEDEF && ts.tag) {
-        if (defined_struct_tags.count(ts.tag) > 0 ||
-            template_struct_defs.count(ts.tag) > 0) {
-            return true;
-        }
-    }
-    return ts.base == TB_STRUCT || ts.base == TB_UNION;
-}
-
 int Parser::bin_prec(TokenKind k) {
     switch (k) {
         case TokenKind::PipePipe:       return 4;
@@ -787,8 +772,8 @@ Node* Parser::parse_primary() {
             check(TokenKind::LParen)) {
             const std::string resolved_owner =
                 resolve_visible_type_name(qualifier_owner);
-            if (typedef_types_.count(qualifier_owner) > 0 ||
-                typedef_types_.count(resolved_owner) > 0) {
+            if (has_typedef_type(qualifier_owner) ||
+                (!resolved_owner.empty() && has_typedef_type(resolved_owner))) {
                 // Inside a method body, `BaseAlias::operator...(args)` names a
                 // qualified member call on the current object rather than a
                 // free function symbol. Collapse the owner spelling here so
@@ -938,8 +923,7 @@ Node* Parser::parse_primary() {
                 expect(TokenKind::Comma);
                 TypeSpec rhs = parse_type_name();
                 expect(TokenKind::RParen);
-                const int result =
-                    types_compatible_p(lhs, rhs, typedef_types_) ? 1 : 0;
+                const int result = are_types_compatible(lhs, rhs) ? 1 : 0;
                 guard.commit();
                 return make_int_lit(result, ln);
             } catch (...) {
@@ -1280,52 +1264,55 @@ Node* Parser::parse_primary() {
                 ? resolve_visible_type_name(qn.base_name)
                 : std::string();
         if (is_cpp_mode() && qn.qualifier_segments.empty() &&
-            check(TokenKind::LParen) &&
-            typedef_types_.count(direct_resolved_type_name) > 0) {
-            TypeSpec cast_ts = typedef_types_.at(direct_resolved_type_name);
-            last_resolved_typedef_ = direct_resolved_type_name;
-            consume();
-            std::vector<Node*> args;
-            if (!check(TokenKind::RParen)) {
-                while (!at_end() && !check(TokenKind::RParen)) {
-                    args.push_back(parse_assign_expr());
-                    if (!match(TokenKind::Comma)) break;
-                }
-            }
-            expect(TokenKind::RParen);
-            const bool record_ctor_like =
-                resolves_to_record_ctor_type(
-                    cast_ts, typedef_types_, defined_struct_tags_, template_struct_defs_);
-            const bool multi_arg_typedef_cast = cast_ts.base == TB_TYPEDEF && args.size() != 1;
-            if (record_ctor_like || multi_arg_typedef_cast) {
-                Node* callee =
-                    make_var(cast_ts.tag ? cast_ts.tag
-                                         : direct_resolved_type_name.c_str(),
-                             ln);
-                Node* call = make_node(NK_CALL, ln);
-                call->left = callee;
-                call->n_children = static_cast<int>(args.size());
-                if (!args.empty()) {
-                    call->children = arena_.alloc_array<Node*>(call->n_children);
-                    for (int i = 0; i < call->n_children; ++i) {
-                        call->children[i] = args[i];
+            check(TokenKind::LParen)) {
+            const TypeSpec* direct_typedef =
+                find_typedef_type(direct_resolved_type_name);
+            if (direct_typedef) {
+                TypeSpec cast_ts = *direct_typedef;
+                last_resolved_typedef_ = direct_resolved_type_name;
+                consume();
+                std::vector<Node*> args;
+                if (!check(TokenKind::RParen)) {
+                    while (!at_end() && !check(TokenKind::RParen)) {
+                        args.push_back(parse_assign_expr());
+                        if (!match(TokenKind::Comma)) break;
                     }
                 }
-                return parse_postfix(call);
-            }
-            Node* operand = args.empty() ? make_int_lit(0, ln) : args[0];
-            Node* n = make_node(NK_CAST, ln);
-            n->type = cast_ts;
-            n->left = operand;
-            if (cast_ts.is_fn_ptr && !last_resolved_typedef_.empty()) {
-                auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
-                if (tdit != typedef_fn_ptr_info_.end()) {
-                    n->fn_ptr_params = tdit->second.params;
-                    n->n_fn_ptr_params = tdit->second.n_params;
-                    n->fn_ptr_variadic = tdit->second.variadic;
+                expect(TokenKind::RParen);
+                const bool record_ctor_like =
+                    resolves_to_record_ctor_type(cast_ts);
+                const bool multi_arg_typedef_cast =
+                    cast_ts.base == TB_TYPEDEF && args.size() != 1;
+                if (record_ctor_like || multi_arg_typedef_cast) {
+                    Node* callee =
+                        make_var(cast_ts.tag ? cast_ts.tag
+                                             : direct_resolved_type_name.c_str(),
+                                 ln);
+                    Node* call = make_node(NK_CALL, ln);
+                    call->left = callee;
+                    call->n_children = static_cast<int>(args.size());
+                    if (!args.empty()) {
+                        call->children = arena_.alloc_array<Node*>(call->n_children);
+                        for (int i = 0; i < call->n_children; ++i) {
+                            call->children[i] = args[i];
+                        }
+                    }
+                    return parse_postfix(call);
                 }
+                Node* operand = args.empty() ? make_int_lit(0, ln) : args[0];
+                Node* n = make_node(NK_CAST, ln);
+                n->type = cast_ts;
+                n->left = operand;
+                if (cast_ts.is_fn_ptr && !last_resolved_typedef_.empty()) {
+                    auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
+                    if (tdit != typedef_fn_ptr_info_.end()) {
+                        n->fn_ptr_params = tdit->second.params;
+                        n->n_fn_ptr_params = tdit->second.n_params;
+                        n->fn_ptr_variadic = tdit->second.variadic;
+                    }
+                }
+                return parse_postfix(n);
             }
-            return parse_postfix(n);
         }
         auto qualified_name_starts_from_type_owner =
             [&](const QualifiedNameRef& type_qn) -> bool {
@@ -1335,7 +1322,7 @@ Node* Parser::parse_primary() {
                 resolve_visible_type_name(type_qn.qualifier_segments.front());
             if (first_qualifier.empty()) return false;
 
-            return typedef_types_.count(first_qualifier) > 0 ||
+            return has_typedef_type(first_qualifier) ||
                    template_struct_defs_.count(first_qualifier) > 0 ||
                    defined_struct_tags_.count(first_qualifier) > 0;
         };
@@ -1379,8 +1366,7 @@ Node* Parser::parse_primary() {
                     }
                     expect(TokenKind::RParen);
                     const bool record_ctor_like =
-                        resolves_to_record_ctor_type(
-                            cast_ts, typedef_types_, defined_struct_tags_, template_struct_defs_);
+                        resolves_to_record_ctor_type(cast_ts);
                     const bool multi_arg_typedef_cast =
                         cast_ts.base == TB_TYPEDEF && args.size() != 1;
                     if (record_ctor_like || multi_arg_typedef_cast) {
@@ -1474,7 +1460,7 @@ Node* Parser::parse_primary() {
             expect(TokenKind::Comma);
             TypeSpec ts2 = parse_type_name();
             expect(TokenKind::RParen);
-            int result = types_compatible_p(ts1, ts2, typedef_types_) ? 1 : 0;
+            int result = are_types_compatible(ts1, ts2) ? 1 : 0;
             return make_int_lit(result, ln);
         }
         Node* ident = make_var(nm, ln);
@@ -1686,8 +1672,7 @@ Node* Parser::parse_primary() {
             }
             expect(TokenKind::RParen);
             const bool record_ctor_like =
-                resolves_to_record_ctor_type(
-                    cast_ts, typedef_types_, defined_struct_tags_, template_struct_defs_);
+                resolves_to_record_ctor_type(cast_ts);
             const bool multi_arg_typedef_cast =
                 cast_ts.base == TB_TYPEDEF && args.size() != 1;
             if (record_ctor_like || multi_arg_typedef_cast) {

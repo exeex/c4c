@@ -13,7 +13,10 @@
 // - hir_templates.cpp: template-struct realization and deferred-type resolution
 // - hir_functions.cpp: callable/global lowering
 // - hir_stmt.cpp: statement lowering and cleanup emission
-// - hir_expr.cpp: expression lowering and operator dispatch
+// - hir_expr.cpp: expression dispatch and lvalue classification
+// - hir_expr_scalar_control.cpp: scalar and control-expression lowering helpers
+// - hir_templates_materialization.cpp: template-arg materialization and mangling
+// - hir_templates_struct_instantiation.cpp: template struct body realization
 // - hir_types.cpp: type/layout/init normalization
 // - hir_lowering_core.cpp: shared source/span/string helpers
 
@@ -269,7 +272,7 @@ class Lowerer {
 
     Function* fn = nullptr;
     std::unordered_map<std::string, LocalId> locals;
-    std::unordered_map<uint32_t, TypeSpec> local_types;
+    DenseIdMap<LocalId, TypeSpec> local_types;
     std::unordered_map<std::string, FnPtrSig> local_fn_ptr_sigs;
     std::unordered_map<std::string, FnPtrSig> param_fn_ptr_sigs;
     std::unordered_map<std::string, GlobalId> static_globals;
@@ -574,7 +577,27 @@ class Lowerer {
                                           const Node* list_node,
                                           const TypeSpec& param_ts);
 
+  std::optional<ExprId> try_lower_direct_struct_constructor_call(FunctionCtx* ctx,
+                                                                 const Node* n);
+
+  std::optional<ExprId> try_lower_template_struct_call(FunctionCtx* ctx,
+                                                       const Node* n);
+
+  ExprId lower_call_arg(FunctionCtx* ctx,
+                        const Node* arg_node,
+                        const TypeSpec* param_ts);
+
+  bool try_expand_pack_call_arg(FunctionCtx* ctx,
+                                CallExpr& call,
+                                const Node* arg_node,
+                                const TypeSpec* construct_param_ts);
+
+  std::optional<ExprId> try_lower_member_call_expr(FunctionCtx* ctx,
+                                                   const Node* n);
+
   ExprId lower_call_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_member_expr(FunctionCtx* ctx, const Node* n);
 
   // ── initializer and aggregate lowering helpers ───────────────────────────
   // Reconstruct the full TypeSpec for a struct field from its HirStructField.
@@ -637,6 +660,28 @@ class Lowerer {
 
   void emit_dtor_calls(FunctionCtx& ctx, size_t since, const Node* span_node);
 
+  void lower_range_for_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_if_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_while_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_for_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_do_while_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_switch_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_case_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_case_range_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_default_stmt(FunctionCtx& ctx, const Node* n);
+
+  void attach_switch_cases(FunctionCtx& ctx, BlockId parent_b);
+
+  void branch_to_block_if_needed(FunctionCtx& ctx, BlockId target, const Node* n);
+
   void lower_stmt_node(FunctionCtx& ctx, const Node* n);
 
   ExprId lower_stmt_expr_block(FunctionCtx& ctx, const Node* block, const TypeSpec& result_ts);
@@ -674,6 +719,48 @@ class Lowerer {
   int builtin_alignof_expr_bytes(FunctionCtx* ctx, const Node* expr);
 
   ExprId lower_builtin_alignof_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_var_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_unary_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_postfix_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_addr_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_deref_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_comma_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_binary_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_assign_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_compound_assign_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_cast_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_va_arg_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_index_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_ternary_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_generic_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_stmt_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_complex_part_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_sizeof_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_sizeof_pack_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_compound_literal_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_new_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_delete_expr(FunctionCtx* ctx, const Node* n);
 
   ExprId lower_expr(FunctionCtx* ctx, const Node* n);
 

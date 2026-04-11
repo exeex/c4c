@@ -3,6 +3,8 @@
 #include "hir.hpp"
 #include "hir_printer.hpp"
 
+#include <cstdlib>
+
 namespace c4c::sema {
 
 // Base C analysis: validate + lower to HIR.
@@ -15,6 +17,28 @@ static AnalyzeResult analyze_program_base(const Node* root,
   result.canonical = build_canonical_symbols(root, source_profile);
   result.hir_module = hir::build_hir(
       root, &result.canonical.resolved_types, source_profile, target_triple);
+  if (result.hir_module && !result.hir_module->ct_info.diagnostics.empty()) {
+    result.validation.ok = false;
+    result.validation.diagnostics.clear();
+    for (const auto& diag : result.hir_module->ct_info.diagnostics) {
+      Diagnostic parsed{nullptr, 0, 1, diag};
+      const size_t err_sep = diag.find(": error: ");
+      if (err_sep != std::string::npos) {
+        parsed.message = diag.substr(err_sep + 9);
+        const std::string prefix = diag.substr(0, err_sep);
+        const size_t last_colon = prefix.rfind(':');
+        const size_t second_last_colon =
+            last_colon == std::string::npos ? std::string::npos : prefix.rfind(':', last_colon - 1);
+        if (last_colon != std::string::npos && second_last_colon != std::string::npos) {
+          parsed.file = nullptr;
+          parsed.line = std::atoi(prefix.substr(second_last_colon + 1, last_colon - second_last_colon - 1).c_str());
+          parsed.column = std::atoi(prefix.substr(last_colon + 1).c_str());
+          parsed.message = parsed.message;
+        }
+      }
+      result.validation.diagnostics.push_back(std::move(parsed));
+    }
+  }
   return result;
 }
 

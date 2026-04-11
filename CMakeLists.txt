@@ -51,11 +51,28 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_build.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_expr.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_expr_scalar_control.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_expr_builtin.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_expr_call.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_expr_object.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_expr_operator.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_functions.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/compile_time_engine.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_stmt.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_stmt_decl.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_stmt_control_flow.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_stmt_range_for.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_stmt_switch.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates_deduction.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates_deferred_nttp.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates_global.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates_materialization.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates_member_typedef.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates_struct_instantiation.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates_type_resolution.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates_value_args.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_types.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/inline_expand.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/calling_convention.cpp"
@@ -202,7 +219,15 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_types.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_lvalue.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_expr.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_expr_binary.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_expr_misc.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_vaarg.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call_builtin.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call_args.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call_target.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_call_vaarg_amd64_registers.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_stmt.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/const_init_emitter.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/hir_to_lir.cpp"
@@ -253,6 +278,17 @@ target_include_directories(frontend_cxx_preprocessor_tests PRIVATE
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor"
 )
 set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_executable(frontend_hir_tests
+    "${PROJECT_SOURCE_DIR}/tests/frontend/frontend_hir_tests.cpp"
+)
+target_include_directories(frontend_hir_tests PRIVATE
+    ${FRONTEND_CXX_INCLUDE_DIRS}
+)
+set_target_properties(frontend_hir_tests PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )

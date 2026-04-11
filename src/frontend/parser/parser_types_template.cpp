@@ -25,6 +25,17 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
     return it != template_struct_specializations_.end() ? &it->second : nullptr;
 }
 
+const Node* Parser::select_template_struct_pattern_for_args(
+    const std::vector<TemplateArgParseResult>& args,
+    const Node* primary_tpl,
+    const std::vector<Node*>* specializations,
+    std::vector<std::pair<std::string, TypeSpec>>* out_type_bindings,
+    std::vector<std::pair<std::string, long long>>* out_nttp_bindings) const {
+    return select_template_struct_pattern(args, primary_tpl, specializations,
+                                          *this, out_type_bindings,
+                                          out_nttp_bindings);
+}
+
 void Parser::register_template_struct_primary(const std::string& name, Node* node) {
     if (!node || node->kind != NK_STRUCT_DEF || node->n_template_params <= 0 ||
         node->n_template_args != 0) {
@@ -59,9 +70,8 @@ bool Parser::ensure_template_struct_instantiated_from_args(
     std::vector<std::pair<std::string, TypeSpec>> type_bindings;
     std::vector<std::pair<std::string, long long>> nttp_bindings;
     const auto* specializations = find_template_struct_specializations(primary_tpl);
-    const Node* selected = select_template_struct_pattern(
-        args, primary_tpl, specializations, typedef_types_,
-        &type_bindings, &nttp_bindings);
+    const Node* selected = select_template_struct_pattern_for_args(
+        args, primary_tpl, specializations, &type_bindings, &nttp_bindings);
     if (!selected) return false;
 
     *out_mangled = build_template_struct_mangled_name(
@@ -166,19 +176,14 @@ std::string Parser::build_template_struct_mangled_name(
 bool Parser::decode_type_ref_text(const std::string& text, TypeSpec* out) {
     if (!out || text.empty()) return false;
 
-    auto tit = typedef_types_.find(text);
-    if (tit != typedef_types_.end()) {
-        *out = tit->second;
+    if (const TypeSpec* type = find_typedef_type(text)) {
+        *out = *type;
         return true;
     }
 
-    const std::string resolved_name = resolve_visible_type_name(text);
-    if (!resolved_name.empty()) {
-        auto rit = typedef_types_.find(resolved_name);
-        if (rit != typedef_types_.end()) {
-            *out = rit->second;
-            return true;
-        }
+    if (const TypeSpec* type = find_visible_typedef_type(text)) {
+        *out = *type;
+        return true;
     }
 
     if (parse_mangled_type_suffix(text, out)) return true;
@@ -222,7 +227,7 @@ bool Parser::decode_type_ref_text(const std::string& text, TypeSpec* out) {
     bool ok = false;
     try {
         *out = parse_type_name();
-        *out = resolve_typedef_chain(*out, typedef_types_);
+        *out = resolve_typedef_type_chain(*out);
         ok = pos_ > 0 &&
              pos_ >= static_cast<int>(tokens_.size()) - 1;
     } catch (...) {
@@ -270,9 +275,8 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                         return true;
                     }
                 }
-                auto tit = typedef_types_.find(tok.lexeme);
-                if (tit != typedef_types_.end()) {
-                    *out = tit->second;
+                if (const TypeSpec* type = find_visible_typedef_type(tok.lexeme)) {
+                    *out = *type;
                     return true;
                 }
                 return decode_type_ref_text(tok.lexeme, out);
@@ -351,7 +355,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             ti = saved_ti;
             return false;
         }
-        lhs = resolve_typedef_chain(lhs, typedef_types_);
+        lhs = resolve_typedef_type_chain(lhs);
         ti = arg1_end;
 
         auto is_integral_trait_type = [](const TypeSpec& ts) {
@@ -413,14 +417,14 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                 ti = saved_ti;
                 return false;
             }
-            rhs = resolve_typedef_chain(rhs, typedef_types_);
+            rhs = resolve_typedef_type_chain(rhs);
             ti = arg2_end;
             if (ti >= toks.size() || toks[ti].kind != TokenKind::RParen) {
                 ti = saved_ti;
                 return false;
             }
             ++ti;
-            *val = types_compatible_p(lhs, rhs, typedef_types_) ? 1 : 0;
+            *val = are_types_compatible(lhs, rhs) ? 1 : 0;
             return true;
         }
 
@@ -475,9 +479,10 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                 }
             }
             if (!found) {
-                if (typedef_types_.count(toks[ti].lexeme)) {
+                if (const TypeSpec* type =
+                        find_visible_typedef_type(toks[ti].lexeme)) {
                     ParsedTemplateArg a; a.is_value = false;
-                    a.type = typedef_types_[toks[ti].lexeme];
+                    a.type = *type;
                     ref_args.push_back(a);
                 } else {
                     return false;

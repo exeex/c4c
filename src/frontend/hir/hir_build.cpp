@@ -40,6 +40,43 @@
 
 namespace c4c::hir {
 
+namespace {
+
+void collect_late_static_asserts_recursive(
+    const Node* n,
+    CompileTimeState* ct_state,
+    const Node* template_owner = nullptr) {
+  if (!n || !ct_state) return;
+
+  if (n->kind == NK_STATIC_ASSERT) {
+    if (!(template_owner && template_owner->n_template_params > 0) &&
+        !(n->n_template_params > 0)) {
+      ct_state->register_static_assert(n);
+    }
+    return;
+  }
+
+  const Node* child_template_owner = template_owner;
+  if (n->n_template_params > 0) child_template_owner = n;
+
+  for (int i = 0; i < n->n_children; ++i)
+    collect_late_static_asserts_recursive(n->children[i], ct_state, child_template_owner);
+  for (int i = 0; i < n->n_fields; ++i)
+    collect_late_static_asserts_recursive(n->fields[i], ct_state, child_template_owner);
+  for (int i = 0; i < n->n_params; ++i)
+    collect_late_static_asserts_recursive(n->params[i], ct_state, child_template_owner);
+  if (n->left) collect_late_static_asserts_recursive(n->left, ct_state, child_template_owner);
+  if (n->right) collect_late_static_asserts_recursive(n->right, ct_state, child_template_owner);
+  if (n->cond) collect_late_static_asserts_recursive(n->cond, ct_state, child_template_owner);
+  if (n->then_) collect_late_static_asserts_recursive(n->then_, ct_state, child_template_owner);
+  if (n->else_) collect_late_static_asserts_recursive(n->else_, ct_state, child_template_owner);
+  if (n->body) collect_late_static_asserts_recursive(n->body, ct_state, child_template_owner);
+  if (n->init) collect_late_static_asserts_recursive(n->init, ct_state, child_template_owner);
+  if (n->update) collect_late_static_asserts_recursive(n->update, ct_state, child_template_owner);
+}
+
+}  // namespace
+
 std::vector<const Node*> Lowerer::flatten_program_items(const Node* root) const {
   std::vector<const Node*> items;
   std::function<void(const Node*)> flatten = [&](const Node* n) {
@@ -603,6 +640,7 @@ InitialHirBuildResult build_initial_hir(
 
   auto module = std::make_shared<Module>();
   lowerer->lower_initial_program(program_root, *module);
+  collect_late_static_asserts_recursive(program_root, lowerer->ct_state().get());
 
   InitialHirBuildResult result{};
   result.module = module;

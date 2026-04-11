@@ -954,8 +954,6 @@ class Validator {
         (n->n_template_params > 0)) {
       return;
     }
-
-    emit(n, "_Static_assert requires an integer constant expression");
   }
 
   void validate_global(const Node* n) {

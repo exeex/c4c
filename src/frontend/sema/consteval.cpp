@@ -89,12 +89,19 @@ TypeSpec resolve_type(const TypeSpec& ts, const TypeBindings* bindings) {
   return it->second;
 }
 
-// Compute sizeof for a TypeSpec (scalar, pointer, array of scalar).
-// Returns failure for struct/union/void/typedef types (require Module context or type resolution).
-ConstEvalResult compute_sizeof_type(const TypeSpec& ts) {
+const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv& env) {
+  if (!env.struct_defs || !ts.tag || (ts.base != TB_STRUCT && ts.base != TB_UNION)) {
+    return nullptr;
+  }
+  auto it = env.struct_defs->find(ts.tag);
+  if (it == env.struct_defs->end()) return nullptr;
+  return &it->second;
+}
+
+// Compute sizeof for a TypeSpec using the optional HIR layout map when a
+// tagged record became complete later in the translation unit.
+ConstEvalResult compute_sizeof_type(const TypeSpec& ts, const ConstEvalEnv& env) {
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return ConstEvalResult::success(ConstValue::make_int(8));
-  if (ts.base == TB_STRUCT || ts.base == TB_UNION)
-    return ConstEvalResult::failure("sizeof(struct/union) not supported in constant evaluator");
   if (ts.base == TB_VOID || ts.base == TB_TYPEDEF)
     return ConstEvalResult::failure("sizeof: unresolved type");
   int sz = 0;
@@ -106,14 +113,27 @@ ConstEvalResult compute_sizeof_type(const TypeSpec& ts) {
     case TB_DOUBLE: sz = 8; break;
     case TB_LONGDOUBLE: sz = 16; break;
     case TB_INT128: case TB_UINT128: sz = 16; break;
+    case TB_STRUCT:
+    case TB_UNION: {
+      const HirStructDef* layout = lookup_record_layout(ts, env);
+      if (!layout) return ConstEvalResult::failure("sizeof: unresolved record layout");
+      sz = layout->size_bytes;
+      break;
+    }
     default:
       return ConstEvalResult::failure("sizeof: unsupported type base");
   }
-  if (ts.array_rank > 0 && ts.array_size > 0) {
+  if (ts.array_rank > 0) {
+    if (ts.array_size <= 0) {
+      return ConstEvalResult::failure("sizeof: unresolved array bound");
+    }
     long long total = sz;
     total *= ts.array_size;
     for (int i = 1; i < ts.array_rank && i < 4; ++i) {
-      if (ts.array_dims[i] > 0) total *= ts.array_dims[i];
+      if (ts.array_dims[i] <= 0) {
+        return ConstEvalResult::failure("sizeof: unresolved array bound");
+      }
+      total *= ts.array_dims[i];
     }
     return ConstEvalResult::success(ConstValue::make_int(total));
   }
@@ -121,11 +141,9 @@ ConstEvalResult compute_sizeof_type(const TypeSpec& ts) {
 }
 
 // Compute alignof for a TypeSpec (scalar, pointer, array).
-// Returns failure for struct/union/void/typedef types.
-ConstEvalResult compute_alignof_type(const TypeSpec& ts) {
+// Uses HIR layout metadata when available for tagged records.
+ConstEvalResult compute_alignof_type(const TypeSpec& ts, const ConstEvalEnv& env) {
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return ConstEvalResult::success(ConstValue::make_int(8));
-  if (ts.base == TB_STRUCT || ts.base == TB_UNION)
-    return ConstEvalResult::failure("alignof(struct/union) not supported in constant evaluator");
   if (ts.base == TB_VOID || ts.base == TB_TYPEDEF)
     return ConstEvalResult::failure("alignof: unresolved type");
   // For arrays, alignment is that of the element type.
@@ -143,6 +161,13 @@ ConstEvalResult compute_alignof_type(const TypeSpec& ts) {
     case TB_DOUBLE: align = 8; break;
     case TB_LONGDOUBLE: align = 16; break;
     case TB_INT128: case TB_UINT128: align = 16; break;
+    case TB_STRUCT:
+    case TB_UNION: {
+      const HirStructDef* layout = lookup_record_layout(ts, env);
+      if (!layout) return ConstEvalResult::failure("alignof: unresolved record layout");
+      align = layout->align_bytes;
+      break;
+    }
     default: align = 4; break;
   }
   if (ts.align_bytes > 0 && ts.align_bytes > align) align = ts.align_bytes;
@@ -241,18 +266,18 @@ ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
       return eval_impl(cr.as_int() ? n->then_ : n->else_, env);
     }
     case NK_SIZEOF_TYPE:
-      return compute_sizeof_type(resolve_type(n->type, env.type_bindings));
+      return compute_sizeof_type(resolve_type(n->type, env.type_bindings), env);
     case NK_SIZEOF_EXPR:
       // sizeof(expr) — use the expression's type from the AST.
-      if (n->left) return compute_sizeof_type(resolve_type(n->left->type, env.type_bindings));
+      if (n->left) return compute_sizeof_type(resolve_type(n->left->type, env.type_bindings), env);
       return ConstEvalResult::failure("sizeof(expr): missing expression");
     case NK_SIZEOF_PACK:
       return ConstEvalResult::failure("sizeof...(pack) requires template pack instantiation");
     case NK_ALIGNOF_TYPE:
-      return compute_alignof_type(resolve_type(n->type, env.type_bindings));
+      return compute_alignof_type(resolve_type(n->type, env.type_bindings), env);
     case NK_ALIGNOF_EXPR:
       // alignof(expr) — use the expression's type from the AST.
-      if (n->left) return compute_alignof_type(resolve_type(n->left->type, env.type_bindings));
+      if (n->left) return compute_alignof_type(resolve_type(n->left->type, env.type_bindings), env);
       return ConstEvalResult::failure("alignof(expr): missing expression");
     default:
       return ConstEvalResult::failure(
@@ -316,6 +341,79 @@ std::string decode_c_escaped_bytes_local(const std::string& raw) {
 
 ConstEvalResult evaluate_constant_expr(const Node* n, const ConstEvalEnv& env) {
   return eval_impl(n, env);
+}
+
+ConstEvalEnv bind_consteval_call_env(
+    const Node* callee_expr,
+    const Node* func_def,
+    const ConstEvalEnv& outer_env,
+    TypeBindings* out_type_bindings,
+    std::unordered_map<std::string, long long>* out_nttp_bindings) {
+  if (out_type_bindings) out_type_bindings->clear();
+  if (out_nttp_bindings) out_nttp_bindings->clear();
+
+  ConstEvalEnv env = outer_env;
+  if (!callee_expr || !func_def || func_def->n_template_params <= 0 ||
+      !(callee_expr->n_template_args > 0 || callee_expr->has_template_args)) {
+    return env;
+  }
+
+  const int count = std::min(callee_expr->n_template_args, func_def->n_template_params);
+  for (int i = 0; i < count; ++i) {
+    if (!func_def->template_param_names || !func_def->template_param_names[i]) continue;
+    const std::string param_name = func_def->template_param_names[i];
+    const bool is_nttp =
+        func_def->template_param_is_nttp && func_def->template_param_is_nttp[i];
+    if (is_nttp) {
+      if (!out_nttp_bindings || !callee_expr->template_arg_is_value ||
+          !callee_expr->template_arg_is_value[i]) {
+        continue;
+      }
+      if (callee_expr->template_arg_nttp_names && callee_expr->template_arg_nttp_names[i] &&
+          outer_env.nttp_bindings) {
+        auto it = outer_env.nttp_bindings->find(callee_expr->template_arg_nttp_names[i]);
+        if (it != outer_env.nttp_bindings->end()) {
+          (*out_nttp_bindings)[param_name] = it->second;
+          continue;
+        }
+      }
+      if (callee_expr->template_arg_values) {
+        (*out_nttp_bindings)[param_name] = callee_expr->template_arg_values[i];
+      }
+      continue;
+    }
+
+    if (!out_type_bindings || !callee_expr->template_arg_types) continue;
+    TypeSpec arg_ts = callee_expr->template_arg_types[i];
+    if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && outer_env.type_bindings) {
+      auto it = outer_env.type_bindings->find(arg_ts.tag);
+      if (it != outer_env.type_bindings->end()) arg_ts = it->second;
+    }
+    (*out_type_bindings)[param_name] = arg_ts;
+  }
+
+  if (func_def->template_param_has_default) {
+    for (int i = count; i < func_def->n_template_params; ++i) {
+      if (!func_def->template_param_names || !func_def->template_param_names[i] ||
+          !func_def->template_param_has_default[i]) {
+        continue;
+      }
+      const std::string param_name = func_def->template_param_names[i];
+      const bool is_nttp =
+          func_def->template_param_is_nttp && func_def->template_param_is_nttp[i];
+      if (is_nttp) {
+        if (!out_nttp_bindings) continue;
+        (*out_nttp_bindings)[param_name] = func_def->template_param_default_values[i];
+      } else {
+        if (!out_type_bindings) continue;
+        (*out_type_bindings)[param_name] = func_def->template_param_default_types[i];
+      }
+    }
+  }
+
+  if (out_type_bindings && !out_type_bindings->empty()) env.type_bindings = out_type_bindings;
+  if (out_nttp_bindings && !out_nttp_bindings->empty()) env.nttp_bindings = out_nttp_bindings;
+  return env;
 }
 
 // ── Consteval function-body interpreter ──────────────────────────────────────
@@ -456,7 +554,11 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
         args.push_back(*r.value);
       }
 
-      return evaluate_consteval_call(it->second, args, outer_env, consteval_fns, depth + 1);
+      TypeBindings tpl_bindings;
+      std::unordered_map<std::string, long long> nttp_bindings;
+      ConstEvalEnv call_env = bind_consteval_call_env(
+          n->left, it->second, outer_env, &tpl_bindings, &nttp_bindings);
+      return evaluate_consteval_call(it->second, args, call_env, consteval_fns, depth + 1);
     }
 
     case NK_ASSIGN: {
@@ -477,16 +579,16 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
     }
 
     case NK_SIZEOF_TYPE:
-      return compute_sizeof_type(resolve_type(n->type, env.type_bindings));
+      return compute_sizeof_type(resolve_type(n->type, env.type_bindings), env);
     case NK_SIZEOF_EXPR:
-      if (n->left) return compute_sizeof_type(resolve_type(n->left->type, env.type_bindings));
+      if (n->left) return compute_sizeof_type(resolve_type(n->left->type, env.type_bindings), env);
       return ConstEvalResult::failure("sizeof(expr): missing expression");
     case NK_SIZEOF_PACK:
       return ConstEvalResult::failure("sizeof...(pack) requires template pack instantiation");
     case NK_ALIGNOF_TYPE:
-      return compute_alignof_type(resolve_type(n->type, env.type_bindings));
+      return compute_alignof_type(resolve_type(n->type, env.type_bindings), env);
     case NK_ALIGNOF_EXPR:
-      if (n->left) return compute_alignof_type(resolve_type(n->left->type, env.type_bindings));
+      if (n->left) return compute_alignof_type(resolve_type(n->left->type, env.type_bindings), env);
       return ConstEvalResult::failure("alignof(expr): missing expression");
 
     default:

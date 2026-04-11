@@ -78,6 +78,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     unresolved_by_value_param_type_parse
     template_friend_record_member_parse
     template_member_type_direct_parse
+    template_member_typedef_cache_roundtrip_parse
     template_member_type_inherited_parse
     dependent_template_typename_member_parse
     record_base_template_member_alias_parse
@@ -87,6 +88,12 @@ set(CPP_POSITIVE_PARSE_STEMS
     namespaced_inherited_type_alias_base_member_lookup_parse
     template_argument_loop_staging_parse
     template_argument_expr_close_staging_parse
+    template_declaration_prelude_cleanup_parse
+    template_alias_qualified_typedef_resolution_parse
+    template_visible_typedef_type_arg_parse
+    template_specialization_member_typedef_trait_parse
+    template_specialization_typedef_chain_parse
+    template_specialization_visible_typedef_chain_parse
     member_template_decltype_default_parse
     member_template_decltype_overload_parse
     member_template_sfinae_typename_prelude_parse
@@ -103,6 +110,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     using_alias_basic_parse
     using_scoped_typedef_parse
     using_declaration_namespace_parse
+    namespace_using_decl_template_typedef_type_arg_parse
     using_namespace_directive_parse
     using_nested_namespace_parse
     template_conversion_operator_parse
@@ -254,6 +262,7 @@ list(APPEND CPP_POSITIVE_FRONTEND_STEMS
     constrained_member_conversion_operator_frontend
     constrained_template_method_call_frontend
     eastl_probe_call_result_lvalue_frontend
+    namespace_using_decl_typedef_and_value_frontend
     namespaced_function_param_shadow_frontend
     namespaced_out_of_class_method_context_frontend
     qualified_namespaced_out_of_class_method_context_frontend
@@ -463,6 +472,15 @@ set_tests_properties(cpp_parse_record_member_underlying_type_dump PROPERTIES
 )
 
 add_test(
+  NAME cpp_parse_record_template_enum_underlying_typedef_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/record_template_enum_underlying_typedef_parse.cpp"
+)
+set_tests_properties(cpp_parse_record_template_enum_underlying_typedef_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(kind\\)"
+)
+
+add_test(
   NAME cpp_parse_record_base_variable_template_value_arg_dump
   COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/record_base_variable_template_value_arg_parse.cpp"
 )
@@ -487,6 +505,33 @@ add_test(
 set_tests_properties(cpp_parse_qualified_type_spelling_rollback_dump PROPERTIES
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "Decl\\(kept\\)"
+)
+
+add_test(
+  NAME cpp_parse_local_using_alias_statement_probe_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/local_using_alias_statement_probe_parse.cpp"
+)
+set_tests_properties(cpp_parse_local_using_alias_statement_probe_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Var\\(Alias::make\\).*Decl\\(current\\)|Decl\\(current\\).*Var\\(Alias::make\\)"
+)
+
+add_test(
+  NAME cpp_parse_record_member_typedef_using_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/record_member_typedef_using_dump_parse.cpp"
+)
+set_tests_properties(cpp_parse_record_member_typedef_using_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(value\\).*Decl\\(next\\).*Decl\\(current\\).*Decl\\(slot\\).*Decl\\(cb\\)"
+)
+
+add_test(
+  NAME cpp_parse_record_member_template_friend_cleanup_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/record_member_template_friend_cleanup_parse.cpp"
+)
+set_tests_properties(cpp_parse_record_member_template_friend_cleanup_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(next\\).*Decl\\(kept\\).*Decl\\(tail\\).*Decl\\(kept\\)"
 )
 
 add_test(
@@ -771,6 +816,15 @@ set_tests_properties(cpp_parse_namespace_trailing_return_nested_variadic_alias_d
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "Function\\(eastl::f\\)"
   FAIL_REGULAR_EXPRESSION "expected=RBRACE got='<eof>'"
+)
+
+add_test(
+  NAME cpp_parse_namespace_using_nested_visibility_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/namespace_using_nested_visibility_parse.cpp"
+)
+set_tests_properties(cpp_parse_namespace_using_nested_visibility_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "GlobalVar\\(outer::inner::value\\).*Function\\(bridge::read\\)"
 )
 
 add_test(
@@ -1236,6 +1290,58 @@ set_tests_properties(cpp_hir_deferred_consteval_multi PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_deferred_consteval_incomplete_type
+  COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/deferred_consteval_incomplete_type.cpp"
+)
+set_tests_properties(cpp_hir_deferred_consteval_incomplete_type PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "consteval get_size<T=struct TensorDesc>\\(\\) = 64.*1 consteval reduction.*\\(converged\\)"
+)
+
+add_test(
+  NAME cpp_hir_if_constexpr_branch_unlocks_later
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/if_constexpr_branch_unlocks_later_hir.cpp"
+)
+set_tests_properties(cpp_hir_if_constexpr_branch_unlocks_later PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "consteval choose_tile<T=struct TileShape>\\(\\) = 128.*global tile: const int const = 128"
+)
+
+add_test(
+  NAME cpp_c4_static_assert_if_constexpr_branch_unlocks_later
+  COMMAND c4cll "${PROJECT_SOURCE_DIR}/tests/cpp/internal/consteval_case/if_constexpr_branch_unlocks_later.cpp"
+)
+set_tests_properties(cpp_c4_static_assert_if_constexpr_branch_unlocks_later PROPERTIES
+  LABELS "internal;positive_case;cpp;c4_only"
+)
+
+add_test(
+  NAME cpp_hir_multistage_shape_chain
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/multistage_shape_chain_hir.cpp"
+)
+set_tests_properties(cpp_hir_multistage_shape_chain PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "consteval vec_cost<T=struct F32x8>\\(\\) = 24.*global cost: const int const = 24"
+)
+
+add_test(
+  NAME cpp_c4_static_assert_multistage_shape_chain
+  COMMAND c4cll "${PROJECT_SOURCE_DIR}/tests/cpp/internal/consteval_case/multistage_shape_chain.cpp"
+)
+set_tests_properties(cpp_c4_static_assert_multistage_shape_chain PROPERTIES
+  LABELS "internal;positive_case;cpp;c4_only"
+)
+
+add_test(
+  NAME cpp_hir_late_specialization_unlocks_wrapper
+  COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/late_specialization_unlocks_wrapper.cpp"
+)
+set_tests_properties(cpp_hir_late_specialization_unlocks_wrapper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "consteval schedule\\(\\) = 42.*1 consteval reduction.*\\(converged\\)"
+)
+
+add_test(
   NAME cpp_hir_specialization_key
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_func.cpp"
 )
@@ -1335,12 +1441,102 @@ set_tests_properties(cpp_hir_template_member_owner_decl_and_cast PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_alias_member_owner
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_alias_member_owner_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_alias_member_owner PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "fn project_i\\(value: int\\) -> \\?.*decl local: \\? = value#P0.*return local#L0"
+)
+
+add_test(
   NAME cpp_hir_template_member_owner_field_and_local
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_member_owner_field_and_local_hir.cpp"
 )
 set_tests_properties(cpp_hir_template_member_owner_field_and_local PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
   PASS_REGULAR_EXPRESSION "field value: int llvm_idx=0 offset=0 size=4 align=4.*decl local: int = input#P0"
+)
+
+add_test(
+  NAME cpp_hir_template_member_owner_signature_local
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_member_owner_signature_local_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_member_owner_signature_local PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "fn bounce_i\\(input: int\\) -> int.*decl local: int = input#P0.*return local#L0"
+)
+
+add_test(
+  NAME cpp_hir_expr_call_member_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_expr_call_member_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_expr_call_member_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "Box__Box\\(\\(&local#L0\\), \\(&3\\)\\).*Box__read\\(\\(&local#L0\\)\\).*decl __ctor_tmp_1: struct Box.*Box__operator_call\\(\\(&__ctor_tmp_1#L1\\), \\(&__rref_arg_tmp#L2\\)\\)"
+)
+
+add_test(
+  NAME cpp_hir_function_return_temporary_member_call
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/function_return_temporary_member_call_hir.cpp"
+)
+set_tests_properties(cpp_hir_function_return_temporary_member_call PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl local: struct Box.*Box__Box\\(\\(&local#L1\\), \\(&3\\)\\).*decl __member_call_tmp_[0-9]+: struct Box = make_box\\(\\).*return \\(Box__read\\(\\(&local#L1\\)\\) \\+ Box__read__rref\\(\\(&__member_call_tmp_[0-9]+#L[0-9]+\\)\\)\\)"
+)
+
+add_test(
+  NAME cpp_hir_expr_object_materialization_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_expr_object_materialization_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_expr_object_materialization_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl local: struct Box.*Box__Box\\(\\(&local#L0\\), \\(&3\\)\\).*decl <clit>: const int\\[3\\] = 0.*decl __init_list_arg_[0-9]+: struct std::initializer_list_T_int = 0.*decl __new_tmp_[0-9]+: struct Box\\* = \\(\\(struct Box\\*\\)operator_new\\(sizeof\\(struct Box\\)\\)\\).*Box__Box\\(__new_tmp_[0-9]+#L[0-9]+, 5\\).*operator_delete\\(\\(\\(void\\*\\)heap#L[0-9]+\\)\\)"
+)
+
+add_test(
+  NAME cpp_hir_expr_operator_member_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_expr_operator_member_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_expr_operator_member_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "Wrapper__operator_bool\\(\\(&w#L1\\)\\).*Wrapper__operator_arrow\\(\\(&w#L1\\)\\).*return Wrapper__operator_arrow\\(\\(&w#L1\\)\\)->value"
+)
+
+add_test(
+  NAME cpp_hir_expr_scalar_control_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_expr_scalar_control_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_expr_scalar_control_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl local: int = \\(input#P1 \\+ bias\\).*\\(local#L1 \\+= this#P0->base\\).*decl __tern_tmp: int = 0.*if \\(\\(local#L1 > 6\\)\\) -> block#.*decl picked: int = __tern_tmp#L3.*\\(__real__z#L6\\) = 3.*\\(__imag__z#L6\\) = 4.*return \\(\\(\\(\\(picked#L2 \\+ \\(\\(int\\)\\(__real__z#L6\\)\\)\\) \\+ \\(\\(int\\)\\(__imag__z#L6\\)\\)\\) \\+ values#L7\\[1\\]\\) \\+ \\(\\(int\\)sizeof\\(values#L7\\[0\\]\\)\\)\\)"
+)
+
+add_test(
+  NAME cpp_hir_stmt_control_flow_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_stmt_control_flow_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_stmt_control_flow_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl total: int = 0.*if \\(\\(limit#P0 > 3\\)\\) then=block#.*else block#.*\\(total#L0 = limit#P0\\).*\\(total#L0 = 3\\).*while \\(\\(total#L0 < 8\\)\\) body=block#.*\\(total#L0 = \\(total#L0 \\+ 1\\)\\).*for \\(decl i: int = 0; \\(i#L1 < 2\\); \\(i#L1 = \\(i#L1 \\+ 1\\)\\)\\) body=block#.*\\(total#L0 = \\(total#L0 \\+ i#L1\\)\\).*do block#.*while \\(\\(total#L0 > 8\\)\\).*return total#L0"
+)
+
+add_test(
+  NAME cpp_hir_stmt_range_for_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_stmt_range_for_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_stmt_range_for_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl __range_begin: struct Iter = Bag__begin_const\\(\\(&bag#P0\\)\\).*decl __range_end: struct Iter = Bag__end_const\\(\\(&bag#P0\\)\\).*for \\(; Iter__operator_neq\\(\\(&__range_begin#L1\\), __range_end#L2\\); Iter__operator_preinc\\(\\(&__range_begin#L1\\)\\)\\) body=block#.*decl value: int = Iter__operator_deref_const\\(\\(&__range_begin#L1\\)\\).*return total#L0"
+)
+
+add_test(
+  NAME cpp_hir_stmt_switch_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_stmt_switch_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_stmt_switch_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl first: const int = 1.*decl second: const int = \\(first#L0 \\+ 1\\).*switch \\(x#P0\\) body=block#.*return result#L2.*case 1:.*\\(result#L2 = 10\\).*break.*case 2:.*\\(result#L2 = 20\\).*break.*default:.*\\(result#L2 = 30\\).*break"
 )
 
 add_test(
@@ -1371,6 +1567,33 @@ set_tests_properties(cpp_hir_template_method_param_reentrant_lowering PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_struct_body_instantiation
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_struct_body_instantiation_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_struct_body_instantiation PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "struct Buffer_T_int_N_3 size=20 align=4.*field data: int\\[3\\] llvm_idx=0 offset=4 size=12 align=4.*field tail: int llvm_idx=1 offset=16 size=4 align=4.*fn Buffer_T_int_N_3__sum_const\\(this: struct Buffer_T_int_N_3\\*\\) -> int.*return \\(\\(this#P0->value \\+ this#P0->data\\[1\\]\\) \\+ this#P0->tail\\)"
+)
+
+add_test(
+  NAME cpp_hir_template_struct_arg_materialization
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_struct_arg_materialization_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_struct_arg_materialization PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "struct Holder_T_short_N_2 size=4 align=2.*field data: short\\[2\\] llvm_idx=0 offset=0 size=4 align=2.*struct Holder_T_int_N_4 size=16 align=4.*field data: int\\[4\\] llvm_idx=0 offset=0 size=16 align=4"
+)
+
+add_test(
+  NAME cpp_hir_template_function_deduction_binding
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_function_deduction_binding_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_function_deduction_binding PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "template forward_pick<typename T> \\[2 instantiations\\].*forward_pick_TProbe_ref \\{T=struct Probe&\\} key=forward_pick<T=struct\\.Probe&>.*forward_pick_TProbe \\{T=struct Probe\\} key=forward_pick<T=struct\\.Probe>.*template read_ptr<typename T> \\[1 instantiation\\].*read_ptr_TProbe \\{T=struct Probe\\} key=read_ptr<T=struct\\.Probe>"
+)
+
+add_test(
   NAME cpp_hir_template_function_pack_signature_binding
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_function_pack_signature_hir.cpp"
 )
@@ -1395,6 +1618,15 @@ add_test(
 set_tests_properties(cpp_hir_defaulted_destructor_member_teardown PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
   PASS_REGULAR_EXPRESSION "WithDtor__dtor\\(\\(&this#P0->inner\\)\\)"
+)
+
+add_test(
+  NAME cpp_hir_stmt_local_decl_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_stmt_local_decl_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_stmt_local_decl_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl seed: struct Box.*Box__Box\\(\\(&seed#L0\\)\\).*decl copy: struct Box.*Box__Box__1\\(\\(&copy#L1\\), \\(&seed#L0\\)\\).*decl data: int\\[3\\] = 0.*\\(data#L2\\[0\\] = 1\\).*\\(data#L2\\[1\\] = 2\\).*\\(data#L2\\[2\\] = 3\\).*decl __rref_tmp_[0-9]+: int = 7.*decl moved: int\\*&& = \\(&__rref_tmp_[0-9]+#L4\\).*return \\(\\(copy#L1.value \\+ data#L2\\[1\\]\\) \\+ \\(\\*moved#L3\\)\\)"
 )
 
 add_test(
@@ -1479,6 +1711,42 @@ set_tests_properties(cpp_hir_template_deferred_nttp_static_member_expr PROPERTIE
 )
 
 add_test(
+  NAME cpp_hir_template_deferred_nttp_cast_static_member_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_cast_static_member_expr_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_deferred_nttp_cast_static_member_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[2\\].*size=8 align=4"
+)
+
+add_test(
+  NAME cpp_hir_template_inherited_member_typedef_trait
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_inherited_member_typedef_trait_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_inherited_member_typedef_trait PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "global ns::is_reference_v_T_Tns::add_lvalue_reference_T_int: const bool.* const = 1"
+)
+
+add_test(
+  NAME cpp_hir_template_value_arg_static_member_trait
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_value_arg_static_member_trait_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_value_arg_static_member_trait PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[4\\].*size=16 align=4"
+)
+
+add_test(
+  NAME cpp_hir_template_global_specialization
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_global_specialization_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_global_specialization PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "global ns::value_T_i: int.* = 4"
+)
+
+add_test(
   NAME cpp_hir_template_deferred_nttp_sizeof_pack_expr
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_sizeof_pack_expr_hir.cpp"
 )
@@ -1520,7 +1788,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_builtin_layout_query_alignof_type PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "fn alignof_querybox\\(\\) -> int"
+  PASS_REGULAR_EXPRESSION "fn alignof_querybox\\(\\) -> int.*return 16"
 )
 
 add_test(
@@ -1529,7 +1797,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_builtin_layout_query_alignof_expr PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "decl box: struct QueryBox"
+  PASS_REGULAR_EXPRESSION "decl box: struct QueryBox.*return 16"
 )
 
 add_test(

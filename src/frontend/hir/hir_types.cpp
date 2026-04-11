@@ -438,8 +438,7 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
 std::optional<TypeSpec> Lowerer::storage_type_for_declref(
     FunctionCtx* ctx, const DeclRef& r) {
   if (r.local && ctx) {
-    auto it = ctx->local_types.find(r.local->value);
-    if (it != ctx->local_types.end()) return it->second;
+    if (ctx->local_types.contains(*r.local)) return ctx->local_types.at(*r.local);
   }
   if (r.param_index && ctx && ctx->fn && *r.param_index < ctx->fn->params.size()) {
     return ctx->fn->params[*r.param_index].type.spec;
@@ -1525,7 +1524,7 @@ void Lowerer::lower_global(const Node* gv,
   g.linkage = {gv->is_static, gv->is_extern, false, weak_symbols_.count(g.name) > 0,
                static_cast<Visibility>(gv->visibility)};
   g.execution_domain = gv->execution_domain;
-  g.is_const = gv->type.is_const;
+  g.is_const = gv->type.is_const || gv->is_constexpr;
   g.span = make_span(gv);
 
   // Deduce unsized array dimension from wide string literal initializer.
@@ -1544,7 +1543,7 @@ void Lowerer::lower_global(const Node* gv,
     g.init = normalize_global_init(g.type.spec, g.init);
   }
 
-  if (g.is_const) {
+  if (g.is_const || gv->is_constexpr) {
     if (const auto* scalar = std::get_if<InitScalar>(&g.init)) {
       const Expr& e = module_->expr_pool[scalar->expr.value];
       if (const auto* lit = std::get_if<IntLiteral>(&e.payload)) {
@@ -1629,8 +1628,9 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
       if (ctx) {
         auto lit = ctx->locals.find(name);
         if (lit != ctx->locals.end()) {
-          auto tt = ctx->local_types.find(lit->second.value);
-          if (tt != ctx->local_types.end()) return reference_value_ts(tt->second);
+          if (ctx->local_types.contains(lit->second)) {
+            return reference_value_ts(ctx->local_types.at(lit->second));
+          }
         }
         auto pit = ctx->params.find(name);
         if (pit != ctx->params.end() && ctx->fn &&

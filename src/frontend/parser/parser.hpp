@@ -170,12 +170,16 @@ class Parser {
 
   // Snapshot of all speculative parser state fields. Used by the heavy guard
   // to automatically roll back semantic environment mutations when needed.
-  struct ParserSnapshot {
-    ParserLiteSnapshot lite;
+  struct ParserSymbolTables {
     std::set<std::string> typedefs;
     std::set<std::string> user_typedefs;
     std::unordered_map<std::string, TypeSpec> typedef_types;
     std::unordered_map<std::string, TypeSpec> var_types;
+  };
+
+  struct ParserSnapshot {
+    ParserLiteSnapshot lite;
+    ParserSymbolTables symbol_tables;
   };
 
   struct TentativeParseStats {
@@ -265,10 +269,48 @@ class Parser {
     }
   };
 
+  struct RecordTemplatePreludeGuard {
+    Parser* parser = nullptr;
+    std::vector<std::string> injected_type_params;
+    bool pushed_template_scope = false;
+
+    explicit RecordTemplatePreludeGuard(Parser* p) : parser(p) {}
+
+    ~RecordTemplatePreludeGuard() {
+      if (!parser) return;
+      if (pushed_template_scope && !parser->template_scope_stack_.empty()) {
+        parser->template_scope_stack_.pop_back();
+      }
+      for (const std::string& name : injected_type_params) {
+        parser->unregister_typedef_binding(name);
+      }
+    }
+  };
+
+  struct TemplateDeclarationPreludeGuard {
+    Parser* parser = nullptr;
+    std::vector<std::string> injected_type_params;
+    bool pushed_template_scope = false;
+
+    explicit TemplateDeclarationPreludeGuard(Parser* p) : parser(p) {}
+
+    ~TemplateDeclarationPreludeGuard() {
+      if (!parser) return;
+      if (pushed_template_scope && !parser->template_scope_stack_.empty()) {
+        parser->template_scope_stack_.pop_back();
+      }
+      for (const std::string& name : injected_type_params) {
+        parser->unregister_typedef_binding(name);
+      }
+    }
+  };
+
   ParserLiteSnapshot save_lite_state() const;
   void restore_lite_state(const ParserLiteSnapshot& snap);
   ParserSnapshot save_state() const;
   void restore_state(const ParserSnapshot& snap);
+  ParserSymbolTables& parser_symbol_tables();
+  const ParserSymbolTables& parser_symbol_tables() const;
 
   // ── public parser entry points ────────────────────────────────────────────
   // All members public (required by project coding constraints).
@@ -293,12 +335,7 @@ class Parser {
   std::string source_file_;  // source path used by diagnostics
 
   // ── name / type knowledge accumulated during parsing ─────────────────────
-  std::set<std::string> typedefs_;  // known typedef names
-  // Typedef names declared in the current translation unit (not pre-seeded).
-  std::set<std::string> user_typedefs_;
-  // Maps typedef name → resolved TypeSpec (populated when registering typedefs)
-  // so subsequent uses of the typedef name resolve to the actual struct/base type.
-  std::unordered_map<std::string, TypeSpec> typedef_types_;
+  ParserSymbolTables symbol_tables_;
   // Declared concept names visible to the parser. Kept separate from typedef
   // tracking so concept-ids do not get mistaken for type names.
   std::set<std::string> concept_names_;
@@ -320,9 +357,6 @@ class Parser {
   std::unordered_map<std::string, long long> enum_consts_;
   // Global const/constexpr integer bindings visible to parser-time constant folding.
   std::unordered_map<std::string, long long> const_int_bindings_;
-  // Variable name → TypeSpec (populated as variables are declared).
-  // Used to resolve typeof(variable) in type expressions.
-  std::unordered_map<std::string, TypeSpec> var_types_;
   bool suppress_local_var_bindings_ = false;
   // Qualified function names (populated as functions are declared/defined).
   // Used by lookup_value_in_context for namespace-aware function lookup.
@@ -488,6 +522,35 @@ class Parser {
   bool is_type_start() const;            // can current token start a type?
   bool can_start_parameter_type() const;
   bool looks_like_unresolved_identifier_type_head(int pos) const;
+  bool has_typedef_name(const std::string& name) const;
+  bool has_typedef_type(const std::string& name) const;
+  const TypeSpec* find_typedef_type(const std::string& name) const;
+  bool has_visible_typedef_type(const std::string& name) const;
+  const TypeSpec* find_visible_typedef_type(const std::string& name) const;
+  TypeSpec resolve_typedef_type_chain(TypeSpec ts) const;
+  TypeSpec resolve_struct_like_typedef_type(TypeSpec ts) const;
+  bool are_types_compatible(const TypeSpec& lhs, const TypeSpec& rhs) const;
+  bool resolves_to_record_ctor_type(TypeSpec ts) const;
+  bool is_user_typedef_name(const std::string& name) const;
+  bool has_conflicting_user_typedef_binding(const std::string& name,
+                                            const TypeSpec& type) const;
+  void register_typedef_name(const std::string& name, bool is_user_typedef);
+  void register_typedef_binding(const std::string& name, const TypeSpec& type,
+                                bool is_user_typedef);
+  void unregister_typedef_binding(const std::string& name);
+  void register_synthesized_typedef_binding(const std::string& name);
+  void register_tag_type_binding(const std::string& name, TypeBase base,
+                                 const char* tag,
+                                 TypeBase enum_underlying_base = TB_VOID);
+  void cache_typedef_type(const std::string& name, const TypeSpec& type);
+  void register_struct_member_typedef_binding(const std::string& scoped_name,
+                                              const TypeSpec& type);
+  bool has_var_type(const std::string& name) const;
+  const TypeSpec* find_var_type(const std::string& name) const;
+  const TypeSpec* find_visible_var_type(const std::string& name) const;
+  void register_var_type_binding(const std::string& name, const TypeSpec& type);
+  bool has_known_fn_name(const std::string& name) const;
+  void register_known_fn_name(const std::string& name);
   bool is_typedef_name(const std::string& s) const;
   bool is_cpp_mode() const {
     return source_profile_ == SourceProfile::CppSubset ||
@@ -548,6 +611,12 @@ class Parser {
   Node* find_template_struct_primary(const std::string& name) const;
   const std::vector<Node*>* find_template_struct_specializations(
       const Node* primary_tpl) const;
+  const Node* select_template_struct_pattern_for_args(
+      const std::vector<TemplateArgParseResult>& args,
+      const Node* primary_tpl,
+      const std::vector<Node*>* specializations,
+      std::vector<std::pair<std::string, TypeSpec>>* out_type_bindings,
+      std::vector<std::pair<std::string, long long>>* out_nttp_bindings) const;
   void register_template_struct_primary(const std::string& name, Node* node);
   void register_template_struct_specialization(const char* primary_name, Node* node);
   bool parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
