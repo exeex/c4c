@@ -6,26 +6,26 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 translated-owner follow-on after landing the bounded
-  translated F128 direct-slot store plus bounded fallback-store slice:
-  continue tightening the parked `src/backend/x86/codegen/f128.cpp` helper
-  layer around the next surfaced non-store helper body without widening into
-  raw-byte constant staging or prologue/runtime-owner work
+- Step 3 translated-owner follow-on after landing the bounded translated
+  x86 cast-helper bridge now reachable through the parked
+  `src/backend/x86/codegen/f128.cpp` helper layer: keep the next move inside
+  the remaining helper bodies already surfaced by `cast_ops.cpp` without
+  widening into raw-byte constant staging or prologue/runtime-owner work
 - immediate target:
-  land the next bounded translated `f128.cpp` helper move already surfaced by
-  the parked x86 cast-owner path: replace the placeholder
-  `emit_f128_to_int_from_memory` / `emit_f128_st0_to_int` bodies with the
-  translated x87 integer-conversion flow and pin it with narrow
-  `backend_shared_util_tests` coverage instead of reopening `returns.cpp` or
-  raw-byte constant staging
+  decide the next smallest translated cast-helper slice after the signed/float
+  dispatcher bridge: either expose the minimal shared label/type surface
+  needed for the still-parked unsigned helper paths
+  (`emit_f128_to_u64_cast`, `emit_u64_to_float`) or widen the public x86
+  operand model enough to carry the constant-backed long-double cast branch
+  cleanly
 
 ## Next Slice
 
 - keep the next `f128.cpp` work limited to the remaining bounded helper bodies
   already surfaced by the active x86 memory/cast paths, rather than wiring the
-  whole parked owner into the build; after the x87 integer-conversion slice,
-  re-evaluate whether the next bounded move is constant-backed F128 casts or
-  wiring `cast_ops.cpp` itself
+  whole parked owner into the build; after the signed/float cast-helper slice,
+  re-evaluate whether the next bounded move is the unsigned helper bridge or
+  the constant-backed long-double operand path
 - treat `emit_f128_store_raw_bytes` as deferred until the active public x86
   operand surface can express the needed constant-form inputs cleanly, instead
   of inventing a local one-off constant channel
@@ -36,6 +36,36 @@ Source Plan: plan.md
   unless a later translated-owner cutover proves that state is already exposed
 
 ## Current Iteration Notes
+
+- this iteration lands the bounded translated x86 cast-helper bridge already
+  surfaced by `src/backend/x86/codegen/cast_ops.cpp`: the parked
+  `src/backend/x86/codegen/f128.cpp` helper layer now replaces the
+  `emit_cast_instrs_x86`, `emit_int_to_f128_cast`, `emit_f128_to_int_cast`,
+  `emit_f128_to_f32_cast`, stack-staged x87 helper, and signed/float generic
+  cast placeholders with the translated signed/pointer/float paths that fit
+  today’s reduced x86 utility/header surface
+- implementation note:
+  `tests/backend/backend_shared_util_tests.cpp` now pins the helper dispatch
+  contract for narrow signed integer to `F128`, `F128` to `F32`, `F32` to
+  `F128`, `I32` to `F64`, and `F64` to `I8` helper-backed casts
+- surfaced boundary note:
+  the unsigned-specific translated helper paths
+  (`emit_f128_to_u64_cast`, `emit_u64_to_float`, and float-to-unsigned) remain
+  parked because the current reduced x86 utility surface still does not expose
+  unsigned `IrType` variants or the shared label helpers those branches use;
+  constant-backed long-double cast inputs remain deferred behind the same
+  public operand-surface boundary
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_f128_cast_helpers`,
+  `./build/backend_shared_util_tests translated_f128_helpers`, and
+  `./build/backend_shared_util_tests`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and one new `>30s` note on `backend_bir_tests`
 
 - this iteration lands the next bounded translated `src/backend/x86/codegen/f128.cpp`
   helper bodies already surfaced by the parked x86 cast-owner path:

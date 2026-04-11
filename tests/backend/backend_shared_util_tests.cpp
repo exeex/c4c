@@ -697,6 +697,92 @@ void test_x86_translated_f128_helpers_emit_st0_integer_conversion_text() {
                       "translated f128 helper should not sign-extend pointer-sized conversions as if they were i8 results");
 }
 
+void test_x86_translated_f128_cast_helpers_dispatch_x87_paths() {
+  using IrType = c4c::backend::x86::IrType;
+
+  c4c::backend::x86::X86Codegen int_to_f128_codegen;
+  int_to_f128_codegen.emit_cast_instrs_x86(IrType::I8, IrType::F128);
+
+  std::string int_to_f128_asm;
+  for (const auto& line : int_to_f128_codegen.state.asm_lines) {
+    int_to_f128_asm += line;
+    int_to_f128_asm.push_back('\n');
+  }
+
+  expect_contains(int_to_f128_asm, "    movsbq %al, %rax",
+                  "translated f128 cast helper should sign-extend narrow signed integers before the x87 FILD path");
+  expect_contains(int_to_f128_asm, "    fildq (%rsp)",
+                  "translated f128 cast helper should route integer-to-f128 promotion through the shared stack-staged FILD helper");
+  expect_contains(int_to_f128_asm, "    fstpl (%rsp)",
+                  "translated f128 cast helper should materialize the helper result back into the accumulator bit pattern");
+
+  c4c::backend::x86::X86Codegen f128_to_f32_codegen;
+  f128_to_f32_codegen.emit_cast_instrs_x86(IrType::F128, IrType::F32);
+
+  std::string f128_to_f32_asm;
+  for (const auto& line : f128_to_f32_codegen.state.asm_lines) {
+    f128_to_f32_asm += line;
+    f128_to_f32_asm.push_back('\n');
+  }
+
+  expect_contains(f128_to_f32_asm, "    fldl (%rsp)",
+                  "translated f128 cast helper should reload the staged accumulator payload into x87 before narrowing to f32");
+  expect_contains(f128_to_f32_asm, "    fstps (%rsp)",
+                  "translated f128 cast helper should narrow staged f128 payloads through the shared x87-to-f32 store path");
+
+  c4c::backend::x86::X86Codegen f32_to_f128_codegen;
+  f32_to_f128_codegen.emit_cast_instrs_x86(IrType::F32, IrType::F128);
+
+  std::string f32_to_f128_asm;
+  for (const auto& line : f32_to_f128_codegen.state.asm_lines) {
+    f32_to_f128_asm += line;
+    f32_to_f128_asm.push_back('\n');
+  }
+
+  expect_contains(f32_to_f128_asm, "    movd %eax, %xmm0",
+                  "translated f128 cast helper should move f32 accumulator payloads into xmm0 before widening");
+  expect_contains(f32_to_f128_asm, "    cvtss2sd %xmm0, %xmm0",
+                  "translated f128 cast helper should widen f32 inputs through the translated SSE conversion path");
+  expect_contains(f32_to_f128_asm, "    movq %xmm0, %rax",
+                  "translated f128 cast helper should materialize the widened helper result back in rax");
+}
+
+void test_x86_translated_f128_cast_helpers_cover_generic_scalar_casts() {
+  using IrType = c4c::backend::x86::IrType;
+
+  c4c::backend::x86::X86Codegen int_to_f64_codegen;
+  int_to_f64_codegen.emit_cast_instrs_x86(IrType::I32, IrType::F64);
+
+  std::string int_to_f64_asm;
+  for (const auto& line : int_to_f64_codegen.state.asm_lines) {
+    int_to_f64_asm += line;
+    int_to_f64_asm.push_back('\n');
+  }
+
+  expect_contains(int_to_f64_asm, "    movslq %eax, %rax",
+                  "translated generic cast helper should sign-extend i32 sources before integer-to-f64 conversion");
+  expect_contains(int_to_f64_asm, "    cvtsi2sdq %rax, %xmm0",
+                  "translated generic cast helper should use the scalar signed-int-to-f64 SSE conversion");
+  expect_contains(int_to_f64_asm, "    movq %xmm0, %rax",
+                  "translated generic cast helper should materialize the widened float result back into rax");
+
+  c4c::backend::x86::X86Codegen f64_to_i8_codegen;
+  f64_to_i8_codegen.emit_cast_instrs_x86(IrType::F64, IrType::I8);
+
+  std::string f64_to_i8_asm;
+  for (const auto& line : f64_to_i8_codegen.state.asm_lines) {
+    f64_to_i8_asm += line;
+    f64_to_i8_asm.push_back('\n');
+  }
+
+  expect_contains(f64_to_i8_asm, "    movq %rax, %xmm0",
+                  "translated generic cast helper should move f64 payloads into xmm0 before integer conversion");
+  expect_contains(f64_to_i8_asm, "    cvttsd2siq %xmm0, %rax",
+                  "translated generic cast helper should convert f64 payloads to signed integers through the SSE truncate path");
+  expect_contains(f64_to_i8_asm, "    movsbq %al, %rax",
+                  "translated generic cast helper should sign-extend narrow signed integer results after float conversion");
+}
+
 void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {
   using X86Codegen = c4c::backend::x86::X86Codegen;
 
@@ -4730,6 +4816,8 @@ int main(int argc, char* argv[]) {
   test_x86_translated_memory_owner_preserves_f128_store_precision_paths();
   test_x86_translated_f128_helpers_reload_integer_conversion_sources();
   test_x86_translated_f128_helpers_emit_st0_integer_conversion_text();
+  test_x86_translated_f128_cast_helpers_dispatch_x87_paths();
+  test_x86_translated_f128_cast_helpers_cover_generic_scalar_casts();
   test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
   test_x86_translated_regalloc_pruning_helpers_match_shared_contract();

@@ -4,6 +4,29 @@ namespace c4c::backend::x86 {
 
 namespace {
 
+bool is_float_ty(IrType ty) {
+  return ty == IrType::F32 || ty == IrType::F64 || ty == IrType::F128;
+}
+
+bool is_signed_ty(IrType ty) {
+  return ty == IrType::I8 || ty == IrType::I32 || ty == IrType::I64 || ty == IrType::I128;
+}
+
+std::size_t type_size_bytes(IrType ty) {
+  switch (ty) {
+    case IrType::Void: return 0;
+    case IrType::I8: return 1;
+    case IrType::I32:
+    case IrType::F32: return 4;
+    case IrType::I64:
+    case IrType::Ptr:
+    case IrType::F64: return 8;
+    case IrType::I128:
+    case IrType::F128: return 16;
+  }
+  return 0;
+}
+
 bool needs_signed_narrow_fixup(IrType to_ty) {
   return to_ty == IrType::I8 || to_ty == IrType::I32;
 }
@@ -146,22 +169,181 @@ void X86Codegen::emit_f128_st0_to_int(IrType to_ty) {
 }
 
 void X86Codegen::emit_cast_instrs_x86(IrType from_ty, IrType to_ty) {
-  this->state.emit("    <x86-cast-helper>");
+  if (to_ty == IrType::F128 && !is_float_ty(from_ty)) {
+    this->emit_int_to_f128_cast(from_ty);
+    return;
+  }
+  if (from_ty == IrType::F128 && !is_float_ty(to_ty)) {
+    this->emit_f128_to_int_cast(to_ty);
+    return;
+  }
+  if (from_ty == IrType::F128 && to_ty == IrType::F32) {
+    this->emit_f128_to_f32_cast();
+    return;
+  }
+  if (from_ty == IrType::F32 && to_ty == IrType::F128) {
+    this->state.emit("    movd %eax, %xmm0");
+    this->state.emit("    cvtss2sd %xmm0, %xmm0");
+    this->state.emit("    movq %xmm0, %rax");
+    return;
+  }
+
+  this->emit_generic_cast(from_ty, to_ty);
 }
 
-void X86Codegen::emit_int_to_f128_cast(IrType from_ty) { this->state.emit("    <int-to-f128-cast>"); }
-void X86Codegen::emit_f128_to_int_cast(IrType to_ty) { this->state.emit("    <f128-to-int-cast>"); }
+void X86Codegen::emit_int_to_f128_cast(IrType from_ty) {
+  if (is_signed_ty(from_ty) || from_ty == IrType::Ptr || type_size_bytes(from_ty) < 8) {
+    if (type_size_bytes(from_ty) < 8) {
+      this->emit_extend_to_rax(from_ty);
+    }
+    this->emit_fild_to_f64_via_stack();
+    return;
+  }
+
+  this->state.emit("    <int-to-f128-unsigned64>");
+}
+
+void X86Codegen::emit_f128_to_int_cast(IrType to_ty) {
+  if (is_signed_ty(to_ty) || to_ty == IrType::Ptr) {
+    this->emit_fisttp_from_f64_via_stack();
+    if (type_size_bytes(to_ty) < 8 && to_ty != IrType::Ptr) {
+      this->emit_sign_extend_to_rax(to_ty);
+    }
+    return;
+  }
+
+  this->emit_f128_to_u64_cast();
+  if (type_size_bytes(to_ty) < 8) {
+    this->emit_zero_extend_to_rax(to_ty);
+  }
+}
+
 void X86Codegen::emit_f128_to_u64_cast() { this->state.emit("    <f128-to-u64-cast>"); }
-void X86Codegen::emit_f128_to_f32_cast() { this->state.emit("    <f128-to-f32-cast>"); }
-void X86Codegen::emit_fild_to_f64_via_stack() { this->state.emit("    <fild-to-f64>"); }
-void X86Codegen::emit_fisttp_from_f64_via_stack() { this->state.emit("    <fisttp-from-f64>"); }
-void X86Codegen::emit_extend_to_rax(IrType ty) { this->state.emit("    <extend-to-rax>"); }
-void X86Codegen::emit_sign_extend_to_rax(IrType ty) { this->state.emit("    <sign-extend-to-rax>"); }
-void X86Codegen::emit_zero_extend_to_rax(IrType ty) { this->state.emit("    <zero-extend-to-rax>"); }
-void X86Codegen::emit_generic_cast(IrType from_ty, IrType to_ty) { this->state.emit("    <generic-cast>"); }
-void X86Codegen::emit_float_to_unsigned(bool from_f64, bool to_u64, IrType to_ty) { this->state.emit("    <float-to-unsigned>"); }
-void X86Codegen::emit_int_to_float_conv(bool to_f64) { this->state.emit("    <int-to-float-conv>"); }
-void X86Codegen::emit_u64_to_float(bool to_f64) { this->state.emit("    <u64-to-float>"); }
+
+void X86Codegen::emit_f128_to_f32_cast() {
+  this->state.emit("    subq $8, %rsp");
+  this->state.emit("    movq %rax, (%rsp)");
+  this->state.emit("    fldl (%rsp)");
+  this->state.emit("    fstps (%rsp)");
+  this->state.emit("    movl (%rsp), %eax");
+  this->state.emit("    addq $8, %rsp");
+}
+
+void X86Codegen::emit_fild_to_f64_via_stack() {
+  this->state.emit("    subq $8, %rsp");
+  this->state.emit("    movq %rax, (%rsp)");
+  this->state.emit("    fildq (%rsp)");
+  this->state.emit("    fstpl (%rsp)");
+  this->state.emit("    movq (%rsp), %rax");
+  this->state.emit("    addq $8, %rsp");
+}
+
+void X86Codegen::emit_fisttp_from_f64_via_stack() {
+  this->state.emit("    subq $8, %rsp");
+  this->state.emit("    movq %rax, (%rsp)");
+  this->state.emit("    fldl (%rsp)");
+  this->state.emit("    fisttpq (%rsp)");
+  this->state.emit("    movq (%rsp), %rax");
+  this->state.emit("    addq $8, %rsp");
+}
+
+void X86Codegen::emit_extend_to_rax(IrType ty) {
+  this->emit_sign_extend_to_rax(ty);
+}
+
+void X86Codegen::emit_sign_extend_to_rax(IrType ty) {
+  switch (ty) {
+    case IrType::I8:
+      this->state.emit("    movsbq %al, %rax");
+      return;
+    case IrType::I32:
+      this->state.emit("    movslq %eax, %rax");
+      return;
+    default: return;
+  }
+}
+
+void X86Codegen::emit_zero_extend_to_rax(IrType ty) {
+  switch (ty) {
+    case IrType::I8:
+      this->state.emit("    movzbq %al, %rax");
+      return;
+    case IrType::I32:
+      this->state.emit("    movl %eax, %eax");
+      return;
+    default: return;
+  }
+}
+
+void X86Codegen::emit_generic_cast(IrType from_ty, IrType to_ty) {
+  if (from_ty == to_ty) {
+    return;
+  }
+
+  if (from_ty == IrType::F32 && to_ty == IrType::F64) {
+    this->state.emit("    movd %eax, %xmm0");
+    this->state.emit("    cvtss2sd %xmm0, %xmm0");
+    this->state.emit("    movq %xmm0, %rax");
+    return;
+  }
+
+  if (from_ty == IrType::F64 && to_ty == IrType::F32) {
+    this->state.emit("    movq %rax, %xmm0");
+    this->state.emit("    cvtsd2ss %xmm0, %xmm0");
+    this->state.emit("    movd %xmm0, %eax");
+    return;
+  }
+
+  if (!is_float_ty(from_ty) && (to_ty == IrType::F32 || to_ty == IrType::F64)) {
+    if (from_ty == IrType::I8 || from_ty == IrType::I32) {
+      this->emit_sign_extend_to_rax(from_ty);
+    }
+    this->emit_int_to_float_conv(to_ty == IrType::F64);
+    return;
+  }
+
+  if ((from_ty == IrType::F32 || from_ty == IrType::F64) && !is_float_ty(to_ty)) {
+    if (from_ty == IrType::F64) {
+      this->state.emit("    movq %rax, %xmm0");
+      this->state.emit("    cvttsd2siq %xmm0, %rax");
+    } else {
+      this->state.emit("    movd %eax, %xmm0");
+      this->state.emit("    cvttss2siq %xmm0, %rax");
+    }
+
+    if (to_ty != IrType::I64 && to_ty != IrType::Ptr) {
+      this->emit_sign_extend_to_rax(to_ty);
+    }
+    return;
+  }
+
+  if (!is_float_ty(from_ty) && !is_float_ty(to_ty) && to_ty == IrType::I64) {
+    this->emit_sign_extend_to_rax(from_ty);
+  }
+}
+
+void X86Codegen::emit_float_to_unsigned(bool from_f64, bool to_u64, IrType to_ty) {
+  (void)from_f64;
+  (void)to_u64;
+  (void)to_ty;
+  this->state.emit("    <float-to-unsigned>");
+}
+
+void X86Codegen::emit_int_to_float_conv(bool to_f64) {
+  if (to_f64) {
+    this->state.emit("    cvtsi2sdq %rax, %xmm0");
+    this->state.emit("    movq %xmm0, %rax");
+    return;
+  }
+
+  this->state.emit("    cvtsi2ssq %rax, %xmm0");
+  this->state.emit("    movd %xmm0, %eax");
+}
+
+void X86Codegen::emit_u64_to_float(bool to_f64) {
+  (void)to_f64;
+  this->state.emit("    <u64-to-float>");
+}
 void X86Codegen::emit_f128_load_to_x87(const Operand& operand) {
   if (this->state.f128_direct_slots.find(operand.raw) != this->state.f128_direct_slots.end()) {
     if (const auto slot = this->state.get_slot(operand.raw)) {
