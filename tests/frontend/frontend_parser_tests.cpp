@@ -293,6 +293,63 @@ void test_parser_injected_token_helpers_preserve_qualified_name_spelling() {
             "helper-built injected identifier symbols should preserve spelling");
 }
 
+void test_parser_value_like_template_lookahead_uses_token_spelling() {
+  c4c::Arena arena;
+  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+
+  c4c::Token seed{};
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Trait"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "0"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[5].lexeme = "bridge_only_value";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  expect_true(parser.is_clearly_value_template_arg(nullptr, 0),
+              "value-like template lookahead should read parser-owned token spelling");
+}
+
+void test_parser_capture_template_arg_expr_uses_token_spelling() {
+  c4c::Arena arena;
+  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+
+  c4c::Token seed{};
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Value"),
+      parser.make_injected_token(seed, c4c::TokenKind::Plus, "+"),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "1"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[0].lexeme = "bridge_only_value";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  c4c::Parser::TemplateArgParseResult arg{};
+  expect_true(parser.capture_template_arg_expr(0, &arg),
+              "template arg expression capture should succeed for injected tokens");
+  expect_true(arg.nttp_name != nullptr,
+              "captured template arg expression should preserve text in nttp_name");
+  expect_eq(arg.nttp_name, "$expr:Value+1",
+            "template arg expression capture should use parser-owned token spelling");
+  expect_eq_int(parser.pos_, 3,
+                "template arg expression capture should stop before template close");
+}
+
 }  // namespace
 
 int main() {
@@ -303,6 +360,8 @@ int main() {
   test_parser_keeps_qualified_bindings_string_keyed();
   test_parser_parse_qualified_name_populates_atom_symbol_ids();
   test_parser_injected_token_helpers_preserve_qualified_name_spelling();
+  test_parser_value_like_template_lookahead_uses_token_spelling();
+  test_parser_capture_template_arg_expr_uses_token_spelling();
 
   std::cout << "PASS: frontend_parser_tests\n";
   return 0;

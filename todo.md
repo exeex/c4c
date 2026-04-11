@@ -6,10 +6,10 @@ Source Plan: plan.md
 
 ## Current Slice
 
-Active item: Warning-Driven Convergence C, trim the next read-only
-`Token::lexeme` helper lookahead sites in `types_helpers.hpp` now that
-qualified-name peeking and injected-token construction have narrow parser-owned
-helpers.
+Active item: Warning-Driven Convergence D, trim the next read-only
+identifier-classification and type-start probe sites in
+`parser_types_base.cpp` now that `types_helpers.hpp` lookahead and
+template-arg text capture read through parser-owned token spelling helpers.
 
 Why this slice:
 - the qualified-name boundary now carries per-segment atom ids while preserving
@@ -18,8 +18,12 @@ Why this slice:
 - compiler warnings still show substantial parser-owned `Token::lexeme` /
   `Token::file` bridge traffic, but most of it remains outside the current
   plan slice and should stay incremental
-- the next useful edits should focus on parser helper or injected-token sites
-  that directly support qualified-name parsing, not a repo-wide warning purge
+- the just-landed helper slice moved `types_helpers.hpp` lookahead and
+  template-arg text capture off open-coded deprecated token spelling reads
+  while keeping parser peeks read-only
+- the next useful edits should stay narrow and move outward to nearby
+  identifier classification probes in `parser_types_base.cpp` rather than
+  widening into parser mutation or broad bridge removal
 
 ## Completed
 
@@ -79,6 +83,14 @@ Why this slice:
       re-ran the full-suite monotonic guard with `3375` passed / `0` failed
       before and after via `test_before.log`, `test_after.log`, and the
       regression-guard checker
+- [x] Moved `types_helpers.hpp` value-like template lookahead and
+      template-arg expression text capture onto `parser.token_spelling(...)`,
+      added narrow parser coverage for injected-token lookahead and
+      expression-text capture in
+      [tests/frontend/frontend_parser_tests.cpp](/workspaces/c4c/tests/frontend/frontend_parser_tests.cpp),
+      and re-ran the full-suite monotonic guard with `3375` passed / `0`
+      failed before and after via `test_before.log`, `test_after.log`, and the
+      regression-guard checker
 
 ## Next Steps
 
@@ -102,9 +114,13 @@ Why this slice:
 - [x] Warning-Driven Convergence B: add parser token spelling / injected-token
       helpers, route qualified-name peeking plus nearby injected reparse paths
       through them, and keep the bridge fallback centralized
-- [ ] Warning-Driven Convergence C: move the next read-only parser helper
+- [x] Warning-Driven Convergence C: move the next read-only parser helper
       lookahead sites in `types_helpers.hpp` off open-coded deprecated token
       spelling access without reintroducing parser-state mutation during peeks
+- [ ] Warning-Driven Convergence D: move the next read-only
+      identifier-classification and type-start probe sites in
+      `parser_types_base.cpp` onto parser-owned token spelling helpers without
+      widening semantic-table scope
 
 ## Warning-Driven Convergence
 
@@ -150,7 +166,9 @@ Why this slice:
 - parsed qualified-name paths now also populate per-segment / base atom ids in
   `QualifiedNameRef`, but lookahead-only probes still leave those ids empty and
   full-name lookup plus synthesized names remain string-keyed
-- next edit should target the narrow parser helper / injected-token call sites
-  that still rely on deprecated token bridge fields on the qualified-name
-  boundary; helper-backed token spelling must stay read-only during lookahead,
-  and the next safe subset is the remaining `types_helpers.hpp` read paths
+- `types_helpers.hpp` now routes value-like template lookahead and template-arg
+  text capture through `parser.token_spelling(...)`, with injected-token tests
+  proving those helpers prefer parser-owned text ids over the deprecated bridge
+- next edit should target the similarly read-only identifier classification and
+  type-start probes in `parser_types_base.cpp`; they are adjacent to the
+  migrated helper path and should move without widening semantic lookup scope

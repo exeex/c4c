@@ -300,10 +300,12 @@ bool starts_with_value_like_template_expr(const Parser& parser,
 
     bool saw_scope = tokens[start_pos].kind == TokenKind::ColonColon;
     const bool first_identifier_is_known_type =
-        is_known_simple_type_head(parser, tokens[pos].lexeme);
+        is_known_simple_type_head(parser,
+                                  std::string(parser.token_spelling(tokens[pos])));
 
     while (pos < static_cast<int>(tokens.size())) {
-        const std::string current_name = tokens[pos].lexeme;
+        const std::string current_name =
+            std::string(parser.token_spelling(tokens[pos]));
         ++pos;  // identifier
         bool saw_template_args = false;
         if (pos < static_cast<int>(tokens.size()) &&
@@ -351,7 +353,7 @@ bool starts_with_value_like_template_expr(const Parser& parser,
             return false;
         }
 
-        if (tokens[pos].lexeme == "value") {
+        if (parser.token_spelling(tokens[pos]) == "value") {
             ++pos;
             if (pos >= static_cast<int>(tokens.size())) return true;
             return token_can_follow_value_like_template_arg(tokens[pos].kind);
@@ -1286,7 +1288,7 @@ void parse_optional_cpp20_requires_clause(Parser& parser) {
 
 static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts);
 static std::string capture_template_arg_expr_text(
-    const std::vector<Token>& toks, int start, int end);
+    const Parser& parser, const std::vector<Token>& toks, int start, int end);
 static bool parse_builtin_typespec_text(const std::string& text, TypeSpec* out);
 static int find_template_arg_expr_end(const std::vector<Token>& tokens, int start_pos);
 
@@ -1427,10 +1429,11 @@ static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts) {
 }
 
 static std::string capture_template_arg_expr_text(
-    const std::vector<Token>& tokens, int start_pos, int end_pos) {
+    const Parser& parser, const std::vector<Token>& tokens, int start_pos,
+    int end_pos) {
     std::string text;
     for (int i = start_pos; i < end_pos && i < static_cast<int>(tokens.size()); ++i)
-        text += tokens[i].lexeme;
+        text += parser.token_spelling(tokens[i]);
     return text;
 }
 

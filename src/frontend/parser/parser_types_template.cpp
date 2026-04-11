@@ -284,7 +284,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         }
 
         std::string text = capture_template_arg_expr_text(
-            toks, static_cast<int>(start), static_cast<int>(end));
+            *this, toks, static_cast<int>(start), static_cast<int>(end));
         return decode_type_ref_text(text, out);
     };
 

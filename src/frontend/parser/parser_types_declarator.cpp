@@ -161,7 +161,7 @@ bool Parser::capture_template_arg_expr(int expr_start, TemplateArgParseResult* o
     if (!out_arg) return false;
     const int expr_end = find_template_arg_expr_end(tokens_, expr_start);
     const std::string expr_text =
-        capture_template_arg_expr_text(tokens_, expr_start, expr_end);
+        capture_template_arg_expr_text(*this, tokens_, expr_start, expr_end);
     if (expr_text.empty()) return false;
     out_arg->is_value = true;
     out_arg->value = 0;
@@ -182,7 +182,7 @@ bool Parser::try_parse_template_non_type_expr(int expr_start,
         --template_arg_expr_depth_;
         if (pos_ > expr_start && (check(TokenKind::Comma) || check_template_close())) {
             const std::string expr_text =
-                capture_template_arg_expr_text(tokens_, expr_start, pos_);
+                capture_template_arg_expr_text(*this, tokens_, expr_start, pos_);
             if (!expr_text.empty()) {
                 out_arg->is_value = true;
                 out_arg->value = 0;
