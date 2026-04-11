@@ -208,7 +208,7 @@ void test_x86_translated_returns_owner_emits_bounded_helper_text() {
   c4c::backend::x86::X86Codegen codegen;
   codegen.state.slots.emplace(5, StackSlot{-24});
   codegen.state.slots.emplace(7, StackSlot{-40});
-  codegen.call_ret_classes = {EightbyteClass::Sse, EightbyteClass::Integer};
+  codegen.func_ret_classes = {EightbyteClass::Sse, EightbyteClass::Integer};
 
   codegen.emit_return_f32_to_reg_impl();
   codegen.emit_return_f64_to_reg_impl();
@@ -256,18 +256,63 @@ void test_x86_translated_returns_owner_emits_bounded_helper_text() {
               "wired translated returns owner should mark direct f128 slots when the second f128 lane is staged back into memory");
 }
 
+void test_x86_translated_returns_owner_emits_bounded_value_return_paths() {
+  using IrType = c4c::backend::x86::IrType;
+  using Operand = c4c::backend::x86::Operand;
+  using StackSlot = c4c::backend::x86::StackSlot;
+
+  c4c::backend::x86::X86Codegen direct_slot_codegen;
+  direct_slot_codegen.current_return_type = IrType::F128;
+  direct_slot_codegen.state.slots.emplace(5, StackSlot{-24});
+  direct_slot_codegen.state.f128_direct_slots.insert(5);
+  direct_slot_codegen.emit_return_impl(Operand{5}, 16);
+
+  std::string direct_slot_asm;
+  for (const auto& line : direct_slot_codegen.state.asm_lines) {
+    direct_slot_asm += line;
+    direct_slot_asm.push_back('\n');
+  }
+
+  expect_true(direct_slot_codegen.current_return_type_impl() == IrType::F128,
+              "wired translated returns owner should surface the bounded current return type state");
+  expect_contains(direct_slot_asm, "    fldt -24(%rbp)",
+                  "wired translated returns owner should reload direct-slot f128 returns through the shared slot surface");
+  expect_contains(direct_slot_asm, "    ret",
+                  "wired translated returns owner should still finish bounded direct-slot f128 returns through the shared epilogue path");
+
+  c4c::backend::x86::X86Codegen tracked_source_codegen;
+  tracked_source_codegen.current_return_type = IrType::F128;
+  tracked_source_codegen.state.slots.emplace(7, StackSlot{-40});
+  tracked_source_codegen.state.allocas.insert(7);
+  tracked_source_codegen.state.track_f128_load(9, 7, 0);
+  tracked_source_codegen.emit_return_impl(Operand{9}, 8);
+
+  std::string tracked_source_asm;
+  for (const auto& line : tracked_source_codegen.state.asm_lines) {
+    tracked_source_asm += line;
+    tracked_source_asm.push_back('\n');
+  }
+
+  expect_contains(tracked_source_asm, "    movq -40(%rbp), %rcx",
+                  "wired translated returns owner should recover tracked indirect f128 sources through the shared pointer-load helper");
+  expect_contains(tracked_source_asm, "    fldt (%rcx)",
+                  "wired translated returns owner should reload tracked indirect f128 sources through the shared load helper path");
+  expect_contains(tracked_source_asm, "    ret",
+                  "wired translated returns owner should still finish tracked-source f128 returns through the shared epilogue path");
+}
+
 void test_x86_translated_returns_owner_handles_i128_lane_variants() {
   using EightbyteClass = c4c::backend::x86::EightbyteClass;
 
   c4c::backend::x86::X86Codegen int_sse;
-  int_sse.call_ret_classes = {EightbyteClass::Integer, EightbyteClass::Sse};
+  int_sse.func_ret_classes = {EightbyteClass::Integer, EightbyteClass::Sse};
   int_sse.emit_return_i128_to_regs_impl();
   expect_true(int_sse.state.asm_lines.size() == 1 &&
                   int_sse.state.asm_lines.front() == "    movq %rdx, %xmm0",
               "wired translated returns owner should move the second INTEGER+SSE lane into xmm0");
 
   c4c::backend::x86::X86Codegen sse_sse;
-  sse_sse.call_ret_classes = {EightbyteClass::Sse, EightbyteClass::Sse};
+  sse_sse.func_ret_classes = {EightbyteClass::Sse, EightbyteClass::Sse};
   sse_sse.emit_return_i128_to_regs_impl();
   expect_true(sse_sse.state.asm_lines.size() == 2 &&
                   sse_sse.state.asm_lines[0] == "    movq %rax, %xmm0" &&
@@ -4535,6 +4580,7 @@ int main(int argc, char* argv[]) {
   test_x86_codegen_header_exports_translated_globals_owner_helper_symbols();
   test_x86_codegen_header_exports_translated_returns_owner_symbols();
   test_x86_translated_returns_owner_emits_bounded_helper_text();
+  test_x86_translated_returns_owner_emits_bounded_value_return_paths();
   test_x86_translated_returns_owner_handles_i128_lane_variants();
   test_x86_codegen_header_exports_translated_call_owner_surface();
   test_x86_translated_shared_call_support_tracks_real_state_and_output();

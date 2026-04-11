@@ -243,6 +243,8 @@ enum class RiscvFloatClass : unsigned {
 
 struct X86Codegen {
   X86CodegenState state;
+  IrType current_return_type = IrType::Void;
+  std::vector<EightbyteClass> func_ret_classes;
   std::vector<EightbyteClass> call_ret_classes;
 
   void operand_to_rax(const Operand& op);

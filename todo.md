@@ -6,29 +6,61 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 translated-owner follow-on after landing the bounded `returns.cpp`
-  helper-backed slice: either expose the still-missing translated return-owner
-  state needed by `emit_return_impl` or keep tightening the shared helper
-  surface around the still-parked `f128.cpp` owner without widening into the
-  broader prologue/runtime-owner cutover
+- Step 3 translated-owner follow-on after landing the bounded
+  `emit_return_impl` state-exposure slice inside `src/backend/x86/codegen/returns.cpp`:
+  either keep tightening the translated return-owner path around the remaining
+  local epilogue boundary or switch back to the still-parked `f128.cpp`
+  shared-helper surface without widening into the broader
+  prologue/runtime-owner cutover
 - immediate target:
-  inspect whether the next bounded Step 3 move should be
-  `src/backend/x86/codegen/returns.cpp` `emit_return_impl` state exposure or a
-  separate shared-helper tightening slice around the parked translated
-  `src/backend/x86/codegen/f128.cpp` support layer
+  inspect whether the next bounded Step 3 move should lift the temporary
+  local epilogue text used by `src/backend/x86/codegen/returns.cpp`
+  into a shared/header-visible helper surface or instead return to the parked
+  translated `src/backend/x86/codegen/f128.cpp` support layer for the next
+  isolated helper-backed link/behavior slice
 
 ## Next Slice
 
-- if the next slice stays in `returns.cpp`, keep it bounded to the translated
-  return-owner state still missing from the active public/shared surface rather
-  than widening into unrelated prologue ownership
+- if the next slice stays in `returns.cpp`, keep it bounded to replacing the
+  temporary local epilogue text with a shared helper path plus any missing
+  tracked-source coverage, rather than widening into unrelated prologue
+  ownership
 - if the next slice moves to `f128.cpp`, keep it limited to the shared helper
-  functions already surfaced by `memory.cpp` and the new returns-helper path
+  functions already surfaced by `memory.cpp` and the new returns-owner path
   instead of wiring the whole parked owner into the build
 - keep `emit_tls_global_addr_impl` and unrelated TLS/PIC work out of scope
   unless a later translated-owner cutover proves that state is already exposed
 
 ## Current Iteration Notes
+
+- this iteration exposes the bounded translated return-owner state needed by
+  `src/backend/x86/codegen/returns.cpp` without widening into the parked
+  prologue owner: `src/backend/x86/codegen/x86_codegen.hpp` now carries
+  `current_return_type` and function-return eightbyte classes, while
+  `src/backend/x86/codegen/returns.cpp` now uses that shared state to emit the
+  direct-slot and tracked-source `f128` return reload path instead of throwing
+- implementation note:
+  `tests/backend/backend_shared_util_tests.cpp` now exercises
+  `emit_return_impl` directly, pinning the bounded `f128` current-return-type
+  surface plus both the direct-slot and tracked-indirect-source return reload
+  paths; `emit_return_i128_to_regs_impl` now reads function-return classes
+  rather than the call-result classification cache
+- surfaced boundary note:
+  the focused `backend_shared_util_tests` link initially failed because this
+  target still does not link `src/backend/x86/codegen/prologue.cpp`, so this
+  slice keeps the translated owner bounded by emitting the minimal epilogue
+  text locally inside `returns.cpp` instead of widening into prologue-owner
+  linkage or shared thunk state
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8` and
+  `./build/backend_shared_util_tests`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_before.log`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration lands a bounded translated returns-helper slice inside
   `src/backend/x86/codegen/returns.cpp` without reopening the still-blocked
