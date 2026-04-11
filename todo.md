@@ -11,22 +11,51 @@ Source Plan: plan.md
   `src/backend/x86/codegen/direct_calls.cpp` instead of widening back into the
   parked branch/select or prologue/returns surfaces
 - immediate target:
-  lock whitespace-tolerant typed-call parsing on the newer both-local helper
-  families so the shared call decoder remains pinned across the simplest
-  both-local reload route and the richest double-rewrite route without changing
-  matcher scope
+  keep the next direct-call parsing regression slice on another already-landed
+  both-local helper family without widening matcher ownership; the next bounded
+  target is the plain both-local rewrite routes that still only have
+  suffix-spacing coverage or another adjacent prepared-LIR typed-call variant
 
 ## Next Slice
 
 - keep the next direct-call regression slice on prepared-LIR typed-call parsing
-  or another already-landed direct-call helper family; do not widen into new
-  helper ownership or unrelated control-flow matchers in the same commit
+  or another already-landed direct-call helper family; a good next bounded
+  target is the remaining plain both-local two-arg reload route with explicit
+  suffix-spacing coverage, if that seam is still unpinned
+- do not widen into new helper ownership or unrelated control-flow matchers in
+  the same commit
 - leave fused compare+branch, block branch lowering, select, and
   returns/prologue ownership parked for later explicit slices
 - keep constant-backed long-double caller work and unrelated TLS/PIC work out
   of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with the
+  missing middle both-local typed-call parsing regressions: helper and native
+  x86 prepared-LIR coverage now pin suffix-spaced `callee_type_suffix` and
+  whitespace-tolerant `args_str` on the both-local first-rewrite and
+  second-rewrite helper families without widening matcher scope
+- implementation note:
+  `tests/backend/backend_bir_pipeline_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now cover those
+  suffix-spacing forms directly, proving the shared trimmed two-argument
+  typed-call decoder continues to feed the existing both-local rewrite helper
+  seams on both the helper-level and native x86 prepared-LIR paths
+- implementation note:
+  the existing direct-call parser/emitter path already accepted those spaced
+  forms, so this slice lands as focused regression coverage rather than a code
+  path rewrite
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_two_arg_both_local_first_rewrite_call_slice_with_suffix_spacing`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_two_arg_both_local_second_rewrite_call_slice_with_suffix_spacing`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_both_local_first_rewrite_call_slice_with_suffix_spacing`, and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_both_local_second_rewrite_call_slice_with_suffix_spacing`
+- broad validation note:
+  this slice intentionally stayed on focused `backend_bir_tests` coverage and
+  did not widen back into the known unstable aggregate `ctest -R backend_bir_tests`
+  lane
 
 - this iteration extends the active Step 4 direct-call ownership path with a
   bounded both-local typed-call parsing regression slice: helper and native x86
