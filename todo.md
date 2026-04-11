@@ -11,17 +11,17 @@ Source Plan: plan.md
   `src/backend/x86/codegen/direct_calls.cpp` instead of widening back into the
   parked branch/select or prologue/returns surfaces
 - immediate target:
-  keep the prepared-LIR typed-call spacing follow-on on another already-landed
-  direct-call helper family without widening matcher ownership; this iteration
-  targets the adjacent second-local arg and second-local rewrite routes that
-  still lack a plain args-spacing regression on both the helper and native x86
-  prepared-LIR paths
+  keep the prepared-LIR typed-call parsing follow-on on another already-landed
+  direct-call helper family without widening matcher ownership after landing
+  the bounded second-local suffix-spacing coverage on both the helper and
+  native x86 prepared-LIR paths
 
 ## Next Slice
 
-- after the second-local args-spacing slice, keep the next direct-call
-  regression slice on prepared-LIR typed-call parsing or another already-landed
-  direct-call helper family without widening into parked matcher ownership
+- after the second-local suffix-spacing slice, keep the next direct-call
+  regression slice on prepared-LIR typed-call parsing for another already-landed
+  helper family that still lacks a dedicated suffix-spacing seam without
+  widening into parked matcher ownership
 - do not widen into new helper ownership or unrelated control-flow matchers in
   the same commit
 - leave fused compare+branch, block branch lowering, select, and
@@ -30,6 +30,34 @@ Source Plan: plan.md
   of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with the
+  missing second-local typed-call suffix-spacing regressions: helper and native
+  x86 prepared-LIR coverage now pin suffix-spaced `callee_type_suffix` on the
+  second-local arg and second-local rewrite helper families without widening
+  matcher scope
+- implementation note:
+  `tests/backend/backend_bir_pipeline_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now add explicit
+  `with_suffix_spacing` fixtures and assertions for those second-local
+  families so the existing typed-call parser keeps a separately pinned
+  suffix-spacing seam adjacent to the already-covered plain spacing routes
+- implementation note:
+  the existing direct-call parser/emitter path already accepted those
+  suffix-spaced forms, so this slice lands as focused regression coverage
+  rather than a code path rewrite
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_two_arg_second_local_arg_call_slice_with_suffix_spacing`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_two_arg_second_local_rewrite_call_slice_with_suffix_spacing`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_second_local_arg_call_slice_with_suffix_spacing`, and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_second_local_rewrite_call_slice_with_suffix_spacing`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and one existing `>30s` note on `backend_bir_tests`
 
 - this iteration extends the active Step 4 direct-call ownership path with the
   missing plain second-local typed-call spacing regressions: helper and native
