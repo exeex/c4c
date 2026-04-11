@@ -125,6 +125,111 @@ c4c::codegen::lir::LirModule make_supported_x86_param_slot_add_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_supported_x86_single_arg_add_imm_call_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction helper;
+  helper.name = "add_one";
+  helper.signature_text = "define i32 @add_one(i32 %arg0)\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirBinOp{"%sum", LirBinaryOpcode::Add, "i32", "%arg0", "1"});
+  helper_entry.terminator = LirRet{std::string("%sum"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"%t0", "i32", "@add_one", "(i32)", "i32 5"});
+  main_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_supported_x86_single_arg_add_imm_call_lir_module_with_spacing() {
+  auto module = make_supported_x86_single_arg_add_imm_call_lir_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.front());
+  call.callee_type_suffix = "( i32 )";
+  call.args_str = " i32   5 ";
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_supported_x86_single_arg_add_imm_call_lir_module_with_suffix_spacing() {
+  auto module = make_supported_x86_single_arg_add_imm_call_lir_module_with_spacing();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.front());
+  call.callee_type_suffix = "( i32 )";
+  call.args_str = "i32 5";
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_supported_x86_single_arg_identity_call_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction helper;
+  helper.name = "f";
+  helper.signature_text = "define i32 @f(i32 %arg0)\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.terminator = LirRet{std::string("%arg0"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"%t0", "i32", "@f", "(i32)", "i32 0"});
+  main_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_supported_x86_single_arg_identity_call_lir_module_with_spacing() {
+  auto module = make_supported_x86_single_arg_identity_call_lir_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.front());
+  call.callee_type_suffix = "( i32 )";
+  call.args_str = " i32   0 ";
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_supported_x86_single_arg_identity_call_lir_module_with_suffix_spacing() {
+  auto module = make_supported_x86_single_arg_identity_call_lir_module_with_spacing();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.front());
+  call.callee_type_suffix = "( i32 )";
+  call.args_str = "i32 0";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_supported_x86_local_temp_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -1943,6 +2048,54 @@ void test_x86_direct_call_helper_accepts_param_slot_add_slice() {
                   "the direct x86 call helper seam should still lower the bounded helper add body on the native x86 path");
   expect_contains(*rendered, "main:\n  mov edi, 5\n  call add_one\n  ret\n",
                   "the direct x86 call helper seam should still lower the bounded entry call through the native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_single_arg_add_imm_call_slice_with_spacing() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_single_arg_add_imm_call_lir_module_with_spacing(),
+      c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_minimal_single_arg_helper_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded single-arg add-immediate helper slice even when typed-call spacing drifts");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  call add_one\n  ret\n",
+                  "the direct x86 call helper seam should trim typed-call spacing while still lowering the bounded single-arg add-immediate helper call on the native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_single_arg_add_imm_call_slice_with_suffix_spacing() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_single_arg_add_imm_call_lir_module_with_suffix_spacing(),
+      c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_minimal_single_arg_helper_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded single-arg add-immediate helper slice when typed-call suffix spacing drifts");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  call add_one\n  ret\n",
+                  "the direct x86 call helper seam should trim typed-call suffix spacing while still lowering the bounded single-arg add-immediate helper call on the native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_single_arg_identity_call_slice_with_spacing() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_single_arg_identity_call_lir_module_with_spacing(),
+      c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_minimal_single_arg_helper_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded single-arg identity helper slice even when typed-call spacing drifts");
+  expect_contains(*rendered, "main:\n  mov edi, 0\n  call f\n  ret\n",
+                  "the direct x86 call helper seam should trim typed-call spacing while still lowering the bounded single-arg identity helper call on the native x86 path");
+}
+
+void test_x86_direct_call_helper_accepts_single_arg_identity_call_slice_with_suffix_spacing() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_single_arg_identity_call_lir_module_with_suffix_spacing(),
+      c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_minimal_single_arg_helper_call_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 call helper seam should accept the bounded single-arg identity helper slice when typed-call suffix spacing drifts");
+  expect_contains(*rendered, "main:\n  mov edi, 0\n  call f\n  ret\n",
+                  "the direct x86 call helper seam should trim typed-call suffix spacing while still lowering the bounded single-arg identity helper call on the native x86 path");
 }
 
 void test_x86_direct_local_helper_accepts_local_temp_slice() {
@@ -3798,6 +3951,10 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_direct_printf_helper_accepts_string_literal_char_slice);
   RUN_TEST(test_x86_direct_void_helper_accepts_void_direct_call_return_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_param_slot_add_slice);
+  RUN_TEST(test_x86_direct_call_helper_accepts_single_arg_add_imm_call_slice_with_spacing);
+  RUN_TEST(test_x86_direct_call_helper_accepts_single_arg_add_imm_call_slice_with_suffix_spacing);
+  RUN_TEST(test_x86_direct_call_helper_accepts_single_arg_identity_call_slice_with_spacing);
+  RUN_TEST(test_x86_direct_call_helper_accepts_single_arg_identity_call_slice_with_suffix_spacing);
   RUN_TEST(test_x86_direct_local_helper_accepts_local_temp_slice);
   RUN_TEST(test_x86_direct_local_helper_accepts_constant_branch_return_slice);
   RUN_TEST(test_x86_direct_bir_helper_accepts_minimal_countdown_loop_slice);

@@ -11,16 +11,17 @@ Source Plan: plan.md
   `src/backend/x86/codegen/direct_calls.cpp` instead of widening back into the
   parked branch/select or prologue/returns surfaces
 - immediate target:
-  audit the already-landed prepared-LIR direct-call spacing matrix for the
-  next helper/native parity gap, then land the next bounded typed-call parser
-  regression seam without widening matcher ownership
+  after landing the bounded single-arg helper typed-call spacing matrix,
+  continue on the next direct-call parity gap that stays within the existing
+  prepared-LIR single-arg helper ownership surface instead of widening into
+  parked matcher ownership
 
 ## Next Slice
 
-- after the bounded single-local helper-call args-spacing emitter slice, keep
-  the next direct-call regression slice on another already-landed prepared-LIR
-  helper family that still lacks helper/native parity in typed-call spacing
-  coverage, without widening into parked matcher ownership
+- after the bounded single-arg helper typed-call spacing matrix slice, keep
+  the next direct-call regression slice on the same already-landed single-arg
+  helper family where direct-BIR/native pipeline coverage still lacks typed-
+  call spacing parity, without widening into parked matcher ownership
 - do not widen into new helper ownership or unrelated control-flow matchers in
   the same commit
 - leave fused compare+branch, block branch lowering, select, and
@@ -29,6 +30,37 @@ Source Plan: plan.md
   of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with the
+  missing single-arg helper typed-call spacing regressions: helper and native
+  x86 prepared-LIR coverage now pin args-spacing-only and suffix-spacing drift
+  on the already-landed single-arg add-immediate and identity helper families
+  without widening matcher scope
+- implementation note:
+  `tests/backend/backend_bir_pipeline_tests.cpp` now adds dedicated
+  `make_supported_x86_single_arg_{add_imm,identity}_call_lir_module_{with_spacing,with_suffix_spacing}()`
+  fixtures plus matching helper assertions so the direct-call parser keeps
+  separately pinned spacing and suffix-spacing seams for the single-arg helper
+  family
+- implementation note:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now adds matching
+  `make_lir_minimal_direct_call_{add_imm,identity_arg}_module_{with_spacing,with_suffix_spacing}()`
+  fixtures plus native-emitter assertions so the prepared-LIR x86 path keeps
+  helper/native parity on those single-arg typed-call spacing forms
+- implementation note:
+  the existing direct-call parser/emitter path already accepted those spaced
+  forms, so this slice lands as focused regression coverage rather than a code
+  path rewrite
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_single_arg_add_imm_call_slice_with_spacing test_x86_direct_call_helper_accepts_single_arg_add_imm_call_slice_with_suffix_spacing test_x86_direct_call_helper_accepts_single_arg_identity_call_slice_with_spacing test_x86_direct_call_helper_accepts_single_arg_identity_call_slice_with_suffix_spacing`, and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_single_arg_add_imm_helper_call_slice_with_spacing test_x86_direct_emitter_lowers_minimal_single_arg_add_imm_helper_call_slice_with_suffix_spacing test_x86_direct_emitter_lowers_minimal_single_arg_identity_helper_call_slice_with_spacing test_x86_direct_emitter_lowers_minimal_single_arg_identity_helper_call_slice_with_suffix_spacing`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration extends the active Step 4 direct-call ownership path with the
   missing single-local typed-call args-spacing regression on the native x86
