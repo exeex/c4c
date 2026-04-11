@@ -7,21 +7,21 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 4 prepared-LIR sibling direct-call follow-on: keep the active x86
-  ownership move on bounded direct-call helper slices already living in
-  `src/backend/x86/codegen/direct_calls.cpp` instead of widening back into the
-  parked branch/select or prologue/returns surfaces
+  ownership move on bounded direct-call route slices already living in
+  `src/backend/x86/codegen/direct_calls.cpp` and the x86 backend tests instead
+  of widening back into the parked branch/select or prologue/returns surfaces
 - immediate target:
-  after landing folded-two-arg and dual-identity typed-call spacing coverage,
-  audit whether any remaining direct-call sibling family still lacks
-  helper/native prepared-LIR parity before widening into parked matcher
-  ownership
+  add native public-pipeline regression coverage for the still-plain
+  suffix-spaced first-local and both-local two-arg sibling families so the
+  typed-call suffix-trimming seam is pinned above the prepared-LIR helper
+  entrypoints too
 
 ## Next Slice
 
-- keep the next direct-call regression slice on any still-uncovered
-  prepared-LIR sibling family only if helper-side and native spacing/suffix
-  coverage still lack parity after this folded/dual completion, without
-  widening into parked matcher ownership
+- audit whether any remaining direct-call sibling family still lacks native
+  public-pipeline spacing/suffix coverage after this first-local and
+  both-local suffix-routing completion, without widening into parked matcher
+  ownership
 - do not widen into new helper ownership or unrelated control-flow matchers in
   the same commit
 - leave fused compare+branch, block branch lowering, select, and
@@ -30,6 +30,35 @@ Source Plan: plan.md
   of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with the
+  missing native public-pipeline suffix-spacing regressions for the plain
+  first-local and both-local two-arg helper families: the x86 route now pins
+  suffix-spaced typed-call trimming on those already-landed sibling direct-call
+  families without widening matcher scope
+- implementation note:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now adds dedicated
+  native-path end-to-end regressions for
+  `make_lir_minimal_two_arg_{local_arg,both_local_arg}_direct_call_module_with_suffix_spacing()`
+  so the public x86 backend route keeps the first-local and both-local plain
+  two-arg helper families live even when `callee_type_suffix` spacing drifts
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8` and
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_with_suffix_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_arg_direct_call_with_suffix_spacing_on_native_x86_path`
+- broad validation note:
+  the first matched current-tree rerun remained non-monotonic because unrelated
+  full-suite cases drifted between `test_fail_after.log` and
+  `test_fail_after_rerun.log`, temporarily swapping in
+  `c_testsuite_src_00205_c` and `llvm_gcc_c_torture_src_20040313_1_c` while
+  also resolving other unrelated failures
+- broad validation passed on a stabilized current-tree rerun:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after_rerun.log`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after_rerun2.log`,
+  and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_after_rerun.log --after test_fail_after_rerun2.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed after, zero newly failing tests, and zero
+  new `>30s` tests
 
 - this iteration extends the active Step 4 direct-call ownership path with the
   missing folded-two-arg and dual-identity typed-call spacing regressions:
