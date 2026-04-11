@@ -1,0 +1,4 @@
+interface:
+  display_name: "Idea To Runbook Plan"
+  short_description: "Turn an open idea into an executable c4c plan"
+  default_prompt: "Convert a c4c idea under ideas/open into a concise, execution-oriented plan.md runbook."

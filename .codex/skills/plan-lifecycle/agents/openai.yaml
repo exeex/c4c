@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Lifecycle"
+  short_description: "Operate the c4c single-plan lifecycle safely"
+  default_prompt: "Handle c4c plan activation, execution-state tracking, switching, and closing across ideas/open, plan.md, and todo.md."

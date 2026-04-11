@@ -16,7 +16,7 @@ Expect these files:
 
 - one source file under `ideas/open/*.md`
 - current [`plan.md`](/workspaces/c4c/plan.md), if it exists
-- [`prompts/AGENT_PROMPT_EXECUTE_PLAN.md`](/workspaces/c4c/prompts/AGENT_PROMPT_EXECUTE_PLAN.md)
+- [`prompts/EXECUTE_PLAN.md`](/workspaces/c4c/prompts/EXECUTE_PLAN.md)
 
 Read the current `plan.md` before rewriting it so you preserve useful runbook conventions already adopted in this repo.
 
@@ -63,6 +63,10 @@ The result should usually contain:
    - primary target if relevant
    - concrete actions
    - completion check
+
+If the repo already uses a companion execution-state file such as `todo.md`,
+keep the runbook compatible with that lifecycle instead of inventing a new file
+name.
 
 Do not force every section if the source does not justify it, but the final document should feel like a checklist-driven runbook rather than a brainstorming note.
 
