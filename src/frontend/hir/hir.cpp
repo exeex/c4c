@@ -31,6 +31,17 @@ Module build_hir(const Node* program_root,
   initial.module->ct_info.templates_resolved = ct_stats.templates_instantiated;
   initial.module->ct_info.consteval_reduced = ct_stats.consteval_reduced;
   initial.module->ct_info.converged = ct_stats.converged;
+  initial.module->ct_info.diagnostics.clear();
+  for (const auto& diag : ct_stats.diagnostics) {
+    std::string line;
+    if (diag.file && diag.file[0]) line += std::string(diag.file) + ":";
+    line += std::to_string(diag.line > 0 ? diag.line : 0);
+    line += ":";
+    line += std::to_string(diag.column > 0 ? diag.column : 1);
+    line += ": error: ";
+    line += diag.description;
+    initial.module->ct_info.diagnostics.push_back(std::move(line));
+  }
   initial.module->pipeline_stage = HirPipelineStage::Normalized;
 
   // Stage 3: Materialized HIR — finalize emission decisions.

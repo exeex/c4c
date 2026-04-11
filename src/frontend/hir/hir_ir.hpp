@@ -952,6 +952,7 @@ struct Module {
     size_t templates_resolved = 0;       // total template calls resolved
     size_t consteval_reduced = 0;        // total consteval calls reduced
     bool converged = false;
+    std::vector<std::string> diagnostics;
     // Materialization stats (populated by Stage 3: materialize_ready_functions).
     size_t materialized_functions = 0;      // functions marked for emission
     size_t non_materialized_functions = 0;  // compile-time-only functions

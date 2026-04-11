@@ -1524,7 +1524,7 @@ void Lowerer::lower_global(const Node* gv,
   g.linkage = {gv->is_static, gv->is_extern, false, weak_symbols_.count(g.name) > 0,
                static_cast<Visibility>(gv->visibility)};
   g.execution_domain = gv->execution_domain;
-  g.is_const = gv->type.is_const;
+  g.is_const = gv->type.is_const || gv->is_constexpr;
   g.span = make_span(gv);
 
   // Deduce unsized array dimension from wide string literal initializer.
@@ -1543,7 +1543,7 @@ void Lowerer::lower_global(const Node* gv,
     g.init = normalize_global_init(g.type.spec, g.init);
   }
 
-  if (g.is_const) {
+  if (g.is_const || gv->is_constexpr) {
     if (const auto* scalar = std::get_if<InitScalar>(&g.init)) {
       const Expr& e = module_->expr_pool[scalar->expr.value];
       if (const auto* lit = std::get_if<IntLiteral>(&e.payload)) {

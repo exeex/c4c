@@ -770,6 +770,12 @@ struct CompileTimeState {
     consteval_fn_defs_[name] = node;
   }
 
+  /// Register a non-template-owned static_assert for engine-time resolution.
+  void register_static_assert(const Node* node) {
+    if (!node) return;
+    static_assert_nodes_.push_back(node);
+  }
+
   /// Check whether a template function definition is known.
   bool has_template_def(const std::string& name) const {
     return template_fn_defs_.count(name) > 0;
@@ -839,6 +845,10 @@ struct CompileTimeState {
   /// Const reference to registered global const-int bindings used during consteval.
   const std::unordered_map<std::string, long long>& const_int_bindings() const {
     return const_int_bindings_;
+  }
+
+  const std::vector<const Node*>& static_assert_nodes() const {
+    return static_assert_nodes_;
   }
 
   /// Number of registered template function definitions.
@@ -1007,6 +1017,7 @@ struct CompileTimeState {
   std::unordered_map<std::string, long long> enum_consts_;
   // Global const-integer bindings (name → value).
   std::unordered_map<std::string, long long> const_int_bindings_;
+  std::vector<const Node*> static_assert_nodes_;
   // Pending type-driven template work discovered during AST-to-HIR lowering.
   std::vector<PendingTemplateTypeWorkItem> pending_template_types_;
   std::unordered_set<std::string> pending_template_type_keys_;
@@ -1015,8 +1026,11 @@ struct CompileTimeState {
 
 /// A diagnostic for a single irreducible compile-time node.
 struct CompileTimeDiagnostic {
-  enum Kind { UnresolvedTemplate, UnreducedConsteval };
+  enum Kind { UnresolvedTemplate, UnreducedConsteval, StaticAssert };
   Kind kind;
+  const char* file = nullptr;
+  int line = 0;
+  int column = 1;
   std::string description;  // human-readable description of the irreducible node
 };
 

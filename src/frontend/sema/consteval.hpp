@@ -133,6 +133,16 @@ ConstEvalResult evaluate_consteval_call(
     const std::unordered_map<std::string, const Node*>& consteval_fns,
     int depth = 0);
 
+// Apply explicit template arguments from a consteval call-site onto an
+// evaluation environment so template/NTTP-dependent consteval bodies can be
+// interpreted outside HIR lowering as well.
+ConstEvalEnv bind_consteval_call_env(
+    const Node* callee_expr,
+    const Node* func_def,
+    const ConstEvalEnv& outer_env,
+    TypeBindings* out_type_bindings,
+    std::unordered_map<std::string, long long>* out_nttp_bindings);
+
 // ── String literal helpers ───────────────────────────────────────────────────
 
 std::vector<long long> decode_string_literal_values(const char* sval, bool wide);

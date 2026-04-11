@@ -343,6 +343,79 @@ ConstEvalResult evaluate_constant_expr(const Node* n, const ConstEvalEnv& env) {
   return eval_impl(n, env);
 }
 
+ConstEvalEnv bind_consteval_call_env(
+    const Node* callee_expr,
+    const Node* func_def,
+    const ConstEvalEnv& outer_env,
+    TypeBindings* out_type_bindings,
+    std::unordered_map<std::string, long long>* out_nttp_bindings) {
+  if (out_type_bindings) out_type_bindings->clear();
+  if (out_nttp_bindings) out_nttp_bindings->clear();
+
+  ConstEvalEnv env = outer_env;
+  if (!callee_expr || !func_def || func_def->n_template_params <= 0 ||
+      !(callee_expr->n_template_args > 0 || callee_expr->has_template_args)) {
+    return env;
+  }
+
+  const int count = std::min(callee_expr->n_template_args, func_def->n_template_params);
+  for (int i = 0; i < count; ++i) {
+    if (!func_def->template_param_names || !func_def->template_param_names[i]) continue;
+    const std::string param_name = func_def->template_param_names[i];
+    const bool is_nttp =
+        func_def->template_param_is_nttp && func_def->template_param_is_nttp[i];
+    if (is_nttp) {
+      if (!out_nttp_bindings || !callee_expr->template_arg_is_value ||
+          !callee_expr->template_arg_is_value[i]) {
+        continue;
+      }
+      if (callee_expr->template_arg_nttp_names && callee_expr->template_arg_nttp_names[i] &&
+          outer_env.nttp_bindings) {
+        auto it = outer_env.nttp_bindings->find(callee_expr->template_arg_nttp_names[i]);
+        if (it != outer_env.nttp_bindings->end()) {
+          (*out_nttp_bindings)[param_name] = it->second;
+          continue;
+        }
+      }
+      if (callee_expr->template_arg_values) {
+        (*out_nttp_bindings)[param_name] = callee_expr->template_arg_values[i];
+      }
+      continue;
+    }
+
+    if (!out_type_bindings || !callee_expr->template_arg_types) continue;
+    TypeSpec arg_ts = callee_expr->template_arg_types[i];
+    if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && outer_env.type_bindings) {
+      auto it = outer_env.type_bindings->find(arg_ts.tag);
+      if (it != outer_env.type_bindings->end()) arg_ts = it->second;
+    }
+    (*out_type_bindings)[param_name] = arg_ts;
+  }
+
+  if (func_def->template_param_has_default) {
+    for (int i = count; i < func_def->n_template_params; ++i) {
+      if (!func_def->template_param_names || !func_def->template_param_names[i] ||
+          !func_def->template_param_has_default[i]) {
+        continue;
+      }
+      const std::string param_name = func_def->template_param_names[i];
+      const bool is_nttp =
+          func_def->template_param_is_nttp && func_def->template_param_is_nttp[i];
+      if (is_nttp) {
+        if (!out_nttp_bindings) continue;
+        (*out_nttp_bindings)[param_name] = func_def->template_param_default_values[i];
+      } else {
+        if (!out_type_bindings) continue;
+        (*out_type_bindings)[param_name] = func_def->template_param_default_types[i];
+      }
+    }
+  }
+
+  if (out_type_bindings && !out_type_bindings->empty()) env.type_bindings = out_type_bindings;
+  if (out_nttp_bindings && !out_nttp_bindings->empty()) env.nttp_bindings = out_nttp_bindings;
+  return env;
+}
+
 // ── Consteval function-body interpreter ──────────────────────────────────────
 
 namespace {
@@ -481,7 +554,11 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
         args.push_back(*r.value);
       }
 
-      return evaluate_consteval_call(it->second, args, outer_env, consteval_fns, depth + 1);
+      TypeBindings tpl_bindings;
+      std::unordered_map<std::string, long long> nttp_bindings;
+      ConstEvalEnv call_env = bind_consteval_call_env(
+          n->left, it->second, outer_env, &tpl_bindings, &nttp_bindings);
+      return evaluate_consteval_call(it->second, args, call_env, consteval_fns, depth + 1);
     }
 
     case NK_ASSIGN: {

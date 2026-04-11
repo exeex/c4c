@@ -1299,6 +1299,49 @@ set_tests_properties(cpp_hir_deferred_consteval_incomplete_type PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_if_constexpr_branch_unlocks_later
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/if_constexpr_branch_unlocks_later_hir.cpp"
+)
+set_tests_properties(cpp_hir_if_constexpr_branch_unlocks_later PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "consteval choose_tile<T=struct TileShape>\\(\\) = 128.*global tile: const int const = 128"
+)
+
+add_test(
+  NAME cpp_c4_static_assert_if_constexpr_branch_unlocks_later
+  COMMAND c4cll "${PROJECT_SOURCE_DIR}/tests/cpp/internal/consteval_case/if_constexpr_branch_unlocks_later.cpp"
+)
+set_tests_properties(cpp_c4_static_assert_if_constexpr_branch_unlocks_later PROPERTIES
+  LABELS "internal;positive_case;cpp;c4_only"
+)
+
+add_test(
+  NAME cpp_hir_multistage_shape_chain
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/multistage_shape_chain_hir.cpp"
+)
+set_tests_properties(cpp_hir_multistage_shape_chain PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "consteval vec_cost<T=struct F32x8>\\(\\) = 24.*global cost: const int const = 24"
+)
+
+add_test(
+  NAME cpp_c4_static_assert_multistage_shape_chain
+  COMMAND c4cll "${PROJECT_SOURCE_DIR}/tests/cpp/internal/consteval_case/multistage_shape_chain.cpp"
+)
+set_tests_properties(cpp_c4_static_assert_multistage_shape_chain PROPERTIES
+  LABELS "internal;positive_case;cpp;c4_only"
+)
+
+add_test(
+  NAME cpp_hir_late_specialization_unlocks_wrapper
+  COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/late_specialization_unlocks_wrapper.cpp"
+)
+set_tests_properties(cpp_hir_late_specialization_unlocks_wrapper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "consteval schedule\\(\\) = 42.*1 consteval reduction.*\\(converged\\)"
+)
+
+add_test(
   NAME cpp_hir_specialization_key
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_func.cpp"
 )

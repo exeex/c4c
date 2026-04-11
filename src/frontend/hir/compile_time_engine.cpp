@@ -10,6 +10,36 @@ namespace c4c::hir {
 
 namespace {
 
+CompileTimeDiagnostic make_diag(CompileTimeDiagnostic::Kind kind,
+                                std::string description,
+                                const Node* node = nullptr) {
+  CompileTimeDiagnostic diag;
+  diag.kind = kind;
+  if (node) {
+    diag.file = node->file;
+    diag.line = node->line;
+    diag.column = node->column;
+  }
+  diag.description = std::move(description);
+  return diag;
+}
+
+void sync_global_const_bindings(Module& module, CompileTimeState* ct_state) {
+  if (!ct_state) return;
+  for (const auto& global : module.globals) {
+    if (!global.is_const) continue;
+    const auto* scalar = std::get_if<InitScalar>(&global.init);
+    if (!scalar) continue;
+    const Expr* expr = module.find_expr(scalar->expr);
+    if (!expr) continue;
+    if (const auto* lit = std::get_if<IntLiteral>(&expr->payload)) {
+      ct_state->register_const_int_binding(global.name, lit->value);
+    } else if (const auto* ch = std::get_if<CharLiteral>(&expr->payload)) {
+      ct_state->register_const_int_binding(global.name, ch->value);
+    }
+  }
+}
+
 struct PendingTemplateTypeStep {
   CompileTimeState* ct_state = nullptr;
   DeferredInstantiateTypeFn instantiate_type_fn;
@@ -56,14 +86,14 @@ struct PendingTemplateTypeStep {
           label = "unresolved template type: " + label;
         }
         pending_diags.push_back(
-            {CompileTimeDiagnostic::UnresolvedTemplate, std::move(label)});
+            make_diag(CompileTimeDiagnostic::UnresolvedTemplate, std::move(label)));
       } else {
         ++pending;
         ++blocked;
         if (result.spawned_new_work) ++spawned_new_work;
         if (!result.diagnostic.empty()) {
           pending_diags.push_back(
-              {CompileTimeDiagnostic::UnresolvedTemplate, result.diagnostic});
+              make_diag(CompileTimeDiagnostic::UnresolvedTemplate, result.diagnostic));
         }
       }
     }
@@ -126,15 +156,15 @@ struct TemplateInstantiationStep {
       const auto* callee_expr = module.find_expr(call->callee);
       if (!callee_expr) {
         ++pending;
-        pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
-            "unresolved template call: " + tci.source_template + " (callee expr missing)"});
+        pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnresolvedTemplate,
+            "unresolved template call: " + tci.source_template + " (callee expr missing)"));
         continue;
       }
       const auto* decl_ref = std::get_if<DeclRef>(&callee_expr->payload);
       if (!decl_ref) {
         ++pending;
-        pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
-            "unresolved template call: " + tci.source_template + " (callee is not a DeclRef)"});
+        pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnresolvedTemplate,
+            "unresolved template call: " + tci.source_template + " (callee is not a DeclRef)"));
         continue;
       }
 
@@ -150,9 +180,9 @@ struct TemplateInstantiationStep {
         // rather than blindly probing the callback.
         if (ct_state && !ct_state->has_template_def(tci.source_template)) {
           ++pending;
-          pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
+          pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnresolvedTemplate,
               "unresolved template call: " + tci.source_template +
-              " (no definition registered in compile-time state)"});
+              " (no definition registered in compile-time state)"));
           continue;
         }
 
@@ -206,21 +236,21 @@ struct TemplateInstantiationStep {
             }
           } else {
             ++pending;
-            pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
+            pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnresolvedTemplate,
                 "unresolved template call: " + tci.source_template +
-                " (deferred instantiation of '" + target_name + "' failed)"});
+                " (deferred instantiation of '" + target_name + "' failed)"));
           }
         } else {
           ++pending;
-          pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
+          pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnresolvedTemplate,
               "unresolved template call: " + tci.source_template +
-              " (no template definition found)"});
+              " (no template definition found)"));
         }
       } else {
         ++pending;
-        pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
+        pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnresolvedTemplate,
             "unresolved template call: " + tci.source_template +
-            " (instantiation '" + target_name + "' not found)"});
+            " (instantiation '" + target_name + "' not found)"));
       }
     }
   }
@@ -243,22 +273,22 @@ struct ConstevalReductionStep {
       const auto* expr = module.find_expr(cci.result_expr);
       if (!expr) {
         ++pending;
-        pending_diags.push_back({CompileTimeDiagnostic::UnreducedConsteval,
-            "unreduced consteval: " + cci.fn_name + " (result expr missing)"});
+        pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnreducedConsteval,
+            "unreduced consteval: " + cci.fn_name + " (result expr missing)"));
         continue;
       }
       const auto* lit = std::get_if<IntLiteral>(&expr->payload);
       if (!lit) {
         ++pending;
-        pending_diags.push_back({CompileTimeDiagnostic::UnreducedConsteval,
-            "unreduced consteval: " + cci.fn_name + " (result is not an IntLiteral)"});
+        pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnreducedConsteval,
+            "unreduced consteval: " + cci.fn_name + " (result is not an IntLiteral)"));
         continue;
       }
       if (lit->value != cci.result_value) {
         ++pending;
-        pending_diags.push_back({CompileTimeDiagnostic::UnreducedConsteval,
+        pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnreducedConsteval,
             "unreduced consteval: " + cci.fn_name + " (result value mismatch: expected " +
-            std::to_string(cci.result_value) + ", got " + std::to_string(lit->value) + ")"});
+            std::to_string(cci.result_value) + ", got " + std::to_string(lit->value) + ")"));
         continue;
       }
       ++reduced;
@@ -289,9 +319,9 @@ struct PendingConstevalEvalStep {
       // Pre-check: does the compile-time state know about this consteval fn?
       if (!ct_state->has_consteval_def(pce->fn_name)) {
         ++pending;
-        pending_diags.push_back({CompileTimeDiagnostic::UnreducedConsteval,
+        pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnreducedConsteval,
             "pending consteval: " + pce->fn_name +
-            " (no definition registered in compile-time state)"});
+            " (no definition registered in compile-time state)"));
         continue;
       }
 
@@ -313,11 +343,179 @@ struct PendingConstevalEvalStep {
         ++evaluated;
       } else {
         ++pending;
-        pending_diags.push_back({CompileTimeDiagnostic::UnreducedConsteval,
+        pending_diags.push_back(make_diag(CompileTimeDiagnostic::UnreducedConsteval,
             "pending consteval: " + pce->fn_name +
             (result.error.empty()
                 ? " (evaluation failed)"
-                : " (" + result.error + ")")});
+                : " (" + result.error + ")")));
+      }
+    }
+  }
+};
+
+bool try_evaluate_consteval_call_expr(
+    const Node* expr,
+    const Module& module,
+    const CompileTimeState& ct_state,
+    long long* out_value) {
+  if (!expr || expr->kind != NK_CALL || !expr->left ||
+      expr->left->kind != NK_VAR || !expr->left->name) {
+    return false;
+  }
+
+  const Node* ce_fn_def = ct_state.find_consteval_def(expr->left->name);
+  if (!ce_fn_def) return false;
+
+  ConstEvalEnv env{&ct_state.enum_consts(), &ct_state.const_int_bindings(), nullptr};
+  env.struct_defs = &module.struct_defs;
+  TypeBindings tpl_bindings;
+  NttpBindings nttp_bindings;
+  env = bind_consteval_call_env(expr->left, ce_fn_def, env, &tpl_bindings, &nttp_bindings);
+
+  std::vector<ConstValue> args;
+  args.reserve(expr->n_children);
+  for (int i = 0; i < expr->n_children; ++i) {
+    auto arg = evaluate_constant_expr(expr->children[i], env);
+    if (!arg.ok()) return false;
+    args.push_back(*arg.value);
+  }
+
+  auto result = evaluate_consteval_call(ce_fn_def, args, env, ct_state.consteval_fn_defs());
+  if (!result.ok()) return false;
+  if (out_value) *out_value = result.as_int();
+  return true;
+}
+
+bool try_evaluate_static_assert_expr(
+    const Node* expr,
+    const Module& module,
+    const CompileTimeState& ct_state,
+    long long* out_value) {
+  if (!expr) return false;
+  ConstEvalEnv env{&ct_state.enum_consts(), &ct_state.const_int_bindings(), nullptr};
+  env.struct_defs = &module.struct_defs;
+
+  if (auto r = evaluate_constant_expr(expr, env); r.ok()) {
+    if (out_value) *out_value = r.as_int();
+    return true;
+  }
+
+  long long call_value = 0;
+  if (try_evaluate_consteval_call_expr(expr, module, ct_state, &call_value)) {
+    if (out_value) *out_value = call_value;
+    return true;
+  }
+
+  auto eval_child = [&](const Node* child, long long* value) {
+    return try_evaluate_static_assert_expr(child, module, ct_state, value);
+  };
+
+  switch (expr->kind) {
+    case NK_UNARY: {
+      long long value = 0;
+      if (!expr->op || !eval_child(expr->left, &value)) return false;
+      if (std::strcmp(expr->op, "+") == 0) {
+        if (out_value) *out_value = value;
+        return true;
+      }
+      if (std::strcmp(expr->op, "-") == 0) {
+        if (out_value) *out_value = -value;
+        return true;
+      }
+      if (std::strcmp(expr->op, "~") == 0) {
+        if (out_value) *out_value = ~value;
+        return true;
+      }
+      if (std::strcmp(expr->op, "!") == 0) {
+        if (out_value) *out_value = !value;
+        return true;
+      }
+      return false;
+    }
+    case NK_TERNARY: {
+      long long cond = 0;
+      if (!eval_child(expr->cond ? expr->cond : expr->left, &cond)) return false;
+      return eval_child(cond ? expr->then_ : expr->else_, out_value);
+    }
+    case NK_BINOP: {
+      if (!expr->op) return false;
+      long long lhs = 0;
+      long long rhs = 0;
+      if (std::strcmp(expr->op, "&&") == 0) {
+        if (!eval_child(expr->left, &lhs)) return false;
+        if (!lhs) {
+          if (out_value) *out_value = 0;
+          return true;
+        }
+        if (!eval_child(expr->right, &rhs)) return false;
+        if (out_value) *out_value = !!rhs;
+        return true;
+      }
+      if (std::strcmp(expr->op, "||") == 0) {
+        if (!eval_child(expr->left, &lhs)) return false;
+        if (lhs) {
+          if (out_value) *out_value = 1;
+          return true;
+        }
+        if (!eval_child(expr->right, &rhs)) return false;
+        if (out_value) *out_value = !!rhs;
+        return true;
+      }
+      if (!eval_child(expr->left, &lhs) || !eval_child(expr->right, &rhs)) return false;
+      long long result = 0;
+      if (std::strcmp(expr->op, "+") == 0) result = lhs + rhs;
+      else if (std::strcmp(expr->op, "-") == 0) result = lhs - rhs;
+      else if (std::strcmp(expr->op, "*") == 0) result = lhs * rhs;
+      else if (std::strcmp(expr->op, "/") == 0) {
+        if (rhs == 0) return false;
+        result = lhs / rhs;
+      } else if (std::strcmp(expr->op, "%") == 0) {
+        if (rhs == 0) return false;
+        result = lhs % rhs;
+      } else if (std::strcmp(expr->op, "<<") == 0) result = lhs << rhs;
+      else if (std::strcmp(expr->op, ">>") == 0) result = lhs >> rhs;
+      else if (std::strcmp(expr->op, "&") == 0) result = lhs & rhs;
+      else if (std::strcmp(expr->op, "|") == 0) result = lhs | rhs;
+      else if (std::strcmp(expr->op, "^") == 0) result = lhs ^ rhs;
+      else if (std::strcmp(expr->op, "<") == 0) result = lhs < rhs;
+      else if (std::strcmp(expr->op, "<=") == 0) result = lhs <= rhs;
+      else if (std::strcmp(expr->op, ">") == 0) result = lhs > rhs;
+      else if (std::strcmp(expr->op, ">=") == 0) result = lhs >= rhs;
+      else if (std::strcmp(expr->op, "==") == 0) result = lhs == rhs;
+      else if (std::strcmp(expr->op, "!=") == 0) result = lhs != rhs;
+      else return false;
+      if (out_value) *out_value = result;
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+
+struct StaticAssertStep {
+  const Module& module;
+  CompileTimeState* ct_state = nullptr;
+  size_t resolved = 0;
+  size_t pending = 0;
+  std::vector<CompileTimeDiagnostic> pending_diags;
+
+  void run() {
+    if (!ct_state) return;
+    for (const Node* sa : ct_state->static_assert_nodes()) {
+      if (!sa || sa->kind != NK_STATIC_ASSERT || !sa->left) continue;
+      long long value = 0;
+      if (try_evaluate_static_assert_expr(sa->left, module, *ct_state, &value)) {
+        ++resolved;
+        if (value == 0) {
+          pending_diags.push_back(
+              make_diag(CompileTimeDiagnostic::StaticAssert,
+                        "_Static_assert condition is false", sa));
+        }
+      } else {
+        ++pending;
+        pending_diags.push_back(
+            make_diag(CompileTimeDiagnostic::StaticAssert,
+                      "_Static_assert requires an integer constant expression", sa));
       }
     }
   }
@@ -365,18 +563,30 @@ CompileTimeEngineStats run_compile_time_engine(
     pce_step.run();
 
     stats.consteval_deferred += pce_step.deferred_evaluated;
+    sync_global_const_bindings(module, ct_state ? ct_state.get() : nullptr);
 
     // Step 3: consteval reduction verification.
     ConstevalReductionStep ce_step{module};
     ce_step.run();
+
+    // Step 4: static_assert verification after compile-time convergence work.
+    StaticAssertStep sa_step{module, ct_state ? ct_state.get() : nullptr};
+    sa_step.run();
 
     stats.consteval_reduced = ce_step.reduced;
     stats.consteval_pending = ce_step.pending + pce_step.pending;
 
     // Convergence: no pending work remains in any step.
     size_t total_pending =
-        ptt_step.pending + tpl_step.pending + pce_step.pending + ce_step.pending;
+        ptt_step.pending + tpl_step.pending + pce_step.pending + ce_step.pending +
+        sa_step.pending;
     if (total_pending == 0) {
+      if (!sa_step.pending_diags.empty()) {
+        stats.diagnostics.insert(stats.diagnostics.end(),
+            sa_step.pending_diags.begin(), sa_step.pending_diags.end());
+        stats.converged = false;
+        break;
+      }
       stats.converged = true;
       break;
     }
@@ -387,11 +597,12 @@ CompileTimeEngineStats run_compile_time_engine(
     size_t cur_consteval_pending = ce_step.pending + pce_step.pending;
     bool made_progress =
         ptt_step.completed() > 0 ||
-        ptt_step.spawned_new_work > 0 ||
-        tpl_step.newly_instantiated > 0 ||
-        pce_step.evaluated > 0 ||
-        cur_template_pending < prev_templates_pending ||
-        cur_consteval_pending < prev_consteval_pending;
+         ptt_step.spawned_new_work > 0 ||
+         tpl_step.newly_instantiated > 0 ||
+         pce_step.evaluated > 0 ||
+         sa_step.resolved > 0 ||
+         cur_template_pending < prev_templates_pending ||
+         cur_consteval_pending < prev_consteval_pending;
 
     prev_templates_pending = cur_template_pending;
     prev_consteval_pending = cur_consteval_pending;
@@ -408,6 +619,8 @@ CompileTimeEngineStats run_compile_time_engine(
           pce_step.pending_diags.begin(), pce_step.pending_diags.end());
       stats.diagnostics.insert(stats.diagnostics.end(),
           ce_step.pending_diags.begin(), ce_step.pending_diags.end());
+      stats.diagnostics.insert(stats.diagnostics.end(),
+          sa_step.pending_diags.begin(), sa_step.pending_diags.end());
       break;
     }
 
