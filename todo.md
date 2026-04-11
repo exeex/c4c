@@ -11,22 +11,21 @@ Source Plan: plan.md
   `src/backend/x86/codegen/direct_calls.cpp` and the x86 backend tests instead
   of widening back into the parked branch/select or prologue/returns surfaces
 - immediate target:
-  land the remaining native public-pipeline spacing/suffix matrix for the
-  folded-two-arg, dual-identity, and call-crossing direct-call sibling
-  families that still only had prepared-LIR or shared-BIR route coverage,
-  without widening into parked matcher ownership
+  finish auditing the remaining public x86 pipeline spacing/suffix coverage for
+  already-landed direct-call families that still only had prepared-LIR seam
+  coverage, starting with the single-arg immediate/identity pair and then the
+  smallest leftover plain helper family if any gap remains
 
 ## Next Slice
 
-- continue auditing whether any remaining direct-call sibling family still
-  lacks native public-pipeline spacing/suffix coverage after this folded,
-  dual-identity, and call-crossing route completion, without widening into
-  parked matcher ownership
+- continue auditing whether any remaining plain direct-call family still lacks
+  native public-pipeline spacing/suffix coverage after the single-arg public
+  route completion, without widening into parked matcher ownership
 - likely next bounded slice:
-  confirm whether any direct-call sibling family still lacks native public
-  x86 route coverage after the now-complete folded, dual-identity,
-  call-crossing, plain, and rewrite spacing/suffix matrix, then either close
-  the direct-call follow-on or pick the smallest remaining translated-owner gap
+  confirm whether the plain local-arg or plain two-arg helper families still
+  lack native public x86 spacing/suffix coverage after the now-complete
+  single-arg immediate/identity route matrix, then either close the direct-call
+  follow-on or pick the smallest remaining translated-owner gap
 - do not widen into new helper ownership or unrelated control-flow matchers in
   the same commit
 - leave fused compare+branch, block branch lowering, select, and
@@ -35,6 +34,31 @@ Source Plan: plan.md
   of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with the
+  missing native public-pipeline spacing and suffix-spacing regressions for the
+  already-landed single-arg add-immediate and identity helper families: the
+  public x86 route now pins typed-call trimming for those native direct-call
+  siblings instead of leaving that drift covered only at the prepared-LIR seam
+- implementation note:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now adds dedicated
+  native-path regressions for
+  `make_lir_minimal_direct_call_{add_imm,identity_arg}_module_{with_spacing,with_suffix_spacing}()`
+  so the public x86 backend route keeps those single-arg helper families live
+  when either args spacing or `callee_type_suffix` spacing drifts
+- implementation note:
+  the existing public x86 backend route already accepted those spaced forms, so
+  this slice lands as focused regression coverage rather than a code-path
+  rewrite
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8` and
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_with_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_with_suffix_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_with_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_with_suffix_spacing_on_native_x86_path`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration extends the active Step 4 direct-call ownership path with the
   missing native public-pipeline coverage for the remaining folded-two-arg,
