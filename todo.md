@@ -13,15 +13,14 @@ Source Plan: plan.md
 - immediate target:
   keep the prepared-LIR typed-call parsing follow-on on the already-landed
   bounded immediate/immediate two-arg direct-call helper family by adding the
-  next dedicated helper-side spacing or suffix-spacing seam without widening
-  matcher ownership
+  next dedicated helper-side spacing seam without widening matcher ownership
 
 ## Next Slice
 
 - after the bounded immediate/immediate two-arg helper-call spacing slice,
-  keep the next direct-call regression slice on another already-landed
-  prepared-LIR helper family that still lacks dedicated spacing or
-  suffix-spacing seam coverage, without widening into parked matcher ownership
+  keep the next direct-call regression slice on the same already-landed
+  prepared-LIR helper family by adding the dedicated suffix-spacing seam,
+  without widening into parked matcher ownership
 - do not widen into new helper ownership or unrelated control-flow matchers in
   the same commit
 - leave fused compare+branch, block branch lowering, select, and
@@ -30,6 +29,33 @@ Source Plan: plan.md
   of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with the
+  missing plain immediate/immediate two-arg typed-call spacing regressions:
+  helper and native x86 prepared-LIR coverage now pin args-spacing-only drift
+  on the already-landed immediate/immediate helper-call family without
+  widening matcher scope
+- implementation note:
+  `tests/backend/backend_bir_pipeline_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now add explicit
+  `with_spacing` fixtures and assertions for the immediate/immediate two-arg
+  helper family so the existing typed-call parser keeps a separately pinned
+  args-spacing seam adjacent to the plain route
+- implementation note:
+  the existing direct-call parser/emitter path already accepted that spaced
+  form, so this slice lands as focused regression coverage rather than a code
+  path rewrite
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_two_arg_call_slice_with_spacing`, and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice_with_spacing`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_before.log`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration extends the active Step 4 direct-call ownership path with the
   missing plain first-local two-arg typed-call spacing regression on the
