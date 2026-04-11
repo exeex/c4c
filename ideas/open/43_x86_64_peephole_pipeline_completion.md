@@ -3,6 +3,23 @@
 Status: Open
 Last Updated: 2026-04-10
 
+## Activation Reset Note
+
+On 2026-04-11, the prior active `plan.md` / `todo.md` state was intentionally
+retired and regenerated because the execution queue had drifted into
+open-ended direct-call testcase expansion.
+
+Carry forward these points into the next activation:
+
+- keep the main line focused on translated-owner integration, shared-header
+  surfacing, and real runtime ownership transfer out of `emit.cpp`
+- treat the already-added direct-call spacing and suffix-spacing regressions as
+  existing guardrails, not as the default next slice
+- prefer the next owner-blocker audit around `x86_codegen.hpp`,
+  `calls.cpp`, `returns.cpp`, and `prologue.cpp`
+- record adjacent follow-on gaps explicitly instead of extending the active
+  plan with more testcase-family accumulation
+
 ## Why This Idea
 
 The x86 backend already contains a large translated implementation surface under
