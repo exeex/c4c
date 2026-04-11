@@ -778,6 +778,30 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
               "resolved alias-template probes should use parser-owned spelling");
 }
 
+void test_parser_typename_template_parameter_probe_uses_token_spelling() {
+  c4c::Arena arena;
+  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::KwTypename, "typename"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "T"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "typename"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[2].lexeme = "bridge_only_identifier";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  expect_true(parser.classify_typename_template_parameter() ==
+                  c4c::Parser::TypenameTemplateParamKind::TypeParameter,
+              "typename template-parameter probe should use parser-owned spelling");
+}
+
 }  // namespace
 
 int main() {
@@ -797,6 +821,7 @@ int main() {
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_alias_template_value_probes_use_token_spelling();
+  test_parser_typename_template_parameter_probe_uses_token_spelling();
 
   std::cout << "PASS: frontend_parser_tests\n";
   return 0;

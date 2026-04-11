@@ -1520,7 +1520,7 @@ Parser::TypenameTemplateParamKind Parser::classify_typename_template_parameter()
         case TokenKind::KwTypename:
             return TypenameTemplateParamKind::TypeParameter;
         case TokenKind::Identifier:
-            if (tokens_[probe].lexeme == "typename")
+            if (token_spelling(tokens_[probe]) == "typename")
                 return TypenameTemplateParamKind::TypeParameter;
             break;
         default:
