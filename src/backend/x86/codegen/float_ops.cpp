@@ -2,34 +2,28 @@
 
 namespace c4c::backend::x86 {
 
+namespace {
+
+bool use_32bit_unary(IrType ty) {
+  return ty == IrType::I32 || ty == IrType::F32;
+}
+
+}  // namespace
+
 void X86Codegen::emit_float_binop_impl(const Value& dest,
                                        FloatOp op,
                                        const Operand& lhs,
                                        const Operand& rhs,
                                        IrType ty) {
   if (ty == IrType::F128) {
-    this->emit_f128_load_to_x87(&lhs);
-    this->emit_f128_load_to_x87(&rhs);
+    this->emit_f128_load_to_x87(lhs);
+    this->emit_f128_load_to_x87(rhs);
     const char* x87_op = op == FloatOp::Add ? "faddp"
                         : op == FloatOp::Sub ? "fsubrp"
                         : op == FloatOp::Mul ? "fmulp"
                                              : "fdivrp";
     this->state.emit(std::string("    ") + x87_op + " %st, %st(1)");
-    if (auto dest_slot = this->state.get_slot(dest.0)) {
-      this->state.out.emit_instr_rbp("    fstpt", dest_slot->0);
-      this->state.out.emit_instr_rbp("    fldt", dest_slot->0);
-      this->state.emit("    subq $8, %rsp");
-      this->state.emit("    fstpl (%rsp)");
-      this->state.emit("    popq %rax");
-      this->state.reg_cache.set_acc(dest.0, false);
-      this->state.f128_direct_slots.insert(dest.0);
-    } else {
-      this->state.emit("    subq $8, %rsp");
-      this->state.emit("    fstpl (%rsp)");
-      this->state.emit("    popq %rax");
-      this->state.reg_cache.invalidate_acc();
-      this->store_rax_to(dest);
-    }
+    this->emit_f128_load_finish(dest);
     return;
   }
 
@@ -63,27 +57,53 @@ void X86Codegen::emit_unaryop_impl(const Value& dest,
                                    const Operand& src,
                                    IrType ty) {
   if (ty == IrType::F128 && op == IrUnaryOp::Neg) {
-    this->emit_f128_load_to_x87(&src);
+    this->emit_f128_load_to_x87(src);
     this->state.emit("    fchs");
-    if (auto dest_slot = this->state.get_slot(dest.0)) {
-      this->state.out.emit_instr_rbp("    fstpt", dest_slot->0);
-      this->state.out.emit_instr_rbp("    fldt", dest_slot->0);
-      this->state.emit("    subq $8, %rsp");
-      this->state.emit("    fstpl (%rsp)");
-      this->state.emit("    popq %rax");
-      this->state.reg_cache.set_acc(dest.0, false);
-      this->state.f128_direct_slots.insert(dest.0);
-    } else {
-      this->state.emit("    subq $8, %rsp");
-      this->state.emit("    fstpl (%rsp)");
-      this->state.emit("    popq %rax");
-      this->state.reg_cache.invalidate_acc();
-      this->store_rax_to(dest);
-    }
+    this->emit_f128_load_finish(dest);
     return;
   }
 
-  emit_unaryop_default(*this, dest, op, src, ty);
+  this->operand_to_rax(src);
+  switch (op) {
+    case IrUnaryOp::Neg:
+      if (ty == IrType::F32 || ty == IrType::F64) {
+        if (ty == IrType::F32) {
+          this->state.emit("    movd %eax, %xmm0");
+          this->state.emit("    movl $0x80000000, %ecx");
+          this->state.emit("    movd %ecx, %xmm1");
+          this->state.emit("    xorps %xmm1, %xmm0");
+          this->state.emit("    movd %xmm0, %eax");
+        } else {
+          this->state.emit("    movq %rax, %xmm0");
+          this->state.emit("    movabsq $-9223372036854775808, %rcx");
+          this->state.emit("    movq %rcx, %xmm1");
+          this->state.emit("    xorpd %xmm1, %xmm0");
+          this->state.emit("    movq %xmm0, %rax");
+        }
+      } else {
+        this->state.emit(use_32bit_unary(ty) ? "    negl %eax" : "    negq %rax");
+      }
+      break;
+    case IrUnaryOp::Not:
+      this->state.emit(use_32bit_unary(ty) ? "    notl %eax" : "    notq %rax");
+      break;
+    case IrUnaryOp::Clz:
+      this->state.emit(use_32bit_unary(ty) ? "    lzcntl %eax, %eax"
+                                           : "    lzcntq %rax, %rax");
+      break;
+    case IrUnaryOp::Ctz:
+      this->state.emit(use_32bit_unary(ty) ? "    tzcntl %eax, %eax"
+                                           : "    tzcntq %rax, %rax");
+      break;
+    case IrUnaryOp::Bswap:
+      this->state.emit(use_32bit_unary(ty) ? "    bswapl %eax" : "    bswapq %rax");
+      break;
+    case IrUnaryOp::Popcount:
+      this->state.emit(use_32bit_unary(ty) ? "    popcntl %eax, %eax"
+                                           : "    popcntq %rax, %rax");
+      break;
+  }
+  this->store_rax_to(dest);
 }
 
 }  // namespace c4c::backend::x86

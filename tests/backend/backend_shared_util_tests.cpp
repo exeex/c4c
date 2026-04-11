@@ -1027,6 +1027,88 @@ void test_x86_translated_f128_unsigned_cast_helpers_emit_real_paths() {
                       "translated unsigned-int-to-float helper should no longer leave the helper body as placeholder text");
 }
 
+void test_x86_codegen_header_exports_translated_float_owner_symbols() {
+  using X86Codegen = c4c::backend::x86::X86Codegen;
+
+  auto emit_float_binop = &X86Codegen::emit_float_binop_impl;
+  auto emit_float_binop_mnemonic = &X86Codegen::emit_float_binop_mnemonic_impl;
+  auto emit_unaryop = &X86Codegen::emit_unaryop_impl;
+
+  expect_true(emit_float_binop != nullptr && emit_float_binop_mnemonic != nullptr &&
+                  emit_unaryop != nullptr,
+              "x86 translated float owner methods should stay compile/link reachable through the public x86_codegen surface once float_ops.cpp enters the build");
+}
+
+void test_x86_translated_float_owner_reuses_constant_f128_reload_bridge() {
+  using FloatOp = c4c::backend::x86::FloatOp;
+  using IrType = c4c::backend::x86::IrType;
+  using IrUnaryOp = c4c::backend::x86::IrUnaryOp;
+  using Operand = c4c::backend::x86::Operand;
+  using StackSlot = c4c::backend::x86::StackSlot;
+  using Value = c4c::backend::x86::Value;
+
+  c4c::backend::x86::X86Codegen binop_codegen;
+  binop_codegen.state.slots.emplace(5, StackSlot{-24});
+  binop_codegen.state.set_f128_constant_words(21, 0x0123456789ABCDEFULL, 0x1357);
+  binop_codegen.state.set_f128_constant_words(23, 0x0FEDCBA987654321ULL, 0);
+
+  binop_codegen.emit_float_binop_impl(Value{5}, FloatOp::Add, Operand{21}, Operand{23}, IrType::F128);
+
+  std::string binop_asm;
+  for (const auto& line : binop_codegen.state.asm_lines) {
+    binop_asm += line;
+    binop_asm.push_back('\n');
+  }
+
+  expect_contains(binop_asm, "    subq $16, %rsp",
+                  "wired translated float owner should stage constant long-double operands through the shared raw-byte stack bridge");
+  expect_contains(binop_asm, "    fldt (%rsp)",
+                  "wired translated float owner should reload constant long-double operands through the shared x87 helper");
+  expect_contains(binop_asm, "    faddp %st, %st(1)",
+                  "wired translated float owner should emit the translated x87 add sequence for F128 binops");
+  expect_contains(binop_asm, "    fstpt -24(%rbp)",
+                  "wired translated float owner should stage F128 binop results through the destination slot");
+  expect_contains(binop_asm, "    fldt -24(%rbp)",
+                  "wired translated float owner should reload the staged F128 result to preserve direct-slot tracking");
+  expect_not_contains(binop_asm, "    fldl (%rsp)",
+                      "wired translated float owner should not fall back to the f64 reload path for constant long-double operands");
+  expect_true(binop_codegen.state.reg_cache.acc_valid &&
+                  binop_codegen.state.reg_cache.acc_value_id == 5 &&
+                  !binop_codegen.state.reg_cache.acc_known_zero_extended,
+              "wired translated float owner should refresh the shared accumulator cache after F128 binops");
+  expect_true(binop_codegen.state.f128_direct_slots.find(5) !=
+                  binop_codegen.state.f128_direct_slots.end(),
+              "wired translated float owner should preserve direct-slot tracking for F128 binop results");
+
+  c4c::backend::x86::X86Codegen unary_codegen;
+  unary_codegen.state.slots.emplace(7, StackSlot{-40});
+  unary_codegen.state.set_f128_constant_words(25, 0x1111222233334444ULL, 0x2468);
+
+  unary_codegen.emit_unaryop_impl(Value{7}, IrUnaryOp::Neg, Operand{25}, IrType::F128);
+
+  std::string unary_asm;
+  for (const auto& line : unary_codegen.state.asm_lines) {
+    unary_asm += line;
+    unary_asm.push_back('\n');
+  }
+
+  expect_contains(unary_asm, "    fldt (%rsp)",
+                  "wired translated float owner should reuse the constant long-double reload bridge for unary F128 ops");
+  expect_contains(unary_asm, "    fchs",
+                  "wired translated float owner should emit the translated x87 negate sequence for F128 unary ops");
+  expect_contains(unary_asm, "    fstpt -40(%rbp)",
+                  "wired translated float owner should stage unary F128 results through the destination slot");
+  expect_contains(unary_asm, "    fldt -40(%rbp)",
+                  "wired translated float owner should reload the staged unary F128 result to preserve direct-slot tracking");
+  expect_true(unary_codegen.state.reg_cache.acc_valid &&
+                  unary_codegen.state.reg_cache.acc_value_id == 7 &&
+                  !unary_codegen.state.reg_cache.acc_known_zero_extended,
+              "wired translated float owner should refresh the shared accumulator cache after unary F128 ops");
+  expect_true(unary_codegen.state.f128_direct_slots.find(7) !=
+                  unary_codegen.state.f128_direct_slots.end(),
+              "wired translated float owner should preserve direct-slot tracking for unary F128 results");
+}
+
 void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {
   using X86Codegen = c4c::backend::x86::X86Codegen;
 
@@ -5065,6 +5147,8 @@ int main(int argc, char* argv[]) {
   test_x86_translated_f128_cast_helpers_dispatch_x87_paths();
   test_x86_translated_f128_cast_helpers_cover_generic_scalar_casts();
   test_x86_translated_f128_unsigned_cast_helpers_emit_real_paths();
+  test_x86_codegen_header_exports_translated_float_owner_symbols();
+  test_x86_translated_float_owner_reuses_constant_f128_reload_bridge();
   test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
   test_x86_translated_regalloc_pruning_helpers_match_shared_contract();

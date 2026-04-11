@@ -12,18 +12,19 @@ Source Plan: plan.md
   by the active memory/cast-owner paths without widening into prologue/runtime
   owner work
 - immediate target:
-  keep the next move on the same bounded constant long-double bridge, but
-  shift the follow-on target from the now-landed `memory.cpp` store path to
-  the next nearby caller that can reuse the state-backed raw-byte payload
-  lookup without widening the public operand model
+  shift the next move from the now-wired translated x86 float owner to the
+  next nearby caller-side constant long-double seam, keeping the follow-on
+  bounded to one of the still-parked translated cast/comparison owners that
+  can reuse the same state-backed raw-byte payload lookup without widening the
+  public operand model
 
 ## Next Slice
 
 - keep the next `f128.cpp` work limited to the remaining caller-side constant
-  long-double seams already surfaced by the active x86 memory/cast paths,
-  now reusing the landed state-backed raw-byte lookup for the next narrow
-  active caller once the translated cast/float/comparison owners are wired
-  into the live build, rather than widening `Operand` into a richer enum
+  long-double seams already surfaced by the active x86 memory/cast/float
+  paths, now reusing the landed state-backed raw-byte lookup for the next
+  narrow active caller by wiring one translated cast/comparison owner into the
+  live build, rather than widening `Operand` into a richer enum
 - keep constant-backed long-double caller work bounded to bridge consumers that
   can reuse the raw-id keyed state payload cleanly; avoid broad public x86
   operand/header redesign in this slice
@@ -34,6 +35,35 @@ Source Plan: plan.md
   unless a later translated-owner cutover proves that state is already exposed
 
 ## Current Iteration Notes
+
+- this iteration wires the translated x86 float owner into both active x86
+  source lists in `CMakeLists.txt` and keeps the scope bounded to
+  `src/backend/x86/codegen/float_ops.cpp`: the live build now carries
+  `emit_float_binop_impl` and `emit_unaryop_impl`, with the F128 paths
+  reusing `emit_f128_load_to_x87` and `emit_f128_load_finish` so constant
+  long-double operands flow through the existing raw-byte reload bridge
+  without widening the public operand/header model
+- implementation note:
+  `src/backend/x86/codegen/float_ops.cpp` now compiles against the real
+  `x86_codegen.hpp` surface, keeps the translated x87 F128 binop/unary paths,
+  and inlines the narrow non-F128 unary fallback instead of depending on the
+  currently-unwired `emit_unaryop_default` surface
+- implementation note:
+  `tests/backend/backend_shared_util_tests.cpp` now pins the translated float
+  owner link surface and the constant-backed F128 add/neg assembly contract,
+  including raw-byte stack staging, x87 reload, result restaging through the
+  destination slot, accumulator-cache refresh, and direct-slot tracking
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_float_owner_reuses_constant_f128_reload_bridge`,
+  `./build/backend_shared_util_tests translated_float_owner_symbols`, and
+  `./build/backend_shared_util_tests`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration lands the bounded translated constant long-double reload
   bridge inside `src/backend/x86/codegen/f128.cpp`: `emit_f128_load_to_x87`
