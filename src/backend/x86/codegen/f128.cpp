@@ -2,6 +2,26 @@
 
 namespace c4c::backend::x86 {
 
+namespace {
+
+bool needs_signed_narrow_fixup(IrType to_ty) {
+  return to_ty == IrType::I8 || to_ty == IrType::I32;
+}
+
+void emit_signed_narrow_fixup(X86Codegen& codegen, IrType to_ty) {
+  switch (to_ty) {
+    case IrType::I8:
+      codegen.state.emit("    movsbq %al, %rax");
+      return;
+    case IrType::I32:
+      codegen.state.emit("    movslq %eax, %rax");
+      return;
+    default: return;
+  }
+}
+
+}  // namespace
+
 std::optional<std::int64_t> X86Codegen::emit_f128_resolve_addr(const SlotAddr& addr,
                                                                std::uint32_t ptr_id,
                                                                std::int64_t offset) {
@@ -98,11 +118,31 @@ void X86Codegen::emit_f128_load_finish(const Value& dest) {
 }
 
 void X86Codegen::emit_f128_to_int_from_memory(const SlotAddr& addr, IrType to_ty) {
-  this->state.emit("    <f128-to-int-from-memory>");
+  switch (addr.kind) {
+    case SlotAddr::Kind::Direct:
+      this->state.out.emit_instr_rbp("    fldt", addr.slot.raw);
+      break;
+    case SlotAddr::Kind::OverAligned:
+      this->emit_alloca_aligned_addr_impl(addr.slot, addr.value_id);
+      this->state.emit("    fldt (%rcx)");
+      break;
+    case SlotAddr::Kind::Indirect:
+      this->emit_load_ptr_from_slot_impl(addr.slot, 0);
+      this->state.emit("    fldt (%rcx)");
+      break;
+  }
+  this->emit_f128_st0_to_int(to_ty);
 }
 
 void X86Codegen::emit_f128_st0_to_int(IrType to_ty) {
-  this->state.emit("    <f128-st0-to-int>");
+  this->state.emit("    subq $8, %rsp");
+  this->state.emit("    fisttpq (%rsp)");
+  this->state.emit("    movq (%rsp), %rax");
+  this->state.emit("    addq $8, %rsp");
+
+  if (needs_signed_narrow_fixup(to_ty)) {
+    emit_signed_narrow_fixup(*this, to_ty);
+  }
 }
 
 void X86Codegen::emit_cast_instrs_x86(IrType from_ty, IrType to_ty) {

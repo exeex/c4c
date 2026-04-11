@@ -628,6 +628,75 @@ void test_x86_translated_memory_owner_preserves_f128_store_precision_paths() {
                   "wired translated memory owner should apply constant offsets on indirect fallback F128 stores");
 }
 
+void test_x86_translated_f128_helpers_reload_integer_conversion_sources() {
+  using IrType = c4c::backend::x86::IrType;
+  using SlotAddr = c4c::backend::x86::SlotAddr;
+  using StackSlot = c4c::backend::x86::StackSlot;
+
+  c4c::backend::x86::X86Codegen codegen;
+  codegen.state.slots.emplace(7, StackSlot{-40});
+  codegen.state.slots.emplace(9, StackSlot{-56});
+  codegen.state.allocas.insert(7);
+  codegen.state.over_aligned_allocas.emplace(7, 32);
+
+  codegen.emit_f128_to_int_from_memory(SlotAddr::Direct(StackSlot{-24}), IrType::I64);
+  codegen.emit_f128_to_int_from_memory(SlotAddr::OverAligned(StackSlot{-40}, 7), IrType::I64);
+  codegen.emit_f128_to_int_from_memory(SlotAddr::Indirect(StackSlot{-56}), IrType::I64);
+
+  std::string asm_text;
+  for (const auto& line : codegen.state.asm_lines) {
+    asm_text += line;
+    asm_text.push_back('\n');
+  }
+
+  expect_contains(asm_text, "    fldt -24(%rbp)",
+                  "translated f128 helper should reload direct-slot values straight into x87 before integer conversion");
+  expect_contains(asm_text, "    leaq -40(%rbp), %rcx",
+                  "translated f128 helper should resolve over-aligned sources through the shared alloca-address helper");
+  expect_contains(asm_text, "    andq $-32, %rcx",
+                  "translated f128 helper should preserve over-aligned source alignment before x87 reload");
+  expect_contains(asm_text, "    fldt (%rcx)",
+                  "translated f128 helper should reload non-direct f128 values through the resolved rcx address");
+  expect_contains(asm_text, "    movq -56(%rbp), %rcx",
+                  "translated f128 helper should load indirect source pointers through the shared pointer-slot helper");
+  expect_contains(asm_text, "    fisttpq (%rsp)",
+                  "translated f128 helper should finish the x87 integer conversion through the shared ST0 helper");
+  expect_contains(asm_text, "    movq (%rsp), %rax",
+                  "translated f128 helper should materialize the converted integer result in rax");
+}
+
+void test_x86_translated_f128_helpers_emit_st0_integer_conversion_text() {
+  using IrType = c4c::backend::x86::IrType;
+
+  c4c::backend::x86::X86Codegen signed_codegen;
+  signed_codegen.emit_f128_st0_to_int(IrType::I8);
+
+  std::string signed_asm;
+  for (const auto& line : signed_codegen.state.asm_lines) {
+    signed_asm += line;
+    signed_asm.push_back('\n');
+  }
+
+  expect_contains(signed_asm, "    fisttpq (%rsp)",
+                  "translated f128 helper should convert signed ST0 values with the direct fisttpq path");
+  expect_contains(signed_asm, "    movsbq %al, %rax",
+                  "translated f128 helper should sign-extend narrow signed integer results after the x87 conversion");
+
+  c4c::backend::x86::X86Codegen pointer_codegen;
+  pointer_codegen.emit_f128_st0_to_int(IrType::Ptr);
+
+  std::string pointer_asm;
+  for (const auto& line : pointer_codegen.state.asm_lines) {
+    pointer_asm += line;
+    pointer_asm.push_back('\n');
+  }
+
+  expect_contains(pointer_asm, "    movq (%rsp), %rax",
+                  "translated f128 helper should materialize pointer-sized conversions in rax without narrow post-fixups");
+  expect_not_contains(pointer_asm, "    movsbq %al, %rax",
+                      "translated f128 helper should not sign-extend pointer-sized conversions as if they were i8 results");
+}
+
 void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {
   using X86Codegen = c4c::backend::x86::X86Codegen;
 
@@ -4659,6 +4728,8 @@ int main(int argc, char* argv[]) {
   test_x86_codegen_state_tracks_translated_reg_assignments();
   test_x86_translated_memory_owner_emits_linked_helper_text();
   test_x86_translated_memory_owner_preserves_f128_store_precision_paths();
+  test_x86_translated_f128_helpers_reload_integer_conversion_sources();
+  test_x86_translated_f128_helpers_emit_st0_integer_conversion_text();
   test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
   test_x86_translated_regalloc_pruning_helpers_match_shared_contract();

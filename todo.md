@@ -12,16 +12,20 @@ Source Plan: plan.md
   layer around the next surfaced non-store helper body without widening into
   raw-byte constant staging or prologue/runtime-owner work
 - immediate target:
-  inspect the next bounded translated `f128.cpp` helper move after the store
-  fallback cutover, preferring the first helper already surfaced by
-  `cast_ops.cpp` or another active x86 owner path over reopening
-  `returns.cpp` or broad constant-staging work
+  land the next bounded translated `f128.cpp` helper move already surfaced by
+  the parked x86 cast-owner path: replace the placeholder
+  `emit_f128_to_int_from_memory` / `emit_f128_st0_to_int` bodies with the
+  translated x87 integer-conversion flow and pin it with narrow
+  `backend_shared_util_tests` coverage instead of reopening `returns.cpp` or
+  raw-byte constant staging
 
 ## Next Slice
 
 - keep the next `f128.cpp` work limited to the remaining bounded helper bodies
   already surfaced by the active x86 memory/cast paths, rather than wiring the
-  whole parked owner into the build
+  whole parked owner into the build; after the x87 integer-conversion slice,
+  re-evaluate whether the next bounded move is constant-backed F128 casts or
+  wiring `cast_ops.cpp` itself
 - treat `emit_f128_store_raw_bytes` as deferred until the active public x86
   operand surface can express the needed constant-form inputs cleanly, instead
   of inventing a local one-off constant channel
@@ -32,6 +36,34 @@ Source Plan: plan.md
   unless a later translated-owner cutover proves that state is already exposed
 
 ## Current Iteration Notes
+
+- this iteration lands the next bounded translated `src/backend/x86/codegen/f128.cpp`
+  helper bodies already surfaced by the parked x86 cast-owner path:
+  `emit_f128_to_int_from_memory` now reloads direct, over-aligned, and
+  indirect F128 sources into x87 before conversion, while
+  `emit_f128_st0_to_int` now lowers signed/pointer integer conversion through
+  the translated `fisttpq` stack path instead of throwing placeholder text
+- implementation note:
+  `tests/backend/backend_shared_util_tests.cpp` now pins the helper-backed
+  F128 integer-conversion source reload contract across direct, over-aligned,
+  and indirect addresses plus the bounded ST0 signed/pointer post-conversion
+  fixup behavior
+- bounded-scope note:
+  this slice intentionally stays inside `f128.cpp`; unsigned-specific
+  large-value cast handling and full `cast_ops.cpp` wiring remain deferred
+  until the active public x86 `IrType` / operand surface is widened enough to
+  carry that translated behavior cleanly
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_f128_helpers`,
+  `./build/backend_shared_util_tests translated_memory_owner`, and
+  `./build/backend_shared_util_tests`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and one new `>30s` note on `backend_bir_tests`
 
 - this iteration ports the bounded translated F128 store-owner shape now
   surfaced by the active x86 memory path: `src/backend/x86/codegen/memory.cpp`
