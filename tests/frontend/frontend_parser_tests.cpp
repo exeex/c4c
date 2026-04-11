@@ -393,6 +393,90 @@ void test_parser_type_start_probes_use_token_spelling() {
               "identifier-type probes should use parser-owned spelling when excluding concept names");
 }
 
+void test_parser_exception_specs_and_attributes_use_token_spelling() {
+  c4c::Arena arena;
+  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "noexcept"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[0].lexeme = "bridge_only_noexcept";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  parser.skip_attributes();
+  expect_eq_int(parser.pos_, 4,
+                "attribute skipping should consume identifier-spelled noexcept clauses");
+  expect_eq(parser.token_spelling(parser.cur()), "after",
+            "attribute skipping should leave the next token in place");
+
+  parser.pos_ = 0;
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "noexcept"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "throw"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "TypeAlias"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[0].lexeme = "bridge_only_noexcept";
+  parser.tokens_[4].lexeme = "bridge_only_throw";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  parser.skip_exception_spec();
+  expect_eq_int(parser.pos_, 8,
+                "exception-spec skipping should consume identifier-spelled noexcept/throw clauses");
+  expect_eq(parser.token_spelling(parser.cur()), "after",
+            "exception-spec skipping should leave the next token in place");
+
+  c4c::TypeSpec ts{};
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  parser.pos_ = 0;
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::KwAttribute, "__attribute__"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "aligned"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "32"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[3].lexeme = "bridge_only_aligned";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  parser.parse_attributes(&ts);
+  expect_eq_int(ts.align_bytes, 32,
+                "GNU attribute parsing should use parser-owned attribute spellings");
+}
+
 }  // namespace
 
 int main() {
@@ -406,6 +490,7 @@ int main() {
   test_parser_value_like_template_lookahead_uses_token_spelling();
   test_parser_capture_template_arg_expr_uses_token_spelling();
   test_parser_type_start_probes_use_token_spelling();
+  test_parser_exception_specs_and_attributes_use_token_spelling();
 
   std::cout << "PASS: frontend_parser_tests\n";
   return 0;

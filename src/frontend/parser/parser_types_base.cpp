@@ -279,7 +279,7 @@ void Parser::skip_attributes() {
         consume();
     }
     while (check(TokenKind::KwNoexcept) ||
-           (check(TokenKind::Identifier) && cur().lexeme == "noexcept")) {
+           (check(TokenKind::Identifier) && token_spelling(cur()) == "noexcept")) {
         consume();
         if (check(TokenKind::LParen)) skip_paren_group();
     }
@@ -288,12 +288,12 @@ void Parser::skip_attributes() {
 void Parser::skip_exception_spec() {
     // noexcept / noexcept(expr)
     while (check(TokenKind::KwNoexcept) ||
-           (check(TokenKind::Identifier) && cur().lexeme == "noexcept")) {
+           (check(TokenKind::Identifier) && token_spelling(cur()) == "noexcept")) {
         consume();
         if (check(TokenKind::LParen)) skip_paren_group();
     }
     // throw() / throw(type-list)
-    if (check(TokenKind::Identifier) && cur().lexeme == "throw") {
+    if (check(TokenKind::Identifier) && token_spelling(cur()) == "throw") {
         consume();
         if (check(TokenKind::LParen)) skip_paren_group();
     }
@@ -330,7 +330,7 @@ void Parser::parse_attributes(TypeSpec* ts) {
                 continue;
             }
 
-            const std::string attr_name = cur().lexeme;
+            const std::string attr_name(token_spelling(cur()));
             consume();
 
             if (attr_name == "aligned" || attr_name == "__aligned__") {
