@@ -305,6 +305,20 @@ Parser::SymbolId Parser::symbol_id_for_token(const Token& token) {
 #endif
 }
 
+void Parser::populate_qualified_name_symbol_ids(QualifiedNameRef* name) {
+    if (!name) return;
+    name->qualifier_symbol_ids.clear();
+    name->qualifier_symbol_ids.reserve(name->qualifier_segments.size());
+    for (const std::string& segment : name->qualifier_segments) {
+        name->qualifier_symbol_ids.push_back(
+            parser_name_tables_.intern_identifier(segment));
+    }
+    name->base_symbol_id =
+        name->base_name.empty()
+            ? kInvalidSymbol
+            : parser_name_tables_.intern_identifier(name->base_name);
+}
+
 bool Parser::has_typedef_name(const std::string& name) const {
     if (!uses_symbol_identity(name)) {
         return non_atom_typedefs_.count(name) > 0;
@@ -1533,6 +1547,7 @@ Parser::QualifiedNameRef Parser::parse_qualified_name(bool allow_global) {
         expect(TokenKind::ColonColon);
         expect(TokenKind::Identifier);
     }
+    populate_qualified_name_symbol_ids(&result);
     return result;
 }
 

@@ -402,6 +402,7 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
     if (out_name) {
         *out_name = qn.spelled(/*include_global_prefix=*/true);
     }
+    populate_qualified_name_symbol_ids(&qn);
     if (out_qn) *out_qn = std::move(qn);
     guard.commit();
     return true;

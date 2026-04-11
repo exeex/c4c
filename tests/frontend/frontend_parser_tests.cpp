@@ -228,6 +228,40 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
 #endif
 }
 
+void test_parser_parse_qualified_name_populates_atom_symbol_ids() {
+  c4c::Lexer lexer("::ns::inner::Type value;\n", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, c4c::SourceProfile::CppSubset);
+
+  const c4c::Parser::QualifiedNameRef qn = parser.parse_qualified_name();
+
+  expect_true(qn.is_global_qualified,
+              "parsed qualified names should preserve leading global qualification");
+  expect_eq(qn.spelled(/*include_global_prefix=*/true), "::ns::inner::Type",
+            "parsed qualified names should preserve the joined lookup spelling");
+  expect_eq_int(static_cast<int>(qn.qualifier_segments.size()), 2,
+                "qualified names should keep two qualifier segments");
+  expect_eq_int(static_cast<int>(qn.qualifier_symbol_ids.size()), 2,
+                "qualified names should carry one atom id per qualifier segment");
+  expect_eq(qn.qualifier_segments[0], "ns",
+            "first qualifier segment should preserve its source spelling");
+  expect_eq(qn.qualifier_segments[1], "inner",
+            "second qualifier segment should preserve its source spelling");
+  expect_true(qn.qualifier_symbol_ids[0] != c4c::Parser::kInvalidSymbol,
+              "first qualifier segment should intern to a valid SymbolId");
+  expect_true(qn.qualifier_symbol_ids[1] != c4c::Parser::kInvalidSymbol,
+              "second qualifier segment should intern to a valid SymbolId");
+  expect_true(qn.base_symbol_id != c4c::Parser::kInvalidSymbol,
+              "base segment should intern to a valid SymbolId");
+  expect_eq(parser.symbol_spelling(qn.qualifier_symbol_ids[0]), "ns",
+            "first qualifier atom id should resolve back to its spelling");
+  expect_eq(parser.symbol_spelling(qn.qualifier_symbol_ids[1]), "inner",
+            "second qualifier atom id should resolve back to its spelling");
+  expect_eq(parser.symbol_spelling(qn.base_symbol_id), "Type",
+            "base atom id should resolve back to its spelling");
+}
+
 }  // namespace
 
 int main() {
@@ -236,6 +270,7 @@ int main() {
   test_parser_string_wrappers_use_symbol_id_keyed_name_tables();
   test_parser_heavy_snapshot_restores_symbol_id_keyed_tables();
   test_parser_keeps_qualified_bindings_string_keyed();
+  test_parser_parse_qualified_name_populates_atom_symbol_ids();
 
   std::cout << "PASS: frontend_parser_tests\n";
   return 0;

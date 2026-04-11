@@ -6,18 +6,19 @@ Source Plan: plan.md
 
 ## Current Slice
 
-Active item: Warning-Driven Convergence A, audit direct parser-layer
-`Token::lexeme` / `Token::file` bridge uses that are still on the current
-qualified-name migration path.
+Active item: Warning-Driven Convergence B, trim parser-side deprecated-token
+bridge usage on helper and injected-token paths that still sit adjacent to the
+qualified-name migration surface.
 
 Why this slice:
-- Step 4A landed behind the existing parser wrapper surface, so the next risk
-  is letting composed or qualified names accidentally flow into atom-keyed
-  storage
-- Step 5A is the narrow review pass that keeps `SymbolId` scoped to identifier
-  atoms while leaving canonical / synthesized full-name strings alone
-- the next useful changes should be targeted qualified-name boundary checks, not
-  another broad storage migration
+- the qualified-name boundary now carries per-segment atom ids while preserving
+  string-keyed composed-name lookup, so the next useful warning-driven work is
+  to narrow nearby parser helper paths rather than widen semantic-table scope
+- compiler warnings still show substantial parser-owned `Token::lexeme` /
+  `Token::file` bridge traffic, but most of it remains outside the current
+  plan slice and should stay incremental
+- the next useful edits should focus on parser helper or injected-token sites
+  that directly support qualified-name parsing, not a repo-wide warning purge
 
 ## Completed
 
@@ -59,6 +60,17 @@ Why this slice:
       monotonic guard with `3375` passed / `0` failed before and after via
       `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
       checker
+- [x] Added `QualifiedNameRef` atom-id carriage for real parse paths so parsed
+      qualified names keep string spelling plus per-segment / base `SymbolId`
+      values in [src/frontend/parser/parser.hpp](/workspaces/c4c/src/frontend/parser/parser.hpp),
+      [src/frontend/parser/parser_core.cpp](/workspaces/c4c/src/frontend/parser/parser_core.cpp),
+      and [src/frontend/parser/parser_types_declarator.cpp](/workspaces/c4c/src/frontend/parser/parser_types_declarator.cpp)
+- [x] Added narrow parser coverage for parsed qualified-name atom ids in
+      [tests/frontend/frontend_parser_tests.cpp](/workspaces/c4c/tests/frontend/frontend_parser_tests.cpp)
+- [x] Re-ran clean full-suite before/after regression logs for the
+      qualified-name atom-id slice and passed the monotonic guard with `3375`
+      passed / `0` failed before and after via `test_fail_before.log`,
+      `test_fail_after.log`, and the regression-guard checker
 
 ## Next Steps
 
@@ -75,8 +87,13 @@ Why this slice:
       Current slice: add a narrow parser test for qualified/composed bindings,
       route non-atom typedef/var wrappers to string-keyed fallback storage, and
       keep that fallback rollback-safe under heavy snapshots
+- [x] Step 5B: let real qualified-name parse paths carry per-segment atom ids
+      while preserving current string materialization for composed lookups
 - [x] Step 6A: validate the qualified-name boundary slice and record the
       remaining atom-segment follow-on work back into the source idea
+- [ ] Warning-Driven Convergence B: audit parser helper / injected-token paths
+      that still rely on deprecated token bridge fields near qualified-name
+      parsing and trim the narrowest safe subset next
 
 ## Warning-Driven Convergence
 
@@ -93,6 +110,10 @@ Why this slice:
 - [x] Defer broad suite churn until Step 2 or Step 4 lands behaviorally useful
       changes
 - [x] Re-ran the full suite for the qualified-name boundary slice and passed
+      the monotonic guard with `3375` passed / `0` failed before and after via
+      `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
+      checker
+- [x] Re-ran the full suite for the qualified-name atom-id slice and passed
       the monotonic guard with `3375` passed / `0` failed before and after via
       `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
       checker
@@ -115,6 +136,9 @@ Why this slice:
 - qualified/composed typedef and var bindings now stay in string-keyed fallback
   maps, heavy snapshot save/restore includes that fallback state, and
   `QualifiedNameRef` owns the shared string spelling helper used by the parser
-- next edit should decide whether any qualified-name segment sites should carry
-  per-segment atom ids directly, while leaving full-name lookup and synthesized
-  names string-keyed
+- parsed qualified-name paths now also populate per-segment / base atom ids in
+  `QualifiedNameRef`, but lookahead-only probes still leave those ids empty and
+  full-name lookup plus synthesized names remain string-keyed
+- next edit should target the narrow parser helper / injected-token call sites
+  that still rely on deprecated token bridge fields on the qualified-name
+  boundary, without widening the migration into unrelated parser subsystems

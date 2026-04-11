@@ -154,7 +154,9 @@ class Parser {
   struct QualifiedNameRef {
     bool is_global_qualified = false;
     std::vector<std::string> qualifier_segments;
+    std::vector<SymbolId> qualifier_symbol_ids;
     std::string base_name;
+    SymbolId base_symbol_id = kInvalidSymbol;
 
     bool is_unqualified_atom() const {
       return !is_global_qualified && qualifier_segments.empty();
@@ -656,6 +658,7 @@ class Parser {
         parser_text_id_for_token(token_text_id, fallback));
   }
   SymbolId symbol_id_for_token(const Token& token);
+  void populate_qualified_name_symbol_ids(QualifiedNameRef* name);
   std::string_view symbol_spelling(SymbolId id) const {
     return parser_symbols_.spelling(id);
   }
