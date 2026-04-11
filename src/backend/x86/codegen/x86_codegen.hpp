@@ -468,7 +468,11 @@ struct X86Codegen {
                                                      std::int64_t offset);
   void emit_f128_fldt(const SlotAddr& addr, std::uint32_t ptr_id, std::int64_t offset);
   void emit_f128_fstpt(const SlotAddr& addr, std::uint32_t ptr_id, std::int64_t offset);
-  void emit_f128_store_raw_bytes(const SlotAddr& addr, std::uint32_t ptr_id, std::int64_t offset);
+  void emit_f128_store_raw_bytes(const SlotAddr& addr,
+                                 std::uint32_t ptr_id,
+                                 std::int64_t offset,
+                                 std::uint64_t lo,
+                                 std::uint64_t hi);
   void emit_f128_store_f64_via_x87(const SlotAddr& addr,
                                    std::uint32_t ptr_id,
                                    std::int64_t offset);

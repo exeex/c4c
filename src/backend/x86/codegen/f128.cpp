@@ -89,11 +89,53 @@ void X86Codegen::emit_f128_fstpt(const SlotAddr& addr, std::uint32_t ptr_id, std
   this->state.emit("    fstpt (%rcx)");
 }
 
-void X86Codegen::emit_f128_store_raw_bytes(const SlotAddr& addr, std::uint32_t ptr_id, std::int64_t offset) {
-  (void)addr;
-  (void)ptr_id;
-  (void)offset;
-  this->state.emit("    <store-f128-bytes>");
+void X86Codegen::emit_f128_store_raw_bytes(const SlotAddr& addr,
+                                           std::uint32_t ptr_id,
+                                           std::int64_t offset,
+                                           std::uint64_t lo,
+                                           std::uint64_t hi) {
+  switch (addr.kind) {
+    case SlotAddr::Kind::Direct: {
+      const auto rbp_off = addr.slot.raw + offset;
+      this->state.out.emit_instr_imm_reg("    movabsq", static_cast<std::int64_t>(lo), "rax");
+      this->state.emit("    movq %rax, " + std::to_string(rbp_off) + "(%rbp)");
+      if (hi != 0) {
+        this->state.out.emit_instr_imm_reg("    movq", static_cast<std::int64_t>(hi), "rax");
+      } else {
+        this->state.emit("    xorl %eax, %eax");
+      }
+      this->state.emit("    movq %rax, " + std::to_string(rbp_off + 8) + "(%rbp)");
+      return;
+    }
+    case SlotAddr::Kind::OverAligned:
+      this->emit_alloca_aligned_addr_impl(addr.slot, addr.value_id);
+      if (offset != 0) {
+        this->state.out.emit_instr_imm_reg("    addq", offset, "rcx");
+      }
+      this->state.out.emit_instr_imm_reg("    movabsq", static_cast<std::int64_t>(lo), "rax");
+      this->state.emit("    movq %rax, (%rcx)");
+      if (hi != 0) {
+        this->state.out.emit_instr_imm_reg("    movq", static_cast<std::int64_t>(hi), "rax");
+      } else {
+        this->state.emit("    xorl %eax, %eax");
+      }
+      this->state.emit("    movq %rax, 8(%rcx)");
+      return;
+    case SlotAddr::Kind::Indirect:
+      this->emit_load_ptr_from_slot_impl(addr.slot, ptr_id);
+      if (offset != 0) {
+        this->state.out.emit_instr_imm_reg("    addq", offset, "rcx");
+      }
+      this->state.out.emit_instr_imm_reg("    movabsq", static_cast<std::int64_t>(lo), "rax");
+      this->state.emit("    movq %rax, (%rcx)");
+      if (hi != 0) {
+        this->state.out.emit_instr_imm_reg("    movq", static_cast<std::int64_t>(hi), "rax");
+      } else {
+        this->state.emit("    xorl %eax, %eax");
+      }
+      this->state.emit("    movq %rax, 8(%rcx)");
+      return;
+  }
 }
 
 void X86Codegen::emit_f128_store_f64_via_x87(const SlotAddr& addr, std::uint32_t ptr_id, std::int64_t offset) {

@@ -6,28 +6,30 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 translated-owner follow-on inside the parked
-  `src/backend/x86/codegen/f128.cpp` helper layer: keep the next move inside
-  the remaining helper bodies already surfaced by the active cast-owner seam
-  without widening into prologue/runtime
+- Step 3 translated-owner follow-on after the parked
+  `src/backend/x86/codegen/f128.cpp` raw-byte helper port: keep the next move
+  inside the remaining caller-side constant long-double seams already exposed
+  by the active memory/cast-owner paths without widening into prologue/runtime
   owner work
 - immediate target:
-  decide whether the next bounded cast-owner slice is the still-deferred
-  constant-backed long-double operand path (`emit_f128_store_raw_bytes` /
-  constant `emit_f128_load_to_x87`) or another caller that can consume the now
-  real unsigned helper text without widening the public operand model
+  decide whether the next bounded slice is wiring the caller-side constant
+  long-double store/load path now that `emit_f128_store_raw_bytes` is real, or
+  another nearby caller that can consume the helper without widening the public
+  operand model past a narrow constant-form bridge
 
 ## Next Slice
 
-- keep the next `f128.cpp` work limited to the remaining bounded helper bodies
-  already surfaced by the active x86 memory/cast paths, rather than wiring the
-  whole parked owner into the build; after landing the unsigned helper bridge,
-  re-evaluate whether the next bounded move is the constant-backed long-double
-  operand path or another cast-owner caller that can consume the newly real
-  helper text
-- treat `emit_f128_store_raw_bytes` as deferred until the active public x86
-  operand surface can express the needed constant-form inputs cleanly, instead
-  of inventing a local one-off constant channel
+- keep the next `f128.cpp` work limited to the remaining caller-side constant
+  long-double seams already surfaced by the active x86 memory/cast paths,
+  rather than wiring the whole parked owner into the build; now that
+  `emit_f128_store_raw_bytes` is real, re-evaluate whether the next bounded
+  move is a narrow constant-form operand bridge for memory/cast callers or
+  another cast-owner caller that can consume the helper text without widening
+  public x86 state too far
+- treat constant-backed long-double caller wiring as deferred until the active
+  public x86 operand surface can express the needed constant-form inputs
+  cleanly, instead of inventing a broad local one-off channel beyond the now
+  linked helper
 - keep the `returns.cpp` local epilogue boundary parked until the shared
   prologue/epilogue owner surface is explicitly chosen as the next bounded
   Step 3 move
@@ -35,6 +37,36 @@ Source Plan: plan.md
   unless a later translated-owner cutover proves that state is already exposed
 
 ## Current Iteration Notes
+
+- this iteration ports the bounded translated raw-byte long-double helper still
+  parked in `src/backend/x86/codegen/f128.cpp`: `emit_f128_store_raw_bytes`
+  now matches the reference direct, over-aligned, and indirect resolved-address
+  paths instead of leaving placeholder text, while keeping the scope limited to
+  the helper surface rather than widening the public operand model or wiring
+  new constant callers
+- implementation note:
+  `src/backend/x86/codegen/x86_codegen.hpp` now exposes the helper’s explicit
+  `lo`/`hi` raw-byte payload parameters, and
+  `tests/backend/backend_shared_util_tests.cpp` now pins the emitted assembly
+  contract for direct-slot offset folding, over-aligned address resolution,
+  indirect pointer loads, and zero/high-fragment materialization behavior
+- surfaced boundary note:
+  the helper body is now real, but the active x86 operand surface still does
+  not expose a narrow constant long-double form for callers such as the memory
+  owner path, so the next bounded move is caller-side constant plumbing rather
+  than additional helper placeholder removal inside `f128.cpp`
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_f128_store_raw_bytes`,
+  `./build/backend_shared_util_tests translated_memory_owner`, and
+  `./build/backend_shared_util_tests`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_before.log`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and one new `>30s` note on `backend_bir_tests`
 
 - this iteration lands the bounded translated unsigned cast-helper bridge
   already surfaced by the parked x86 cast-owner path:

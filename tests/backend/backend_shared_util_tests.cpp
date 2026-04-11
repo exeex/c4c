@@ -628,6 +628,61 @@ void test_x86_translated_memory_owner_preserves_f128_store_precision_paths() {
                   "wired translated memory owner should apply constant offsets on indirect fallback F128 stores");
 }
 
+void test_x86_translated_f128_store_raw_bytes_emits_resolved_address_paths() {
+  using SlotAddr = c4c::backend::x86::SlotAddr;
+  using StackSlot = c4c::backend::x86::StackSlot;
+
+  c4c::backend::x86::X86Codegen codegen;
+  codegen.state.slots.emplace(7, StackSlot{-40});
+  codegen.state.slots.emplace(9, StackSlot{-56});
+  codegen.state.allocas.insert(7);
+  codegen.state.over_aligned_allocas.emplace(7, 32);
+
+  codegen.emit_f128_store_raw_bytes(SlotAddr::Direct(StackSlot{-24}), 0, 8,
+                                    0x0123456789ABCDEFULL, 0x1357);
+  codegen.emit_f128_store_raw_bytes(SlotAddr::OverAligned(StackSlot{-40}, 7), 7, 16,
+                                    0x0FEDCBA987654321ULL, 0);
+  codegen.emit_f128_store_raw_bytes(SlotAddr::Indirect(StackSlot{-56}), 9, 24,
+                                    0x1111222233334444ULL, 0x2468);
+
+  std::string asm_text;
+  for (const auto& line : codegen.state.asm_lines) {
+    asm_text += line;
+    asm_text.push_back('\n');
+  }
+
+  expect_contains(asm_text, "    movabsq $81985529216486895, %rax",
+                  "translated raw-byte f128 helper should materialize the low 64 bits for direct destinations");
+  expect_contains(asm_text, "    movq %rax, -16(%rbp)",
+                  "translated raw-byte f128 helper should fold direct-slot offsets into the first 8-byte store");
+  expect_contains(asm_text, "    movq $4951, %rax",
+                  "translated raw-byte f128 helper should materialize non-zero high bytes for direct destinations");
+  expect_contains(asm_text, "    movq %rax, -8(%rbp)",
+                  "translated raw-byte f128 helper should write the high raw-byte fragment after the direct-slot offset fold");
+  expect_contains(asm_text, "    leaq -40(%rbp), %rcx",
+                  "translated raw-byte f128 helper should resolve over-aligned destinations through the shared alloca-address helper");
+  expect_contains(asm_text, "    andq $-32, %rcx",
+                  "translated raw-byte f128 helper should preserve over-aligned destination alignment before writing raw bytes");
+  expect_contains(asm_text, "    addq $16, %rcx",
+                  "translated raw-byte f128 helper should apply constant offsets after over-aligned address resolution");
+  expect_contains(asm_text, "    movabsq $1147797409030816545, %rax",
+                  "translated raw-byte f128 helper should materialize the low 64 bits for over-aligned destinations");
+  expect_contains(asm_text, "    movq %rax, (%rcx)",
+                  "translated raw-byte f128 helper should store the low raw-byte fragment through the resolved rcx address");
+  expect_contains(asm_text, "    xorl %eax, %eax",
+                  "translated raw-byte f128 helper should zero the high fragment efficiently when the upper bytes are all zero");
+  expect_contains(asm_text, "    movq %rax, 8(%rcx)",
+                  "translated raw-byte f128 helper should still write the zeroed high fragment through the resolved rcx address");
+  expect_contains(asm_text, "    movq -56(%rbp), %rcx",
+                  "translated raw-byte f128 helper should resolve indirect destinations through the shared pointer-load helper");
+  expect_contains(asm_text, "    addq $24, %rcx",
+                  "translated raw-byte f128 helper should apply constant offsets on indirect destinations");
+  expect_contains(asm_text, "    movabsq $1229801703532086340, %rax",
+                  "translated raw-byte f128 helper should materialize the low 64 bits for indirect destinations");
+  expect_contains(asm_text, "    movq $9320, %rax",
+                  "translated raw-byte f128 helper should materialize non-zero high bytes for indirect destinations");
+}
+
 void test_x86_translated_f128_helpers_reload_integer_conversion_sources() {
   using IrType = c4c::backend::x86::IrType;
   using SlotAddr = c4c::backend::x86::SlotAddr;
