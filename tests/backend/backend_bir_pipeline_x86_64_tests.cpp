@@ -7761,6 +7761,57 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call
                       "x86 LIR folded two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_on_native_x86_path() {
+  const auto module = make_lir_minimal_folded_two_arg_direct_call_module();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl fold_pair",
+                  "x86 LIR folded two-argument direct-call input should still emit the helper definition on the native x86 path");
+  expect_contains(rendered, "fold_pair:\n  mov eax, 10\n  add eax, edi\n  sub eax, esi\n  ret\n",
+                  "x86 LIR folded two-argument direct-call input should preserve the folded helper body on the native x86 path");
+  expect_contains(rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call fold_pair\n  ret\n",
+                  "x86 LIR folded two-argument direct-call input should still lower the folded helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR folded two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_with_spacing_on_native_x86_path() {
+  const auto module = make_lir_minimal_folded_two_arg_direct_call_module_with_spacing();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl fold_pair",
+                  "x86 LIR folded two-argument direct-call input should still emit the helper definition on the native x86 path when typed-call spacing drifts");
+  expect_contains(rendered, "fold_pair:\n  mov eax, 10\n  add eax, edi\n  sub eax, esi\n  ret\n",
+                  "x86 LIR folded two-argument direct-call input should preserve the folded helper body on the native x86 path when typed-call spacing drifts");
+  expect_contains(rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call fold_pair\n  ret\n",
+                  "x86 LIR folded two-argument direct-call input should trim spacing and still lower the folded helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR folded two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text when typed-call spacing drifts");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_with_suffix_spacing_on_native_x86_path() {
+  const auto module = make_lir_minimal_folded_two_arg_direct_call_module_with_suffix_spacing();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl fold_pair",
+                  "x86 LIR folded two-argument direct-call input should still emit the helper definition on the native x86 path when typed-call suffix spacing drifts");
+  expect_contains(rendered, "fold_pair:\n  mov eax, 10\n  add eax, edi\n  sub eax, esi\n  ret\n",
+                  "x86 LIR folded two-argument direct-call input should preserve the folded helper body on the native x86 path when typed-call suffix spacing drifts");
+  expect_contains(rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call fold_pair\n  ret\n",
+                  "x86 LIR folded two-argument direct-call input should trim suffix spacing and still lower the folded helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR folded two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text when typed-call suffix spacing drifts");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_on_native_x86_path() {
   const auto module = make_lir_minimal_two_arg_local_arg_direct_call_module();
 
@@ -8943,6 +8994,61 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_
                       "x86 LIR dual-identity subtraction input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_on_native_x86_path() {
+  const auto module = make_lir_minimal_dual_identity_direct_call_sub_module();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl f",
+                  "x86 LIR dual-identity direct-call subtraction input should still emit the left helper definition on the native x86 path");
+  expect_contains(rendered, ".globl g",
+                  "x86 LIR dual-identity direct-call subtraction input should still emit the right helper definition on the native x86 path");
+  expect_contains(rendered, "f:\n  mov eax, edi\n  ret\n",
+                  "x86 LIR dual-identity direct-call subtraction input should preserve the left helper identity body on the native x86 path");
+  expect_contains(rendered, "g:\n  mov eax, edi\n  ret\n",
+                  "x86 LIR dual-identity direct-call subtraction input should preserve the right helper identity body on the native x86 path");
+  expect_contains(rendered, "main:\n  push rbx\n  mov edi, 7\n  call f\n  mov ebx, eax\n  mov edi, 3\n  call g\n  sub ebx, eax\n  mov eax, ebx\n  pop rbx\n  ret\n",
+                  "x86 LIR dual-identity direct-call subtraction input should preserve the first helper result across the second call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR dual-identity direct-call subtraction input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_with_spacing_on_native_x86_path() {
+  const auto module = make_lir_minimal_dual_identity_direct_call_sub_module_with_spacing();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl f",
+                  "x86 LIR dual-identity direct-call subtraction input should still emit the left helper definition on the native x86 path when typed-call spacing drifts");
+  expect_contains(rendered, ".globl g",
+                  "x86 LIR dual-identity direct-call subtraction input should still emit the right helper definition on the native x86 path when typed-call spacing drifts");
+  expect_contains(rendered, "main:\n  push rbx\n  mov edi, 7\n  call f\n  mov ebx, eax\n  mov edi, 3\n  call g\n  sub ebx, eax\n  mov eax, ebx\n  pop rbx\n  ret\n",
+                  "x86 LIR dual-identity direct-call subtraction input should trim spacing while preserving the bounded dual-helper path on the native x86 route");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR dual-identity direct-call subtraction input should stay on native asm emission instead of falling back to LLVM text when typed-call spacing drifts");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_with_suffix_spacing_on_native_x86_path() {
+  const auto module = make_lir_minimal_dual_identity_direct_call_sub_module_with_suffix_spacing();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl f",
+                  "x86 LIR dual-identity direct-call subtraction input should still emit the left helper definition on the native x86 path when typed-call suffix spacing drifts");
+  expect_contains(rendered, ".globl g",
+                  "x86 LIR dual-identity direct-call subtraction input should still emit the right helper definition on the native x86 path when typed-call suffix spacing drifts");
+  expect_contains(rendered, "main:\n  push rbx\n  mov edi, 7\n  call f\n  mov ebx, eax\n  mov edi, 3\n  call g\n  sub ebx, eax\n  mov eax, ebx\n  pop rbx\n  ret\n",
+                  "x86 LIR dual-identity direct-call subtraction input should trim suffix spacing while preserving the bounded dual-helper path on the native x86 route");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR dual-identity direct-call subtraction input should stay on native asm emission instead of falling back to LLVM text when typed-call suffix spacing drifts");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_lir_minimal_call_crossing_direct_call_module()},
@@ -8958,6 +9064,53 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_
                   "x86 LIR call-crossing input should preserve the final add against the source value on the native x86 path");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR call-crossing input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_on_native_x86_path() {
+  const auto module = make_lir_minimal_call_crossing_direct_call_module();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_one",
+                  "x86 LIR call-crossing direct-call input should still emit the helper definition on the native x86 path");
+  expect_contains(rendered, "add_one:\n  mov eax, edi\n  add eax, 1\n  ret\n",
+                  "x86 LIR call-crossing direct-call input should preserve the helper add-immediate body on the native x86 path");
+  expect_contains(rendered, "main:\n  push rbx\n  mov ebx, 5\n  mov edi, ebx\n  call add_one\n  add eax, ebx\n  pop rbx\n  ret\n",
+                  "x86 LIR call-crossing direct-call input should preserve the source value across the helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR call-crossing direct-call input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_with_spacing_on_native_x86_path() {
+  const auto module = make_lir_minimal_call_crossing_direct_call_module_with_spacing();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_one",
+                  "x86 LIR call-crossing direct-call input should still emit the helper definition on the native x86 path when typed-call spacing drifts");
+  expect_contains(rendered, "main:\n  push rbx\n  mov ebx, 5\n  mov edi, ebx\n  call add_one\n  add eax, ebx\n  pop rbx\n  ret\n",
+                  "x86 LIR call-crossing direct-call input should trim spacing while preserving the bounded call-crossing path on the native x86 route");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR call-crossing direct-call input should stay on native asm emission instead of falling back to LLVM text when typed-call spacing drifts");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_with_suffix_spacing_on_native_x86_path() {
+  const auto module = make_lir_minimal_call_crossing_direct_call_module_with_suffix_spacing();
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_one",
+                  "x86 LIR call-crossing direct-call input should still emit the helper definition on the native x86 path when typed-call suffix spacing drifts");
+  expect_contains(rendered, "main:\n  push rbx\n  mov ebx, 5\n  mov edi, ebx\n  call add_one\n  add eax, ebx\n  pop rbx\n  ret\n",
+                  "x86 LIR call-crossing direct-call input should trim suffix spacing while preserving the bounded call-crossing path on the native x86 route");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR call-crossing direct-call input should stay on native asm emission instead of falling back to LLVM text when typed-call suffix spacing drifts");
 }
 
 void test_backend_bir_pipeline_drives_x86_lir_minimal_conditional_return_through_bir_end_to_end() {
@@ -12083,6 +12236,9 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_small_struct_stack_param_slot_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_local_arg_direct_call_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_with_spacing_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_with_suffix_spacing_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_with_spacing_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_with_suffix_spacing_on_native_x86_path);
@@ -12129,7 +12285,13 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_loop_break_ladder_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_prime_counter_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_with_spacing_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_with_suffix_spacing_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_with_spacing_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_with_suffix_spacing_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_conditional_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_conditional_phi_join_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_signed_i16_local_slot_increment_compare_through_bir_end_to_end);

@@ -11,21 +11,22 @@ Source Plan: plan.md
   `src/backend/x86/codegen/direct_calls.cpp` and the x86 backend tests instead
   of widening back into the parked branch/select or prologue/returns surfaces
 - immediate target:
-  continue auditing whether any remaining direct-call sibling family still
-  lacks native public-pipeline spacing/suffix coverage after landing the
-  plain two-arg `local_arg` and `both_local_arg` args-spacing regressions,
+  land the remaining native public-pipeline spacing/suffix matrix for the
+  folded-two-arg, dual-identity, and call-crossing direct-call sibling
+  families that still only had prepared-LIR or shared-BIR route coverage,
   without widening into parked matcher ownership
 
 ## Next Slice
 
 - continue auditing whether any remaining direct-call sibling family still
-  lacks native public-pipeline spacing/suffix coverage after this plain
-  `local_arg`/`both_local_arg` args-spacing route completion, without widening
-  into parked matcher ownership
+  lacks native public-pipeline spacing/suffix coverage after this folded,
+  dual-identity, and call-crossing route completion, without widening into
+  parked matcher ownership
 - likely next bounded slice:
   confirm whether any direct-call sibling family still lacks native public
-  x86 route coverage outside the now-complete plain and rewrite two-arg
-  spacing/suffix matrix, then pick the smallest remaining direct-call-only gap
+  x86 route coverage after the now-complete folded, dual-identity,
+  call-crossing, plain, and rewrite spacing/suffix matrix, then either close
+  the direct-call follow-on or pick the smallest remaining translated-owner gap
 - do not widen into new helper ownership or unrelated control-flow matchers in
   the same commit
 - leave fused compare+branch, block branch lowering, select, and
@@ -34,6 +35,25 @@ Source Plan: plan.md
   of scope unless a later translated-owner cutover requires them directly
 
 ## Current Iteration Notes
+
+- this iteration extends the active Step 4 direct-call ownership path with the
+  missing native public-pipeline coverage for the remaining folded-two-arg,
+  dual-identity, and call-crossing sibling families: the x86 route now pins
+  plain, args-spacing, and suffix-spacing handling on those already-landed
+  direct-call families without widening matcher scope
+- implementation note:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now adds dedicated
+  native-path regressions for the folded-two-arg direct-call, dual-identity
+  direct-call subtraction, and call-crossing direct-call spacing variants so
+  the public x86 backend route keeps those sibling families live when plain
+  typed calls or `callee_type_suffix` spacing drifts
+- focused validation passed:
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_with_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_with_suffix_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_with_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_with_suffix_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_with_spacing_on_native_x86_path test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_with_suffix_spacing_on_native_x86_path`
+- broad validation passed:
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration extends the active Step 4 direct-call ownership path with the
   missing native public-pipeline args-spacing regressions for the remaining
