@@ -350,6 +350,49 @@ void test_parser_capture_template_arg_expr_uses_token_spelling() {
                 "template arg expression capture should stop before template close");
 }
 
+void test_parser_type_start_probes_use_token_spelling() {
+  c4c::Arena arena;
+  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec typedef_ts{};
+  typedef_ts.array_size = -1;
+  typedef_ts.inner_rank = -1;
+  typedef_ts.base = c4c::TB_INT;
+  parser.register_typedef_binding("TypeAlias", typedef_ts, true);
+
+  c4c::Token seed{};
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "TypeAlias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[0].lexeme = "bridge_only_alias";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  expect_true(parser.is_type_start(),
+              "type-start classification should use parser-owned identifier spelling");
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ConceptName"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+  };
+  parser.concept_names_.insert("ConceptName");
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+  parser.tokens_[0].lexeme = "bridge_only_concept";
+#pragma GCC diagnostic pop
+#endif
+
+  expect_true(!parser.looks_like_unresolved_identifier_type_head(0),
+              "identifier-type probes should use parser-owned spelling when excluding concept names");
+}
+
 }  // namespace
 
 int main() {
@@ -362,6 +405,7 @@ int main() {
   test_parser_injected_token_helpers_preserve_qualified_name_spelling();
   test_parser_value_like_template_lookahead_uses_token_spelling();
   test_parser_capture_template_arg_expr_uses_token_spelling();
+  test_parser_type_start_probes_use_token_spelling();
 
   std::cout << "PASS: frontend_parser_tests\n";
   return 0;

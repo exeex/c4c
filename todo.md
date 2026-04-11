@@ -6,24 +6,19 @@ Source Plan: plan.md
 
 ## Current Slice
 
-Active item: Warning-Driven Convergence D, trim the next read-only
-identifier-classification and type-start probe sites in
-`parser_types_base.cpp` now that `types_helpers.hpp` lookahead and
-template-arg text capture read through parser-owned token spelling helpers.
+Active item: Warning-Driven Convergence E, trim the next nearby read-only
+token-spelling probes in `parser_types_base.cpp`, starting with the
+exception-spec (`noexcept` / `throw`) and attribute-name reads that still
+show up in compiler warnings after the type-start probe cleanup.
 
 Why this slice:
-- the qualified-name boundary now carries per-segment atom ids while preserving
-  string-keyed composed-name lookup, so the next useful warning-driven work is
-  to narrow nearby parser helper paths rather than widen semantic-table scope
-- compiler warnings still show substantial parser-owned `Token::lexeme` /
-  `Token::file` bridge traffic, but most of it remains outside the current
-  plan slice and should stay incremental
-- the just-landed helper slice moved `types_helpers.hpp` lookahead and
-  template-arg text capture off open-coded deprecated token spelling reads
-  while keeping parser peeks read-only
-- the next useful edits should stay narrow and move outward to nearby
-  identifier classification probes in `parser_types_base.cpp` rather than
-  widening into parser mutation or broad bridge removal
+- Warning-Driven Convergence D landed cleanly and moved the read-only
+  identifier-classification / type-start probes onto `parser.token_spelling(...)`
+- the next visible warnings in the same file are still narrow, read-only
+  bridge reads in exception-spec and attribute-name handling, so the migration
+  can stay local without widening semantic-table scope
+- compiler warnings still show broader deprecated bridge traffic elsewhere, but
+  those sites remain outside the current incremental path
 
 ## Completed
 
@@ -91,6 +86,14 @@ Why this slice:
       and re-ran the full-suite monotonic guard with `3375` passed / `0`
       failed before and after via `test_before.log`, `test_after.log`, and the
       regression-guard checker
+- [x] Moved the read-only identifier-classification and type-start probes in
+      [src/frontend/parser/parser_types_base.cpp](/workspaces/c4c/src/frontend/parser/parser_types_base.cpp)
+      onto `parser.token_spelling(...)`, added narrow parser coverage for
+      injected typedef / concept probe spelling in
+      [tests/frontend/frontend_parser_tests.cpp](/workspaces/c4c/tests/frontend/frontend_parser_tests.cpp),
+      and re-ran the full-suite monotonic guard with `3375` passed / `0`
+      failed before and after via `test_fail_before.log`,
+      `test_fail_after.log`, and the regression-guard checker
 
 ## Next Steps
 
@@ -117,10 +120,14 @@ Why this slice:
 - [x] Warning-Driven Convergence C: move the next read-only parser helper
       lookahead sites in `types_helpers.hpp` off open-coded deprecated token
       spelling access without reintroducing parser-state mutation during peeks
-- [ ] Warning-Driven Convergence D: move the next read-only
+- [x] Warning-Driven Convergence D: move the next read-only
       identifier-classification and type-start probe sites in
       `parser_types_base.cpp` onto parser-owned token spelling helpers without
       widening semantic-table scope
+- [ ] Warning-Driven Convergence E: move the next nearby read-only
+      exception-spec and attribute-name spelling probes in
+      `parser_types_base.cpp` onto parser-owned token helpers without widening
+      semantic-table scope
 
 ## Warning-Driven Convergence
 
@@ -142,6 +149,10 @@ Why this slice:
       checker
 - [x] Re-ran the full suite for the qualified-name atom-id slice and passed
       the monotonic guard with `3375` passed / `0` failed before and after via
+      `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
+      checker
+- [x] Re-ran the full suite for Warning-Driven Convergence D and passed the
+      monotonic guard with `3375` passed / `0` failed before and after via
       `test_fail_before.log`, `test_fail_after.log`, and the regression-guard
       checker
 
@@ -169,6 +180,7 @@ Why this slice:
 - `types_helpers.hpp` now routes value-like template lookahead and template-arg
   text capture through `parser.token_spelling(...)`, with injected-token tests
   proving those helpers prefer parser-owned text ids over the deprecated bridge
-- next edit should target the similarly read-only identifier classification and
-  type-start probes in `parser_types_base.cpp`; they are adjacent to the
-  migrated helper path and should move without widening semantic lookup scope
+- `parser_types_base.cpp` now uses `token_spelling(...)` for the
+  identifier-classification / type-start probes, and the next nearby warning
+  candidates in that file are the read-only `noexcept`, `throw`, and
+  attribute-name spelling reads

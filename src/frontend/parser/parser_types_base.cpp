@@ -79,20 +79,21 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::KwStaticAssert) return false;
     if (k == TokenKind::KwTypename) return true;
     if (k == TokenKind::Identifier) {
-        if (is_concept_name(cur().lexeme)) return false;
+        const std::string name(token_spelling(cur()));
+        if (is_concept_name(name)) return false;
         if (starts_with_value_like_template_expr(*this, tokens_, pos_)) return false;
-        if (match_floatn_keyword_base(cur().lexeme, nullptr)) return true;
-        if (is_template_scope_type_param(cur().lexeme)) return true;
-        if (is_typedef_name(cur().lexeme)) return true;
-        if (has_visible_typedef_type(cur().lexeme)) return true;
+        if (match_floatn_keyword_base(name, nullptr)) return true;
+        if (is_template_scope_type_param(name)) return true;
+        if (is_typedef_name(name)) return true;
+        if (has_visible_typedef_type(name)) return true;
         // C++ fallback: identifier followed by < is likely a template type if
         // the name is registered as a template struct, or if we're inside a
         // struct body where namespace-scoped template names may not resolve.
         if (is_cpp_mode() &&
             pos_ + 1 < static_cast<int>(tokens_.size()) &&
             tokens_[pos_ + 1].kind == TokenKind::Less &&
-            (find_template_struct_primary(cur().lexeme) ||
-             find_template_struct_primary(resolve_visible_type_name(cur().lexeme)) ||
+            (find_template_struct_primary(name) ||
+             find_template_struct_primary(resolve_visible_type_name(name)) ||
              !current_struct_tag_.empty())) return true;
         // Keep declaration probes aligned with parse_base_type(): even when
         // template-type registration was lost, `Identifier<...>` should still
@@ -208,7 +209,7 @@ bool Parser::looks_like_unresolved_identifier_type_head(int pos) const {
     if (!is_cpp_mode()) return false;
     if (pos < 0 || pos >= static_cast<int>(tokens_.size())) return false;
     if (tokens_[pos].kind != TokenKind::Identifier) return false;
-    if (is_concept_name(tokens_[pos].lexeme)) return false;
+    if (is_concept_name(std::string(token_spelling(tokens_[pos])))) return false;
 
     const int next = pos + 1;
     if (next >= static_cast<int>(tokens_.size())) return false;
