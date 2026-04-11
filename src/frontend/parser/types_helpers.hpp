@@ -21,7 +21,7 @@ bool skip_cpp20_constraint_atom(Parser& parser);
 
 using ParsedTemplateArg = Parser::TemplateArgParseResult;
 
-bool match_floatn_keyword_base(const std::string& name, TypeBase* out_base) {
+bool match_floatn_keyword_base(std::string_view name, TypeBase* out_base) {
     TypeBase base = TB_INT;
     if (name == "_Float16" || name == "_Float32") {
         base = TB_FLOAT;

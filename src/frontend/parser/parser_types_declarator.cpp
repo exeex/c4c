@@ -13,7 +13,7 @@
 
 namespace c4c {
 
-bool Parser::is_typedef_name(const std::string& s) const {
+bool Parser::is_typedef_name(std::string_view s) const {
     return has_typedef_name(s);
 }
 
@@ -27,7 +27,7 @@ void Parser::pop_template_scope() {
         template_scope_stack_.pop_back();
 }
 
-bool Parser::is_template_scope_type_param(const std::string& name) const {
+bool Parser::is_template_scope_type_param(std::string_view name) const {
     // Walk from innermost scope to outermost.
     for (int i = static_cast<int>(template_scope_stack_.size()) - 1; i >= 0; --i) {
         for (const auto& p : template_scope_stack_[i].params) {

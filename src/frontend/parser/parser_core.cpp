@@ -306,7 +306,7 @@ Parser::SymbolId Parser::symbol_id_for_token(const Token& token) {
 }
 
 std::string_view Parser::token_spelling(const Token& token) const {
-    if (token.text_id != kInvalidText) {
+    if (token.has_parser_owned_spelling && token.text_id != kInvalidText) {
         const auto it = parser_text_ids_.find(token.text_id);
         if (it != parser_text_ids_.end()) {
             return parser_texts_.lookup(it->second);
@@ -327,6 +327,7 @@ Token Parser::make_injected_token(const Token& seed, TokenKind kind,
     Token token = seed;
     token.kind = kind;
     token.text_id = parser_texts_.intern(spelling);
+    token.has_parser_owned_spelling = true;
     if (token.text_id != kInvalidText) {
         parser_text_ids_.emplace(token.text_id, token.text_id);
     }
@@ -355,38 +356,38 @@ void Parser::populate_qualified_name_symbol_ids(QualifiedNameRef* name) {
             : parser_name_tables_.intern_identifier(name->base_name);
 }
 
-bool Parser::has_typedef_name(const std::string& name) const {
+bool Parser::has_typedef_name(std::string_view name) const {
     if (!uses_symbol_identity(name)) {
-        return non_atom_typedefs_.count(name) > 0;
+        return non_atom_typedefs_.count(std::string(name)) > 0;
     }
     return parser_name_tables_.is_typedef(
         parser_name_tables_.find_identifier(name));
 }
 
-bool Parser::has_typedef_type(const std::string& name) const {
+bool Parser::has_typedef_type(std::string_view name) const {
     if (!uses_symbol_identity(name)) {
-        return non_atom_typedef_types_.count(name) > 0;
+        return non_atom_typedef_types_.count(std::string(name)) > 0;
     }
     return parser_name_tables_.has_typedef_type(
         parser_name_tables_.find_identifier(name));
 }
 
-const TypeSpec* Parser::find_typedef_type(const std::string& name) const {
+const TypeSpec* Parser::find_typedef_type(std::string_view name) const {
     if (!uses_symbol_identity(name)) {
-        const auto it = non_atom_typedef_types_.find(name);
+        const auto it = non_atom_typedef_types_.find(std::string(name));
         return it == non_atom_typedef_types_.end() ? nullptr : &it->second;
     }
     return parser_name_tables_.lookup_typedef_type(
         parser_name_tables_.find_identifier(name));
 }
 
-bool Parser::has_visible_typedef_type(const std::string& name) const {
+bool Parser::has_visible_typedef_type(std::string_view name) const {
     if (has_typedef_type(name)) return true;
     const std::string resolved = resolve_visible_type_name(name);
     return resolved != name && has_typedef_type(resolved);
 }
 
-const TypeSpec* Parser::find_visible_typedef_type(const std::string& name) const {
+const TypeSpec* Parser::find_visible_typedef_type(std::string_view name) const {
     if (const TypeSpec* type = find_typedef_type(name)) return type;
     const std::string resolved = resolve_visible_type_name(name);
     if (resolved.empty() || resolved == name) return nullptr;
@@ -1334,19 +1335,21 @@ std::string Parser::resolve_visible_value_name(const std::string& name) const {
         });
 }
 
-std::string Parser::resolve_visible_type_name(const std::string& name) const {
+std::string Parser::resolve_visible_type_name(std::string_view name) const {
+    const std::string spelled(name);
     return resolve_visible_name_from_namespace_stack(
-        namespace_stack_, name, [&](int context_id, std::string* resolved) {
+        namespace_stack_, spelled,
+        [&](int context_id, std::string* resolved) {
             auto alias_it = using_value_aliases_.find(context_id);
             if (alias_it != using_value_aliases_.end()) {
-                auto value_it = alias_it->second.find(name);
+                auto value_it = alias_it->second.find(spelled);
                 if (value_it != alias_it->second.end() &&
                     has_typedef_type(value_it->second)) {
                     *resolved = value_it->second;
                     return true;
                 }
             }
-            return lookup_type_in_context(context_id, name, resolved);
+            return lookup_type_in_context(context_id, spelled, resolved);
         });
 }
 

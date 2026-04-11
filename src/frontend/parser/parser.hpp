@@ -665,11 +665,11 @@ class Parser {
   std::string_view symbol_spelling(SymbolId id) const {
     return parser_symbols_.spelling(id);
   }
-  bool has_typedef_name(const std::string& name) const;
-  bool has_typedef_type(const std::string& name) const;
-  const TypeSpec* find_typedef_type(const std::string& name) const;
-  bool has_visible_typedef_type(const std::string& name) const;
-  const TypeSpec* find_visible_typedef_type(const std::string& name) const;
+  bool has_typedef_name(std::string_view name) const;
+  bool has_typedef_type(std::string_view name) const;
+  const TypeSpec* find_typedef_type(std::string_view name) const;
+  bool has_visible_typedef_type(std::string_view name) const;
+  const TypeSpec* find_visible_typedef_type(std::string_view name) const;
   TypeSpec resolve_typedef_type_chain(TypeSpec ts) const;
   TypeSpec resolve_struct_like_typedef_type(TypeSpec ts) const;
   bool are_types_compatible(const TypeSpec& lhs, const TypeSpec& rhs) const;
@@ -694,7 +694,7 @@ class Parser {
   void register_var_type_binding(const std::string& name, const TypeSpec& type);
   bool has_known_fn_name(const std::string& name) const;
   void register_known_fn_name(const std::string& name);
-  bool is_typedef_name(const std::string& s) const;
+  bool is_typedef_name(std::string_view s) const;
   bool is_cpp_mode() const {
     return source_profile_ == SourceProfile::CppSubset ||
            source_profile_ == SourceProfile::C4;
@@ -719,7 +719,7 @@ class Parser {
   std::string qualify_name(const std::string& name) const;
   const char* qualify_name_arena(const char* name);
   std::string resolve_visible_value_name(const std::string& name) const;
-  std::string resolve_visible_type_name(const std::string& name) const;
+  std::string resolve_visible_type_name(std::string_view name) const;
   std::string resolve_visible_concept_name(const std::string& name) const;
   bool is_concept_name(const std::string& name) const;
   bool peek_qualified_name(QualifiedNameRef* out, bool allow_global = true) const;
@@ -796,7 +796,7 @@ class Parser {
   void pop_template_scope();
   // Check if a name is a type parameter in any active template scope frame.
   // Walks the stack from innermost to outermost.
-  bool is_template_scope_type_param(const std::string& name) const;
+  bool is_template_scope_type_param(std::string_view name) const;
 
   // ── type spelling / type-specifier parsing ────────────────────────────────
   bool consume_qualified_type_spelling_with_typename(

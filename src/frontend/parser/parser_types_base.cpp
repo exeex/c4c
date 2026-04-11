@@ -986,86 +986,88 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwTypename:
             case TokenKind::Identifier:
                 {
+                    const std::string_view name = token_spelling(cur());
                     if (parse_builtin_transform_type(&ts)) {
                         base_set = true;
                         done = true;
                         break;
                     }
                     TypeBase floatn_base;
-                    if (match_floatn_keyword_base(cur().lexeme, &floatn_base)) {
+                    if (match_floatn_keyword_base(name, &floatn_base)) {
                         ts.base = floatn_base;
                         base_set = true;
                         consume();
                         done = true;
                         break;
                     }
-                }
-                if (is_cpp_mode()) {
-                    const bool already_have_base =
-                        has_signed || has_unsigned || has_short || long_count > 0 ||
-                        has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
-                        has_struct || has_union || has_enum || base_set;
-                    const bool simple_unqualified_known_type_head =
-                        k == TokenKind::Identifier &&
-                        !(pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                          tokens_[pos_ + 1].kind == TokenKind::ColonColon) &&
-                        (is_typedef_name(cur().lexeme) ||
-                         is_template_scope_type_param(cur().lexeme) ||
-                         has_visible_typedef_type(cur().lexeme));
-                    if (!simple_unqualified_known_type_head &&
-                        try_parse_cpp_scoped_base_type(already_have_base, &ts)) {
-                        has_typedef = true;
+                    if (is_cpp_mode()) {
+                        const bool already_have_base =
+                            has_signed || has_unsigned || has_short || long_count > 0 ||
+                            has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
+                            has_struct || has_union || has_enum || base_set;
+                        const bool simple_unqualified_known_type_head =
+                            k == TokenKind::Identifier &&
+                            !(pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                              tokens_[pos_ + 1].kind == TokenKind::ColonColon) &&
+                            (is_typedef_name(name) ||
+                             is_template_scope_type_param(name) ||
+                             has_visible_typedef_type(name));
+                        if (!simple_unqualified_known_type_head &&
+                            try_parse_cpp_scoped_base_type(already_have_base, &ts)) {
+                            has_typedef = true;
+                            done = true;
+                            break;
+                        }
+                    }
+                    if (k == TokenKind::KwTypename) {
                         done = true;
                         break;
                     }
-                }
-                if (k == TokenKind::KwTypename) {
-                    done = true;
-                    break;
-                }
-                if (is_typedef_name(cur().lexeme) ||
-                    is_template_scope_type_param(cur().lexeme) ||
-                    has_visible_typedef_type(cur().lexeme)) {
-                    // If we've already seen concrete type specifiers/modifiers,
-                    // this identifier is the declarator name (e.g. `int s;` even
-                    // when `s` is also a typedef name in outer scope).
-                    bool already_have_base =
-                        has_signed || has_unsigned || has_short || long_count > 0 ||
-                        has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
-                        has_struct || has_union || has_enum || base_set;
-                    // C++ pointer-to-member declarators start with a class name
-                    // after the pointee type: `R C::*member`. In that shape the
-                    // class name belongs to the declarator, not the base type.
-                    if (is_cpp_mode() &&
-                        pos_ + 2 < static_cast<int>(tokens_.size()) &&
-                        tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-                        tokens_[pos_ + 2].kind == TokenKind::Star) {
+                    if (is_typedef_name(name) ||
+                        is_template_scope_type_param(name) ||
+                        has_visible_typedef_type(name)) {
+                        // If we've already seen concrete type specifiers/modifiers,
+                        // this identifier is the declarator name (e.g. `int s;` even
+                        // when `s` is also a typedef name in outer scope).
+                        bool already_have_base =
+                            has_signed || has_unsigned || has_short || long_count > 0 ||
+                            has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
+                            has_struct || has_union || has_enum || base_set;
+                        // C++ pointer-to-member declarators start with a class name
+                        // after the pointee type: `R C::*member`. In that shape the
+                        // class name belongs to the declarator, not the base type.
+                        if (is_cpp_mode() &&
+                            pos_ + 2 < static_cast<int>(tokens_.size()) &&
+                            tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
+                            tokens_[pos_ + 2].kind == TokenKind::Star) {
+                            done = true;
+                            break;
+                        }
+                        if (!already_have_base) {
+                            has_typedef = true;
+                            const std::string resolved = resolve_visible_type_name(name);
+                            ts.tag = arena_.strdup(resolved.c_str());
+                            consume();
+                        }
                         done = true;
-                        break;
-                    }
-                    if (!already_have_base) {
+                    } else if (is_cpp_mode() &&
+                               !(has_signed || has_unsigned || has_short || long_count > 0 ||
+                                 has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
+                                 has_struct || has_union || has_enum || base_set) &&
+                               looks_like_unresolved_identifier_type_head(pos_)) {
+                        // C++ unresolved simple type in a declarator or parameter:
+                        // treat identifier spellings such as `Box value`,
+                        // `Box& value`, `Box* value`, `Box const& value`, and
+                        // unnamed forms like `true_type)` as a type head even if
+                        // typedef or injected-class-name registration was lost.
                         has_typedef = true;
-                        const std::string resolved = resolve_visible_type_name(cur().lexeme);
-                        ts.tag = arena_.strdup(resolved.c_str());
+                        const std::string spelled(name);
+                        ts.tag = arena_.strdup(spelled.c_str());
                         consume();
+                        done = true;
+                    } else {
+                        done = true;  // end of type; identifier is the declarator name
                     }
-                    done = true;
-                } else if (is_cpp_mode() &&
-                           !(has_signed || has_unsigned || has_short || long_count > 0 ||
-                             has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
-                             has_struct || has_union || has_enum || base_set) &&
-                           looks_like_unresolved_identifier_type_head(pos_)) {
-                    // C++ unresolved simple type in a declarator or parameter:
-                    // treat identifier spellings such as `Box value`,
-                    // `Box& value`, `Box* value`, `Box const& value`, and
-                    // unnamed forms like `true_type)` as a type head even if
-                    // typedef or injected-class-name registration was lost.
-                    has_typedef = true;
-                    ts.tag = arena_.strdup(cur().lexeme);
-                    consume();
-                    done = true;
-                } else {
-                    done = true;  // end of type; identifier is the declarator name
                 }
                 break;
 

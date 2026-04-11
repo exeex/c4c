@@ -578,6 +578,79 @@ void test_parser_typeof_like_probes_use_token_spelling() {
               "typeof-like float literal suffix probes should use parser-owned spellings");
 }
 
+void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
+  c4c::Arena arena;
+  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "_Float128"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[0].lexeme = "bridge_only_floatn";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  parser.pos_ = 0;
+  c4c::TypeSpec floatn_ts = parser.parse_base_type();
+  expect_true(floatn_ts.base == c4c::TB_LONGDOUBLE,
+              "parse_base_type should use parser-owned spelling for fixed-width float keywords");
+  expect_eq(parser.token_spelling(parser.cur()), "value",
+            "fixed-width float keyword parsing should leave the declarator token in place");
+
+  c4c::TypeSpec typedef_ts{};
+  typedef_ts.array_size = -1;
+  typedef_ts.inner_rank = -1;
+  typedef_ts.base = c4c::TB_INT;
+  parser.register_typedef_binding("TypeAlias", typedef_ts, true);
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "TypeAlias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[0].lexeme = "bridge_only_alias";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  parser.pos_ = 0;
+  parser.last_resolved_typedef_.clear();
+  c4c::TypeSpec alias_ts = parser.parse_base_type();
+  expect_true(alias_ts.base == c4c::TB_INT,
+              "parse_base_type should resolve typedef names via parser-owned spelling");
+  expect_eq(parser.last_resolved_typedef_, "TypeAlias",
+            "typedef resolution should preserve the parser-owned identifier spelling");
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ForwardDecl"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+  };
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  parser.tokens_[0].lexeme = "bridge_only_forward_decl";
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  parser.pos_ = 0;
+  c4c::TypeSpec unresolved_ts = parser.parse_base_type();
+  expect_true(unresolved_ts.tag != nullptr,
+              "unresolved identifier fallback should produce a placeholder type tag");
+  expect_eq(unresolved_ts.tag, "ForwardDecl",
+            "unresolved identifier fallback should use parser-owned spelling");
+}
+
 }  // namespace
 
 int main() {
@@ -593,6 +666,7 @@ int main() {
   test_parser_type_start_probes_use_token_spelling();
   test_parser_exception_specs_and_attributes_use_token_spelling();
   test_parser_typeof_like_probes_use_token_spelling();
+  test_parser_parse_base_type_identifier_probes_use_token_spelling();
 
   std::cout << "PASS: frontend_parser_tests\n";
   return 0;

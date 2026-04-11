@@ -200,6 +200,7 @@ struct Token {
   int column = 0;
   TextId text_id = kInvalidText;
   FileId file_id = kInvalidFile;
+  bool has_parser_owned_spelling = false;
 };
 
 // Returns a short debug name for the kind (used in --lex-only output).
