@@ -42,12 +42,32 @@ struct GlobalInfo {
 using GlobalTypes = std::unordered_map<std::string, GlobalInfo>;
 using TypeDeclMap = std::unordered_map<std::string, std::string>;
 
+struct GlobalPointerSlotKey {
+  std::string global_name;
+  std::size_t byte_offset = 0;
+
+  bool operator==(const GlobalPointerSlotKey& other) const {
+    return global_name == other.global_name && byte_offset == other.byte_offset;
+  }
+};
+
+struct GlobalPointerSlotKeyHash {
+  std::size_t operator()(const GlobalPointerSlotKey& key) const {
+    return std::hash<std::string>{}(key.global_name) ^
+           (std::hash<std::size_t>{}(key.byte_offset) << 1);
+  }
+};
+
 using GlobalPointerMap = std::unordered_map<std::string, GlobalAddress>;
 using GlobalObjectPointerMap = std::unordered_map<std::string, GlobalAddress>;
 using GlobalAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
 using GlobalObjectAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
 using LocalAddressSlots = std::unordered_map<std::string, GlobalAddress>;
 using GlobalAddressSlots = std::unordered_map<std::string, std::optional<GlobalAddress>>;
+using AddressedGlobalPointerSlots =
+    std::unordered_map<GlobalPointerSlotKey,
+                       std::optional<GlobalAddress>,
+                       GlobalPointerSlotKeyHash>;
 
 struct LocalArraySlots {
   bir::TypeKind element_type = bir::TypeKind::Void;
@@ -1329,6 +1349,13 @@ std::optional<GlobalAddress> resolve_pointer_store_address(
   return global_ptr_it->second;
 }
 
+GlobalPointerSlotKey make_global_pointer_slot_key(const GlobalAddress& address) {
+  return GlobalPointerSlotKey{
+      .global_name = address.global_name,
+      .byte_offset = address.byte_offset,
+  };
+}
+
 std::optional<bir::TypeKind> lower_param_type(const c4c::TypeSpec& type) {
   if (type.base == TB_BOOL && type.ptr_level == 0 && type.array_rank == 0) {
     return bir::TypeKind::I1;
@@ -1779,6 +1806,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
                                        LocalArraySlotMap& local_array_slots,
                                        LocalAddressSlots& local_address_slots,
                                        GlobalAddressSlots& global_address_slots,
+                                       AddressedGlobalPointerSlots& addressed_global_pointer_slots,
                                        GlobalPointerMap& global_pointer_slots,
                                        GlobalObjectPointerMap& global_object_pointer_slots,
                                        GlobalAddressIntMap& global_address_ints,
@@ -2145,6 +2173,10 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       if (global_ptr_it->second.value_type != *value_type) {
         return false;
       }
+      if (*value_type == bir::TypeKind::Ptr) {
+        addressed_global_pointer_slots[make_global_pointer_slot_key(global_ptr_it->second)] =
+            resolve_pointer_store_address(store->val, global_pointer_slots, global_types);
+      }
       lowered_insts->push_back(bir::StoreGlobalInst{
           .global_name = global_ptr_it->second.global_name,
           .value = *value,
@@ -2274,14 +2306,22 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
         return false;
       }
       if (*value_type == bir::TypeKind::Ptr) {
-        const auto global_it = global_types.find(global_ptr_it->second.global_name);
-        if (global_it == global_types.end()) {
-          return false;
-        }
-        const auto pointer_init_it =
-            global_it->second.pointer_initializer_offsets.find(global_ptr_it->second.byte_offset);
-        if (pointer_init_it != global_it->second.pointer_initializer_offsets.end()) {
-          global_pointer_slots[load->result.str()] = pointer_init_it->second;
+        const auto addressed_it =
+            addressed_global_pointer_slots.find(make_global_pointer_slot_key(global_ptr_it->second));
+        if (addressed_it != addressed_global_pointer_slots.end()) {
+          if (addressed_it->second.has_value()) {
+            global_pointer_slots[load->result.str()] = *addressed_it->second;
+          }
+        } else {
+          const auto global_it = global_types.find(global_ptr_it->second.global_name);
+          if (global_it == global_types.end()) {
+            return false;
+          }
+          const auto pointer_init_it =
+              global_it->second.pointer_initializer_offsets.find(global_ptr_it->second.byte_offset);
+          if (pointer_init_it != global_it->second.pointer_initializer_offsets.end()) {
+            global_pointer_slots[load->result.str()] = pointer_init_it->second;
+          }
         }
       }
       lowered_insts->push_back(bir::LoadGlobalInst{
@@ -2620,6 +2660,7 @@ std::optional<bir::Function> lower_branch_family_function(
   LocalArraySlotMap local_array_slots;
   LocalAddressSlots local_address_slots;
   GlobalAddressSlots global_address_slots;
+  AddressedGlobalPointerSlots addressed_global_pointer_slots;
   GlobalPointerMap global_pointer_slots;
   GlobalObjectPointerMap global_object_pointer_slots;
   GlobalAddressIntMap global_address_ints;
@@ -2636,6 +2677,7 @@ std::optional<bir::Function> lower_branch_family_function(
             local_array_slots,
             local_address_slots,
             global_address_slots,
+            addressed_global_pointer_slots,
             global_pointer_slots,
             global_object_pointer_slots,
             global_address_ints,
@@ -2665,6 +2707,7 @@ std::optional<bir::Function> lower_branch_family_function(
               local_array_slots,
               local_address_slots,
               global_address_slots,
+              addressed_global_pointer_slots,
               global_pointer_slots,
               global_object_pointer_slots,
               global_address_ints,
