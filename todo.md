@@ -19,24 +19,27 @@ Source Plan: plan.md
   indirect-call slice was already complete
 - current capability family:
   backlog item 2 boundary repair inside backlog item 5's proving surface:
-  harden function-entry signatures enough that the next honest indirect-call
-  family can keep moving through the shared BIR/prepared-BIR route
+  the first one-stack-slot and two-stack-slot riscv64 entry-signature seams
+  are now green for the existing eight-arg indirect-call lane, and the next
+  packet should either keep widening stack-passed entry coverage or resume
+  outward call-lane work from this repaired boundary
 - current packet shape:
-  keep backlog item 5 on the riscv64 backend-route surface by repairing the
-  entry-signature seam that blocked the next adjacent call shape: support the
-  first nine-parameter function-entry family where the callee pointer plus
-  eight `i32` values arrive through the normal riscv64 signature contract,
-  with the ninth incoming value stack-passed but the outgoing indirect call
-  still staying inside the existing eight-register call-arg lane
+  route decision pending from the repaired entry boundary:
+  either widen past the first two caller-stack integer params on function
+  entry while keeping the existing eight-register indirect-call lane fixed,
+  or resume backlog item 5's outward call-lane work without reopening
+  direct-route fallbacks or jumping ahead to ABI-shaped call work
 - candidate proving surface:
   `tests/c/internal/backend_route_case/indirect_eight_arg_param_call.c`
   `tests/c/internal/backend_route_case/indirect_eight_arg_local_call.c`
   `tests/c/internal/backend_route_case/indirect_eight_arg_stack_param_call.c`
   `tests/c/internal/backend_route_case/indirect_eight_arg_stack_local_call.c`
+  `tests/c/internal/backend_route_case/indirect_eight_arg_two_stack_param_call.c`
+  `tests/c/internal/backend_route_case/indirect_eight_arg_two_stack_local_call.c`
   keep `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the current
   one-arg through eight-arg indirect-call plus `two_arg_*` direct-call route
-  tests as standing sentinels while repairing only the next honest
-  entry-signature seam that is already adjacent on riscv64
+  tests as standing sentinels while the next packet is chosen from this same
+  honest riscv64 entry-signature / call-lane boundary
 
 ## Immediate Target
 
@@ -44,9 +47,9 @@ Source Plan: plan.md
 - carry the now-green addressed-global work forward by moving to the next
   semantic family instead of stretching backlog item 4 past its proving surface
 - carry the now-green one-arg through six-arg indirect-call surface forward
-  by moving into the first nine-parameter indirect-call proving slice instead
-  of reopening richer direct-call metadata or jumping ahead to ABI-shaped call
-  work
+  by keeping packet selection adjacent to the now-green one-stack-slot and
+  two-stack-slot entry-signature boundary instead of reopening richer
+  direct-call metadata or jumping ahead to ABI-shaped call work
 - avoid reintroducing testcase-shaped routing while broadening the shared
   entry-signature and call lanes
 
@@ -55,9 +58,9 @@ Source Plan: plan.md
 - `branch_if_eq.c` still lowers to clean BIR
 - the existing direct-call sentinels, one-arg indirect-call tests, and
   rewrite-only two-arg route tests stay green on riscv64
-- simple param-carried and local-slot nine-parameter helper wrappers lower
-  through the same riscv64 backend-route surface, with the eighth call arg
-  loaded from the incoming caller stack slot instead of reopening host-runtime
+- simple param-carried and local-slot ten-parameter helper wrappers lower
+  through the same riscv64 backend-route surface, with the final two call args
+  loaded from incoming caller stack slots instead of reopening host-runtime
   x86 fallback or jumping ahead to ABI-shaped call work
 - semantic call lowering keeps callee identity, result type, and minimal arg
   metadata available for later prepare/ABI shaping without performing that
@@ -69,6 +72,33 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  the first honest ten-parameter indirect-call proving family is now green on
+  the same shared semantic-BIR/prepared-BIR riscv64 route surface as the
+  earlier one-stack-slot entry work: the existing backend entry-state mapping
+  already kept multiple caller-stack params addressable through
+  `value_stack_offsets`, so no backend route rewrite was needed to carry two
+  stack-passed incoming `i32` values into the standing eight-register
+  indirect-call lane
+  new route proofs cover `indirect_eight_arg_two_stack_param_call.c` and
+  `indirect_eight_arg_two_stack_local_call.c` as native asm with the expected
+  callee preserve into `t0`, arg rewrites from `a2/a3/a4/a5/a6/a7` into
+  `a0/a1/a2/a3/a4/a5`, both incoming caller-stack reloads via
+  `lw a6, 16(sp)` and `lw a7, 24(sp)`, and final `jalr ra, t0, 0`, while
+  `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the earlier
+  one-arg through eight-arg indirect-call plus `two_arg_*` direct-call
+  sentinels stayed green beside them
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the two new riscv64 route tests passed, the broad `^backend_` subset stayed
+  flat at `225` failing tests before and after, the total backend test surface
+  increased from `351` to `353`, and supervisor-side regression guard passed
+  with `passed=126 -> 128`, `failed=225 -> 225`, and `0` new failing tests
+  this confirms the next adjacent entry-signature seam without reopening
+  fallback paths, ABI-shaped lowering, or testcase-shaped route logic
 - completed:
   the first honest nine-parameter indirect-call family now stays on the same
   shared semantic-BIR/prepared-BIR route surface as the earlier one-arg
