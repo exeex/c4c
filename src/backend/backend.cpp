@@ -43,9 +43,17 @@ c4c::codegen::lir::LirModule prepare_lir_module_for_target(
   return c4c::backend::prepare::prepare_lir_module_with_options(module, target).module;
 }
 
+c4c::backend::bir::Module prepare_bir_module_for_target(
+    const c4c::backend::bir::Module& module,
+    Target target) {
+  return c4c::backend::prepare::prepare_bir_module_with_options(module, target).module;
+}
+
 std::string emit_target_bir_module(const bir::Module& module, Target public_target) {
   (void)public_target;
-  return c4c::backend::bir::print(module);
+  const auto prepared =
+      c4c::backend::prepare::prepare_bir_module_with_options(module, public_target);
+  return c4c::backend::bir::print(prepared.module);
 }
 
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
@@ -82,7 +90,9 @@ std::string emit_module(const BackendModuleInput& input,
       lir_module, target, c4c::backend::prepare::PrepareOptions{});
 
   if (lowering.module.has_value()) {
-    return c4c::backend::bir::print(*lowering.module);
+    const auto prepared_bir = c4c::backend::prepare::prepare_bir_module_with_options(
+        *lowering.module, target, c4c::backend::prepare::PrepareOptions{});
+    return c4c::backend::bir::print(prepared_bir.module);
   }
   return emit_bootstrap_lir_module(prepared.module, target);
 }

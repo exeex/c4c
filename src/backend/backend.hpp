@@ -60,6 +60,10 @@ struct BackendAssembleResult {
     const c4c::codegen::lir::LirModule& module,
     Target target);
 
+[[nodiscard]] c4c::backend::bir::Module prepare_bir_module_for_target(
+    const c4c::backend::bir::Module& module,
+    Target target);
+
 std::string emit_target_bir_module(const bir::Module& module, Target public_target);
 
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,

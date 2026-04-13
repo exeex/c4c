@@ -265,6 +265,7 @@ set(BACKEND_LOWERING_BOOTSTRAP_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_analysis.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_module.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prepare/prepare.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prepare/legalize.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prepare/stack_layout.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prepare/liveness.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prepare/regalloc.cpp"
