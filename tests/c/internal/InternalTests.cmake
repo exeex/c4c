@@ -2061,7 +2061,7 @@ if(CLANG_EXECUTABLE)
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/extern_global_array.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/extern_global_array_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t3 = bir.load_global i32 @ext_arr, offset 4|bir.ret i32 %t3"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t5 = bir.load_global i32 @ext_arr, offset 12|bir.ret i32 %t5"
       FORBIDDEN_SNIPPETS "define i32 @main()"
     )
   endif()

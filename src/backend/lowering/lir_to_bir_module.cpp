@@ -23,6 +23,7 @@ struct GlobalInfo {
   std::size_t element_count = 0;
   bool supports_direct_value = false;
   bool supports_linear_addressing = false;
+  std::string type_text;
 };
 
 using GlobalTypes = std::unordered_map<std::string, GlobalInfo>;
@@ -129,6 +130,82 @@ std::optional<std::pair<std::size_t, bir::TypeKind>> parse_local_array_type(std:
   }
 
   return std::pair<std::size_t, bir::TypeKind>{static_cast<std::size_t>(*count), *element_type};
+}
+
+struct IntegerArrayType {
+  std::vector<std::size_t> extents;
+  bir::TypeKind element_type = bir::TypeKind::Void;
+};
+
+std::optional<IntegerArrayType> parse_integer_array_type(std::string_view text) {
+  IntegerArrayType lowered;
+  std::string_view remainder = text;
+  while (true) {
+    if (const auto scalar_type = lower_integer_type(remainder); scalar_type.has_value()) {
+      if (lowered.extents.empty()) {
+        return std::nullopt;
+      }
+      lowered.element_type = *scalar_type;
+      return lowered;
+    }
+
+    if (remainder.size() < 6 || remainder.front() != '[' || remainder.back() != ']') {
+      return std::nullopt;
+    }
+
+    const auto x_pos = remainder.find(" x ");
+    if (x_pos == std::string_view::npos || x_pos <= 1) {
+      return std::nullopt;
+    }
+
+    const auto count = parse_i64(remainder.substr(1, x_pos - 1));
+    if (!count.has_value() || *count <= 0) {
+      return std::nullopt;
+    }
+
+    lowered.extents.push_back(static_cast<std::size_t>(*count));
+    remainder = remainder.substr(x_pos + 3, remainder.size() - x_pos - 4);
+  }
+}
+
+std::optional<std::string_view> peel_integer_array_layer(std::string_view text) {
+  if (text.size() < 6 || text.front() != '[' || text.back() != ']') {
+    return std::nullopt;
+  }
+
+  const auto x_pos = text.find(" x ");
+  if (x_pos == std::string_view::npos || x_pos <= 1) {
+    return std::nullopt;
+  }
+
+  const auto count = parse_i64(text.substr(1, x_pos - 1));
+  if (!count.has_value() || *count <= 0) {
+    return std::nullopt;
+  }
+
+  return text.substr(x_pos + 3, text.size() - x_pos - 4);
+}
+
+std::size_t type_size_bytes_from_text(std::string_view text) {
+  if (const auto scalar_type = lower_integer_type(text); scalar_type.has_value()) {
+    return type_size_bytes(*scalar_type);
+  }
+
+  const auto array_type = parse_integer_array_type(text);
+  if (!array_type.has_value()) {
+    return 0;
+  }
+
+  const auto element_size_bytes = type_size_bytes(array_type->element_type);
+  if (element_size_bytes == 0) {
+    return 0;
+  }
+
+  std::size_t total_elements = 1;
+  for (const auto extent : array_type->extents) {
+    total_elements *= extent;
+  }
+  return total_elements * element_size_bytes;
 }
 
 std::optional<ParsedTypedOperand> parse_typed_operand(std::string_view text) {
@@ -369,29 +446,35 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
     return std::nullopt;
   }
 
-  const auto array_type = parse_local_array_type(global.llvm_type);
-  if (!array_type.has_value()) {
+  const auto integer_array = parse_integer_array_type(global.llvm_type);
+  if (!integer_array.has_value()) {
     return std::nullopt;
   }
 
-  const auto element_size_bytes = type_size_bytes(array_type->second);
+  const auto element_size_bytes = type_size_bytes(integer_array->element_type);
   if (element_size_bytes == 0) {
     return std::nullopt;
   }
 
+  std::size_t total_elements = 1;
+  for (const auto extent : integer_array->extents) {
+    total_elements *= extent;
+  }
+
   bir::Global lowered;
   lowered.name = global.name;
-  lowered.type = array_type->second;
+  lowered.type = integer_array->element_type;
   lowered.is_extern = true;
   lowered.is_constant = global.is_const;
-  lowered.size_bytes = array_type->first * element_size_bytes;
+  lowered.size_bytes = total_elements * element_size_bytes;
   lowered.align_bytes = global.align_bytes > 0 ? static_cast<std::size_t>(global.align_bytes) : 0;
 
-  info->value_type = array_type->second;
+  info->value_type = integer_array->element_type;
   info->element_size_bytes = element_size_bytes;
-  info->element_count = array_type->first;
+  info->element_count = total_elements;
   info->supports_direct_value = false;
   info->supports_linear_addressing = true;
+  info->type_text = global.llvm_type;
   return lowered;
 }
 
@@ -731,15 +814,25 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       }
       const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
       const auto elem_imm = resolve_index_operand(elem_index->operand, value_aliases);
-      if (!base_imm.has_value() || !elem_imm.has_value() || *base_imm != 0 || *elem_imm < 0 ||
-          static_cast<std::size_t>(*elem_imm) >= global_it->second.element_count) {
+      const auto pointee_type = peel_integer_array_layer(global_it->second.type_text);
+      if (!base_imm.has_value() || !elem_imm.has_value() || !pointee_type.has_value() ||
+          *base_imm != 0 || *elem_imm < 0) {
+        return false;
+      }
+      const auto array_type = parse_integer_array_type(global_it->second.type_text);
+      if (!array_type.has_value() || array_type->extents.empty() ||
+          static_cast<std::size_t>(*elem_imm) >= array_type->extents.front()) {
+        return false;
+      }
+      const auto stride_bytes = type_size_bytes_from_text(*pointee_type);
+      if (stride_bytes == 0) {
         return false;
       }
 
       global_pointer_slots[gep->result.str()] = GlobalAddress{
           .global_name = global_name,
-          .value_type = global_it->second.value_type,
-          .byte_offset = static_cast<std::size_t>(*elem_imm) * global_it->second.element_size_bytes,
+          .value_type = lower_integer_type(*pointee_type).value_or(bir::TypeKind::Void),
+          .byte_offset = static_cast<std::size_t>(*elem_imm) * stride_bytes,
       };
       return true;
     }
@@ -771,14 +864,14 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
         return false;
       }
       const auto index_imm = resolve_index_operand(parsed_index->operand, value_aliases);
-      const auto stride_bytes = type_size_bytes(global_ptr_it->second.value_type);
+      const auto stride_bytes = type_size_bytes_from_text(gep->element_type.str());
       if (!index_imm.has_value() || *index_imm < 0 || stride_bytes == 0) {
         return false;
       }
 
       global_pointer_slots[gep->result.str()] = GlobalAddress{
           .global_name = global_ptr_it->second.global_name,
-          .value_type = global_ptr_it->second.value_type,
+          .value_type = lower_integer_type(gep->element_type.str()).value_or(bir::TypeKind::Void),
           .byte_offset =
               global_ptr_it->second.byte_offset +
               static_cast<std::size_t>(*index_imm) * stride_bytes,
@@ -1315,7 +1408,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     if (!lowered_global.has_value()) {
       context.note(
           "module",
-          "bootstrap lir_to_bir only supports minimal scalar globals and extern scalar-array globals right now");
+          "bootstrap lir_to_bir only supports minimal scalar globals and extern integer-array globals right now");
       return std::nullopt;
     }
     global_types.emplace(lowered_global->name, info);

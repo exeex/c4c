@@ -41,6 +41,20 @@ Source Plan: plan.md
 - no new direct route, rendered-text matcher, or tiny case-family special path
   is introduced
 
+## Latest Packet Progress
+
+- completed:
+  widened the extern integer-array lane from flat array reads to nested
+  addressed-global reads by carrying aggregate byte strides across chained
+  global GEP steps in `lir_to_bir_module.cpp`
+- remaining next:
+  keep backlog item 4 on honest addressed-global coverage; defined array
+  initializers and pointer round-trips are still outside this finished slice
+- proof:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir)$'`
+- proof log:
+  `test_after.log`
+
 ## Parked While This Packet Is Active
 
 - broader call-lane expansion beyond the current minimal direct-call coverage
