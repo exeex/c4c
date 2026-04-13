@@ -191,13 +191,21 @@ Source Plan: plan.md
   *pp = gp; return **pp;` through semantic BIR as `bir.load_global ptr @pairs,
   offset 24`, `bir.store_global @pairs, offset 24, ptr ...`, and the later
   addressed-global reload from `@y` rather than raw LLVM fallback
+  deeper root-level nested aggregate arrays now have explicit route coverage
+  too; new riscv64 route proofs cover `groups[1].inner.xs[2]`,
+  `groups[1].inner.xs[1] = 9; return groups[1].inner.xs[1];`, and
+  `int *p = &groups[0].inner.xs[0]; p[5] = 9; return groups[1].inner.xs[2];`
+  through semantic BIR as direct `bir.load_global i32 @groups, offset 20` and
+  addressed `bir.store_global @groups, offset 16/20, i32 9` rather than raw
+  LLVM fallback, confirming the existing addressed-global aggregate lowering
+  scales across array-root then struct-field then nested-array descent without
+  testcase-shaped routing
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; broader pointer
   global forms beyond recursively resolved constant in-bounds aliases and the
   now-covered pointer-value stores into addressed pointer-global slots,
   pointer-global object-address roundtrip stores, and root aggregate arrays
-  with pointer-valued fields, plus deeper array-of-array aggregate roots, are
-  still outside this finished slice
+  with pointer-valued fields are still outside this finished slice
 - proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_.*global.*defaults_to_bir$' > test_after.log 2>&1`
 - proof log:
