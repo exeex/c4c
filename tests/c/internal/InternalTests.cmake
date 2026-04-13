@@ -1604,6 +1604,24 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_call_helper_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/call_helper.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/call_helper_riscv64.s"
+      REQUIRED_SNIPPETS ".text|.globl main|main:|call helper|ret"
+      FORBIDDEN_SNIPPETS "bir.func @main()|define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_local_arg_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/local_arg_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/local_arg_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl add_one|add_one:|addi a0, a0, 1|.globl main|main:|call add_one|ret"
+      FORBIDDEN_SNIPPETS "bir.func @add_one|bir.func @main()|define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_return_ne_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_ne.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu

@@ -250,31 +250,26 @@ Source Plan: plan.md
   addressed-global route tests spanning defined pointer globals, nested struct
   arrays, struct pointer arrays, and pointer-field object-alias initializers
   all passed together, so the stale item-4 follow-on note is retired here
+- completed:
+  the first direct-call proving surface is now routed onto explicit riscv64
+  backend-route tests instead of the host x86 runtime lane:
+  `backend_codegen_route_riscv64_call_helper_defaults_to_asm` proves the
+  extern helper declaration case emits native riscv64 asm with `call helper`,
+  and `backend_codegen_route_riscv64_local_arg_call_defaults_to_asm` proves
+  the single-local-arg helper case emits native riscv64 asm with `call
+  add_one` plus the existing direct local-slot/load/store path
+  this keeps backlog item 5 attached to the riscv64 backend-route surface the
+  runbook asked for, preserves `branch_if_eq.c` as the standing BIR sentinel,
+  and avoids reopening the rejected host-runtime x86 proof seam
 - blocked:
-  the backend-driver seam is now repaired inside `src/backend/backend.cpp` for
-  the current minimal riscv64 direct-call family: when prepared BIR stays
-  within single-block `i32` add/load_local/store_local/direct-call/return
-  semantics, `./build/c4cll --codegen asm --target riscv64-unknown-linux-gnu`
-  now emits native asm on stdout for both `call_helper.c` and
-  `local_arg_call.c` instead of printing `bir.func` text, while
-  `branch_if_eq.c -o ...ll` still preserves the existing BIR route proof
-  surface because that CFG-shaped family remains unsupported by the direct asm
-  emitter and therefore falls back to printed BIR as before
-  the delegated proof command is still red, but the remaining failure is no
-  longer inside the owned riscv64 seam: `backend_runtime_call_helper` and
-  `backend_runtime_local_arg_call` are host-runtime tests that currently run
-  with `TARGET_TRIPLE=x86_64-unknown-linux-gnu`, so they still exercise the
-  separate x86 backend/runtime path and continue to assemble stale `bir.func`
-  text there instead of touching the new riscv64 emission lane
+  none in owned files for this packet
 - remaining next:
-  supervisor should re-route proof selection so backlog item 5 is exercised by
-  riscv64-visible tests rather than the host x86 runtime lane: either add the
-  missing riscv64 call route proofs under the existing `backend_codegen_route`
-  surface or delegate an explicitly x86-owned packet if the host runtime tests
-  must stay in scope before returning to `call_decode.cpp` / `lir_to_bir`
-  cleanup for the direct-call semantic lane
+  widen backlog item 5 beyond zero/one-arg direct calls from this now-green
+  riscv64 route baseline, most likely by extending the same explicit
+  backend-route proof style to the first two-arg direct-call family before
+  touching indirect calls or ABI-shaped follow-ons
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_call_helper_defaults_to_bir|backend_codegen_route_riscv64_local_arg_call_defaults_to_bir|backend_runtime_call_helper|backend_runtime_local_arg_call)$' > test_after.log 2>&1`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_call_helper_defaults_to_asm|backend_codegen_route_riscv64_local_arg_call_defaults_to_asm)$' > test_after.log 2>&1`
 - proof log:
   `test_after.log`
 
