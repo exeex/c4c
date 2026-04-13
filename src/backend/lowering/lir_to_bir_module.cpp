@@ -16,6 +16,7 @@ namespace {
 using ValueMap = std::unordered_map<std::string, bir::Value>;
 using LocalSlotTypes = std::unordered_map<std::string, bir::TypeKind>;
 using LocalPointerSlots = std::unordered_map<std::string, std::string>;
+using GlobalTypes = std::unordered_map<std::string, bir::TypeKind>;
 
 struct LocalArraySlots {
   bir::TypeKind element_type = bir::TypeKind::Void;
@@ -240,6 +241,82 @@ std::optional<bir::TypeKind> lower_param_type(const c4c::TypeSpec& type) {
     return bir::TypeKind::I1;
   }
   return backend_lir_lower_minimal_scalar_type(type);
+}
+
+std::optional<bir::Value> lower_global_initializer(std::string_view text,
+                                                   bir::TypeKind type) {
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (trimmed.empty()) {
+    return std::nullopt;
+  }
+
+  if (trimmed == "zeroinitializer") {
+    switch (type) {
+      case bir::TypeKind::I1:
+        return bir::Value::immediate_i1(false);
+      case bir::TypeKind::I8:
+        return bir::Value::immediate_i8(0);
+      case bir::TypeKind::I32:
+        return bir::Value::immediate_i32(0);
+      case bir::TypeKind::I64:
+        return bir::Value::immediate_i64(0);
+      default:
+        return std::nullopt;
+    }
+  }
+
+  if (type == bir::TypeKind::I1) {
+    if (trimmed == "true") {
+      return bir::Value::immediate_i1(true);
+    }
+    if (trimmed == "false") {
+      return bir::Value::immediate_i1(false);
+    }
+  }
+
+  const auto parsed = parse_i64(trimmed);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+
+  switch (type) {
+    case bir::TypeKind::I1:
+      return bir::Value::immediate_i1(*parsed != 0);
+    case bir::TypeKind::I8:
+      return bir::Value::immediate_i8(static_cast<std::int8_t>(*parsed));
+    case bir::TypeKind::I32:
+      return bir::Value::immediate_i32(static_cast<std::int32_t>(*parsed));
+    case bir::TypeKind::I64:
+      return bir::Value::immediate_i64(*parsed);
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGlobal& global) {
+  if (backend_lir_global_uses_nonminimal_types(global)) {
+    return std::nullopt;
+  }
+
+  const auto lowered_type = lower_integer_type(global.llvm_type);
+  if (!lowered_type.has_value()) {
+    return std::nullopt;
+  }
+
+  bir::Global lowered;
+  lowered.name = global.name;
+  lowered.type = *lowered_type;
+  lowered.is_extern = global.is_extern_decl;
+  lowered.is_constant = global.is_const;
+  lowered.align_bytes = global.align_bytes > 0 ? static_cast<std::size_t>(global.align_bytes) : 0;
+  if (!global.is_extern_decl) {
+    const auto initializer = lower_global_initializer(global.init_text, *lowered_type);
+    if (!initializer.has_value()) {
+      return std::nullopt;
+    }
+    lowered.initializer = *initializer;
+  }
+  return lowered;
 }
 
 bool is_void_param_sentinel(const c4c::TypeSpec& type) {
@@ -473,6 +550,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
                                        LocalSlotTypes& local_slot_types,
                                        LocalPointerSlots& local_pointer_slots,
                                        LocalArraySlotMap& local_array_slots,
+                                       const GlobalTypes& global_types,
                                        bir::Function* lowered_function,
                                        std::vector<bir::Inst>* lowered_insts) {
   if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, lowered_insts)) {
@@ -626,13 +704,32 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
   }
 
   if (const auto* store = std::get_if<c4c::codegen::lir::LirStoreOp>(&inst)) {
-    if (store->ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+    if (store->ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue &&
+        store->ptr.kind() != c4c::codegen::lir::LirOperandKind::Global) {
       return false;
     }
 
     const auto value_type = lower_integer_type(store->type_str.str());
     if (!value_type.has_value()) {
       return false;
+    }
+
+    const auto value = lower_value(store->val, *value_type, value_aliases);
+    if (!value.has_value()) {
+      return false;
+    }
+
+    if (store->ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
+      const std::string global_name = store->ptr.str().substr(1);
+      const auto global_it = global_types.find(global_name);
+      if (global_it == global_types.end() || global_it->second != *value_type) {
+        return false;
+      }
+      lowered_insts->push_back(bir::StoreGlobalInst{
+          .global_name = global_name,
+          .value = *value,
+      });
+      return true;
     }
 
     const auto ptr_it = local_pointer_slots.find(store->ptr.str());
@@ -645,11 +742,6 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       return false;
     }
 
-    const auto value = lower_value(store->val, *value_type, value_aliases);
-    if (!value.has_value()) {
-      return false;
-    }
-
     lowered_insts->push_back(bir::StoreLocalInst{
         .slot_name = ptr_it->second,
         .value = *value,
@@ -659,13 +751,27 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
 
   if (const auto* load = std::get_if<c4c::codegen::lir::LirLoadOp>(&inst)) {
     if (load->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
-        load->ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+        (load->ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue &&
+         load->ptr.kind() != c4c::codegen::lir::LirOperandKind::Global)) {
       return false;
     }
 
     const auto value_type = lower_integer_type(load->type_str.str());
     if (!value_type.has_value()) {
       return false;
+    }
+
+    if (load->ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
+      const std::string global_name = load->ptr.str().substr(1);
+      const auto global_it = global_types.find(global_name);
+      if (global_it == global_types.end() || global_it->second != *value_type) {
+        return false;
+      }
+      lowered_insts->push_back(bir::LoadGlobalInst{
+          .result = bir::Value::named(*value_type, load->result.str()),
+          .global_name = global_name,
+      });
+      return true;
     }
 
     const auto ptr_it = local_pointer_slots.find(load->ptr.str());
@@ -920,7 +1026,8 @@ std::optional<bir::Function> lower_select_family_function(
 
 std::optional<bir::Function> lower_branch_family_function(
     BirLoweringContext& context,
-    const c4c::codegen::lir::LirFunction& function) {
+    const c4c::codegen::lir::LirFunction& function,
+    const GlobalTypes& global_types) {
   (void)context;
   if (function.is_declaration || function.blocks.empty()) {
     return std::nullopt;
@@ -948,13 +1055,14 @@ std::optional<bir::Function> lower_branch_family_function(
   for (const auto& inst : function.alloca_insts) {
     if (!lower_scalar_or_local_memory_inst(
             inst,
-            value_aliases,
-            compare_exprs,
-            local_slot_types,
-            local_pointer_slots,
-            local_array_slots,
-            &lowered,
-            &hoisted_alloca_scratch)) {
+        value_aliases,
+        compare_exprs,
+        local_slot_types,
+        local_pointer_slots,
+        local_array_slots,
+        global_types,
+        &lowered,
+        &hoisted_alloca_scratch)) {
       return std::nullopt;
     }
   }
@@ -974,6 +1082,7 @@ std::optional<bir::Function> lower_branch_family_function(
               local_slot_types,
               local_pointer_slots,
               local_array_slots,
+              global_types,
               &lowered,
               &lowered_block.insts)) {
         return std::nullopt;
@@ -1031,7 +1140,27 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
       analysis.string_constant_count != 0) {
     context.note(
         "module",
-        "bootstrap lir_to_bir only supports modules without globals/strings right now");
+        "bootstrap lir_to_bir only supports minimal scalar globals and no strings right now");
+    if (analysis.string_constant_count != 0) {
+      return std::nullopt;
+    }
+  }
+
+  GlobalTypes global_types;
+  global_types.reserve(context.lir_module.globals.size());
+  for (const auto& global : context.lir_module.globals) {
+    auto lowered_global = lower_scalar_global(global);
+    if (!lowered_global.has_value()) {
+      context.note(
+          "module",
+          "bootstrap lir_to_bir only supports minimal scalar globals right now");
+      return std::nullopt;
+    }
+    global_types.emplace(lowered_global->name, lowered_global->type);
+    module.globals.push_back(std::move(*lowered_global));
+  }
+
+  if (analysis.string_constant_count != 0) {
     return std::nullopt;
   }
 
@@ -1055,7 +1184,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
 
     auto lowered_function = lower_select_family_function(context, function);
     if (!lowered_function.has_value()) {
-      lowered_function = lower_branch_family_function(context, function);
+      lowered_function = lower_branch_family_function(context, function, global_types);
     }
     if (!lowered_function.has_value()) {
       context.note(
@@ -1068,7 +1197,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
 
   context.note(
       "module",
-      "lowered function-only scalar compare/select/local-memory/return module to BIR");
+      "lowered scalar compare/select/local-memory/global/call/return module to BIR");
   return module;
 }
 
