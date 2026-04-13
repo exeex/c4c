@@ -254,12 +254,25 @@ Source Plan: plan.md
   the addressed-global aggregate lane also scales across array-root, nested
   struct descent, and pointer-field access without reintroducing testcase-
   shaped routing
+  scalar pointer globals initialized from aggregate-root addressed globals now
+  preserve the parsed leaf scalar type instead of collapsing back to the
+  aggregate storage byte type; new riscv64 route proofs cover direct
+  `int *gp = &pairs[1].b; return *gp;` and the same root-array field alias
+  through `int **gpp = &gp; return (*gpp)[0];` as `bir.load_global ptr @gp`
+  or the ordered `bir.load_global ptr @gpp`, then `bir.load_global ptr @gp`,
+  followed by `bir.load_global i32 @pairs, offset 12` rather than raw LLVM
+  fallback
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; broader pointer
   global forms beyond the now-covered aggregate-field rebasing for offset
   pointer-global aliases, recursively resolved constant in-bounds aliases,
   pointer-value stores into addressed pointer-global slots, and pointer-global
   object-address roundtrip stores are still outside this finished slice
+  plain struct-root field-address initializers such as `int *gp = &s.xs[1];`
+  are currently blocked upstream of BIR because `src/codegen/lir/const_init_emitter.cpp`
+  still materializes that initializer as `null` even under `--codegen llvm`;
+  keep that blocker recorded here instead of pretending it is a backend-only
+  miss
 - proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_.*global.*defaults_to_bir$' > test_after.log 2>&1`
 - proof log:
