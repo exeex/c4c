@@ -4,6 +4,7 @@
 
 #include "../codegen/lir/lir_printer.hpp"
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <sstream>
@@ -29,7 +30,7 @@ constexpr std::array<std::string_view, 7> kRiscvTempRegs = {
     "t0", "t1", "t2", "t3", "t4", "t5", "t6"};
 constexpr std::array<std::string_view, 8> kRiscvIncomingArgRegs = {
     "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"};
-constexpr std::array<std::string_view, 2> kRiscvArgRegs = {"a0", "a1"};
+constexpr std::array<std::string_view, 3> kRiscvArgRegs = {"a0", "a1", "a2"};
 
 Target resolve_public_lir_target(const c4c::codegen::lir::LirModule& module,
                                  Target public_target) {
@@ -242,19 +243,25 @@ bool move_riscv_i32_call_args_into_regs(const std::vector<Value>& args,
   }
 
   struct PendingCallArgMove {
+    std::string_view dest_reg;
     bool is_immediate = false;
     std::int64_t immediate = 0;
     std::string src_reg;
   };
 
-  std::vector<PendingCallArgMove> moves(args.size());
+  std::vector<PendingCallArgMove> moves;
+  moves.reserve(args.size());
   for (std::size_t index = 0; index < args.size(); ++index) {
+    PendingCallArgMove move{
+        .dest_reg = kRiscvArgRegs[index],
+    };
     if (!is_supported_riscv_i32_value(args[index])) {
       return false;
     }
     if (args[index].kind == Value::Kind::Immediate) {
-      moves[index].is_immediate = true;
-      moves[index].immediate = args[index].immediate;
+      move.is_immediate = true;
+      move.immediate = args[index].immediate;
+      moves.push_back(std::move(move));
       continue;
     }
 
@@ -262,41 +269,49 @@ bool move_riscv_i32_call_args_into_regs(const std::vector<Value>& args,
     if (it == state.value_regs.end()) {
       return false;
     }
-    moves[index].src_reg = it->second;
+    move.src_reg = it->second;
+    if (move.src_reg == move.dest_reg) {
+      continue;
+    }
+    moves.push_back(std::move(move));
   }
 
-  const auto emit_move = [&](std::size_t index) {
-    const auto dest_reg = kRiscvArgRegs[index];
-    if (moves[index].is_immediate) {
-      out << "    li " << dest_reg << ", " << moves[index].immediate << "\n";
-      return true;
-    }
-    if (moves[index].src_reg != dest_reg) {
-      out << "    mv " << dest_reg << ", " << moves[index].src_reg << "\n";
-    }
-    return true;
-  };
+  while (!moves.empty()) {
+    bool emitted = false;
+    for (std::size_t index = 0; index < moves.size(); ++index) {
+      if (!moves[index].is_immediate) {
+        const bool src_is_pending_dest =
+            std::any_of(moves.begin(), moves.end(), [&](const PendingCallArgMove& other) {
+              return other.dest_reg == moves[index].src_reg;
+            });
+        if (src_is_pending_dest) {
+          continue;
+        }
+      }
 
-  if (moves.size() == 2 && !moves[0].is_immediate && !moves[1].is_immediate &&
-      moves[0].src_reg == kRiscvArgRegs[1] && moves[1].src_reg == kRiscvArgRegs[0]) {
+      if (moves[index].is_immediate) {
+        out << "    li " << moves[index].dest_reg << ", " << moves[index].immediate << "\n";
+      } else {
+        out << "    mv " << moves[index].dest_reg << ", " << moves[index].src_reg << "\n";
+      }
+      moves.erase(moves.begin() + static_cast<std::ptrdiff_t>(index));
+      emitted = true;
+      break;
+    }
+    if (emitted) {
+      continue;
+    }
+
     auto temp = allocate_riscv_temp(state);
     if (!temp.has_value()) {
       return false;
     }
-    out << "    mv " << *temp << ", " << kRiscvArgRegs[0] << "\n";
-    out << "    mv " << kRiscvArgRegs[0] << ", " << kRiscvArgRegs[1] << "\n";
-    out << "    mv " << kRiscvArgRegs[1] << ", " << *temp << "\n";
-    return true;
-  }
-
-  if (moves.size() == 2 && !moves[1].is_immediate && moves[1].src_reg == kRiscvArgRegs[0] &&
-      (moves[0].is_immediate || moves[0].src_reg != kRiscvArgRegs[0])) {
-    return emit_move(1) && emit_move(0);
-  }
-
-  for (std::size_t index = 0; index < moves.size(); ++index) {
-    if (!emit_move(index)) {
-      return false;
+    const auto cycle_src = moves.front().src_reg;
+    out << "    mv " << *temp << ", " << cycle_src << "\n";
+    for (auto& move : moves) {
+      if (!move.is_immediate && move.src_reg == cycle_src) {
+        move.src_reg = *temp;
+      }
     }
   }
   return true;
@@ -365,7 +380,11 @@ bool lower_riscv_call_inst(const CallInst& inst,
     if (!callee_reg.has_value()) {
       return false;
     }
-    if (*callee_reg == "a0" || *callee_reg == "a1") {
+    const bool callee_in_arg_reg = std::find(kRiscvArgRegs.begin(),
+                                             kRiscvArgRegs.begin() + inst.args.size(),
+                                             std::string_view(*callee_reg)) !=
+                                   kRiscvArgRegs.begin() + inst.args.size();
+    if (callee_in_arg_reg) {
       indirect_callee_reg = allocate_riscv_temp(state);
       if (!indirect_callee_reg.has_value()) {
         return false;

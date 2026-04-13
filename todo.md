@@ -21,27 +21,28 @@ Source Plan: plan.md
   backlog item 5, expand call lowering beyond minimal direct calls
 - current packet shape:
   keep backlog item 5 on the riscv64 backend-route surface by widening the
-  completed one-arg indirect-call lane into the first honest two-arg indirect
-  family: lower simple `i32, i32 -> i32` indirect calls from SSA callee values
-  through shared semantic BIR/prepared-BIR call handling, reusing the existing
-  ptr-param / ptr-local carrier support instead of widening into ABI-shaped
-  metadata or reopening the rejected host-runtime x86 fallback seam
+  landed two-arg indirect-call lane into the first honest three-arg indirect
+  family: lower simple `i32, i32, i32 -> i32` indirect calls from SSA callee
+  values through shared semantic BIR/prepared-BIR call handling, reusing the
+  existing ptr-param / ptr-local carrier support instead of widening into
+  ABI-shaped metadata or reopening the rejected host-runtime x86 fallback seam
 - candidate proving surface:
-  `tests/c/internal/backend_route_case/indirect_two_arg_param_call.c`
-  `tests/c/internal/backend_route_case/indirect_two_arg_local_call.c`
+  `tests/c/internal/backend_route_case/indirect_three_arg_param_call.c`
+  `tests/c/internal/backend_route_case/indirect_three_arg_local_call.c`
   keep `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the current
-  one-arg indirect-call plus `two_arg_*` direct-call route tests as standing
-  sentinels while widening only the next honest indirect-call family that is
-  already adjacent on riscv64
+  one-arg and two-arg indirect-call plus `two_arg_*` direct-call route tests
+  as standing sentinels while widening only the next honest indirect-call
+  family that is already adjacent on riscv64
 
 ## Immediate Target
 
 - keep packet selection attached to the ordered semantic backlog in `plan.md`
 - carry the now-green addressed-global work forward by moving to the next
   semantic family instead of stretching backlog item 4 past its proving surface
-- carry the now-green one-arg indirect-call surface forward by moving into the
-  first two-arg indirect-call proving slice instead of reopening richer
-  direct-call metadata or jumping ahead to ABI-shaped call work
+- carry the now-green one-arg and two-arg indirect-call surface forward by
+  moving into the first three-arg indirect-call proving slice instead of
+  reopening richer direct-call metadata or jumping ahead to ABI-shaped call
+  work
 - avoid reintroducing testcase-shaped routing while broadening the call lane
 
 ## Done Condition For The Active Packet
@@ -49,7 +50,7 @@ Source Plan: plan.md
 - `branch_if_eq.c` still lowers to clean BIR
 - the existing direct-call sentinels, one-arg indirect-call tests, and
   rewrite-only two-arg route tests stay green on riscv64
-- simple param-carried and local-slot two-arg indirect helper calls lower
+- simple param-carried and local-slot three-arg indirect helper calls lower
   through the same riscv64 backend-route surface instead of reopening
   host-runtime x86 fallback
 - semantic call lowering keeps callee identity, result type, and minimal arg
@@ -62,6 +63,24 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  the first honest three-arg indirect-call family now stays on the same shared
+  semantic-BIR/prepared-BIR route surface as the earlier one-arg and two-arg
+  indirect-call work: `backend.cpp` now treats `a2` as part of the supported
+  outgoing riscv64 integer-call register set, preserves indirect callees
+  against any live outgoing arg register they would otherwise be rewritten by,
+  and resolves the call-arg register rewrites with one shared move schedule
+  instead of the previous two-register-only cases
+  new route proofs cover `indirect_three_arg_param_call.c` and
+  `indirect_three_arg_local_call.c` as native asm with the expected callee
+  preserve into `t0`, arg rewrites from `a1/a2/a3` into `a0/a1/a2`, and final
+  `jalr ra, t0, 0`, while `branch_if_eq.c`, `call_helper.c`,
+  `local_arg_call.c`, the earlier one-arg indirect-call tests, the landed
+  two-arg indirect-call tests, and the `two_arg_*` direct-call sentinels
+  stayed green beside them
+  this keeps backlog item 5 on the honest semantic-BIR/prepared-BIR riscv64
+  path for the first three-arg indirect family without reopening host-runtime
+  x86 fallback seams or widening into ABI-shaped call metadata
 - completed:
   the first honest riscv64 indirect-call lane now stays on the same shared
   semantic-BIR/prepared-BIR route surface as the earlier direct-call work:
@@ -341,12 +360,12 @@ Source Plan: plan.md
 - blocked:
   none in owned files for this packet
 - remaining next:
-  decide whether backlog item 5 should next widen into richer indirect callee
-  carriers or broader return/signature forms on the same riscv64 route
-  boundary, without reopening direct-route fallbacks or jumping ahead to
-  ABI-shaped call work
+  decide whether backlog item 5 should next widen from the current three-arg
+  riscv64 indirect-call lane into richer direct/indirect signature coverage or
+  broader return forms on the same shared route boundary, without reopening
+  direct-route fallbacks or jumping ahead to ABI-shaped call work
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_call_helper_defaults_to_asm|backend_codegen_route_riscv64_local_arg_call_defaults_to_asm|backend_codegen_route_riscv64_two_arg_(helper|local_arg|second_local_arg|both_local_arg|first_local_rewrite|second_local_rewrite|both_local_first_rewrite|both_local_second_rewrite|both_local_double_rewrite)_defaults_to_asm|backend_codegen_route_riscv64_indirect_(local|param|two_arg_local|two_arg_param)_call_defaults_to_asm)$' > test_after.log 2>&1`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_(branch_if_eq_defaults_to_bir|call_helper_defaults_to_asm|local_arg_call_defaults_to_asm|indirect_param_call_defaults_to_asm|indirect_local_call_defaults_to_asm|indirect_two_arg_param_call_defaults_to_asm|indirect_two_arg_local_call_defaults_to_asm|indirect_three_arg_param_call_defaults_to_asm|indirect_three_arg_local_call_defaults_to_asm|two_arg_helper_defaults_to_asm|two_arg_local_arg_defaults_to_asm|two_arg_second_local_arg_defaults_to_asm|two_arg_both_local_arg_defaults_to_asm|two_arg_first_local_rewrite_defaults_to_asm|two_arg_second_local_rewrite_defaults_to_asm|two_arg_both_local_first_rewrite_defaults_to_asm|two_arg_both_local_second_rewrite_defaults_to_asm|two_arg_both_local_double_rewrite_defaults_to_asm)$' > test_after.log 2>&1`
 - proof log:
   `test_after.log`
 
