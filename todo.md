@@ -79,6 +79,11 @@ Source Plan: plan.md
 - root-level aggregate arrays with pointer-valued fields keep direct reads,
   direct stores, and pointer-derived alias stores on the semantic BIR route
   instead of dropping back once the aggregate root is an array element
+- aggregate pointer fields initialized from pointer-global aliases or resolved
+  in-bounds pointer-global alias chains keep honest addressed-global reloads
+  on the semantic BIR route for plain struct roots, nested struct roots, and
+  root-level aggregate arrays instead of rejecting those initializers before
+  function lowering starts
 - no new direct route, rendered-text matcher, or tiny case-family special path
   is introduced
 
@@ -191,6 +196,18 @@ Source Plan: plan.md
   *pp = gp; return **pp;` through semantic BIR as `bir.load_global ptr @pairs,
   offset 24`, `bir.store_global @pairs, offset 24, ptr ...`, and the later
   addressed-global reload from `@y` rather than raw LLVM fallback
+  aggregate pointer-field initializers now reuse pointer-global alias
+  resolution instead of requiring direct `&global` roots only; plain struct
+  roots, nested struct roots, and root-level array-of-struct roots can now
+  statically initialize pointer fields from `gp` / `gpp`-style globals and
+  still reload the resolved addressed-global target through semantic BIR
+  rather than rejecting those initializers during module-global lowering
+  new riscv64 route proofs now cover `struct S s = {.p = gp, .a = 1}; return
+  s.p[1];`, `struct Outer s = {1, {gp}}; return *s.inner.p;`, and
+  `struct Pair pairs[2] = {{1, &x}, {2, gpp}}; return *pairs[1].p;`
+  through semantic BIR as `bir.load_global ptr @s/@pairs, offset ...`
+  followed by addressed-global reloads from `@arr, offset 4/8` rather than
+  raw LLVM fallback or aggregate-initializer rejection
   deeper root-level nested aggregate arrays now have explicit route coverage
   too; new riscv64 route proofs cover `groups[1].inner.xs[2]`,
   `groups[1].inner.xs[1] = 9; return groups[1].inner.xs[1];`, and
@@ -204,8 +221,10 @@ Source Plan: plan.md
   keep backlog item 4 on honest addressed-global coverage; broader pointer
   global forms beyond recursively resolved constant in-bounds aliases and the
   now-covered pointer-value stores into addressed pointer-global slots,
-  pointer-global object-address roundtrip stores, and root aggregate arrays
-  with pointer-valued fields are still outside this finished slice
+  pointer-global object-address roundtrip stores, static aggregate
+  initializers that truly need pointer-global object addresses such as `&gp`,
+  and deeper root aggregate arrays with pointer-valued fields are still
+  outside this finished slice
 - proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_.*global.*defaults_to_bir$' > test_after.log 2>&1`
 - proof log:

@@ -321,21 +321,36 @@ std::optional<GlobalAddress> resolve_known_global_address(std::string_view globa
 }
 
 bool resolve_pointer_initializer_offsets(GlobalTypes& global_types) {
+  std::unordered_set<std::string> resolving_global_addresses;
   for (auto& [global_name, info] : global_types) {
     (void)global_name;
     for (auto& [byte_offset, address] : info.pointer_initializer_offsets) {
       if (address.value_type != bir::TypeKind::Void) {
         continue;
       }
+      if (byte_offset >= info.storage_size_bytes) {
+        return false;
+      }
+
       const auto target_it = global_types.find(address.global_name);
-      if (target_it == global_types.end() || !target_it->second.supports_linear_addressing ||
-          byte_offset >= info.storage_size_bytes) {
+      if (target_it == global_types.end()) {
         return false;
       }
-      address.value_type = target_it->second.value_type;
-      if (address.byte_offset >= target_it->second.storage_size_bytes) {
+
+      if (target_it->second.supports_linear_addressing) {
+        address.value_type = target_it->second.value_type;
+        if (address.byte_offset >= target_it->second.storage_size_bytes) {
+          return false;
+        }
+        continue;
+      }
+
+      const auto resolved_address =
+          resolve_known_global_address(address.global_name, global_types, &resolving_global_addresses);
+      if (!resolved_address.has_value()) {
         return false;
       }
+      address = *resolved_address;
     }
   }
   return true;
