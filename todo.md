@@ -22,6 +22,8 @@ Source Plan: plan.md
 - candidate proving surface:
   `backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir`
   `backend_codegen_route_riscv64_extern_global_array_defaults_to_bir`
+  `backend_codegen_route_riscv64_defined_global_array_defaults_to_bir`
+  `backend_codegen_route_riscv64_defined_global_array_pointer_defaults_to_bir`
   `backend_codegen_route_riscv64_string_literal_char_defaults_to_bir`
   `backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir`
   `backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir`
@@ -55,16 +57,17 @@ Source Plan: plan.md
   extended semantic BIR globals beyond scalar-or-zero-only definitions by
   adding flattened integer-array initializer support for defined globals,
   preserving explicit non-zero array data through lowering/legalize/validate,
-  and proving the route with `defined_global_array.c` so a simple defined
-  global read now lowers to `bir.load_global` on the riscv64 route surface
-  without a fallback route or testcase-shaped matcher
+  and proving both direct and pointer-derived addressed reads with
+  `defined_global_array.c` plus `defined_global_array_pointer.c`, so a simple
+  defined global read and a local pointer round-trip from `&arr[0][0]`
+  both lower to `bir.load_global` on the riscv64 route surface without a
+  fallback route or testcase-shaped matcher
 - remaining next:
-  keep backlog item 4 on honest addressed-global coverage; addressed reads from
-  defined array-backed globals, richer string/data materialization, and global
-  loads beyond constant-distance arithmetic are still outside this finished
-  slice
+  keep backlog item 4 on honest addressed-global coverage; richer
+  string/data materialization and global loads beyond this packet's
+  constant-offset addressed-read lane are still outside this finished slice
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_defaults_to_bir|backend_codegen_route_riscv64_string_literal_char_defaults_to_bir|backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir|backend_codegen_route_riscv64_return_eq_defaults_to_bir|backend_codegen_route_riscv64_return_ult_defaults_to_bir)$'`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_pointer_defaults_to_bir|backend_codegen_route_riscv64_string_literal_char_defaults_to_bir|backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir|backend_codegen_route_riscv64_return_eq_defaults_to_bir|backend_codegen_route_riscv64_return_ult_defaults_to_bir)$'`
 - proof log:
   `test_after.log`
 
