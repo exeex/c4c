@@ -17,11 +17,12 @@ Source Plan: plan.md
   backlog item 4, broader global data and addressed globals
 - current packet shape:
   extend the scalar global lane toward addressed global data, starting with
-  extern/global array reads and other simple non-scalar global-address forms
-  that still belong to honest semantic BIR
+  extern/global array reads and the first string-backed global read forms that
+  still belong to honest semantic BIR
 - candidate proving surface:
   `backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir`
   `backend_codegen_route_riscv64_extern_global_array_defaults_to_bir`
+  `backend_codegen_route_riscv64_string_literal_char_defaults_to_bir`
   use BIR route proofs here because `src/backend/backend.cpp` still prints
   prepared BIR on successful lowering; asm runtime/object checks remain a later
   backend-ingestion milestone, not the proof surface for this packet
@@ -46,12 +47,16 @@ Source Plan: plan.md
 - completed:
   widened the extern integer-array lane from flat array reads to nested
   addressed-global reads by carrying aggregate byte strides across chained
-  global GEP steps in `lir_to_bir_module.cpp`
+  global GEP steps in `lir_to_bir_module.cpp`; added the first string-backed
+  global read lane by treating LIR string-pool symbols as byte-addressable
+  constant storage in semantic BIR and proving `string_literal_char.c` on the
+  riscv64 route surface
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; defined array
-  initializers and pointer round-trips are still outside this finished slice
+  initializers, richer string/data materialization, and pointer round-trips
+  are still outside this finished slice
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir)$'`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_string_literal_char_defaults_to_bir)$'`
 - proof log:
   `test_after.log`
 

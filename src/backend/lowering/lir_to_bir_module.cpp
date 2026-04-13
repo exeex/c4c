@@ -94,6 +94,19 @@ std::optional<bir::TypeKind> lower_integer_type(std::string_view text) {
   return std::nullopt;
 }
 
+std::optional<bir::CastOpcode> lower_cast_opcode(c4c::codegen::lir::LirCastKind kind) {
+  switch (kind) {
+    case c4c::codegen::lir::LirCastKind::SExt:
+      return bir::CastOpcode::SExt;
+    case c4c::codegen::lir::LirCastKind::ZExt:
+      return bir::CastOpcode::ZExt;
+    case c4c::codegen::lir::LirCastKind::Trunc:
+      return bir::CastOpcode::Trunc;
+    default:
+      return std::nullopt;
+  }
+}
+
 std::size_t type_size_bytes(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
@@ -478,6 +491,32 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
   return lowered;
 }
 
+std::optional<bir::Global> lower_string_constant_global(
+    const c4c::codegen::lir::LirStringConst& string_constant,
+    GlobalInfo* info) {
+  if (string_constant.pool_name.empty() || string_constant.byte_length <= 0) {
+    return std::nullopt;
+  }
+
+  bir::Global lowered;
+  lowered.name = string_constant.pool_name.front() == '@'
+                     ? string_constant.pool_name.substr(1)
+                     : string_constant.pool_name;
+  lowered.type = bir::TypeKind::I8;
+  lowered.is_extern = true;
+  lowered.is_constant = true;
+  lowered.size_bytes = static_cast<std::size_t>(string_constant.byte_length);
+  lowered.align_bytes = 1;
+
+  info->value_type = bir::TypeKind::I8;
+  info->element_size_bytes = 1;
+  info->element_count = static_cast<std::size_t>(string_constant.byte_length);
+  info->supports_direct_value = false;
+  info->supports_linear_addressing = true;
+  info->type_text = "[" + std::to_string(string_constant.byte_length) + " x i8]";
+  return lowered;
+}
+
 bool is_void_param_sentinel(const c4c::TypeSpec& type) {
   return type.base == TB_VOID && type.ptr_level == 0 && type.array_rank == 0;
 }
@@ -714,6 +753,31 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
                                        bir::Function* lowered_function,
                                        std::vector<bir::Inst>* lowered_insts) {
   if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, lowered_insts)) {
+    return true;
+  }
+
+  if (const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&inst)) {
+    if (cast->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    const auto opcode = lower_cast_opcode(cast->kind);
+    const auto from_type = lower_integer_type(cast->from_type.str());
+    const auto to_type = lower_integer_type(cast->to_type.str());
+    if (!opcode.has_value() || !from_type.has_value() || !to_type.has_value()) {
+      return false;
+    }
+
+    const auto operand = lower_value(cast->operand, *from_type, value_aliases);
+    if (!operand.has_value()) {
+      return false;
+    }
+
+    lowered_insts->push_back(bir::CastInst{
+        .opcode = *opcode,
+        .result = bir::Value::named(*to_type, cast->result.str()),
+        .operand = *operand,
+    });
     return true;
   }
 
@@ -1391,17 +1455,14 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   }
 
   if (analysis.global_count != 0 || analysis.string_constant_count != 0 ||
-      analysis.string_constant_count != 0) {
+      analysis.extern_decl_count != 0) {
     context.note(
         "module",
-        "bootstrap lir_to_bir only supports minimal scalar globals and no strings right now");
-    if (analysis.string_constant_count != 0) {
-      return std::nullopt;
-    }
+        "bootstrap lir_to_bir only supports minimal scalar globals, string-backed byte data, and extern integer-array globals right now");
   }
 
   GlobalTypes global_types;
-  global_types.reserve(context.lir_module.globals.size());
+  global_types.reserve(context.lir_module.globals.size() + context.lir_module.string_pool.size());
   for (const auto& global : context.lir_module.globals) {
     GlobalInfo info;
     auto lowered_global = lower_minimal_global(global, &info);
@@ -1415,8 +1476,17 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     module.globals.push_back(std::move(*lowered_global));
   }
 
-  if (analysis.string_constant_count != 0) {
-    return std::nullopt;
+  for (const auto& string_constant : context.lir_module.string_pool) {
+    GlobalInfo info;
+    auto lowered_global = lower_string_constant_global(string_constant, &info);
+    if (!lowered_global.has_value()) {
+      context.note(
+          "module",
+          "bootstrap lir_to_bir only supports byte-addressable string-pool constants right now");
+      return std::nullopt;
+    }
+    global_types.emplace(lowered_global->name, info);
+    module.globals.push_back(std::move(*lowered_global));
   }
 
   for (const auto& decl : context.lir_module.extern_decls) {
