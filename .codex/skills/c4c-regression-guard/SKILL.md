@@ -19,12 +19,24 @@ Use this skill for both:
 Prefer script execution over ad-hoc log reading so the decision stays
 consistent.
 
+This skill assumes compile/build happens before both the `before` and `after`
+test captures. A test-only comparison without a fresh rebuild is not an
+acceptance-grade regression check.
+
+Canonical filenames are fixed:
+
+- `test_before.log`
+- `test_after.log`
+
+Before invoking this skill, the supervisor should normalize any executor output
+to those names and remove stray root-level `.log` files.
+
 ## Ownership Rule
 
 Normal path:
 
-- executor runs the packet's tests
-- executor keeps the logs on disk
+- supervisor chooses the proving command and prepares `test_before.log`
+- executor runs the packet's tests into `test_after.log`
 - supervisor reviews those logs
 
 Fallback path:
@@ -48,6 +60,21 @@ Not allowed:
 
 - backend subset before vs full suite after
 - one regex-filtered run before vs a different regex-filtered run after
+
+## Escalation Triggers
+
+Prefer a broader or full-scope guard, not just a narrow bucket, when:
+
+- shared compiler pipeline, parser, sema, HIR, IR, codegen, ABI, or lowering
+  code changed
+- build scripts, presets, test harnesses, or validation infrastructure changed
+- the current route has accumulated several narrow-only packets and needs a
+  stronger checkpoint
+- the user or supervisor asked for acceptance-grade confidence
+- the slice is being treated as a closure-quality milestone
+
+Prefer the smallest broader scope that matches the risk. Use full-tree
+acceptance only when narrower buckets no longer give credible coverage.
 
 ## Current Useful CTest Subsets
 
@@ -141,29 +168,33 @@ the comparison.
 2. If they exist and match the intended scope, use them directly.
 3. If they do not exist, decide the test scope that actually proves the current
    slice and generate the logs yourself.
-4. Capture `test_before.log` using either the clean-worktree flow or the
+4. Do not accept alternate `.log` filenames. Rename them to the canonical pair
+   before comparison.
+5. Capture `test_before.log` using either the clean-worktree flow or the
    stash/pop flow.
-5. Apply the patch or finish the current slice.
-6. Rebuild.
-7. Run the exact same test command to produce `test_after.log`.
-8. Ensure both logs refer to the same scope.
-9. Run the checker script:
+6. Apply the patch or finish the current slice.
+7. Rebuild.
+8. Run the exact same test command to produce `test_after.log`.
+9. Ensure both logs refer to the same scope.
+10. Run the checker script:
 ```bash
 python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py \
   --before test_before.log \
   --after test_after.log
 ```
-10. Interpret result:
+11. Interpret result:
    - Exit `0`: guard passed.
    - Exit `1`: regression guard failed (new failing tests, non-increasing passes, or timeout-policy issue if enforced).
    - Exit `2`: parse/input problem.
-11. If guard fails, inspect:
+12. If guard fails, inspect:
    - Newly failing tests list.
    - Pass-count delta.
    - Timeout violations if `--enforce-timeout` is used.
-12. Apply the smallest fix and rerun the same scope first.
-13. Only escalate to a broader suite when the packet, plan, or user asks for
-    it.
+13. If guard passes, the supervisor should roll `test_after.log` forward to
+    `test_before.log` for the next slice.
+14. Apply the smallest fix and rerun the same scope first.
+15. Only escalate to a broader suite when the packet, plan, or user asks for
+    it, or when the escalation triggers above apply.
 
 ## Commands
 
@@ -193,6 +224,17 @@ ctest --test-dir build -j --output-on-failure -R backend > test_before.log
 cmake --preset default
 cmake --build --preset default
 ctest --test-dir build -j --output-on-failure -R backend > test_after.log
+```
+
+Full acceptance example:
+```bash
+cmake --preset default
+cmake --build --preset default
+ctest --test-dir build -j --output-on-failure > test_before.log
+# ... make change ...
+cmake --preset default
+cmake --build --preset default
+ctest --test-dir build -j --output-on-failure > test_after.log
 ```
 
 Failure category report from after log:

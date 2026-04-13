@@ -24,6 +24,9 @@ Read the current `plan.md` before rewriting it so you preserve useful runbook co
 
 Turn proposal-style planning into a runbook that an implementation agent can execute in order.
 
+The runbook is a transcription of the source idea, not permission to rewrite
+the source idea.
+
 Preserve:
 
 - technical scope
@@ -31,6 +34,10 @@ Preserve:
 - guardrails
 - important helper/function names
 - validation intent
+
+It is acceptable for the runbook to be more concrete about slice boundaries,
+build proof, and broader validation checkpoints than the source idea, as long
+as source intent does not change.
 
 Change the shape:
 
@@ -83,6 +90,11 @@ Apply these rules consistently:
 7. Prefer imperative wording: `inspect`, `extract`, `validate`, `do not`.
 8. Keep the plan narrow; do not expand scope beyond the source document.
 9. Make the source-idea linkage explicit so another agent can trace the active plan back to the durable idea record.
+10. When execution knowledge already exists in the current `plan.md` or
+    `todo.md`, keep that detail in the runbook layer; do not promote it back
+    into the source idea as part of plan generation.
+11. For code-changing steps, make build proof explicit and call out where a
+    broader or full validation checkpoint is required.
 
 ## c4c Style
 
@@ -95,6 +107,8 @@ That means:
 - use file references when naming concrete implementation surfaces
 - tell the agent what not to touch
 - make validation expectations visible
+- prefer validation ladders such as `build -> narrow test -> broader/full check`
+  when the step's blast radius justifies it
 
 ## Quality Bar
 
@@ -104,5 +118,7 @@ Before finishing, check:
 - Are the boundaries and non-goals explicit?
 - Does each major step have an observable completion condition?
 - Would this discourage broad rewrites and encourage small, testable slices?
+- Does it keep source-idea edits unnecessary unless source intent really
+  changed?
 
 If not, tighten the runbook before handing it off.

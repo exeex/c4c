@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+msg_file="${1:?missing commit message file}"
+repo_root="$(git rev-parse --show-toplevel)"
+tag_script="$repo_root/scripts/commit_scope_tags.sh"
+
+if [[ ! -x "$tag_script" ]]; then
+  exit 0
+fi
+
+subject="$(sed -n '1p' "$msg_file")"
+case "$subject" in
+  fixup!\ *|squash!\ *)
+    exit 0
+    ;;
+esac
+
+required_tags="$("$tag_script")"
+if [[ -z "$required_tags" ]]; then
+  exit 0
+fi
+
+missing=()
+for tag in $required_tags; do
+  if [[ "$subject" != *"$tag"* ]]; then
+    missing+=("$tag")
+  fi
+done
+
+if [[ "${#missing[@]}" -eq 0 ]]; then
+  exit 0
+fi
+
+printf 'commit message subject is missing required lifecycle tags: %s\n' "${missing[*]}" >&2
+printf 'staged lifecycle files require subject tags produced by %s\n' "$tag_script" >&2
+printf 'current subject: %s\n' "$subject" >&2
+exit 1

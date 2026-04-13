@@ -1,0 +1,4 @@
+interface:
+  display_name: "C4C Reviewer"
+  short_description: "Review plan drift and route health from plan.md git history"
+  default_prompt: "Review the active c4c plan by finding the right plan.md checkpoint in git history, diffing from that commit to HEAD, and judging drift, technical debt, and route quality."
