@@ -266,15 +266,24 @@ bool move_riscv_i32_value_into_reg(const Value& value,
   return true;
 }
 
-bool move_riscv_i32_call_args_into_regs(const std::vector<Value>& args,
-                                        RiscvEmitState& state,
-                                        std::ostringstream& out) {
+bool is_supported_riscv_call_arg_type(TypeKind type) {
+  return type == TypeKind::I32 || type == TypeKind::Ptr;
+}
+
+bool move_riscv_call_args_into_regs(const std::vector<Value>& args,
+                                    const std::vector<TypeKind>& arg_types,
+                                    RiscvEmitState& state,
+                                    std::ostringstream& out) {
   if (args.size() > kRiscvArgRegs.size()) {
+    return false;
+  }
+  if (arg_types.size() != args.size()) {
     return false;
   }
 
   struct PendingCallArgMove {
     std::string_view dest_reg;
+    TypeKind type = TypeKind::Void;
     bool is_immediate = false;
     bool is_stack_slot = false;
     std::int64_t immediate = 0;
@@ -287,11 +296,15 @@ bool move_riscv_i32_call_args_into_regs(const std::vector<Value>& args,
   for (std::size_t index = 0; index < args.size(); ++index) {
     PendingCallArgMove move{
         .dest_reg = kRiscvArgRegs[index],
+        .type = arg_types[index],
     };
-    if (!is_supported_riscv_i32_value(args[index])) {
+    if (args[index].type != arg_types[index] || !is_supported_riscv_call_arg_type(arg_types[index])) {
       return false;
     }
     if (args[index].kind == Value::Kind::Immediate) {
+      if (arg_types[index] != TypeKind::I32) {
+        return false;
+      }
       move.is_immediate = true;
       move.immediate = args[index].immediate;
       moves.push_back(std::move(move));
@@ -332,8 +345,15 @@ bool move_riscv_i32_call_args_into_regs(const std::vector<Value>& args,
       if (moves[index].is_immediate) {
         out << "    li " << moves[index].dest_reg << ", " << moves[index].immediate << "\n";
       } else if (moves[index].is_stack_slot) {
-        out << "    lw " << moves[index].dest_reg << ", " << moves[index].stack_offset
-            << "(sp)\n";
+        if (moves[index].type == TypeKind::I32) {
+          out << "    lw " << moves[index].dest_reg << ", " << moves[index].stack_offset
+              << "(sp)\n";
+        } else if (moves[index].type == TypeKind::Ptr) {
+          out << "    ld " << moves[index].dest_reg << ", " << moves[index].stack_offset
+              << "(sp)\n";
+        } else {
+          return false;
+        }
       } else {
         out << "    mv " << moves[index].dest_reg << ", " << moves[index].src_reg << "\n";
       }
@@ -410,7 +430,7 @@ bool lower_riscv_call_inst(const CallInst& inst,
     return false;
   }
   for (std::size_t index = 0; index < inst.args.size(); ++index) {
-    if (inst.arg_types[index] != TypeKind::I32) {
+    if (!is_supported_riscv_call_arg_type(inst.arg_types[index])) {
       return false;
     }
   }
@@ -437,7 +457,7 @@ bool lower_riscv_call_inst(const CallInst& inst,
       indirect_callee_reg = *callee_reg;
     }
   }
-  if (!move_riscv_i32_call_args_into_regs(inst.args, state, out)) {
+  if (!move_riscv_call_args_into_regs(inst.args, inst.arg_types, state, out)) {
     return false;
   }
 

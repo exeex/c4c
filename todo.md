@@ -18,28 +18,22 @@ Source Plan: plan.md
   called for a `todo.md` packet reset before more execution because the first
   indirect-call slice was already complete
 - current capability family:
-  backlog item 2 boundary repair inside backlog item 5's proving surface:
-  the first one-stack-slot and two-stack-slot riscv64 entry-signature seams
-  are now green for the existing eight-arg indirect-call lane, and the next
-  packet should either keep widening stack-passed entry coverage or resume
-  outward call-lane work from this repaired boundary
+  backlog item 5 call-lane widening on the riscv64 backend-route surface:
+  indirect calls now carry the first mixed integer-class arg family through
+  semantic BIR and native asm, and the next packet should widen beyond the
+  first ptr-plus-i32 signature without reopening stack-call ABI work
 - current packet shape:
-  route decision pending from the repaired entry boundary:
-  either widen past the first two caller-stack integer params on function
-  entry while keeping the existing eight-register indirect-call lane fixed,
-  or resume backlog item 5's outward call-lane work without reopening
-  direct-route fallbacks or jumping ahead to ABI-shaped call work
+  keep backlog item 5 moving outward from the repaired entry boundary:
+  widen the standing riscv64 indirect-call lane from i32-only args to the
+  first ptr-capable integer-class signature while keeping the existing
+  eight-register arg lane fixed and avoiding ABI-shaped stack-call work
 - candidate proving surface:
-  `tests/c/internal/backend_route_case/indirect_eight_arg_param_call.c`
-  `tests/c/internal/backend_route_case/indirect_eight_arg_local_call.c`
-  `tests/c/internal/backend_route_case/indirect_eight_arg_stack_param_call.c`
-  `tests/c/internal/backend_route_case/indirect_eight_arg_stack_local_call.c`
-  `tests/c/internal/backend_route_case/indirect_eight_arg_two_stack_param_call.c`
-  `tests/c/internal/backend_route_case/indirect_eight_arg_two_stack_local_call.c`
+  `tests/c/internal/backend_route_case/indirect_ptr_arg_param_call.c`
+  `tests/c/internal/backend_route_case/indirect_ptr_arg_local_call.c`
   keep `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the current
   one-arg through eight-arg indirect-call plus `two_arg_*` direct-call route
-  tests as standing sentinels while the next packet is chosen from this same
-  honest riscv64 entry-signature / call-lane boundary
+  tests as standing sentinels while backlog item 5 widens through adjacent
+  honest integer-class indirect-call signatures
 
 ## Immediate Target
 
@@ -47,9 +41,9 @@ Source Plan: plan.md
 - carry the now-green addressed-global work forward by moving to the next
   semantic family instead of stretching backlog item 4 past its proving surface
 - carry the now-green one-arg through six-arg indirect-call surface forward
-  by keeping packet selection adjacent to the now-green one-stack-slot and
-  two-stack-slot entry-signature boundary instead of reopening richer
-  direct-call metadata or jumping ahead to ABI-shaped call work
+  by widening adjacent ptr-capable integer-class call signatures instead of
+  reopening richer direct-call metadata or jumping ahead to ABI-shaped call
+  work
 - avoid reintroducing testcase-shaped routing while broadening the shared
   entry-signature and call lanes
 
@@ -58,10 +52,10 @@ Source Plan: plan.md
 - `branch_if_eq.c` still lowers to clean BIR
 - the existing direct-call sentinels, one-arg indirect-call tests, and
   rewrite-only two-arg route tests stay green on riscv64
-- simple param-carried and local-slot ten-parameter helper wrappers lower
-  through the same riscv64 backend-route surface, with the final two call args
-  loaded from incoming caller stack slots instead of reopening host-runtime
-  x86 fallback or jumping ahead to ABI-shaped call work
+- simple param-carried and local-slot indirect helper wrappers whose callee
+  signature includes at least one `ptr` arg still lower through the same
+  riscv64 backend-route surface instead of reopening host-runtime x86 fallback
+  or jumping ahead to ABI-shaped call work
 - semantic call lowering keeps callee identity, result type, and minimal arg
   metadata available for later prepare/ABI shaping without performing that
   shaping inside `lir_to_bir`
@@ -72,6 +66,32 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  the first honest ptr-capable indirect-call family now stays on the same
+  shared semantic-BIR/prepared-BIR riscv64 route surface as the earlier
+  i32-only indirect-call work: `backend.cpp` now treats `ptr` like `i32` for
+  the current integer-class riscv64 arg lane, so indirect calls can move the
+  first mixed `ptr, i32 -> i32` signature through the existing eight-register
+  arg scheduler without reopening ABI-shaped stack-call work
+  new route proofs cover `indirect_ptr_arg_param_call.c` and
+  `indirect_ptr_arg_local_call.c` as native asm with the expected callee
+  preserve into `t0`, ptr arg move into `a0`, trailing `i32` arg move into
+  `a1`, and final `jalr ra, t0, 0`, while `branch_if_eq.c`,
+  `call_helper.c`, `local_arg_call.c`, and the earlier one-arg through
+  eight-arg indirect-call plus `two_arg_*` direct-call sentinels stayed green
+  beside them
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the two new riscv64 route tests passed, the broad `^backend_` subset stayed
+  flat at `225` failing tests before and after, the total backend test surface
+  increased from `353` to `355`, and local before/after comparison passed with
+  `passed=128 -> 130`, `failed=225 -> 225`, and `0` new failing tests
+  this resumes backlog item 5 on an honest semantic integer-class call lane
+  without reintroducing direct-route fallbacks or smuggling ABI work into call
+  lowering
 - completed:
   the first honest ten-parameter indirect-call proving family is now green on
   the same shared semantic-BIR/prepared-BIR riscv64 route surface as the
