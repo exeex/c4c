@@ -167,6 +167,7 @@ std::optional<RiscvFrameLayout> compute_riscv_frame_layout(const Function& funct
 
 struct RiscvEmitState {
   std::unordered_map<std::string, std::string> value_regs;
+  std::unordered_map<std::string, std::int64_t> value_stack_offsets;
   std::size_t next_temp_index = 0;
 };
 
@@ -193,10 +194,21 @@ std::optional<std::string> materialize_riscv_i32_value(const Value& value,
   }
 
   const auto it = state.value_regs.find(value.name);
-  if (it == state.value_regs.end()) {
+  if (it != state.value_regs.end()) {
+    return it->second;
+  }
+
+  const auto stack_it = state.value_stack_offsets.find(value.name);
+  if (stack_it == state.value_stack_offsets.end()) {
     return std::nullopt;
   }
-  return it->second;
+
+  auto reg = allocate_riscv_temp(state);
+  if (!reg.has_value()) {
+    return std::nullopt;
+  }
+  out << "    lw " << *reg << ", " << stack_it->second << "(sp)\n";
+  return reg;
 }
 
 std::optional<std::string> materialize_riscv_ptr_value(const Value& value,
@@ -208,10 +220,21 @@ std::optional<std::string> materialize_riscv_ptr_value(const Value& value,
   }
 
   const auto it = state.value_regs.find(value.name);
-  if (it == state.value_regs.end()) {
+  if (it != state.value_regs.end()) {
+    return it->second;
+  }
+
+  const auto stack_it = state.value_stack_offsets.find(value.name);
+  if (stack_it == state.value_stack_offsets.end()) {
     return std::nullopt;
   }
-  return it->second;
+
+  auto reg = allocate_riscv_temp(state);
+  if (!reg.has_value()) {
+    return std::nullopt;
+  }
+  out << "    ld " << *reg << ", " << stack_it->second << "(sp)\n";
+  return reg;
 }
 
 bool move_riscv_i32_value_into_reg(const Value& value,
@@ -227,12 +250,19 @@ bool move_riscv_i32_value_into_reg(const Value& value,
   }
 
   const auto it = state.value_regs.find(value.name);
-  if (it == state.value_regs.end()) {
+  if (it != state.value_regs.end()) {
+    if (it->second != dest_reg) {
+      out << "    mv " << dest_reg << ", " << it->second << "\n";
+    }
+    return true;
+  }
+
+  const auto stack_it = state.value_stack_offsets.find(value.name);
+  if (stack_it == state.value_stack_offsets.end()) {
     return false;
   }
-  if (it->second != dest_reg) {
-    out << "    mv " << dest_reg << ", " << it->second << "\n";
-  }
+
+  out << "    lw " << dest_reg << ", " << stack_it->second << "(sp)\n";
   return true;
 }
 
@@ -246,7 +276,9 @@ bool move_riscv_i32_call_args_into_regs(const std::vector<Value>& args,
   struct PendingCallArgMove {
     std::string_view dest_reg;
     bool is_immediate = false;
+    bool is_stack_slot = false;
     std::int64_t immediate = 0;
+    std::int64_t stack_offset = 0;
     std::string src_reg;
   };
 
@@ -267,13 +299,21 @@ bool move_riscv_i32_call_args_into_regs(const std::vector<Value>& args,
     }
 
     const auto it = state.value_regs.find(args[index].name);
-    if (it == state.value_regs.end()) {
-      return false;
-    }
-    move.src_reg = it->second;
-    if (move.src_reg == move.dest_reg) {
+    if (it != state.value_regs.end()) {
+      move.src_reg = it->second;
+      if (move.src_reg == move.dest_reg) {
+        continue;
+      }
+      moves.push_back(std::move(move));
       continue;
     }
+
+    const auto stack_it = state.value_stack_offsets.find(args[index].name);
+    if (stack_it == state.value_stack_offsets.end()) {
+      return false;
+    }
+    move.is_stack_slot = true;
+    move.stack_offset = stack_it->second;
     moves.push_back(std::move(move));
   }
 
@@ -291,6 +331,9 @@ bool move_riscv_i32_call_args_into_regs(const std::vector<Value>& args,
 
       if (moves[index].is_immediate) {
         out << "    li " << moves[index].dest_reg << ", " << moves[index].immediate << "\n";
+      } else if (moves[index].is_stack_slot) {
+        out << "    lw " << moves[index].dest_reg << ", " << moves[index].stack_offset
+            << "(sp)\n";
       } else {
         out << "    mv " << moves[index].dest_reg << ", " << moves[index].src_reg << "\n";
       }
@@ -427,15 +470,18 @@ bool lower_riscv_function_body(const Function& function,
   }
 
   RiscvEmitState state;
-  if (function.params.size() > kRiscvIncomingArgRegs.size()) {
-    return false;
-  }
   for (std::size_t index = 0; index < function.params.size(); ++index) {
     if (function.params[index].type != TypeKind::I32 &&
         function.params[index].type != TypeKind::Ptr) {
       return false;
     }
-    state.value_regs[function.params[index].name] = std::string(kRiscvIncomingArgRegs[index]);
+    if (index < kRiscvIncomingArgRegs.size()) {
+      state.value_regs[function.params[index].name] = std::string(kRiscvIncomingArgRegs[index]);
+      continue;
+    }
+    const auto stack_offset =
+        layout.frame_size + static_cast<std::int64_t>(index - kRiscvIncomingArgRegs.size()) * 8;
+    state.value_stack_offsets[function.params[index].name] = stack_offset;
   }
 
   if (layout.frame_size > 0) {

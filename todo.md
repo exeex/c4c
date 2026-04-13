@@ -18,24 +18,25 @@ Source Plan: plan.md
   called for a `todo.md` packet reset before more execution because the first
   indirect-call slice was already complete
 - current capability family:
-  backlog item 5, expand call lowering beyond minimal direct calls
+  backlog item 2 boundary repair inside backlog item 5's proving surface:
+  harden function-entry signatures enough that the next honest indirect-call
+  family can keep moving through the shared BIR/prepared-BIR route
 - current packet shape:
-  keep backlog item 5 on the riscv64 backend-route surface by widening the
-  landed seven-arg indirect-call lane into the first honest eight-arg indirect
-  family within the current entry-signature contract: lower simple
-  `i32, i32, i32, i32, i32, i32, i32, i32 -> i32` indirect calls
-  from SSA callee values through shared semantic BIR/prepared-BIR call
-  handling by carrying seven integer args plus one immediate final arg,
-  reusing the existing ptr-param / ptr-local carrier support instead of
-  widening into ABI-shaped metadata, global-backed callee routing, or
-  reopening the rejected host-runtime x86 fallback seam
+  keep backlog item 5 on the riscv64 backend-route surface by repairing the
+  entry-signature seam that blocked the next adjacent call shape: support the
+  first nine-parameter function-entry family where the callee pointer plus
+  eight `i32` values arrive through the normal riscv64 signature contract,
+  with the ninth incoming value stack-passed but the outgoing indirect call
+  still staying inside the existing eight-register call-arg lane
 - candidate proving surface:
   `tests/c/internal/backend_route_case/indirect_eight_arg_param_call.c`
   `tests/c/internal/backend_route_case/indirect_eight_arg_local_call.c`
+  `tests/c/internal/backend_route_case/indirect_eight_arg_stack_param_call.c`
+  `tests/c/internal/backend_route_case/indirect_eight_arg_stack_local_call.c`
   keep `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the current
-  one-arg through seven-arg indirect-call plus `two_arg_*` direct-call route
-  tests as standing sentinels while widening only the next honest indirect-call
-  family that is already adjacent on riscv64
+  one-arg through eight-arg indirect-call plus `two_arg_*` direct-call route
+  tests as standing sentinels while repairing only the next honest
+  entry-signature seam that is already adjacent on riscv64
 
 ## Immediate Target
 
@@ -43,19 +44,21 @@ Source Plan: plan.md
 - carry the now-green addressed-global work forward by moving to the next
   semantic family instead of stretching backlog item 4 past its proving surface
 - carry the now-green one-arg through six-arg indirect-call surface forward
-  by moving into the first eight-arg indirect-call proving slice instead of
-  reopening richer direct-call metadata or jumping ahead to ABI-shaped call work
-- avoid reintroducing testcase-shaped routing while broadening the call lane
+  by moving into the first nine-parameter indirect-call proving slice instead
+  of reopening richer direct-call metadata or jumping ahead to ABI-shaped call
+  work
+- avoid reintroducing testcase-shaped routing while broadening the shared
+  entry-signature and call lanes
 
 ## Done Condition For The Active Packet
 
 - `branch_if_eq.c` still lowers to clean BIR
 - the existing direct-call sentinels, one-arg indirect-call tests, and
   rewrite-only two-arg route tests stay green on riscv64
-- simple param-carried and local-slot eight-arg indirect helper calls lower
-  through the same riscv64 backend-route surface using seven carried args plus
-  one immediate final arg, instead of reopening host-runtime x86 fallback or
-  jumping ahead to broader function-signature work
+- simple param-carried and local-slot nine-parameter helper wrappers lower
+  through the same riscv64 backend-route surface, with the eighth call arg
+  loaded from the incoming caller stack slot instead of reopening host-runtime
+  x86 fallback or jumping ahead to ABI-shaped call work
 - semantic call lowering keeps callee identity, result type, and minimal arg
   metadata available for later prepare/ABI shaping without performing that
   shaping inside `lir_to_bir`
@@ -66,6 +69,33 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  the first honest nine-parameter indirect-call family now stays on the same
+  shared semantic-BIR/prepared-BIR route surface as the earlier one-arg
+  through eight-arg indirect-call work: `backend.cpp` now keeps incoming
+  riscv64 integer and pointer params beyond `a0` through `a7` addressable
+  through their caller-stack slots instead of rejecting the whole function
+  body, and the existing shared indirect-call arg move lane can now reload the
+  ninth incoming `i32` directly into `a7` when forming the call
+  new route proofs cover `indirect_eight_arg_stack_param_call.c` and
+  `indirect_eight_arg_stack_local_call.c` as native asm with the expected
+  callee preserve into `t0`, arg rewrites from `a1/a2/a3/a4/a5/a6/a7` into
+  `a0/a1/a2/a3/a4/a5/a6`, the final incoming stack arg reload via
+  `lw a7, 16(sp)`, and final `jalr ra, t0, 0`, while
+  `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the earlier
+  one-arg through eight-arg indirect-call plus `two_arg_*` direct-call
+  sentinels stayed green beside them
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the two new riscv64 route tests passed, the broad `^backend_` subset stayed
+  flat at `225` failing tests before and after, and the total backend test
+  surface increased from `349` to `351` with no new failing tests
+  this repairs the real route boundary that blocked further call widening
+  without reopening fallback seams or smuggling ABI-shaped metadata into
+  semantic lowering
 - completed:
   the first honest eight-arg indirect-call family now stays on the same shared
   semantic-BIR/prepared-BIR route surface as the earlier one-arg through
@@ -490,13 +520,13 @@ Source Plan: plan.md
 - blocked:
   none in owned files for this packet
 - remaining next:
-  decide whether backlog item 5 should next widen from the current five-arg
-  riscv64 indirect-call lane into richer direct-call signature coverage,
-  broader return forms, or a six-arg follow-on on the same shared route
-  boundary, without reopening direct-route fallbacks or jumping ahead to
+  decide whether backlog item 2 should next keep widening entry-signature
+  coverage past the first stack-passed integer lane, or whether backlog item 5
+  should resume outward call-lane work from this repaired nine-parameter
+  boundary without reopening direct-route fallbacks or jumping ahead to
   ABI-shaped call work
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_(branch_if_eq_defaults_to_bir|call_helper_defaults_to_asm|local_arg_call_defaults_to_asm|indirect_param_call_defaults_to_asm|indirect_local_call_defaults_to_asm|indirect_two_arg_param_call_defaults_to_asm|indirect_two_arg_local_call_defaults_to_asm|indirect_three_arg_param_call_defaults_to_asm|indirect_three_arg_local_call_defaults_to_asm|indirect_four_arg_param_call_defaults_to_asm|indirect_four_arg_local_call_defaults_to_asm|indirect_five_arg_param_call_defaults_to_asm|indirect_five_arg_local_call_defaults_to_asm|two_arg_helper_defaults_to_asm|two_arg_local_arg_defaults_to_asm|two_arg_second_local_arg_defaults_to_asm|two_arg_both_local_arg_defaults_to_asm|two_arg_first_local_rewrite_defaults_to_asm|two_arg_second_local_rewrite_defaults_to_asm|two_arg_both_local_first_rewrite_defaults_to_asm|two_arg_both_local_second_rewrite_defaults_to_asm|two_arg_both_local_double_rewrite_defaults_to_asm)$' > test_after.log 2>&1`
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
 - proof log:
   `test_after.log`
 
