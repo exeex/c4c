@@ -12,6 +12,7 @@ struct Module;
 
 enum class TypeKind : unsigned char {
   Void,
+  I1,
   I8,
   I32,
   I64,
@@ -57,6 +58,7 @@ struct Value {
   std::uint64_t immediate_bits = 0;
   std::string name;
 
+  static Value immediate_i1(bool value);
   static Value immediate_i8(std::int8_t value);
   static Value immediate_i32(std::int32_t value);
   static Value immediate_i64(std::int64_t value);
@@ -175,6 +177,7 @@ enum class BinaryOpcode : unsigned char {
 struct BinaryInst {
   BinaryOpcode opcode = BinaryOpcode::Add;
   Value result;
+  TypeKind operand_type = TypeKind::Void;
   Value lhs;
   Value rhs;
 };
@@ -182,6 +185,7 @@ struct BinaryInst {
 struct SelectInst {
   BinaryOpcode predicate = BinaryOpcode::Eq;
   Value result;
+  TypeKind compare_type = TypeKind::Void;
   Value lhs;
   Value rhs;
   Value true_value;
@@ -322,6 +326,32 @@ struct Module {
   std::vector<StringConstant> string_constants;
   std::vector<Function> functions;
 };
+
+inline bool is_compare_opcode(BinaryOpcode opcode) {
+  switch (opcode) {
+    case BinaryOpcode::Eq:
+    case BinaryOpcode::Ne:
+    case BinaryOpcode::Slt:
+    case BinaryOpcode::Sle:
+    case BinaryOpcode::Sgt:
+    case BinaryOpcode::Sge:
+    case BinaryOpcode::Ult:
+    case BinaryOpcode::Ule:
+    case BinaryOpcode::Ugt:
+    case BinaryOpcode::Uge:
+      return true;
+    default:
+      return false;
+  }
+}
+
+inline TypeKind binary_operand_type(const BinaryInst& inst) {
+  return inst.operand_type == TypeKind::Void ? inst.result.type : inst.operand_type;
+}
+
+inline TypeKind select_compare_type(const SelectInst& inst) {
+  return inst.compare_type == TypeKind::Void ? inst.result.type : inst.compare_type;
+}
 
 inline std::optional<std::int64_t> parse_i32_return_immediate(const Function& function) {
   if (function.is_declaration || function.return_type != TypeKind::I32 ||

@@ -49,15 +49,16 @@ void render_function(std::ostringstream& out, const Function& function) {
             if constexpr (std::is_same_v<T, BinaryInst>) {
               out << "  " << lowered.result.name << " = bir."
                   << render_binary_opcode(lowered.opcode) << " "
-                  << render_type(lowered.result.type) << " "
+                  << render_type(binary_operand_type(lowered)) << " "
                   << render_value(lowered.lhs) << ", " << render_value(lowered.rhs)
                   << "\n";
             } else if constexpr (std::is_same_v<T, SelectInst>) {
               out << "  " << lowered.result.name << " = bir.select "
                   << render_binary_opcode(lowered.predicate) << " "
-                  << render_type(lowered.result.type) << " "
+                  << render_type(select_compare_type(lowered)) << " "
                   << render_value(lowered.lhs) << ", " << render_value(lowered.rhs)
-                  << ", " << render_value(lowered.true_value) << ", "
+                  << ", " << render_type(lowered.result.type) << " "
+                  << render_value(lowered.true_value) << ", "
                   << render_value(lowered.false_value) << "\n";
             } else if constexpr (std::is_same_v<T, CastInst>) {
               out << "  " << lowered.result.name << " = bir."

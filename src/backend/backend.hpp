@@ -1,11 +1,13 @@
 #pragma once
 
 #include "bir.hpp"
+#include "lowering/lir_to_bir.hpp"
+#include "prepare/prepare.hpp"
+#include "target.hpp"
+
 #include <functional>
 #include <string>
 #include <variant>
-
-#include "target.hpp"
 
 namespace c4c::codegen::lir {
 struct LirModule;

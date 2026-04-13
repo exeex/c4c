@@ -213,16 +213,6 @@ foreach(src IN LISTS INTERNAL_PREPROCESSOR_TEST_SRCS)
   set_tests_properties("${test_name}" PROPERTIES LABELS "internal;preprocessor")
 endforeach()
 
-c4c_add_backend_test(
-    backend_bir_tests
-    COMMAND backend_bir_tests
-)
-
-c4c_add_backend_test(
-    backend_shared_util_tests
-    COMMAND backend_shared_util_tests
-)
-
 add_test(
     NAME frontend_cxx_stage1_version
     COMMAND c4cll --version

@@ -46,9 +46,21 @@ bool validate_binary(const Function& function,
                            error)) {
     return false;
   }
-  if (inst.result.type != inst.lhs.type || inst.result.type != inst.rhs.type) {
-    return fail(error, "bir binary operands in @" + function.name +
-                           " must agree on one scalar type");
+  const auto operand_type = binary_operand_type(inst);
+  if (is_compare_opcode(inst.opcode)) {
+    if (inst.result.type != TypeKind::I1 ||
+        inst.lhs.type != operand_type ||
+        inst.rhs.type != operand_type) {
+      return fail(error, "bir compare in @" + function.name +
+                             " must use matching operand types and produce i1");
+    }
+  } else {
+    if (inst.result.type != operand_type ||
+        inst.lhs.type != operand_type ||
+        inst.rhs.type != operand_type) {
+      return fail(error, "bir binary operands in @" + function.name +
+                             " must agree on one scalar type");
+    }
   }
   if (inst.lhs.kind == Value::Kind::Named && inst.lhs.name.empty()) {
     return fail(error, "bir binary lhs in @" + function.name +
@@ -87,11 +99,12 @@ bool validate_select(const Function& function,
                            error)) {
     return false;
   }
-  if (inst.result.type != inst.lhs.type || inst.result.type != inst.rhs.type ||
+  const auto compare_type = select_compare_type(inst);
+  if (inst.lhs.type != compare_type || inst.rhs.type != compare_type ||
       inst.result.type != inst.true_value.type ||
       inst.result.type != inst.false_value.type) {
     return fail(error, "bir select operands in @" + function.name +
-                           " must agree on one scalar type");
+                           " must agree on compare type and selected value type");
   }
   if (inst.lhs.kind == Value::Kind::Named && inst.lhs.name.empty()) {
     return fail(error, "bir select compare lhs in @" + function.name +
@@ -284,7 +297,9 @@ bool validate_load_global(const Module& module,
                            " must agree with the referenced global type");
   }
   const std::size_t type_size =
-      inst.result.type == TypeKind::I8 ? 1 : inst.result.type == TypeKind::I32 ? 4 : 8;
+      inst.result.type == TypeKind::I1 ? 1 :
+      inst.result.type == TypeKind::I8 ? 1 :
+      inst.result.type == TypeKind::I32 ? 4 : 8;
   if (inst.byte_offset % type_size != 0) {
     return fail(error, "bir global load in @" + function.name +
                            " must use an offset aligned to the loaded type");
@@ -442,6 +457,10 @@ bool validate_terminator(const Function& function,
                                "bir cond_br condition in @" + function.name,
                                error)) {
         return false;
+      }
+      if (block.terminator.condition.type != TypeKind::I1) {
+        return fail(error, "bir cond_br in @" + function.name +
+                               " must use an i1 condition");
       }
       if (block.terminator.condition.kind == Value::Kind::Named) {
         if (block.terminator.condition.name.empty()) {

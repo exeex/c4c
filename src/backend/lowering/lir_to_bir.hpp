@@ -3,6 +3,7 @@
 #include "../bir.hpp"
 #include "../../codegen/lir/ir.hpp"
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
@@ -16,7 +17,7 @@ struct BirLoweringOptions {
   bool lower_calls = true;
   bool legalize_types = true;
   bool lower_aggregates = true;
-  bool allow_bounded_pattern_folds = true;
+  bool allow_bounded_pattern_folds = false;
 };
 
 struct BirLoweringNote {
@@ -24,8 +25,45 @@ struct BirLoweringNote {
   std::string message;
 };
 
+struct BirLoweringContext {
+  const c4c::codegen::lir::LirModule& lir_module;
+  BirLoweringOptions options;
+  std::vector<BirLoweringNote> notes;
+
+  void note(std::string phase, std::string message);
+};
+
+BirLoweringContext make_lowering_context(const c4c::codegen::lir::LirModule& module,
+                                         const BirLoweringOptions& options);
+
+struct BirFunctionPreScan {
+  std::string function_name;
+  std::size_t block_count = 0;
+  std::size_t instruction_count = 0;
+  bool has_calls = false;
+  bool has_memory_ops = false;
+  bool has_control_flow = false;
+};
+
+struct BirModuleAnalysis {
+  std::size_t function_count = 0;
+  std::size_t global_count = 0;
+  std::size_t string_constant_count = 0;
+  std::size_t extern_decl_count = 0;
+  bool has_calls = false;
+  bool has_memory_ops = false;
+  bool has_control_flow = false;
+  std::vector<BirFunctionPreScan> functions;
+};
+
+BirModuleAnalysis analyze_module(BirLoweringContext& context);
+
+std::optional<bir::Module> lower_module(BirLoweringContext& context,
+                                        const BirModuleAnalysis& analysis);
+
 struct BirLoweringResult {
   std::optional<bir::Module> module;
+  BirModuleAnalysis analysis;
   std::vector<BirLoweringNote> notes;
 };
 
