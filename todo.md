@@ -52,17 +52,18 @@ Source Plan: plan.md
 - completed:
   extended the addressed-global lane beyond direct reads by carrying
   same-global `ptrtoint` aliases through lowering, folding constant pointer
-  differences into honest integer distances, and letting the final `zext`
-  return stay explicit in BIR; proved both `global_char_pointer_diff.c` and
-  `global_int_pointer_diff.c` on the riscv64 route surface without adding a
-  fallback route or testcase-shaped matcher
+  differences into honest integer distances, then repaired the follow-on
+  compare-return shaping so direct compare returns and the new global
+  pointer-difference cases both canonically return through the compare SSA on
+  the riscv64 route surface without adding a fallback route or testcase-shaped
+  matcher
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; defined array
   initializers, richer string/data materialization, addressed global loads
   beyond constant-distance arithmetic, and pointer round-trips are still
   outside this finished slice
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_string_literal_char_defaults_to_bir|backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir)$'`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_string_literal_char_defaults_to_bir|backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_return_eq_defaults_to_bir|backend_codegen_route_riscv64_return_ult_defaults_to_bir)$'`
 - proof log:
   `test_after.log`
 

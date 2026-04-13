@@ -1315,6 +1315,41 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
   return false;
 }
 
+bool canonicalize_compare_return_alias(const c4c::codegen::lir::LirOperand& ret_value,
+                                       const bir::Value& lowered_value,
+                                       bir::TypeKind return_type,
+                                       const CompareMap& compare_exprs,
+                                       std::vector<bir::Inst>* lowered_insts,
+                                       bir::ReturnTerminator* lowered_ret) {
+  if (ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+      lowered_value.kind != bir::Value::Kind::Named ||
+      lowered_value.type != bir::TypeKind::I1 ||
+      return_type != bir::TypeKind::I32) {
+    return false;
+  }
+
+  const auto compare_it = compare_exprs.find(ret_value.str());
+  if (compare_it == compare_exprs.end()) {
+    return false;
+  }
+
+  for (auto inst_it = lowered_insts->rbegin(); inst_it != lowered_insts->rend(); ++inst_it) {
+    auto* binary = std::get_if<bir::BinaryInst>(&*inst_it);
+    if (binary == nullptr) {
+      continue;
+    }
+    if (binary->result.name != lowered_value.name) {
+      continue;
+    }
+
+    binary->result.name = ret_value.str();
+    lowered_ret->value = bir::Value::named(return_type, ret_value.str());
+    return true;
+  }
+
+  return false;
+}
+
 BlockLookup make_block_lookup(const c4c::codegen::lir::LirFunction& function) {
   BlockLookup blocks;
   for (const auto& block : function.blocks) {
@@ -1565,16 +1600,8 @@ std::optional<bir::Function> lower_branch_family_function(
         if (!value.has_value()) {
           return std::nullopt;
         }
-        if (value->type != *return_type &&
-            ret_value.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
-            value->type == bir::TypeKind::I1 && *return_type == bir::TypeKind::I32) {
-          lowered_block.insts.push_back(bir::CastInst{
-              .opcode = bir::CastOpcode::ZExt,
-              .result = bir::Value::named(*return_type, ret_value.str()),
-              .operand = *value,
-          });
-          lowered_ret.value = bir::Value::named(*return_type, ret_value.str());
-        } else {
+        if (!canonicalize_compare_return_alias(
+                ret_value, *value, *return_type, compare_exprs, &lowered_block.insts, &lowered_ret)) {
           lowered_ret.value = *value;
         }
       }

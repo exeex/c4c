@@ -2079,7 +2079,7 @@ if(CLANG_EXECUTABLE)
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_char_pointer_diff.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_char_pointer_diff_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t10 = bir.eq i64 1, 1|%t11 = bir.zext i32 %t10 to i32|bir.ret i32 %t11"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t11 = bir.eq i64 1, 1|bir.ret i32 %t11"
       FORBIDDEN_SNIPPETS "define i32 @main()"
     )
 
@@ -2088,7 +2088,7 @@ if(CLANG_EXECUTABLE)
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_int_pointer_diff.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_int_pointer_diff_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t11 = bir.eq i64 1, 1|%t12 = bir.zext i32 %t11 to i32|bir.ret i32 %t12"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t12 = bir.eq i64 1, 1|bir.ret i32 %t12"
       FORBIDDEN_SNIPPETS "define i32 @main()"
     )
   endif()
