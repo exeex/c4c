@@ -27,6 +27,7 @@ Source Plan: plan.md
   `backend_codegen_route_riscv64_defined_global_array_pointer_defaults_to_bir`
   `backend_codegen_route_riscv64_defined_pointer_global_array_defaults_to_bir`
   `backend_codegen_route_riscv64_defined_string_global_char_defaults_to_bir`
+  `backend_codegen_route_riscv64_defined_pointer_global_pointer_defaults_to_bir`
   `backend_codegen_route_riscv64_string_literal_char_defaults_to_bir`
   `backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir`
   `backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir`
@@ -56,30 +57,28 @@ Source Plan: plan.md
 - defined pointer-valued globals initialized from already addressable globals
   lower through semantic BIR and allow addressed reads from the referenced
   global data without falling back to raw LLVM IR
+- pointer-valued globals initialized from other pointer-valued globals keep the
+  resolved base-global address plus constant in-bounds offset instead of
+  dropping to raw LLVM fallback
 - no new direct route, rendered-text matcher, or tiny case-family special path
   is introduced
 
 ## Latest Packet Progress
 
 - completed:
-  extended semantic BIR globals beyond raw scalar and array data by carrying a
-  direct global-symbol initializer for `ptr` globals, then proving with
-  `defined_pointer_global_array.c` that `int *gp = arr; return gp[1];` lowers
-  through semantic BIR as a direct `bir.load_global ptr @gp` followed by
-  addressed `bir.load_global i32 @arr, offset 4` on the riscv64 route surface
-  without a fallback route or testcase-shaped matcher; then extended the same
-  semantic global-address lane to constant in-bounds global GEP initializers so
-  `defined_pointer_global_array_offset.c` proves `int *gp = &arr[1];
-  return gp[1];` lowers through BIR with the pointer global carrying the base
-  global plus byte offset and the route emitting `bir.load_global i32 @arr,
-  offset 8` instead of raw LLVM global text
+  extended semantic BIR pointer-global lowering from directly addressable
+  globals into pointer-global alias chains by recursively resolving pointer
+  global initializers onto the underlying addressable base global plus constant
+  byte offset; `defined_pointer_global_pointer.c` now proves
+  `int *gp = &arr[1]; int *gpp = gp; return gpp[1];` lowers through BIR as
+  `bir.load_global ptr @gpp` followed by `bir.load_global i32 @arr, offset 8`
+  on the riscv64 route surface instead of escaping back to raw LLVM IR
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; broader pointer
-  global forms beyond constant in-bounds addresses of already addressable
-  globals and richer addressed global data shapes are still outside this
-  finished slice
+  global forms beyond recursively aliased constant in-bounds addresses and
+  richer addressed global data shapes are still outside this finished slice
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_pointer_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_array_offset_defaults_to_bir|backend_codegen_route_riscv64_defined_string_global_char_defaults_to_bir|backend_codegen_route_riscv64_string_literal_char_defaults_to_bir|backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir|backend_codegen_route_riscv64_return_eq_defaults_to_bir|backend_codegen_route_riscv64_return_ult_defaults_to_bir)$'`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_pointer_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_array_offset_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_pointer_defaults_to_bir|backend_codegen_route_riscv64_defined_string_global_char_defaults_to_bir|backend_codegen_route_riscv64_string_literal_char_defaults_to_bir|backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir|backend_codegen_route_riscv64_return_eq_defaults_to_bir|backend_codegen_route_riscv64_return_ult_defaults_to_bir)$'`
 - proof log:
   `test_after.log`
 

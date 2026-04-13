@@ -196,6 +196,66 @@ std::optional<GlobalAddress> parse_global_address_initializer(std::string_view t
   return parse_global_gep_initializer(text);
 }
 
+std::optional<GlobalAddress> resolve_known_global_address(std::string_view global_name,
+                                                          GlobalTypes& global_types,
+                                                          std::unordered_set<std::string>* active) {
+  const auto it = global_types.find(std::string(global_name));
+  if (it == global_types.end()) {
+    return std::nullopt;
+  }
+
+  auto& info = it->second;
+  if (info.known_global_address.has_value()) {
+    return info.known_global_address;
+  }
+  if (info.initializer_symbol_name.empty()) {
+    return std::nullopt;
+  }
+
+  const std::string active_name(global_name);
+  if (!active->insert(active_name).second) {
+    return std::nullopt;
+  }
+
+  const auto erase_active = [&]() { active->erase(active_name); };
+  const auto pointee_it = global_types.find(info.initializer_symbol_name);
+  if (pointee_it == global_types.end()) {
+    erase_active();
+    return std::nullopt;
+  }
+
+  GlobalAddress resolved;
+  if (pointee_it->second.supports_linear_addressing) {
+    resolved = GlobalAddress{
+        .global_name = info.initializer_symbol_name,
+        .value_type = pointee_it->second.value_type,
+        .byte_offset = info.initializer_byte_offset,
+    };
+  } else {
+    const auto pointee_address =
+        resolve_known_global_address(info.initializer_symbol_name, global_types, active);
+    if (!pointee_address.has_value()) {
+      erase_active();
+      return std::nullopt;
+    }
+    resolved = *pointee_address;
+    resolved.byte_offset += info.initializer_byte_offset;
+  }
+
+  erase_active();
+
+  const auto base_it = global_types.find(resolved.global_name);
+  if (base_it == global_types.end() || !base_it->second.supports_linear_addressing) {
+    return std::nullopt;
+  }
+  if (resolved.byte_offset >= base_it->second.element_size_bytes * base_it->second.element_count) {
+    return std::nullopt;
+  }
+
+  info.known_global_address = resolved;
+  return info.known_global_address;
+}
+
 std::optional<std::int64_t> parse_i64(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -2091,27 +2151,16 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     module.globals.push_back(std::move(*lowered_global));
   }
 
+  std::unordered_set<std::string> resolving_global_addresses;
   for (auto& [global_name, info] : global_types) {
     if (info.initializer_symbol_name.empty()) {
       continue;
     }
-    const auto pointee_it = global_types.find(info.initializer_symbol_name);
-    if (pointee_it == global_types.end() || !pointee_it->second.supports_linear_addressing) {
+    if (!resolve_known_global_address(global_name, global_types, &resolving_global_addresses)
+             .has_value()) {
       context.note(
           "module",
-          "bootstrap lir_to_bir only supports pointer globals initialized from directly addressable globals right now");
-      return std::nullopt;
-    }
-    info.known_global_address = GlobalAddress{
-        .global_name = info.initializer_symbol_name,
-        .value_type = pointee_it->second.value_type,
-        .byte_offset = info.initializer_byte_offset,
-    };
-    if (info.known_global_address->byte_offset >= pointee_it->second.element_size_bytes *
-                                                     pointee_it->second.element_count) {
-      context.note(
-          "module",
-          "bootstrap lir_to_bir only supports pointer globals initialized from in-bounds addresses of directly addressable globals right now");
+          "bootstrap lir_to_bir only supports pointer globals initialized from addressable globals or pointer-global aliases that resolve to in-bounds global data right now");
       return std::nullopt;
     }
   }
