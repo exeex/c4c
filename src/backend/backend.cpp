@@ -30,8 +30,8 @@ constexpr std::array<std::string_view, 7> kRiscvTempRegs = {
     "t0", "t1", "t2", "t3", "t4", "t5", "t6"};
 constexpr std::array<std::string_view, 8> kRiscvIncomingArgRegs = {
     "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"};
-constexpr std::array<std::string_view, 7> kRiscvArgRegs = {
-    "a0", "a1", "a2", "a3", "a4", "a5", "a6"};
+constexpr std::array<std::string_view, 8> kRiscvArgRegs = {
+    "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"};
 
 Target resolve_public_lir_target(const c4c::codegen::lir::LirModule& module,
                                  Target public_target) {
@@ -280,14 +280,13 @@ bool move_riscv_i32_call_args_into_regs(const std::vector<Value>& args,
   while (!moves.empty()) {
     bool emitted = false;
     for (std::size_t index = 0; index < moves.size(); ++index) {
-      if (!moves[index].is_immediate) {
-        const bool src_is_pending_dest =
-            std::any_of(moves.begin(), moves.end(), [&](const PendingCallArgMove& other) {
-              return other.dest_reg == moves[index].src_reg;
-            });
-        if (src_is_pending_dest) {
-          continue;
-        }
+      const bool dest_is_pending_src =
+          std::any_of(moves.begin(), moves.end(), [&](const PendingCallArgMove& other) {
+            return &other != &moves[index] && !other.is_immediate &&
+                   other.src_reg == moves[index].dest_reg;
+          });
+      if (dest_is_pending_src) {
+        continue;
       }
 
       if (moves[index].is_immediate) {
