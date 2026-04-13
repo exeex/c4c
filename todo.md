@@ -20,9 +20,10 @@ Source Plan: plan.md
   aggregate-address coverage, so struct-contained array fields and nested
   pointer fields keep honest semantic BIR addresses for direct reads, direct
   stores, and pointer-derived alias stores instead of dropping back to
-  LLVM-text route escape; root-level aggregate arrays are now in scope too so
-  arrays-of-structs can use the same addressed-global lane instead of being
-  rejected at module-global lowering time
+  LLVM-text route escape; root-level aggregate arrays, including pointer-field
+  elements, are now in scope too so arrays-of-structs can use the same
+  addressed-global lane instead of being rejected at module-global lowering
+  time
 - candidate proving surface:
   `backend_codegen_route_riscv64_defined_global_array_defaults_to_bir`
   `backend_codegen_route_riscv64_defined_global_array_store_defaults_to_bir`
@@ -40,6 +41,9 @@ Source Plan: plan.md
   `backend_codegen_route_riscv64_nested_global_struct_array_read_defaults_to_bir`
   `backend_codegen_route_riscv64_nested_global_struct_array_store_defaults_to_bir`
   `backend_codegen_route_riscv64_nested_global_struct_array_alias_store_defaults_to_bir`
+  `backend_codegen_route_riscv64_global_struct_pointer_array_read_defaults_to_bir`
+  `backend_codegen_route_riscv64_global_struct_pointer_array_store_defaults_to_bir`
+  `backend_codegen_route_riscv64_global_struct_pointer_array_alias_store_defaults_to_bir`
   use BIR route proofs here because `src/backend/backend.cpp` still prints
   prepared BIR on successful lowering; asm runtime/object checks remain a later
   backend-ingestion milestone, not the proof surface for this packet
@@ -72,6 +76,9 @@ Source Plan: plan.md
 - mutable struct pointer fields keep direct stores and local alias stores on
   the semantic BIR route, and the post-store readback keeps the updated
   addressed-global pointee instead of reverting to static initializer knowledge
+- root-level aggregate arrays with pointer-valued fields keep direct reads,
+  direct stores, and pointer-derived alias stores on the semantic BIR route
+  instead of dropping back once the aggregate root is an array element
 - no new direct route, rendered-text matcher, or tiny case-family special path
   is introduced
 
@@ -178,12 +185,18 @@ Source Plan: plan.md
   through semantic BIR as `bir.load_global i32 @pairs, offset 12` and
   `bir.store_global @pairs, offset 8, i32 9` plus the matching addressed
   reload rather than raw LLVM fallback
+  root-level aggregate arrays with pointer-valued fields now have explicit
+  route coverage too; new riscv64 route proofs cover `return *pairs[1].p;`,
+  `pairs[1].p = gp; return *pairs[1].p;`, and `int **pp = &pairs[1].p;
+  *pp = gp; return **pp;` through semantic BIR as `bir.load_global ptr @pairs,
+  offset 24`, `bir.store_global @pairs, offset 24, ptr ...`, and the later
+  addressed-global reload from `@y` rather than raw LLVM fallback
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; broader pointer
   global forms beyond recursively resolved constant in-bounds aliases and the
-  now-covered pointer-value stores into addressed pointer-global slots and
-  pointer-global object-address roundtrip stores, plus aggregate-array lanes
-  with pointer-valued fields or deeper array-of-array aggregate roots, are
+  now-covered pointer-value stores into addressed pointer-global slots,
+  pointer-global object-address roundtrip stores, and root aggregate arrays
+  with pointer-valued fields, plus deeper array-of-array aggregate roots, are
   still outside this finished slice
 - proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_.*global.*defaults_to_bir$' > test_after.log 2>&1`
