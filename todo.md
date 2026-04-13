@@ -18,6 +18,15 @@ Source Plan: plan.md
 - current proving surface:
   `tests/c/internal/backend_case/branch_if_eq.c`
   `tests/c/internal/backend_route_case/single_param_select_eq.c`
+- packet update:
+  `src/backend/lowering/lir_to_bir_module.cpp` now lowers the
+  `single_param_select_eq` diamond-plus-phi shape to semantic `bir.select`,
+  preserves clean `branch_if_eq` BIR, and reconstructs minimal integer params
+  from `signature_text` when `LirFunction.params` is still empty
+- latest proof:
+  `bash -lc 'cmake --build build -j2 && printf "=== branch_if_eq ===\n" && ./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/branch_if_eq.c -o /tmp/branch_if_eq_x86.ll && cat /tmp/branch_if_eq_x86.ll && printf "\n=== single_param_select_eq ===\n" && ./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_route_case/single_param_select_eq.c -o /tmp/single_param_select_eq_x86.ll && cat /tmp/single_param_select_eq_x86.ll' > test_after.log 2>&1`
+- latest proof log:
+  `test_after.log`
 
 ## Immediate Target
 
