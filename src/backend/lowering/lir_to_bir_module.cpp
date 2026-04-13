@@ -32,6 +32,7 @@ struct GlobalInfo {
   std::string type_text;
   std::optional<GlobalAddress> known_global_address;
   std::string initializer_symbol_name;
+  std::size_t initializer_byte_offset = 0;
 };
 
 using GlobalTypes = std::unordered_map<std::string, GlobalInfo>;
@@ -68,6 +69,15 @@ struct ParsedTypedOperand {
   c4c::codegen::lir::LirOperand operand;
 };
 
+std::optional<std::int64_t> parse_i64(std::string_view text);
+std::optional<bir::TypeKind> lower_integer_type(std::string_view text);
+std::optional<std::pair<std::size_t, std::string_view>> parse_integer_array_layer(
+    std::string_view text);
+std::size_t type_size_bytes(bir::TypeKind type);
+std::size_t type_size_bytes_from_text(std::string_view text);
+std::optional<ParsedTypedOperand> parse_typed_operand(std::string_view text);
+std::optional<std::int64_t> resolve_index_operand(const c4c::codegen::lir::LirOperand& operand,
+                                                  const ValueMap& value_aliases);
 std::optional<bir::Value> lower_global_initializer(std::string_view text,
                                                    bir::TypeKind type);
 
@@ -77,6 +87,113 @@ std::optional<std::string> parse_global_symbol_initializer(std::string_view text
     return std::nullopt;
   }
   return std::string(trimmed.substr(1));
+}
+
+std::optional<GlobalAddress> parse_global_gep_initializer(std::string_view text) {
+  constexpr std::string_view kPrefix = "getelementptr inbounds (";
+
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (trimmed.size() <= kPrefix.size() || trimmed.substr(0, kPrefix.size()) != kPrefix ||
+      trimmed.back() != ')') {
+    return std::nullopt;
+  }
+
+  const auto body = trimmed.substr(kPrefix.size(), trimmed.size() - kPrefix.size() - 1);
+  const auto ptr_pos = body.find(", ptr @");
+  if (ptr_pos == std::string_view::npos) {
+    return std::nullopt;
+  }
+
+  std::string_view current_type = c4c::codegen::lir::trim_lir_arg_text(body.substr(0, ptr_pos));
+  auto remainder = body.substr(ptr_pos + 7);
+  const auto global_end = remainder.find(',');
+
+  std::string global_name;
+  if (global_end == std::string_view::npos) {
+    global_name = std::string(c4c::codegen::lir::trim_lir_arg_text(remainder));
+    remainder = std::string_view();
+  } else {
+    global_name =
+        std::string(c4c::codegen::lir::trim_lir_arg_text(remainder.substr(0, global_end)));
+    remainder = remainder.substr(global_end + 1);
+  }
+  if (global_name.empty()) {
+    return std::nullopt;
+  }
+
+  std::size_t byte_offset = 0;
+  while (!remainder.empty()) {
+    remainder = c4c::codegen::lir::trim_lir_arg_text(remainder);
+    if (remainder.empty()) {
+      break;
+    }
+
+    const auto comma = remainder.find(',');
+    const auto index_text =
+        c4c::codegen::lir::trim_lir_arg_text(comma == std::string_view::npos
+                                                 ? remainder
+                                                 : remainder.substr(0, comma));
+    const auto index = parse_typed_operand(index_text);
+    if (!index.has_value()) {
+      return std::nullopt;
+    }
+    const auto index_value = resolve_index_operand(index->operand, ValueMap{});
+    if (!index_value.has_value() || *index_value < 0) {
+      return std::nullopt;
+    }
+
+    if (const auto scalar_type = lower_integer_type(current_type); scalar_type.has_value()) {
+      if (comma != std::string_view::npos) {
+        return std::nullopt;
+      }
+      const auto stride_bytes = type_size_bytes(*scalar_type);
+      if (stride_bytes == 0) {
+        return std::nullopt;
+      }
+      return GlobalAddress{
+          .global_name = std::move(global_name),
+          .value_type = *scalar_type,
+          .byte_offset = byte_offset + static_cast<std::size_t>(*index_value) * stride_bytes,
+      };
+    }
+
+    const auto layer = parse_integer_array_layer(current_type);
+    if (!layer.has_value() || static_cast<std::size_t>(*index_value) >= layer->first) {
+      return std::nullopt;
+    }
+    const auto stride_bytes = type_size_bytes_from_text(layer->second);
+    if (stride_bytes == 0) {
+      return std::nullopt;
+    }
+
+    byte_offset += static_cast<std::size_t>(*index_value) * stride_bytes;
+    current_type = c4c::codegen::lir::trim_lir_arg_text(layer->second);
+    if (comma == std::string_view::npos) {
+      break;
+    }
+    remainder = remainder.substr(comma + 1);
+  }
+
+  if (const auto scalar_type = lower_integer_type(current_type); scalar_type.has_value()) {
+    return GlobalAddress{
+        .global_name = std::move(global_name),
+        .value_type = *scalar_type,
+        .byte_offset = byte_offset,
+    };
+  }
+
+  return std::nullopt;
+}
+
+std::optional<GlobalAddress> parse_global_address_initializer(std::string_view text) {
+  if (const auto symbol_name = parse_global_symbol_initializer(text); symbol_name.has_value()) {
+    return GlobalAddress{
+        .global_name = *symbol_name,
+        .value_type = bir::TypeKind::Void,
+        .byte_offset = 0,
+    };
+  }
+  return parse_global_gep_initializer(text);
 }
 
 std::optional<std::int64_t> parse_i64(std::string_view text) {
@@ -738,10 +855,11 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
   lowered.align_bytes = global.align_bytes > 0 ? static_cast<std::size_t>(global.align_bytes) : 0;
   if (!global.is_extern_decl) {
     if (*lowered_type == bir::TypeKind::Ptr) {
-      lowered.initializer_symbol_name = parse_global_symbol_initializer(global.init_text);
-      if (!lowered.initializer_symbol_name.has_value()) {
+      const auto initializer_address = parse_global_address_initializer(global.init_text);
+      if (!initializer_address.has_value()) {
         return std::nullopt;
       }
+      lowered.initializer_symbol_name = initializer_address->global_name;
     } else {
       const auto initializer = lower_global_initializer(global.init_text, *lowered_type);
       if (!initializer.has_value()) {
@@ -762,7 +880,12 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
     info->supports_direct_value = true;
     info->supports_linear_addressing = true;
     if (lowered->initializer_symbol_name.has_value()) {
-      info->initializer_symbol_name = *lowered->initializer_symbol_name;
+      const auto initializer_address = parse_global_address_initializer(global.init_text);
+      if (!initializer_address.has_value()) {
+        return std::nullopt;
+      }
+      info->initializer_symbol_name = initializer_address->global_name;
+      info->initializer_byte_offset = initializer_address->byte_offset;
       info->supports_linear_addressing = false;
     }
     if (lowered->size_bytes == 0) {
@@ -1982,8 +2105,15 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     info.known_global_address = GlobalAddress{
         .global_name = info.initializer_symbol_name,
         .value_type = pointee_it->second.value_type,
-        .byte_offset = 0,
+        .byte_offset = info.initializer_byte_offset,
     };
+    if (info.known_global_address->byte_offset >= pointee_it->second.element_size_bytes *
+                                                     pointee_it->second.element_count) {
+      context.note(
+          "module",
+          "bootstrap lir_to_bir only supports pointer globals initialized from in-bounds addresses of directly addressable globals right now");
+      return std::nullopt;
+    }
   }
 
   for (const auto& decl : context.lir_module.extern_decls) {

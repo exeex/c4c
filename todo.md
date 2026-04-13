@@ -67,13 +67,19 @@ Source Plan: plan.md
   `defined_pointer_global_array.c` that `int *gp = arr; return gp[1];` lowers
   through semantic BIR as a direct `bir.load_global ptr @gp` followed by
   addressed `bir.load_global i32 @arr, offset 4` on the riscv64 route surface
-  without a fallback route or testcase-shaped matcher
+  without a fallback route or testcase-shaped matcher; then extended the same
+  semantic global-address lane to constant in-bounds global GEP initializers so
+  `defined_pointer_global_array_offset.c` proves `int *gp = &arr[1];
+  return gp[1];` lowers through BIR with the pointer global carrying the base
+  global plus byte offset and the route emitting `bir.load_global i32 @arr,
+  offset 8` instead of raw LLVM global text
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; broader pointer
-  global forms beyond direct named-global initializers and richer addressed
-  global data shapes are still outside this finished slice
+  global forms beyond constant in-bounds addresses of already addressable
+  globals and richer addressed global data shapes are still outside this
+  finished slice
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_pointer_defaults_to_bir|backend_codegen_route_riscv64_defined_string_global_char_defaults_to_bir|backend_codegen_route_riscv64_string_literal_char_defaults_to_bir|backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_array_defaults_to_bir|backend_codegen_route_riscv64_return_eq_defaults_to_bir|backend_codegen_route_riscv64_return_ult_defaults_to_bir)$'`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_pointer_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_array_offset_defaults_to_bir|backend_codegen_route_riscv64_defined_string_global_char_defaults_to_bir|backend_codegen_route_riscv64_string_literal_char_defaults_to_bir|backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir|backend_codegen_route_riscv64_return_eq_defaults_to_bir|backend_codegen_route_riscv64_return_ult_defaults_to_bir)$'`
 - proof log:
   `test_after.log`
 
