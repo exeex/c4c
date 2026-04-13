@@ -250,13 +250,31 @@ Source Plan: plan.md
   addressed-global route tests spanning defined pointer globals, nested struct
   arrays, struct pointer arrays, and pointer-field object-alias initializers
   all passed together, so the stale item-4 follow-on note is retired here
+- blocked:
+  the backend-driver seam is now repaired inside `src/backend/backend.cpp` for
+  the current minimal riscv64 direct-call family: when prepared BIR stays
+  within single-block `i32` add/load_local/store_local/direct-call/return
+  semantics, `./build/c4cll --codegen asm --target riscv64-unknown-linux-gnu`
+  now emits native asm on stdout for both `call_helper.c` and
+  `local_arg_call.c` instead of printing `bir.func` text, while
+  `branch_if_eq.c -o ...ll` still preserves the existing BIR route proof
+  surface because that CFG-shaped family remains unsupported by the direct asm
+  emitter and therefore falls back to printed BIR as before
+  the delegated proof command is still red, but the remaining failure is no
+  longer inside the owned riscv64 seam: `backend_runtime_call_helper` and
+  `backend_runtime_local_arg_call` are host-runtime tests that currently run
+  with `TARGET_TRIPLE=x86_64-unknown-linux-gnu`, so they still exercise the
+  separate x86 backend/runtime path and continue to assemble stale `bir.func`
+  text there instead of touching the new riscv64 emission lane
 - remaining next:
-  promote the first call-lowering observation surface into explicit riscv64
-  backend-route proofs, then use that route output to decide whether backlog
-  item 5 can begin with richer direct-call signatures immediately or first
-  needs a small semantic cleanup in `call_decode.cpp`
+  supervisor should re-route proof selection so backlog item 5 is exercised by
+  riscv64-visible tests rather than the host x86 runtime lane: either add the
+  missing riscv64 call route proofs under the existing `backend_codegen_route`
+  surface or delegate an explicitly x86-owned packet if the host runtime tests
+  must stay in scope before returning to `call_decode.cpp` / `lir_to_bir`
+  cleanup for the direct-call semantic lane
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_call_helper_defaults_to_bir|backend_codegen_route_riscv64_local_arg_call_defaults_to_bir|backend_runtime_call_helper|backend_runtime_local_arg_call)$' > test_after.log 2>&1`
 - proof log:
   `test_after.log`
 
