@@ -345,6 +345,13 @@ bool resolve_pointer_initializer_offsets(GlobalTypes& global_types) {
         continue;
       }
 
+      if (target_it->second.supports_direct_value &&
+          target_it->second.value_type == bir::TypeKind::Ptr &&
+          address.byte_offset == 0) {
+        address.value_type = bir::TypeKind::Ptr;
+        continue;
+      }
+
       const auto resolved_address =
           resolve_known_global_address(address.global_name, global_types, &resolving_global_addresses);
       if (!resolved_address.has_value()) {
@@ -2380,7 +2387,20 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
     if (const auto global_ptr_it = global_pointer_slots.find(load->ptr.str());
         global_ptr_it != global_pointer_slots.end()) {
       if (global_ptr_it->second.value_type != *value_type) {
-        return false;
+        if (global_ptr_it->second.value_type != bir::TypeKind::Ptr ||
+            global_ptr_it->second.byte_offset != 0) {
+          return false;
+        }
+        const auto global_it = global_types.find(global_ptr_it->second.global_name);
+        if (global_it == global_types.end() || !global_it->second.supports_direct_value ||
+            global_it->second.value_type != bir::TypeKind::Ptr) {
+          return false;
+        }
+        lowered_insts->push_back(bir::LoadGlobalInst{
+            .result = bir::Value::named(*value_type, load->result.str()),
+            .global_name = global_ptr_it->second.global_name,
+        });
+        return true;
       }
       if (*value_type == bir::TypeKind::Ptr) {
         const auto addressed_it =
@@ -2393,6 +2413,20 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
           const auto global_it = global_types.find(global_ptr_it->second.global_name);
           if (global_it == global_types.end()) {
             return false;
+          }
+          if (global_ptr_it->second.byte_offset == 0 &&
+              global_it->second.supports_direct_value &&
+              global_it->second.value_type == bir::TypeKind::Ptr) {
+            if (const auto runtime_it = global_address_slots.find(global_ptr_it->second.global_name);
+                runtime_it != global_address_slots.end()) {
+              if (runtime_it->second.has_value()) {
+                global_pointer_slots[load->result.str()] = *runtime_it->second;
+              }
+            } else if (global_it->second.known_global_address.has_value()) {
+              global_pointer_slots[load->result.str()] = *global_it->second.known_global_address;
+              record_pointer_global_object_alias(
+                  load->result.str(), global_it->second, global_types, global_object_pointer_slots);
+            }
           }
           const auto pointer_init_it =
               global_it->second.pointer_initializer_offsets.find(global_ptr_it->second.byte_offset);

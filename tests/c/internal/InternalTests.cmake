@@ -2421,7 +2421,16 @@ if(CLANG_EXECUTABLE)
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/named_pointer_global_struct_pointer_alias_init.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/named_pointer_global_struct_pointer_alias_init_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @s, offset 8|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @s, offset 8|bir.load_global i32 @gp, offset 4|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_named_pointer_global_struct_pointer_object_alias_init_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/named_pointer_global_struct_pointer_object_alias_init.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/named_pointer_global_struct_pointer_object_alias_init_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @s|bir.load_global ptr @gpp|bir.load_global ptr @gp|bir.load_global i32 @arr, offset 8|bir.ret i32"
       FORBIDDEN_SNIPPETS "define i32 @main()"
     )
 
@@ -2493,7 +2502,16 @@ if(CLANG_EXECUTABLE)
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_pointer_alias_init.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_pointer_alias_init_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @s, offset 8|bir.load_global i32 @arr, offset 4|bir.ret i32"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @s, offset 8|bir.load_global i32 @gp|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_nested_global_struct_pointer_object_alias_init_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_pointer_object_alias_init.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_pointer_object_alias_init_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @s, offset 8|bir.load_global ptr @gp|bir.load_global i32 @arr, offset 4|bir.ret i32"
       FORBIDDEN_SNIPPETS "define i32 @main()"
     )
 
@@ -2502,7 +2520,16 @@ if(CLANG_EXECUTABLE)
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_struct_pointer_array_alias_init.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_struct_pointer_array_alias_init_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @pairs, offset 24|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @pairs, offset 24|bir.load_global i32 @gpp|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_struct_pointer_array_object_alias_init_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_struct_pointer_array_object_alias_init.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_struct_pointer_array_object_alias_init_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @pairs, offset 8|bir.load_global ptr @gp|bir.load_global i32 @arr, offset 4|bir.ret i32"
       FORBIDDEN_SNIPPETS "define i32 @main()"
     )
   endif()
@@ -2723,6 +2750,12 @@ if(CLANG_EXECUTABLE)
       elseif(stem STREQUAL "nested_global_struct_pointer_alias_init")
         continue()
       elseif(stem STREQUAL "named_pointer_global_struct_pointer_alias_init")
+        continue()
+      elseif(stem STREQUAL "named_pointer_global_struct_pointer_object_alias_init")
+        continue()
+      elseif(stem STREQUAL "nested_global_struct_pointer_object_alias_init")
+        continue()
+      elseif(stem STREQUAL "global_struct_pointer_array_object_alias_init")
         continue()
       elseif(stem STREQUAL "string_literal_char")
         set(expect_exit_code 105)

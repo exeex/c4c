@@ -208,6 +208,13 @@ Source Plan: plan.md
   through semantic BIR as `bir.load_global ptr @s/@pairs, offset ...`
   followed by addressed-global reloads from `@arr, offset 4/8` rather than
   raw LLVM fallback or aggregate-initializer rejection
+  aggregate pointer-field initializers can now preserve pointer-global object
+  addresses instead of flattening them too early; new riscv64 route proofs
+  cover plain-struct, nested-struct, and root-array aggregates initialized
+  from `&gp`, plus a simple `&gpp` object-alias chain, through semantic BIR as
+  ordered `bir.load_global ptr @s/@pairs`, then `bir.load_global ptr @gp/@gpp`,
+  then the final addressed-global reload from `@arr` rather than raw LLVM
+  fallback or aggregate-initializer rejection
   deeper root-level nested aggregate arrays now have explicit route coverage
   too; new riscv64 route proofs cover `groups[1].inner.xs[2]`,
   `groups[1].inner.xs[1] = 9; return groups[1].inner.xs[1];`, and
@@ -221,10 +228,8 @@ Source Plan: plan.md
   keep backlog item 4 on honest addressed-global coverage; broader pointer
   global forms beyond recursively resolved constant in-bounds aliases and the
   now-covered pointer-value stores into addressed pointer-global slots,
-  pointer-global object-address roundtrip stores, static aggregate
-  initializers that truly need pointer-global object addresses such as `&gp`,
-  and deeper root aggregate arrays with pointer-valued fields are still
-  outside this finished slice
+  pointer-global object-address roundtrip stores, and deeper root aggregate
+  arrays with pointer-valued fields are still outside this finished slice
 - proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_.*global.*defaults_to_bir$' > test_after.log 2>&1`
 - proof log:
