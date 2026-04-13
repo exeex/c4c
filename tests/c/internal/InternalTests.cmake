@@ -2334,6 +2334,33 @@ if(CLANG_EXECUTABLE)
       REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gp|bir.store_global @s, offset 8, ptr |bir.load_global ptr @s, offset 8|bir.load_global i32 @y|bir.ret i32"
       FORBIDDEN_SNIPPETS "define i32 @main()"
     )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_nested_global_struct_array_read_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_array_read.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_array_read_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global i32 @s, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_nested_global_struct_array_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_array_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_array_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @s, offset 4, i32 9|bir.load_global i32 @s, offset 4|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_nested_global_struct_array_alias_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_array_alias_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_array_alias_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @s, offset 8, i32 9|bir.load_global i32 @s, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
   endif()
 
   if(BACKEND_RUNTIME_TARGET_TRIPLE)

@@ -1157,6 +1157,80 @@ std::optional<GlobalAddress> resolve_global_gep_address(
   };
 }
 
+std::optional<GlobalAddress> resolve_relative_global_gep_address(
+    const GlobalAddress& base_address,
+    std::string_view type_text,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const TypeDeclMap& type_decls) {
+  if (gep.indices.empty()) {
+    return std::nullopt;
+  }
+
+  auto current_type = c4c::codegen::lir::trim_lir_arg_text(type_text);
+  std::size_t byte_offset = base_address.byte_offset;
+  for (std::size_t index_pos = 0; index_pos < gep.indices.size(); ++index_pos) {
+    const auto parsed_index = parse_typed_operand(gep.indices[index_pos]);
+    if (!parsed_index.has_value()) {
+      return std::nullopt;
+    }
+    const auto index_value = resolve_index_operand(parsed_index->operand, value_aliases);
+    if (!index_value.has_value() || *index_value < 0) {
+      return std::nullopt;
+    }
+
+    const auto layout = compute_aggregate_type_layout(current_type, type_decls);
+    if (layout.kind == AggregateTypeLayout::Kind::Invalid || layout.size_bytes == 0) {
+      return std::nullopt;
+    }
+
+    if (layout.kind == AggregateTypeLayout::Kind::Scalar) {
+      if (index_pos + 1 != gep.indices.size()) {
+        return std::nullopt;
+      }
+      byte_offset += static_cast<std::size_t>(*index_value) * layout.size_bytes;
+      continue;
+    }
+
+    if (index_pos == 0) {
+      byte_offset += static_cast<std::size_t>(*index_value) * layout.size_bytes;
+      continue;
+    }
+
+    switch (layout.kind) {
+      case AggregateTypeLayout::Kind::Array: {
+        const auto element_layout =
+            compute_aggregate_type_layout(layout.element_type_text, type_decls);
+        if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
+            static_cast<std::size_t>(*index_value) >= layout.array_count) {
+          return std::nullopt;
+        }
+        byte_offset += static_cast<std::size_t>(*index_value) * element_layout.size_bytes;
+        current_type = layout.element_type_text;
+        break;
+      }
+      case AggregateTypeLayout::Kind::Struct:
+        if (static_cast<std::size_t>(*index_value) >= layout.fields.size()) {
+          return std::nullopt;
+        }
+        byte_offset += layout.fields[static_cast<std::size_t>(*index_value)].byte_offset;
+        current_type = layout.fields[static_cast<std::size_t>(*index_value)].type_text;
+        break;
+      default:
+        return std::nullopt;
+    }
+  }
+
+  const auto leaf_layout = compute_aggregate_type_layout(current_type, type_decls);
+  return GlobalAddress{
+      .global_name = base_address.global_name,
+      .value_type = leaf_layout.kind == AggregateTypeLayout::Kind::Scalar
+                        ? leaf_layout.scalar_type
+                        : bir::TypeKind::Void,
+      .byte_offset = byte_offset,
+  };
+}
+
 std::optional<bir::BinaryOpcode> lower_scalar_binary_opcode(
     const c4c::codegen::lir::LirBinaryOpcodeRef& opcode) {
   using c4c::codegen::lir::LirBinaryOpcode;
@@ -2045,26 +2119,12 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       resolved_slot = array_it->second.element_slots[static_cast<std::size_t>(*elem_imm)];
     } else if (const auto global_ptr_it = global_pointer_slots.find(gep->ptr.str());
                global_ptr_it != global_pointer_slots.end()) {
-      if (gep->indices.size() != 1) {
+      const auto resolved_address = resolve_relative_global_gep_address(
+          global_ptr_it->second, gep->element_type.str(), *gep, value_aliases, type_decls);
+      if (!resolved_address.has_value()) {
         return false;
       }
-      const auto parsed_index = parse_typed_operand(gep->indices.front());
-      if (!parsed_index.has_value()) {
-        return false;
-      }
-      const auto index_imm = resolve_index_operand(parsed_index->operand, value_aliases);
-      const auto stride_bytes = type_size_bytes_from_text(gep->element_type.str());
-      if (!index_imm.has_value() || *index_imm < 0 || stride_bytes == 0) {
-        return false;
-      }
-
-      global_pointer_slots[gep->result.str()] = GlobalAddress{
-          .global_name = global_ptr_it->second.global_name,
-          .value_type = lower_integer_type(gep->element_type.str()).value_or(bir::TypeKind::Void),
-          .byte_offset =
-              global_ptr_it->second.byte_offset +
-              static_cast<std::size_t>(*index_imm) * stride_bytes,
-      };
+      global_pointer_slots[gep->result.str()] = *resolved_address;
       return true;
     } else {
       const auto ptr_it = local_pointer_slots.find(gep->ptr.str());
