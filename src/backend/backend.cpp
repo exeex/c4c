@@ -27,6 +27,8 @@ using c4c::backend::bir::Value;
 
 constexpr std::array<std::string_view, 7> kRiscvTempRegs = {
     "t0", "t1", "t2", "t3", "t4", "t5", "t6"};
+constexpr std::array<std::string_view, 7> kX86TempRegs = {
+    "eax", "ecx", "edx", "r8d", "r9d", "r10d", "r11d"};
 
 Target resolve_public_lir_target(const c4c::codegen::lir::LirModule& module,
                                  Target public_target) {
@@ -124,11 +126,257 @@ struct RiscvEmitState {
   std::size_t next_temp_index = 0;
 };
 
+struct X86FrameLayout {
+  std::int64_t frame_size = 0;
+  std::unordered_map<std::string, std::int64_t> slot_offsets;
+};
+
+struct X86EmitState {
+  std::unordered_map<std::string, std::string> value_regs;
+  std::size_t next_temp_index = 0;
+};
+
 std::optional<std::string> allocate_riscv_temp(RiscvEmitState& state) {
   if (state.next_temp_index >= kRiscvTempRegs.size()) {
     return std::nullopt;
   }
   return std::string(kRiscvTempRegs[state.next_temp_index++]);
+}
+
+std::optional<X86FrameLayout> compute_x86_frame_layout(const Function& function) {
+  X86FrameLayout layout;
+  std::int64_t next_offset = 0;
+
+  auto reserve_slot = [&](std::string_view name) {
+    if (layout.slot_offsets.find(std::string(name)) != layout.slot_offsets.end()) {
+      return;
+    }
+    next_offset += 4;
+    layout.slot_offsets.emplace(std::string(name), next_offset);
+  };
+
+  for (const auto& slot : function.local_slots) {
+    if (slot.is_address_taken || slot.is_byval_copy || slot.type != TypeKind::I32) {
+      return std::nullopt;
+    }
+    reserve_slot(slot.name);
+  }
+
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* load = std::get_if<LoadLocalInst>(&inst)) {
+        if (load->byte_offset != 0 || load->align_bytes != 0 || load->address.has_value() ||
+            load->result.type != TypeKind::I32) {
+          return std::nullopt;
+        }
+        reserve_slot(load->slot_name);
+      } else if (const auto* store = std::get_if<StoreLocalInst>(&inst)) {
+        if (store->byte_offset != 0 || store->align_bytes != 0 || store->address.has_value() ||
+            !is_supported_riscv_i32_value(store->value)) {
+          return std::nullopt;
+        }
+        reserve_slot(store->slot_name);
+      }
+    }
+  }
+
+  layout.frame_size = align_up(next_offset, 16);
+  return layout;
+}
+
+std::optional<std::string> allocate_x86_temp(X86EmitState& state) {
+  if (state.next_temp_index >= kX86TempRegs.size()) {
+    return std::nullopt;
+  }
+  return std::string(kX86TempRegs[state.next_temp_index++]);
+}
+
+std::optional<std::string> materialize_x86_i32_value(const Value& value,
+                                                     X86EmitState& state,
+                                                     std::ostringstream& out) {
+  if (!is_supported_riscv_i32_value(value)) {
+    return std::nullopt;
+  }
+  if (value.kind == Value::Kind::Immediate) {
+    auto reg = allocate_x86_temp(state);
+    if (!reg.has_value()) {
+      return std::nullopt;
+    }
+    out << "    mov " << *reg << ", " << value.immediate << "\n";
+    return reg;
+  }
+
+  const auto it = state.value_regs.find(value.name);
+  if (it == state.value_regs.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+bool move_x86_i32_value_into_reg(const Value& value,
+                                 std::string_view dest_reg,
+                                 X86EmitState& state,
+                                 std::ostringstream& out) {
+  if (!is_supported_riscv_i32_value(value)) {
+    return false;
+  }
+  if (value.kind == Value::Kind::Immediate) {
+    out << "    mov " << dest_reg << ", " << value.immediate << "\n";
+    return true;
+  }
+
+  const auto it = state.value_regs.find(value.name);
+  if (it == state.value_regs.end()) {
+    return false;
+  }
+  if (it->second != dest_reg) {
+    out << "    mov " << dest_reg << ", " << it->second << "\n";
+  }
+  return true;
+}
+
+bool lower_x86_binary_inst(const BinaryInst& inst,
+                           X86EmitState& state,
+                           std::ostringstream& out) {
+  if (inst.opcode != BinaryOpcode::Add || inst.result.type != TypeKind::I32 ||
+      (inst.operand_type != TypeKind::Void && inst.operand_type != TypeKind::I32) ||
+      !is_supported_riscv_i32_value(inst.lhs) || !is_supported_riscv_i32_value(inst.rhs)) {
+    return false;
+  }
+
+  std::string result_reg;
+  if (inst.lhs.kind == Value::Kind::Named) {
+    const auto lhs_it = state.value_regs.find(inst.lhs.name);
+    if (lhs_it == state.value_regs.end()) {
+      return false;
+    }
+    result_reg = lhs_it->second;
+  } else {
+    auto reg = allocate_x86_temp(state);
+    if (!reg.has_value()) {
+      return false;
+    }
+    result_reg = *reg;
+    out << "    mov " << result_reg << ", " << inst.lhs.immediate << "\n";
+  }
+
+  if (inst.rhs.kind == Value::Kind::Immediate) {
+    out << "    add " << result_reg << ", " << inst.rhs.immediate << "\n";
+  } else {
+    const auto rhs_it = state.value_regs.find(inst.rhs.name);
+    if (rhs_it == state.value_regs.end()) {
+      return false;
+    }
+    out << "    add " << result_reg << ", " << rhs_it->second << "\n";
+  }
+  state.value_regs[inst.result.name] = result_reg;
+  return true;
+}
+
+bool lower_x86_call_inst(const CallInst& inst,
+                         X86EmitState& state,
+                         std::ostringstream& out) {
+  if (inst.is_indirect || inst.is_variadic ||
+      inst.calling_convention != c4c::backend::bir::CallingConv::C ||
+      inst.args.size() > 1 || inst.arg_types.size() != inst.args.size()) {
+    return false;
+  }
+  if (inst.return_type != TypeKind::Void && inst.return_type != TypeKind::I32) {
+    return false;
+  }
+  for (std::size_t index = 0; index < inst.args.size(); ++index) {
+    if (inst.arg_types[index] != TypeKind::I32 ||
+        !move_x86_i32_value_into_reg(inst.args[index], "edi", state, out)) {
+      return false;
+    }
+  }
+
+  out << "    call " << inst.callee << "\n";
+  state.value_regs.clear();
+  state.next_temp_index = 0;
+  if (inst.result.has_value()) {
+    if (inst.result->type != TypeKind::I32) {
+      return false;
+    }
+    state.value_regs[inst.result->name] = "eax";
+  }
+  return true;
+}
+
+bool lower_x86_function_body(const Function& function,
+                             const X86FrameLayout& layout,
+                             std::ostringstream& out) {
+  if (function.is_declaration || function.blocks.size() != 1 ||
+      function.blocks.front().label != "entry") {
+    return false;
+  }
+  const auto& block = function.blocks.front();
+  if (block.terminator.kind != TerminatorKind::Return) {
+    return false;
+  }
+
+  X86EmitState state;
+  if (function.params.size() > 1) {
+    return false;
+  }
+  if (function.params.size() == 1) {
+    if (function.params.front().type != TypeKind::I32) {
+      return false;
+    }
+    state.value_regs[function.params.front().name] = "edi";
+  }
+
+  out << "    push rbp\n";
+  out << "    mov rbp, rsp\n";
+  if (layout.frame_size > 0) {
+    out << "    sub rsp, " << layout.frame_size << "\n";
+  }
+
+  for (const auto& inst : block.insts) {
+    if (const auto* binary = std::get_if<BinaryInst>(&inst)) {
+      if (!lower_x86_binary_inst(*binary, state, out)) {
+        return false;
+      }
+    } else if (const auto* store = std::get_if<StoreLocalInst>(&inst)) {
+      const auto slot_it = layout.slot_offsets.find(store->slot_name);
+      if (slot_it == layout.slot_offsets.end()) {
+        return false;
+      }
+      const auto src_reg = materialize_x86_i32_value(store->value, state, out);
+      if (!src_reg.has_value()) {
+        return false;
+      }
+      out << "    mov dword ptr [rbp - " << slot_it->second << "], " << *src_reg << "\n";
+    } else if (const auto* load = std::get_if<LoadLocalInst>(&inst)) {
+      const auto slot_it = layout.slot_offsets.find(load->slot_name);
+      if (slot_it == layout.slot_offsets.end()) {
+        return false;
+      }
+      auto result_reg = allocate_x86_temp(state);
+      if (!result_reg.has_value()) {
+        return false;
+      }
+      out << "    mov " << *result_reg << ", dword ptr [rbp - " << slot_it->second << "]\n";
+      state.value_regs[load->result.name] = *result_reg;
+    } else if (const auto* call = std::get_if<CallInst>(&inst)) {
+      if (!lower_x86_call_inst(*call, state, out)) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+
+  if (block.terminator.value.has_value() &&
+      !move_x86_i32_value_into_reg(*block.terminator.value, "eax", state, out)) {
+    return false;
+  }
+  if (layout.frame_size > 0) {
+    out << "    add rsp, " << layout.frame_size << "\n";
+  }
+  out << "    pop rbp\n";
+  out << "    ret\n";
+  return true;
 }
 
 std::optional<std::string> materialize_riscv_i32_value(const Value& value,
@@ -355,10 +603,48 @@ std::optional<std::string> try_emit_supported_riscv_prepared_bir(const Module& m
   return out.str();
 }
 
+std::optional<std::string> try_emit_supported_x86_prepared_bir(const Module& module) {
+  if (!module.globals.empty() || !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  std::ostringstream out;
+  out << "    .intel_syntax noprefix\n";
+  out << "    .text\n";
+  for (const auto& function : module.functions) {
+    if (function.return_type != TypeKind::Void && function.return_type != TypeKind::I32) {
+      return std::nullopt;
+    }
+    if (function.is_variadic) {
+      return std::nullopt;
+    }
+    if (function.is_declaration) {
+      continue;
+    }
+
+    const auto layout = compute_x86_frame_layout(function);
+    if (!layout.has_value()) {
+      return std::nullopt;
+    }
+
+    out << "    .globl " << function.name << "\n";
+    out << function.name << ":\n";
+    if (!lower_x86_function_body(function, *layout, out)) {
+      return std::nullopt;
+    }
+  }
+  return out.str();
+}
+
 std::string emit_prepared_bir_or_fallback(const c4c::backend::bir::Module& module,
                                           Target target) {
   if (target == Target::Riscv64) {
     if (const auto emitted = try_emit_supported_riscv_prepared_bir(module);
+        emitted.has_value()) {
+      return *emitted;
+    }
+  } else if (target == Target::X86_64) {
+    if (const auto emitted = try_emit_supported_x86_prepared_bir(module);
         emitted.has_value()) {
       return *emitted;
     }
