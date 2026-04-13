@@ -17,9 +17,10 @@ Source Plan: plan.md
   backlog item 4, broader global data and addressed globals
 - current packet shape:
   extend backlog item 4 from simple struct-backed globals into nested
-  aggregate-address coverage, so struct-contained array fields keep honest
-  semantic BIR addresses for direct reads, direct stores, and pointer-derived
-  alias stores instead of dropping back to LLVM-text route escape
+  aggregate-address coverage, so struct-contained array fields and nested
+  pointer fields keep honest semantic BIR addresses for direct reads, direct
+  stores, and pointer-derived alias stores instead of dropping back to
+  LLVM-text route escape
 - candidate proving surface:
   `backend_codegen_route_riscv64_defined_global_array_defaults_to_bir`
   `backend_codegen_route_riscv64_defined_global_array_store_defaults_to_bir`
@@ -62,9 +63,10 @@ Source Plan: plan.md
   semantic BIR route, and designated pointer fields initialized from global
   addresses stay aliasable enough for the first dereference to remain semantic
 - nested struct-backed globals keep contained integer-array field reads,
-  direct stores, and pointer-derived alias stores on the semantic BIR route
-  instead of dropping back once aggregate GEPs need more than one structural
-  descent
+  direct stores, pointer-derived alias stores, nested pointer-field reads,
+  nested pointer-field stores, and nested pointer-field alias stores on the
+  semantic BIR route instead of dropping back once aggregate GEPs need more
+  than one structural descent
 - mutable struct pointer fields keep direct stores and local alias stores on
   the semantic BIR route, and the post-store readback keeps the updated
   addressed-global pointee instead of reverting to static initializer knowledge
@@ -156,17 +158,23 @@ Source Plan: plan.md
   `int *p = &s.inner.xs[0]; p[2] = 9; return s.inner.xs[2];` as direct
   `bir.load_global i32 @s, offset 8` plus addressed
   `bir.store_global @s, offset 4/8, i32 9` rather than raw LLVM fallback
+  nested addressed-global pointer fields now have explicit route coverage too;
+  new riscv64 route proofs cover `return *s.inner.p;`, `s.inner.p = gp;
+  return *s.inner.p;`, and `int **pp = &s.inner.p; *pp = gp; return **pp;`
+  through semantic BIR as `bir.load_global ptr @s, offset 8` /
+  `bir.store_global @s, offset 8, ptr ...` followed by the later
+  `bir.load_global i32 @x/@y` rather than raw LLVM fallback
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; broader pointer
   global forms beyond recursively resolved constant in-bounds aliases and the
   now-covered pointer-value stores into addressed pointer-global slots and
   pointer-global object-address roundtrip stores, plus addressed global
-  aggregates beyond nested scalar-array struct fields, multi-step pointer field
-  mutation/readback combinations beyond the first direct and aliased store
-  lane, and any still-unknown addressed-global aggregate shapes, are still
-  outside this finished slice
+  aggregates beyond nested scalar-array and nested pointer-field struct lanes,
+  multi-step pointer-field mutation/readback combinations beyond the first
+  direct and aliased store lane, and any still-unknown addressed-global
+  aggregate shapes, are still outside this finished slice
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_defined_global_struct_store_defaults_to_bir|backend_codegen_route_riscv64_anonymous_global_struct_fields_defaults_to_bir|backend_codegen_route_riscv64_named_global_struct_designated_init_defaults_to_bir|backend_codegen_route_riscv64_named_pointer_global_struct_designated_init_defaults_to_bir|backend_codegen_route_riscv64_named_pointer_global_struct_pointer_store_defaults_to_bir|backend_codegen_route_riscv64_named_pointer_global_struct_pointer_field_alias_store_defaults_to_bir|backend_codegen_route_riscv64_nested_global_struct_array_read_defaults_to_bir|backend_codegen_route_riscv64_nested_global_struct_array_store_defaults_to_bir|backend_codegen_route_riscv64_nested_global_struct_array_alias_store_defaults_to_bir)$' > test_after.log 2>&1`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_named_pointer_global_struct_designated_init_defaults_to_bir|backend_codegen_route_riscv64_named_pointer_global_struct_pointer_store_defaults_to_bir|backend_codegen_route_riscv64_named_pointer_global_struct_pointer_field_alias_store_defaults_to_bir|backend_codegen_route_riscv64_nested_global_struct_pointer_read_defaults_to_bir|backend_codegen_route_riscv64_nested_global_struct_pointer_store_defaults_to_bir|backend_codegen_route_riscv64_nested_global_struct_pointer_alias_store_defaults_to_bir)$' > test_after.log 2>&1`
 - proof log:
   `test_after.log`
 
