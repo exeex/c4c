@@ -2138,6 +2138,33 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_array_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_array_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_array_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gp|bir.store_global @arr, offset 4, i32 9|bir.load_global i32 @arr, offset 4|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_pointer_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_pointer_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_pointer_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @ggp|%t1 = bir.load_global ptr @gp|bir.store_global @arr, offset 8, i32 9|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_string_global_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_string_global_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_string_global_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gp|bir.trunc i32 111 to i8|bir.store_global @g_text, offset 1, i8 |bir.load_global i8 @g_text, offset 1|bir.sext i8 |bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_string_literal_char_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/string_literal_char.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
@@ -2329,7 +2356,13 @@ if(CLANG_EXECUTABLE)
         continue()
       elseif(stem STREQUAL "defined_pointer_global_pointer_pointer")
         continue()
+      elseif(stem STREQUAL "defined_pointer_global_array_store")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_pointer_store")
+        continue()
       elseif(stem STREQUAL "defined_string_global_char")
+        continue()
+      elseif(stem STREQUAL "defined_string_global_store")
         continue()
       elseif(stem STREQUAL "global_char_pointer_diff")
         set(expect_exit_code 1)

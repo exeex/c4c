@@ -93,9 +93,12 @@ void render_function(std::ostringstream& out, const Function& function) {
               }
               out << "\n";
             } else if constexpr (std::is_same_v<T, StoreGlobalInst>) {
-              out << "  bir.store_global @" << lowered.global_name << ", "
-                  << render_type(lowered.value.type) << " " << render_value(lowered.value)
-                  << "\n";
+              out << "  bir.store_global @" << lowered.global_name;
+              if (lowered.byte_offset != 0) {
+                out << ", offset " << lowered.byte_offset;
+              }
+              out << ", " << render_type(lowered.value.type) << " "
+                  << render_value(lowered.value) << "\n";
             } else if constexpr (std::is_same_v<T, StoreLocalInst>) {
               out << "  bir.store_local " << lowered.slot_name << ", "
                   << render_type(lowered.value.type) << " " << render_value(lowered.value)
