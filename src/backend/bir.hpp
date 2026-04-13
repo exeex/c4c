@@ -102,6 +102,7 @@ struct Global {
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
   std::optional<Value> initializer;
+  std::vector<Value> initializer_elements;
 };
 
 struct StringConstant {

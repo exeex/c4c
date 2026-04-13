@@ -40,6 +40,9 @@ void legalize_module(Target target, bir::Module& module) {
     if (global.initializer.has_value()) {
       legalize_value(target, *global.initializer);
     }
+    for (auto& element : global.initializer_elements) {
+      legalize_value(target, element);
+    }
   }
 
   for (auto& function : module.functions) {

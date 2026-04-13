@@ -66,6 +66,9 @@ struct ParsedTypedOperand {
   c4c::codegen::lir::LirOperand operand;
 };
 
+std::optional<bir::Value> lower_global_initializer(std::string_view text,
+                                                   bir::TypeKind type);
+
 std::optional<std::int64_t> parse_i64(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -204,6 +207,28 @@ std::optional<std::string_view> peel_integer_array_layer(std::string_view text) 
   return text.substr(x_pos + 3, text.size() - x_pos - 4);
 }
 
+std::optional<std::pair<std::size_t, std::string_view>> parse_integer_array_layer(
+    std::string_view text) {
+  if (text.size() < 6 || text.front() != '[' || text.back() != ']') {
+    return std::nullopt;
+  }
+
+  const auto x_pos = text.find(" x ");
+  if (x_pos == std::string_view::npos || x_pos <= 1) {
+    return std::nullopt;
+  }
+
+  const auto count = parse_i64(text.substr(1, x_pos - 1));
+  if (!count.has_value() || *count <= 0) {
+    return std::nullopt;
+  }
+
+  return std::pair<std::size_t, std::string_view>{
+      static_cast<std::size_t>(*count),
+      text.substr(x_pos + 3, text.size() - x_pos - 4),
+  };
+}
+
 std::size_t type_size_bytes_from_text(std::string_view text) {
   if (const auto scalar_type = lower_integer_type(text); scalar_type.has_value()) {
     return type_size_bytes(*scalar_type);
@@ -285,6 +310,116 @@ bool is_zero_integer_array_initializer(std::string_view init_text, std::string_v
     }
   }
   return true;
+}
+
+std::optional<bir::Value> lower_zero_initializer_value(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+      return bir::Value::immediate_i1(false);
+    case bir::TypeKind::I8:
+      return bir::Value::immediate_i8(0);
+    case bir::TypeKind::I32:
+      return bir::Value::immediate_i32(0);
+    case bir::TypeKind::I64:
+      return bir::Value::immediate_i64(0);
+    default:
+      return std::nullopt;
+  }
+}
+
+bool append_zero_integer_array_initializer(std::string_view type_text,
+                                           std::vector<bir::Value>* out) {
+  const auto scalar_type = lower_integer_type(type_text);
+  if (scalar_type.has_value()) {
+    const auto zero_value = lower_zero_initializer_value(*scalar_type);
+    if (!zero_value.has_value()) {
+      return false;
+    }
+    out->push_back(*zero_value);
+    return true;
+  }
+
+  const auto layer = parse_integer_array_layer(type_text);
+  if (!layer.has_value()) {
+    return false;
+  }
+
+  for (std::size_t index = 0; index < layer->first; ++index) {
+    if (!append_zero_integer_array_initializer(layer->second, out)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool lower_integer_array_initializer_recursive(std::string_view init_text,
+                                               std::string_view type_text,
+                                               std::vector<bir::Value>* out) {
+  const auto trimmed_init = c4c::codegen::lir::trim_lir_arg_text(init_text);
+  if (trimmed_init.empty()) {
+    return false;
+  }
+
+  if (trimmed_init == "zeroinitializer") {
+    return append_zero_integer_array_initializer(type_text, out);
+  }
+
+  if (const auto scalar_type = lower_integer_type(type_text); scalar_type.has_value()) {
+    std::string_view scalar_init = trimmed_init;
+    const auto space = trimmed_init.find(' ');
+    if (space != std::string_view::npos && trimmed_init.substr(0, space) == type_text) {
+      scalar_init = trimmed_init.substr(space + 1);
+    }
+    const auto value = lower_global_initializer(scalar_init, *scalar_type);
+    if (!value.has_value()) {
+      return false;
+    }
+    out->push_back(*value);
+    return true;
+  }
+
+  const auto layer = parse_integer_array_layer(type_text);
+  if (!layer.has_value() || trimmed_init.front() != '[' || trimmed_init.back() != ']') {
+    return false;
+  }
+
+  const auto body = trimmed_init.substr(1, trimmed_init.size() - 2);
+  const auto items = split_top_level_initializer_items(body);
+  if (items.size() > layer->first) {
+    return false;
+  }
+
+  for (const auto item : items) {
+    const auto trimmed_item = c4c::codegen::lir::trim_lir_arg_text(item);
+    if (trimmed_item.empty()) {
+      return false;
+    }
+    if (trimmed_item.size() <= layer->second.size() ||
+        trimmed_item.substr(0, layer->second.size()) != layer->second ||
+        trimmed_item[layer->second.size()] != ' ') {
+      return false;
+    }
+    if (!lower_integer_array_initializer_recursive(
+            trimmed_item.substr(layer->second.size() + 1), layer->second, out)) {
+      return false;
+    }
+  }
+
+  for (std::size_t index = items.size(); index < layer->first; ++index) {
+    if (!append_zero_integer_array_initializer(layer->second, out)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::optional<std::vector<bir::Value>> lower_integer_array_initializer(std::string_view init_text,
+                                                                       std::string_view type_text) {
+  std::vector<bir::Value> lowered;
+  if (!lower_integer_array_initializer_recursive(init_text, type_text, &lowered)) {
+    return std::nullopt;
+  }
+  return lowered;
 }
 
 std::optional<ParsedTypedOperand> parse_typed_operand(std::string_view text) {
@@ -577,25 +712,12 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
   lowered.size_bytes = total_elements * element_size_bytes;
   lowered.align_bytes = global.align_bytes > 0 ? static_cast<std::size_t>(global.align_bytes) : 0;
   if (!global.is_extern_decl) {
-    if (!is_zero_integer_array_initializer(global.init_text, global.llvm_type)) {
+    const auto initializer_elements =
+        lower_integer_array_initializer(global.init_text, global.llvm_type);
+    if (!initializer_elements.has_value()) {
       return std::nullopt;
     }
-    switch (integer_array->element_type) {
-      case bir::TypeKind::I1:
-        lowered.initializer = bir::Value::immediate_i1(false);
-        break;
-      case bir::TypeKind::I8:
-        lowered.initializer = bir::Value::immediate_i8(0);
-        break;
-      case bir::TypeKind::I32:
-        lowered.initializer = bir::Value::immediate_i32(0);
-        break;
-      case bir::TypeKind::I64:
-        lowered.initializer = bir::Value::immediate_i64(0);
-        break;
-      default:
-        return std::nullopt;
-    }
+    lowered.initializer_elements = *initializer_elements;
   }
 
   info->value_type = integer_array->element_type;

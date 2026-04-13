@@ -311,7 +311,8 @@ bool validate(const Module& module, std::string* error) {
     if (std::find(global_names.begin(), global_names.end(), global.name) != global_names.end()) {
       return fail(error, "bir globals must not reuse an existing name");
     }
-    if (!global.is_extern && !global.initializer.has_value()) {
+    if (!global.is_extern && !global.initializer.has_value() &&
+        global.initializer_elements.empty()) {
       return fail(error, "bir defined global @" + global.name + " must have an initializer");
     }
     if (global.initializer.has_value()) {
@@ -322,6 +323,16 @@ bool validate(const Module& module, std::string* error) {
       }
       if (global.initializer->kind != Value::Kind::Immediate) {
         return fail(error, "bir global initializer @" + global.name +
+                               " must be an immediate");
+      }
+    }
+    for (const auto& element : global.initializer_elements) {
+      if (element.kind == Value::Kind::Named && element.name.empty()) {
+        return fail(error, "bir global initializer element @" + global.name +
+                               " must not use an empty name");
+      }
+      if (element.kind != Value::Kind::Immediate) {
+        return fail(error, "bir global initializer element @" + global.name +
                                " must be an immediate");
       }
     }
