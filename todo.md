@@ -16,40 +16,42 @@ Source Plan: plan.md
 - current capability family:
   backlog item 5, expand call lowering beyond minimal direct calls
 - current packet shape:
-  start backlog item 5 by making the existing direct-call lane explicit and
-  honest in semantic BIR before chasing indirect calls: use the current helper
-  call surfaces to pin down how callee identity, return type, and simple local
-  argument values flow through `lir_to_bir_module.cpp` and `call_decode.cpp`
-  without dropping back to raw-LIR text or smuggling target ABI shaping into
-  semantic lowering
+  keep backlog item 5 on the riscv64 backend-route surface by widening the
+  now-green direct-call lane from the first zero/one-arg helper cases to the
+  first two-arg rewrite variants; keep the work inside shared semantic
+  BIR/prepared-BIR call handling and explicit route proofs rather than
+  reopening the rejected host-runtime x86 fallback seam or jumping ahead to
+  indirect calls
 - candidate proving surface:
-  `tests/c/internal/backend_case/local_arg_call.c`
-  `tests/c/internal/backend_case/call_helper.c`
-  `tests/c/internal/backend_case/call_helper_def.c`
-  promote these into explicit riscv64 backend-route proofs as the first call
-  observation surface, then widen only if that semantic lane is genuinely
-  green
+  `tests/c/internal/backend_case/two_arg_first_local_rewrite.c`
+  `tests/c/internal/backend_case/two_arg_second_local_rewrite.c`
+  `tests/c/internal/backend_case/two_arg_both_local_first_rewrite.c`
+  `tests/c/internal/backend_case/two_arg_both_local_second_rewrite.c`
+  keep `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the first
+  four `two_arg_*` route tests as standing sentinels while widening only the
+  direct-call family that is already honest on riscv64
 
 ## Immediate Target
 
 - keep packet selection attached to the ordered semantic backlog in `plan.md`
 - carry the now-green addressed-global work forward by moving to the next
   semantic family instead of stretching backlog item 4 past its proving surface
-- establish a truthful call-lowering observation surface before widening into
-  indirect-call or ABI-shaped follow-ons
+- carry the now-green first four two-arg direct-call cases forward before
+  widening into indirect-call or ABI-shaped follow-ons
 - avoid reintroducing testcase-shaped routing while broadening the call lane
 
 ## Done Condition For The Active Packet
 
 - `branch_if_eq.c` still lowers to clean BIR
-- simple direct calls with zero or one local scalar arguments lower through
-  semantic BIR on the riscv64 backend-route surface instead of raw-LIR text
-  fallback
+- the existing zero/one-arg call sentinels and first four two-arg route tests
+  stay green on riscv64
+- the first single-rewrite two-arg direct-call cases lower through the same
+  riscv64 backend-route surface instead of reopening host-runtime x86 fallback
 - semantic call lowering keeps callee identity, result type, and minimal arg
   metadata available for later prepare/ABI shaping without performing that
   shaping inside `lir_to_bir`
-- the first call-lane route proofs cover both internal helper calls and extern
-  helper declarations without introducing target-specific shortcuts
+- the widened call-lane route proofs still cover internal helpers without
+  introducing target-specific shortcuts
 - no new direct route, rendered-text matcher, or tiny case-family special path
   is introduced
 
@@ -261,15 +263,32 @@ Source Plan: plan.md
   this keeps backlog item 5 attached to the riscv64 backend-route surface the
   runbook asked for, preserves `branch_if_eq.c` as the standing BIR sentinel,
   and avoids reopening the rejected host-runtime x86 proof seam
+- completed:
+  the first four two-arg direct-call shapes now stay on that same explicit
+  riscv64 backend-route surface too: `backend.cpp` accepts up to two `i32`
+  params and direct-call args in the existing `a0/a1` lane, including the
+  small guarded move ordering needed to avoid self-clobber when named values
+  already live in argument registers
+  new riscv64 route proofs now cover `two_arg_helper.c`,
+  `two_arg_local_arg.c`, `two_arg_second_local_arg.c`, and
+  `two_arg_both_local_arg.c` as native asm with `add_pair` in `a0/a1`,
+  preserving the semantic-BIR call lane instead of dumping raw `bir.call`
+  text to the assembler
+- checkpoint:
+  a broader supervisor-selected proof that also included
+  `backend_runtime_two_arg_*` remained red before and after this slice on the
+  host `x86_64-unknown-linux-gnu` runtime path; those tests still assemble raw
+  BIR text outside the owned riscv64 route surface, so this packet kept the
+  acceptance proof on explicit riscv64 backend-route coverage rather than
+  reopening the rejected host-runtime fallback seam
 - blocked:
   none in owned files for this packet
 - remaining next:
-  widen backlog item 5 beyond zero/one-arg direct calls from this now-green
-  riscv64 route baseline, most likely by extending the same explicit
-  backend-route proof style to the first two-arg direct-call family before
-  touching indirect calls or ABI-shaped follow-ons
+  extend the same explicit riscv64 backend-route proof style to the first
+  single-rewrite two-arg direct-call variants before touching indirect calls
+  or ABI-shaped follow-ons
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_call_helper_defaults_to_asm|backend_codegen_route_riscv64_local_arg_call_defaults_to_asm)$' > test_after.log 2>&1`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_call_helper_defaults_to_asm|backend_codegen_route_riscv64_local_arg_call_defaults_to_asm|backend_codegen_route_riscv64_two_arg_(helper|local_arg|second_local_arg|both_local_arg)_defaults_to_asm)$' > test_after.log 2>&1`
 - proof log:
   `test_after.log`
 

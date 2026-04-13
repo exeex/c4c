@@ -27,6 +27,7 @@ using c4c::backend::bir::Value;
 
 constexpr std::array<std::string_view, 7> kRiscvTempRegs = {
     "t0", "t1", "t2", "t3", "t4", "t5", "t6"};
+constexpr std::array<std::string_view, 2> kRiscvArgRegs = {"a0", "a1"};
 
 Target resolve_public_lir_target(const c4c::codegen::lir::LirModule& module,
                                  Target public_target) {
@@ -175,6 +176,74 @@ bool move_riscv_i32_value_into_reg(const Value& value,
   return true;
 }
 
+bool move_riscv_i32_call_args_into_regs(const std::vector<Value>& args,
+                                        RiscvEmitState& state,
+                                        std::ostringstream& out) {
+  if (args.size() > kRiscvArgRegs.size()) {
+    return false;
+  }
+
+  struct PendingCallArgMove {
+    bool is_immediate = false;
+    std::int64_t immediate = 0;
+    std::string src_reg;
+  };
+
+  std::vector<PendingCallArgMove> moves(args.size());
+  for (std::size_t index = 0; index < args.size(); ++index) {
+    if (!is_supported_riscv_i32_value(args[index])) {
+      return false;
+    }
+    if (args[index].kind == Value::Kind::Immediate) {
+      moves[index].is_immediate = true;
+      moves[index].immediate = args[index].immediate;
+      continue;
+    }
+
+    const auto it = state.value_regs.find(args[index].name);
+    if (it == state.value_regs.end()) {
+      return false;
+    }
+    moves[index].src_reg = it->second;
+  }
+
+  const auto emit_move = [&](std::size_t index) {
+    const auto dest_reg = kRiscvArgRegs[index];
+    if (moves[index].is_immediate) {
+      out << "    li " << dest_reg << ", " << moves[index].immediate << "\n";
+      return true;
+    }
+    if (moves[index].src_reg != dest_reg) {
+      out << "    mv " << dest_reg << ", " << moves[index].src_reg << "\n";
+    }
+    return true;
+  };
+
+  if (moves.size() == 2 && !moves[0].is_immediate && !moves[1].is_immediate &&
+      moves[0].src_reg == kRiscvArgRegs[1] && moves[1].src_reg == kRiscvArgRegs[0]) {
+    auto temp = allocate_riscv_temp(state);
+    if (!temp.has_value()) {
+      return false;
+    }
+    out << "    mv " << *temp << ", " << kRiscvArgRegs[0] << "\n";
+    out << "    mv " << kRiscvArgRegs[0] << ", " << kRiscvArgRegs[1] << "\n";
+    out << "    mv " << kRiscvArgRegs[1] << ", " << *temp << "\n";
+    return true;
+  }
+
+  if (moves.size() == 2 && !moves[1].is_immediate && moves[1].src_reg == kRiscvArgRegs[0] &&
+      (moves[0].is_immediate || moves[0].src_reg != kRiscvArgRegs[0])) {
+    return emit_move(1) && emit_move(0);
+  }
+
+  for (std::size_t index = 0; index < moves.size(); ++index) {
+    if (!emit_move(index)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool lower_riscv_binary_inst(const BinaryInst& inst,
                              RiscvEmitState& state,
                              std::ostringstream& out) {
@@ -219,17 +288,19 @@ bool lower_riscv_call_inst(const CallInst& inst,
                            std::ostringstream& out) {
   if (inst.is_indirect || inst.is_variadic ||
       inst.calling_convention != c4c::backend::bir::CallingConv::C ||
-      inst.args.size() > 1 || inst.arg_types.size() != inst.args.size()) {
+      inst.args.size() > kRiscvArgRegs.size() || inst.arg_types.size() != inst.args.size()) {
     return false;
   }
   if (inst.return_type != TypeKind::Void && inst.return_type != TypeKind::I32) {
     return false;
   }
   for (std::size_t index = 0; index < inst.args.size(); ++index) {
-    if (inst.arg_types[index] != TypeKind::I32 ||
-        !move_riscv_i32_value_into_reg(inst.args[index], "a0", state, out)) {
+    if (inst.arg_types[index] != TypeKind::I32) {
       return false;
     }
+  }
+  if (!move_riscv_i32_call_args_into_regs(inst.args, state, out)) {
+    return false;
   }
 
   out << "    call " << inst.callee << "\n";
@@ -257,14 +328,14 @@ bool lower_riscv_function_body(const Function& function,
   }
 
   RiscvEmitState state;
-  if (function.params.size() > 1) {
+  if (function.params.size() > kRiscvArgRegs.size()) {
     return false;
   }
-  if (function.params.size() == 1) {
-    if (function.params.front().type != TypeKind::I32) {
+  for (std::size_t index = 0; index < function.params.size(); ++index) {
+    if (function.params[index].type != TypeKind::I32) {
       return false;
     }
-    state.value_regs[function.params.front().name] = "a0";
+    state.value_regs[function.params[index].name] = std::string(kRiscvArgRegs[index]);
   }
 
   if (layout.frame_size > 0) {
