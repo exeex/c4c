@@ -17,6 +17,12 @@ using ValueMap = std::unordered_map<std::string, bir::Value>;
 using LocalSlotTypes = std::unordered_map<std::string, bir::TypeKind>;
 using LocalPointerSlots = std::unordered_map<std::string, std::string>;
 
+struct GlobalAddress {
+  std::string global_name;
+  bir::TypeKind value_type = bir::TypeKind::Void;
+  std::size_t byte_offset = 0;
+};
+
 struct GlobalInfo {
   bir::TypeKind value_type = bir::TypeKind::Void;
   std::size_t element_size_bytes = 0;
@@ -24,15 +30,11 @@ struct GlobalInfo {
   bool supports_direct_value = false;
   bool supports_linear_addressing = false;
   std::string type_text;
+  std::optional<GlobalAddress> known_global_address;
+  std::string initializer_symbol_name;
 };
 
 using GlobalTypes = std::unordered_map<std::string, GlobalInfo>;
-
-struct GlobalAddress {
-  std::string global_name;
-  bir::TypeKind value_type = bir::TypeKind::Void;
-  std::size_t byte_offset = 0;
-};
 
 using GlobalPointerMap = std::unordered_map<std::string, GlobalAddress>;
 using GlobalAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
@@ -68,6 +70,14 @@ struct ParsedTypedOperand {
 
 std::optional<bir::Value> lower_global_initializer(std::string_view text,
                                                    bir::TypeKind type);
+
+std::optional<std::string> parse_global_symbol_initializer(std::string_view text) {
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (trimmed.size() < 2 || trimmed.front() != '@') {
+    return std::nullopt;
+  }
+  return std::string(trimmed.substr(1));
+}
 
 std::optional<std::int64_t> parse_i64(std::string_view text) {
   std::int64_t value = 0;
@@ -727,11 +737,18 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
   lowered.is_constant = global.is_const;
   lowered.align_bytes = global.align_bytes > 0 ? static_cast<std::size_t>(global.align_bytes) : 0;
   if (!global.is_extern_decl) {
-    const auto initializer = lower_global_initializer(global.init_text, *lowered_type);
-    if (!initializer.has_value()) {
-      return std::nullopt;
+    if (*lowered_type == bir::TypeKind::Ptr) {
+      lowered.initializer_symbol_name = parse_global_symbol_initializer(global.init_text);
+      if (!lowered.initializer_symbol_name.has_value()) {
+        return std::nullopt;
+      }
+    } else {
+      const auto initializer = lower_global_initializer(global.init_text, *lowered_type);
+      if (!initializer.has_value()) {
+        return std::nullopt;
+      }
+      lowered.initializer = *initializer;
     }
-    lowered.initializer = *initializer;
   }
   return lowered;
 }
@@ -744,6 +761,10 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
     info->element_count = 1;
     info->supports_direct_value = true;
     info->supports_linear_addressing = true;
+    if (lowered->initializer_symbol_name.has_value()) {
+      info->initializer_symbol_name = *lowered->initializer_symbol_name;
+      info->supports_linear_addressing = false;
+    }
     if (lowered->size_bytes == 0) {
       lowered->size_bytes = info->element_size_bytes;
     }
@@ -1465,6 +1486,9 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
           global_it->second.value_type != *value_type) {
         return false;
       }
+      if (*value_type == bir::TypeKind::Ptr && global_it->second.known_global_address.has_value()) {
+        global_pointer_slots[load->result.str()] = *global_it->second.known_global_address;
+      }
       lowered_insts->push_back(bir::LoadGlobalInst{
           .result = bir::Value::named(*value_type, load->result.str()),
           .global_name = global_name,
@@ -1942,6 +1966,24 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     }
     global_types.emplace(lowered_global->name, info);
     module.globals.push_back(std::move(*lowered_global));
+  }
+
+  for (auto& [global_name, info] : global_types) {
+    if (info.initializer_symbol_name.empty()) {
+      continue;
+    }
+    const auto pointee_it = global_types.find(info.initializer_symbol_name);
+    if (pointee_it == global_types.end() || !pointee_it->second.supports_linear_addressing) {
+      context.note(
+          "module",
+          "bootstrap lir_to_bir only supports pointer globals initialized from directly addressable globals right now");
+      return std::nullopt;
+    }
+    info.known_global_address = GlobalAddress{
+        .global_name = info.initializer_symbol_name,
+        .value_type = pointee_it->second.value_type,
+        .byte_offset = 0,
+    };
   }
 
   for (const auto& decl : context.lir_module.extern_decls) {

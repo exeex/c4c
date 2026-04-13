@@ -312,8 +312,12 @@ bool validate(const Module& module, std::string* error) {
       return fail(error, "bir globals must not reuse an existing name");
     }
     if (!global.is_extern && !global.initializer.has_value() &&
-        global.initializer_elements.empty()) {
+        !global.initializer_symbol_name.has_value() && global.initializer_elements.empty()) {
       return fail(error, "bir defined global @" + global.name + " must have an initializer");
+    }
+    if (global.initializer_symbol_name.has_value() && global.initializer_symbol_name->empty()) {
+      return fail(error, "bir global initializer symbol @" + global.name +
+                             " must not use an empty name");
     }
     if (global.initializer.has_value()) {
       if (global.initializer->kind == Value::Kind::Named &&

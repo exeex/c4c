@@ -57,6 +57,8 @@ std::string render_type(TypeKind type) {
       return "i32";
     case TypeKind::I64:
       return "i64";
+    case TypeKind::Ptr:
+      return "ptr";
   }
   return "<unknown>";
 }
