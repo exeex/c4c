@@ -2156,6 +2156,24 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_pointer_value_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_pointer_value_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_pointer_value_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gq|bir.load_global ptr @ggp|bir.store_global @gp, ptr |bir.load_global ptr @gp|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_pointer_pointer_value_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_pointer_pointer_value_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_pointer_pointer_value_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gq|bir.load_global ptr @gggp|bir.load_global ptr @ggp|bir.store_global @gp, ptr |bir.load_global ptr @gp|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_defined_string_global_store_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_string_global_store.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
@@ -2359,6 +2377,10 @@ if(CLANG_EXECUTABLE)
       elseif(stem STREQUAL "defined_pointer_global_array_store")
         continue()
       elseif(stem STREQUAL "defined_pointer_global_pointer_store")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_pointer_value_store")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_pointer_pointer_value_store")
         continue()
       elseif(stem STREQUAL "defined_string_global_char")
         continue()
