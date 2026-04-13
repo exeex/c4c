@@ -34,6 +34,15 @@ Source Plan: plan.md
   `branch_if_eq.c`, `global_load.c`, and `global_load_zero_init.c` all
   now emit semantic BIR instead of LLVM-text fallback on the delegated
   x86_64 route
+- testcase packet:
+  added `tests/c/internal/backend_case/global_store.c` as the minimal
+  repo-owned scalar global-write proving surface for the next packet;
+  this case writes a constant into `g_counter` and returns the updated
+  scalar global value without introducing pointer or aggregate behavior
+- testcase packet proof:
+  `bash -lc 'cmake --build build -j2 && ./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/global_store.c -o /tmp/global_store_x86.ll && cat /tmp/global_store_x86.ll' > test_after.log 2>&1`
+- testcase packet proof log:
+  `test_after.log`
 
 ## Immediate Target
 
