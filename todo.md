@@ -164,17 +164,22 @@ Source Plan: plan.md
   through semantic BIR as `bir.load_global ptr @s, offset 8` /
   `bir.store_global @s, offset 8, ptr ...` followed by the later
   `bir.load_global i32 @x/@y` rather than raw LLVM fallback
+  multi-step addressed-global pointer-field rewrites now have explicit route
+  coverage too; new riscv64 route proofs cover `s.p = gp; *pp = gq; return
+  *s.p;` and `s.inner.p = gp; *pp = gq; return *s.inner.p;` through semantic
+  BIR as two ordered `bir.store_global @s, offset 8, ptr ...` updates, a later
+  `bir.load_global ptr @s, offset 8`, and the final addressed-global reload
+  from `@z` rather than stale initializer knowledge or raw LLVM fallback
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; broader pointer
   global forms beyond recursively resolved constant in-bounds aliases and the
   now-covered pointer-value stores into addressed pointer-global slots and
   pointer-global object-address roundtrip stores, plus addressed global
   aggregates beyond nested scalar-array and nested pointer-field struct lanes,
-  multi-step pointer-field mutation/readback combinations beyond the first
-  direct and aliased store lane, and any still-unknown addressed-global
-  aggregate shapes, are still outside this finished slice
+  plus any still-unknown addressed-global aggregate shapes, are still outside
+  this finished slice
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_named_pointer_global_struct_designated_init_defaults_to_bir|backend_codegen_route_riscv64_named_pointer_global_struct_pointer_store_defaults_to_bir|backend_codegen_route_riscv64_named_pointer_global_struct_pointer_field_alias_store_defaults_to_bir|backend_codegen_route_riscv64_nested_global_struct_pointer_read_defaults_to_bir|backend_codegen_route_riscv64_nested_global_struct_pointer_store_defaults_to_bir|backend_codegen_route_riscv64_nested_global_struct_pointer_alias_store_defaults_to_bir)$' > test_after.log 2>&1`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_named_pointer_global_struct_pointer_(store|field_alias_store|field_rewrite)_defaults_to_bir|backend_codegen_route_riscv64_nested_global_struct_pointer_(store|alias_store|rewrite)_defaults_to_bir)$' > test_after.log 2>&1`
 - proof log:
   `test_after.log`
 
