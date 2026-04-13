@@ -15,6 +15,14 @@ namespace {
 
 using ValueMap = std::unordered_map<std::string, bir::Value>;
 using LocalSlotTypes = std::unordered_map<std::string, bir::TypeKind>;
+using LocalPointerSlots = std::unordered_map<std::string, std::string>;
+
+struct LocalArraySlots {
+  bir::TypeKind element_type = bir::TypeKind::Void;
+  std::vector<std::string> element_slots;
+};
+
+using LocalArraySlotMap = std::unordered_map<std::string, LocalArraySlots>;
 
 struct CompareExpr {
   bir::BinaryOpcode opcode = bir::BinaryOpcode::Eq;
@@ -30,6 +38,11 @@ struct BranchChain {
   std::vector<std::string> labels;
   std::string leaf_label;
   std::string join_label;
+};
+
+struct ParsedTypedOperand {
+  std::string type_text;
+  c4c::codegen::lir::LirOperand operand;
 };
 
 std::optional<std::int64_t> parse_i64(std::string_view text) {
@@ -60,6 +73,93 @@ std::optional<bir::TypeKind> lower_integer_type(std::string_view text) {
     return bir::TypeKind::Void;
   }
   return std::nullopt;
+}
+
+std::optional<std::pair<std::size_t, bir::TypeKind>> parse_local_array_type(std::string_view text) {
+  if (text.size() < 6 || text.front() != '[' || text.back() != ']') {
+    return std::nullopt;
+  }
+
+  const auto x_pos = text.find(" x ");
+  if (x_pos == std::string_view::npos || x_pos <= 1) {
+    return std::nullopt;
+  }
+
+  const auto count = parse_i64(text.substr(1, x_pos - 1));
+  if (!count.has_value() || *count <= 0) {
+    return std::nullopt;
+  }
+
+  const auto element_type = lower_integer_type(text.substr(x_pos + 3, text.size() - x_pos - 4));
+  if (!element_type.has_value()) {
+    return std::nullopt;
+  }
+
+  return std::pair<std::size_t, bir::TypeKind>{static_cast<std::size_t>(*count), *element_type};
+}
+
+std::optional<ParsedTypedOperand> parse_typed_operand(std::string_view text) {
+  const auto space = text.find(' ');
+  if (space == std::string_view::npos || space == 0 || space + 1 >= text.size()) {
+    return std::nullopt;
+  }
+  return ParsedTypedOperand{
+      .type_text = std::string(text.substr(0, space)),
+      .operand = c4c::codegen::lir::LirOperand(std::string(text.substr(space + 1))),
+  };
+}
+
+std::optional<std::int64_t> resolve_index_operand(const c4c::codegen::lir::LirOperand& operand,
+                                                  const ValueMap& value_aliases) {
+  if (operand.kind() == c4c::codegen::lir::LirOperandKind::Immediate ||
+      operand.kind() == c4c::codegen::lir::LirOperandKind::SpecialToken) {
+    return parse_i64(operand.str());
+  }
+
+  if (operand.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+    return std::nullopt;
+  }
+
+  const auto alias = value_aliases.find(operand.str());
+  if (alias == value_aliases.end() || alias->second.kind != bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+  return alias->second.immediate;
+}
+
+std::optional<bir::BinaryOpcode> lower_scalar_binary_opcode(
+    const c4c::codegen::lir::LirBinaryOpcodeRef& opcode) {
+  using c4c::codegen::lir::LirBinaryOpcode;
+  switch (opcode.typed().value_or(LirBinaryOpcode::FNeg)) {
+    case LirBinaryOpcode::Add:
+      return bir::BinaryOpcode::Add;
+    case LirBinaryOpcode::Sub:
+      return bir::BinaryOpcode::Sub;
+    case LirBinaryOpcode::Mul:
+      return bir::BinaryOpcode::Mul;
+    case LirBinaryOpcode::SDiv:
+      return bir::BinaryOpcode::SDiv;
+    case LirBinaryOpcode::UDiv:
+      return bir::BinaryOpcode::UDiv;
+    case LirBinaryOpcode::SRem:
+      return bir::BinaryOpcode::SRem;
+    case LirBinaryOpcode::URem:
+      return bir::BinaryOpcode::URem;
+    case LirBinaryOpcode::And:
+      return bir::BinaryOpcode::And;
+    case LirBinaryOpcode::Or:
+      return bir::BinaryOpcode::Or;
+    case LirBinaryOpcode::Xor:
+      return bir::BinaryOpcode::Xor;
+    case LirBinaryOpcode::Shl:
+      return bir::BinaryOpcode::Shl;
+    case LirBinaryOpcode::LShr:
+      return bir::BinaryOpcode::LShr;
+    case LirBinaryOpcode::AShr:
+      return bir::BinaryOpcode::AShr;
+    default:
+      return std::nullopt;
+  }
 }
 
 std::optional<bir::BinaryOpcode> lower_cmp_predicate(
@@ -93,10 +193,10 @@ std::optional<bir::BinaryOpcode> lower_cmp_predicate(
 
 std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& operand,
                                       bir::TypeKind expected_type,
-                                      const ValueMap& bool_aliases) {
+                                      const ValueMap& value_aliases) {
   if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
-    const auto alias = bool_aliases.find(operand.str());
-    if (alias != bool_aliases.end()) {
+    const auto alias = value_aliases.find(operand.str());
+    if (alias != value_aliases.end()) {
       return alias->second;
     }
     return bir::Value::named(expected_type, operand.str());
@@ -204,7 +304,7 @@ bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
 }
 
 bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
-                               ValueMap& bool_aliases,
+                               ValueMap& value_aliases,
                                CompareMap& compare_exprs,
                                std::vector<bir::Inst>* lowered_insts) {
   if (const auto* cmp = std::get_if<c4c::codegen::lir::LirCmpOp>(&inst)) {
@@ -216,8 +316,8 @@ bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
     if (!operand_type.has_value() || !opcode.has_value()) {
       return false;
     }
-    const auto lhs = lower_value(cmp->lhs, *operand_type, bool_aliases);
-    const auto rhs = lower_value(cmp->rhs, *operand_type, bool_aliases);
+    const auto lhs = lower_value(cmp->lhs, *operand_type, value_aliases);
+    const auto rhs = lower_value(cmp->rhs, *operand_type, value_aliases);
     if (!lhs.has_value() || !rhs.has_value()) {
       return false;
     }
@@ -225,12 +325,12 @@ bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
     if (*opcode == bir::BinaryOpcode::Ne && *operand_type == bir::TypeKind::I32 &&
         cmp->lhs.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
         cmp->rhs.kind() == c4c::codegen::lir::LirOperandKind::Immediate) {
-      const auto alias = bool_aliases.find(cmp->lhs.str());
+      const auto alias = value_aliases.find(cmp->lhs.str());
       const auto compare_alias = compare_exprs.find(cmp->lhs.str());
       const auto imm = parse_i64(cmp->rhs.str());
-      if (alias != bool_aliases.end() && compare_alias != compare_exprs.end() &&
+      if (alias != value_aliases.end() && compare_alias != compare_exprs.end() &&
           imm.has_value() && *imm == 0) {
-        bool_aliases[cmp->result.str()] = alias->second;
+        value_aliases[cmp->result.str()] = alias->second;
         compare_exprs[cmp->result.str()] = compare_alias->second;
         return true;
       }
@@ -243,7 +343,7 @@ bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
         .lhs = *lhs,
         .rhs = *rhs,
     };
-    bool_aliases[cmp->result.str()] = result;
+    value_aliases[cmp->result.str()] = result;
     compare_exprs[cmp->result.str()] = expr;
 
     if (lowered_insts != nullptr) {
@@ -264,14 +364,39 @@ bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
     if (cast->kind == c4c::codegen::lir::LirCastKind::ZExt &&
         from_type == bir::TypeKind::I1 && to_type == bir::TypeKind::I32 &&
         cast->operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
-      const auto alias = bool_aliases.find(cast->operand.str());
-      if (alias != bool_aliases.end()) {
-        bool_aliases[cast->result.str()] = alias->second;
+      const auto alias = value_aliases.find(cast->operand.str());
+      if (alias != value_aliases.end()) {
+        value_aliases[cast->result.str()] = alias->second;
         const auto compare_alias = compare_exprs.find(cast->operand.str());
         if (compare_alias != compare_exprs.end()) {
           compare_exprs[cast->result.str()] = compare_alias->second;
         }
         return true;
+      }
+    }
+
+    if ((cast->kind == c4c::codegen::lir::LirCastKind::SExt ||
+         cast->kind == c4c::codegen::lir::LirCastKind::ZExt) &&
+        cast->result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
+        from_type.has_value() && to_type.has_value()) {
+      const auto value = lower_value(cast->operand, *from_type, value_aliases);
+      if (!value.has_value()) {
+        return false;
+      }
+
+      if (value->kind == bir::Value::Kind::Immediate) {
+        const auto imm = value->immediate;
+        switch (*to_type) {
+          case bir::TypeKind::I32:
+            value_aliases[cast->result.str()] = bir::Value::immediate_i32(
+                static_cast<std::int32_t>(imm));
+            return true;
+          case bir::TypeKind::I64:
+            value_aliases[cast->result.str()] = bir::Value::immediate_i64(imm);
+            return true;
+          default:
+            break;
+        }
       }
     }
   }
@@ -280,12 +405,41 @@ bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
 }
 
 bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
-                                       ValueMap& bool_aliases,
+                                       ValueMap& value_aliases,
                                        CompareMap& compare_exprs,
                                        LocalSlotTypes& local_slot_types,
+                                       LocalPointerSlots& local_pointer_slots,
+                                       LocalArraySlotMap& local_array_slots,
                                        bir::Function* lowered_function,
                                        std::vector<bir::Inst>* lowered_insts) {
-  if (lower_scalar_compare_inst(inst, bool_aliases, compare_exprs, lowered_insts)) {
+  if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, lowered_insts)) {
+    return true;
+  }
+
+  if (const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst)) {
+    if (bin->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    const auto opcode = lower_scalar_binary_opcode(bin->opcode);
+    const auto value_type = lower_integer_type(bin->type_str.str());
+    if (!opcode.has_value() || !value_type.has_value()) {
+      return false;
+    }
+
+    const auto lhs = lower_value(bin->lhs, *value_type, value_aliases);
+    const auto rhs = lower_value(bin->rhs, *value_type, value_aliases);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return false;
+    }
+
+    lowered_insts->push_back(bir::BinaryInst{
+        .opcode = *opcode,
+        .result = bir::Value::named(*value_type, bin->result.str()),
+        .operand_type = *value_type,
+        .lhs = *lhs,
+        .rhs = *rhs,
+    });
     return true;
   }
 
@@ -296,21 +450,115 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
     }
 
     const auto slot_type = lower_integer_type(alloca->type_str.str());
-    if (!slot_type.has_value()) {
-      return false;
-    }
-
     const std::string slot_name = alloca->result.str();
-    if (local_slot_types.find(slot_name) != local_slot_types.end()) {
+    if (local_slot_types.find(slot_name) != local_slot_types.end() ||
+        local_array_slots.find(slot_name) != local_array_slots.end()) {
       return false;
     }
 
-    local_slot_types.emplace(slot_name, *slot_type);
-    lowered_function->local_slots.push_back(bir::LocalSlot{
-        .name = slot_name,
-        .type = *slot_type,
-        .align_bytes = alloca->align > 0 ? static_cast<std::size_t>(alloca->align) : 0,
-    });
+    if (slot_type.has_value()) {
+      local_slot_types.emplace(slot_name, *slot_type);
+      local_pointer_slots.emplace(slot_name, slot_name);
+      lowered_function->local_slots.push_back(bir::LocalSlot{
+          .name = slot_name,
+          .type = *slot_type,
+          .align_bytes = alloca->align > 0 ? static_cast<std::size_t>(alloca->align) : 0,
+      });
+      return true;
+    }
+
+    const auto array_type = parse_local_array_type(alloca->type_str.str());
+    if (!array_type.has_value()) {
+      return false;
+    }
+
+    LocalArraySlots array_slots{.element_type = array_type->second};
+    array_slots.element_slots.reserve(array_type->first);
+    for (std::size_t index = 0; index < array_type->first; ++index) {
+      const std::string element_slot = slot_name + "." + std::to_string(index);
+      local_slot_types.emplace(element_slot, array_type->second);
+      local_pointer_slots.emplace(element_slot, element_slot);
+      array_slots.element_slots.push_back(element_slot);
+      lowered_function->local_slots.push_back(bir::LocalSlot{
+          .name = element_slot,
+          .type = array_type->second,
+          .align_bytes = alloca->align > 0 ? static_cast<std::size_t>(alloca->align) : 0,
+      });
+    }
+    local_array_slots.emplace(slot_name, std::move(array_slots));
+    return true;
+  }
+
+  if (const auto* gep = std::get_if<c4c::codegen::lir::LirGepOp>(&inst)) {
+    if (gep->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+        gep->ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    std::string resolved_slot;
+    if (const auto array_it = local_array_slots.find(gep->ptr.str()); array_it != local_array_slots.end()) {
+      if (gep->indices.size() != 2) {
+        return false;
+      }
+      const auto base_index = parse_typed_operand(gep->indices[0]);
+      const auto elem_index = parse_typed_operand(gep->indices[1]);
+      if (!base_index.has_value() || !elem_index.has_value()) {
+        return false;
+      }
+      const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+      const auto elem_imm = resolve_index_operand(elem_index->operand, value_aliases);
+      if (!base_imm.has_value() || !elem_imm.has_value() || *base_imm != 0 ||
+          *elem_imm < 0 ||
+          static_cast<std::size_t>(*elem_imm) >= array_it->second.element_slots.size()) {
+        return false;
+      }
+      resolved_slot = array_it->second.element_slots[static_cast<std::size_t>(*elem_imm)];
+    } else {
+      const auto ptr_it = local_pointer_slots.find(gep->ptr.str());
+      if (ptr_it == local_pointer_slots.end() || gep->indices.size() != 1) {
+        return false;
+      }
+      const auto slot_it = local_slot_types.find(ptr_it->second);
+      if (slot_it == local_slot_types.end()) {
+        return false;
+      }
+
+      const auto parsed_index = parse_typed_operand(gep->indices.front());
+      if (!parsed_index.has_value()) {
+        return false;
+      }
+      const auto index_imm = resolve_index_operand(parsed_index->operand, value_aliases);
+      if (!index_imm.has_value()) {
+        return false;
+      }
+
+      const auto dot = ptr_it->second.rfind('.');
+      if (dot == std::string::npos) {
+        if (*index_imm != 0) {
+          return false;
+        }
+        resolved_slot = ptr_it->second;
+      } else {
+        const auto base_name = ptr_it->second.substr(0, dot);
+        const auto base_array_it = local_array_slots.find(base_name);
+        if (base_array_it == local_array_slots.end()) {
+          return false;
+        }
+        const auto base_offset = parse_i64(std::string_view(ptr_it->second).substr(dot + 1));
+        if (!base_offset.has_value()) {
+          return false;
+        }
+        const auto final_index = *base_offset + *index_imm;
+        if (final_index < 0 ||
+            static_cast<std::size_t>(final_index) >= base_array_it->second.element_slots.size()) {
+          return false;
+        }
+        resolved_slot =
+            base_array_it->second.element_slots[static_cast<std::size_t>(final_index)];
+      }
+    }
+
+    local_pointer_slots[gep->result.str()] = std::move(resolved_slot);
     return true;
   }
 
@@ -324,18 +572,23 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       return false;
     }
 
-    const auto slot_it = local_slot_types.find(store->ptr.str());
+    const auto ptr_it = local_pointer_slots.find(store->ptr.str());
+    if (ptr_it == local_pointer_slots.end()) {
+      return false;
+    }
+
+    const auto slot_it = local_slot_types.find(ptr_it->second);
     if (slot_it == local_slot_types.end() || slot_it->second != *value_type) {
       return false;
     }
 
-    const auto value = lower_value(store->val, *value_type, bool_aliases);
+    const auto value = lower_value(store->val, *value_type, value_aliases);
     if (!value.has_value()) {
       return false;
     }
 
     lowered_insts->push_back(bir::StoreLocalInst{
-        .slot_name = store->ptr.str(),
+        .slot_name = ptr_it->second,
         .value = *value,
     });
     return true;
@@ -352,14 +605,19 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       return false;
     }
 
-    const auto slot_it = local_slot_types.find(load->ptr.str());
+    const auto ptr_it = local_pointer_slots.find(load->ptr.str());
+    if (ptr_it == local_pointer_slots.end()) {
+      return false;
+    }
+
+    const auto slot_it = local_slot_types.find(ptr_it->second);
     if (slot_it == local_slot_types.end() || slot_it->second != *value_type) {
       return false;
     }
 
     lowered_insts->push_back(bir::LoadLocalInst{
         .result = bir::Value::named(*value_type, load->result.str()),
-        .slot_name = load->ptr.str(),
+        .slot_name = ptr_it->second,
     });
     return true;
   }
@@ -436,10 +694,10 @@ std::optional<bir::Function> lower_select_family_function(
     return std::nullopt;
   }
 
-  ValueMap bool_aliases;
+  ValueMap value_aliases;
   CompareMap compare_exprs;
   for (const auto& inst : entry.insts) {
-    if (!lower_scalar_compare_inst(inst, bool_aliases, compare_exprs, nullptr)) {
+    if (!lower_scalar_compare_inst(inst, value_aliases, compare_exprs, nullptr)) {
       return std::nullopt;
     }
   }
@@ -507,8 +765,8 @@ std::optional<bir::Function> lower_select_family_function(
     return std::nullopt;
   }
 
-  const auto true_value = lower_value(*true_incoming, *phi_type, bool_aliases);
-  const auto false_value = lower_value(*false_incoming, *phi_type, bool_aliases);
+  const auto true_value = lower_value(*true_incoming, *phi_type, value_aliases);
+  const auto false_value = lower_value(*false_incoming, *phi_type, value_aliases);
   if (!true_value.has_value() || !false_value.has_value()) {
     return std::nullopt;
   }
@@ -558,14 +816,23 @@ std::optional<bir::Function> lower_branch_family_function(
     return std::nullopt;
   }
 
-  ValueMap bool_aliases;
+  ValueMap value_aliases;
   CompareMap compare_exprs;
   LocalSlotTypes local_slot_types;
+  LocalPointerSlots local_pointer_slots;
+  LocalArraySlotMap local_array_slots;
   std::vector<bir::Inst> hoisted_alloca_scratch;
 
   for (const auto& inst : function.alloca_insts) {
     if (!lower_scalar_or_local_memory_inst(
-            inst, bool_aliases, compare_exprs, local_slot_types, &lowered, &hoisted_alloca_scratch)) {
+            inst,
+            value_aliases,
+            compare_exprs,
+            local_slot_types,
+            local_pointer_slots,
+            local_array_slots,
+            &lowered,
+            &hoisted_alloca_scratch)) {
       return std::nullopt;
     }
   }
@@ -579,7 +846,14 @@ std::optional<bir::Function> lower_branch_family_function(
 
     for (const auto& inst : block.insts) {
       if (!lower_scalar_or_local_memory_inst(
-              inst, bool_aliases, compare_exprs, local_slot_types, &lowered, &lowered_block.insts)) {
+              inst,
+              value_aliases,
+              compare_exprs,
+              local_slot_types,
+              local_pointer_slots,
+              local_array_slots,
+              &lowered,
+              &lowered_block.insts)) {
         return std::nullopt;
       }
     }
@@ -587,7 +861,7 @@ std::optional<bir::Function> lower_branch_family_function(
     if (const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&block.terminator)) {
       bir::ReturnTerminator lowered_ret;
       if (ret->value_str.has_value()) {
-        const auto value = lower_value(*ret->value_str, *return_type, bool_aliases);
+        const auto value = lower_value(*ret->value_str, *return_type, value_aliases);
         if (!value.has_value()) {
           return std::nullopt;
         }
@@ -598,7 +872,7 @@ std::optional<bir::Function> lower_branch_family_function(
       lowered_block.terminator = bir::BranchTerminator{.target_label = br->target_label};
     } else if (const auto* cond_br =
                    std::get_if<c4c::codegen::lir::LirCondBr>(&block.terminator)) {
-      const auto condition = lower_value(cond_br->cond_name, bir::TypeKind::I1, bool_aliases);
+      const auto condition = lower_value(cond_br->cond_name, bir::TypeKind::I1, value_aliases);
       if (!condition.has_value()) {
         return std::nullopt;
       }

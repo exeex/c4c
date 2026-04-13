@@ -13,20 +13,20 @@ Source Plan: plan.md
   semantic BIR is the new truth surface, `prepare` owns target legality, and
   target backends should eventually ingest prepared BIR only
 - current packet:
-  add the first semantic local-memory BIR lane so simple hoisted-alloca
-  functions lower via `local_slots/load_local/store_local` instead of falling
-  back to LLVM text
+  extend the semantic local-memory BIR lane to cover local array addressing so
+  `local_array.c` lowers via BIR instead of falling back to LLVM text
 - current proving surface:
   `tests/c/internal/backend_case/branch_if_eq.c`
-  `tests/c/internal/backend_case/local_temp.c`
+  `tests/c/internal/backend_case/local_array.c`
 - packet update:
-  `src/backend/lowering/lir_to_bir_module.cpp` now lowers the
-  first semantic local-memory lane by recognizing hoisted
-  `LirFunction.alloca_insts`, materializing BIR local slots from
-  `alloca`, and lowering typed `store/load` to `bir.store_local` /
-  `bir.load_local` while preserving clean `branch_if_eq` BIR
+  `src/backend/lowering/lir_to_bir_module.cpp` now extends the
+  local-memory lane to cover simple local arrays by expanding
+  hoisted `[N x i32]` allocas into element slots, resolving the
+  `getelementptr` chain for constant local indices back to those
+  element slots, and lowering the resulting typed load/store/add
+  path to semantic BIR while preserving clean `branch_if_eq` BIR
 - latest proof:
-  `bash -lc 'cmake --build build -j2 && printf "=== branch_if_eq ===\n" && ./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/branch_if_eq.c -o /tmp/branch_if_eq_x86.ll && cat /tmp/branch_if_eq_x86.ll && printf "\n=== local_temp ===\n" && ./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/local_temp.c -o /tmp/local_temp_x86.ll && cat /tmp/local_temp_x86.ll' > test_after.log 2>&1`
+  `bash -lc 'cmake --build build -j2 && printf "=== branch_if_eq ===\n" && ./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/branch_if_eq.c -o /tmp/branch_if_eq_x86.ll && cat /tmp/branch_if_eq_x86.ll && printf "\n=== local_array ===\n" && ./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/local_array.c -o /tmp/local_array_x86.ll && cat /tmp/local_array_x86.ll' > test_after.log 2>&1`
 - latest proof log:
   `test_after.log`
 
@@ -40,8 +40,8 @@ Source Plan: plan.md
 
 ## Done Condition For The Active Packet
 
-- `branch_if_eq.c` still lowers to clean BIR after the local-memory work
-- `local_temp.c` lowers to BIR instead of falling back to LLVM text
+- `branch_if_eq.c` still lowers to clean BIR after the local-array work
+- `local_array.c` lowers to BIR instead of falling back to LLVM text
 - no new direct route, testcase matcher, or rendered-text probe is introduced
 
 ## Parked While This Packet Is Active
