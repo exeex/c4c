@@ -14,76 +14,42 @@ Source Plan: plan.md
   executor packets can be chosen from a durable semantic queue rather than
   rediscovering the next testcase family from chat
 - current capability family:
-  backlog item 4, broader global data and addressed globals
+  backlog item 5, expand call lowering beyond minimal direct calls
 - current packet shape:
-  extend backlog item 4 from simple struct-backed globals into nested
-  aggregate-address coverage, so struct-contained array fields and nested
-  pointer fields keep honest semantic BIR addresses for direct reads, direct
-  stores, and pointer-derived alias stores instead of dropping back to
-  LLVM-text route escape; root-level aggregate arrays, including pointer-field
-  elements, are now in scope too so arrays-of-structs can use the same
-  addressed-global lane instead of being rejected at module-global lowering
-  time
+  start backlog item 5 by making the existing direct-call lane explicit and
+  honest in semantic BIR before chasing indirect calls: use the current helper
+  call surfaces to pin down how callee identity, return type, and simple local
+  argument values flow through `lir_to_bir_module.cpp` and `call_decode.cpp`
+  without dropping back to raw-LIR text or smuggling target ABI shaping into
+  semantic lowering
 - candidate proving surface:
-  `backend_codegen_route_riscv64_defined_global_array_defaults_to_bir`
-  `backend_codegen_route_riscv64_defined_global_array_store_defaults_to_bir`
-  `backend_codegen_route_riscv64_extern_global_array_defaults_to_bir`
-  `backend_codegen_route_riscv64_defined_string_global_store_defaults_to_bir`
-  `backend_codegen_route_riscv64_defined_pointer_global_array_defaults_to_bir`
-  `backend_codegen_route_riscv64_defined_pointer_global_pointer_defaults_to_bir`
-  `backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir`
-  `backend_codegen_route_riscv64_defined_global_struct_store_defaults_to_bir`
-  `backend_codegen_route_riscv64_anonymous_global_struct_fields_defaults_to_bir`
-  `backend_codegen_route_riscv64_named_global_struct_designated_init_defaults_to_bir`
-  `backend_codegen_route_riscv64_named_pointer_global_struct_designated_init_defaults_to_bir`
-  `backend_codegen_route_riscv64_named_pointer_global_struct_pointer_store_defaults_to_bir`
-  `backend_codegen_route_riscv64_named_pointer_global_struct_pointer_field_alias_store_defaults_to_bir`
-  `backend_codegen_route_riscv64_nested_global_struct_array_read_defaults_to_bir`
-  `backend_codegen_route_riscv64_nested_global_struct_array_store_defaults_to_bir`
-  `backend_codegen_route_riscv64_nested_global_struct_array_alias_store_defaults_to_bir`
-  `backend_codegen_route_riscv64_global_struct_pointer_array_read_defaults_to_bir`
-  `backend_codegen_route_riscv64_global_struct_pointer_array_store_defaults_to_bir`
-  `backend_codegen_route_riscv64_global_struct_pointer_array_alias_store_defaults_to_bir`
-  use BIR route proofs here because `src/backend/backend.cpp` still prints
-  prepared BIR on successful lowering; asm runtime/object checks remain a later
-  backend-ingestion milestone, not the proof surface for this packet
+  `tests/c/internal/backend_case/local_arg_call.c`
+  `tests/c/internal/backend_case/call_helper.c`
+  `tests/c/internal/backend_case/call_helper_def.c`
+  promote these into explicit riscv64 backend-route proofs as the first call
+  observation surface, then widen only if that semantic lane is genuinely
+  green
 
 ## Immediate Target
 
 - keep packet selection attached to the ordered semantic backlog in `plan.md`
-- continue from scalar globals into addressed global data instead of jumping to
-  unrelated one-off cases
-- avoid reintroducing testcase-shaped routing while broadening the global lane
+- carry the now-green addressed-global work forward by moving to the next
+  semantic family instead of stretching backlog item 4 past its proving surface
+- establish a truthful call-lowering observation surface before widening into
+  indirect-call or ABI-shaped follow-ons
+- avoid reintroducing testcase-shaped routing while broadening the call lane
 
 ## Done Condition For The Active Packet
 
 - `branch_if_eq.c` still lowers to clean BIR
-- addressed-global reads still lower through semantic BIR instead of
-  LLVM-text fallback
-- existing same-global pointer-difference and global pointer-roundtrip cases
-  stay on the semantic BIR route surface
-- nested integer-array globals keep explicit addressed stores on the semantic
-  BIR route for direct array syntax, extern-array syntax, and pointer-derived
-  aliases rather than falling back once the access is a write
-- simple struct-backed globals keep direct scalar field stores and reads on the
-  semantic BIR route, and designated pointer fields initialized from global
-  addresses stay aliasable enough for the first dereference to remain semantic
-- nested struct-backed globals keep contained integer-array field reads,
-  direct stores, pointer-derived alias stores, nested pointer-field reads,
-  nested pointer-field stores, and nested pointer-field alias stores on the
-  semantic BIR route instead of dropping back once aggregate GEPs need more
-  than one structural descent
-- mutable struct pointer fields keep direct stores and local alias stores on
-  the semantic BIR route, and the post-store readback keeps the updated
-  addressed-global pointee instead of reverting to static initializer knowledge
-- root-level aggregate arrays with pointer-valued fields keep direct reads,
-  direct stores, and pointer-derived alias stores on the semantic BIR route
-  instead of dropping back once the aggregate root is an array element
-- aggregate pointer fields initialized from pointer-global aliases or resolved
-  in-bounds pointer-global alias chains keep honest addressed-global reloads
-  on the semantic BIR route for plain struct roots, nested struct roots, and
-  root-level aggregate arrays instead of rejecting those initializers before
-  function lowering starts
+- simple direct calls with zero or one local scalar arguments lower through
+  semantic BIR on the riscv64 backend-route surface instead of raw-LIR text
+  fallback
+- semantic call lowering keeps callee identity, result type, and minimal arg
+  metadata available for later prepare/ABI shaping without performing that
+  shaping inside `lir_to_bir`
+- the first call-lane route proofs cover both internal helper calls and extern
+  helper declarations without introducing target-specific shortcuts
 - no new direct route, rendered-text matcher, or tiny case-family special path
   is introduced
 
@@ -277,23 +243,25 @@ Source Plan: plan.md
   ordered `bir.load_global ptr @gpp`, then `bir.load_global ptr @gp`,
   followed by `bir.load_global i32 @s, offset 12` rather than a `null`
   initializer or raw LLVM fallback
+- checkpoint:
+  a supervisor-side broader validation checkpoint on 2026-04-13 confirmed the
+  backlog item 4 addressed-global lane is green at the current route boundary:
+  `backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir` plus the 26
+  addressed-global route tests spanning defined pointer globals, nested struct
+  arrays, struct pointer arrays, and pointer-field object-alias initializers
+  all passed together, so the stale item-4 follow-on note is retired here
 - remaining next:
-  keep backlog item 4 on honest addressed-global coverage; broader pointer
-  global forms beyond the now-covered aggregate-field rebasing for offset
-  pointer-global aliases, recursively resolved constant in-bounds aliases,
-  pointer-value stores into addressed pointer-global slots, and pointer-global
-  object-address roundtrip stores are still outside this finished slice
-  pointer-global follow-ons that build on the now-proven constant-GEP lane
-  still need explicit route proofs before this backlog family can be treated
-  as closure-ready
+  promote the first call-lowering observation surface into explicit riscv64
+  backend-route proofs, then use that route output to decide whether backlog
+  item 5 can begin with richer direct-call signatures immediately or first
+  needs a small semantic cleanup in `call_decode.cpp`
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_defined_pointer_global_nested_struct_array(_object_alias)?_defaults_to_bir$' > test_after.log 2>&1`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
 - proof log:
   `test_after.log`
 
 ## Parked While This Packet Is Active
 
-- broader call-lane expansion beyond the current minimal direct-call coverage
 - intrinsic/runtime operation lowering
 - real stack layout, liveness, and regalloc
 - target backend ingestion rewrites beyond the shared BIR/prepare spine
