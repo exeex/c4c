@@ -2291,6 +2291,24 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_struct_array_read_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_struct_array_read.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_struct_array_read_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global i32 @pairs, offset 12|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_struct_array_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_struct_array_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_struct_array_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @pairs, offset 8, i32 9|bir.load_global i32 @pairs, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_anonymous_global_struct_fields_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/anonymous_global_struct_fields.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
@@ -2602,6 +2620,10 @@ if(CLANG_EXECUTABLE)
       elseif(stem STREQUAL "global_int_pointer_roundtrip_store")
         continue()
       elseif(stem STREQUAL "global_int_pointer_pointer_roundtrip_store")
+        continue()
+      elseif(stem STREQUAL "global_struct_array_read")
+        continue()
+      elseif(stem STREQUAL "global_struct_array_store")
         continue()
       elseif(stem STREQUAL "nested_global_struct_pointer_read")
         continue()

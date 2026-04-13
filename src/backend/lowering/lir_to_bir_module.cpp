@@ -1587,7 +1587,9 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
   }
 
   const auto layout = compute_aggregate_type_layout(global.llvm_type, type_decls);
-  if (layout.kind != AggregateTypeLayout::Kind::Struct || layout.size_bytes == 0) {
+  if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
+       layout.kind != AggregateTypeLayout::Kind::Array) ||
+      layout.size_bytes == 0) {
     return std::nullopt;
   }
 
@@ -2835,7 +2837,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
       analysis.extern_decl_count != 0) {
     context.note(
         "module",
-        "bootstrap lir_to_bir only supports minimal scalar globals, linear integer-array globals, simple struct-backed globals, string-backed byte data, and extern integer-array globals right now");
+        "bootstrap lir_to_bir only supports minimal scalar globals, linear integer-array globals, aggregate-backed globals with honest byte-address semantics, string-backed byte data, and extern integer-array globals right now");
   }
 
   GlobalTypes global_types;
@@ -2847,7 +2849,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     if (!lowered_global.has_value()) {
       context.note(
           "module",
-          "bootstrap lir_to_bir only supports minimal scalar globals, linear integer-array globals, simple struct-backed globals, and extern integer-array globals right now");
+          "bootstrap lir_to_bir only supports minimal scalar globals, linear integer-array globals, and aggregate-backed globals with honest byte-address semantics right now");
       return std::nullopt;
     }
     global_types.emplace(lowered_global->name, info);

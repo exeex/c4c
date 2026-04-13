@@ -20,7 +20,9 @@ Source Plan: plan.md
   aggregate-address coverage, so struct-contained array fields and nested
   pointer fields keep honest semantic BIR addresses for direct reads, direct
   stores, and pointer-derived alias stores instead of dropping back to
-  LLVM-text route escape
+  LLVM-text route escape; root-level aggregate arrays are now in scope too so
+  arrays-of-structs can use the same addressed-global lane instead of being
+  rejected at module-global lowering time
 - candidate proving surface:
   `backend_codegen_route_riscv64_defined_global_array_defaults_to_bir`
   `backend_codegen_route_riscv64_defined_global_array_store_defaults_to_bir`
@@ -170,16 +172,21 @@ Source Plan: plan.md
   BIR as two ordered `bir.store_global @s, offset 8, ptr ...` updates, a later
   `bir.load_global ptr @s, offset 8`, and the final addressed-global reload
   from `@z` rather than stale initializer knowledge or raw LLVM fallback
+  root-level aggregate global arrays now lower through the same aggregate lane
+  as struct roots instead of being rejected before GEP lowering; new riscv64
+  route proofs cover `pairs[1].y` and `pairs[1].x = 9; return pairs[1].x;`
+  through semantic BIR as `bir.load_global i32 @pairs, offset 12` and
+  `bir.store_global @pairs, offset 8, i32 9` plus the matching addressed
+  reload rather than raw LLVM fallback
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; broader pointer
   global forms beyond recursively resolved constant in-bounds aliases and the
   now-covered pointer-value stores into addressed pointer-global slots and
-  pointer-global object-address roundtrip stores, plus addressed global
-  aggregates beyond nested scalar-array and nested pointer-field struct lanes,
-  plus any still-unknown addressed-global aggregate shapes, are still outside
-  this finished slice
+  pointer-global object-address roundtrip stores, plus aggregate-array lanes
+  with pointer-valued fields or deeper array-of-array aggregate roots, are
+  still outside this finished slice
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_named_pointer_global_struct_pointer_(store|field_alias_store|field_rewrite)_defaults_to_bir|backend_codegen_route_riscv64_nested_global_struct_pointer_(store|alias_store|rewrite)_defaults_to_bir)$' > test_after.log 2>&1`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_.*global.*defaults_to_bir$' > test_after.log 2>&1`
 - proof log:
   `test_after.log`
 
