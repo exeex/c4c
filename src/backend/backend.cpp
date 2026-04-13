@@ -56,6 +56,32 @@ bool is_supported_riscv_i32_value(const Value& value) {
   return value.type == TypeKind::I32;
 }
 
+bool is_supported_riscv_ptr_value(const Value& value) {
+  return value.type == TypeKind::Ptr;
+}
+
+std::int64_t riscv_stack_slot_size(TypeKind type) {
+  switch (type) {
+    case TypeKind::I32:
+      return 4;
+    case TypeKind::Ptr:
+      return 8;
+    default:
+      return 0;
+  }
+}
+
+std::int64_t riscv_stack_slot_align(TypeKind type) {
+  switch (type) {
+    case TypeKind::I32:
+      return 4;
+    case TypeKind::Ptr:
+      return 8;
+    default:
+      return 0;
+  }
+}
+
 bool function_uses_calls(const Function& function) {
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
@@ -77,35 +103,50 @@ std::optional<RiscvFrameLayout> compute_riscv_frame_layout(const Function& funct
   RiscvFrameLayout layout;
   std::int64_t next_offset = 0;
 
-  auto reserve_slot = [&](std::string_view name) {
+  auto reserve_slot = [&](std::string_view name, TypeKind type) {
     if (layout.slot_offsets.find(std::string(name)) != layout.slot_offsets.end()) {
-      return;
+      return true;
     }
+    const auto slot_size = riscv_stack_slot_size(type);
+    const auto slot_align = riscv_stack_slot_align(type);
+    if (slot_size == 0 || slot_align == 0) {
+      return false;
+    }
+    next_offset = align_up(next_offset, slot_align);
     layout.slot_offsets.emplace(std::string(name), next_offset);
-    next_offset += 4;
+    next_offset += slot_size;
+    return true;
   };
 
   for (const auto& slot : function.local_slots) {
-    if (slot.is_address_taken || slot.is_byval_copy || slot.type != TypeKind::I32) {
+    if (slot.is_address_taken || slot.is_byval_copy ||
+        (slot.type != TypeKind::I32 && slot.type != TypeKind::Ptr)) {
       return std::nullopt;
     }
-    reserve_slot(slot.name);
+    if (!reserve_slot(slot.name, slot.type)) {
+      return std::nullopt;
+    }
   }
 
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
       if (const auto* load = std::get_if<LoadLocalInst>(&inst)) {
         if (load->byte_offset != 0 || load->align_bytes != 0 || load->address.has_value() ||
-            load->result.type != TypeKind::I32) {
+            (load->result.type != TypeKind::I32 && load->result.type != TypeKind::Ptr)) {
           return std::nullopt;
         }
-        reserve_slot(load->slot_name);
+        if (!reserve_slot(load->slot_name, load->result.type)) {
+          return std::nullopt;
+        }
       } else if (const auto* store = std::get_if<StoreLocalInst>(&inst)) {
         if (store->byte_offset != 0 || store->align_bytes != 0 || store->address.has_value() ||
-            !is_supported_riscv_i32_value(store->value)) {
+            (!is_supported_riscv_i32_value(store->value) &&
+             !is_supported_riscv_ptr_value(store->value))) {
           return std::nullopt;
         }
-        reserve_slot(store->slot_name);
+        if (!reserve_slot(store->slot_name, store->value.type)) {
+          return std::nullopt;
+        }
       }
     }
   }
@@ -145,6 +186,21 @@ std::optional<std::string> materialize_riscv_i32_value(const Value& value,
     }
     out << "    li " << *reg << ", " << value.immediate << "\n";
     return reg;
+  }
+
+  const auto it = state.value_regs.find(value.name);
+  if (it == state.value_regs.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+std::optional<std::string> materialize_riscv_ptr_value(const Value& value,
+                                                       RiscvEmitState& state,
+                                                       std::ostringstream& out) {
+  (void)out;
+  if (!is_supported_riscv_ptr_value(value) || value.kind != Value::Kind::Named) {
+    return std::nullopt;
   }
 
   const auto it = state.value_regs.find(value.name);
@@ -286,8 +342,7 @@ bool lower_riscv_binary_inst(const BinaryInst& inst,
 bool lower_riscv_call_inst(const CallInst& inst,
                            RiscvEmitState& state,
                            std::ostringstream& out) {
-  if (inst.is_indirect || inst.is_variadic ||
-      inst.calling_convention != c4c::backend::bir::CallingConv::C ||
+  if (inst.is_variadic || inst.calling_convention != c4c::backend::bir::CallingConv::C ||
       inst.args.size() > kRiscvArgRegs.size() || inst.arg_types.size() != inst.args.size()) {
     return false;
   }
@@ -299,11 +354,34 @@ bool lower_riscv_call_inst(const CallInst& inst,
       return false;
     }
   }
+  std::optional<std::string> indirect_callee_reg;
+  if (inst.is_indirect) {
+    if (!inst.callee_value.has_value()) {
+      return false;
+    }
+    const auto callee_reg = materialize_riscv_ptr_value(*inst.callee_value, state, out);
+    if (!callee_reg.has_value()) {
+      return false;
+    }
+    if (*callee_reg == "a0" || *callee_reg == "a1") {
+      indirect_callee_reg = allocate_riscv_temp(state);
+      if (!indirect_callee_reg.has_value()) {
+        return false;
+      }
+      out << "    mv " << *indirect_callee_reg << ", " << *callee_reg << "\n";
+    } else {
+      indirect_callee_reg = *callee_reg;
+    }
+  }
   if (!move_riscv_i32_call_args_into_regs(inst.args, state, out)) {
     return false;
   }
 
-  out << "    call " << inst.callee << "\n";
+  if (inst.is_indirect) {
+    out << "    jalr ra, " << *indirect_callee_reg << ", 0\n";
+  } else {
+    out << "    call " << inst.callee << "\n";
+  }
   state.value_regs.clear();
   state.next_temp_index = 0;
   if (inst.result.has_value()) {
@@ -332,7 +410,8 @@ bool lower_riscv_function_body(const Function& function,
     return false;
   }
   for (std::size_t index = 0; index < function.params.size(); ++index) {
-    if (function.params[index].type != TypeKind::I32) {
+    if (function.params[index].type != TypeKind::I32 &&
+        function.params[index].type != TypeKind::Ptr) {
       return false;
     }
     state.value_regs[function.params[index].name] = std::string(kRiscvArgRegs[index]);
@@ -355,11 +434,22 @@ bool lower_riscv_function_body(const Function& function,
       if (slot_it == layout.slot_offsets.end()) {
         return false;
       }
-      const auto src_reg = materialize_riscv_i32_value(store->value, state, out);
+      std::optional<std::string> src_reg;
+      if (store->value.type == TypeKind::I32) {
+        src_reg = materialize_riscv_i32_value(store->value, state, out);
+      } else if (store->value.type == TypeKind::Ptr) {
+        src_reg = materialize_riscv_ptr_value(store->value, state, out);
+      } else {
+        return false;
+      }
       if (!src_reg.has_value()) {
         return false;
       }
-      out << "    sw " << *src_reg << ", " << slot_it->second << "(sp)\n";
+      if (store->value.type == TypeKind::I32) {
+        out << "    sw " << *src_reg << ", " << slot_it->second << "(sp)\n";
+      } else {
+        out << "    sd " << *src_reg << ", " << slot_it->second << "(sp)\n";
+      }
     } else if (const auto* load = std::get_if<LoadLocalInst>(&inst)) {
       const auto slot_it = layout.slot_offsets.find(load->slot_name);
       if (slot_it == layout.slot_offsets.end()) {
@@ -369,7 +459,13 @@ bool lower_riscv_function_body(const Function& function,
       if (!result_reg.has_value()) {
         return false;
       }
-      out << "    lw " << *result_reg << ", " << slot_it->second << "(sp)\n";
+      if (load->result.type == TypeKind::I32) {
+        out << "    lw " << *result_reg << ", " << slot_it->second << "(sp)\n";
+      } else if (load->result.type == TypeKind::Ptr) {
+        out << "    ld " << *result_reg << ", " << slot_it->second << "(sp)\n";
+      } else {
+        return false;
+      }
       state.value_regs[load->result.name] = *result_reg;
     } else if (const auto* call = std::get_if<CallInst>(&inst)) {
       if (!lower_riscv_call_inst(*call, state, out)) {

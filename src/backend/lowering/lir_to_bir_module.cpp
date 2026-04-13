@@ -2587,6 +2587,8 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
     std::vector<bir::Value> lowered_args;
     std::vector<bir::TypeKind> lowered_arg_types;
     std::optional<std::string> callee_name;
+    std::optional<bir::Value> callee_value;
+    bool is_indirect_call = false;
 
     if (const auto parsed_call = parse_backend_direct_global_typed_call(*call);
         parsed_call.has_value()) {
@@ -2609,6 +2611,31 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
         lowered_arg_types.push_back(*arg_type);
         lowered_args.push_back(*arg);
       }
+    } else if (const auto parsed_call = parse_backend_typed_call(*call);
+               parsed_call.has_value() &&
+               call->callee.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      callee_value = lower_value(call->callee, bir::TypeKind::Ptr, value_aliases);
+      if (!callee_value.has_value()) {
+        return false;
+      }
+      lowered_args.reserve(parsed_call->args.size());
+      lowered_arg_types.reserve(parsed_call->param_types.size());
+      for (std::size_t index = 0; index < parsed_call->args.size(); ++index) {
+        const auto arg_type = lower_integer_type(parsed_call->param_types[index]);
+        if (!arg_type.has_value()) {
+          return false;
+        }
+        const auto arg =
+            lower_value(c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand)),
+                        *arg_type,
+                        value_aliases);
+        if (!arg.has_value()) {
+          return false;
+        }
+        lowered_arg_types.push_back(*arg_type);
+        lowered_args.push_back(*arg);
+      }
+      is_indirect_call = true;
     } else if (const auto zero_arg_callee =
                    c4c::codegen::lir::parse_lir_direct_global_callee(call->callee);
                zero_arg_callee.has_value() &&
@@ -2627,12 +2654,16 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
     } else if (call->result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
       return false;
     }
-    lowered_call.callee = std::move(*callee_name);
+    if (is_indirect_call) {
+      lowered_call.callee_value = std::move(*callee_value);
+    } else {
+      lowered_call.callee = std::move(*callee_name);
+    }
     lowered_call.args = std::move(lowered_args);
     lowered_call.arg_types = std::move(lowered_arg_types);
     lowered_call.return_type_name = std::string(call->return_type.str());
     lowered_call.return_type = *return_type;
-    lowered_call.is_indirect = false;
+    lowered_call.is_indirect = is_indirect_call;
     lowered_insts->push_back(std::move(lowered_call));
     return true;
   }

@@ -24,6 +24,13 @@ std::string render_call_type_name(const CallInst& call) {
   return "void";
 }
 
+std::string render_call_target(const CallInst& call) {
+  if (call.is_indirect && call.callee_value.has_value()) {
+    return render_value(*call.callee_value);
+  }
+  return call.callee;
+}
+
 void render_function(std::ostringstream& out, const Function& function) {
   out << "bir.func @" << function.name << "(";
   for (std::size_t index = 0; index < function.params.size(); ++index) {
@@ -73,7 +80,7 @@ void render_function(std::ostringstream& out, const Function& function) {
                 out << "  ";
               }
               out << "bir.call " << render_call_type_name(lowered) << " "
-                  << lowered.callee << "(";
+                  << render_call_target(lowered) << "(";
               for (std::size_t arg_index = 0; arg_index < lowered.args.size(); ++arg_index) {
                 if (arg_index != 0) {
                   out << ", ";

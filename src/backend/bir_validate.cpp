@@ -82,7 +82,12 @@ bool validate_call(const Function& function,
                    const CallInst& inst,
                    std::vector<std::string>* defined_names,
                    std::string* error) {
-  if (inst.callee.empty()) {
+  if (inst.is_indirect) {
+    if (!inst.callee_value.has_value()) {
+      return fail(error, "bir indirect call in @" + function.name +
+                             " must carry a callee value");
+    }
+  } else if (inst.callee.empty()) {
     return fail(error, "bir call in @" + function.name + " must name a callee");
   }
   if (inst.result.has_value()) {
