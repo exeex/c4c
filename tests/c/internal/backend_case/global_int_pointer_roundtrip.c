@@ -1,7 +1,5 @@
-int g_value = 9;
+int arr[2] = {4, 9};
+int *gp = arr;
+int **ggp = &gp;
 
-int main(void) {
-  long addr = (long)&g_value;
-  int *p = (int *)addr;
-  return *p;
-}
+int main(void) { return (**(int ***)(long)&ggp)[1]; }
