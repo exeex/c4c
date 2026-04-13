@@ -2280,6 +2280,42 @@ if(CLANG_EXECUTABLE)
       REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gq|bir.load_global ptr @ggp|bir.store_global @gp, ptr |bir.load_global ptr @gp|bir.load_global i32 @arr, offset 8|bir.ret i32"
       FORBIDDEN_SNIPPETS "define i32 @main()"
     )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_global_struct_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_global_struct_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_global_struct_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @v, i32 1|bir.store_global @v, offset 4, i32 2|bir.load_global i32 @v|bir.load_global i32 @v, offset 4|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_anonymous_global_struct_fields_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/anonymous_global_struct_fields.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/anonymous_global_struct_fields_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global i32 @s|bir.load_global i32 @s, offset 4|bir.load_global i32 @s, offset 8|bir.ret i32 0"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_named_global_struct_designated_init_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/named_global_struct_designated_init.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/named_global_struct_designated_init_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global i32 @s|bir.load_global i32 @s, offset 4|bir.ret i32 0"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_named_pointer_global_struct_designated_init_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/named_pointer_global_struct_designated_init.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/named_pointer_global_struct_designated_init_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global i32 @s|bir.load_global ptr @s, offset 8|bir.load_global i32 @x|bir.ret i32 0"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
   endif()
 
   if(BACKEND_RUNTIME_TARGET_TRIPLE)

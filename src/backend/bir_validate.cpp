@@ -325,9 +325,15 @@ bool validate(const Module& module, std::string* error) {
         return fail(error, "bir global initializer @" + global.name +
                                " must not use an empty name");
       }
-      if (global.initializer->kind != Value::Kind::Immediate) {
+      if (global.initializer->kind == Value::Kind::Named &&
+          global.initializer->type != TypeKind::Ptr) {
         return fail(error, "bir global initializer @" + global.name +
-                               " must be an immediate");
+                               " may only use named pointer initializers");
+      }
+      if (global.initializer->kind != Value::Kind::Immediate &&
+          global.initializer->kind != Value::Kind::Named) {
+        return fail(error, "bir global initializer @" + global.name +
+                               " must be an immediate or named pointer");
       }
     }
     for (const auto& element : global.initializer_elements) {
@@ -335,9 +341,13 @@ bool validate(const Module& module, std::string* error) {
         return fail(error, "bir global initializer element @" + global.name +
                                " must not use an empty name");
       }
-      if (element.kind != Value::Kind::Immediate) {
+      if (element.kind == Value::Kind::Named && element.type != TypeKind::Ptr) {
         return fail(error, "bir global initializer element @" + global.name +
-                               " must be an immediate");
+                               " may only use named pointer initializers");
+      }
+      if (element.kind != Value::Kind::Immediate && element.kind != Value::Kind::Named) {
+        return fail(error, "bir global initializer element @" + global.name +
+                               " must be an immediate or named pointer");
       }
     }
     global_names.push_back(global.name);
