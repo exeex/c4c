@@ -32,6 +32,7 @@ struct GlobalInfo {
   std::string type_text;
   std::optional<GlobalAddress> known_global_address;
   std::string initializer_symbol_name;
+  bir::TypeKind initializer_offset_type = bir::TypeKind::Void;
   std::size_t initializer_byte_offset = 0;
 };
 
@@ -239,7 +240,18 @@ std::optional<GlobalAddress> resolve_known_global_address(std::string_view globa
       return std::nullopt;
     }
     resolved = *pointee_address;
-    resolved.byte_offset += info.initializer_byte_offset;
+    auto nested_offset = info.initializer_byte_offset;
+    if (info.initializer_offset_type == bir::TypeKind::I8 &&
+        pointee_it->second.value_type == bir::TypeKind::Ptr &&
+        resolved.value_type != bir::TypeKind::I8) {
+      const auto pointee_stride = type_size_bytes(resolved.value_type);
+      if (pointee_stride == 0) {
+        erase_active();
+        return std::nullopt;
+      }
+      nested_offset *= pointee_stride;
+    }
+    resolved.byte_offset += nested_offset;
   }
 
   erase_active();
@@ -945,6 +957,7 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
         return std::nullopt;
       }
       info->initializer_symbol_name = initializer_address->global_name;
+      info->initializer_offset_type = initializer_address->value_type;
       info->initializer_byte_offset = initializer_address->byte_offset;
       info->supports_linear_addressing = false;
     }

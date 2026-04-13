@@ -2120,6 +2120,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_pointer_offset_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_pointer_offset.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_pointer_offset_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gpp|%t3 = bir.load_global i32 @arr, offset 12|bir.ret i32 %t3"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_string_literal_char_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/string_literal_char.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
@@ -2303,7 +2312,11 @@ if(CLANG_EXECUTABLE)
         continue()
       elseif(stem STREQUAL "defined_pointer_global_array")
         continue()
+      elseif(stem STREQUAL "defined_pointer_global_array_offset")
+        continue()
       elseif(stem STREQUAL "defined_pointer_global_pointer")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_pointer_offset")
         continue()
       elseif(stem STREQUAL "defined_string_global_char")
         continue()
