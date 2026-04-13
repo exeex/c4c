@@ -1595,6 +1595,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/branch_if_eq.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/branch_if_eq_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.eq i32 2, 2|bir.cond_br i32 %t0, block_1, block_2|bir.ret i32 0|bir.ret i32 1"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_return_ne_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_ne.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
@@ -2045,6 +2054,15 @@ if(CLANG_EXECUTABLE)
     c4c_set_backend_test_labels(
       backend_codegen_route_riscv64_global_load_asm_unsupported
       backend_route
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_extern_global_array_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/extern_global_array.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/extern_global_array_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t3 = bir.load_global i32 @ext_arr, offset 4|bir.ret i32 %t3"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
   endif()
 

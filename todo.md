@@ -20,9 +20,11 @@ Source Plan: plan.md
   extern/global array reads and other simple non-scalar global-address forms
   that still belong to honest semantic BIR
 - candidate proving surface:
-  `tests/c/internal/backend_case/branch_if_eq.c`
-  `tests/c/internal/backend_case/extern_global_array.c`
-  `tests/c/internal/backend_case/extern_global_array_def.c`
+  `backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir`
+  `backend_codegen_route_riscv64_extern_global_array_defaults_to_bir`
+  use BIR route proofs here because `src/backend/backend.cpp` still prints
+  prepared BIR on successful lowering; asm runtime/object checks remain a later
+  backend-ingestion milestone, not the proof surface for this packet
 
 ## Immediate Target
 
