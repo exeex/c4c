@@ -242,6 +242,10 @@ std::optional<bir::TypeKind> lower_param_type(const c4c::TypeSpec& type) {
   return backend_lir_lower_minimal_scalar_type(type);
 }
 
+bool is_void_param_sentinel(const c4c::TypeSpec& type) {
+  return type.base == TB_VOID && type.ptr_level == 0 && type.array_rank == 0;
+}
+
 std::optional<bir::TypeKind> infer_function_return_type(
     const c4c::codegen::lir::LirFunction& function) {
   std::optional<bir::TypeKind> return_type;
@@ -266,7 +270,61 @@ std::optional<bir::TypeKind> infer_function_return_type(
 }
 
 bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
+                           bir::Function* lowered);
+
+std::optional<bir::TypeKind> lower_signature_return_type(std::string_view signature_text) {
+  const auto line = c4c::codegen::lir::trim_lir_arg_text(signature_text);
+  const auto first_space = line.find(' ');
+  const auto at_pos = line.find('@');
+  if (first_space == std::string_view::npos || at_pos == std::string_view::npos ||
+      first_space >= at_pos) {
+    return std::nullopt;
+  }
+  return lower_integer_type(
+      c4c::codegen::lir::trim_lir_arg_text(line.substr(first_space + 1, at_pos - first_space - 1)));
+}
+
+std::optional<bir::Function> lower_extern_decl(const c4c::codegen::lir::LirExternDecl& decl) {
+  auto return_type = lower_integer_type(decl.return_type_str);
+  if (!return_type.has_value()) {
+    return_type = lower_integer_type(decl.return_type.str());
+  }
+  if (!return_type.has_value()) {
+    return std::nullopt;
+  }
+
+  bir::Function lowered;
+  lowered.name = decl.name;
+  lowered.return_type = *return_type;
+  lowered.is_declaration = true;
+  return lowered;
+}
+
+std::optional<bir::Function> lower_decl_function(const c4c::codegen::lir::LirFunction& function) {
+  bir::Function lowered;
+  lowered.name = function.name;
+  lowered.return_type = lower_param_type(function.return_type)
+                            .value_or(bir::TypeKind::Void);
+  if (lowered.return_type == bir::TypeKind::Void) {
+    const auto signature_return_type = lower_signature_return_type(function.signature_text);
+    if (!signature_return_type.has_value()) {
+      return std::nullopt;
+    }
+    lowered.return_type = *signature_return_type;
+  }
+  if (!lower_function_params(function, &lowered)) {
+    return std::nullopt;
+  }
+  lowered.is_declaration = true;
+  return lowered;
+}
+
+bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
                            bir::Function* lowered) {
+  if (function.params.size() == 1 && is_void_param_sentinel(function.params.front().second)) {
+    return true;
+  }
+
   for (const auto& param : function.params) {
     const auto lowered_type = lower_param_type(param.second);
     if (!lowered_type.has_value()) {
@@ -284,6 +342,11 @@ bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
 
   const auto parsed_params = parse_backend_function_signature_params(function.signature_text);
   if (!parsed_params.has_value()) {
+    return true;
+  }
+
+  if (parsed_params->size() == 1 && !parsed_params->front().is_varargs &&
+      c4c::codegen::lir::trim_lir_arg_text(parsed_params->front().type) == "void") {
     return true;
   }
 
@@ -622,6 +685,65 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
     return true;
   }
 
+  if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst)) {
+    const auto return_type = lower_integer_type(call->return_type.str());
+    if (!return_type.has_value()) {
+      return false;
+    }
+
+    std::vector<bir::Value> lowered_args;
+    std::vector<bir::TypeKind> lowered_arg_types;
+    std::optional<std::string> callee_name;
+
+    if (const auto parsed_call = parse_backend_direct_global_typed_call(*call);
+        parsed_call.has_value()) {
+      callee_name = std::string(parsed_call->symbol_name);
+      lowered_args.reserve(parsed_call->typed_call.args.size());
+      lowered_arg_types.reserve(parsed_call->typed_call.param_types.size());
+      for (std::size_t index = 0; index < parsed_call->typed_call.args.size(); ++index) {
+        const auto arg_type = lower_integer_type(parsed_call->typed_call.param_types[index]);
+        if (!arg_type.has_value()) {
+          return false;
+        }
+        const auto arg =
+            lower_value(c4c::codegen::lir::LirOperand(
+                            std::string(parsed_call->typed_call.args[index].operand)),
+                        *arg_type,
+                        value_aliases);
+        if (!arg.has_value()) {
+          return false;
+        }
+        lowered_arg_types.push_back(*arg_type);
+        lowered_args.push_back(*arg);
+      }
+    } else if (const auto zero_arg_callee =
+                   c4c::codegen::lir::parse_lir_direct_global_callee(call->callee);
+               zero_arg_callee.has_value() &&
+               c4c::codegen::lir::trim_lir_arg_text(call->args_str).empty()) {
+      callee_name = std::string(*zero_arg_callee);
+    } else {
+      return false;
+    }
+
+    bir::CallInst lowered_call;
+    if (*return_type != bir::TypeKind::Void) {
+      if (call->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+        return false;
+      }
+      lowered_call.result = bir::Value::named(*return_type, call->result.str());
+    } else if (call->result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+    lowered_call.callee = std::move(*callee_name);
+    lowered_call.args = std::move(lowered_args);
+    lowered_call.arg_types = std::move(lowered_arg_types);
+    lowered_call.return_type_name = std::string(call->return_type.str());
+    lowered_call.return_type = *return_type;
+    lowered_call.is_indirect = false;
+    lowered_insts->push_back(std::move(lowered_call));
+    return true;
+  }
+
   return false;
 }
 
@@ -906,14 +1028,31 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   }
 
   if (analysis.global_count != 0 || analysis.string_constant_count != 0 ||
-      analysis.extern_decl_count != 0) {
+      analysis.string_constant_count != 0) {
     context.note(
         "module",
-        "bootstrap lir_to_bir only supports function-only modules without globals/strings/externs");
+        "bootstrap lir_to_bir only supports modules without globals/strings right now");
     return std::nullopt;
   }
 
+  for (const auto& decl : context.lir_module.extern_decls) {
+    auto lowered_decl = lower_extern_decl(decl);
+    if (!lowered_decl.has_value()) {
+      continue;
+    }
+    module.functions.push_back(std::move(*lowered_decl));
+  }
+
   for (const auto& function : context.lir_module.functions) {
+    if (function.is_declaration) {
+      auto lowered_decl = lower_decl_function(function);
+      if (!lowered_decl.has_value()) {
+        continue;
+      }
+      module.functions.push_back(std::move(*lowered_decl));
+      continue;
+    }
+
     auto lowered_function = lower_select_family_function(context, function);
     if (!lowered_function.has_value()) {
       lowered_function = lower_branch_family_function(context, function);
