@@ -1445,6 +1445,48 @@ std::optional<GlobalAddress> resolve_pointer_store_address(
   return global_ptr_it->second;
 }
 
+std::optional<GlobalAddress> resolve_honest_pointer_base(const GlobalAddress& address,
+                                                         const GlobalTypes& global_types) {
+  if (address.value_type != bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+
+  const auto global_it = global_types.find(address.global_name);
+  if (global_it == global_types.end() || !global_it->second.supports_direct_value ||
+      global_it->second.value_type != bir::TypeKind::Ptr ||
+      !global_it->second.known_global_address.has_value()) {
+    return std::nullopt;
+  }
+
+  auto resolved = *global_it->second.known_global_address;
+  resolved.byte_offset += address.byte_offset;
+
+  const auto base_it = global_types.find(resolved.global_name);
+  if (base_it == global_types.end() || !base_it->second.supports_linear_addressing ||
+      resolved.byte_offset >= base_it->second.storage_size_bytes) {
+    return std::nullopt;
+  }
+
+  return resolved;
+}
+
+std::optional<GlobalAddress> resolve_honest_addressed_global_access(
+    const GlobalAddress& address,
+    bir::TypeKind accessed_type,
+    const GlobalTypes& global_types) {
+  if (accessed_type == bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+
+  auto resolved = resolve_honest_pointer_base(address, global_types);
+  if (!resolved.has_value()) {
+    return std::nullopt;
+  }
+  resolved->value_type = accessed_type;
+
+  return resolved;
+}
+
 GlobalPointerSlotKey make_global_pointer_slot_key(const GlobalAddress& address) {
   return GlobalPointerSlotKey{
       .global_name = address.global_name,
@@ -2143,8 +2185,13 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       resolved_slot = array_it->second.element_slots[static_cast<std::size_t>(*elem_imm)];
     } else if (const auto global_ptr_it = global_pointer_slots.find(gep->ptr.str());
                global_ptr_it != global_pointer_slots.end()) {
+      auto base_address = global_ptr_it->second;
+      if (const auto honest_base = resolve_honest_pointer_base(base_address, global_types);
+          honest_base.has_value()) {
+        base_address = *honest_base;
+      }
       const auto resolved_address = resolve_relative_global_gep_address(
-          global_ptr_it->second, gep->element_type.str(), *gep, value_aliases, type_decls);
+          base_address, gep->element_type.str(), *gep, value_aliases, type_decls);
       if (!resolved_address.has_value()) {
         return false;
       }
@@ -2386,6 +2433,19 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
 
     if (const auto global_ptr_it = global_pointer_slots.find(load->ptr.str());
         global_ptr_it != global_pointer_slots.end()) {
+      if (*value_type != bir::TypeKind::Ptr) {
+        if (const auto honest_address = resolve_honest_addressed_global_access(
+                global_ptr_it->second, *value_type, global_types);
+            honest_address.has_value()) {
+          lowered_insts->push_back(bir::LoadGlobalInst{
+              .result = bir::Value::named(*value_type, load->result.str()),
+              .global_name = honest_address->global_name,
+              .byte_offset = honest_address->byte_offset,
+          });
+          return true;
+        }
+      }
+
       if (global_ptr_it->second.value_type != *value_type) {
         if (global_ptr_it->second.value_type != bir::TypeKind::Ptr ||
             global_ptr_it->second.byte_offset != 0) {

@@ -1,8 +1,9 @@
-int arr[3] = {3, 5, 8};
+int arr[4] = {3, 5, 8, 13};
 int *gp = &arr[1];
+int **gpp = &gp;
 
 struct Inner {
-  int **pp;
+  int ***ppp;
 };
 
 struct Outer {
@@ -10,6 +11,6 @@ struct Outer {
   struct Inner inner;
 };
 
-struct Outer s = {1, {&gp}};
+struct Outer s = {1, {&gpp}};
 
-int main(void) { return s.inner.pp[0][0]; }
+int main(void) { return (**s.inner.ppp)[1]; }

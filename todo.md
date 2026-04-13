@@ -202,19 +202,39 @@ Source Plan: plan.md
   statically initialize pointer fields from `gp` / `gpp`-style globals and
   still reload the resolved addressed-global target through semantic BIR
   rather than rejecting those initializers during module-global lowering
-  new riscv64 route proofs now cover `struct S s = {.p = gp, .a = 1}; return
-  s.p[1];`, `struct Outer s = {1, {gp}}; return *s.inner.p;`, and
+  offset-bearing pointer-global aliases no longer stop aggregate-root reloads
+  at direct pointer globals like `@gpp`; the aggregate lane now preserves the
+  honest underlying addressed-global offset for scalar reloads while leaving
+  `ptr` consumers free to keep the existing pointer-global object-alias route
+  when the source was `&gp` or `&gpp`
+  new riscv64 route proofs now cover `struct S s = {.p = gpp, .a = 1}; return
+  s.p[1];`, `struct Outer s = {1, {gpp}}; return s.inner.p[1];`, and
   `struct Pair pairs[2] = {{1, &x}, {2, gpp}}; return *pairs[1].p;`
   through semantic BIR as `bir.load_global ptr @s/@pairs, offset ...`
-  followed by addressed-global reloads from `@arr, offset 4/8` rather than
-  raw LLVM fallback or aggregate-initializer rejection
+  followed by addressed-global reloads from `@arr, offset 12/12/8` rather
+  than raw LLVM fallback, direct `@gpp` reloads, or aggregate-initializer
+  rejection
   aggregate pointer-field initializers can now preserve pointer-global object
   addresses instead of flattening them too early; new riscv64 route proofs
   cover plain-struct, nested-struct, and root-array aggregates initialized
-  from `&gp`, plus a simple `&gpp` object-alias chain, through semantic BIR as
-  ordered `bir.load_global ptr @s/@pairs`, then `bir.load_global ptr @gp/@gpp`,
+  from `&gp` / `&gpp`, through semantic BIR as ordered
+  `bir.load_global ptr @s/@pairs`, then `bir.load_global ptr @gpp/@gp`,
   then the final addressed-global reload from `@arr` rather than raw LLVM
-  fallback or aggregate-initializer rejection
+  fallback or premature pointer-value flattening
+  aggregate-loaded pointer globals now rebase to their known addressed-global
+  pointee when they are used as data pointers, while preserving the extra load
+  step for object-alias chains; plain-struct, nested-struct, and root-array
+  aggregate route proofs now show `gp` / `gpp`-initialized pointer fields as
+  final `bir.load_global i32 @arr, offset 4/8/12` reloads instead of
+  `@gp/@gpp`-rooted pseudo-addresses, and a new root-array object-alias proof
+  covers `&gpp` preserving `bir.load_global ptr @gpp` before the addressed
+  reload from `@arr, offset 12`
+  new riscv64 route proofs now cover `struct S s = {.p = gpp, .a = 1};
+  return s.p[1];`, `struct Outer s = {1, {gpp}}; return s.inner.p[1];`, and
+  `struct Pair pairs[1] = {{2, &gpp}}; return (*pairs[0].pp)[1];` through
+  semantic BIR as aggregate-field pointer loads followed by the addressed
+  global reload from `@arr, offset 12` rather than the old `@gpp`-rooted
+  fallback surface
   deeper root-level nested aggregate arrays now have explicit route coverage
   too; new riscv64 route proofs cover `groups[1].inner.xs[2]`,
   `groups[1].inner.xs[1] = 9; return groups[1].inner.xs[1];`, and
@@ -226,10 +246,11 @@ Source Plan: plan.md
   testcase-shaped routing
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; broader pointer
-  global forms beyond recursively resolved constant in-bounds aliases and the
-  now-covered pointer-value stores into addressed pointer-global slots,
-  pointer-global object-address roundtrip stores, and deeper root aggregate
-  arrays with pointer-valued fields are still outside this finished slice
+  global forms beyond the now-covered aggregate-field rebasing for offset
+  pointer-global aliases, recursively resolved constant in-bounds aliases,
+  pointer-value stores into addressed pointer-global slots, pointer-global
+  object-address roundtrip stores, and deeper root aggregate arrays with
+  pointer-valued fields are still outside this finished slice
 - proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_.*global.*defaults_to_bir$' > test_after.log 2>&1`
 - proof log:
