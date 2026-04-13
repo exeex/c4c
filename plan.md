@@ -1,147 +1,183 @@
-# X86 Backend Failure Recovery
+# Backend Reboot From BIR Spine
 
 Status: Active
-Source Idea: ideas/open/45_fix_x86_backend_fails.md
-Activated from: fresh activation on 2026-04-13; route checkpoint rewritten on 2026-04-13 after deleting the x86 `try_emit_*` / `direct_dispatch` special-case route and resetting the runbook onto the translated backend path
+Source Idea: ideas/open/46_backend_reboot_bir_spine.md
+Activated from: fresh activation on 2026-04-13 after closing the x86-specific recovery idea and resetting the route onto a backend-wide BIR-first reboot
 
 ## Purpose
 
-Continue the broad x86 backend recovery without relying on testcase-shaped
-`try_emit_*` helpers, direct-dispatch ladders, or hand-written asm templates
-that only make narrow c-testsuite families go green.
+Replace the old direct-route backend shape with one truthful shared pipeline:
+
+`LIR -> semantic BIR -> prepare/legalize -> target backend`
 
 ## Goal
 
-Re-establish a truthful minimal x86 execution path through shared lowering and
-the translated x86 owners so that small modules no longer immediately fail with
-the unsupported direct-LIR diagnostic after the special-case route removal.
+Make BIR the real backend spine so x86, aarch64, and riscv64 no longer depend
+on raw-LIR fallback paths or testcase-shaped recovery hooks.
 
 ## Core Rule
 
-Do not reintroduce `try_emit_minimal_*`, `try_emit_direct_*`,
-`direct_dispatch.cpp`, or equivalent testcase-shaped routing under a different
-name. All recovery work in this runbook must land in general lowering or the
-translated x86 owners.
+Do not reintroduce `try_emit_*`, `try_lower_*`, direct-dispatch ladders,
+rendered-text case matchers, or equivalent workaround seams under new names.
 
 ## Read First
 
-- `ideas/open/45_fix_x86_backend_fails.md`
+- `ideas/open/46_backend_reboot_bir_spine.md`
 - `src/backend/backend.cpp`
+- `src/backend/bir.hpp`
+- `src/backend/bir_printer.cpp`
+- `src/backend/bir_validate.cpp`
+- `src/backend/lowering/lir_to_bir.hpp`
 - `src/backend/lowering/lir_to_bir.cpp`
-- `src/backend/x86/codegen/mod.cpp`
-- `src/backend/x86/codegen/calls.cpp`
-- `src/backend/x86/codegen/globals.cpp`
-- `src/backend/x86/codegen/returns.cpp`
-- `src/backend/x86/codegen/shared_call_support.cpp`
-- `src/backend/x86/codegen/x86_codegen.hpp`
-- `tests/c/external/c-testsuite/src/00030.c`
-- `tests/c/external/c-testsuite/src/00031.c`
-- `tests/c/external/c-testsuite/src/00094.c`
+- `src/backend/lowering/lir_to_bir_module.cpp`
+- `src/backend/prepare/prepare.hpp`
+- `src/backend/prepare/prepare.cpp`
+- `src/backend/prepare/legalize.cpp`
 
 ## Current Targets
 
 - `src/backend/backend.cpp`
+- `src/backend/bir.hpp`
+- `src/backend/bir_printer.cpp`
+- `src/backend/bir_validate.cpp`
+- `src/backend/lowering/lir_to_bir.hpp`
 - `src/backend/lowering/lir_to_bir.cpp`
-- `src/backend/x86/codegen/mod.cpp`
-- `src/backend/x86/codegen/calls.cpp`
-- `src/backend/x86/codegen/globals.cpp`
-- `src/backend/x86/codegen/returns.cpp`
-- `src/backend/x86/codegen/shared_call_support.cpp`
-- `src/backend/x86/codegen/x86_codegen.hpp`
+- `src/backend/lowering/lir_to_bir_module.cpp`
+- `src/backend/prepare/prepare.hpp`
+- `src/backend/prepare/prepare.cpp`
+- `src/backend/prepare/legalize.cpp`
 
 ## Non-Goals
 
-- do not recreate any deleted `src/backend/x86/codegen/direct_*.cpp` unit
-- do not add text-shape matching, printed-IR probing, or named-case-only x86
-  emitter shortcuts
-- do not claim old `00030.c` through `00094.c` packets remain accepted after
-  the route reset; they must be reproved on the translated path
-- do not widen into broad x86 backlog closure before the minimal translated
-  baseline is back
+- do not rebuild target asm emission before the shared BIR/prepare spine is
+  trustworthy
+- do not claim c-testsuite recovery from direct route deletion alone
+- do not patch individual case families with route-specific detection logic
+- do not push target legality checks back into semantic `lir_to_bir`
 
 ## Working Model
 
-- the deleted special-case route previously masked real x86 backend gaps with
-  testcase-shaped native emitters
-- after removing that route, the smallest observed x86 failures now collapse to
-  the same unsupported direct-LIR diagnostic
-- the first honest recovery step is to restore reachability for a tiny shared
-  lane through general lowering and translated x86 codegen, then expand from
-  there
-- `00030.c`, `00031.c`, and `00094.c` currently fail with the same x86
-  unsupported direct-LIR error and are the right proving subset for the reset
+- semantic BIR must preserve compiler meaning, not LLVM text artifacts
+- target legality belongs in `prepare/legalize`, not in `lir_to_bir`
+- structural validation may stay in BIR, but type legality should not block
+  semantic lowering
+- the first milestone is not "whole backend works"; it is "BIR is credible
+  enough that more lanes can be added without direct escapes"
 
 ## Ordered Steps
 
-### Step 1: Re-establish a translated minimal x86 lane
+### Step 1: Make scalar semantic BIR credible
 
-Goal: make the smallest reset subset reach a truthful translated x86 path
-again.
+Goal: establish a clean semantic lowering lane for params, compare, branch,
+select, and return.
+
+Primary target:
+
+- `src/backend/lowering/lir_to_bir_module.cpp`
+- `src/backend/bir.hpp`
+- `src/backend/bir_printer.cpp`
+- `src/backend/bir_validate.cpp`
+
+Concrete actions:
+
+- lower scalar params and returns into BIR
+- canonicalize compare-driven `cond_br`
+- canonicalize `diamond + phi` ternary shapes into `bir.select`
+- keep semantic `i1` in BIR and leave widening to `prepare`
+
+Completion check:
+
+- `branch_if_eq.c` lowers to BIR without LLVM-ish bool bridge noise
+- `single_param_select_eq.c` lowers to BIR as semantic `select`
+- nearby scalar compare/select cases can be reasoned about through BIR text
+
+### Step 2: Add semantic memory/global/call lanes
+
+Goal: expand BIR beyond toy scalar control-flow functions.
+
+Primary target:
+
+- `src/backend/lowering/lir_to_bir_module.cpp`
+- `src/backend/bir.hpp`
+
+Concrete actions:
+
+- lower local slots, loads, stores, and address forms
+- lower globals and string constants into honest BIR module state
+- lower direct calls and the minimal shared call metadata needed downstream
+
+Completion check:
+
+- simple local/global/call backend-route cases lower to BIR
+- module lowering no longer rejects whole modules just because they contain
+  globals or calls
+
+### Step 3: Make `prepare` own target legality
+
+Goal: move target-specific shaping out of semantic lowering.
+
+Primary target:
+
+- `src/backend/prepare/legalize.cpp`
+- `src/backend/prepare/prepare.cpp`
+- `src/backend/backend.cpp`
+
+Concrete actions:
+
+- keep semantic BIR target-neutral where possible
+- legalize `i1` and other target-specific value forms in `prepare`
+- define the prepared-BIR contract that target backends are expected to ingest
+
+Completion check:
+
+- semantic BIR can still express `i1`
+- prepare rewrites target-specific legality for x86/i686/aarch64/riscv64
+- backend driver clearly routes BIR through prepare before target codegen
+
+### Step 4: Build real prepare phases after legalization
+
+Goal: stop treating `prepare` as a stub layer.
+
+Primary target:
+
+- `src/backend/prepare/stack_layout.cpp`
+- `src/backend/prepare/liveness.cpp`
+- `src/backend/prepare/regalloc.cpp`
+
+Concrete actions:
+
+- define stack objects and frame layout inputs
+- add liveness data collection
+- add initial register-allocation plumbing over prepared BIR
+
+Completion check:
+
+- prepare records real phase output instead of only notes
+- target backends can assume prepared-BIR shape instead of reconstructing it
+
+### Step 5: Reconnect target backends to prepared BIR only
+
+Goal: make x86, aarch64, and riscv64 consume the new shared spine.
 
 Primary target:
 
 - `src/backend/backend.cpp`
-- `src/backend/lowering/lir_to_bir.cpp`
-- `src/backend/x86/codegen/mod.cpp`
-- `src/backend/x86/codegen/calls.cpp`
-- `src/backend/x86/codegen/globals.cpp`
-- `src/backend/x86/codegen/returns.cpp`
-- `src/backend/x86/codegen/shared_call_support.cpp`
-- `src/backend/x86/codegen/x86_codegen.hpp`
+- target backend ingestion entry points under `src/backend/*/codegen/`
 
 Concrete actions:
 
-- inspect why tiny x86 modules still stop at the unsupported direct-LIR
-  diagnostic after the special-case route deletion
-- restore a general path through shared lowering or translated x86 owners
-  instead of reintroducing route-specific emitters
-- keep the first repair bounded to the common failure mode exercised by
-  `00030.c`, `00031.c`, and `00094.c`
+- define target ingestion contracts in terms of prepared BIR
+- reject raw/direct LIR fallback paths
+- expand proving only after prepared-BIR ingestion is real
 
 Completion check:
 
-- `c_testsuite_x86_backend_src_00030_c` passes
-- `c_testsuite_x86_backend_src_00031_c` passes
-- `c_testsuite_x86_backend_src_00094_c` passes
+- backend routing no longer depends on direct LIR escapes
+- target recovery is explained by shared BIR/prepare capability growth
 
-### Step 2: Reprove the previously claimed x86 band on the translated route
+## Validation Ladder
 
-Goal: revalidate the nearby x86 band that used to be covered by deleted
-special-case packets.
-
-Primary target:
-
-- `todo.md`
-
-Concrete actions:
-
-- keep the next adjacent x86 family explicit after the reset subset lands
-- only mark a formerly accepted family as recovered after it passes again on
-  the translated route
-- record remaining regressions in `todo.md` instead of re-encoding them in
-  `plan.md` packet by packet
-
-Completion check:
-
-- the next reproving band after `00030.c` / `00031.c` / `00094.c` is explicit
-- no deleted special-case family is still described as accepted without fresh
-  proof
-
-### Step 3: Validate the reset route honestly
-
-Goal: keep proof aligned to the new translated route.
-
-Primary target:
-
-- `build/`
-
-Concrete actions:
-
-- run `cmake --build build -j2`
-- run `ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_x86_backend_src_00030_c|c_testsuite_x86_backend_src_00031_c|c_testsuite_x86_backend_src_00094_c)$'`
-- escalate only after the reset subset passes on the translated path
-
-Completion check:
-
-- fresh build succeeds
-- the focused reset subset passes without any x86 special-case route
+- `cmake --build build -j2`
+- focused backend-route observation using `./build/c4cll --codegen asm --target <triple> <case>.c -o <out>`
+- escalate to matching internal/c-testsuite subsets only after the BIR/prepare
+  lane for that capability is real
