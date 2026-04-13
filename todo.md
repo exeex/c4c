@@ -13,40 +13,45 @@ Source Plan: plan.md
   `plan.md` now carries the ordered remaining capability backlog so future
   executor packets can be chosen from a durable semantic queue rather than
   rediscovering the next testcase family from chat
+- review checkpoint:
+  a route audit judged the code path still aligned to the source idea but
+  called for a `todo.md` packet reset before more execution because the first
+  indirect-call slice was already complete
 - current capability family:
   backlog item 5, expand call lowering beyond minimal direct calls
 - current packet shape:
-  keep backlog item 5 on the riscv64 backend-route surface by taking the first
-  honest indirect-call slice: lower one-arg `i32 -> i32` indirect calls from
-  SSA callee values through shared semantic BIR/prepared-BIR call handling,
-  plus the minimal ptr-param / ptr-local support needed to express that lane,
-  without reopening the rejected host-runtime x86 fallback seam or widening
-  into broader ABI shaping
+  keep backlog item 5 on the riscv64 backend-route surface by widening the
+  completed one-arg indirect-call lane into the first honest two-arg indirect
+  family: lower simple `i32, i32 -> i32` indirect calls from SSA callee values
+  through shared semantic BIR/prepared-BIR call handling, reusing the existing
+  ptr-param / ptr-local carrier support instead of widening into ABI-shaped
+  metadata or reopening the rejected host-runtime x86 fallback seam
 - candidate proving surface:
-  `tests/c/internal/backend_route_case/indirect_param_call.c`
-  `tests/c/internal/backend_route_case/indirect_local_call.c`
+  `tests/c/internal/backend_route_case/indirect_two_arg_param_call.c`
+  `tests/c/internal/backend_route_case/indirect_two_arg_local_call.c`
   keep `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the current
-  `two_arg_*` direct-call route tests as standing sentinels while widening
-  only the first indirect-call family that is already honest on riscv64
+  one-arg indirect-call plus `two_arg_*` direct-call route tests as standing
+  sentinels while widening only the next honest indirect-call family that is
+  already adjacent on riscv64
 
 ## Immediate Target
 
 - keep packet selection attached to the ordered semantic backlog in `plan.md`
 - carry the now-green addressed-global work forward by moving to the next
   semantic family instead of stretching backlog item 4 past its proving surface
-- carry the now-green rewrite-only direct-call surface forward by moving into
-  the first honest indirect-call proving slice instead of reopening richer
-  direct-call metadata or ABI-shaped follow-ons first
+- carry the now-green one-arg indirect-call surface forward by moving into the
+  first two-arg indirect-call proving slice instead of reopening richer
+  direct-call metadata or jumping ahead to ABI-shaped call work
 - avoid reintroducing testcase-shaped routing while broadening the call lane
 
 ## Done Condition For The Active Packet
 
 - `branch_if_eq.c` still lowers to clean BIR
-- the existing direct-call sentinels and rewrite-only two-arg route tests stay
-  green on riscv64
-- simple param-carried and local-slot indirect helper calls lower through the
-  same riscv64 backend-route surface instead of reopening host-runtime x86
-  fallback
+- the existing direct-call sentinels, one-arg indirect-call tests, and
+  rewrite-only two-arg route tests stay green on riscv64
+- simple param-carried and local-slot two-arg indirect helper calls lower
+  through the same riscv64 backend-route surface instead of reopening
+  host-runtime x86 fallback
 - semantic call lowering keeps callee identity, result type, and minimal arg
   metadata available for later prepare/ABI shaping without performing that
   shaping inside `lir_to_bir`
@@ -322,12 +327,12 @@ Source Plan: plan.md
 - blocked:
   none in owned files for this packet
 - remaining next:
-  widen backlog item 5 from this first one-arg indirect-call lane into the
-  next honest indirect surfaces, likely richer indirect callee carriers or
-  two-arg indirect calls on the same riscv64 route boundary, without
-  reopening direct-route fallbacks or jumping ahead to ABI-shaped call work
+  once the first two-arg indirect-call lane is green, decide whether backlog
+  item 5 should next widen into richer indirect callee carriers or broader
+  return/signature forms on the same riscv64 route boundary, without reopening
+  direct-route fallbacks or jumping ahead to ABI-shaped call work
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_call_helper_defaults_to_asm|backend_codegen_route_riscv64_local_arg_call_defaults_to_asm|backend_codegen_route_riscv64_two_arg_(helper|local_arg|second_local_arg|both_local_arg|first_local_rewrite|second_local_rewrite|both_local_first_rewrite|both_local_second_rewrite|both_local_double_rewrite)_defaults_to_asm|backend_codegen_route_riscv64_indirect_(local|param)_call_defaults_to_asm)$' > test_after.log 2>&1`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_call_helper_defaults_to_asm|backend_codegen_route_riscv64_local_arg_call_defaults_to_asm|backend_codegen_route_riscv64_two_arg_(helper|local_arg|second_local_arg|both_local_arg|first_local_rewrite|second_local_rewrite|both_local_first_rewrite|both_local_second_rewrite|both_local_double_rewrite)_defaults_to_asm|backend_codegen_route_riscv64_indirect_(local|param|two_arg_local|two_arg_param)_call_defaults_to_asm)$' > test_after.log 2>&1`
 - proof log:
   `test_after.log`
 
