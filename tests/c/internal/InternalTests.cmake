@@ -1694,6 +1694,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_arg_both_local_double_rewrite_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/two_arg_both_local_double_rewrite.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_arg_both_local_double_rewrite_riscv64.s"
+      REQUIRED_SNIPPETS ".globl add_pair|add_pair:|add a0, a0, a1|main:|sw t0, 0(sp)|sw t1, 4(sp)|lw t2, 0(sp)|addi t2, t2, 0|sw t2, 0(sp)|lw t3, 4(sp)|addi t3, t3, 0|sw t3, 4(sp)|lw t4, 0(sp)|lw t5, 4(sp)|mv a0, t4|mv a1, t5|call add_pair|ret"
+      FORBIDDEN_SNIPPETS "bir.func @add_pair|bir.func @main()|define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_return_ne_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_ne.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu

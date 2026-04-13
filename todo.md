@@ -292,14 +292,23 @@ Source Plan: plan.md
   this keeps backlog item 5 on the honest semantic-BIR/prepared-BIR riscv64
   path for the first rewrite variants without reopening raw-BIR asm output,
   direct-route fallbacks, or testcase-shaped target shortcuts
+- completed:
+  the first double-rewrite two-arg direct-call shape now stays on that same
+  explicit riscv64 backend-route surface too; a new route proof covers
+  `two_arg_both_local_double_rewrite.c` as native asm with both local-slot
+  reloads, both in-place `addi ..., 0` rewrites, the final `a0/a1` call setup,
+  and `call add_pair`
+  this closes the current rewrite-only direct-call proving surface on the
+  honest semantic-BIR/prepared-BIR riscv64 path without reopening raw-BIR asm
+  output, direct-route fallbacks, or testcase-shaped target shortcuts
 - blocked:
   none in owned files for this packet
 - remaining next:
-  extend the same explicit riscv64 backend-route proof style to the first
-  double-rewrite two-arg direct-call variant before touching indirect calls or
-  ABI-shaped follow-ons
+  decide whether backlog item 5 should next widen richer direct-call metadata
+  on the same riscv64 route surface or move to the first honest indirect-call
+  proving slice without reopening the rejected host-runtime fallback seam
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_call_helper_defaults_to_asm|backend_codegen_route_riscv64_local_arg_call_defaults_to_asm|backend_codegen_route_riscv64_two_arg_(helper|local_arg|second_local_arg|both_local_arg|first_local_rewrite|second_local_rewrite|both_local_first_rewrite|both_local_second_rewrite)_defaults_to_asm)$' > test_after.log 2>&1`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_call_helper_defaults_to_asm|backend_codegen_route_riscv64_local_arg_call_defaults_to_asm|backend_codegen_route_riscv64_two_arg_(helper|local_arg|second_local_arg|both_local_arg|first_local_rewrite|second_local_rewrite|both_local_first_rewrite|both_local_second_rewrite|both_local_double_rewrite)_defaults_to_asm)$' > test_after.log 2>&1`
 - proof log:
   `test_after.log`
 
