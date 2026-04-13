@@ -2,8 +2,6 @@
 
 #include "../../bir.hpp"
 
-#include <stdexcept>
-
 namespace c4c::backend::x86 {
 
 namespace {
@@ -20,6 +18,22 @@ struct MinimalExternScalarGlobalLoadSlice {
   std::string function_name;
   std::string global_name;
 };
+
+struct MinimalExternGlobalArrayLoadSlice {
+  std::string function_name;
+  std::string global_name;
+  std::int64_t byte_offset = 0;
+};
+
+const char* global_load_dest_reg(IrType ty) {
+  switch (ty) {
+    case IrType::U32:
+    case IrType::F32:
+      return "%eax";
+    default:
+      return "%rax";
+  }
+}
 
 std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_slice(
     const c4c::backend::bir::Module& module) {
@@ -100,47 +114,64 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
   };
 }
 
-[[noreturn]] void throw_unwired_translated_globals_owner() {
-  throw std::logic_error(
-      "x86 translated globals owner methods are compiled for symbol/link coverage, but the exporter-backed X86Codegen state is not wired yet");
+std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_array_load_slice(
+    const c4c::backend::bir::Module& module) {
+  using namespace c4c::backend::bir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (!global.is_extern || global.type != TypeKind::I32 || global.initializer.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.return_type != TypeKind::I32 ||
+      !function.params.empty() || !function.local_slots.empty() || function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* load =
+      entry.insts.size() == 1 ? std::get_if<LoadGlobalInst>(&entry.insts.front()) : nullptr;
+  if (entry.label != "entry" || load == nullptr ||
+      load->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      load->result.type != TypeKind::I32 || load->global_name != global.name ||
+      load->byte_offset != 4 || entry.terminator.kind != TerminatorKind::Return ||
+      !entry.terminator.value.has_value() || *entry.terminator.value != load->result) {
+    return std::nullopt;
+  }
+
+  return MinimalExternGlobalArrayLoadSlice{
+      .function_name = function.name,
+      .global_name = global.name,
+      .byte_offset = static_cast<std::int64_t>(load->byte_offset),
+  };
 }
 
 }  // namespace
 
-std::optional<std::string> try_emit_minimal_scalar_global_load_module(
-    const c4c::backend::bir::Module& module) {
-  const auto slice = parse_minimal_scalar_global_load_slice(module);
-  if (!slice.has_value()) {
-    return std::nullopt;
-  }
-  return emit_minimal_scalar_global_load_slice_asm(module.target_triple,
-                                                   slice->function_name,
-                                                   slice->global_name,
-                                                   slice->init_imm,
-                                                   slice->align_bytes,
-                                                   slice->zero_initializer);
-}
-
-std::optional<std::string> try_emit_minimal_extern_scalar_global_load_module(
-    const c4c::backend::bir::Module& module) {
-  const auto slice = parse_minimal_extern_scalar_global_load_slice(module);
-  if (!slice.has_value()) {
-    return std::nullopt;
-  }
-  return emit_minimal_extern_scalar_global_load_slice_asm(module.target_triple,
-                                                          slice->function_name,
-                                                          slice->global_name);
-}
-
 void X86Codegen::emit_global_addr_impl(const Value& dest, const std::string& name) {
-  this->state.emit("    leaq " + name + "(%rip), %rax");
+  if (this->state.needs_got_for_addr(name)) {
+    this->state.emit("    movq " + name + "@GOTPCREL(%rip), %rax");
+  } else {
+    this->state.emit("    leaq " + name + "(%rip), %rax");
+  }
   this->emit_store_result_impl(dest);
 }
 
 void X86Codegen::emit_tls_global_addr_impl(const Value& dest, const std::string& name) {
-  (void)dest;
-  (void)name;
-  throw_unwired_translated_globals_owner();
+  if (this->state.pic_mode) {
+    this->state.emit("    movq " + name + "@GOTTPOFF(%rip), %rax");
+    this->state.emit("    addq %fs:0, %rax");
+  } else {
+    this->state.emit("    movq %fs:0, %rax");
+    this->state.emit("    leaq " + name + "@TPOFF(%rax), %rax");
+  }
+  this->emit_store_result_impl(dest);
 }
 
 void X86Codegen::emit_global_addr_absolute_impl(const Value& dest, const std::string& name) {
@@ -151,8 +182,8 @@ void X86Codegen::emit_global_addr_absolute_impl(const Value& dest, const std::st
 void X86Codegen::emit_global_load_rip_rel_impl(const Value& dest,
                                                 const std::string& sym,
                                                 IrType ty) {
-  this->state.emit(std::string("    ") + this->mov_load_for_type(ty) + " " + sym + "(%rip), %" +
-                   this->reg_for_type("rax", ty));
+  this->state.emit(std::string("    ") + this->mov_load_for_type(ty) + " " + sym + "(%rip), " +
+                   global_load_dest_reg(ty));
   this->emit_store_result_impl(dest);
 }
 

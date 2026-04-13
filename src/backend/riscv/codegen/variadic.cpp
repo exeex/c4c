@@ -1,10 +1,12 @@
 // Translated from /workspaces/c4c/ref/claudes-c-compiler/src/backend/riscv/codegen/variadic.rs
-// The shared RISC-V C++ codegen surface does not exist yet, so this file keeps
-// the Rust method boundaries as a source-level mirror while still translating
-// the local variadic arithmetic into concrete C++ helpers.
+// This slice makes the bounded variadic owner bodies real through the landed
+// shared RV64 header and prologue-owned setup surface.
+
+#include "riscv_codegen.hpp"
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 namespace c4c::backend::riscv::codegen {
 
@@ -25,32 +27,85 @@ std::size_t riscv_va_arg_step_bytes(bool is_long_double) {
   return is_long_double ? kRiscvVaListLongDoubleBytes : kRiscvVaListSlotBytes;
 }
 
-}  // namespace
+constexpr bool fits_imm12(std::int64_t value) { return value >= -2048 && value <= 2047; }
 
-// Source-level mirrors of the Rust impl methods:
-//
-// pub(super) fn emit_va_arg_impl(&mut self, dest: &Value, va_list_ptr: &Value, result_ty: IrType)
-// pub(super) fn emit_va_start_impl(&mut self, va_list_ptr: &Value)
-// pub(super) fn emit_va_copy_impl(&mut self, dest_ptr: &Value, src_ptr: &Value)
-//
-// The concrete codegen body still depends on the broader RiscvCodegen / State
-// surface, which is not yet shared as C++ headers. The helpers above preserve
-// the local arithmetic:
-// - va_start stores a pointer to the next variadic argument, with the stack
-//   offset derived from the number of named GP arguments and named stack bytes.
-// - va_arg advances by 8 bytes for normal scalar args and 16 bytes for long
-//   double values.
-//
-// A future pass can wire these helpers into the translated codegen surface once
-// the shared backend API exists.
+void emit_add_s0_to_reg(RiscvCodegenState& state, const char* reg, std::int64_t offset) {
+  if (fits_imm12(offset)) {
+    state.emit("    addi " + std::string(reg) + ", s0, " + std::to_string(offset));
+    return;
+  }
 
-std::int64_t riscv_va_start_stack_offset(std::size_t va_named_gp_count,
-                                         std::size_t va_named_stack_bytes) {
-  return riscv_va_start_offset(va_named_gp_count, va_named_stack_bytes);
+  state.emit("    li t6, " + std::to_string(offset));
+  state.emit("    add " + std::string(reg) + ", s0, t6");
 }
 
-std::size_t riscv_va_arg_stack_step_bytes(bool is_long_double) {
-  return riscv_va_arg_step_bytes(is_long_double);
+bool emit_value_address_or_load(RiscvCodegenState& state, const Value& value, const char* reg) {
+  if (state.is_alloca(value.raw)) {
+    if (const auto slot = state.get_slot(value.raw)) {
+      emit_add_s0_to_reg(state, reg, slot->raw);
+      return true;
+    }
+  }
+
+  if (const auto assigned = state.assigned_reg(value.raw)) {
+    state.emit("    mv " + std::string(reg) + ", " + callee_saved_name(*assigned));
+    return true;
+  }
+
+  if (const auto slot = state.get_slot(value.raw)) {
+    state.emit("    ld " + std::string(reg) + ", " + std::to_string(slot->raw) + "(s0)");
+    return true;
+  }
+
+  return false;
+}
+
+}  // namespace
+
+void RiscvCodegen::emit_va_arg_impl(const Value& dest, const Value& va_list_ptr, IrType result_ty) {
+  if (!emit_value_address_or_load(state, va_list_ptr, "t1")) {
+    return;
+  }
+
+  state.emit("    ld t2, 0(t1)");
+  if (result_ty == IrType::F128) {
+    state.emit("    addi t2, t2, 15");
+    state.emit("    andi t2, t2, -16");
+    state.emit("    ld a0, 0(t2)");
+    state.emit("    ld a1, 8(t2)");
+    state.emit("    addi t2, t2, 16");
+    state.emit("    sd t2, 0(t1)");
+    state.emit("    call __trunctfdf2");
+    state.emit("    fmv.x.d t0, fa0");
+  } else {
+    state.emit("    ld t0, 0(t2)");
+    state.emit("    addi t2, t2, " +
+               std::to_string(static_cast<std::int64_t>(riscv_va_arg_step_bytes(false))));
+    state.emit("    sd t2, 0(t1)");
+  }
+
+  store_t0_to(dest);
+}
+
+void RiscvCodegen::emit_va_start_impl(const Value& va_list_ptr) {
+  if (!emit_value_address_or_load(state, va_list_ptr, "t0")) {
+    return;
+  }
+
+  emit_add_s0_to_reg(state, "t1", riscv_va_start_offset(va_named_gp_count, va_named_stack_bytes));
+  state.emit("    sd t1, 0(t0)");
+}
+
+void RiscvCodegen::emit_va_copy_impl(const Value& dest_ptr, const Value& src_ptr) {
+  if (!emit_value_address_or_load(state, src_ptr, "t1")) {
+    return;
+  }
+  state.emit("    ld t2, 0(t1)");
+
+  if (!emit_value_address_or_load(state, dest_ptr, "t0")) {
+    return;
+  }
+  state.emit("    sd t2, 0(t0)");
 }
 
 }  // namespace c4c::backend::riscv::codegen

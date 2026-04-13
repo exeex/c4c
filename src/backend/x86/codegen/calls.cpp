@@ -56,16 +56,30 @@ std::int64_t X86Codegen::emit_call_stack_args_impl(const std::vector<Operand>& a
 
 void X86Codegen::emit_call_reg_args_impl(const std::vector<Operand>& args,
                                          const std::vector<CallArgClass>& arg_classes,
-                                         const std::vector<IrType>& /*arg_types*/,
+                                         const std::vector<IrType>& arg_types,
                                          std::int64_t /*total_sp_adjust*/,
                                          std::size_t /*f128_temp_space*/,
                                          std::size_t /*stack_arg_space*/,
                                          const std::vector<std::optional<RiscvFloatClass>>& /*classes*/) {
+  std::size_t gp_reg_idx = 0;
+  std::size_t fp_reg_idx = 0;
   for (std::size_t i = 0; i < args.size(); ++i) {
-    if (arg_classes[i].is_register()) {
-      this->operand_to_rax(args[i]);
-      this->state.emit(std::string("    movq %rax, %") + x86_arg_reg_name(i));
+    if (!arg_classes[i].is_register()) {
+      continue;
     }
+
+    this->operand_to_rax(args[i]);
+    const bool is_float = arg_types[i] == IrType::F32 || arg_types[i] == IrType::F64;
+    if (is_float) {
+      this->state.emit(std::string("    movq %rax, %") + x86_float_arg_reg_name(fp_reg_idx++));
+    } else {
+      this->state.emit(std::string("    movq %rax, %") + x86_arg_reg_name(gp_reg_idx++));
+    }
+  }
+  if (fp_reg_idx > 0) {
+    this->state.out.emit_instr_imm_reg("    movb", static_cast<std::int64_t>(fp_reg_idx), "al");
+  } else {
+    this->state.emit("    xorl %eax, %eax");
   }
   this->state.reg_cache.invalidate_all();
 }

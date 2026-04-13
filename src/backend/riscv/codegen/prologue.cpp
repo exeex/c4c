@@ -1,72 +1,73 @@
 // Translated from /workspaces/c4c/ref/claudes-c-compiler/src/backend/riscv/codegen/prologue.rs
-// Structural mirror of the ref Rust source; the shared C++ `RiscvCodegen`
-// / `CodegenState` surface does not exist yet, so this file stays as a
-// source-level inventory of the prologue/epilogue and stack-frame methods.
-//
-// //! RiscvCodegen: prologue/epilogue and stack frame operations.
-//
-// use crate::ir::reexports::IrFunction;
-// use crate::common::types::IrType;
-// use crate::backend::generation::{calculate_stack_space_common, find_param_alloca};
-// use crate::backend::call_abi::{ParamClass, classify_params};
-// use super::emit::{
-//     RiscvCodegen, callee_saved_name,
-//     collect_inline_asm_callee_saved_riscv, RISCV_CALLEE_SAVED, CALL_TEMP_CALLEE_SAVED,
-//     RISCV_ARG_REGS,
-// };
-//
-// impl RiscvCodegen {
-//     // ---- calculate_stack_space ----
-//
-//     pub(super) fn calculate_stack_space_impl(&mut self, func: &IrFunction) -> i64 {
-//         // Variadic handling updates va_* state before stack sizing.
-//         // Inline-asm clobber scanning feeds register allocation.
-//         // The allocator uses the RISC-V callee-saved pool plus call temps.
-//         // Stack slot sizing honors alignment and regalloc results.
-//         // Callee-saved spill space is appended at the end of the frame.
-//     }
-//
-//     // ---- aligned_frame_size ----
-//
-//     pub(super) fn aligned_frame_size_impl(&self, raw_space: i64) -> i64 {
-//         (raw_space + 15) & !15
-//     }
-//
-//     // ---- emit_prologue ----
-//
-//     pub(super) fn emit_prologue_impl(&mut self, func: &IrFunction, frame_size: i64) {
-//         self.current_return_type = func.return_type;
-//         self.current_frame_size = frame_size;
-//         self.emit_prologue_riscv(frame_size);
-//         // Save callee-saved registers at the bottom of the frame.
-//     }
-//
-//     // ---- emit_epilogue ----
-//
-//     pub(super) fn emit_epilogue_impl(&mut self, frame_size: i64) {
-//         // Restore callee-saved registers before the epilogue sequence.
-//         self.emit_epilogue_riscv(frame_size);
-//     }
-//
-//     // ---- emit_store_params ----
-//
-//     pub(super) fn emit_store_params_impl(&mut self, func: &IrFunction) {
-//         // Variadic functions spill a0-a7 into the register save area.
-//         // Parameter classification determines whether each arg comes in GP,
-//         // FP, pair, stack, or by-ref form.
-//         // F128 arguments need a temporary save area before conversion.
-//     }
-//
-//     /// Sign/zero-extend a GP register value to 64 bits for sub-64-bit types.
-//     fn emit_extend_reg(state: &mut crate::backend::state::CodegenState, src: &str, dest: &str, ty: IrType) {
-//         // I8/I16 use sign-extension, U8/U16 use zero-extension, I32 uses sext.w.
-//         // Wider values are copied as-is.
-//     }
-//
-//     // ---- emit_param_ref ----
-//
-//     pub(super) fn emit_param_ref_impl(&mut self, dest: &crate::ir::reexports::Value, param_idx: usize, ty: IrType) {
-//         // Prefer the pre-spilled alloca slot when available, otherwise read
-//         // directly from the ABI location described by the parameter class.
-//     }
-// }
+// Structural mirror of the ref Rust source. This slice makes only the
+// prologue-owned return-state and return-exit seam real enough for later
+// returns work; broader stack sizing and parameter storage remain parked.
+
+#include "riscv_codegen.hpp"
+
+#include <string>
+
+namespace c4c::backend::riscv::codegen {
+
+std::int64_t RiscvCodegen::aligned_frame_size_impl(std::int64_t raw_space) const {
+  return (raw_space + 15) & ~std::int64_t{15};
+}
+
+void RiscvCodegen::emit_prologue_impl(const IrFunction& func, std::int64_t frame_size) {
+  is_variadic = func.is_variadic;
+  current_return_type = func.return_type;
+  current_frame_size = frame_size;
+  variadic_save_area_bytes = func.is_variadic ? riscv_variadic_reg_save_area_size() : 0;
+  va_named_gp_count = func.is_variadic ? riscv_variadic_named_gp_count(func.va_named_gp_count) : 0;
+  va_named_stack_bytes = func.is_variadic ? func.va_named_stack_bytes : 0;
+
+  const auto total_alloc = frame_size + variadic_save_area_bytes;
+  if (total_alloc <= 0) {
+    return;
+  }
+
+  state.emit("    addi sp, sp, -" + std::to_string(total_alloc));
+  state.emit("    sd ra, " + std::to_string(frame_size - 8) + "(sp)");
+  state.emit("    sd s0, " + std::to_string(frame_size - 16) + "(sp)");
+  state.emit("    addi s0, sp, " + std::to_string(frame_size));
+
+  if (is_variadic) {
+    for (std::size_t index = 0; index < RISCV_ARG_REGS.size(); ++index) {
+      state.emit("    sd " + std::string(RISCV_ARG_REGS[index]) + ", " +
+                 std::to_string(riscv_variadic_gp_save_offset(index)) + "(s0)");
+    }
+  }
+
+  for (std::size_t index = 0; index < used_callee_saved.size(); ++index) {
+    const auto reg_name = callee_saved_name(used_callee_saved[index]);
+    const auto offset = -frame_size + static_cast<std::int64_t>(index) * 8;
+    emit_store_to_s0(reg_name, offset, "sd");
+  }
+}
+
+void RiscvCodegen::emit_epilogue_impl(std::int64_t frame_size) {
+  const auto effective_frame_size = frame_size > 0 ? frame_size : current_frame_size;
+  const auto total_alloc = effective_frame_size + variadic_save_area_bytes;
+  if (total_alloc <= 0) {
+    return;
+  }
+
+  for (std::size_t index = 0; index < used_callee_saved.size(); ++index) {
+    const auto reg_name = callee_saved_name(used_callee_saved[index]);
+    const auto offset = -effective_frame_size + static_cast<std::int64_t>(index) * 8;
+    emit_load_from_s0(reg_name, offset, "ld");
+  }
+
+  state.emit("    ld ra, -8(s0)");
+  state.emit("    ld s0, -16(s0)");
+  state.emit("    addi sp, sp, " + std::to_string(total_alloc));
+}
+
+void RiscvCodegen::emit_epilogue_and_ret_impl(std::int64_t frame_size) {
+  emit_epilogue_impl(frame_size);
+  state.emit("    ret");
+}
+
+IrType RiscvCodegen::current_return_type_impl() const { return current_return_type; }
+
+}  // namespace c4c::backend::riscv::codegen

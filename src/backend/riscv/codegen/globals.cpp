@@ -2,6 +2,8 @@
 // Structural mirror of the ref Rust source; the shared C++ `RiscvCodegen` /
 // `CodegenState` surface does not exist yet, so this file keeps the method
 // boundaries and emission intent as comments only.
+
+#include "riscv_codegen.hpp"
 //
 // //! RiscvCodegen: global address loading, PIC-relative.
 //
@@ -42,5 +44,26 @@
 // }
 
 namespace c4c::backend::riscv::codegen {
+
+void RiscvCodegen::emit_global_addr_impl(const Value& dest, const std::string& name) {
+  if (state.needs_got_for_addr(name)) {
+    state.emit("    la t0, " + name);
+  } else {
+    state.emit("    lla t0, " + name);
+  }
+  store_t0_to(dest);
+}
+
+void RiscvCodegen::emit_label_addr_impl(const Value& dest, const std::string& label) {
+  state.emit("    lla t0, " + label);
+  store_t0_to(dest);
+}
+
+void RiscvCodegen::emit_tls_global_addr_impl(const Value& dest, const std::string& name) {
+  state.emit("    lui t0, %tprel_hi(" + name + ")");
+  state.emit("    add t0, t0, tp, %tprel_add(" + name + ")");
+  state.emit("    addi t0, t0, %tprel_lo(" + name + ")");
+  store_t0_to(dest);
+}
 
 }  // namespace c4c::backend::riscv::codegen

@@ -1,131 +1,147 @@
-# x86_64 Translated Codegen Integration
+# X86 Backend Failure Recovery
 
 Status: Active
-Source Idea: ideas/open/43_x86_64_peephole_pipeline_completion.md
-Activated from: lifecycle reset on 2026-04-11
+Source Idea: ideas/open/45_fix_x86_backend_fails.md
+Activated from: fresh activation on 2026-04-13; route checkpoint rewritten on 2026-04-13 after deleting the x86 `try_emit_*` / `direct_dispatch` special-case route and resetting the runbook onto the translated backend path
 
 ## Purpose
 
-Turn the translated x86 codegen owner surface into the real backend path instead
-of continuing to extend the legacy `emit.cpp` matcher surface with more bounded
-test-only seams.
+Continue the broad x86 backend recovery without relying on testcase-shaped
+`try_emit_*` helpers, direct-dispatch ladders, or hand-written asm templates
+that only make narrow c-testsuite families go green.
 
 ## Goal
 
-Expose the minimum shared x86 codegen surface needed to compile translated owner
-units, switch one real owner cluster into the active backend path, and leave
-test expansion limited to the narrow proof needed for each ownership transfer.
+Re-establish a truthful minimal x86 execution path through shared lowering and
+the translated x86 owners so that small modules no longer immediately fail with
+the unsupported direct-LIR diagnostic after the special-case route removal.
 
-## Core Rules
+## Core Rule
 
-- Follow the source idea's translated-owner integration scope; do not mutate
-  this into shared-BIR cleanup from idea 44.
-- Do not spend iterations on testcase-matrix growth unless a missing test is
-  required to prove the current ownership slice.
-- Prefer shared-header and owner-surface work over adding new
-  `emit.cpp`-local logic.
-- If execution uncovers adjacent but non-blocking backend gaps, record them in
-  the source idea instead of widening this runbook.
-- Keep validation backend-focused: targeted tests per slice, then one broad
-  regression guard after a meaningful owner-path change.
+Do not reintroduce `try_emit_minimal_*`, `try_emit_direct_*`,
+`direct_dispatch.cpp`, or equivalent testcase-shaped routing under a different
+name. All recovery work in this runbook must land in general lowering or the
+translated x86 owners.
 
 ## Read First
 
-- `ideas/open/43_x86_64_peephole_pipeline_completion.md`
+- `ideas/open/45_fix_x86_backend_fails.md`
+- `src/backend/backend.cpp`
+- `src/backend/lowering/lir_to_bir.cpp`
+- `src/backend/x86/codegen/mod.cpp`
+- `src/backend/x86/codegen/calls.cpp`
+- `src/backend/x86/codegen/globals.cpp`
+- `src/backend/x86/codegen/returns.cpp`
+- `src/backend/x86/codegen/shared_call_support.cpp`
 - `src/backend/x86/codegen/x86_codegen.hpp`
-- `src/backend/x86/codegen/emit.cpp`
-- `src/backend/x86/codegen/{calls,returns,prologue,globals}.cpp`
-- `ref/claudes-c-compiler/src/backend/x86/codegen/emit.rs`
+- `tests/c/external/c-testsuite/src/00030.c`
+- `tests/c/external/c-testsuite/src/00031.c`
+- `tests/c/external/c-testsuite/src/00094.c`
 
-## Scope
+## Current Targets
 
-- shared x86 codegen declarations needed by translated owner files
-- translated top-level units already present in `src/backend/x86/codegen/`
-- active owner transfer away from legacy `emit.cpp`
-- focused backend regression coverage that proves the transferred path runs
+- `src/backend/backend.cpp`
+- `src/backend/lowering/lir_to_bir.cpp`
+- `src/backend/x86/codegen/mod.cpp`
+- `src/backend/x86/codegen/calls.cpp`
+- `src/backend/x86/codegen/globals.cpp`
+- `src/backend/x86/codegen/returns.cpp`
+- `src/backend/x86/codegen/shared_call_support.cpp`
+- `src/backend/x86/codegen/x86_codegen.hpp`
 
 ## Non-Goals
 
-- no family-by-family direct-call testcase expansion as a primary work queue
-- no unrelated frontend, parser, LLVM IR, or runtime work
-- no broad ABI cleanup unless the active translated-owner slice requires it
-- no silent absorption of idea 44 or RV64 work
+- do not recreate any deleted `src/backend/x86/codegen/direct_*.cpp` unit
+- do not add text-shape matching, printed-IR probing, or named-case-only x86
+  emitter shortcuts
+- do not claim old `00030.c` through `00094.c` packets remain accepted after
+  the route reset; they must be reproved on the translated path
+- do not widen into broad x86 backlog closure before the minimal translated
+  baseline is back
 
-## Execution Steps
+## Working Model
 
-### Step 1: Rebuild the dependency audit around owner blockers
+- the deleted special-case route previously masked real x86 backend gaps with
+  testcase-shaped native emitters
+- after removing that route, the smallest observed x86 failures now collapse to
+  the same unsupported direct-LIR diagnostic
+- the first honest recovery step is to restore reachability for a tiny shared
+  lane through general lowering and translated x86 codegen, then expand from
+  there
+- `00030.c`, `00031.c`, and `00094.c` currently fail with the same x86
+  unsupported direct-LIR error and are the right proving subset for the reset
 
-Goal: make the next ownership slice explicit in terms of missing shared types,
-helpers, and state on the current C++ surface.
+## Ordered Steps
 
-Primary targets:
+### Step 1: Re-establish a translated minimal x86 lane
 
+Goal: make the smallest reset subset reach a truthful translated x86 path
+again.
+
+Primary target:
+
+- `src/backend/backend.cpp`
+- `src/backend/lowering/lir_to_bir.cpp`
+- `src/backend/x86/codegen/mod.cpp`
+- `src/backend/x86/codegen/calls.cpp`
+- `src/backend/x86/codegen/globals.cpp`
+- `src/backend/x86/codegen/returns.cpp`
+- `src/backend/x86/codegen/shared_call_support.cpp`
 - `src/backend/x86/codegen/x86_codegen.hpp`
-- `src/backend/x86/codegen/{calls,returns,prologue}.cpp`
-- `ref/claudes-c-compiler/src/backend/x86/codegen/emit.rs`
 
-Actions:
+Concrete actions:
 
-- verify which translated owner files are blocked by missing public
-  declarations rather than missing CMake wiring
-- record the smallest compilable owner cluster that reduces real `emit.cpp`
-  ownership
-- identify the minimum test needed to prove that cluster once connected
-
-Completion check:
-
-- the next owner cluster is explicit
-- the missing shared declarations are explicit
-- the planned proof tests are bounded
-
-### Step 2: Surface the minimum shared x86 codegen contract
-
-Goal: expose enough shared declarations in `x86_codegen.hpp` for the chosen
-translated owner cluster to compile and link.
-
-Actions:
-
-- move required enums, structs, helpers, and `X86Codegen` declarations out of
-  hidden local surfaces
-- keep the surfaced API limited to the active owner cluster
-- wire the minimum required translated files into the build
+- inspect why tiny x86 modules still stop at the unsupported direct-LIR
+  diagnostic after the special-case route deletion
+- restore a general path through shared lowering or translated x86 owners
+  instead of reintroducing route-specific emitters
+- keep the first repair bounded to the common failure mode exercised by
+  `00030.c`, `00031.c`, and `00094.c`
 
 Completion check:
 
-- the chosen translated owner cluster compiles in the main build
-- no new `emit.cpp`-local seam is added to avoid the header work
+- `c_testsuite_x86_backend_src_00030_c` passes
+- `c_testsuite_x86_backend_src_00031_c` passes
+- `c_testsuite_x86_backend_src_00094_c` passes
 
-### Step 3: Transfer one real owner path out of `emit.cpp`
+### Step 2: Reprove the previously claimed x86 band on the translated route
 
-Goal: replace one legacy owner slice with the translated owner path as runtime
-behavior, not just symbol coverage.
+Goal: revalidate the nearby x86 band that used to be covered by deleted
+special-case packets.
 
-Actions:
+Primary target:
 
-- route the active backend path through the chosen translated owner cluster
-- delete or bypass the corresponding legacy `emit.cpp` ownership for that slice
-- add only the narrowest backend regression needed to prove the switched path
+- `todo.md`
 
-Completion check:
+Concrete actions:
 
-- runtime ownership for the chosen slice no longer lives in legacy `emit.cpp`
-- targeted backend tests prove the translated path is active
-
-### Step 4: Validate and park residual work explicitly
-
-Goal: end the iteration with a stable execution state instead of an open-ended
-test backlog.
-
-Actions:
-
-- run the focused backend validation for the switched slice
-- run one broad regression-guard pass after the meaningful owner-path change
-- record remaining disconnected translated units or deferred follow-ons in the
-  source idea or next `todo.md` state
+- keep the next adjacent x86 family explicit after the reset subset lands
+- only mark a formerly accepted family as recovered after it passes again on
+  the translated route
+- record remaining regressions in `todo.md` instead of re-encoding them in
+  `plan.md` packet by packet
 
 Completion check:
 
-- validation results are recorded
-- remaining work is framed as explicit owner-path follow-ons, not generic test
-  expansion
-- the next iteration can resume from one bounded technical blocker
+- the next reproving band after `00030.c` / `00031.c` / `00094.c` is explicit
+- no deleted special-case family is still described as accepted without fresh
+  proof
+
+### Step 3: Validate the reset route honestly
+
+Goal: keep proof aligned to the new translated route.
+
+Primary target:
+
+- `build/`
+
+Concrete actions:
+
+- run `cmake --build build -j2`
+- run `ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_x86_backend_src_00030_c|c_testsuite_x86_backend_src_00031_c|c_testsuite_x86_backend_src_00094_c)$'`
+- escalate only after the reset subset passes on the translated path
+
+Completion check:
+
+- fresh build succeeds
+- the focused reset subset passes without any x86 special-case route

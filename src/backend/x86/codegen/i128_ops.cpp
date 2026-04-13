@@ -1,5 +1,7 @@
 #include "x86_codegen.hpp"
 
+#include <stdexcept>
+
 namespace c4c::backend::x86 {
 
 void X86Codegen::emit_i128_prep_binop_impl(const Operand& lhs, const Operand& rhs) {
@@ -174,10 +176,10 @@ void X86Codegen::emit_i128_to_float_call_impl(const Operand& src,
     func_name = "__floatuntidf";
   } else if (!from_signed && to_ty == IrType::F32) {
     func_name = "__floatuntisf";
+  } else {
+    throw std::invalid_argument("unsupported i128-to-float conversion");
   }
-  if (func_name != nullptr) {
-    this->state.emit(std::string("    call ") + func_name + "@PLT");
-  }
+  this->state.emit(std::string("    call ") + func_name + "@PLT");
   this->state.reg_cache.invalidate_all();
   if (to_ty == IrType::F32) {
     this->state.emit("    movd %xmm0, %eax");
@@ -204,10 +206,10 @@ void X86Codegen::emit_float_to_i128_call_impl(const Operand& src,
     func_name = "__fixunsdfti";
   } else if (!to_signed && from_ty == IrType::F32) {
     func_name = "__fixunssfti";
+  } else {
+    throw std::invalid_argument("unsupported float-to-i128 conversion");
   }
-  if (func_name != nullptr) {
-    this->state.emit(std::string("    call ") + func_name + "@PLT");
-  }
+  this->state.emit(std::string("    call ") + func_name + "@PLT");
   this->state.reg_cache.invalidate_all();
 }
 
@@ -240,8 +242,7 @@ void X86Codegen::emit_i128_cmp_ordered_impl(IrCmpOp op) {
       set_hi = "seta";
       break;
     default:
-      set_hi = "setl";
-      break;
+      throw std::invalid_argument("i128 ordered cmp got equality op");
   }
   this->state.emit(std::string("    ") + set_hi + " %r8b");
   this->state.emit("    jne 1f");
@@ -265,8 +266,7 @@ void X86Codegen::emit_i128_cmp_ordered_impl(IrCmpOp op) {
       set_lo = "setae";
       break;
     default:
-      set_lo = "setb";
-      break;
+      throw std::invalid_argument("i128 ordered cmp got equality op");
   }
   this->state.emit(std::string("    ") + set_lo + " %r8b");
   this->state.emit("1:");
@@ -282,12 +282,12 @@ void X86Codegen::emit_store_acc_pair_impl(const Value& dest) { this->store_rax_r
 void X86Codegen::emit_sign_extend_acc_high_impl() { this->state.emit("    cqto"); }
 void X86Codegen::emit_zero_acc_high_impl() { this->state.emit("    xorl %edx, %edx"); }
 void X86Codegen::emit_store_pair_to_slot_impl(StackSlot slot) {
-  this->state.emit(std::string("    movq %rax, ") + std::to_string(slot.0) + "(%rbp)");
-  this->state.emit(std::string("    movq %rdx, ") + std::to_string(slot.0 + 8) + "(%rbp)");
+  this->state.emit(std::string("    movq %rax, ") + std::to_string(slot.raw) + "(%rbp)");
+  this->state.emit(std::string("    movq %rdx, ") + std::to_string(slot.raw + 8) + "(%rbp)");
 }
 void X86Codegen::emit_load_pair_from_slot_impl(StackSlot slot) {
-  this->state.emit(std::string("    movq ") + std::to_string(slot.0) + "(%rbp), %rax");
-  this->state.emit(std::string("    movq ") + std::to_string(slot.0 + 8) + "(%rbp), %rdx");
+  this->state.emit(std::string("    movq ") + std::to_string(slot.raw) + "(%rbp), %rax");
+  this->state.emit(std::string("    movq ") + std::to_string(slot.raw + 8) + "(%rbp), %rdx");
 }
 void X86Codegen::emit_save_acc_pair_impl() {
   this->state.emit("    movq %rax, %rsi");

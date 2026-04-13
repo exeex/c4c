@@ -1,3 +1,5 @@
+#include "mod.hpp"
+
 // Translated from ref/claudes-c-compiler/src/backend/riscv/linker/mod.rs
 // Structural mirror of the ref Rust source; includes are deferred for now.
 // //! Native RISC-V 64-bit ELF linker.

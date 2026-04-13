@@ -3697,6 +3697,53 @@ c4c::codegen::lir::LirModule make_lir_minimal_signed_i16_local_slot_increment_co
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_local_i64_increment_compare_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i64", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCastOp{"%t0", LirCastKind::SExt, "i32", "0", "i64"});
+  entry.insts.push_back(LirStoreOp{"i64", "%t0", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t1", "i64", "%lv.x"});
+  entry.insts.push_back(LirCastOp{"%t2", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirBinOp{"%t3", "add", "i64", "%t1", "%t2"});
+  entry.insts.push_back(LirStoreOp{"i64", "%t3", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t4", "i64", "%lv.x"});
+  entry.insts.push_back(LirCastOp{"%t5", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirCmpOp{"%t6", false, "ne", "i64", "%t4", "%t5"});
+  entry.insts.push_back(LirCastOp{"%t7", LirCastKind::ZExt, "i1", "%t6", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t8", false, "ne", "i32", "%t7", "0"});
+  entry.terminator = LirCondBr{"%t8", "block_1", "block_2"};
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{1};
+  block_1.label = "block_1";
+  block_1.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{2};
+  block_2.label = "block_2";
+  block_2.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_u8_select_post_join_add_module() {
   auto module = make_bir_two_param_u8_select_ne_predecessor_add_phi_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -9274,6 +9321,29 @@ void test_backend_bir_pipeline_drives_x86_lir_signed_i16_local_slot_increment_co
                       "x86 LIR signed i16 local-slot increment-and-compare input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_local_i64_increment_compare_through_bir_end_to_end() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_lir_minimal_local_i64_increment_compare_module());
+  expect_true(lowered.has_value(),
+              "x86 LIR local i64 increment-and-compare input should lower into direct BIR before native x86 emission");
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty(),
+              "x86 LIR local i64 increment-and-compare lowering should collapse the bounded no-param local-slot slice to one constant-return BIR block");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_lir_minimal_local_i64_increment_compare_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "x86 LIR local i64 increment-and-compare input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR local i64 increment-and-compare input should preserve the constant false-arm return after bounded shared lowering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR local i64 increment-and-compare input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_local_i32_store_load_sub_return_through_bir_end_to_end() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_local_i32_store_load_sub_return_immediate_module());
@@ -12259,131 +12329,10 @@ void test_x86_direct_lir_emitter_rejects_double_indirect_pointer_conditional_ret
 }  // namespace
 
 void run_backend_bir_pipeline_x86_64_tests() {
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_declared_direct_call_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_void_direct_call_imm_return_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_two_arg_direct_call_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_add_imm_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_identity_arg_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_dual_identity_direct_call_sub_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_call_crossing_direct_call_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_countdown_loop_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_load_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_initialized_scalar_global_load_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_extern_scalar_global_load_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_store_reload_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_global_store_return_and_entry_return_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_global_two_field_struct_store_sub_sub_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_lowers_x86_direct_call_helper_families_to_shared_bir_views);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_through_bir_end_to_end);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_direct_call_via_outer_bir_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_with_dead_entry_alloca_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_source_00080_void_direct_call_zero_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_source_00080_void_helper_only_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_source_00080_main_only_void_call_zero_return_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_string_literal_strlen_sub_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_string_literal_char_sub_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_store_or_sub_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_store_and_sub_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_store_xor_sub_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_local_i32_inc_dec_compare_return_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_local_i32_unary_not_minus_zero_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_short_circuit_effect_zero_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_three_block_add_compare_zero_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_with_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_with_suffix_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_with_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_with_suffix_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_param_slot_add_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_seventh_param_stack_add_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_mixed_reg_stack_param_add_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_mixed_reg_stack_param_add_i64_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_register_aggregate_param_slot_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_stack_aggregate_param_slot_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_small_struct_stack_param_slot_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_local_arg_direct_call_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_with_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_with_suffix_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_with_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_with_suffix_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_second_local_arg_direct_call_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_second_local_arg_direct_call_with_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_second_local_arg_direct_call_with_suffix_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_second_local_rewrite_direct_call_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_second_local_rewrite_direct_call_with_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_second_local_rewrite_direct_call_with_suffix_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_first_local_rewrite_direct_call_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_first_local_rewrite_direct_call_with_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_first_local_rewrite_direct_call_with_suffix_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_arg_direct_call_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_arg_direct_call_with_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_arg_direct_call_with_suffix_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_first_rewrite_direct_call_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_first_rewrite_direct_call_with_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_first_rewrite_direct_call_with_suffix_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_second_rewrite_direct_call_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_second_rewrite_direct_call_with_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_second_rewrite_direct_call_with_suffix_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_rewrite_direct_call_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_rewrite_direct_call_with_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_double_rewrite_direct_call_with_suffix_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_zero_arg_direct_call_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_repeated_zero_arg_call_compare_zero_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_loop_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_scalar_global_load_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_string_literal_compare_phi_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_buffer_string_copy_printf_on_native_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_counted_printf_ternary_loop_on_native_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_source_like_local_buffer_string_copy_printf_on_native_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_source_like_repeated_printf_immediates_on_native_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_repeated_printf_local_i32_calls_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_extern_scalar_global_load_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_global_char_pointer_diff_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_global_int_pointer_diff_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_scalar_global_store_reload_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_zero_initialized_scalar_global_store_reload_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_global_two_field_struct_store_sub_sub_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_do_while_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_double_countdown_guarded_zero_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_constant_false_conditional_ladder_zero_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_loop_break_ladder_zero_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_prime_counter_zero_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_with_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_with_suffix_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_with_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_with_suffix_spacing_on_native_x86_path);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_conditional_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_conditional_phi_join_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_signed_i16_local_slot_increment_compare_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_store_load_sub_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_store_zero_load_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_gep_zero_load_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_gep_zero_store_slot_load_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_alias_compare_two_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_union_i32_alias_compare_three_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_nested_struct_i32_sum_compare_six_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_struct_shadow_store_compare_two_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_single_field_struct_store_load_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_paired_single_field_struct_compare_sub_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_enum_constant_compare_store_load_zero_through_bir_end_to_end);
   RUN_TEST(
       test_backend_bir_pipeline_drives_x86_lir_shifted_local_enum_constant_compare_store_load_zero_through_bir_end_to_end);
   RUN_TEST(
       test_backend_bir_pipeline_drives_x86_lir_local_string_literal_char_compare_ladder_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_global_x_y_pointer_compare_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_single_global_i32_zero_return_through_bir_end_to_end);
   RUN_TEST(
       test_backend_bir_pipeline_drives_x86_lir_global_anonymous_struct_field_compare_zero_through_bir_end_to_end);
   RUN_TEST(
@@ -12392,64 +12341,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
       test_backend_bir_pipeline_drives_x86_lir_global_named_int_pointer_struct_designated_init_compare_zero_through_bir_end_to_end);
   RUN_TEST(
       test_backend_bir_pipeline_drives_x86_lir_global_nested_struct_anonymous_union_compare_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_nested_anonymous_aggregate_alias_compare_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_two_slot_sum_sub_three_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_second_slot_pointer_store_zero_load_return_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_inc_dec_compare_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_array_pointer_alias_sizeof_helper_call_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_char_helper_call_with_dead_array_compare_two_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_macro_add_compare_one_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_add_deref_diff_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_inc_store_compare_123_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_array_pointer_dec_store_compare_123_zero_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_two_field_struct_sub_sub_two_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_struct_pointer_alias_add_sub_three_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_self_referential_struct_pointer_chain_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_double_indirect_local_pointer_chain_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_double_indirect_local_store_one_final_branch_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_u8_select_post_join_add_through_bir_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_param_staged_constant_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_single_param_chain_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_two_param_add_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_input_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_staged_affine_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_two_param_add_sub_chain_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_two_param_staged_affine_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_sext_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_zext_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_trunc_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_select_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_single_param_select_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_two_param_select_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_u8_select_post_join_add_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_u8_select_post_join_add_sub_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_u8_select_post_join_add_sub_add_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_u8_select_mixed_affine_post_join_add_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_u8_select_mixed_affine_post_join_add_sub_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_u8_select_mixed_affine_post_join_add_sub_add_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_u8_select_deeper_then_mixed_affine_post_join_add_sub_add_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_u8_select_deeper_affine_on_both_sides_post_join_add_sub_add_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_u8_select_mixed_then_deeper_affine_post_join_add_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_i32_select_mixed_then_deeper_affine_post_join_add_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_i32_select_mixed_then_deeper_affine_post_join_add_sub_end_to_end);
-  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_i32_select_mixed_then_deeper_affine_post_join_add_sub_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86);
-  RUN_TEST(test_x86_direct_lir_emitter_rejects_unsupported_input_without_legacy_backend_ir_stub);
-  RUN_TEST(test_x86_direct_lir_emitter_rejects_alloca_backed_conditional_phi_constant_fold_stub);
-  RUN_TEST(test_x86_direct_emitter_routes_goto_only_constant_return_through_shared_bir);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_temp_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_constant_add_mul_sub_return_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_constant_div_sub_return_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_local_i32_arithmetic_chain_return_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_two_local_i32_zero_init_return_first_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_local_i32_array_two_slot_sum_sub_three_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_local_i32_array_second_slot_pointer_store_zero_load_return_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_local_i32_array_pointer_inc_dec_compare_zero_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_local_i32_array_pointer_add_deref_diff_zero_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_constant_branch_if_eq_return_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_constant_branch_if_uge_return_slice);
   RUN_TEST(test_x86_peephole_eliminates_jump_to_immediately_following_label);
   RUN_TEST(test_x86_peephole_eliminates_redundant_push_pop_pair);
   RUN_TEST(test_x86_peephole_fuses_compare_setcc_test_branch_sequence);
@@ -12471,62 +12363,4 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_peephole_keeps_stack_load_when_alu_destination_matches_loaded_register);
   RUN_TEST(test_x86_peephole_eliminates_unused_callee_save_restore_pair);
   RUN_TEST(test_x86_peephole_eliminates_zero_byte_frame_adjustment);
-  RUN_TEST(test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_seventh_param_stack_add_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_mixed_reg_stack_param_add_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_mixed_reg_stack_param_add_i64_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_register_aggregate_param_slot_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_stack_aggregate_param_slot_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_small_struct_stack_param_slot_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_source_00080_void_helper_only_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_source_00080_void_helper_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_source_00080_main_only_void_call_zero_return_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_arg_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_arg_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_add_imm_helper_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_add_imm_helper_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_add_imm_helper_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_identity_helper_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_identity_helper_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_identity_helper_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_folded_two_arg_direct_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_folded_two_arg_direct_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_folded_two_arg_direct_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_arg_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_arg_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_arg_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_arg_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_rewrite_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_rewrite_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_rewrite_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_first_local_rewrite_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_first_local_rewrite_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_first_local_rewrite_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_both_local_arg_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_both_local_arg_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_both_local_arg_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_both_local_first_rewrite_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_both_local_first_rewrite_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_both_local_first_rewrite_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_both_local_second_rewrite_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_both_local_second_rewrite_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_both_local_second_rewrite_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_both_local_double_rewrite_call_slice);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_both_local_double_rewrite_call_slice_with_spacing);
-  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_both_local_double_rewrite_call_slice_with_suffix_spacing);
-  RUN_TEST(test_x86_direct_lir_emitter_rejects_double_indirect_pointer_conditional_return_fallback);
 }

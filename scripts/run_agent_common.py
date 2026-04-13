@@ -253,13 +253,6 @@ def build_prompt(cli: str, prompt_path: Path) -> str:
     return prompt_text
 
 
-def clear_stale_test_logs() -> None:
-    for stale_name in ("test_before.log", "test_after.log"):
-        stale_path = REPO_ROOT / stale_name
-        if stale_path.exists():
-            stale_path.unlink()
-
-
 def show_current_score() -> None:
     score_path = REPO_ROOT / "build" / "agent_state" / "last_result.txt"
     if score_path.is_file():
@@ -345,8 +338,7 @@ def main() -> int:
 
         print(f"[harness] === Iteration {iteration} at {timestamp} (commit: {commit}) ===")
         print(f"[harness] Log: {logfile.relative_to(REPO_ROOT)}")
-        clear_stale_test_logs()
-        print("[harness] Cleared stale test_before.log/test_after.log.")
+        print("[harness] Preserving supervisor-managed test_before.log/test_after.log.")
 
         command = build_command(cli, prompt, args)
         exit_code = stream_process(command, logfile, tmp_log_path)

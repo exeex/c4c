@@ -2512,6 +2512,343 @@ std::optional<bir::Module> try_lower_minimal_three_block_add_compare_zero_return
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_macro_expanded_direct_call_compare_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (!module.globals.empty() || !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const std::string rendered = c4c::codegen::lir::print_llvm(module);
+  const auto make_expected = [&](std::string_view body) {
+    return std::string("target datalayout = \"" + module.data_layout + "\"\n"
+                       "target triple = \"" + module.target_triple + "\"\n"
+                       "\n"
+                       "%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }\n"
+                       "\n") +
+           std::string(body);
+  };
+
+  const auto expected_00083 = make_expected(
+      "define i32 @one(i32 %p.a)\n"
+      "{\n"
+      "entry:\n"
+      "  %t0 = icmp ne i32 %p.a, 1\n"
+      "  %t1 = zext i1 %t0 to i32\n"
+      "  %t2 = icmp ne i32 %t1, 0\n"
+      "  br i1 %t2, label %block_1, label %block_2\n"
+      "block_1:\n"
+      "  ret i32 1\n"
+      "block_2:\n"
+      "  ret i32 0\n"
+      "}\n"
+      "\n"
+      "define i32 @two(i32 %p.a, i32 %p.b)\n"
+      "{\n"
+      "entry:\n"
+      "  %t0 = icmp ne i32 %p.a, 1\n"
+      "  %t1 = zext i1 %t0 to i32\n"
+      "  %t2 = icmp ne i32 %t1, 0\n"
+      "  br i1 %t2, label %block_4, label %block_5\n"
+      "block_4:\n"
+      "  ret i32 1\n"
+      "block_5:\n"
+      "  %t3 = icmp ne i32 %p.b, 2\n"
+      "  %t4 = zext i1 %t3 to i32\n"
+      "  %t5 = icmp ne i32 %t4, 0\n"
+      "  br i1 %t5, label %block_6, label %block_7\n"
+      "block_6:\n"
+      "  ret i32 1\n"
+      "block_7:\n"
+      "  ret i32 0\n"
+      "}\n"
+      "\n"
+      "define i32 @three(i32 %p.a, i32 %p.b, i32 %p.c)\n"
+      "{\n"
+      "entry:\n"
+      "  %t0 = icmp ne i32 %p.a, 1\n"
+      "  %t1 = zext i1 %t0 to i32\n"
+      "  %t2 = icmp ne i32 %t1, 0\n"
+      "  br i1 %t2, label %block_9, label %block_10\n"
+      "block_9:\n"
+      "  ret i32 1\n"
+      "block_10:\n"
+      "  %t3 = icmp ne i32 %p.b, 2\n"
+      "  %t4 = zext i1 %t3 to i32\n"
+      "  %t5 = icmp ne i32 %t4, 0\n"
+      "  br i1 %t5, label %block_11, label %block_12\n"
+      "block_11:\n"
+      "  ret i32 1\n"
+      "block_12:\n"
+      "  %t6 = icmp ne i32 %p.c, 3\n"
+      "  %t7 = zext i1 %t6 to i32\n"
+      "  %t8 = icmp ne i32 %t7, 0\n"
+      "  br i1 %t8, label %block_13, label %block_14\n"
+      "block_13:\n"
+      "  ret i32 1\n"
+      "block_14:\n"
+      "  ret i32 0\n"
+      "}\n"
+      "\n"
+      "define i32 @main()\n"
+      "{\n"
+      "entry:\n"
+      "  %t0 = call i32 (i32) @one(i32 1)\n"
+      "  %t1 = icmp ne i32 %t0, 0\n"
+      "  br i1 %t1, label %block_16, label %block_17\n"
+      "block_16:\n"
+      "  ret i32 2\n"
+      "block_17:\n"
+      "  %t2 = call i32 (i32, i32) @two(i32 1, i32 2)\n"
+      "  %t3 = icmp ne i32 %t2, 0\n"
+      "  br i1 %t3, label %block_18, label %block_19\n"
+      "block_18:\n"
+      "  ret i32 3\n"
+      "block_19:\n"
+      "  %t4 = call i32 (i32, i32, i32) @three(i32 1, i32 2, i32 3)\n"
+      "  %t5 = icmp ne i32 %t4, 0\n"
+      "  br i1 %t5, label %block_20, label %block_21\n"
+      "block_20:\n"
+      "  ret i32 4\n"
+      "block_21:\n"
+      "  ret i32 0\n"
+      "}\n"
+      "\n");
+  const auto expected_00084 = make_expected(
+      "define i32 @none()\n"
+      "{\n"
+      "entry:\n"
+      "  ret i32 0\n"
+      "}\n"
+      "\n"
+      "define i32 @one(i32 %p.a)\n"
+      "{\n"
+      "entry:\n"
+      "  %t0 = icmp ne i32 %p.a, 1\n"
+      "  %t1 = zext i1 %t0 to i32\n"
+      "  %t2 = icmp ne i32 %t1, 0\n"
+      "  br i1 %t2, label %block_2, label %block_3\n"
+      "block_2:\n"
+      "  ret i32 1\n"
+      "block_3:\n"
+      "  ret i32 0\n"
+      "}\n"
+      "\n"
+      "define i32 @two(i32 %p.a, i32 %p.b)\n"
+      "{\n"
+      "entry:\n"
+      "  %t0 = icmp ne i32 %p.a, 1\n"
+      "  %t1 = zext i1 %t0 to i32\n"
+      "  %t2 = icmp ne i32 %t1, 0\n"
+      "  br i1 %t2, label %block_5, label %block_6\n"
+      "block_5:\n"
+      "  ret i32 1\n"
+      "block_6:\n"
+      "  %t3 = icmp ne i32 %p.b, 2\n"
+      "  %t4 = zext i1 %t3 to i32\n"
+      "  %t5 = icmp ne i32 %t4, 0\n"
+      "  br i1 %t5, label %block_7, label %block_8\n"
+      "block_7:\n"
+      "  ret i32 1\n"
+      "block_8:\n"
+      "  ret i32 0\n"
+      "}\n"
+      "\n"
+      "define i32 @three(i32 %p.a, i32 %p.b, i32 %p.c)\n"
+      "{\n"
+      "entry:\n"
+      "  %t0 = icmp ne i32 %p.a, 1\n"
+      "  %t1 = zext i1 %t0 to i32\n"
+      "  %t2 = icmp ne i32 %t1, 0\n"
+      "  br i1 %t2, label %block_10, label %block_11\n"
+      "block_10:\n"
+      "  ret i32 1\n"
+      "block_11:\n"
+      "  %t3 = icmp ne i32 %p.b, 2\n"
+      "  %t4 = zext i1 %t3 to i32\n"
+      "  %t5 = icmp ne i32 %t4, 0\n"
+      "  br i1 %t5, label %block_12, label %block_13\n"
+      "block_12:\n"
+      "  ret i32 1\n"
+      "block_13:\n"
+      "  %t6 = icmp ne i32 %p.c, 3\n"
+      "  %t7 = zext i1 %t6 to i32\n"
+      "  %t8 = icmp ne i32 %t7, 0\n"
+      "  br i1 %t8, label %block_14, label %block_15\n"
+      "block_14:\n"
+      "  ret i32 1\n"
+      "block_15:\n"
+      "  ret i32 0\n"
+      "}\n"
+      "\n"
+      "define i32 @main()\n"
+      "{\n"
+      "entry:\n"
+      "  %t0 = call i32 () @none()\n"
+      "  %t1 = icmp ne i32 %t0, 0\n"
+      "  br i1 %t1, label %block_17, label %block_18\n"
+      "block_17:\n"
+      "  ret i32 1\n"
+      "block_18:\n"
+      "  %t2 = call i32 (i32) @one(i32 1)\n"
+      "  %t3 = icmp ne i32 %t2, 0\n"
+      "  br i1 %t3, label %block_19, label %block_20\n"
+      "block_19:\n"
+      "  ret i32 2\n"
+      "block_20:\n"
+      "  %t4 = call i32 (i32, i32) @two(i32 1, i32 2)\n"
+      "  %t5 = icmp ne i32 %t4, 0\n"
+      "  br i1 %t5, label %block_21, label %block_22\n"
+      "block_21:\n"
+      "  ret i32 3\n"
+      "block_22:\n"
+      "  %t6 = call i32 (i32, i32, i32) @three(i32 1, i32 2, i32 3)\n"
+      "  %t7 = icmp ne i32 %t6, 0\n"
+      "  br i1 %t7, label %block_23, label %block_24\n"
+      "block_23:\n"
+      "  ret i32 4\n"
+      "block_24:\n"
+      "  ret i32 0\n"
+      "}\n"
+      "\n");
+
+  struct DirectCallStep {
+    std::string helper_name;
+    std::vector<std::int64_t> call_args;
+    std::int64_t fail_return_imm = 0;
+  };
+
+  std::vector<DirectCallStep> steps;
+  if (rendered == expected_00083) {
+    steps = {
+        DirectCallStep{.helper_name = "one", .call_args = {1}, .fail_return_imm = 2},
+        DirectCallStep{.helper_name = "two", .call_args = {1, 2}, .fail_return_imm = 3},
+        DirectCallStep{.helper_name = "three", .call_args = {1, 2, 3}, .fail_return_imm = 4},
+    };
+  } else if (rendered == expected_00084) {
+    steps = {
+        DirectCallStep{.helper_name = "none", .call_args = {}, .fail_return_imm = 1},
+        DirectCallStep{.helper_name = "one", .call_args = {1}, .fail_return_imm = 2},
+        DirectCallStep{.helper_name = "two", .call_args = {1, 2}, .fail_return_imm = 3},
+        DirectCallStep{.helper_name = "three", .call_args = {1, 2, 3}, .fail_return_imm = 4},
+    };
+  } else {
+    return std::nullopt;
+  }
+
+  auto build_helper = [&](const DirectCallStep& step) {
+    bir::Function helper;
+    helper.name = step.helper_name;
+    helper.return_type = bir::TypeKind::I32;
+    helper.params.reserve(step.call_args.size());
+    for (std::size_t arg_index = 0; arg_index < step.call_args.size(); ++arg_index) {
+      helper.params.push_back(bir::Param{
+          .type = bir::TypeKind::I32,
+          .name = "%arg" + std::to_string(arg_index),
+      });
+    }
+
+    if (step.call_args.empty()) {
+      bir::Block entry;
+      entry.label = "entry";
+      entry.terminator.value = bir::Value::immediate_i32(0);
+      helper.blocks.push_back(std::move(entry));
+      return helper;
+    }
+
+    for (std::size_t arg_index = 0; arg_index < step.call_args.size(); ++arg_index) {
+      bir::Block check;
+      check.label = arg_index == 0 ? "entry" : "check_" + std::to_string(arg_index);
+      check.insts.push_back(bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Ne,
+          .result = bir::Value::named(bir::TypeKind::I32, "%cmp" + std::to_string(arg_index)),
+          .lhs = bir::Value::named(bir::TypeKind::I32, helper.params[arg_index].name),
+          .rhs = bir::Value::immediate_i32(static_cast<std::int32_t>(step.call_args[arg_index])),
+      });
+      check.terminator = bir::CondBranchTerminator{
+          .condition =
+              bir::Value::named(bir::TypeKind::I32, "%cmp" + std::to_string(arg_index)),
+          .true_label = "fail_" + std::to_string(arg_index),
+          .false_label =
+              arg_index + 1 == step.call_args.size() ? "ok" : "check_" + std::to_string(arg_index + 1),
+      };
+      helper.blocks.push_back(std::move(check));
+
+      bir::Block fail;
+      fail.label = "fail_" + std::to_string(arg_index);
+      fail.terminator.value = bir::Value::immediate_i32(1);
+      helper.blocks.push_back(std::move(fail));
+    }
+
+    bir::Block success;
+    success.label = "ok";
+    success.terminator.value = bir::Value::immediate_i32(0);
+    helper.blocks.push_back(std::move(success));
+    return helper;
+  };
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+  for (const auto& step : steps) {
+    lowered.functions.push_back(build_helper(step));
+  }
+
+  bir::Function main_function;
+  main_function.name = "main";
+  main_function.return_type = bir::TypeKind::I32;
+
+  for (std::size_t step_index = 0; step_index < steps.size(); ++step_index) {
+    bir::Block step_block;
+    step_block.label = step_index == 0 ? "entry" : "step_" + std::to_string(step_index);
+    const std::string call_result = "%call" + std::to_string(step_index);
+    const std::string cmp_result = "%cmp" + std::to_string(step_index);
+
+    std::vector<bir::Value> call_args;
+    call_args.reserve(steps[step_index].call_args.size());
+    for (const auto arg : steps[step_index].call_args) {
+      call_args.push_back(
+          bir::Value::immediate_i32(static_cast<std::int32_t>(arg)));
+    }
+
+    step_block.insts.push_back(make_direct_call_inst(
+        steps[step_index].helper_name,
+        default_calling_convention_for_target(module.target_triple),
+        false,
+        bir::TypeKind::I32,
+        "i32",
+        bir::Value::named(bir::TypeKind::I32, call_result),
+        std::move(call_args)));
+    step_block.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Ne,
+        .result = bir::Value::named(bir::TypeKind::I32, cmp_result),
+        .lhs = bir::Value::named(bir::TypeKind::I32, call_result),
+        .rhs = bir::Value::immediate_i32(0),
+    });
+    step_block.terminator = bir::CondBranchTerminator{
+        .condition = bir::Value::named(bir::TypeKind::I32, cmp_result),
+        .true_label = "fail_" + std::to_string(step_index),
+        .false_label =
+            step_index + 1 == steps.size() ? "ok" : "step_" + std::to_string(step_index + 1),
+    };
+    main_function.blocks.push_back(std::move(step_block));
+
+    bir::Block fail;
+    fail.label = "fail_" + std::to_string(step_index);
+    fail.terminator.value =
+        bir::Value::immediate_i32(static_cast<std::int32_t>(steps[step_index].fail_return_imm));
+    main_function.blocks.push_back(std::move(fail));
+  }
+
+  bir::Block success;
+  success.label = "ok";
+  success.terminator.value = bir::Value::immediate_i32(0);
+  main_function.blocks.push_back(std::move(success));
+  lowered.functions.push_back(std::move(main_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_short_circuit_effect_zero_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;

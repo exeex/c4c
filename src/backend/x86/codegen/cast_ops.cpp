@@ -11,24 +11,38 @@ bool is_float_ty(IrType ty) {
 }
 
 bool is_unsigned_ty(IrType ty) {
-  return ty == IrType::I8 || ty == IrType::I32 || ty == IrType::I64;
+  switch (ty) {
+    case IrType::U16:
+    case IrType::U32:
+    case IrType::U64: return true;
+    default: return false;
+  }
 }
 
-bool is_i128_ty(IrType ty) {
-  return ty == IrType::I128;
+bool is_signed_ty(IrType ty) {
+  switch (ty) {
+    case IrType::I8:
+    case IrType::I16:
+    case IrType::I32:
+    case IrType::I64:
+    case IrType::I128: return true;
+    default: return false;
+  }
 }
 
-bool is_signed_or_ptr_ty(IrType ty) {
-  return ty == IrType::Ptr || ty == IrType::I8 || ty == IrType::I32 || ty == IrType::I64;
-}
+bool is_i128_ty(IrType ty) { return ty == IrType::I128; }
 
 std::size_t type_size_bytes(IrType ty) {
   switch (ty) {
     case IrType::Void: return 0;
     case IrType::I8: return 1;
+    case IrType::I16:
+    case IrType::U16: return 2;
     case IrType::I32:
+    case IrType::U32:
     case IrType::F32: return 4;
     case IrType::I64:
+    case IrType::U64:
     case IrType::Ptr:
     case IrType::F64: return 8;
     case IrType::I128:
@@ -55,7 +69,7 @@ void X86Codegen::emit_cast_impl(const Value& dest,
                                 IrType to_ty) {
   // Casts to long double are handled through x87 so the destination slot
   // receives a full 80-bit value.
-  if (to_ty == IrType::F128 && from_ty != IrType::F128 && !is_i128_ty(from_ty)) {
+  if (to_ty == IrType::F128 && from_ty != IrType::F128 && from_ty != IrType::I128) {
     if (const auto dest_slot = this->state.get_slot(dest.raw)) {
       if (from_ty == IrType::F64) {
         this->operand_to_rax(src);
@@ -69,7 +83,7 @@ void X86Codegen::emit_cast_impl(const Value& dest,
         this->state.emit("    movl %eax, (%rsp)");
         this->state.emit("    flds (%rsp)");
         this->state.emit("    addq $4, %rsp");
-      } else if (is_signed_or_ptr_ty(from_ty) || (!is_float_ty(from_ty) && !is_unsigned_ty(from_ty))) {
+      } else if (is_signed_ty(from_ty) || (!is_float_ty(from_ty) && !is_unsigned_ty(from_ty))) {
         this->operand_to_rax(src);
         if (type_size_bytes(from_ty) < 8) {
           this->emit_cast_instrs_x86(from_ty, IrType::I64);

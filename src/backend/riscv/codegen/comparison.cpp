@@ -1,56 +1,101 @@
 // Translated from /workspaces/c4c/ref/claudes-c-compiler/src/backend/riscv/codegen/comparison.rs
 //
-// The shared RISC-V C++ codegen surface does not exist yet, so this file keeps
-// the comparison logic local and self-contained. The Rust impl methods are
-// represented here as concrete helper functions that preserve the opcode and
-// branch-selection rules.
+// The bounded non-F128 float-compare seam now compiles against the shared RV64
+// codegen surface while broader comparison owner work stays parked.
 
+#include "riscv_codegen.hpp"
+
+#include <cstdint>
+#include <stdexcept>
+#include <string>
 #include <string_view>
 
 namespace c4c::backend::riscv::codegen {
 
-enum class IrCmpOp {
-  Eq,
-  Ne,
-  Slt,
-  Sle,
-  Sgt,
-  Sge,
-  Ult,
-  Ule,
-  Ugt,
-  Uge,
-};
+namespace {
 
-enum class IrType {
-  I32,
-  U32,
-  I64,
-  U64,
-  F32,
-  F64,
-  F128,
-};
+std::uint64_t next_riscv_cmp_control_flow_label_id() {
+  static std::uint64_t next_label_id = 0;
+  return next_label_id++;
+}
 
-struct FloatComparePlan {
-  std::string_view suffix;
-  std::string_view move_from_int;
-  std::string_view predicate;
-  bool swap_operands = false;
-  bool invert = false;
-};
+constexpr std::string_view riscv_inverted_branch_opcode(IrCmpOp op) {
+  switch (op) {
+    case IrCmpOp::Eq:
+      return "bne";
+    case IrCmpOp::Ne:
+      return "beq";
+    case IrCmpOp::Slt:
+      return "bge";
+    case IrCmpOp::Sge:
+      return "blt";
+    case IrCmpOp::Ult:
+      return "bgeu";
+    case IrCmpOp::Uge:
+      return "bltu";
+    case IrCmpOp::Sgt:
+    case IrCmpOp::Ugt:
+      return op == IrCmpOp::Sgt ? "bge" : "bgeu";
+    case IrCmpOp::Sle:
+    case IrCmpOp::Ule:
+      return op == IrCmpOp::Sle ? "blt" : "bltu";
+  }
+  return "bne";
+}
 
-struct IntComparePlan {
-  std::string_view primary;
-  std::string_view secondary;
-  bool swap_operands = false;
-};
+constexpr bool riscv_cmp_branch_swaps_operands(IrCmpOp op) {
+  switch (op) {
+    case IrCmpOp::Sgt:
+    case IrCmpOp::Ugt:
+    case IrCmpOp::Sle:
+    case IrCmpOp::Ule:
+      return true;
+    default:
+      return false;
+  }
+}
 
-struct FusedCmpBranchPlan {
-  std::string_view inverted_branch;
-  std::string_view lhs_reg;
-  std::string_view rhs_reg;
-};
+}  // namespace
+
+void RiscvCodegen::emit_cmp_operand_load(const Operand& lhs, const Operand& rhs, IrType ty) {
+  operand_to_t0(lhs);
+  state.emit("    mv t1, t0");
+  operand_to_t0(rhs);
+  state.emit("    mv t2, t0");
+
+  switch (ty) {
+    case IrType::U16:
+      state.emit("    slli t1, t1, 48");
+      state.emit("    srli t1, t1, 48");
+      state.emit("    slli t2, t2, 48");
+      state.emit("    srli t2, t2, 48");
+      break;
+    case IrType::U32:
+      state.emit("    slli t1, t1, 32");
+      state.emit("    srli t1, t1, 32");
+      state.emit("    slli t2, t2, 32");
+      state.emit("    srli t2, t2, 32");
+      break;
+    case IrType::I8:
+      state.emit("    slli t1, t1, 56");
+      state.emit("    srai t1, t1, 56");
+      state.emit("    slli t2, t2, 56");
+      state.emit("    srai t2, t2, 56");
+      break;
+    case IrType::I16:
+      state.emit("    slli t1, t1, 48");
+      state.emit("    srai t1, t1, 48");
+      state.emit("    slli t2, t2, 48");
+      state.emit("    srai t2, t2, 48");
+      break;
+    case IrType::I32:
+      state.emit("    sext.w t1, t1");
+      state.emit("    sext.w t2, t2");
+      break;
+    default:
+      break;
+  }
+}
 
 constexpr std::string_view riscv_float_suffix(IrType ty) {
   return ty == IrType::F64 ? "d" : "s";
@@ -94,80 +139,128 @@ constexpr std::string_view riscv_float_operand_order(IrCmpOp op) {
   }
 }
 
-constexpr IntComparePlan riscv_int_cmp_plan(IrCmpOp op) {
+void RiscvCodegen::emit_int_cmp_impl(const Value& dest,
+                                     IrCmpOp op,
+                                     const Operand& lhs,
+                                     const Operand& rhs,
+                                     IrType ty) {
+  emit_cmp_operand_load(lhs, rhs, ty);
+
   switch (op) {
     case IrCmpOp::Eq:
-      return {"sub", "seqz", false};
+      state.emit("    sub t0, t1, t2");
+      state.emit("    seqz t0, t0");
+      break;
     case IrCmpOp::Ne:
-      return {"sub", "snez", false};
+      state.emit("    sub t0, t1, t2");
+      state.emit("    snez t0, t0");
+      break;
     case IrCmpOp::Slt:
-      return {"slt", "", false};
+      state.emit("    slt t0, t1, t2");
+      break;
     case IrCmpOp::Ult:
-      return {"sltu", "", false};
+      state.emit("    sltu t0, t1, t2");
+      break;
     case IrCmpOp::Sge:
-      return {"slt", "xori", false};
+      state.emit("    slt t0, t1, t2");
+      state.emit("    xori t0, t0, 1");
+      break;
     case IrCmpOp::Uge:
-      return {"sltu", "xori", false};
+      state.emit("    sltu t0, t1, t2");
+      state.emit("    xori t0, t0, 1");
+      break;
     case IrCmpOp::Sgt:
-      return {"slt", "", true};
+      state.emit("    slt t0, t2, t1");
+      break;
     case IrCmpOp::Ugt:
-      return {"sltu", "", true};
+      state.emit("    sltu t0, t2, t1");
+      break;
     case IrCmpOp::Sle:
-      return {"slt", "xori", true};
+      state.emit("    slt t0, t2, t1");
+      state.emit("    xori t0, t0, 1");
+      break;
     case IrCmpOp::Ule:
-      return {"sltu", "xori", true};
+      state.emit("    sltu t0, t2, t1");
+      state.emit("    xori t0, t0, 1");
+      break;
   }
-  return {"slt", "", false};
+
+  store_t0_to(dest);
 }
 
-constexpr FusedCmpBranchPlan riscv_fused_cmp_branch_plan(IrCmpOp op) {
-  switch (op) {
-    case IrCmpOp::Eq:
-      return {"bne", "t1", "t2"};
-    case IrCmpOp::Ne:
-      return {"beq", "t1", "t2"};
-    case IrCmpOp::Slt:
-      return {"bge", "t1", "t2"};
-    case IrCmpOp::Sge:
-      return {"blt", "t1", "t2"};
-    case IrCmpOp::Ult:
-      return {"bgeu", "t1", "t2"};
-    case IrCmpOp::Uge:
-      return {"bltu", "t1", "t2"};
-    case IrCmpOp::Sgt:
-      return {"bge", "t2", "t1"};
-    case IrCmpOp::Sle:
-      return {"blt", "t2", "t1"};
-    case IrCmpOp::Ugt:
-      return {"bgeu", "t2", "t1"};
-    case IrCmpOp::Ule:
-      return {"bltu", "t2", "t1"};
+void RiscvCodegen::emit_fused_cmp_branch_impl(IrCmpOp op,
+                                              const Operand& lhs,
+                                              const Operand& rhs,
+                                              IrType ty,
+                                              const std::string& true_label,
+                                              const std::string& false_label) {
+  emit_cmp_operand_load(lhs, rhs, ty);
+
+  const auto skip_label =
+      ".Lcmp_skip_" + std::to_string(next_riscv_cmp_control_flow_label_id());
+  const auto lhs_reg = riscv_cmp_branch_swaps_operands(op) ? "t2" : "t1";
+  const auto rhs_reg = riscv_cmp_branch_swaps_operands(op) ? "t1" : "t2";
+  state.emit("    " + std::string(riscv_inverted_branch_opcode(op)) + " " + lhs_reg + ", " +
+             rhs_reg + ", " + skip_label);
+  state.emit("    j " + true_label);
+  state.emit(skip_label + ":");
+  state.emit("    j " + false_label);
+}
+
+void RiscvCodegen::emit_select_impl(const Value& dest,
+                                    const Operand& cond,
+                                    const Operand& true_val,
+                                    const Operand& false_val,
+                                    IrType /*ty*/) {
+  const auto skip_label =
+      ".Lsel_skip_" + std::to_string(next_riscv_cmp_control_flow_label_id());
+
+  operand_to_t0(false_val);
+  state.emit("    mv t2, t0");
+
+  operand_to_t0(cond);
+  state.emit("    beqz t0, " + skip_label);
+
+  operand_to_t0(true_val);
+  state.emit("    mv t2, t0");
+
+  state.emit(skip_label + ":");
+  state.emit("    mv t0, t2");
+  store_t0_to(dest);
+}
+
+void RiscvCodegen::emit_float_cmp_impl(const Value& dest,
+                                       IrCmpOp op,
+                                       const Operand& lhs,
+                                       const Operand& rhs,
+                                       IrType ty) {
+  if (ty == IrType::F128) {
+    emit_f128_cmp_impl(dest, op, lhs, rhs);
+    return;
   }
-  return {"bne", "t1", "t2"};
-}
 
-constexpr std::string_view riscv_select_skip_label_prefix() {
-  return ".Lsel_skip_";
-}
+  const auto suffix = riscv_float_suffix(ty);
+  const auto move_opcode = riscv_float_move_opcode(ty);
+  const auto predicate = riscv_float_predicate(op);
+  const auto swap_operands = riscv_float_operand_order(op) == "swap";
 
-// ---- Rust method mirrors ---------------------------------------------------
-//
-// pub(super) fn emit_float_cmp_impl(&mut self, dest: &Value, op: IrCmpOp,
-//                                   lhs: &Operand, rhs: &Operand, ty: IrType)
-// pub(super) fn emit_int_cmp_impl(&mut self, dest: &Value, op: IrCmpOp,
-//                                 lhs: &Operand, rhs: &Operand, ty: IrType)
-// pub(super) fn emit_fused_cmp_branch_impl(&mut self, op: IrCmpOp,
-//                                          lhs: &Operand, rhs: &Operand,
-//                                          ty: IrType, true_label: &str,
-//                                          false_label: &str)
-// pub(super) fn emit_select_impl(&mut self, dest: &Value, cond: &Operand,
-//                                true_val: &Operand, false_val: &Operand,
-//                                _ty: IrType)
-// pub(super) fn emit_f128_cmp_impl(&mut self, dest: &Value, op: IrCmpOp,
-//                                  lhs: &Operand, rhs: &Operand)
-//
-// The actual method bodies require the shared RiscvCodegen / Operand / Value
-// surface, which is still being translated file-by-file.
+  operand_to_t0(lhs);
+  state.emit("    mv t1, t0");
+  operand_to_t0(rhs);
+  state.emit("    mv t2, t0");
+  state.emit("    " + std::string(move_opcode) + " ft0, t1");
+  state.emit("    " + std::string(move_opcode) + " ft1, t2");
+
+  const auto lhs_reg = swap_operands ? "ft1" : "ft0";
+  const auto rhs_reg = swap_operands ? "ft0" : "ft1";
+  state.emit("    " + std::string(predicate) + "." + std::string(suffix) + " t0, " + lhs_reg + ", " +
+             rhs_reg);
+
+  if (op == IrCmpOp::Ne) {
+    state.emit("    xori t0, t0, 1");
+  }
+
+  store_t0_to(dest);
+}
 
 }  // namespace c4c::backend::riscv::codegen
-

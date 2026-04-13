@@ -1,4 +1,5 @@
 #include "x86_codegen.hpp"
+#include "../../regalloc.hpp"
 
 namespace c4c::backend::x86 {
 
@@ -30,7 +31,11 @@ std::optional<StackSlot> lookup_param_slot(X86Codegen& codegen, std::string_view
   if (slot_name.empty()) {
     return std::nullopt;
   }
-  return codegen.state.get_slot(slot_name);
+  // The current transitional x86 state is keyed by value id, not slot name.
+  // Keep the compile boundary honest without inventing a lossy name->slot map.
+  (void)codegen;
+  (void)slot_name;
+  return std::nullopt;
 }
 
 [[maybe_unused]] void emit_struct_sse_param_store(X86Codegen& codegen,
@@ -132,21 +137,39 @@ std::int64_t X86Codegen::calculate_stack_space_impl(const IrFunction& func) {
 
   std::vector<PhysReg> asm_clobbered_regs;
   collect_inline_asm_callee_saved_x86(func, asm_clobbered_regs);
-  auto available_regs = filter_available_regs(X86_CALLEE_SAVED, asm_clobbered_regs);
+  const auto callee_saved_regs = x86_callee_saved_regs();
+  auto available_regs = filter_available_regs(callee_saved_regs, asm_clobbered_regs);
 
   bool has_indirect_call = false;
+  bool has_i128_ops = false;
+  bool has_atomic_rmw = false;
   // This slice wires the translated caller-saved pruning helper into the live
-  // prologue/regalloc path for the indirect-call case without pulling the full
-  // translated prologue owner into the build yet.
+  // prologue/regalloc path without widening into a broader owner reset.
   for (const auto& block : func.blocks) {
     for (const auto& inst : block.instructions) {
       if (inst.is_call_indirect()) {
         has_indirect_call = true;
       }
+      switch (inst.kind) {
+        case IrInstruction::Kind::BinOp:
+        case IrInstruction::Kind::UnaryOp:
+        case IrInstruction::Kind::Cmp:
+        case IrInstruction::Kind::Store:
+          has_i128_ops = has_i128_ops || inst.ty == IrType::I128;
+          break;
+        case IrInstruction::Kind::Cast:
+          has_i128_ops = has_i128_ops || inst.from_ty == IrType::I128 || inst.to_ty == IrType::I128;
+          break;
+        case IrInstruction::Kind::AtomicRmw:
+          has_atomic_rmw = true;
+          break;
+        default:
+          break;
+      }
     }
   }
   const std::vector<PhysReg> caller_saved_regs =
-      x86_prune_caller_saved_regs(has_indirect_call, false, false);
+      x86_prune_caller_saved_regs(has_indirect_call, has_i128_ops, has_atomic_rmw);
 
   auto [reg_assigned, cached_liveness] =
       run_regalloc_and_merge_clobbers(func,
@@ -169,7 +192,7 @@ std::int64_t X86Codegen::calculate_stack_space_impl(const IrFunction& func) {
         return std::pair<std::int64_t, std::int64_t>{-new_space, new_space};
       },
       reg_assigned,
-      X86_CALLEE_SAVED,
+      callee_saved_regs,
       cached_liveness,
       false);
 
@@ -196,15 +219,15 @@ void X86Codegen::emit_prologue_impl(const IrFunction& func, std::int64_t frame_s
   this->state.emit("    movq %rsp, %rbp");
   if (frame_size > 0) {
     if (x86_needs_stack_probe(frame_size)) {
-      const auto probe_label = this->state.fresh_label("stack_probe");
+      const auto probe_label = std::string(".Lstack_probe_") + std::to_string(frame_size);
       const auto page_size = x86_stack_probe_page_size();
       this->state.out.emit_instr_imm_reg("    movq", frame_size, "r11");
-      this->state.out.emit_named_label(&probe_label);
+      this->state.emit(probe_label + ":");
       this->state.out.emit_instr_imm_reg("    subq", page_size, "rsp");
       this->state.emit("    orl $0, (%rsp)");
       this->state.out.emit_instr_imm_reg("    subq", page_size, "r11");
       this->state.out.emit_instr_imm_reg("    cmpq", page_size, "r11");
-      this->state.out.emit_jcc_label("    ja", &probe_label);
+      this->state.emit("    ja " + probe_label);
       this->state.emit("    subq %r11, %rsp");
       this->state.emit("    orl $0, (%rsp)");
     } else {
@@ -212,7 +235,7 @@ void X86Codegen::emit_prologue_impl(const IrFunction& func, std::int64_t frame_s
     }
   }
   for (std::size_t index = 0; index < this->used_callee_saved.size(); ++index) {
-    const auto reg = this->used_callee_saved[index];
+    const auto reg = c4c::backend::PhysReg{this->used_callee_saved[index]};
     this->state.out.emit_instr_reg_rbp(
         "    movq", phys_reg_name(reg), x86_callee_saved_slot_offset(frame_size, index));
   }
@@ -226,10 +249,10 @@ void X86Codegen::emit_prologue_impl(const IrFunction& func, std::int64_t frame_s
     }
     if (!this->no_sse) {
       for (std::size_t index = 0; index < 8; ++index) {
-        this->state.emit_fmt(
-            format_args!("    movdqu %xmm{}, {}(%rbp)",
-                         index,
-                         x86_variadic_sse_save_offset(this->reg_save_area_offset, index)));
+        this->state.emit(std::string("    movdqu %xmm") + std::to_string(index) + ", " +
+                         std::to_string(x86_variadic_sse_save_offset(this->reg_save_area_offset,
+                                                                      index)) +
+                         "(%rbp)");
       }
     }
   }
@@ -237,7 +260,7 @@ void X86Codegen::emit_prologue_impl(const IrFunction& func, std::int64_t frame_s
 
 void X86Codegen::emit_epilogue_impl(std::int64_t frame_size) {
   for (std::size_t index = 0; index < this->used_callee_saved.size(); ++index) {
-    const auto reg = this->used_callee_saved[index];
+    const auto reg = c4c::backend::PhysReg{this->used_callee_saved[index]};
     this->state.out.emit_instr_rbp_reg(
         "    movq", x86_callee_saved_slot_offset(frame_size, index), phys_reg_name(reg));
   }
@@ -255,7 +278,7 @@ void X86Codegen::emit_store_params_impl(const IrFunction& func) {
   for (const auto& param : func.params) {
     if (const auto assigned = this->reg_assignments.find(param.name);
         assigned != this->reg_assignments.end()) {
-      ++reg_param_use_counts[assigned->second.index];
+      ++reg_param_use_counts[assigned->second];
     }
   }
 
@@ -267,36 +290,37 @@ void X86Codegen::emit_store_params_impl(const IrFunction& func) {
       if (param_slot.has_value()) {
         if (const auto* reg =
                 std::get_if<ParamClass::StructByValReg>(&classification.classes[index].data)) {
-          emit_struct_byval_reg_param_store(*this, param_slot->0, reg->base_reg_idx, reg->size);
+          emit_struct_byval_reg_param_store(*this, param_slot->raw, reg->base_reg_idx, reg->size);
         } else if (const auto* reg =
                 std::get_if<ParamClass::StructSseReg>(&classification.classes[index].data)) {
-          emit_struct_sse_param_store(*this, param_slot->0, reg->lo_fp_idx, reg->hi_fp_idx);
+          emit_struct_sse_param_store(*this, param_slot->raw, reg->lo_fp_idx, reg->hi_fp_idx);
         } else if (const auto* reg = std::get_if<ParamClass::StructMixedIntSseReg>(
                        &classification.classes[index].data)) {
           emit_struct_mixed_int_sse_param_store(
-              *this, param_slot->0, reg->int_reg_idx, reg->fp_reg_idx);
+              *this, param_slot->raw, reg->int_reg_idx, reg->fp_reg_idx);
         } else if (const auto* reg = std::get_if<ParamClass::StructMixedSseIntReg>(
                        &classification.classes[index].data)) {
           emit_struct_mixed_sse_int_param_store(
-              *this, param_slot->0, reg->fp_reg_idx, reg->int_reg_idx);
+              *this, param_slot->raw, reg->fp_reg_idx, reg->int_reg_idx);
         } else if (const auto* stack =
                        std::get_if<ParamClass::StructStack>(&classification.classes[index].data)) {
-          emit_struct_stack_param_store(*this, param_slot->0, stack->offset, stack->size);
+          emit_struct_stack_param_store(*this, param_slot->raw, stack->offset, stack->size);
         } else if (const auto* stack = std::get_if<ParamClass::LargeStructStack>(
                        &classification.classes[index].data)) {
-          emit_struct_stack_param_store(*this, param_slot->0, stack->offset, stack->size);
+          emit_struct_stack_param_store(*this, param_slot->raw, stack->offset, stack->size);
         }
       }
       continue;
     }
-    const auto assigned_param_count = reg_param_use_counts[assigned->second.index];
-    if (x86_param_can_prestore_direct_to_reg(false, assigned->second, assigned_param_count)) {
+    const auto assigned_param_count = reg_param_use_counts[assigned->second];
+    const auto assigned_reg = c4c::backend::PhysReg{assigned->second};
+    if (x86_param_can_prestore_direct_to_reg(false, assigned_reg, assigned_param_count)) {
       if (const auto* reg = std::get_if<ParamClass::IntReg>(&classification.classes[index].data)) {
         const auto* move_instr = x86_param_prestore_move_instr();
         const auto* src_reg = x86_param_prestore_arg_reg(reg->reg_idx);
-        const auto* dest_reg = x86_param_prestore_dest_reg(assigned->second);
+        const auto* dest_reg = x86_param_prestore_dest_reg(assigned_reg);
         if (move_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
-          this->state.emit_fmt(format_args!("    {} %{}, %{}", move_instr, src_reg, dest_reg));
+          this->state.emit(std::string("    ") + move_instr + " %" + src_reg + ", %" + dest_reg);
           x86_mark_param_prestored(this->state.param_pre_stored, index);
         }
       } else if (const auto* reg =
@@ -304,9 +328,9 @@ void X86Codegen::emit_store_params_impl(const IrFunction& func) {
         const auto scalar_type = scalar_param_ref_type_name(func.params[index].type);
         const auto* move_instr = x86_param_prestore_float_move_instr(scalar_type);
         const auto* src_reg = x86_param_prestore_float_arg_reg(reg->reg_idx, scalar_type);
-        const auto* dest_reg = x86_param_prestore_dest_reg(assigned->second, scalar_type);
+        const auto* dest_reg = x86_param_prestore_dest_reg(assigned_reg, scalar_type);
         if (move_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
-          this->state.emit_fmt(format_args!("    {} %{}, %{}", move_instr, src_reg, dest_reg));
+          this->state.emit(std::string("    ") + move_instr + " %" + src_reg + ", %" + dest_reg);
           x86_mark_param_prestored(this->state.param_pre_stored, index);
         }
       }
@@ -332,7 +356,7 @@ void X86Codegen::emit_param_ref_impl(const Value& dest, std::size_t param_idx, I
     const auto* src_reg = x86_param_ref_scalar_arg_reg(reg->reg_idx, scalar_type);
     const auto* dest_reg = x86_param_ref_scalar_dest_reg(scalar_type);
     if (load_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
-      this->state.emit_fmt(format_args!("    {} %{}, {}", load_instr, src_reg, dest_reg));
+      this->state.emit(std::string("    ") + load_instr + " %" + src_reg + ", " + dest_reg);
       this->store_rax_to(dest);
       return;
     }
@@ -342,7 +366,7 @@ void X86Codegen::emit_param_ref_impl(const Value& dest, std::size_t param_idx, I
     const auto* src_reg = x86_param_ref_float_arg_reg(reg->reg_idx, scalar_type);
     const auto* dest_reg = x86_param_ref_scalar_dest_reg(scalar_type);
     if (move_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
-      this->state.emit_fmt(format_args!("    {} %{}, {}", move_instr, src_reg, dest_reg));
+      this->state.emit(std::string("    ") + move_instr + " %" + src_reg + ", " + dest_reg);
       this->store_rax_to(dest);
       return;
     }
@@ -352,7 +376,7 @@ void X86Codegen::emit_param_ref_impl(const Value& dest, std::size_t param_idx, I
     const auto stack_operand = x86_param_ref_scalar_stack_operand(stack->offset, scalar_type);
     const auto* dest_reg = x86_param_ref_scalar_dest_reg(scalar_type);
     if (load_instr[0] != '\0' && !stack_operand.empty() && dest_reg[0] != '\0') {
-      this->state.emit_fmt(format_args!("    {} {}, {}", load_instr, stack_operand, dest_reg));
+      this->state.emit(std::string("    ") + load_instr + " " + stack_operand + ", " + dest_reg);
       this->store_rax_to(dest);
       return;
     }

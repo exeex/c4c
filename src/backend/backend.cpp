@@ -3,6 +3,8 @@
 #include "aarch64/codegen/emit.hpp"
 #include "bir_printer.hpp"
 #include "lowering/lir_to_bir.hpp"
+#include "riscv/assembler/mod.hpp"
+#include "riscv/codegen/emit.hpp"
 #include "stack_layout/slot_assignment.hpp"
 #include "x86/assembler/mod.hpp"
 #include "x86/codegen/peephole/peephole.hpp"
@@ -29,6 +31,13 @@ std::string finalize_x86_asm(std::string rendered, Target target) {
     return rendered;
   }
   return c4c::backend::x86::codegen::peephole::peephole_optimize(std::move(rendered));
+}
+
+std::string finalize_riscv_asm(std::string rendered, Target target) {
+  if (target != Target::Riscv64) {
+    return rendered;
+  }
+  return c4c::backend::riscv::codegen::peephole_optimize(std::move(rendered));
 }
 
 NativePreparationConfig build_native_preparation_config(Target target) {
@@ -67,21 +76,12 @@ std::string emit_native_prepared_lir_module(const c4c::codegen::lir::LirModule& 
   switch (target) {
     case Target::X86_64:
     case Target::I686:
-      if (auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
-          rendered.has_value()) {
-        return finalize_x86_asm(*rendered, target);
-      }
-      throw std::invalid_argument(
-          "x86 backend emitter does not support this direct LIR module; only direct-LIR slices that lower natively or through direct BIR are currently supported");
+      return finalize_x86_asm(c4c::backend::x86::emit_module(module), target);
     case Target::Aarch64:
-      if (auto rendered = c4c::backend::aarch64::try_emit_prepared_lir_module(module);
-          rendered.has_value()) {
-        return *rendered;
-      }
-      throw std::invalid_argument(
-          "aarch64 backend emitter does not support this direct LIR module; only direct-LIR slices that lower natively or through direct BIR are currently supported");
+      return c4c::backend::aarch64::emit_prepared_lir_module(module);
     case Target::Riscv64:
-      return c4c::codegen::lir::print_llvm(module);
+      return finalize_riscv_asm(
+          c4c::backend::riscv::codegen::emit_prepared_lir_module(module), target);
   }
   throw std::logic_error("unreachable backend target");
 }
@@ -94,13 +94,10 @@ std::optional<std::string> try_render_bir_module(const bir::Module& module, Targ
   switch (target) {
     case Target::X86_64:
     case Target::I686:
-      rendered = c4c::backend::x86::try_emit_module(module);
-      if (rendered.has_value()) {
-        rendered = finalize_x86_asm(std::move(*rendered), target);
-      }
+      rendered = finalize_x86_asm(c4c::backend::x86::emit_module(module), target);
       break;
     case Target::Aarch64:
-      rendered = c4c::backend::aarch64::try_emit_module(module);
+      rendered = c4c::backend::aarch64::emit_direct_bir_module(module);
       break;
     case Target::Riscv64:
       throw std::logic_error("riscv64 BIR rendering is handled above");
@@ -215,12 +212,19 @@ BackendAssembleResult assemble_target_lir_module(
           .object_emitted = assembled.object_emitted,
       };
     }
-    case Target::Riscv64:
+    case Target::Riscv64: {
+      const auto assembled = c4c::backend::riscv::assembler::assemble(
+          c4c::backend::riscv::assembler::AssembleRequest{
+              .asm_text = emitted,
+              .output_path = output_path,
+          });
       return BackendAssembleResult{
-          .staged_text = emitted,
-          .output_path = output_path,
-          .object_emitted = false,
+          .staged_text = assembled.staged_text,
+          .output_path = assembled.output_path,
+          .object_emitted = assembled.object_emitted,
+          .error = assembled.error,
       };
+    }
   }
   throw std::logic_error("unreachable backend target");
 }
@@ -232,6 +236,14 @@ std::string emit_module(const BackendModuleInput& input,
   }
 
   const auto& lir_module = input.lir_module();
+  const auto prepared_lir_module =
+      c4c::backend::prepare_lir_module_for_target(lir_module, options.target);
+  if (options.target == Target::Riscv64) {
+    return finalize_riscv_asm(
+        c4c::backend::riscv::codegen::emit_prepared_lir_module(prepared_lir_module),
+        options.target);
+  }
+
   if (auto raw_bir_module = c4c::backend::try_lower_to_bir(lir_module);
       raw_bir_module.has_value()) {
     if (options.target == Target::Riscv64) {
@@ -246,8 +258,6 @@ std::string emit_module(const BackendModuleInput& input,
     }
   }
 
-  const auto prepared_lir_module =
-      c4c::backend::prepare_lir_module_for_target(lir_module, options.target);
   auto bir_module = c4c::backend::try_lower_to_bir(prepared_lir_module);
   if (!bir_module.has_value()) {
     return emit_native_prepared_lir_module(prepared_lir_module, options.target);

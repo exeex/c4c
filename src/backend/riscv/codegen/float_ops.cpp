@@ -1,7 +1,9 @@
 // Translated from /workspaces/c4c/ref/claudes-c-compiler/src/backend/riscv/codegen/float_ops.rs
-// The shared RISC-V C++ codegen surface does not exist yet, so this file keeps
-// the Rust method boundaries as a source-level mirror while still translating
-// the local float mnemonic/body selection logic into concrete C++ helpers.
+// The bounded non-F128 float binop seam now compiles against the shared RV64
+// codegen surface while the broader floating-point owner work stays parked.
+
+#include "riscv_codegen.hpp"
+#include "../../f128_softfloat.hpp"
 
 #include <string>
 #include <string_view>
@@ -11,24 +13,17 @@ namespace c4c::backend::riscv::codegen {
 
 namespace {
 
-enum class FloatOpKind {
-  Add,
-  Sub,
-  Mul,
-  Div,
-};
-
 enum class FloatTyKind {
   F32,
   F64,
 };
 
-constexpr std::string_view riscv_float_binop_mnemonic(FloatOpKind op) {
+constexpr std::string_view riscv_float_binop_mnemonic(FloatOp op) {
   switch (op) {
-    case FloatOpKind::Add: return "fadd";
-    case FloatOpKind::Sub: return "fsub";
-    case FloatOpKind::Mul: return "fmul";
-    case FloatOpKind::Div: return "fdiv";
+    case FloatOp::Add: return "fadd";
+    case FloatOp::Sub: return "fsub";
+    case FloatOp::Mul: return "fmul";
+    case FloatOp::Div: return "fdiv";
   }
   return "fadd";
 }
@@ -59,16 +54,32 @@ std::vector<std::string> riscv_float_binop_body(std::string_view mnemonic, Float
 
 }  // namespace
 
-// Source-level mirrors of the Rust impl methods:
-//
-// pub(super) fn emit_float_binop_impl(&mut self, dest: &Value, op: FloatOp,
-//                                     lhs: &Operand, rhs: &Operand, ty: IrType)
-// pub(super) fn emit_float_binop_body(&mut self, mnemonic: &str, ty: IrType)
-// pub(super) fn emit_float_binop_mnemonic(&self, op: FloatOp) -> &'static str
-// pub(super) fn emit_f128_neg_impl(&mut self, dest: &Value, src: &Operand)
-//
-// The method bodies still depend on the shared RiscvCodegen / Operand / Value
-// surface, which is not translated into a common C++ header yet. The helpers
-// above preserve the part that is local and mechanically translatable.
+void RiscvCodegen::emit_float_binop_impl(const Value& dest,
+                                         FloatOp op,
+                                         const Operand& lhs,
+                                         const Operand& rhs,
+                                         IrType ty) {
+  if (ty == IrType::F128) {
+    c4c::backend::emit_riscv_f128_binop(*this, dest, op, lhs, rhs);
+    return;
+  }
+
+  const auto float_ty = ty == IrType::F64 ? FloatTyKind::F64 : FloatTyKind::F32;
+  const auto mnemonic = riscv_float_binop_mnemonic(op);
+
+  operand_to_t0(lhs);
+  state.emit("    mv t1, t0");
+  operand_to_t0(rhs);
+
+  for (const auto& line : riscv_float_binop_body(mnemonic, float_ty)) {
+    state.emit(line);
+  }
+
+  store_t0_to(dest);
+}
+
+void RiscvCodegen::emit_f128_neg_impl(const Value& dest, const Operand& src) {
+  emit_f128_neg_full(dest, src);
+}
 
 }  // namespace c4c::backend::riscv::codegen

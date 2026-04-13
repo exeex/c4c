@@ -1,155 +1,13 @@
+#include "parser.hpp"
+
 #include <algorithm>
 #include <cctype>
-#include <cstdint>
-#include <optional>
 #include <sstream>
 #include <stdexcept>
-#include <string>
 #include <string_view>
 #include <utility>
-#include <vector>
 
 namespace c4c::backend::riscv::assembler {
-
-struct Operand {
-  enum class Kind {
-    Reg,
-    Imm,
-    Symbol,
-    SymbolOffset,
-    Mem,
-    MemSymbol,
-    Label,
-    FenceArg,
-    Csr,
-    RoundingMode,
-  } kind = Kind::Symbol;
-
-  std::string text;
-  std::int64_t value = 0;
-  std::string base;
-  std::string symbol;
-  std::string modifier;
-};
-
-enum class SymbolType {
-  Function,
-  Object,
-  TlsObject,
-  NoType,
-};
-
-enum class Visibility {
-  Hidden,
-  Protected,
-  Internal,
-};
-
-struct SectionInfo {
-  std::string name;
-  std::string flags;
-  std::string sec_type;
-  bool flags_explicit = false;
-};
-
-struct SizeExpr {
-  enum class Kind {
-    CurrentMinus,
-    Absolute,
-  } kind = Kind::Absolute;
-  std::string symbol;
-  std::uint64_t absolute = 0;
-};
-
-struct DataValue {
-  enum class Kind {
-    Integer,
-    Symbol,
-    SymbolDiff,
-    Expression,
-  } kind = Kind::Integer;
-  std::int64_t integer = 0;
-  std::string name;
-  std::string sym_a;
-  std::string sym_b;
-  std::int64_t addend = 0;
-  std::string expr;
-};
-
-struct Directive {
-  enum class Kind {
-    Section,
-    Text,
-    Data,
-    Bss,
-    Rodata,
-    Globl,
-    Weak,
-    SymVisibility,
-    Type,
-    Size,
-    Align,
-    Balign,
-    Byte,
-    Short,
-    Long,
-    Quad,
-    Zero,
-    Asciz,
-    Ascii,
-    Comm,
-    Local,
-    Set,
-    ArchOption,
-    Attribute,
-    Cfi,
-    Ignored,
-    PushSection,
-    PopSection,
-    Previous,
-    Insn,
-    Incbin,
-    Subsection,
-    Unknown,
-  } kind = Kind::Ignored;
-
-  SectionInfo section;
-  std::string text;
-  std::string name;
-  Visibility visibility = Visibility::Hidden;
-  SymbolType symbol_type = SymbolType::NoType;
-  SizeExpr size;
-  std::uint64_t integer = 0;
-  std::vector<DataValue> data_values;
-  std::size_t zero_size = 0;
-  std::uint8_t zero_fill = 0;
-  std::vector<std::uint8_t> bytes;
-  std::string sym;
-  std::string value;
-  std::uint64_t align = 0;
-  std::uint64_t comm_size = 0;
-  std::uint64_t comm_align = 1;
-  std::string path;
-  std::uint64_t skip = 0;
-  std::optional<std::uint64_t> count;
-  std::string unknown_name;
-  std::string unknown_args;
-};
-
-struct AsmStatement {
-  enum class Kind {
-    Label,
-    Directive,
-    Instruction,
-    Empty,
-  } kind = Kind::Empty;
-
-  std::string text;
-  std::string mnemonic;
-  std::vector<Operand> operands;
-  std::string raw_operands;
-  Directive directive;
-};
 
 namespace {
 
@@ -516,11 +374,11 @@ Operand parse_single_operand(std::string_view text, bool is_fence, bool force_sy
     }
   }
 
-  if (s.starts_with("%hi(") || s.starts_with("%lo(") || s.starts_with("%pcrel_hi(") ||
-      s.starts_with("%pcrel_lo(") || s.starts_with("%tprel_hi(") ||
-      s.starts_with("%tprel_lo(") || s.starts_with("%tprel_add(") ||
-      s.starts_with("%got_pcrel_hi(") || s.starts_with("%tls_ie_pcrel_hi(") ||
-      s.starts_with("%tls_gd_pcrel_hi(")) {
+  if (starts_with(s, "%hi(") || starts_with(s, "%lo(") || starts_with(s, "%pcrel_hi(") ||
+      starts_with(s, "%pcrel_lo(") || starts_with(s, "%tprel_hi(") ||
+      starts_with(s, "%tprel_lo(") || starts_with(s, "%tprel_add(") ||
+      starts_with(s, "%got_pcrel_hi(") || starts_with(s, "%tls_ie_pcrel_hi(") ||
+      starts_with(s, "%tls_gd_pcrel_hi(")) {
     return make_operand(Operand::Kind::Symbol, std::string(s));
   }
 
@@ -711,7 +569,8 @@ Directive parse_size_directive(std::string_view args) {
 Directive parse_directive(std::string_view line) {
   const auto split = line.find_first_of(" \t");
   const auto name = split == std::string_view::npos ? line : line.substr(0, split);
-  const auto args = split == std::string_view::npos ? std::string_view() : trim_asm(line.substr(split + 1));
+  const std::string args =
+      split == std::string_view::npos ? std::string() : trim_asm(line.substr(split + 1));
 
   Directive out;
   if (name == ".section") {
@@ -956,8 +815,8 @@ std::vector<AsmStatement> parse_line(std::string_view line) {
 
   const auto split = trimmed.find_first_of(" \t");
   const auto mnemonic = split == std::string_view::npos ? trimmed : trimmed.substr(0, split);
-  const auto operands_str = split == std::string_view::npos ? std::string_view()
-                                                            : trim_asm(trimmed.substr(split + 1));
+  const std::string operands_str =
+      split == std::string_view::npos ? std::string() : trim_asm(trimmed.substr(split + 1));
   return {AsmStatement{.kind = AsmStatement::Kind::Instruction,
                        .text = std::string(trimmed),
                        .mnemonic = to_lower(std::string(mnemonic)),

@@ -5235,7 +5235,7 @@ static void gen_emit_global_init(std::ostringstream& out, const std::string& ini
   out << "  .zero " << sz << "\n";
 }
 
-static std::optional<std::string> try_emit_general_lir_asm(
+static std::optional<std::string> render_general_lir_asm_if_supported(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
   if (is_double_indirect_local_pointer_conditional_return_fallback(module)) {
@@ -6742,7 +6742,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
   return out.str();
 }
 
-std::optional<std::string> try_emit_prepared_lir_module(
+std::optional<std::string> render_prepared_lir_module_if_supported(
     const c4c::codegen::lir::LirModule& module,
     bool needs_nonminimal_lowering) {
   try {
@@ -6781,7 +6781,8 @@ std::optional<std::string> try_emit_prepared_lir_module(
 
 }  // namespace
 
-std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& module) {
+std::optional<std::string> render_bir_module_if_supported(
+    const c4c::backend::bir::Module& module) {
   if (const auto slice = c4c::backend::parse_bir_minimal_direct_call_module(module);
       slice.has_value()) {
     return emit_minimal_direct_call_asm(module, *slice);
@@ -6874,13 +6875,19 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
   return c4c::backend::emit_target_bir_module(module, c4c::backend::Target::Aarch64);
 }
 
-std::optional<std::string> try_emit_prepared_lir_module(
-    const c4c::codegen::lir::LirModule& module) {
+std::string emit_direct_bir_module(const c4c::backend::bir::Module& module) {
+  if (auto rendered = render_bir_module_if_supported(module); rendered.has_value()) {
+    return *rendered;
+  }
+  fail_unsupported_direct_bir_module();
+}
+
+std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module) {
   const bool needs_nonminimal_lowering = lir_module_needs_nonminimal_lowering(module);
   validate_module(module);
-  if (auto rendered = try_emit_prepared_lir_module(module, needs_nonminimal_lowering);
+  if (auto rendered = render_prepared_lir_module_if_supported(module, needs_nonminimal_lowering);
       rendered.has_value()) {
-    return rendered;
+    return *rendered;
   }
   if (!needs_nonminimal_lowering) {
     if (const auto imm2 = try_constant_fold_single_block(module); imm2.has_value()) {
@@ -6888,10 +6895,11 @@ std::optional<std::string> try_emit_prepared_lir_module(
           module.target_triple, module.functions.front().name, *imm2);
     }
   }
-  if (auto gen_asm = try_emit_general_lir_asm(module)) {
-    return gen_asm;
+  if (auto gen_asm = render_general_lir_asm_if_supported(module)) {
+    return *gen_asm;
   }
-  return std::nullopt;
+  fail_unsupported(
+      "this direct LIR module; only direct-LIR slices that lower natively or through direct BIR are currently supported");
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {

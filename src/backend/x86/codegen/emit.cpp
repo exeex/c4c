@@ -22,28 +22,14 @@ namespace {
 
 }  // namespace
 
-std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& module) {
-  return try_emit_direct_bir_helper_module(module);
-}
-
 std::string emit_module(const c4c::backend::bir::Module& module) {
-  if (const auto asm_text = try_emit_module(module); asm_text.has_value()) {
-    return c4c::backend::x86::codegen::peephole::peephole_optimize(*asm_text);
-  }
+  (void)module;
   throw_unsupported_direct_bir_module();
-}
-
-std::optional<std::string> try_emit_prepared_lir_module(
-    const c4c::codegen::lir::LirModule& module) {
-  return try_emit_direct_prepared_lir_helper_module(module);
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   if (const auto lowered = c4c::backend::try_lower_to_bir(module); lowered.has_value()) {
     return emit_module(*lowered);
-  }
-  if (const auto asm_text = try_emit_prepared_lir_module(module); asm_text.has_value()) {
-    return c4c::backend::x86::codegen::peephole::peephole_optimize(*asm_text);
   }
   throw_x86_rewrite_in_progress();
 }

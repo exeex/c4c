@@ -5,12 +5,15 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace c4c::codegen::lir {
@@ -23,10 +26,11 @@ struct Module;
 enum class BinaryOpcode : unsigned char;
 }
 
-struct LivenessInput;
-struct RegAllocIntegrationResult;
 struct ParsedBackendExternCallArg;
+struct LivenessInput;
+struct LivenessResult;
 struct PhysReg;
+struct RegAllocIntegrationResult;
 }  // namespace c4c::backend
 
 namespace c4c::backend::x86 {
@@ -41,10 +45,186 @@ struct Value {
 
 struct Operand {
   std::uint32_t raw = 0;
+  std::optional<std::int64_t> immediate = std::nullopt;
+
+  static Operand immediate_i32(std::int32_t value) {
+    return Operand{
+        .raw = 0,
+        .immediate = static_cast<std::int64_t>(value),
+    };
+  }
+
+  static Operand immediate_i64(std::int64_t value) {
+    return Operand{
+        .raw = 0,
+        .immediate = value,
+    };
+  }
+
+  static Operand zero() { return Operand::immediate_i32(0); }
 };
 
-struct IrFunction;
-struct IntrinsicOp;
+enum class AddressSpace : unsigned {
+  Default,
+  SegFs,
+  SegGs,
+};
+enum class IrType : unsigned {
+  Void,
+  I8,
+  I16,
+  I32,
+  I64,
+  I128,
+  U16,
+  U32,
+  U64,
+  Ptr,
+  F32,
+  F64,
+  F128,
+};
+enum class IrCmpOp : unsigned {
+  Eq,
+  Ne,
+  Slt,
+  Sle,
+  Sgt,
+  Sge,
+  Ult,
+  Ule,
+  Ugt,
+  Uge,
+};
+enum class IrUnaryOp : unsigned {
+  Neg,
+  Not,
+  Clz,
+  Ctz,
+  Bswap,
+  Popcount,
+};
+enum class AtomicOrdering : unsigned {
+  Relaxed,
+  Acquire,
+  Release,
+  AcqRel,
+  SeqCst,
+};
+enum class AtomicRmwOp : unsigned {
+  Add,
+  Sub,
+  And,
+  Or,
+  Xor,
+  Nand,
+  Xchg,
+  TestAndSet,
+};
+enum class FloatOp : unsigned {
+  Add,
+  Sub,
+  Mul,
+  Div,
+};
+enum class AsmOperandKind : unsigned;
+enum class EightbyteClass : unsigned {
+  None,
+  Integer,
+  Sse,
+  X87,
+  Memory,
+};
+enum class RiscvFloatClass : unsigned {
+  None,
+  Float,
+  Double,
+};
+
+// Active intrinsic inventory carried by the translated x86 intrinsics owner.
+enum class IntrinsicOp : std::uint16_t {
+  Lfence,
+  Mfence,
+  Sfence,
+  Pause,
+  Clflush,
+  Movnti,
+  Movnti64,
+  Movntdq,
+  Movntpd,
+  Loaddqu,
+  Storedqu,
+  Pcmpeqb128,
+  Pcmpeqd128,
+  Psubusb128,
+  Psubsb128,
+  Por128,
+  Pand128,
+  Pxor128,
+  Pmovmskb128,
+  SetEpi8,
+  SetEpi32,
+  Crc32_8,
+  Crc32_16,
+  Crc32_32,
+  Crc32_64,
+  FrameAddress,
+  ReturnAddress,
+  ThreadPointer,
+  SqrtF64,
+  SqrtF32,
+  FabsF64,
+  FabsF32,
+  Aesenc128,
+  Aesenclast128,
+  Aesdec128,
+  Aesdeclast128,
+  Aesimc128,
+  Aeskeygenassist128,
+  Pclmulqdq128,
+  Pslldqi128,
+  Psrldqi128,
+  Psllqi128,
+  Psrlqi128,
+  Pshufd128,
+  Loadldi128,
+  Paddw128,
+  Psubw128,
+  Pmulhw128,
+  Pmaddwd128,
+  Pcmpgtw128,
+  Pcmpgtb128,
+  Paddd128,
+  Psubd128,
+  Packssdw128,
+  Packsswb128,
+  Packuswb128,
+  Punpcklbw128,
+  Punpckhbw128,
+  Punpcklwd128,
+  Punpckhwd128,
+  Psllwi128,
+  Psrlwi128,
+  Psrawi128,
+  Psradi128,
+  Pslldi128,
+  Psrldi128,
+  SetEpi16,
+  Pinsrw128,
+  Pextrw128,
+  Pinsrd128,
+  Pextrd128,
+  Pinsrb128,
+  Pextrb128,
+  Pinsrq128,
+  Pextrq128,
+  Storeldi128,
+  Cvtsi128Si32,
+  Cvtsi32Si128,
+  Cvtsi128Si64,
+  Pshuflw128,
+  Pshufhw128,
+};
 struct AsmOperand;
 struct BlockId {
   std::uint32_t raw = 0;
@@ -115,6 +295,129 @@ struct CallArgClass {
   bool is_register() const { return kind == Kind::Register; }
 };
 
+struct IrInstruction {
+  enum class Kind : unsigned char {
+    Other,
+    CallIndirect,
+    BinOp,
+    UnaryOp,
+    Cast,
+    Cmp,
+    Store,
+    AtomicRmw,
+  };
+
+  Kind kind = Kind::Other;
+  IrType ty = IrType::Void;
+  IrType from_ty = IrType::Void;
+  IrType to_ty = IrType::Void;
+
+  bool is_call_indirect() const { return kind == Kind::CallIndirect; }
+};
+
+struct IrBlock {
+  std::vector<IrInstruction> instructions;
+};
+
+struct IrParam {
+  std::string name;
+  IrType type = IrType::Void;
+};
+
+struct IrFunction {
+  bool is_variadic = false;
+  IrType return_type = IrType::Void;
+  std::vector<EightbyteClass> ret_eightbyte_classes;
+  std::vector<IrParam> params;
+  std::vector<IrBlock> blocks;
+};
+
+namespace ParamClass {
+
+struct IntReg {
+  std::size_t reg_idx = 0;
+};
+
+struct FloatReg {
+  std::size_t reg_idx = 0;
+};
+
+struct StructByValReg {
+  std::size_t base_reg_idx = 0;
+  std::size_t size = 0;
+};
+
+struct StructSseReg {
+  std::size_t lo_fp_idx = 0;
+  std::optional<std::size_t> hi_fp_idx = std::nullopt;
+};
+
+struct StructMixedIntSseReg {
+  std::size_t int_reg_idx = 0;
+  std::size_t fp_reg_idx = 0;
+};
+
+struct StructMixedSseIntReg {
+  std::size_t fp_reg_idx = 0;
+  std::size_t int_reg_idx = 0;
+};
+
+struct StructStack {
+  std::int64_t offset = 0;
+  std::size_t size = 0;
+};
+
+struct LargeStructStack {
+  std::int64_t offset = 0;
+  std::size_t size = 0;
+};
+
+struct StackScalar {
+  std::int64_t offset = 0;
+};
+
+}  // namespace ParamClass
+
+struct ParamClassInfo {
+  using Data = std::variant<ParamClass::IntReg,
+                            ParamClass::FloatReg,
+                            ParamClass::StructByValReg,
+                            ParamClass::StructSseReg,
+                            ParamClass::StructMixedIntSseReg,
+                            ParamClass::StructMixedSseIntReg,
+                            ParamClass::StructStack,
+                            ParamClass::LargeStructStack,
+                            ParamClass::StackScalar>;
+
+  Data data = ParamClass::StackScalar{};
+
+  std::size_t gp_reg_count() const {
+    return std::visit(
+        [](const auto& value) -> std::size_t {
+          using T = std::decay_t<decltype(value)>;
+          if constexpr (std::is_same_v<T, ParamClass::IntReg>) {
+            return 1;
+          } else if constexpr (std::is_same_v<T, ParamClass::StructByValReg>) {
+            return value.size > 8 ? 2 : 1;
+          } else if constexpr (std::is_same_v<T, ParamClass::StructMixedIntSseReg> ||
+                               std::is_same_v<T, ParamClass::StructMixedSseIntReg>) {
+            return 1;
+          } else {
+            return 0;
+          }
+        },
+        data);
+  }
+
+  bool is_float_reg() const {
+    return std::holds_alternative<ParamClass::FloatReg>(data);
+  }
+};
+
+struct ParamClassification {
+  std::vector<ParamClassInfo> classes;
+};
+
 struct X86CodegenState;
 
 struct X86CodegenOutput {
@@ -125,6 +428,7 @@ struct X86CodegenOutput {
 
   void bind(X86CodegenState* owner_state) { owner = owner_state; }
   void emit_instr_imm_reg(const char* mnemonic, std::int64_t imm, const char* reg);
+  void emit_instr_reg_rbp(const char* mnemonic, const char* reg, std::int64_t offset);
   void emit_instr_rbp_reg(const char* mnemonic, std::int64_t offset, const char* reg);
   void emit_instr_rbp(const char* mnemonic, std::int64_t offset);
   void emit_instr_mem_reg(const char* mnemonic,
@@ -148,12 +452,18 @@ struct X86CodegenState {
   X86CodegenRegCache reg_cache;
   std::unordered_set<std::uint32_t> f128_direct_slots;
   std::vector<std::string> asm_lines;
+  std::unordered_set<std::string> got_addr_symbols;
   std::unordered_map<std::uint32_t, StackSlot> slots;
   std::unordered_map<std::uint32_t, std::uint8_t> reg_assignment_indices;
   std::unordered_set<std::uint32_t> allocas;
   std::unordered_map<std::uint32_t, std::size_t> over_aligned_allocas;
   std::unordered_map<std::uint32_t, std::uint32_t> f128_load_sources;
   std::unordered_map<std::uint32_t, std::array<std::uint64_t, 2>> f128_constant_words;
+  std::vector<ParamClassInfo> param_classes;
+  std::unordered_set<std::size_t> param_pre_stored;
+  bool pic_mode = false;
+  bool cf_protection_branch = false;
+  bool function_return_thunk = false;
 
   X86CodegenState();
   X86CodegenState(const X86CodegenState& other);
@@ -172,79 +482,8 @@ struct X86CodegenState {
   std::optional<std::size_t> alloca_over_align(std::uint32_t value_id) const;
   void set_f128_constant_words(std::uint32_t operand_id, std::uint64_t lo, std::uint64_t hi);
   std::optional<std::array<std::uint64_t, 2>> get_f128_constant_words(std::uint32_t operand_id) const;
-};
-
-enum class AddressSpace : unsigned {
-  Default,
-  SegFs,
-  SegGs,
-};
-enum class IrType : unsigned {
-  Void,
-  I8,
-  I32,
-  I64,
-  I128,
-  Ptr,
-  F32,
-  F64,
-  F128,
-};
-enum class IrCmpOp : unsigned {
-  Eq,
-  Ne,
-  Slt,
-  Sle,
-  Sgt,
-  Sge,
-  Ult,
-  Ule,
-  Ugt,
-  Uge,
-};
-enum class IrUnaryOp : unsigned {
-  Neg,
-  Not,
-  Clz,
-  Ctz,
-  Bswap,
-  Popcount,
-};
-enum class AtomicOrdering : unsigned {
-  Relaxed,
-  Acquire,
-  Release,
-  AcqRel,
-  SeqCst,
-};
-enum class AtomicRmwOp : unsigned {
-  Add,
-  Sub,
-  And,
-  Or,
-  Xor,
-  Nand,
-  Xchg,
-  TestAndSet,
-};
-enum class FloatOp : unsigned {
-  Add,
-  Sub,
-  Mul,
-  Div,
-};
-enum class AsmOperandKind : unsigned;
-enum class EightbyteClass : unsigned {
-  None,
-  Integer,
-  Sse,
-  X87,
-  Memory,
-};
-enum class RiscvFloatClass : unsigned {
-  None,
-  Float,
-  Double,
+  void mark_needs_got_for_addr(std::string name);
+  bool needs_got_for_addr(std::string_view name) const;
 };
 
 struct X86Codegen {
@@ -252,16 +491,28 @@ struct X86Codegen {
   IrType current_return_type = IrType::Void;
   std::vector<EightbyteClass> func_ret_classes;
   std::vector<EightbyteClass> call_ret_classes;
+  std::unordered_map<std::string, std::uint8_t> reg_assignments;
+  std::vector<std::uint8_t> used_callee_saved;
+  bool is_variadic = false;
+  bool no_sse = false;
+  std::size_t num_named_int_params = 0;
+  std::size_t num_named_fp_params = 0;
+  std::int64_t num_named_stack_bytes = 0;
+  std::int64_t reg_save_area_offset = 0;
 
+  void operand_to_reg(const Operand& op, const char* reg);
   void operand_to_rax(const Operand& op);
   void operand_to_rcx(const Operand& op);
   void operand_to_rax_rdx(const Operand& op);
+  void prep_i128_binop(const Operand& lhs, const Operand& rhs);
+  std::optional<std::int64_t> const_as_imm32(const Operand& op) const;
   void store_rax_to(const Value& dest);
   void store_rax_rdx_to(const Value& dest);
   const char* reg_for_type(const char* reg, IrType ty) const;
   const char* mov_load_for_type(IrType ty) const;
   const char* mov_store_for_type(IrType ty) const;
   const char* type_suffix(IrType ty) const;
+  void emit_x86_atomic_op_loop(IrType ty, const char* op);
 
   std::int64_t calculate_stack_space_impl(const IrFunction& func);
   std::int64_t aligned_frame_size_impl(std::int64_t raw_space) const;
@@ -557,17 +808,34 @@ struct X86Codegen {
                              const std::string& constraint,
                              const std::vector<const char*>& all_output_regs);
   void reset_scratch_state();
-  std::vector<AsmOperand> substitute_x86_asm_operands(
-      const std::vector<AsmOperand>& operands,
-      const std::vector<IrType>& operand_types);
-  void emit_operand_with_modifier(const AsmOperand& op, std::optional<char> modifier);
-  std::optional<char> default_modifier_for_type(std::optional<IrType> ty);
-  std::string format_x86_reg(const std::string& reg, std::optional<char> modifier);
-  std::string reg_to_32(const std::string& reg);
-  std::string reg_to_64(const std::string& reg);
-  std::string reg_to_16(const std::string& reg);
-  std::string reg_to_8l(const std::string& reg);
-  const char* gcc_cc_to_x86(const std::string& cond);
+  static std::string substitute_x86_asm_operands(
+      const std::string& line,
+      const std::vector<std::string>& op_regs,
+      const std::vector<std::optional<std::string>>& op_names,
+      const std::vector<bool>& op_is_memory,
+      const std::vector<std::string>& op_mem_addrs,
+      const std::vector<IrType>& op_types,
+      const std::vector<std::size_t>& gcc_to_internal,
+      const std::vector<std::pair<std::string, BlockId>>& goto_labels,
+      const std::vector<std::optional<std::int64_t>>& op_imm_values,
+      const std::vector<std::optional<std::string>>& op_imm_symbols);
+  static void emit_operand_with_modifier(
+      std::string& result,
+      std::size_t idx,
+      std::optional<char> modifier,
+      const std::vector<std::string>& op_regs,
+      const std::vector<bool>& op_is_memory,
+      const std::vector<std::string>& op_mem_addrs,
+      const std::vector<IrType>& op_types,
+      const std::vector<std::optional<std::int64_t>>& op_imm_values,
+      const std::vector<std::optional<std::string>>& op_imm_symbols);
+  static std::optional<char> default_modifier_for_type(std::optional<IrType> ty);
+  static std::string format_x86_reg(const std::string& reg, std::optional<char> modifier);
+  static std::string reg_to_32(const std::string& reg);
+  static std::string reg_to_64(const std::string& reg);
+  static std::string reg_to_16(const std::string& reg);
+  static std::string reg_to_8l(const std::string& reg);
+  static const char* gcc_cc_to_x86(const std::string& cond);
 
   void float_operand_to_xmm0(const Operand& op, bool is_f32);
   void emit_nontemporal_store(const IntrinsicOp& op,
@@ -626,6 +894,33 @@ std::vector<c4c::backend::PhysReg> x86_caller_saved_regs();
 std::vector<c4c::backend::PhysReg> x86_prune_caller_saved_regs(bool has_indirect_call,
                                                                bool has_i128_ops,
                                                                bool has_atomic_rmw);
+ParamClassification classify_params_full(const IrFunction& func, const CallAbiConfig& config);
+std::int64_t named_params_stack_bytes(const std::vector<ParamClassInfo>& classes);
+void collect_inline_asm_callee_saved_x86(const IrFunction& func,
+                                         std::vector<c4c::backend::PhysReg>& asm_clobbered_regs);
+std::vector<c4c::backend::PhysReg> filter_available_regs(
+    const std::vector<c4c::backend::PhysReg>& callee_saved,
+    const std::vector<c4c::backend::PhysReg>& asm_clobbered);
+std::pair<std::unordered_map<std::string, std::uint8_t>,
+          std::optional<c4c::backend::LivenessResult>>
+run_regalloc_and_merge_clobbers(
+    const IrFunction& func,
+    const std::vector<c4c::backend::PhysReg>& available_regs,
+    const std::vector<c4c::backend::PhysReg>& caller_saved_regs,
+    const std::vector<c4c::backend::PhysReg>& asm_clobbered_regs,
+    std::unordered_map<std::string, std::uint8_t>& reg_assignments,
+    std::vector<std::uint8_t>& used_callee_saved,
+    bool allow_inline_asm_regalloc);
+std::int64_t calculate_stack_space_common(
+    X86CodegenState& state,
+    const IrFunction& func,
+    std::int64_t initial_space,
+    const std::function<std::pair<std::int64_t, std::int64_t>(
+        std::int64_t, std::int64_t, std::int64_t)>& alloc_fn,
+    const std::unordered_map<std::string, std::uint8_t>& reg_assigned,
+    const std::vector<c4c::backend::PhysReg>& callee_saved,
+    const std::optional<c4c::backend::LivenessResult>& cached_liveness,
+    bool track_param_allocas);
 std::optional<c4c::backend::PhysReg> x86_constraint_to_callee_saved(std::string_view constraint);
 std::optional<c4c::backend::PhysReg> x86_clobber_name_to_callee_saved(std::string_view name);
 const char* x86_arg_reg_name(std::size_t reg_index);
@@ -696,123 +991,38 @@ std::string emit_global_symbol_prelude(std::string_view target_triple,
                                        std::string_view symbol_name,
                                        std::size_t align_bytes,
                                        bool is_zero_init);
-std::optional<std::string> try_emit_minimal_affine_return_module(
-    const c4c::backend::bir::Module& module);
 std::string emit_minimal_scalar_global_load_slice_asm(std::string_view target_triple,
                                                       std::string_view function_name,
                                                       std::string_view global_name,
                                                       std::int64_t init_imm,
                                                       std::size_t align_bytes,
                                                       bool zero_initializer);
-std::optional<std::string> try_emit_minimal_scalar_global_load_module(
-    const c4c::backend::bir::Module& module);
 std::string emit_minimal_extern_scalar_global_load_slice_asm(std::string_view target_triple,
                                                              std::string_view function_name,
                                                              std::string_view global_name);
-std::optional<std::string> try_emit_minimal_extern_scalar_global_load_module(
-    const c4c::backend::bir::Module& module);
+std::string emit_minimal_extern_global_array_load_slice_asm(std::string_view target_triple,
+                                                            std::string_view function_name,
+                                                            std::string_view global_name,
+                                                            std::int64_t byte_offset);
 std::string emit_minimal_scalar_global_store_reload_slice_asm(std::string_view target_triple,
                                                               std::string_view function_name,
                                                               std::string_view global_name,
                                                               std::int64_t init_imm,
                                                               std::int64_t store_imm,
                                                               std::size_t align_bytes);
-std::optional<std::string> try_emit_minimal_scalar_global_store_reload_module(
-    const c4c::backend::bir::Module& module);
 std::string emit_minimal_global_store_return_and_entry_return_asm(
     std::string_view target_triple,
     const MinimalGlobalStoreReturnAndEntryReturnSlice& slice);
-std::optional<std::string> try_emit_minimal_global_store_return_and_entry_return_module(
-    const c4c::backend::bir::Module& module);
-std::optional<std::string> try_emit_minimal_global_two_field_struct_store_sub_sub_module(
-    const c4c::backend::bir::Module& module);
-std::optional<std::string> try_emit_minimal_countdown_loop_module(
-    const c4c::backend::bir::Module& module);
-std::optional<std::string> try_emit_minimal_variadic_sum2_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_variadic_double_bytes_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_repeated_printf_immediates_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_repeated_printf_local_i32_calls_bir_module(
-    const c4c::backend::bir::Module& module);
-std::optional<std::string> try_emit_minimal_call_crossing_direct_call_bir_module(
-    const c4c::backend::bir::Module& module);
-std::optional<std::string> try_emit_minimal_local_buffer_string_copy_printf_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_counted_printf_ternary_loop_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_string_literal_char_module(
-    const c4c::codegen::lir::LirModule& module);
 std::string emit_minimal_local_temp_asm(std::string_view target_triple,
                                         std::string_view function_name,
                                         std::int64_t stored_imm);
-std::optional<std::string> try_emit_minimal_local_temp_module(
-    const c4c::codegen::lir::LirModule& module);
 std::string emit_minimal_constant_branch_return_asm(std::string_view target_triple,
                                                     std::string_view function_name,
                                                     std::int64_t returned_imm);
-std::optional<std::string> try_emit_minimal_constant_branch_return_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_param_slot_add_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_seventh_param_stack_add_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_mixed_reg_stack_param_add_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_register_aggregate_param_slot_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_stack_aggregate_param_slot_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_small_struct_stack_param_slot_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_extern_zero_arg_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_single_arg_helper_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_local_arg_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_two_arg_helper_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_folded_two_arg_direct_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_dual_identity_direct_call_sub_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_call_crossing_direct_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_two_arg_local_arg_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_two_arg_second_local_arg_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_two_arg_both_local_arg_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_two_arg_both_local_first_rewrite_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_two_arg_both_local_second_rewrite_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_two_arg_both_local_double_rewrite_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_two_arg_second_local_rewrite_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_two_arg_first_local_rewrite_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_void_helper_call_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_void_return_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_minimal_void_extern_call_return_imm_module(
-    const c4c::codegen::lir::LirModule& module);
-std::optional<std::string> try_emit_direct_bir_helper_module(
-    const c4c::backend::bir::Module& module);
-std::optional<std::string> try_emit_direct_prepared_lir_helper_module(
-    const c4c::codegen::lir::LirModule& module);
 c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
     const c4c::backend::LivenessInput& liveness_input);
 
-std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& module);
 std::string emit_module(const c4c::backend::bir::Module& module);
-std::optional<std::string> try_emit_prepared_lir_module(
-    const c4c::codegen::lir::LirModule& module);
 std::string emit_module(const c4c::codegen::lir::LirModule& module);
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,
                                           const std::string& output_path);

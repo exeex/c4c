@@ -1,3 +1,5 @@
+#include "riscv_codegen.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
@@ -15,23 +17,6 @@ namespace c4c::backend::riscv::codegen {
 // The remaining methods in the Rust impl block are tied to the broader
 // RiscvCodegen / InlineAsmEmitter surface, which is not yet shared in C++.
 // Those are intentionally left for the other backend slices.
-
-enum class RvConstraintKind {
-  GpReg,
-  FpReg,
-  Memory,
-  Address,
-  Immediate,
-  ZeroOrReg,
-  Specific,
-  Tied,
-};
-
-struct RvConstraint {
-  RvConstraintKind kind = RvConstraintKind::GpReg;
-  std::string specific;
-  std::size_t tied = 0;
-};
 
 struct RiscvAsmOperandView {
   std::string reg;
@@ -56,6 +41,10 @@ std::string_view strip_constraint_prefix(std::string_view constraint) {
     break;
   }
   return constraint;
+}
+
+bool has_prefix(std::string_view text, std::string_view prefix) {
+  return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
 }
 
 bool is_all_digits(std::string_view text) {
@@ -120,7 +109,7 @@ RvConstraint classify_rv_constraint(std::string_view constraint) {
 
   if (c == "a0" || c == "a1" || c == "a2" || c == "a3" || c == "a4" || c == "a5" ||
       c == "a6" || c == "a7" || c == "ra" || c == "t0" || c == "t1" || c == "t2" ||
-      c.starts_with("ft") || c.starts_with("fa") || c.starts_with("fs")) {
+      has_prefix(c, "ft") || has_prefix(c, "fa") || has_prefix(c, "fs")) {
     return {RvConstraintKind::Specific, std::string(c)};
   }
 
@@ -343,4 +332,3 @@ std::string find_gp_scratch_for_output(std::string_view current_output_reg,
 // be emitted as method definitions in this tree.
 
 }  // namespace c4c::backend::riscv::codegen
-

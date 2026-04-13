@@ -476,7 +476,7 @@ compress_section(const std::vector<std::uint8_t>& data,
       break;
     }
 
-    if (reloc_offsets.contains(old_offset)) {
+    if (reloc_offsets.find(old_offset) != reloc_offsets.end()) {
       new_data.insert(new_data.end(), data.begin() + static_cast<std::ptrdiff_t>(pos),
                       data.begin() + static_cast<std::ptrdiff_t>(pos + 4));
       pos += 4;

@@ -1,257 +1,16 @@
-#include <array>
 #include <cstddef>
-#include <cstdint>
-#include <optional>
 #include <string>
-#include <string_view>
-#include <type_traits>
-#include <utility>
-#include <variant>
-#include <vector>
+#include "riscv_codegen.hpp"
 
 namespace c4c::backend::riscv::codegen {
 
-struct Value {
-  std::uint32_t id = 0;
+namespace {
+
+inline constexpr std::array<const char*, 8> RISCV_FLOAT_ARG_REGS = {
+    "fa0", "fa1", "fa2", "fa3", "fa4", "fa5", "fa6", "fa7",
 };
 
-struct IrConst {
-  struct I128 {
-    __int128 value = 0;
-  };
-
-  struct LongDouble {
-    long double value = 0.0L;
-    std::array<std::uint8_t, 16> f128_bytes{};
-  };
-
-  std::variant<std::int64_t, long double, I128, LongDouble> payload{};
-
-  std::optional<long double> to_f64() const {
-    if (const auto* v = std::get_if<std::int64_t>(&payload)) {
-      return static_cast<long double>(*v);
-    }
-    if (const auto* v = std::get_if<long double>(&payload)) {
-      return *v;
-    }
-    if (const auto* v = std::get_if<I128>(&payload)) {
-      return static_cast<long double>(v->value);
-    }
-    if (const auto* v = std::get_if<LongDouble>(&payload)) {
-      return v->value;
-    }
-    return std::nullopt;
-  }
-};
-
-using Operand = std::variant<Value, IrConst>;
-
-enum class IrType {
-  Void,
-  I8,
-  I16,
-  I32,
-  I64,
-  U8,
-  U16,
-  U32,
-  U64,
-  Ptr,
-  F32,
-  F64,
-  F128,
-};
-
-inline bool is_i128_type(IrType ty) {
-  return ty == IrType::F128;
-}
-
-struct RiscvFloatClass {
-  struct OneFloat {
-    bool is_double = true;
-  };
-  struct TwoFloats {
-    bool lo_is_double = true;
-    bool hi_is_double = true;
-  };
-  struct IntAndFloat {
-    bool float_is_double = true;
-    std::size_t int_size = 8;
-    std::size_t float_offset = 8;
-  };
-  struct FloatAndInt {
-    bool float_is_double = true;
-    std::size_t int_offset = 8;
-    std::size_t int_size = 8;
-  };
-
-  std::variant<OneFloat, TwoFloats, IntAndFloat, FloatAndInt> payload;
-};
-
-struct CallAbiConfig {
-  std::size_t max_int_regs = 8;
-  std::size_t max_float_regs = 8;
-  bool align_i128_pairs = true;
-  bool f128_in_fp_regs = false;
-  bool f128_in_gp_pairs = true;
-  bool variadic_floats_in_gp = true;
-  bool large_struct_by_ref = true;
-  bool use_sysv_struct_classification = false;
-  bool use_riscv_float_struct_classification = true;
-  bool allow_struct_split_reg_stack = true;
-  bool align_struct_pairs = true;
-  bool sret_uses_dedicated_reg = false;
-};
-
-struct CallArgClass {
-  struct IntReg {
-    std::size_t reg_idx = 0;
-  };
-  struct FloatReg {
-    std::size_t reg_idx = 0;
-  };
-  struct I128RegPair {
-    std::size_t base_reg_idx = 0;
-  };
-  struct F128Reg {
-    std::size_t reg_idx = 0;
-  };
-  struct StructByValReg {
-    std::size_t base_reg_idx = 0;
-    std::size_t size = 0;
-  };
-  struct StructSseReg {
-    std::size_t lo_fp_idx = 0;
-    std::optional<std::size_t> hi_fp_idx;
-    std::size_t size = 0;
-  };
-  struct StructMixedIntSseReg {
-    std::size_t int_reg_idx = 0;
-    std::size_t fp_reg_idx = 0;
-    std::size_t size = 0;
-  };
-  struct StructMixedSseIntReg {
-    std::size_t fp_reg_idx = 0;
-    std::size_t int_reg_idx = 0;
-    std::size_t size = 0;
-  };
-  struct StructByValStack {
-    std::size_t size = 0;
-  };
-  struct StructSplitRegStack {
-    std::size_t reg_idx = 0;
-    std::size_t size = 0;
-  };
-  struct LargeStructStack {
-    std::size_t size = 0;
-  };
-  struct Stack {};
-  struct F128Stack {};
-  struct I128Stack {};
-  struct ZeroSizeSkip {};
-
-  using Variant = std::variant<IntReg,
-                               FloatReg,
-                               I128RegPair,
-                               F128Reg,
-                               StructByValReg,
-                               StructSseReg,
-                               StructMixedIntSseReg,
-                               StructMixedSseIntReg,
-                               StructByValStack,
-                               StructSplitRegStack,
-                               LargeStructStack,
-                               Stack,
-                               F128Stack,
-                               I128Stack,
-                               ZeroSizeSkip>;
-
-  Variant value;
-
-  bool is_stack() const {
-    return std::visit(
-        [](const auto& v) -> bool {
-          using T = std::decay_t<decltype(v)>;
-          return std::is_same_v<T, Stack> || std::is_same_v<T, F128Stack> ||
-                 std::is_same_v<T, I128Stack> || std::is_same_v<T, StructByValStack> ||
-                 std::is_same_v<T, LargeStructStack> ||
-                 std::is_same_v<T, StructSplitRegStack>;
-        },
-        value);
-  }
-
-  std::size_t stack_bytes() const {
-    constexpr std::size_t slot_size = 8;
-    constexpr std::size_t align_mask = slot_size - 1;
-    return std::visit(
-        [align_mask](const auto& v) -> std::size_t {
-          using T = std::decay_t<decltype(v)>;
-          if constexpr (std::is_same_v<T, F128Stack>) {
-            return 16;
-          } else if constexpr (std::is_same_v<T, I128Stack>) {
-            return 16;
-          } else if constexpr (std::is_same_v<T, StructByValStack> ||
-                               std::is_same_v<T, LargeStructStack>) {
-            return (v.size + align_mask) & ~align_mask;
-          } else if constexpr (std::is_same_v<T, StructSplitRegStack>) {
-            const auto stack_part = v.size - slot_size;
-            return (stack_part + align_mask) & ~align_mask;
-          } else if constexpr (std::is_same_v<T, Stack>) {
-            return slot_size;
-          } else {
-            return 0;
-          }
-        },
-        value);
-  }
-};
-
-constexpr std::array<const char*, 8> RISCV_ARG_REGS = {
-    "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"};
-
-constexpr std::array<const char*, 12> RISCV_CALLEE_SAVED = {
-    "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", nullptr};
-
-inline std::string_view callee_saved_name(std::size_t reg) {
-  switch (reg) {
-    case 1: return "s1";
-    case 2: return "s2";
-    case 3: return "s3";
-    case 4: return "s4";
-    case 5: return "s5";
-    case 6: return "s6";
-    case 7: return "s7";
-    case 8: return "s8";
-    case 9: return "s9";
-    case 10: return "s10";
-    case 11: return "s11";
-    default: return {};
-  }
-}
-
-inline std::optional<std::size_t> riscv_reg_to_callee_saved(std::string_view name) {
-  if (name == "s1" || name == "x9") return 1;
-  if (name == "s2" || name == "x18") return 2;
-  if (name == "s3" || name == "x19") return 3;
-  if (name == "s4" || name == "x20") return 4;
-  if (name == "s5" || name == "x21") return 5;
-  if (name == "s6" || name == "x22") return 6;
-  if (name == "s7" || name == "x23") return 7;
-  if (name == "s8" || name == "x24") return 8;
-  if (name == "s9" || name == "x25") return 9;
-  if (name == "s10" || name == "x26") return 10;
-  if (name == "s11" || name == "x27") return 11;
-  return std::nullopt;
-}
-
-inline std::optional<std::size_t> constraint_to_callee_saved_riscv(std::string_view constraint) {
-  if (constraint.size() >= 2 && constraint.front() == '{' && constraint.back() == '}') {
-    return riscv_reg_to_callee_saved(constraint.substr(1, constraint.size() - 2));
-  }
-  return riscv_reg_to_callee_saved(constraint);
-}
-
-inline std::size_t compute_stack_arg_space(const std::vector<CallArgClass>& arg_classes) {
+std::size_t compute_stack_arg_space(const std::vector<CallArgClass>& arg_classes) {
   std::size_t total = 0;
   for (const auto& cls : arg_classes) {
     if (!cls.is_stack()) {
@@ -266,7 +25,48 @@ inline std::size_t compute_stack_arg_space(const std::vector<CallArgClass>& arg_
   return (total + 15) & ~std::size_t(15);
 }
 
-inline CallAbiConfig call_abi_config_impl() {
+void align_wide_stack_offset(std::size_t& offset) { offset = (offset + 15) & ~std::size_t(15); }
+
+void emit_addi_sp(RiscvCodegenState& state, std::int64_t amount) {
+  if (amount >= -2048 && amount <= 2047) {
+    state.emit("    addi sp, sp, " + std::to_string(amount));
+    return;
+  }
+
+  state.emit("    li t6, " + std::to_string(amount));
+  state.emit("    add sp, sp, t6");
+}
+
+void emit_store_to_sp(RiscvCodegenState& state, const char* reg, std::int64_t offset, const char* instr) {
+  state.emit("    " + std::string(instr) + " " + reg + ", " + std::to_string(offset) + "(sp)");
+}
+
+void emit_load_from_sp(RiscvCodegenState& state, const char* reg, std::int64_t offset, const char* instr) {
+  state.emit("    " + std::string(instr) + " " + reg + ", " + std::to_string(offset) + "(sp)");
+}
+
+void emit_addi_from_s0(RiscvCodegenState& state, const char* reg, std::int64_t offset) {
+  if (offset == 0) {
+    state.emit("    mv " + std::string(reg) + ", s0");
+    return;
+  }
+
+  if (offset >= -2048 && offset <= 2047) {
+    state.emit("    addi " + std::string(reg) + ", s0, " + std::to_string(offset));
+    return;
+  }
+
+  state.emit("    li " + std::string(reg) + ", " + std::to_string(offset));
+  state.emit("    add " + std::string(reg) + ", s0, " + reg);
+}
+
+void emit_load_from_reg(RiscvCodegenState& state, const char* reg, const char* base, std::int64_t offset, const char* instr) {
+  state.emit("    " + std::string(instr) + " " + reg + ", " + std::to_string(offset) + "(" + base + ")");
+}
+
+}  // namespace
+
+CallAbiConfig RiscvCodegen::call_abi_config_impl() const {
   return CallAbiConfig{
       .max_int_regs = 8,
       .max_float_regs = 8,
@@ -283,20 +83,433 @@ inline CallAbiConfig call_abi_config_impl() {
   };
 }
 
-// The remaining Rust methods depend on the wider RiscvCodegen / CodegenState
-// surface that is not yet shared as C++ headers. They are kept here as the
-// translated method inventory, but intentionally stop short of inventing a
-// cross-file fake backend API.
-//
-// - emit_call_compute_stack_space_impl
-// - emit_call_f128_pre_convert_impl
-// - emit_call_stack_args_impl
-// - emit_call_reg_args_impl
-// - emit_call_instruction_impl
-// - emit_call_cleanup_impl
-// - emit_call_store_result_impl
-//
-// The concrete ABI logic above is the part that is practical to translate
-// standalone without widening scope into the rest of the backend.
+std::size_t RiscvCodegen::emit_call_compute_stack_space_impl(
+    const std::vector<CallArgClass>& arg_classes,
+    const std::vector<IrType>& /*arg_types*/) const {
+  return compute_stack_arg_space(arg_classes);
+}
+
+std::size_t RiscvCodegen::emit_call_f128_pre_convert_impl(
+    const std::vector<Operand>& args,
+    const std::vector<CallArgClass>& arg_classes,
+    const std::vector<IrType>& /*arg_types*/,
+    std::size_t /*stack_arg_space*/) {
+  std::size_t f128_temp_space = 0;
+  for (std::size_t i = 0; i < args.size() && i < arg_classes.size(); ++i) {
+    if (!std::holds_alternative<CallArgClass::F128Reg>(arg_classes[i].value)) {
+      continue;
+    }
+    if (args[i].kind == Operand::Kind::Value) {
+      f128_temp_space += 16;
+    }
+  }
+
+  if (f128_temp_space == 0) {
+    return 0;
+  }
+
+  emit_addi_sp(state, -static_cast<std::int64_t>(f128_temp_space));
+
+  std::int64_t temp_offset = 0;
+  for (std::size_t i = 0; i < args.size() && i < arg_classes.size(); ++i) {
+    if (!std::holds_alternative<CallArgClass::F128Reg>(arg_classes[i].value) ||
+        args[i].kind != Operand::Kind::Value) {
+      continue;
+    }
+    emit_f128_operand_to_a0_a1(args[i]);
+    emit_store_to_sp(state, "a0", temp_offset, "sd");
+    emit_store_to_sp(state, "a1", temp_offset + 8, "sd");
+    temp_offset += 16;
+  }
+
+  return f128_temp_space;
+}
+
+std::int64_t RiscvCodegen::emit_call_stack_args_impl(const std::vector<Operand>& args,
+                                                     const std::vector<CallArgClass>& arg_classes,
+                                                     const std::vector<IrType>& /*arg_types*/,
+                                                     std::size_t stack_arg_space,
+                                                     std::size_t /*fptr_spill*/,
+                                                     std::size_t /*f128_temp_space*/) {
+  if (stack_arg_space == 0) {
+    return 0;
+  }
+
+  emit_addi_sp(state, -static_cast<std::int64_t>(stack_arg_space));
+
+  const auto materialize_aggregate_base_in_t0 = [&](const Operand& arg) {
+    if (arg.kind != Operand::Kind::Value) {
+      operand_to_t0(arg);
+      return;
+    }
+
+    if (const auto reg = state.assigned_reg(arg.raw)) {
+      state.emit("    mv t0, " + std::string(callee_saved_name(*reg)));
+      return;
+    }
+
+    if (const auto slot = state.get_slot(arg.raw)) {
+      if (state.is_alloca(arg.raw)) {
+        emit_addi_from_s0(state, "t0", slot->raw);
+      } else {
+        emit_load_from_s0("t0", slot->raw, "ld");
+      }
+      return;
+    }
+
+    state.emit("    li t0, 0");
+  };
+
+  std::size_t offset = 0;
+  for (std::size_t i = 0; i < args.size() && i < arg_classes.size(); ++i) {
+    if (const auto* byval_stack = std::get_if<CallArgClass::StructByValStack>(&arg_classes[i].value)) {
+      materialize_aggregate_base_in_t0(args[i]);
+      const auto n_dwords = (byval_stack->size + 7) / 8;
+      for (std::size_t qi = 0; qi < n_dwords; ++qi) {
+        const auto src_off = static_cast<std::int64_t>(qi * 8);
+        emit_load_from_reg(state, "t1", "t0", src_off, "ld");
+        emit_store_to_sp(state, "t1", static_cast<std::int64_t>(offset) + src_off, "sd");
+      }
+      offset += n_dwords * 8;
+      continue;
+    }
+
+    if (const auto* large_stack = std::get_if<CallArgClass::LargeStructStack>(&arg_classes[i].value)) {
+      materialize_aggregate_base_in_t0(args[i]);
+      const auto n_dwords = (large_stack->size + 7) / 8;
+      for (std::size_t qi = 0; qi < n_dwords; ++qi) {
+        const auto src_off = static_cast<std::int64_t>(qi * 8);
+        emit_load_from_reg(state, "t1", "t0", src_off, "ld");
+        emit_store_to_sp(state, "t1", static_cast<std::int64_t>(offset) + src_off, "sd");
+      }
+      offset += n_dwords * 8;
+      continue;
+    }
+
+    if (const auto* split_stack = std::get_if<CallArgClass::StructSplitRegStack>(&arg_classes[i].value)) {
+      materialize_aggregate_base_in_t0(args[i]);
+      const auto stack_bytes = split_stack->size > 8 ? split_stack->size - 8 : 0;
+      const auto stack_dwords = (stack_bytes + 7) / 8;
+      for (std::size_t qi = 0; qi < stack_dwords; ++qi) {
+        const auto src_off = static_cast<std::int64_t>(8 + qi * 8);
+        emit_load_from_reg(state, "t1", "t0", src_off, "ld");
+        emit_store_to_sp(state, "t1", static_cast<std::int64_t>(offset + qi * 8), "sd");
+      }
+      offset += stack_dwords * 8;
+      continue;
+    }
+
+    if (std::holds_alternative<CallArgClass::I128Stack>(arg_classes[i].value)) {
+      align_wide_stack_offset(offset);
+      emit_load_acc_pair_impl(args[i]);
+      emit_store_to_sp(state, "t0", static_cast<std::int64_t>(offset), "sd");
+      emit_store_to_sp(state, "t1", static_cast<std::int64_t>(offset + 8), "sd");
+      offset += 16;
+      continue;
+    }
+
+    if (std::holds_alternative<CallArgClass::F128Stack>(arg_classes[i].value)) {
+      align_wide_stack_offset(offset);
+      emit_f128_operand_to_a0_a1(args[i]);
+      emit_store_to_sp(state, "a0", static_cast<std::int64_t>(offset), "sd");
+      emit_store_to_sp(state, "a1", static_cast<std::int64_t>(offset + 8), "sd");
+      offset += 16;
+      continue;
+    }
+
+    if (std::holds_alternative<CallArgClass::Stack>(arg_classes[i].value)) {
+      operand_to_t0(args[i]);
+      emit_store_to_sp(state, "t0", static_cast<std::int64_t>(offset), "sd");
+      offset += 8;
+    }
+  }
+
+  return 0;
+}
+
+void RiscvCodegen::emit_call_reg_args_impl(
+    const std::vector<Operand>& args,
+    const std::vector<CallArgClass>& arg_classes,
+    const std::vector<IrType>& arg_types,
+    std::int64_t /*total_sp_adjust*/,
+    std::size_t /*f128_temp_space*/,
+    std::size_t stack_arg_space,
+    const std::vector<std::optional<RiscvFloatClass>>& classes) {
+  constexpr std::array<const char*, 3> temp_regs = {"t3", "t4", "t5"};
+
+  const auto materialize_aggregate_base_in_t0 = [&](const Operand& arg) {
+    if (arg.kind != Operand::Kind::Value) {
+      operand_to_t0(arg);
+      return;
+    }
+
+    if (const auto reg = state.assigned_reg(arg.raw)) {
+      state.emit("    mv t0, " + std::string(callee_saved_name(*reg)));
+      return;
+    }
+
+    if (const auto slot = state.get_slot(arg.raw)) {
+      if (state.is_alloca(arg.raw)) {
+        emit_addi_from_s0(state, "t0", slot->raw);
+      } else {
+        emit_load_from_s0("t0", slot->raw, "ld");
+      }
+      return;
+    }
+
+    state.emit("    li t0, 0");
+  };
+
+  const auto emit_float_struct_load = [&](std::size_t fp_idx, std::int64_t offset, bool is_double) {
+    state.emit("    " + std::string(is_double ? "fld " : "flw ") + RISCV_FLOAT_ARG_REGS[fp_idx] +
+               ", " + std::to_string(offset) + "(t0)");
+  };
+
+  std::vector<std::pair<std::size_t, const char*>> staged_gp;
+  std::vector<std::pair<std::size_t, std::size_t>> deferred_gp;
+  std::size_t temp_i = 0;
+
+  for (std::size_t i = 0; i < args.size() && i < arg_classes.size(); ++i) {
+    if (const auto* int_reg = std::get_if<CallArgClass::IntReg>(&arg_classes[i].value)) {
+      if (temp_i < temp_regs.size()) {
+        operand_to_t0(args[i]);
+        state.emit("    mv " + std::string(temp_regs[temp_i]) + ", t0");
+        staged_gp.emplace_back(int_reg->reg_idx, temp_regs[temp_i]);
+        ++temp_i;
+      } else {
+        deferred_gp.emplace_back(int_reg->reg_idx, i);
+      }
+      continue;
+    }
+
+    if (const auto* float_reg = std::get_if<CallArgClass::FloatReg>(&arg_classes[i].value)) {
+      operand_to_t0(args[i]);
+      const auto arg_ty = i < arg_types.size() ? arg_types[i] : IrType::F64;
+      const char* float_reg_name = RISCV_FLOAT_ARG_REGS[float_reg->reg_idx];
+      if (arg_ty == IrType::F32) {
+        state.emit("    fmv.w.x " + std::string(float_reg_name) + ", t0");
+      } else {
+        state.emit("    fmv.d.x " + std::string(float_reg_name) + ", t0");
+      }
+    }
+  }
+
+  for (const auto& [target_idx, temp_reg] : staged_gp) {
+    state.emit("    mv " + std::string(RISCV_ARG_REGS[target_idx]) + ", " + temp_reg);
+  }
+
+  for (const auto& [target_idx, arg_idx] : deferred_gp) {
+    operand_to_t0(args[arg_idx]);
+    state.emit("    mv " + std::string(RISCV_ARG_REGS[target_idx]) + ", t0");
+  }
+
+  std::int64_t f128_var_temp_offset = 0;
+  for (std::size_t i = 0; i < args.size() && i < arg_classes.size(); ++i) {
+    const auto* f128_reg = std::get_if<CallArgClass::F128Reg>(&arg_classes[i].value);
+    if (f128_reg == nullptr) {
+      continue;
+    }
+
+    if (args[i].kind == Operand::Kind::Value) {
+      const auto offset = static_cast<std::int64_t>(stack_arg_space) + f128_var_temp_offset;
+      emit_load_from_sp(state, RISCV_ARG_REGS[f128_reg->reg_idx], offset, "ld");
+      emit_load_from_sp(state, RISCV_ARG_REGS[f128_reg->reg_idx + 1], offset + 8, "ld");
+      f128_var_temp_offset += 16;
+      continue;
+    }
+
+    emit_f128_operand_to_a0_a1(args[i]);
+    if (f128_reg->reg_idx != 0) {
+      state.emit("    mv " + std::string(RISCV_ARG_REGS[f128_reg->reg_idx]) + ", a0");
+    }
+    if (f128_reg->reg_idx + 1 != 1) {
+      state.emit("    mv " + std::string(RISCV_ARG_REGS[f128_reg->reg_idx + 1]) + ", a1");
+    }
+  }
+
+  for (std::size_t i = 0; i < args.size() && i < arg_classes.size(); ++i) {
+    const auto* i128_reg = std::get_if<CallArgClass::I128RegPair>(&arg_classes[i].value);
+    if (i128_reg == nullptr) {
+      continue;
+    }
+
+    emit_load_acc_pair_impl(args[i]);
+    state.emit("    mv " + std::string(RISCV_ARG_REGS[i128_reg->base_reg_idx]) + ", t0");
+    state.emit("    mv " + std::string(RISCV_ARG_REGS[i128_reg->base_reg_idx + 1]) + ", t1");
+  }
+
+  for (std::size_t i = 0; i < args.size() && i < arg_classes.size(); ++i) {
+    const auto* byval_reg = std::get_if<CallArgClass::StructByValReg>(&arg_classes[i].value);
+    if (byval_reg == nullptr) {
+      continue;
+    }
+
+    materialize_aggregate_base_in_t0(args[i]);
+    state.emit("    ld " + std::string(RISCV_ARG_REGS[byval_reg->base_reg_idx]) + ", 0(t0)");
+    if (byval_reg->size > 8) {
+      state.emit("    ld " + std::string(RISCV_ARG_REGS[byval_reg->base_reg_idx + 1]) + ", 8(t0)");
+    }
+  }
+
+  for (std::size_t i = 0; i < args.size() && i < arg_classes.size(); ++i) {
+    const auto* split_reg = std::get_if<CallArgClass::StructSplitRegStack>(&arg_classes[i].value);
+    if (split_reg == nullptr) {
+      continue;
+    }
+
+    materialize_aggregate_base_in_t0(args[i]);
+    state.emit("    ld " + std::string(RISCV_ARG_REGS[split_reg->reg_idx]) + ", 0(t0)");
+  }
+
+  for (std::size_t i = 0; i < args.size() && i < arg_classes.size(); ++i) {
+    const bool needs_float_ptr =
+        std::holds_alternative<CallArgClass::StructSseReg>(arg_classes[i].value) ||
+        std::holds_alternative<CallArgClass::StructMixedIntSseReg>(arg_classes[i].value) ||
+        std::holds_alternative<CallArgClass::StructMixedSseIntReg>(arg_classes[i].value);
+    if (!needs_float_ptr) {
+      continue;
+    }
+
+    const auto* rv_class = i < classes.size() && classes[i].has_value() ? &*classes[i] : nullptr;
+    materialize_aggregate_base_in_t0(args[i]);
+
+    if (const auto* sse_reg = std::get_if<CallArgClass::StructSseReg>(&arg_classes[i].value)) {
+      bool lo_is_double = sse_reg->size > 4;
+      bool hi_is_double = true;
+      if (rv_class != nullptr) {
+        if (const auto* one_float = std::get_if<RiscvFloatClass::OneFloat>(&rv_class->value)) {
+          lo_is_double = one_float->is_double;
+          hi_is_double = false;
+        } else if (const auto* two_floats =
+                       std::get_if<RiscvFloatClass::TwoFloats>(&rv_class->value)) {
+          lo_is_double = two_floats->lo_is_double;
+          hi_is_double = two_floats->hi_is_double;
+        }
+      }
+
+      emit_float_struct_load(sse_reg->lo_fp_idx, 0, lo_is_double);
+      if (sse_reg->hi_fp_idx.has_value()) {
+        emit_float_struct_load(*sse_reg->hi_fp_idx, lo_is_double ? 8 : 4, hi_is_double);
+      }
+      continue;
+    }
+
+    if (const auto* mixed_int =
+            std::get_if<CallArgClass::StructMixedIntSseReg>(&arg_classes[i].value)) {
+      bool float_is_double = true;
+      std::size_t int_size = 8;
+      std::size_t float_offset = 8;
+      if (rv_class != nullptr) {
+        if (const auto* int_and_float =
+                std::get_if<RiscvFloatClass::IntAndFloat>(&rv_class->value)) {
+          float_is_double = int_and_float->float_is_double;
+          int_size = int_and_float->int_size;
+          float_offset = int_and_float->float_offset;
+        }
+      }
+
+      state.emit("    " + std::string(int_size <= 4 ? "lw " : "ld ") +
+                 RISCV_ARG_REGS[mixed_int->int_reg_idx] + ", 0(t0)");
+      emit_float_struct_load(mixed_int->fp_reg_idx, static_cast<std::int64_t>(float_offset),
+                             float_is_double);
+      continue;
+    }
+
+    if (const auto* mixed_float =
+            std::get_if<CallArgClass::StructMixedSseIntReg>(&arg_classes[i].value)) {
+      bool float_is_double = true;
+      std::size_t int_offset = 8;
+      std::size_t int_size = 8;
+      if (rv_class != nullptr) {
+        if (const auto* float_and_int =
+                std::get_if<RiscvFloatClass::FloatAndInt>(&rv_class->value)) {
+          float_is_double = float_and_int->float_is_double;
+          int_offset = float_and_int->int_offset;
+          int_size = float_and_int->int_size;
+        }
+      }
+
+      emit_float_struct_load(mixed_float->fp_reg_idx, 0, float_is_double);
+      state.emit("    " + std::string(int_size <= 4 ? "lw " : "ld ") +
+                 RISCV_ARG_REGS[mixed_float->int_reg_idx] + ", " +
+                 std::to_string(int_offset) + "(t0)");
+    }
+  }
+}
+
+void RiscvCodegen::emit_call_instruction_impl(const std::optional<std::string>& direct_name,
+                                              const std::optional<Operand>& func_ptr,
+                                              bool /*indirect*/,
+                                              std::size_t /*stack_arg_space*/) {
+  if (direct_name.has_value()) {
+    state.emit("    call " + *direct_name);
+    return;
+  }
+
+  if (!func_ptr.has_value()) {
+    return;
+  }
+
+  operand_to_t0(*func_ptr);
+  state.emit("    mv t2, t0");
+  state.emit("    jalr ra, t2, 0");
+}
+
+void RiscvCodegen::emit_call_cleanup_impl(std::size_t stack_arg_space,
+                                          std::size_t f128_temp_space,
+                                          bool /*indirect*/) {
+  if (f128_temp_space > 0 && stack_arg_space == 0) {
+    emit_addi_sp(state, static_cast<std::int64_t>(f128_temp_space));
+  }
+  if (stack_arg_space > 0) {
+    const auto cleanup =
+        static_cast<std::int64_t>(stack_arg_space + f128_temp_space);
+    emit_addi_sp(state, cleanup);
+  }
+}
+
+void RiscvCodegen::emit_call_store_result_impl(const Value& dest, IrType return_type) {
+  if (return_type == IrType::I128) {
+    if (const auto slot = state.get_slot(dest.raw)) {
+      emit_store_to_s0("a0", slot->raw, "sd");
+      emit_store_to_s0("a1", slot->raw + 8, "sd");
+    }
+    return;
+  }
+
+  if (return_type == IrType::F128) {
+    f128_store_result_and_truncate(dest);
+    return;
+  }
+
+  if (return_type == IrType::F32) {
+    if (const auto slot = state.get_slot(dest.raw)) {
+      state.emit("    fmv.x.w t0, fa0");
+      emit_store_to_s0("t0", slot->raw, "sd");
+    }
+    return;
+  }
+
+  if (return_type == IrType::F64) {
+    if (const auto slot = state.get_slot(dest.raw)) {
+      state.emit("    fmv.x.d t0, fa0");
+      emit_store_to_s0("t0", slot->raw, "sd");
+    }
+    return;
+  }
+
+  if (const auto reg = state.assigned_reg(dest.raw)) {
+    state.emit("    mv " + std::string(callee_saved_name(*reg)) + ", a0");
+    return;
+  }
+
+  if (const auto slot = state.get_slot(dest.raw)) {
+    emit_store_to_s0("a0", slot->raw, "sd");
+  }
+}
+
+// Broader aggregate/struct call lowering remains parked until the current
+// outgoing-call family route widens beyond the scalar and wide-scalar staging
+// packets now landed here.
 
 }  // namespace c4c::backend::riscv::codegen

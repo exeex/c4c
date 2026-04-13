@@ -1,6 +1,8 @@
 // Translated from src/backend/riscv/linker/reloc.rs
 // Self-contained relocation application pass for the RISC-V linker.
 
+#include "mod.hpp"
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -8,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -139,10 +142,120 @@ struct RelocResult {
   std::vector<std::pair<std::uint64_t, std::uint64_t>> relative_entries;
 };
 
+[[nodiscard]] std::optional<RelocResult> apply_relocations(
+    const std::vector<std::pair<std::string, ElfObject>>& input_objs,
+    std::vector<MergedSection>* merged_sections,
+    const RelocContext& ctx,
+    std::string* error);
+
 namespace {
 
 bool has_prefix(std::string_view value, std::string_view prefix) {
   return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
+}
+
+std::optional<std::size_t> find_text_section_index(const linker_common::Elf64Object& object) {
+  for (std::size_t index = 0; index < object.sections.size(); ++index) {
+    if (object.sections[index].name == ".text") return index;
+  }
+  return std::nullopt;
+}
+
+Section convert_section(const linker_common::Elf64Section& section) {
+  return Section{
+      .name = section.name,
+      .sh_type = section.sh_type,
+      .flags = section.flags,
+  };
+}
+
+Relocation convert_relocation(const linker_common::Elf64Rela& relocation) {
+  return Relocation{
+      .offset = relocation.offset,
+      .rela_type = relocation.rela_type,
+      .sym_idx = relocation.sym_idx,
+      .addend = relocation.addend,
+  };
+}
+
+Symbol convert_symbol(const linker_common::Elf64Symbol& symbol) {
+  return Symbol{
+      .name = symbol.name,
+      .value = symbol.value,
+      .size = symbol.size,
+      .binding_ = symbol.binding(),
+      .type_ = symbol.sym_type(),
+      .visibility = symbol.visibility(),
+      .shndx = symbol.shndx,
+  };
+}
+
+ElfObject convert_object(const linker_common::Elf64Object& object) {
+  ElfObject converted;
+  converted.sections.reserve(object.sections.size());
+  for (const auto& section : object.sections) {
+    converted.sections.push_back(convert_section(section));
+  }
+  converted.relocations.reserve(object.relocations.size());
+  for (const auto& section_relocations : object.relocations) {
+    std::vector<Relocation> converted_relocations;
+    converted_relocations.reserve(section_relocations.size());
+    for (const auto& relocation : section_relocations) {
+      converted_relocations.push_back(convert_relocation(relocation));
+    }
+    converted.relocations.push_back(std::move(converted_relocations));
+  }
+  converted.symbols.reserve(object.symbols.size());
+  for (const auto& symbol : object.symbols) {
+    converted.symbols.push_back(convert_symbol(symbol));
+  }
+  return converted;
+}
+
+LocalSymVaddrs build_local_sym_vaddrs(const std::vector<std::pair<std::string, ElfObject>>& input_objs,
+                                      const SectionMap& sec_mapping,
+                                      const SectionVaddrs& section_vaddrs) {
+  LocalSymVaddrs local_sym_vaddrs(input_objs.size());
+  for (std::size_t obj_idx = 0; obj_idx < input_objs.size(); ++obj_idx) {
+    const auto& object = input_objs[obj_idx].second;
+    auto& symbol_vaddrs = local_sym_vaddrs[obj_idx];
+    symbol_vaddrs.resize(object.symbols.size(), 0);
+    for (std::size_t sym_idx = 0; sym_idx < object.symbols.size(); ++sym_idx) {
+      const auto& symbol = object.symbols[sym_idx];
+      const auto section_index = static_cast<std::size_t>(symbol.shndx);
+      if (symbol.shndx == 0 || section_index >= object.sections.size()) continue;
+      const auto mapping = sec_mapping.find({obj_idx, section_index});
+      if (mapping == sec_mapping.end() || mapping->second.first >= section_vaddrs.size()) continue;
+      symbol_vaddrs[sym_idx] =
+          section_vaddrs[mapping->second.first] + mapping->second.second + symbol.value;
+    }
+  }
+  return local_sym_vaddrs;
+}
+
+GlobalSymMap build_global_symbol_map(
+    const std::vector<LoadedInputObject>& loaded_objects,
+    const std::unordered_map<std::string, std::uint64_t>& symbol_addresses) {
+  GlobalSymMap global_syms;
+  for (const auto& loaded_object : loaded_objects) {
+    for (const auto& symbol : loaded_object.object.symbols) {
+      if (symbol.name.empty() || symbol.is_undefined() ||
+          (!symbol.is_global() && !symbol.is_weak())) {
+        continue;
+      }
+      const auto address = symbol_addresses.find(symbol.name);
+      if (address == symbol_addresses.end()) continue;
+      global_syms.emplace(symbol.name, GlobalSym{
+                                           .value = address->second,
+                                           .size = symbol.size,
+                                           .binding = symbol.binding(),
+                                           .sym_type = symbol.sym_type(),
+                                           .visibility = symbol.visibility(),
+                                           .defined = true,
+                                       });
+    }
+  }
+  return global_syms;
 }
 
 std::uint16_t read_u16_le(const std::vector<std::uint8_t>& data, std::size_t off) {
@@ -588,7 +701,7 @@ bool apply_one_reloc(std::uint32_t rela_type,
       break;
     }
     case R_RISCV_CALL_PLT: {
-      if (ctx.gd_tls_call_nop.contains(p)) {
+      if (ctx.gd_tls_call_nop.find(p) != ctx.gd_tls_call_nop.end()) {
         if (off + 8 <= data.size()) {
           write_u32_le(data, off, 0x00450533u);
           write_u32_le(data, off + 4, 0x00000013u);
@@ -837,6 +950,95 @@ bool apply_one_reloc(std::uint32_t rela_type,
 }
 
 }  // namespace
+
+bool apply_first_static_text_relocations(
+    const std::vector<LoadedInputObject>& loaded_objects,
+    const std::unordered_map<std::string, std::uint64_t>& symbol_addresses,
+    const std::unordered_map<std::string, std::uint64_t>& text_offsets,
+    std::uint64_t text_virtual_address,
+    std::vector<std::uint8_t>* merged_text,
+    std::string* error) {
+  if (error != nullptr) error->clear();
+  if (merged_text == nullptr) {
+    if (error != nullptr) *error = "missing merged text buffer";
+    return false;
+  }
+
+  std::vector<std::pair<std::string, ElfObject>> input_objs;
+  input_objs.reserve(loaded_objects.size());
+  SectionMap sec_mapping;
+
+  for (std::size_t obj_idx = 0; obj_idx < loaded_objects.size(); ++obj_idx) {
+    const auto& loaded_object = loaded_objects[obj_idx];
+    const auto text_index = find_text_section_index(loaded_object.object);
+    if (!text_index.has_value()) {
+      if (error != nullptr) *error = loaded_object.path + ": missing .text section";
+      return false;
+    }
+    const auto text_offset = text_offsets.find(loaded_object.path);
+    if (text_offset == text_offsets.end()) {
+      if (error != nullptr) *error = loaded_object.path + ": missing merged .text offset";
+      return false;
+    }
+
+    for (std::size_t section_index = 0; section_index < loaded_object.object.sections.size();
+         ++section_index) {
+      if (section_index == *text_index) continue;
+      if (!loaded_object.object.relocations[section_index].empty()) {
+        if (error != nullptr) {
+          *error = loaded_object.path +
+                   ": first static executable currently supports relocations only in RV64 .text";
+        }
+        return false;
+      }
+    }
+
+    sec_mapping.emplace(std::make_pair(obj_idx, *text_index),
+                        std::make_pair(static_cast<std::size_t>(0), text_offset->second));
+    input_objs.emplace_back(loaded_object.path, convert_object(loaded_object.object));
+  }
+
+  std::vector<MergedSection> merged_sections;
+  merged_sections.push_back(MergedSection{
+      .name = ".text",
+      .sh_type = 1,
+      .sh_flags = 0x6,
+      .data = *merged_text,
+      .vaddr = text_virtual_address,
+  });
+
+  const SectionVaddrs section_vaddrs = {text_virtual_address};
+  const LocalSymVaddrs local_sym_vaddrs =
+      build_local_sym_vaddrs(input_objs, sec_mapping, section_vaddrs);
+  const GlobalSymMap global_syms = build_global_symbol_map(loaded_objects, symbol_addresses);
+  const std::vector<std::string> got_symbols;
+  const GDRelaxMap gd_tls_relax_info;
+  const std::unordered_set<std::uint64_t> gd_tls_call_nop;
+  const GotOffsetMap got_sym_offsets;
+  const PltAddrMap plt_sym_addrs;
+  const RelocContext ctx{
+      .sec_mapping = sec_mapping,
+      .section_vaddrs = section_vaddrs,
+      .local_sym_vaddrs = local_sym_vaddrs,
+      .global_syms = global_syms,
+      .got_vaddr = 0,
+      .got_symbols = got_symbols,
+      .got_plt_vaddr = 0,
+      .tls_vaddr = 0,
+      .gd_tls_relax_info = gd_tls_relax_info,
+      .gd_tls_call_nop = gd_tls_call_nop,
+      .collect_relatives = false,
+      .got_sym_offsets = got_sym_offsets,
+      .plt_sym_addrs = plt_sym_addrs,
+  };
+
+  if (!apply_relocations(input_objs, &merged_sections, ctx, error).has_value()) {
+    return false;
+  }
+
+  *merged_text = std::move(merged_sections.front().data);
+  return true;
+}
 
 [[nodiscard]] std::optional<RelocResult> apply_relocations(
     const std::vector<std::pair<std::string, ElfObject>>& input_objs,

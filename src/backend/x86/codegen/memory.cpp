@@ -1,6 +1,8 @@
 #include "x86_codegen.hpp"
 #include "../../regalloc.hpp"
 
+#include <stdexcept>
+
 namespace c4c::backend::x86 {
 
 namespace {
@@ -9,9 +11,10 @@ const char* segment_prefix(AddressSpace seg) {
   switch (seg) {
     case AddressSpace::SegGs: return "%gs:";
     case AddressSpace::SegFs: return "%fs:";
-    case AddressSpace::Default: return "";
+    case AddressSpace::Default:
+      throw std::logic_error("segment-prefixed op called with default address space");
   }
-  return "";
+  throw std::logic_error("unreachable x86 address space");
 }
 
 void emit_store_default(X86Codegen& codegen, const Operand& val, const Value& ptr, IrType ty) {
@@ -82,12 +85,39 @@ void X86Codegen::emit_store_with_const_offset_impl(const Operand& val,
   }
 
   this->operand_to_rax(val);
-  if (const auto slot = this->state.get_slot(base.raw)) {
-    this->emit_slot_addr_to_secondary_impl(*slot, this->state.is_alloca(base.raw), base.raw);
-    if (offset != 0) {
-      this->emit_add_offset_to_addr_reg_impl(offset);
+  if (const auto addr = this->state.resolve_slot_addr(base.raw)) {
+    const char* store_instr = this->mov_store_for_type(ty);
+    switch (addr->kind) {
+      case SlotAddr::Kind::OverAligned:
+        this->emit_save_acc_impl();
+        this->emit_alloca_aligned_addr_impl(addr->slot, addr->value_id);
+        this->emit_add_offset_to_addr_reg_impl(offset);
+        this->emit_typed_store_indirect_impl(store_instr, ty);
+        break;
+      case SlotAddr::Kind::Direct:
+        this->emit_typed_store_to_slot_impl(store_instr, ty, StackSlot{addr->slot.raw + offset});
+        break;
+      case SlotAddr::Kind::Indirect:
+        if (const auto reg = this->state.assigned_reg_index(base.raw)) {
+          const char* store_reg = this->reg_for_type("rax", ty);
+          const char* reg_name = phys_reg_name(c4c::backend::PhysReg{*reg});
+          if (offset != 0) {
+            this->state.emit(std::string("    ") + store_instr + " %" + store_reg + ", " +
+                             std::to_string(offset) + "(%" + reg_name + ")");
+          } else {
+            this->state.emit(std::string("    ") + store_instr + " %" + store_reg + ", (%" +
+                             reg_name + ")");
+          }
+        } else {
+          this->emit_save_acc_impl();
+          this->emit_load_ptr_from_slot_impl(addr->slot, base.raw);
+          if (offset != 0) {
+            this->emit_add_offset_to_addr_reg_impl(offset);
+          }
+          this->emit_typed_store_indirect_impl(store_instr, ty);
+        }
+        break;
     }
-    this->emit_typed_store_indirect_impl(this->mov_store_for_type(ty), ty);
   }
 }
 
@@ -103,12 +133,36 @@ void X86Codegen::emit_load_with_const_offset_impl(const Value& dest,
     return;
   }
 
-  if (const auto slot = this->state.get_slot(base.raw)) {
-    this->emit_slot_addr_to_secondary_impl(*slot, this->state.is_alloca(base.raw), base.raw);
-    if (offset != 0) {
-      this->emit_add_offset_to_addr_reg_impl(offset);
+  if (const auto addr = this->state.resolve_slot_addr(base.raw)) {
+    const char* load_instr = this->mov_load_for_type(ty);
+    switch (addr->kind) {
+      case SlotAddr::Kind::OverAligned:
+        this->emit_alloca_aligned_addr_impl(addr->slot, addr->value_id);
+        this->emit_add_offset_to_addr_reg_impl(offset);
+        this->emit_typed_load_indirect_impl(load_instr);
+        break;
+      case SlotAddr::Kind::Direct:
+        this->emit_typed_load_from_slot_impl(load_instr, StackSlot{addr->slot.raw + offset});
+        break;
+      case SlotAddr::Kind::Indirect:
+        if (const auto reg = this->state.assigned_reg_index(base.raw)) {
+          const char* reg_name = phys_reg_name(c4c::backend::PhysReg{*reg});
+          const char* dest_reg = std::string(load_instr) == "movl" ? "%eax" : "%rax";
+          if (offset != 0) {
+            this->state.emit(std::string("    ") + load_instr + " " + std::to_string(offset) +
+                             "(%" + reg_name + "), " + dest_reg);
+          } else {
+            this->state.emit(std::string("    ") + load_instr + " (%" + reg_name + "), " + dest_reg);
+          }
+        } else {
+          this->emit_load_ptr_from_slot_impl(addr->slot, base.raw);
+          if (offset != 0) {
+            this->emit_add_offset_to_addr_reg_impl(offset);
+          }
+          this->emit_typed_load_indirect_impl(load_instr);
+        }
+        break;
     }
-    this->emit_typed_load_indirect_impl(this->mov_load_for_type(ty));
     this->store_rax_to(dest);
   }
 }
@@ -169,10 +223,14 @@ void X86Codegen::emit_slot_addr_to_secondary_impl(StackSlot slot, bool is_alloca
   }
 }
 
-void X86Codegen::emit_add_secondary_to_acc_impl() { this->state.emit("    addq %rcx, %rax"); }
+void X86Codegen::emit_add_secondary_to_acc_impl() {
+  this->state.emit("    addq %rcx, %rax");
+  this->state.reg_cache.invalidate_acc();
+}
 
 void X86Codegen::emit_gep_direct_const_impl(StackSlot slot, std::int64_t offset) {
   this->state.out.emit_instr_rbp_reg("    leaq", slot.raw + offset, "rax");
+  this->state.reg_cache.invalidate_acc();
 }
 
 void X86Codegen::emit_gep_indirect_const_impl(StackSlot slot, std::int64_t offset, std::uint32_t val_id) {
@@ -184,29 +242,40 @@ void X86Codegen::emit_gep_indirect_const_impl(StackSlot slot, std::int64_t offse
   if (offset != 0) {
     this->state.out.emit_instr_mem_reg("    leaq", offset, "rax", "rax");
   }
+  this->state.reg_cache.invalidate_acc();
 }
 
 void X86Codegen::emit_gep_add_const_to_acc_impl(std::int64_t offset) {
   if (offset != 0) {
     this->state.out.emit_instr_imm_reg("    addq", offset, "rax");
   }
+  this->state.reg_cache.invalidate_acc();
 }
 
 void X86Codegen::emit_add_imm_to_acc_impl(std::int64_t imm) {
   this->state.out.emit_instr_imm_reg("    addq", imm, "rax");
+  this->state.reg_cache.invalidate_acc();
 }
 
 void X86Codegen::emit_round_up_acc_to_16_impl() {
   this->state.emit("    addq $15, %rax");
   this->state.emit("    andq $-16, %rax");
+  this->state.reg_cache.invalidate_all();
 }
 void X86Codegen::emit_sub_sp_by_acc_impl() { this->state.emit("    subq %rax, %rsp"); }
-void X86Codegen::emit_mov_sp_to_acc_impl() { this->state.emit("    movq %rsp, %rax"); }
-void X86Codegen::emit_mov_acc_to_sp_impl() { this->state.emit("    movq %rax, %rsp"); }
+void X86Codegen::emit_mov_sp_to_acc_impl() {
+  this->state.emit("    movq %rsp, %rax");
+  this->state.reg_cache.invalidate_all();
+}
+void X86Codegen::emit_mov_acc_to_sp_impl() {
+  this->state.emit("    movq %rax, %rsp");
+  this->state.reg_cache.invalidate_all();
+}
 
 void X86Codegen::emit_align_acc_impl(std::size_t align) {
   this->state.out.emit_instr_imm_reg("    addq", static_cast<std::int64_t>(align - 1), "rax");
   this->state.out.emit_instr_imm_reg("    andq", -static_cast<std::int64_t>(align), "rax");
+  this->state.reg_cache.invalidate_all();
 }
 
 void X86Codegen::emit_memcpy_load_dest_addr_impl(StackSlot slot, bool is_alloca, std::uint32_t val_id) {
@@ -241,6 +310,7 @@ void X86Codegen::emit_alloca_aligned_addr_to_acc_impl(StackSlot slot, std::uint3
   this->state.out.emit_instr_rbp_reg("    leaq", slot.raw, "rax");
   this->state.out.emit_instr_imm_reg("    addq", static_cast<std::int64_t>(align - 1), "rax");
   this->state.out.emit_instr_imm_reg("    andq", -static_cast<std::int64_t>(align), "rax");
+  this->state.reg_cache.invalidate_acc();
 }
 
 void X86Codegen::emit_acc_to_secondary_impl() { this->state.emit("    movq %rax, %rcx"); }
@@ -254,9 +324,8 @@ void X86Codegen::emit_memcpy_impl_impl(std::size_t size) {
 
 void X86Codegen::emit_seg_load_impl(const Value& dest, const Value& ptr, IrType ty, AddressSpace seg) {
   const char* prefix = segment_prefix(seg);
-  if (const auto slot = this->state.get_slot(ptr.raw)) {
-    this->emit_slot_addr_to_secondary_impl(*slot, this->state.is_alloca(ptr.raw), ptr.raw);
-  }
+  this->operand_to_rax(Operand{ptr.raw});
+  this->state.emit("    movq %rax, %rcx");
   this->state.emit(std::string("    ") + this->mov_load_for_type(ty) + " " + prefix + "(%rcx), " +
                    std::string("%") + this->reg_for_type("rax", ty));
   this->store_rax_to(dest);
@@ -273,9 +342,8 @@ void X86Codegen::emit_seg_store_impl(const Operand& val, const Value& ptr, IrTyp
   const char* prefix = segment_prefix(seg);
   this->operand_to_rax(val);
   this->state.emit("    movq %rax, %rdx");
-  if (const auto slot = this->state.get_slot(ptr.raw)) {
-    this->emit_slot_addr_to_secondary_impl(*slot, this->state.is_alloca(ptr.raw), ptr.raw);
-  }
+  this->operand_to_rax(Operand{ptr.raw});
+  this->state.emit("    movq %rax, %rcx");
   this->state.emit(std::string("    ") + this->mov_store_for_type(ty) + " %" +
                    this->reg_for_type("rdx", ty) + ", " + prefix + "(%rcx)");
 }

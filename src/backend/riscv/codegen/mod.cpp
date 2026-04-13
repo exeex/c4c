@@ -1,5 +1,6 @@
 // Translated from /workspaces/c4c/ref/claudes-c-compiler/src/backend/riscv/codegen/mod.rs
-// Structural mirror of the ref Rust source; includes are deferred for now.
+// Structural mirror of the ref Rust source. The first shared header seam is
+// now live so the initial owner cluster can compile against common declarations.
 // pub(crate) mod emit;
 // pub(crate) mod peephole;
 // mod asm_emitter;
@@ -18,6 +19,8 @@
 // mod returns;
 // mod i128_ops;
 // mod float_ops;
+
+#include "riscv_codegen.hpp"
 
 namespace c4c::backend::riscv::codegen {
 

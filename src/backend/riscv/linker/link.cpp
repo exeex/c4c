@@ -1,270 +1,356 @@
 // Translated from ref/claudes-c-compiler/src/backend/riscv/linker/link.rs
-// Structural mirror of the orchestration layer; concrete helpers are provided
-// where they are self-contained in this translation unit.
+// The first activation packet exposes only the minimal static-exec contract
+// needed by the current return-add object lane.
+
+#include "mod.hpp"
 
 #include <algorithm>
-#include <cstddef>
-#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <optional>
 #include <string>
-#include <string_view>
-#include <utility>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace c4c::backend::riscv::linker {
 namespace {
 
-bool contains(const std::vector<std::string>& values, const std::string& value) {
-  return std::find(values.begin(), values.end(), value) != values.end();
+constexpr std::uint64_t kFirstStaticTextFileOffset = 64 + 56;
+
+std::vector<std::string> sorted_symbols(std::vector<std::string> symbols) {
+  std::sort(symbols.begin(), symbols.end());
+  symbols.erase(std::unique(symbols.begin(), symbols.end()), symbols.end());
+  return symbols;
 }
 
-void append_unique(std::vector<std::string>* values, const std::string& value) {
-  if (values == nullptr) return;
-  if (!contains(*values, value)) values->push_back(value);
-}
-
-std::vector<std::string> to_strings(const std::vector<const char*>& values) {
-  std::vector<std::string> out;
-  out.reserve(values.size());
-  for (const char* value : values) {
-    out.emplace_back(value != nullptr ? value : "");
-  }
-  return out;
-}
-
-bool has_suffix(std::string_view value, std::string_view suffix) {
-  return value.size() >= suffix.size() &&
-         value.substr(value.size() - suffix.size()) == suffix;
-}
-
-std::vector<std::string> split_csv(std::string_view text) {
-  std::vector<std::string> parts;
-  std::size_t start = 0;
-  while (start <= text.size()) {
-    const std::size_t comma = text.find(',', start);
-    const std::size_t count =
-        comma == std::string_view::npos ? std::string_view::npos : comma - start;
-    parts.emplace_back(text.substr(start, count));
-    if (comma == std::string_view::npos) break;
-    start = comma + 1;
-  }
-  return parts;
-}
-
-std::optional<std::string> resolve_library_candidate(
-    const std::string& lib_name,
-    const std::vector<std::string>& lib_paths,
-    bool is_static) {
-  const std::vector<std::string> suffixes = is_static ? std::vector<std::string>{".a"}
-                                                      : std::vector<std::string>{".a", ".so"};
-  for (const auto& dir : lib_paths) {
-    for (const auto& suffix : suffixes) {
-      const std::filesystem::path candidate =
-          std::filesystem::path(dir) / ("lib" + lib_name + suffix);
-      if (std::filesystem::exists(candidate)) {
-        return candidate.string();
-      }
-    }
+std::optional<std::size_t> find_text_section_index(const linker_common::Elf64Object& object) {
+  for (std::size_t index = 0; index < object.sections.size(); ++index) {
+    if (object.sections[index].name == ".text") return index;
   }
   return std::nullopt;
 }
 
-struct ParsedLinkArgs {
-  bool is_static = false;
-  bool use_runpath = false;
-  bool whole_archive = false;
-  std::optional<std::string> soname;
-  std::vector<std::string> extra_lib_paths;
-  std::vector<std::string> libs_to_load;
-  std::vector<std::string> extra_object_files;
-  std::vector<std::string> rpath_entries;
-  std::vector<std::pair<std::string, std::string>> defsym_defs;
-};
-
-ParsedLinkArgs parse_linker_args(const std::vector<std::string>& user_args) {
-  ParsedLinkArgs parsed;
-  bool pending_rpath = false;
-  bool pending_soname = false;
-
-  for (std::size_t i = 0; i < user_args.size(); ++i) {
-    const std::string& arg = user_args[i];
-
-    if (arg == "-static") {
-      parsed.is_static = true;
-      continue;
-    }
-
-    if (arg == "-shared" || arg == "-nostdlib" || arg == "-o") {
-      if (arg == "-o" && i + 1 < user_args.size()) ++i;
-      continue;
-    }
-
-    if (arg.rfind("-L", 0) == 0 && arg.size() > 2) {
-      parsed.extra_lib_paths.push_back(arg.substr(2));
-      continue;
-    }
-
-    if (arg.rfind("-l", 0) == 0 && arg.size() > 2) {
-      parsed.libs_to_load.push_back(arg.substr(2));
-      continue;
-    }
-
-    if (arg.rfind("-defsym=", 0) == 0) {
-      const std::string payload = arg.substr(8);
-      const std::size_t eq = payload.find('=');
-      if (eq != std::string::npos) {
-        parsed.defsym_defs.emplace_back(payload.substr(0, eq), payload.substr(eq + 1));
-      }
-      continue;
-    }
-
-    if (arg.rfind("-Wl,", 0) == 0) {
-      const std::vector<std::string> parts = split_csv(arg.substr(4));
-      if ((pending_rpath || pending_soname) && !parts.empty()) {
-        if (pending_rpath) {
-          parsed.rpath_entries.push_back(parts[0]);
-          pending_rpath = false;
-        } else if (pending_soname) {
-          parsed.soname = parts[0];
-          pending_soname = false;
-        }
-        continue;
-      }
-
-      for (std::size_t j = 0; j < parts.size(); ++j) {
-        const std::string& part = parts[j];
-        if (part.rfind("-soname=", 0) == 0) {
-          parsed.soname = part.substr(8);
-        } else if (part == "-soname" && j + 1 < parts.size()) {
-          parsed.soname = parts[++j];
-        } else if (part == "-soname") {
-          pending_soname = true;
-        } else if (part.rfind("-rpath=", 0) == 0) {
-          parsed.rpath_entries.push_back(part.substr(7));
-        } else if (part == "-rpath" && j + 1 < parts.size()) {
-          parsed.rpath_entries.push_back(parts[++j]);
-        } else if (part == "-rpath") {
-          pending_rpath = true;
-        } else if (part == "--enable-new-dtags") {
-          parsed.use_runpath = true;
-        } else if (part == "--disable-new-dtags") {
-          parsed.use_runpath = false;
-        } else if (part == "--whole-archive") {
-          parsed.whole_archive = true;
-        } else if (part == "--no-whole-archive") {
-          parsed.whole_archive = false;
-        } else if (part.rfind("-L", 0) == 0) {
-          parsed.extra_lib_paths.push_back(part.substr(2));
-        } else if (part.rfind("-l", 0) == 0) {
-          parsed.libs_to_load.push_back(part.substr(2));
-        } else if (part.rfind("--defsym=", 0) == 0) {
-          const std::string payload = part.substr(9);
-          const std::size_t eq = payload.find('=');
-          if (eq != std::string::npos) {
-            parsed.defsym_defs.emplace_back(payload.substr(0, eq), payload.substr(eq + 1));
-          }
-        }
-      }
-      continue;
-    }
-
-    if (!arg.empty() && arg[0] != '-' && std::filesystem::exists(arg)) {
-      parsed.extra_object_files.push_back(arg);
-    }
+std::vector<std::uint8_t> read_file_bytes(const std::string& path, std::string* error) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    if (error != nullptr) *error = "failed to open object file: " + path;
+    return {};
   }
-
-  return parsed;
+  return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(input),
+                                   std::istreambuf_iterator<char>());
 }
 
-struct BuiltinLinkInputs {
-  ParsedLinkArgs parsed_args;
-  std::vector<std::string> all_inputs;
-  std::vector<std::string> lib_search_paths;
-  std::vector<std::string> needed_libs;
-};
-
-BuiltinLinkInputs build_builtin_link_inputs(
-    const std::vector<const char*>& object_files,
-    const std::vector<std::string>& user_args,
-    const std::vector<const char*>& lib_paths,
-    const std::vector<const char*>& needed_libs,
-    const std::vector<const char*>& crt_objects_before,
-    const std::vector<const char*>& crt_objects_after) {
-  BuiltinLinkInputs inputs;
-  inputs.parsed_args = parse_linker_args(user_args);
-
-  inputs.all_inputs.reserve(crt_objects_before.size() + object_files.size() +
-                            inputs.parsed_args.extra_object_files.size() +
-                            crt_objects_after.size());
-  for (const char* crt : crt_objects_before) {
-    if (crt != nullptr) inputs.all_inputs.emplace_back(crt);
+bool write_file_bytes(const std::string& path,
+                      const std::vector<std::uint8_t>& bytes,
+                      std::string* error) {
+  std::ofstream output(path, std::ios::binary | std::ios::trunc);
+  if (!output) {
+    if (error != nullptr) *error = "failed to open output file: " + path;
+    return false;
   }
-  for (const char* obj : object_files) {
-    if (obj != nullptr) inputs.all_inputs.emplace_back(obj);
+  output.write(reinterpret_cast<const char*>(bytes.data()),
+               static_cast<std::streamsize>(bytes.size()));
+  if (!output.good()) {
+    if (error != nullptr) *error = "failed to write output file: " + path;
+    return false;
   }
-  inputs.all_inputs.insert(inputs.all_inputs.end(), inputs.parsed_args.extra_object_files.begin(),
-                           inputs.parsed_args.extra_object_files.end());
-  for (const char* crt : crt_objects_after) {
-    if (crt != nullptr) inputs.all_inputs.emplace_back(crt);
-  }
-
-  inputs.lib_search_paths = to_strings(lib_paths);
-  for (const std::string& path : inputs.parsed_args.extra_lib_paths) {
-    append_unique(&inputs.lib_search_paths, path);
-  }
-
-  inputs.needed_libs = to_strings(needed_libs);
-  inputs.needed_libs.insert(inputs.needed_libs.end(), inputs.parsed_args.libs_to_load.begin(),
-                            inputs.parsed_args.libs_to_load.end());
-  return inputs;
+  return true;
 }
 
-struct SharedLinkInputs {
-  ParsedLinkArgs parsed_args;
-  std::vector<std::string> object_inputs;
-  std::vector<std::string> lib_search_paths;
-};
-
-SharedLinkInputs build_shared_link_inputs(const std::vector<const char*>& object_files,
-                                          const std::vector<std::string>& user_args,
-                                          const std::vector<const char*>& lib_paths) {
-  SharedLinkInputs inputs;
-  inputs.parsed_args = parse_linker_args(user_args);
-  inputs.object_inputs = to_strings(object_files);
-  inputs.lib_search_paths = to_strings(lib_paths);
-  for (const std::string& path : inputs.parsed_args.extra_lib_paths) {
-    append_unique(&inputs.lib_search_paths, path);
+std::vector<std::string> collect_object_paths(const std::vector<const char*>& paths) {
+  std::vector<std::string> out;
+  out.reserve(paths.size());
+  for (const char* path : paths) {
+    if (path != nullptr && *path != '\0') out.emplace_back(path);
   }
-  return inputs;
+  return out;
+}
+
+bool any_named_inputs(const std::vector<const char*>& paths) {
+  return std::any_of(paths.begin(), paths.end(), [](const char* path) {
+    return path != nullptr && *path != '\0';
+  });
+}
+
+bool is_supported_builtin_arg(const std::string& arg) {
+  return arg == "-static" || arg == "-nostdlib";
 }
 
 }  // namespace
 
-// The Rust file continues into phases that depend on translated input/section/
-// symbol/emit modules. Those C++ surfaces are not yet present in this subtree,
-// so the orchestration entry points are preserved here as translation notes.
-//
-// pub fn link_builtin(...) -> Result<(), String> {
-//   Phase 0: parse linker args and collect all inputs
-//   Phase 1: load inputs, discover shared libs, resolve archives
-//   Phase 2: merge sections
-//   Phase 3: build global symbol table and apply defsym aliases
-//   Phase 4+: emit executable
-// }
-//
-// pub fn link_shared(...) -> Result<(), String> {
-//   Phase 0: parse linker args, object files, and shared-lib specific flags
-//   Phase 1: load shared-lib inputs and dependencies
-//   Phase 2: merge sections
-//   Phase 3: build global symbol table and collect GOT entries
-//   Phase 4+: emit shared library
-// }
+std::optional<std::vector<LoadedInputObject>> load_first_static_input_objects(
+    const std::vector<std::string>& object_paths,
+    std::string* error) {
+  if (error != nullptr) error->clear();
+  if (object_paths.empty()) {
+    if (error != nullptr) *error = "first static executable requires at least one RV64 object file";
+    return std::nullopt;
+  }
 
-[[maybe_unused]] static std::optional<std::string> riscv_linker_resolve_library_for_plan(
-    const std::string& lib_name,
-    const std::vector<std::string>& lib_paths,
-    bool is_static) {
-  return resolve_library_candidate(lib_name, lib_paths, is_static);
+  std::vector<LoadedInputObject> loaded_objects;
+  loaded_objects.reserve(object_paths.size());
+
+  for (const auto& object_path : object_paths) {
+    std::string read_error;
+    const auto bytes = read_file_bytes(object_path, &read_error);
+    if (!read_error.empty()) {
+      if (error != nullptr) *error = read_error;
+      return std::nullopt;
+    }
+    if (elf::is_archive_file(bytes)) {
+      if (error != nullptr) {
+        *error = object_path +
+                 ": first RV64 static executable contract only accepts relocatable object inputs";
+      }
+      return std::nullopt;
+    }
+
+    std::string parse_error;
+    auto parsed = linker_common::parse_elf64_object(bytes, object_path, kEmRiscv, &parse_error);
+    if (!parsed.has_value()) {
+      if (error != nullptr) *error = parse_error;
+      return std::nullopt;
+    }
+    loaded_objects.push_back(LoadedInputObject{
+        .path = object_path,
+        .object = std::move(*parsed),
+    });
+  }
+
+  return loaded_objects;
+}
+
+std::optional<FirstStaticLinkSlice> inspect_first_static_link_slice(
+    const std::vector<std::string>& object_paths,
+    std::string* error) {
+  if (error != nullptr) error->clear();
+  const auto loaded_objects = load_first_static_input_objects(object_paths, error);
+  if (!loaded_objects.has_value()) return std::nullopt;
+
+  std::unordered_map<std::string, std::string> symbol_provider;
+  FirstStaticLinkSlice slice;
+  slice.case_name = "riscv64-static-reloc-free-single-object";
+  slice.objects.reserve(loaded_objects->size());
+
+  for (const auto& loaded_object : *loaded_objects) {
+    InputObjectSummary summary;
+    summary.path = loaded_object.path;
+
+    for (const auto& symbol : loaded_object.object.symbols) {
+      if (symbol.name.empty() || symbol.sym_type() == elf::STT_SECTION) continue;
+      if (symbol.is_undefined()) {
+        if (!symbol.is_weak()) summary.undefined_symbols.push_back(symbol.name);
+        continue;
+      }
+      if (symbol.is_global() || symbol.is_weak()) {
+        summary.defined_symbols.push_back(symbol.name);
+        symbol_provider.emplace(symbol.name, loaded_object.path);
+      }
+    }
+
+    summary.defined_symbols = sorted_symbols(std::move(summary.defined_symbols));
+    summary.undefined_symbols = sorted_symbols(std::move(summary.undefined_symbols));
+    slice.objects.push_back(std::move(summary));
+  }
+
+  for (const auto& loaded_object : *loaded_objects) {
+    const auto& object = loaded_object.object;
+    for (std::size_t section_index = 0; section_index < object.sections.size(); ++section_index) {
+      const auto& section = object.sections[section_index];
+      if ((section.flags & elf::SHF_ALLOC) != 0 && !section.name.empty()) {
+        slice.merged_output_sections.push_back(section.name);
+      }
+
+      for (const auto& relocation : object.relocations[section_index]) {
+        if (relocation.sym_idx >= object.symbols.size()) {
+          if (error != nullptr) {
+            *error = object.source_name + ": relocation symbol index out of bounds";
+          }
+          return std::nullopt;
+        }
+
+        const auto& symbol = object.symbols[relocation.sym_idx];
+        InputRelocationSummary relocation_summary;
+        relocation_summary.object_path = loaded_object.path;
+        relocation_summary.section_name = section.name;
+        relocation_summary.symbol_name = symbol.name;
+        relocation_summary.relocation_type = relocation.rela_type;
+        relocation_summary.offset = relocation.offset;
+        relocation_summary.addend = relocation.addend;
+
+        if (!symbol.name.empty()) {
+          const auto provider = symbol_provider.find(symbol.name);
+          if (provider != symbol_provider.end()) {
+            relocation_summary.resolved = true;
+            relocation_summary.resolved_object_path = provider->second;
+          }
+        } else if (!symbol.is_undefined()) {
+          relocation_summary.resolved = true;
+          relocation_summary.resolved_object_path = loaded_object.path;
+        }
+
+        slice.relocations.push_back(std::move(relocation_summary));
+      }
+    }
+  }
+
+  slice.merged_output_sections = sorted_symbols(std::move(slice.merged_output_sections));
+
+  std::vector<std::string> unresolved_symbols;
+  for (const auto& object : slice.objects) {
+    for (const auto& symbol_name : object.undefined_symbols) {
+      if (symbol_provider.find(symbol_name) == symbol_provider.end()) {
+        unresolved_symbols.push_back(symbol_name);
+      }
+    }
+  }
+  slice.unresolved_symbols = sorted_symbols(std::move(unresolved_symbols));
+  return slice;
+}
+
+std::optional<FirstStaticExecutable> link_first_static_executable(
+    const std::vector<std::string>& object_paths,
+    std::string* error) {
+  if (error != nullptr) error->clear();
+  const auto loaded_objects = load_first_static_input_objects(object_paths, error);
+  if (!loaded_objects.has_value()) return std::nullopt;
+
+  std::unordered_map<std::string, std::uint64_t> text_offsets;
+  std::unordered_map<std::string, std::uint64_t> symbol_addresses;
+  std::unordered_set<std::string> unresolved_symbols;
+  std::vector<std::uint8_t> merged_text;
+
+  for (const auto& loaded_object : *loaded_objects) {
+    const auto text_index = find_text_section_index(loaded_object.object);
+    if (!text_index.has_value()) {
+      if (error != nullptr) *error = loaded_object.path + ": missing .text section";
+      return std::nullopt;
+    }
+
+    text_offsets.emplace(loaded_object.path, merged_text.size());
+    const auto& text_bytes = loaded_object.object.section_data[*text_index];
+    merged_text.insert(merged_text.end(), text_bytes.begin(), text_bytes.end());
+
+    for (const auto& symbol : loaded_object.object.symbols) {
+      if (symbol.name.empty() || symbol.is_undefined() || symbol.sym_type() == elf::STT_SECTION ||
+          symbol.shndx != *text_index) {
+        continue;
+      }
+      if (symbol.is_global() || symbol.is_weak()) {
+        symbol_addresses.emplace(symbol.name, symbol.value + text_offsets[loaded_object.path]);
+      }
+    }
+
+    for (const auto& symbol : loaded_object.object.symbols) {
+      if (symbol.name.empty() || !symbol.is_undefined() || symbol.is_weak()) continue;
+      unresolved_symbols.insert(symbol.name);
+    }
+  }
+
+  for (auto it = unresolved_symbols.begin(); it != unresolved_symbols.end();) {
+    if (symbol_addresses.find(*it) != symbol_addresses.end()) {
+      it = unresolved_symbols.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  if (!unresolved_symbols.empty()) {
+    if (error != nullptr) {
+      *error = "first static executable still has unresolved symbols: " + *unresolved_symbols.begin();
+    }
+    return std::nullopt;
+  }
+
+  const std::uint64_t text_virtual_address = kFirstStaticBaseAddress + kFirstStaticTextFileOffset;
+  for (auto& [name, address] : symbol_addresses) {
+    address += text_virtual_address;
+  }
+
+  if (!apply_first_static_text_relocations(*loaded_objects, symbol_addresses, text_offsets,
+                                           text_virtual_address, &merged_text, error)) {
+    return std::nullopt;
+  }
+
+  const auto entry_it = symbol_addresses.find("main");
+  if (entry_it == symbol_addresses.end()) {
+    if (error != nullptr) *error = "first static executable requires a global main symbol";
+    return std::nullopt;
+  }
+
+  std::uint64_t emitted_text_file_offset = 0;
+  std::uint64_t emitted_text_virtual_address = 0;
+  const auto image = emit_first_static_executable_image(
+      merged_text, kFirstStaticBaseAddress, entry_it->second, &emitted_text_file_offset,
+      &emitted_text_virtual_address, error);
+  if (!image.has_value()) return std::nullopt;
+
+  return FirstStaticExecutable{
+      .image = *image,
+      .base_address = kFirstStaticBaseAddress,
+      .entry_address = entry_it->second,
+      .text_file_offset = emitted_text_file_offset,
+      .text_virtual_address = emitted_text_virtual_address,
+      .text_size = merged_text.size(),
+      .symbol_addresses = std::move(symbol_addresses),
+  };
+}
+
+bool link_builtin(const std::vector<const char*>& object_files,
+                  const std::string& output_path,
+                  const std::vector<std::string>& user_args,
+                  const std::vector<const char*>& lib_paths,
+                  const std::vector<const char*>& needed_libs,
+                  const std::vector<const char*>& crt_objects_before,
+                  const std::vector<const char*>& crt_objects_after,
+                  std::string* error) {
+  if (error != nullptr) error->clear();
+  if (output_path.empty()) {
+    if (error != nullptr) *error = "RV64 link_builtin requires a non-empty output path";
+    return false;
+  }
+  if (any_named_inputs(lib_paths) || any_named_inputs(needed_libs) ||
+      any_named_inputs(crt_objects_before) || any_named_inputs(crt_objects_after)) {
+    if (error != nullptr) {
+      *error = "RV64 first static executable contract does not yet support libraries or CRT inputs";
+    }
+    return false;
+  }
+  for (std::size_t i = 0; i < user_args.size(); ++i) {
+    if (user_args[i] == "-o" && i + 1 < user_args.size()) {
+      ++i;
+      continue;
+    }
+    if (!is_supported_builtin_arg(user_args[i])) {
+      if (error != nullptr) {
+        *error = "RV64 first static executable contract does not yet support linker arg: " +
+                 user_args[i];
+      }
+      return false;
+    }
+  }
+
+  const auto linked = link_first_static_executable(collect_object_paths(object_files), error);
+  if (!linked.has_value()) return false;
+  return write_file_bytes(output_path, linked->image, error);
+}
+
+bool link_shared(const std::vector<const char*>& object_files,
+                 const std::string& output_path,
+                 const std::vector<std::string>& user_args,
+                 const std::vector<const char*>& lib_paths,
+                 const std::vector<const char*>& needed_libs,
+                 std::string* error) {
+  (void)object_files;
+  (void)output_path;
+  (void)user_args;
+  (void)lib_paths;
+  (void)needed_libs;
+  if (error != nullptr) {
+    *error =
+        "RISC-V shared-library linking is not yet activated in the first static-executable contract surface";
+  }
+  return false;
 }
 
 }  // namespace c4c::backend::riscv::linker
