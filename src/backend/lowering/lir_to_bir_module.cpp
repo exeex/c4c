@@ -39,6 +39,7 @@ struct GlobalInfo {
 using GlobalTypes = std::unordered_map<std::string, GlobalInfo>;
 
 using GlobalPointerMap = std::unordered_map<std::string, GlobalAddress>;
+using GlobalObjectPointerMap = std::unordered_map<std::string, GlobalAddress>;
 using GlobalAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
 using LocalAddressSlots = std::unordered_map<std::string, GlobalAddress>;
 
@@ -1266,6 +1267,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
                                        LocalArraySlotMap& local_array_slots,
                                        LocalAddressSlots& local_address_slots,
                                        GlobalPointerMap& global_pointer_slots,
+                                       GlobalObjectPointerMap& global_object_pointer_slots,
                                        GlobalAddressIntMap& global_address_ints,
                                        const GlobalTypes& global_types,
                                        bir::Function* lowered_function,
@@ -1684,12 +1686,45 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       }
       if (*value_type == bir::TypeKind::Ptr && global_it->second.known_global_address.has_value()) {
         global_pointer_slots[load->result.str()] = *global_it->second.known_global_address;
+        if (!global_it->second.initializer_symbol_name.empty() &&
+            global_it->second.initializer_offset_type == bir::TypeKind::Void &&
+            global_it->second.initializer_byte_offset == 0) {
+          const auto pointee_it = global_types.find(global_it->second.initializer_symbol_name);
+          if (pointee_it != global_types.end() && pointee_it->second.supports_direct_value &&
+              pointee_it->second.value_type == bir::TypeKind::Ptr) {
+            global_object_pointer_slots[load->result.str()] = GlobalAddress{
+                .global_name = global_it->second.initializer_symbol_name,
+                .value_type = bir::TypeKind::Ptr,
+                .byte_offset = 0,
+            };
+          }
+        }
       }
       lowered_insts->push_back(bir::LoadGlobalInst{
           .result = bir::Value::named(*value_type, load->result.str()),
           .global_name = global_name,
       });
       return true;
+    }
+
+    if (*value_type == bir::TypeKind::Ptr) {
+      if (const auto global_object_it = global_object_pointer_slots.find(load->ptr.str());
+          global_object_it != global_object_pointer_slots.end()) {
+        const auto global_it = global_types.find(global_object_it->second.global_name);
+        if (global_it == global_types.end() || !global_it->second.supports_direct_value ||
+            global_it->second.value_type != bir::TypeKind::Ptr) {
+          return false;
+        }
+        if (global_it->second.known_global_address.has_value()) {
+          global_pointer_slots[load->result.str()] = *global_it->second.known_global_address;
+        }
+        lowered_insts->push_back(bir::LoadGlobalInst{
+            .result = bir::Value::named(*value_type, load->result.str()),
+            .global_name = global_object_it->second.global_name,
+            .byte_offset = global_object_it->second.byte_offset,
+        });
+        return true;
+      }
     }
 
     if (const auto global_ptr_it = global_pointer_slots.find(load->ptr.str());
@@ -2032,6 +2067,7 @@ std::optional<bir::Function> lower_branch_family_function(
   LocalArraySlotMap local_array_slots;
   LocalAddressSlots local_address_slots;
   GlobalPointerMap global_pointer_slots;
+  GlobalObjectPointerMap global_object_pointer_slots;
   GlobalAddressIntMap global_address_ints;
   std::vector<bir::Inst> hoisted_alloca_scratch;
 
@@ -2045,6 +2081,7 @@ std::optional<bir::Function> lower_branch_family_function(
             local_array_slots,
             local_address_slots,
             global_pointer_slots,
+            global_object_pointer_slots,
             global_address_ints,
             global_types,
             &lowered,
@@ -2070,6 +2107,7 @@ std::optional<bir::Function> lower_branch_family_function(
               local_array_slots,
               local_address_slots,
               global_pointer_slots,
+              global_object_pointer_slots,
               global_address_ints,
               global_types,
               &lowered,

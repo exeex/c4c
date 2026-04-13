@@ -29,6 +29,7 @@ Source Plan: plan.md
   `backend_codegen_route_riscv64_defined_pointer_global_array_offset_defaults_to_bir`
   `backend_codegen_route_riscv64_defined_pointer_global_pointer_defaults_to_bir`
   `backend_codegen_route_riscv64_defined_pointer_global_pointer_offset_defaults_to_bir`
+  `backend_codegen_route_riscv64_defined_pointer_global_pointer_pointer_defaults_to_bir`
   `backend_codegen_route_riscv64_defined_string_global_char_defaults_to_bir`
   `backend_codegen_route_riscv64_string_literal_char_defaults_to_bir`
   `backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir`
@@ -62,6 +63,10 @@ Source Plan: plan.md
 - pointer-valued globals initialized from other pointer-valued globals keep the
   resolved base-global address plus constant in-bounds offset instead of
   dropping to raw LLVM fallback
+- pointer-valued globals whose initializers take the address of another
+  pointer-valued global keep that intermediate global object address explicit,
+  then still recover the pointee's resolved addressed-global data after the
+  extra load instead of falling back to raw LLVM IR
 - pointer-valued globals initialized from pointer-global constant-offset
   expressions keep the resolved pointee stride instead of preserving the
   frontend's byte-gep artifact
@@ -71,6 +76,11 @@ Source Plan: plan.md
 ## Latest Packet Progress
 
 - completed:
+  preserved pointer-global object addresses as addressable globals instead of
+  collapsing them into their pointee address too early; a new riscv64 route
+  proof now covers `int **ggp = &gp; return (*ggp)[1];` through semantic BIR as
+  `bir.load_global ptr @ggp`, then `bir.load_global ptr @gp`, then
+  `bir.load_global i32 @arr, offset 8` rather than raw LLVM fallback
   corrected recursive pointer-global address resolution so constant-offset
   aliases scale through the resolved pointee stride instead of preserving the
   frontend's `getelementptr inbounds (i8, ptr @gp, i64 N)` byte-gep artifact;
@@ -83,7 +93,7 @@ Source Plan: plan.md
   global forms beyond recursively resolved constant in-bounds aliases and
   richer addressed global data shapes are still outside this finished slice
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_pointer_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_array_offset_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_pointer_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_pointer_offset_defaults_to_bir|backend_codegen_route_riscv64_defined_string_global_char_defaults_to_bir|backend_codegen_route_riscv64_string_literal_char_defaults_to_bir|backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir|backend_codegen_route_riscv64_return_eq_defaults_to_bir|backend_codegen_route_riscv64_return_ult_defaults_to_bir)$'`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_pointer_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_array_offset_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_pointer_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_pointer_offset_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_pointer_pointer_defaults_to_bir|backend_codegen_route_riscv64_defined_string_global_char_defaults_to_bir|backend_codegen_route_riscv64_string_literal_char_defaults_to_bir|backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir|backend_codegen_route_riscv64_return_eq_defaults_to_bir|backend_codegen_route_riscv64_return_ult_defaults_to_bir)$'`
 - proof log:
   `test_after.log`
 
