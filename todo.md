@@ -281,14 +281,25 @@ Source Plan: plan.md
   BIR text outside the owned riscv64 route surface, so this packet kept the
   acceptance proof on explicit riscv64 backend-route coverage rather than
   reopening the rejected host-runtime fallback seam
+- completed:
+  the first single-rewrite two-arg direct-call shapes now stay on that same
+  explicit riscv64 backend-route surface too; new route proofs cover
+  `two_arg_first_local_rewrite.c`, `two_arg_second_local_rewrite.c`,
+  `two_arg_both_local_first_rewrite.c`, and
+  `two_arg_both_local_second_rewrite.c` as native asm with the expected local
+  slot reload, in-place `addi ..., 0` rewrite, and final `a0/a1` call setup
+  before `call add_pair`
+  this keeps backlog item 5 on the honest semantic-BIR/prepared-BIR riscv64
+  path for the first rewrite variants without reopening raw-BIR asm output,
+  direct-route fallbacks, or testcase-shaped target shortcuts
 - blocked:
   none in owned files for this packet
 - remaining next:
   extend the same explicit riscv64 backend-route proof style to the first
-  single-rewrite two-arg direct-call variants before touching indirect calls
-  or ABI-shaped follow-ons
+  double-rewrite two-arg direct-call variant before touching indirect calls or
+  ABI-shaped follow-ons
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_call_helper_defaults_to_asm|backend_codegen_route_riscv64_local_arg_call_defaults_to_asm|backend_codegen_route_riscv64_two_arg_(helper|local_arg|second_local_arg|both_local_arg)_defaults_to_asm)$' > test_after.log 2>&1`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_call_helper_defaults_to_asm|backend_codegen_route_riscv64_local_arg_call_defaults_to_asm|backend_codegen_route_riscv64_two_arg_(helper|local_arg|second_local_arg|both_local_arg|first_local_rewrite|second_local_rewrite|both_local_first_rewrite|both_local_second_rewrite)_defaults_to_asm)$' > test_after.log 2>&1`
 - proof log:
   `test_after.log`
 
