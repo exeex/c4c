@@ -2235,6 +2235,24 @@ if(CLANG_EXECUTABLE)
       REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @ggp|bir.load_global ptr @gp|bir.load_global i32 @arr, offset 4|bir.ret i32"
       FORBIDDEN_SNIPPETS "define i32 @main()"
     )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_int_pointer_roundtrip_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_int_pointer_roundtrip_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_int_pointer_roundtrip_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gq|bir.store_global @gp, ptr |bir.load_global ptr @gp|bir.load_global i32 @arr, offset 4|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_int_pointer_pointer_roundtrip_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_int_pointer_pointer_roundtrip_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_int_pointer_pointer_roundtrip_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gq|bir.load_global ptr @ggp|bir.store_global @gp, ptr |bir.load_global ptr @gp|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
   endif()
 
   if(BACKEND_RUNTIME_TARGET_TRIPLE)
@@ -2420,6 +2438,10 @@ if(CLANG_EXECUTABLE)
         set(expect_exit_code 9)
         set(backend_output_kind "asm")
         set(backend_asm_source "stdout")
+      elseif(stem STREQUAL "global_int_pointer_roundtrip_store")
+        continue()
+      elseif(stem STREQUAL "global_int_pointer_pointer_roundtrip_store")
+        continue()
       elseif(stem STREQUAL "string_literal_char")
         set(expect_exit_code 105)
         set(backend_output_kind "asm")
