@@ -237,14 +237,17 @@ std::optional<std::string> materialize_riscv_ptr_value(const Value& value,
   return reg;
 }
 
-bool move_riscv_i32_value_into_reg(const Value& value,
-                                   std::string_view dest_reg,
-                                   RiscvEmitState& state,
-                                   std::ostringstream& out) {
-  if (!is_supported_riscv_i32_value(value)) {
+bool move_riscv_value_into_reg(const Value& value,
+                               std::string_view dest_reg,
+                               RiscvEmitState& state,
+                               std::ostringstream& out) {
+  if (value.type != TypeKind::I32 && value.type != TypeKind::Ptr) {
     return false;
   }
   if (value.kind == Value::Kind::Immediate) {
+    if (value.type != TypeKind::I32) {
+      return false;
+    }
     out << "    li " << dest_reg << ", " << value.immediate << "\n";
     return true;
   }
@@ -262,7 +265,11 @@ bool move_riscv_i32_value_into_reg(const Value& value,
     return false;
   }
 
-  out << "    lw " << dest_reg << ", " << stack_it->second << "(sp)\n";
+  if (value.type == TypeKind::I32) {
+    out << "    lw " << dest_reg << ", " << stack_it->second << "(sp)\n";
+  } else {
+    out << "    ld " << dest_reg << ", " << stack_it->second << "(sp)\n";
+  }
   return true;
 }
 
@@ -426,7 +433,8 @@ bool lower_riscv_call_inst(const CallInst& inst,
       inst.args.size() > kRiscvArgRegs.size() || inst.arg_types.size() != inst.args.size()) {
     return false;
   }
-  if (inst.return_type != TypeKind::Void && inst.return_type != TypeKind::I32) {
+  if (inst.return_type != TypeKind::Void && inst.return_type != TypeKind::I32 &&
+      inst.return_type != TypeKind::Ptr) {
     return false;
   }
   for (std::size_t index = 0; index < inst.args.size(); ++index) {
@@ -469,7 +477,7 @@ bool lower_riscv_call_inst(const CallInst& inst,
   state.value_regs.clear();
   state.next_temp_index = 0;
   if (inst.result.has_value()) {
-    if (inst.result->type != TypeKind::I32) {
+    if (inst.result->type != TypeKind::I32 && inst.result->type != TypeKind::Ptr) {
       return false;
     }
     state.value_regs[inst.result->name] = "a0";
@@ -564,7 +572,7 @@ bool lower_riscv_function_body(const Function& function,
   }
 
   if (block.terminator.value.has_value() &&
-      !move_riscv_i32_value_into_reg(*block.terminator.value, "a0", state, out)) {
+      !move_riscv_value_into_reg(*block.terminator.value, "a0", state, out)) {
     return false;
   }
   if (layout.ra_offset.has_value()) {
@@ -585,7 +593,8 @@ std::optional<std::string> try_emit_supported_riscv_prepared_bir(const Module& m
   std::ostringstream out;
   out << "    .text\n";
   for (const auto& function : module.functions) {
-    if (function.return_type != TypeKind::Void && function.return_type != TypeKind::I32) {
+    if (function.return_type != TypeKind::Void && function.return_type != TypeKind::I32 &&
+        function.return_type != TypeKind::Ptr) {
       return std::nullopt;
     }
     if (function.is_variadic) {

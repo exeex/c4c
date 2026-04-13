@@ -1676,6 +1676,24 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_ptr_return_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_ptr_return_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_ptr_return_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define ptr @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_ptr_return_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_ptr_return_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_ptr_return_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define ptr @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_indirect_three_arg_param_call_defaults_to_asm
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_three_arg_param_call.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
