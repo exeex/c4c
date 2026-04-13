@@ -14,6 +14,7 @@ namespace c4c::backend {
 namespace {
 
 using ValueMap = std::unordered_map<std::string, bir::Value>;
+using LocalSlotTypes = std::unordered_map<std::string, bir::TypeKind>;
 
 struct CompareExpr {
   bir::BinaryOpcode opcode = bir::BinaryOpcode::Eq;
@@ -278,6 +279,94 @@ bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
   return false;
 }
 
+bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
+                                       ValueMap& bool_aliases,
+                                       CompareMap& compare_exprs,
+                                       LocalSlotTypes& local_slot_types,
+                                       bir::Function* lowered_function,
+                                       std::vector<bir::Inst>* lowered_insts) {
+  if (lower_scalar_compare_inst(inst, bool_aliases, compare_exprs, lowered_insts)) {
+    return true;
+  }
+
+  if (const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&inst)) {
+    if (alloca->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+        !alloca->count.str().empty()) {
+      return false;
+    }
+
+    const auto slot_type = lower_integer_type(alloca->type_str.str());
+    if (!slot_type.has_value()) {
+      return false;
+    }
+
+    const std::string slot_name = alloca->result.str();
+    if (local_slot_types.find(slot_name) != local_slot_types.end()) {
+      return false;
+    }
+
+    local_slot_types.emplace(slot_name, *slot_type);
+    lowered_function->local_slots.push_back(bir::LocalSlot{
+        .name = slot_name,
+        .type = *slot_type,
+        .align_bytes = alloca->align > 0 ? static_cast<std::size_t>(alloca->align) : 0,
+    });
+    return true;
+  }
+
+  if (const auto* store = std::get_if<c4c::codegen::lir::LirStoreOp>(&inst)) {
+    if (store->ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    const auto value_type = lower_integer_type(store->type_str.str());
+    if (!value_type.has_value()) {
+      return false;
+    }
+
+    const auto slot_it = local_slot_types.find(store->ptr.str());
+    if (slot_it == local_slot_types.end() || slot_it->second != *value_type) {
+      return false;
+    }
+
+    const auto value = lower_value(store->val, *value_type, bool_aliases);
+    if (!value.has_value()) {
+      return false;
+    }
+
+    lowered_insts->push_back(bir::StoreLocalInst{
+        .slot_name = store->ptr.str(),
+        .value = *value,
+    });
+    return true;
+  }
+
+  if (const auto* load = std::get_if<c4c::codegen::lir::LirLoadOp>(&inst)) {
+    if (load->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+        load->ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    const auto value_type = lower_integer_type(load->type_str.str());
+    if (!value_type.has_value()) {
+      return false;
+    }
+
+    const auto slot_it = local_slot_types.find(load->ptr.str());
+    if (slot_it == local_slot_types.end() || slot_it->second != *value_type) {
+      return false;
+    }
+
+    lowered_insts->push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(*value_type, load->result.str()),
+        .slot_name = load->ptr.str(),
+    });
+    return true;
+  }
+
+  return false;
+}
+
 BlockLookup make_block_lookup(const c4c::codegen::lir::LirFunction& function) {
   BlockLookup blocks;
   for (const auto& block : function.blocks) {
@@ -471,13 +560,26 @@ std::optional<bir::Function> lower_branch_family_function(
 
   ValueMap bool_aliases;
   CompareMap compare_exprs;
+  LocalSlotTypes local_slot_types;
+  std::vector<bir::Inst> hoisted_alloca_scratch;
+
+  for (const auto& inst : function.alloca_insts) {
+    if (!lower_scalar_or_local_memory_inst(
+            inst, bool_aliases, compare_exprs, local_slot_types, &lowered, &hoisted_alloca_scratch)) {
+      return std::nullopt;
+    }
+  }
+  if (!hoisted_alloca_scratch.empty()) {
+    return std::nullopt;
+  }
 
   for (const auto& block : function.blocks) {
     bir::Block lowered_block;
     lowered_block.label = block.label;
 
     for (const auto& inst : block.insts) {
-      if (!lower_scalar_compare_inst(inst, bool_aliases, compare_exprs, &lowered_block.insts)) {
+      if (!lower_scalar_or_local_memory_inst(
+              inst, bool_aliases, compare_exprs, local_slot_types, &lowered, &lowered_block.insts)) {
         return std::nullopt;
       }
     }
@@ -553,7 +655,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
 
   context.note(
       "module",
-      "lowered function-only scalar compare/branch/select/return module to BIR");
+      "lowered function-only scalar compare/select/local-memory/return module to BIR");
   return module;
 }
 
