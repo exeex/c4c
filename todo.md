@@ -16,9 +16,9 @@ Source Plan: plan.md
 - current capability family:
   backlog item 4, broader global data and addressed globals
 - current packet shape:
-  extend addressed-global coverage from direct reads into same-global pointer
-  arithmetic, starting with constant pointer-difference expressions over global
-  byte arrays and integer arrays that can still lower honestly through
+  continue backlog item 4 from zero-init and round-tripped addressed globals
+  into defined global data materialization, starting with simple non-zero array
+  initializers and addressed reads that can still lower honestly through
   semantic BIR
 - candidate proving surface:
   `backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir`
@@ -26,6 +26,7 @@ Source Plan: plan.md
   `backend_codegen_route_riscv64_string_literal_char_defaults_to_bir`
   `backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir`
   `backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir`
+  `backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir`
   use BIR route proofs here because `src/backend/backend.cpp` still prints
   prepared BIR on successful lowering; asm runtime/object checks remain a later
   backend-ingestion milestone, not the proof surface for this packet
@@ -42,7 +43,9 @@ Source Plan: plan.md
 - `branch_if_eq.c` still lowers to clean BIR
 - addressed-global reads still lower through semantic BIR instead of
   LLVM-text fallback
-- same-global pointer-difference expressions over addressed globals lower
+- existing same-global pointer-difference and global pointer-roundtrip cases
+  stay on the semantic BIR route surface
+- simple non-zero defined global arrays and their addressed reads lower
   through semantic BIR on the riscv64 route surface
 - no new direct route, rendered-text matcher, or tiny case-family special path
   is introduced
@@ -52,18 +55,17 @@ Source Plan: plan.md
 - completed:
   extended the addressed-global lane beyond direct reads by carrying
   same-global `ptrtoint` aliases through lowering, folding constant pointer
-  differences into honest integer distances, then repaired the follow-on
-  compare-return shaping so direct compare returns and the new global
-  pointer-difference cases both canonically return through the compare SSA on
-  the riscv64 route surface without adding a fallback route or testcase-shaped
-  matcher
+  differences into honest integer distances, then taught semantic lowering to
+  carry direct-global address round-trips through local integer and pointer
+  slots so `global_int_pointer_roundtrip.c` now lowers straight to
+  `bir.load_global` on the riscv64 route surface without adding a fallback
+  route or testcase-shaped matcher
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; defined array
-  initializers, richer string/data materialization, addressed global loads
-  beyond constant-distance arithmetic, and pointer round-trips are still
-  outside this finished slice
+  initializers, richer string/data materialization, and addressed global loads
+  beyond constant-distance arithmetic are still outside this finished slice
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_string_literal_char_defaults_to_bir|backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_return_eq_defaults_to_bir|backend_codegen_route_riscv64_return_ult_defaults_to_bir)$'`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_string_literal_char_defaults_to_bir|backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir|backend_codegen_route_riscv64_return_eq_defaults_to_bir|backend_codegen_route_riscv64_return_ult_defaults_to_bir)$'`
 - proof log:
   `test_after.log`
 

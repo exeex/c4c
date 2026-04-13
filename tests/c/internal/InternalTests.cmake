@@ -2091,6 +2091,15 @@ if(CLANG_EXECUTABLE)
       REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t12 = bir.eq i64 1, 1|bir.ret i32 %t12"
       FORBIDDEN_SNIPPETS "define i32 @main()"
     )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_int_pointer_roundtrip.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_int_pointer_roundtrip_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t4 = bir.load_global i32 @g_value|bir.ret i32 %t4"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
   endif()
 
   if(BACKEND_RUNTIME_TARGET_TRIPLE)
