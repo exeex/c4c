@@ -27,6 +27,8 @@ using c4c::backend::bir::Value;
 
 constexpr std::array<std::string_view, 7> kRiscvTempRegs = {
     "t0", "t1", "t2", "t3", "t4", "t5", "t6"};
+constexpr std::array<std::string_view, 8> kRiscvIncomingArgRegs = {
+    "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"};
 constexpr std::array<std::string_view, 2> kRiscvArgRegs = {"a0", "a1"};
 
 Target resolve_public_lir_target(const c4c::codegen::lir::LirModule& module,
@@ -406,7 +408,7 @@ bool lower_riscv_function_body(const Function& function,
   }
 
   RiscvEmitState state;
-  if (function.params.size() > kRiscvArgRegs.size()) {
+  if (function.params.size() > kRiscvIncomingArgRegs.size()) {
     return false;
   }
   for (std::size_t index = 0; index < function.params.size(); ++index) {
@@ -414,7 +416,7 @@ bool lower_riscv_function_body(const Function& function,
         function.params[index].type != TypeKind::Ptr) {
       return false;
     }
-    state.value_regs[function.params[index].name] = std::string(kRiscvArgRegs[index]);
+    state.value_regs[function.params[index].name] = std::string(kRiscvIncomingArgRegs[index]);
   }
 
   if (layout.frame_size > 0) {

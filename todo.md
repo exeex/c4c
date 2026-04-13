@@ -324,13 +324,27 @@ Source Plan: plan.md
   this closes the current rewrite-only direct-call proving surface on the
   honest semantic-BIR/prepared-BIR riscv64 path without reopening raw-BIR asm
   output, direct-route fallbacks, or testcase-shaped target shortcuts
+- completed:
+  the first honest two-arg indirect-call lane now stays on that same explicit
+  riscv64 backend-route surface too; `backend.cpp` now preserves the incoming
+  third integer-class argument register on function entry, so semantic BIR
+  functions with `ptr, i32, i32` params can reach the existing indirect-call
+  emitter instead of falling back before emission
+  new route proofs cover `indirect_two_arg_param_call.c` and
+  `indirect_two_arg_local_call.c` as native asm with the expected callee
+  preserve into `t0`, arg rewrites from `a1/a2` into `a0/a1`, and final
+  `jalr ra, t0, 0`, while the earlier one-arg indirect and `two_arg_*`
+  direct-call sentinels stayed green beside them
+  this keeps backlog item 5 on the honest semantic-BIR/prepared-BIR riscv64
+  path for the first two-arg indirect family without reopening host-runtime
+  x86 fallback seams or widening into ABI-shaped call metadata
 - blocked:
   none in owned files for this packet
 - remaining next:
-  once the first two-arg indirect-call lane is green, decide whether backlog
-  item 5 should next widen into richer indirect callee carriers or broader
-  return/signature forms on the same riscv64 route boundary, without reopening
-  direct-route fallbacks or jumping ahead to ABI-shaped call work
+  decide whether backlog item 5 should next widen into richer indirect callee
+  carriers or broader return/signature forms on the same riscv64 route
+  boundary, without reopening direct-route fallbacks or jumping ahead to
+  ABI-shaped call work
 - proof:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_call_helper_defaults_to_asm|backend_codegen_route_riscv64_local_arg_call_defaults_to_asm|backend_codegen_route_riscv64_two_arg_(helper|local_arg|second_local_arg|both_local_arg|first_local_rewrite|second_local_rewrite|both_local_first_rewrite|both_local_second_rewrite|both_local_double_rewrite)_defaults_to_asm|backend_codegen_route_riscv64_indirect_(local|param|two_arg_local|two_arg_param)_call_defaults_to_asm)$' > test_after.log 2>&1`
 - proof log:
