@@ -270,17 +270,24 @@ Source Plan: plan.md
   `bir.load_global ptr @gp` or the ordered `bir.load_global ptr @gpp`, then
   `bir.load_global ptr @gp`, followed by `bir.load_global i32 @s, offset 8`
   rather than a `null` global initializer or raw LLVM fallback
+  the same typed constant-GEP lane already scales through nested struct-root
+  aggregate descent too; new riscv64 route proofs cover
+  `int *gp = &s.inner.xs[1]; return *gp;` and `int **gpp = &gp; return
+  (*gpp)[0];` through semantic BIR as `bir.load_global ptr @gp` or the
+  ordered `bir.load_global ptr @gpp`, then `bir.load_global ptr @gp`,
+  followed by `bir.load_global i32 @s, offset 12` rather than a `null`
+  initializer or raw LLVM fallback
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; broader pointer
   global forms beyond the now-covered aggregate-field rebasing for offset
   pointer-global aliases, recursively resolved constant in-bounds aliases,
   pointer-value stores into addressed pointer-global slots, and pointer-global
   object-address roundtrip stores are still outside this finished slice
-  nested struct-root field-address initializers and pointer-global follow-ons
-  that build on the same newly honest constant-GEP lane still need explicit
-  route proofs before this backlog family can be treated as closure-ready
+  pointer-global follow-ons that build on the now-proven constant-GEP lane
+  still need explicit route proofs before this backlog family can be treated
+  as closure-ready
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_.*(struct|root_array_struct_field|roundtrip_store).*(defaults_to_bir)$' > test_after.log 2>&1`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_defined_pointer_global_nested_struct_array(_object_alias)?_defaults_to_bir$' > test_after.log 2>&1`
 - proof log:
   `test_after.log`
 
