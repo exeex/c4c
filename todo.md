@@ -21,18 +21,19 @@ Source Plan: plan.md
   backlog item 5, expand call lowering beyond minimal direct calls
 - current packet shape:
   keep backlog item 5 on the riscv64 backend-route surface by widening the
-  landed five-arg indirect-call lane into the first honest six-arg indirect
-  family: lower simple `i32, i32, i32, i32, i32, i32 -> i32` indirect calls
+  landed six-arg indirect-call lane into the first honest seven-arg indirect
+  family: lower simple
+  `i32, i32, i32, i32, i32, i32, i32 -> i32` indirect calls
   from SSA callee values through shared semantic BIR/prepared-BIR call
   handling,
   reusing the existing ptr-param / ptr-local carrier support instead of
   widening into ABI-shaped metadata or reopening the rejected host-runtime x86
   fallback seam
 - candidate proving surface:
-  `tests/c/internal/backend_route_case/indirect_six_arg_param_call.c`
-  `tests/c/internal/backend_route_case/indirect_six_arg_local_call.c`
+  `tests/c/internal/backend_route_case/indirect_seven_arg_param_call.c`
+  `tests/c/internal/backend_route_case/indirect_seven_arg_local_call.c`
   keep `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the current
-  one-arg through five-arg indirect-call plus `two_arg_*` direct-call route
+  one-arg through six-arg indirect-call plus `two_arg_*` direct-call route
   tests as standing sentinels while widening only the next honest indirect-call
   family that is already adjacent on riscv64
 
@@ -41,8 +42,8 @@ Source Plan: plan.md
 - keep packet selection attached to the ordered semantic backlog in `plan.md`
 - carry the now-green addressed-global work forward by moving to the next
   semantic family instead of stretching backlog item 4 past its proving surface
-- carry the now-green one-arg through five-arg indirect-call surface forward
-  by moving into the first six-arg indirect-call proving slice instead of
+- carry the now-green one-arg through six-arg indirect-call surface forward
+  by moving into the first seven-arg indirect-call proving slice instead of
   reopening richer direct-call metadata or jumping ahead to ABI-shaped call work
 - avoid reintroducing testcase-shaped routing while broadening the call lane
 
@@ -51,7 +52,7 @@ Source Plan: plan.md
 - `branch_if_eq.c` still lowers to clean BIR
 - the existing direct-call sentinels, one-arg indirect-call tests, and
   rewrite-only two-arg route tests stay green on riscv64
-- simple param-carried and local-slot six-arg indirect helper calls lower
+- simple param-carried and local-slot seven-arg indirect helper calls lower
   through the same riscv64 backend-route surface instead of reopening
   host-runtime x86 fallback
 - semantic call lowering keeps callee identity, result type, and minimal arg
@@ -64,6 +65,32 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  the first honest seven-arg indirect-call family now stays on the same shared
+  semantic-BIR/prepared-BIR route surface as the earlier one-arg through
+  six-arg indirect-call work: `backend.cpp` now treats `a6` as part of the
+  supported outgoing riscv64 integer-call register set, so the existing shared
+  call-arg move scheduler and indirect-callee preserve logic can lower the
+  first `i32, i32, i32, i32, i32, i32, i32 -> i32` indirect family without
+  reopening fallback seams or adding arg-count-shaped special handling
+  new route proofs cover `indirect_seven_arg_param_call.c` and
+  `indirect_seven_arg_local_call.c` as native asm with the expected callee
+  preserve into `t0`, arg rewrites from `a1/a2/a3/a4/a5/a6/a7` into
+  `a0/a1/a2/a3/a4/a5/a6`, and final `jalr ra, t0, 0`, while
+  `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, the earlier one-arg
+  through six-arg indirect-call tests, and the `two_arg_*` direct-call
+  sentinels stayed green beside them
+  proof command attempted:
+  `bash -lc 'cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R ^backend_ >> test_after.log 2>&1'`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated `^backend_` command preserved this slice's new route proofs and
+  standing route sentinels, but the overall subset remains blocked by many
+  pre-existing non-owned backend failures outside this packet
+  this keeps backlog item 5 on the honest semantic-BIR/prepared-BIR riscv64
+  path for the first seven-arg indirect family without reopening host-runtime
+  x86 fallback seams or widening into ABI-shaped call metadata
 - completed:
   the first honest six-arg indirect-call family now stays on the same shared
   semantic-BIR/prepared-BIR route surface as the earlier one-arg through

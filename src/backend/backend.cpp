@@ -30,7 +30,8 @@ constexpr std::array<std::string_view, 7> kRiscvTempRegs = {
     "t0", "t1", "t2", "t3", "t4", "t5", "t6"};
 constexpr std::array<std::string_view, 8> kRiscvIncomingArgRegs = {
     "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"};
-constexpr std::array<std::string_view, 6> kRiscvArgRegs = {"a0", "a1", "a2", "a3", "a4", "a5"};
+constexpr std::array<std::string_view, 7> kRiscvArgRegs = {
+    "a0", "a1", "a2", "a3", "a4", "a5", "a6"};
 
 Target resolve_public_lir_target(const c4c::codegen::lir::LirModule& module,
                                  Target public_target) {
