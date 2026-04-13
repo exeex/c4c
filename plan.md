@@ -23,6 +23,7 @@ rendered-text case matchers, or equivalent workaround seams under new names.
 ## Read First
 
 - `ideas/open/46_backend_reboot_bir_spine.md`
+- `src/codegen/lir/ir.hpp`
 - `src/backend/backend.cpp`
 - `src/backend/bir.hpp`
 - `src/backend/bir_printer.cpp`
@@ -36,16 +37,13 @@ rendered-text case matchers, or equivalent workaround seams under new names.
 
 ## Current Targets
 
-- `src/backend/backend.cpp`
+- `src/backend/lowering/lir_to_bir_module.cpp`
 - `src/backend/bir.hpp`
 - `src/backend/bir_printer.cpp`
 - `src/backend/bir_validate.cpp`
-- `src/backend/lowering/lir_to_bir.hpp`
-- `src/backend/lowering/lir_to_bir.cpp`
-- `src/backend/lowering/lir_to_bir_module.cpp`
-- `src/backend/prepare/prepare.hpp`
-- `src/backend/prepare/prepare.cpp`
 - `src/backend/prepare/legalize.cpp`
+- `src/backend/prepare/prepare.cpp`
+- `src/backend/backend.cpp`
 
 ## Non-Goals
 
@@ -54,6 +52,8 @@ rendered-text case matchers, or equivalent workaround seams under new names.
 - do not claim c-testsuite recovery from direct route deletion alone
 - do not patch individual case families with route-specific detection logic
 - do not push target legality checks back into semantic `lir_to_bir`
+- do not let packet selection drift into testcase names when the real missing
+  unit is a semantic capability family
 
 ## Working Model
 
@@ -61,39 +61,30 @@ rendered-text case matchers, or equivalent workaround seams under new names.
 - target legality belongs in `prepare/legalize`, not in `lir_to_bir`
 - structural validation may stay in BIR, but type legality should not block
   semantic lowering
-- the first milestone is not "whole backend works"; it is "BIR is credible
-  enough that more lanes can be added without direct escapes"
+- executor packets should be chosen from the ordered capability backlog below,
+  not rediscovered from ad hoc testcase hunting
 
-## Ordered Steps
+## Completed Capability Baseline
 
-### Step 1: Make scalar semantic BIR credible
+These lanes are already landed and should remain green while new families are
+added:
 
-Goal: establish a clean semantic lowering lane for params, compare, branch,
-select, and return.
+- scalar compare / branch / return
+- single-parameter `select` lowering from `diamond + phi`
+- minimal function signature and direct scalar param handling
+- local scalar slots, loads, and stores
+- local arrays with constant indexing
+- direct global calls with minimal typed args
+- scalar globals with load and store
 
-Primary target:
+## Ordered Capability Backlog
 
-- `src/backend/lowering/lir_to_bir_module.cpp`
-- `src/backend/bir.hpp`
-- `src/backend/bir_printer.cpp`
-- `src/backend/bir_validate.cpp`
+Choose future executor packets from this list in order unless route quality or
+review justifies a re-sequencing.
 
-Concrete actions:
+### 1. Generalize CFG merge and `phi`
 
-- lower scalar params and returns into BIR
-- canonicalize compare-driven `cond_br`
-- canonicalize `diamond + phi` ternary shapes into `bir.select`
-- keep semantic `i1` in BIR and leave widening to `prepare`
-
-Completion check:
-
-- `branch_if_eq.c` lowers to BIR without LLVM-ish bool bridge noise
-- `single_param_select_eq.c` lowers to BIR as semantic `select`
-- nearby scalar compare/select cases can be reasoned about through BIR text
-
-### Step 2: Add semantic memory/global/call lanes
-
-Goal: expand BIR beyond toy scalar control-flow functions.
+Goal: stop treating `phi` as a ternary-only special lane.
 
 Primary target:
 
@@ -102,19 +93,149 @@ Primary target:
 
 Concrete actions:
 
-- lower local slots, loads, stores, and address forms
-- lower globals and string constants into honest BIR module state
-- lower direct calls and the minimal shared call metadata needed downstream
+- widen beyond `diamond + phi -> bir.select`
+- support ordinary block-merge `phi` forms without testcase-shaped CFG probes
+- define when semantic BIR keeps `phi`-like merge structure versus lowering to
+  `select`
 
 Completion check:
 
-- simple local/global/call backend-route cases lower to BIR
-- module lowering no longer rejects whole modules just because they contain
-  globals or calls
+- non-trivial merge shapes no longer require raw-LIR fallback
+- `phi` handling is explained by CFG semantics, not by one named case family
 
-### Step 3: Make `prepare` own target legality
+### 2. Harden params and function signatures
 
-Goal: move target-specific shaping out of semantic lowering.
+Goal: make function entry and return contracts reliable before broader calls or
+ABI shaping.
+
+Primary target:
+
+- `src/backend/lowering/lir_to_bir_module.cpp`
+- `src/backend/lowering/call_decode.cpp`
+
+Concrete actions:
+
+- support broader parsed parameter lists and return forms
+- remove fragile dependence on tiny signature subsets
+- keep semantic signature lowering separate from target ABI legalization
+
+Completion check:
+
+- multi-parameter and mixed simple-signature functions lower through semantic
+  BIR without ad hoc special handling
+
+### 3. Broaden local memory and address formation
+
+Goal: move from scalar locals and constant-index local arrays to general local
+address semantics.
+
+Primary target:
+
+- `src/backend/lowering/lir_to_bir_module.cpp`
+- `src/backend/bir.hpp`
+
+Concrete actions:
+
+- extend `alloca` / local-slot lowering beyond scalar and fixed tiny array
+  shapes
+- lower broader `gep` and address forms for locals
+- support pointer-valued locals and round-tripped local addresses where the
+  semantics are still target-neutral
+
+Completion check:
+
+- local memory lowering no longer stops at constant-index toy arrays
+
+### 4. Broaden global data and addressed globals
+
+Goal: make module-level state real beyond scalar globals.
+
+Primary target:
+
+- `src/backend/lowering/lir_to_bir_module.cpp`
+- `src/backend/bir.hpp`
+
+Concrete actions:
+
+- lower global arrays and string-backed globals
+- support extern global declarations and addressed global reads
+- support pointer-valued globals and basic global-address arithmetic only where
+  the semantics are still honest BIR
+
+Completion check:
+
+- addressed global data no longer forces LLVM-text fallback for simple array or
+  string-backed reads
+
+### 5. Expand call lowering beyond minimal direct calls
+
+Goal: make calls a shared semantic lane instead of a tiny direct-call subset.
+
+Primary target:
+
+- `src/backend/lowering/lir_to_bir_module.cpp`
+- `src/backend/lowering/call_decode.cpp`
+- `src/backend/bir.hpp`
+
+Concrete actions:
+
+- support richer direct-call signatures
+- support indirect calls and callee pointer forms
+- carry the minimal shared metadata needed for later ABI shaping
+
+Completion check:
+
+- semantic BIR can represent the common direct and indirect call forms present
+  in LIR without dropping back to raw LIR text
+
+### 6. Add intrinsic and runtime operation lowering
+
+Goal: stop treating runtime-facing LIR operations as a reason to bypass BIR.
+
+Primary target:
+
+- `src/backend/lowering/lir_to_bir_module.cpp`
+- `src/backend/bir.hpp`
+
+Concrete actions:
+
+- add semantic lowering for the first runtime and intrinsic families:
+  `memcpy`, `memset`, `va_*`, `stacksave`, `stackrestore`, `abs`, and inline
+  asm placeholder routing where applicable
+- keep this layer semantic; do not smuggle target legalization into the
+  intrinsic lowering itself
+
+Completion check:
+
+- intrinsic/runtime-heavy functions can at least enter semantic BIR instead of
+  forcing route escape
+
+### 7. Define semantic BIR memory/value coverage boundaries
+
+Goal: make unsupported surface explicit by semantics instead of accidental
+packet history.
+
+Primary target:
+
+- `src/backend/bir.hpp`
+- `src/backend/lowering/lir_to_bir.hpp`
+- `src/backend/lowering/lir_to_bir_module.cpp`
+
+Concrete actions:
+
+- decide which aggregate, vector, and pointer-difference forms belong in
+  semantic BIR now versus later
+- keep the unsupported set organized by semantic family, not by testcase name
+- ensure unsupported routes fail honestly instead of regressing into hidden
+  direct emission seams
+
+Completion check:
+
+- remaining gaps are traceable by capability family from the runbook itself
+
+### 8. Make `prepare/legalize` the owner of target legality
+
+Goal: move from semantic BIR coverage to prepared-BIR contracts.
 
 Primary target:
 
@@ -124,19 +245,19 @@ Primary target:
 
 Concrete actions:
 
-- keep semantic BIR target-neutral where possible
+- preserve target-neutral semantic BIR where possible
 - legalize `i1` and other target-specific value forms in `prepare`
-- define the prepared-BIR contract that target backends are expected to ingest
+- define prepared-BIR invariants expected by x86/i686/aarch64/riscv64
 
 Completion check:
 
-- semantic BIR can still express `i1`
-- prepare rewrites target-specific legality for x86/i686/aarch64/riscv64
-- backend driver clearly routes BIR through prepare before target codegen
+- backend driver clearly routes semantic BIR through prepare before target
+  codegen
+- target legality lives in prepare rather than creeping back into lowering
 
-### Step 4: Build real prepare phases after legalization
+### 9. Build real prepare phases after legalization
 
-Goal: stop treating `prepare` as a stub layer.
+Goal: stop treating `prepare` as a shell.
 
 Primary target:
 
@@ -155,7 +276,7 @@ Completion check:
 - prepare records real phase output instead of only notes
 - target backends can assume prepared-BIR shape instead of reconstructing it
 
-### Step 5: Reconnect target backends to prepared BIR only
+### 10. Reconnect target backends to prepared BIR only
 
 Goal: make x86, aarch64, and riscv64 consume the new shared spine.
 
@@ -178,6 +299,7 @@ Completion check:
 ## Validation Ladder
 
 - `cmake --build build -j2`
-- focused backend-route observation using `./build/c4cll --codegen asm --target <triple> <case>.c -o <out>`
+- focused backend-route observation using
+  `./build/c4cll --codegen asm --target <triple> <case>.c -o <out>`
 - escalate to matching internal/c-testsuite subsets only after the BIR/prepare
   lane for that capability is real
