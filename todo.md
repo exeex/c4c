@@ -19,15 +19,17 @@ Source Plan: plan.md
   indirect-call slice was already complete
 - current capability family:
   backlog item 5 call-lane widening on the riscv64 backend-route surface:
-  indirect calls now carry the first mixed integer-class arg family and the
-  first ptr-capable result family through semantic BIR and native asm, and
-  the next packet should widen beyond these first ptr-shaped signatures
-  without reopening stack-call ABI work
+  indirect calls now carry the first mixed integer-class arg family, the
+  first ptr-capable result family, and the first combined ptr-arg plus
+  ptr-result family through semantic BIR and native asm, and the next packet
+  should widen beyond these first mixed ptr-shaped signatures without
+  reopening stack-call ABI work
 - current packet shape:
   keep backlog item 5 moving outward from the repaired entry boundary:
-  widen the standing riscv64 indirect-call lane from i32-only args/results to
-  adjacent ptr-capable integer-class signatures while keeping the existing
-  eight-register arg lane fixed and avoiding ABI-shaped stack-call work
+  widen the standing riscv64 indirect-call lane from the first mixed ptr
+  arg/result signatures to adjacent ptr-capable integer-class signatures
+  while keeping the existing eight-register arg lane fixed and avoiding
+  ABI-shaped stack-call work
 - candidate proving surface:
   `tests/c/internal/backend_route_case/indirect_ptr_return_param_call.c`
   `tests/c/internal/backend_route_case/indirect_ptr_return_local_call.c`
@@ -67,6 +69,33 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  the first honest mixed ptr-arg plus ptr-result indirect-call family now
+  stays on the same shared semantic-BIR/prepared-BIR riscv64 route surface as
+  the earlier ptr-arg-only and ptr-result-only work: no backend route rewrite
+  was needed because the existing integer-class riscv64 arg lane already
+  treated `ptr` like `i32` for args while the current call-result and
+  function-return lane already kept `ptr` in `a0`
+  new route proofs cover `indirect_ptr_arg_ptr_return_param_call.c` and
+  `indirect_ptr_arg_ptr_return_local_call.c` as native asm with the expected
+  callee preserve into `t0`, ptr arg move into `a0`, trailing `i32` arg move
+  into `a1`, final `jalr ra, t0, 0`, and pointer result returned through
+  `a0`, while `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the
+  earlier one-arg through eight-arg indirect-call plus `two_arg_*` direct-call
+  sentinels stayed green beside them
+  proof command attempted:
+  `bash -lc 'cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1'`
+  proof log:
+  `test_after.log`
+  proof status:
+  the two new riscv64 route tests passed, the broad `^backend_` subset stayed
+  flat at `225` failing tests before and after, the total backend test surface
+  increased from `357` to `359`, and supervisor-side regression guard passed
+  with `passed=132 -> 134`, `failed=225 -> 225`, and `0` new failing tests
+  this keeps backlog item 5 on an honest semantic integer-class indirect-call
+  lane while widening from single-dimension ptr coverage to the first mixed
+  ptr-arg plus ptr-result family without reopening direct routes or
+  ABI-shaped stack-call work
 - completed:
   the first honest ptr-return indirect-call family now stays on the same
   shared semantic-BIR/prepared-BIR riscv64 route surface as the earlier
