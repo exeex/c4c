@@ -16,10 +16,10 @@ Source Plan: plan.md
 - current capability family:
   backlog item 4, broader global data and addressed globals
 - current packet shape:
-  extend backlog item 4 with pointer-global object-address roundtrip stores,
-  so the same honest alias tracking that survives `ptrtoint` / `inttoptr`
-  reads also preserves writes and later addressed-global readback without
-  reintroducing direct-route recovery
+  extend backlog item 4 with direct addressed stores on nested integer-array
+  globals, so defined arrays, extern arrays, and pointer-derived aliases all
+  keep honest semantic BIR writes instead of dropping to route escape once the
+  access becomes a store
 - candidate proving surface:
   `backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir`
   `backend_codegen_route_riscv64_extern_global_array_defaults_to_bir`
@@ -40,8 +40,9 @@ Source Plan: plan.md
   `backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir`
   `backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir`
   `backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir`
-  `backend_codegen_route_riscv64_global_int_pointer_roundtrip_store_defaults_to_bir`
-  `backend_codegen_route_riscv64_global_int_pointer_pointer_roundtrip_store_defaults_to_bir`
+  `backend_codegen_route_riscv64_defined_global_array_store_defaults_to_bir`
+  `backend_codegen_route_riscv64_extern_global_array_store_defaults_to_bir`
+  `backend_codegen_route_riscv64_defined_global_array_pointer_store_defaults_to_bir`
   use BIR route proofs here because `src/backend/backend.cpp` still prints
   prepared BIR on successful lowering; asm runtime/object checks remain a later
   backend-ingestion milestone, not the proof surface for this packet
@@ -60,9 +61,9 @@ Source Plan: plan.md
   LLVM-text fallback
 - existing same-global pointer-difference and global pointer-roundtrip cases
   stay on the semantic BIR route surface
-- writes through `ptrtoint` / `inttoptr` roundtrips of pointer-global object
-  addresses still lower as explicit `bir.store_global @...` updates, and later
-  pointer-global readback still recovers the updated addressed-global target
+- nested integer-array globals keep explicit addressed stores on the semantic
+  BIR route for direct array syntax, extern-array syntax, and pointer-derived
+  aliases rather than falling back once the access is a write
 - no new direct route, rendered-text matcher, or tiny case-family special path
   is introduced
 
@@ -120,15 +121,21 @@ Source Plan: plan.md
   semantic BIR as `bir.store_global @gp, ptr ...` followed by the later
   `bir.load_global ptr @gp` and addressed `bir.load_global i32 @arr, offset 4`
   / `offset 8` reloads rather than raw LLVM fallback
+  direct addressed stores on nested integer-array globals now stay on the
+  semantic BIR route too; new riscv64 route proofs cover `arr[1][0] = 9;
+  return arr[1][0];`, `ext_arr[1][0] = 9; return ext_arr[1][0];`, and
+  `int *p = &arr[0][0]; p[2] = 9; return arr[1][0];` as explicit
+  `bir.store_global @arr/@ext_arr, offset 8, i32 9` plus matching addressed
+  reloads rather than raw LLVM fallback
 - remaining next:
   keep backlog item 4 on honest addressed-global coverage; broader pointer
   global forms beyond recursively resolved constant in-bounds aliases and the
   now-covered pointer-value stores into addressed pointer-global slots and
-  pointer-global object-address roundtrip stores, plus richer addressed global
-  data shapes and any still-unknown pointer-global mutation/readback
+  pointer-global object-address roundtrip stores, plus still-richer addressed
+  global data shapes and any still-unknown pointer-global mutation/readback
   combinations, are still outside this finished slice
 - proof:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_defined_pointer_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_array_offset_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_pointer_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_pointer_pointer_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_pointer_store_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_pointer_value_store_defaults_to_bir|backend_codegen_route_riscv64_defined_pointer_global_pointer_pointer_value_store_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_roundtrip_store_defaults_to_bir|backend_codegen_route_riscv64_global_int_pointer_pointer_roundtrip_store_defaults_to_bir)$' > test_after.log 2>&1`
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_extern_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_pointer_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_store_defaults_to_bir|backend_codegen_route_riscv64_extern_global_array_store_defaults_to_bir|backend_codegen_route_riscv64_defined_global_array_pointer_store_defaults_to_bir)$' > test_after.log 2>&1`
 - proof log:
   `test_after.log`
 
