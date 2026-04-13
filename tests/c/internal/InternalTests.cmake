@@ -2073,6 +2073,24 @@ if(CLANG_EXECUTABLE)
       REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t3 = bir.load_global i8 @.str0, offset 1|%t4 = bir.sext i8 %t3 to i32|bir.ret i32 %t4"
       FORBIDDEN_SNIPPETS "define i32 @main()"
     )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_char_pointer_diff.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_char_pointer_diff_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t10 = bir.eq i64 1, 1|%t11 = bir.zext i32 %t10 to i32|bir.ret i32 %t11"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_int_pointer_diff.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_int_pointer_diff_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t11 = bir.eq i64 1, 1|%t12 = bir.zext i32 %t11 to i32|bir.ret i32 %t12"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
   endif()
 
   if(BACKEND_RUNTIME_TARGET_TRIPLE)

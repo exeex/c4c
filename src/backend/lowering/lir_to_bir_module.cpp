@@ -35,6 +35,7 @@ struct GlobalAddress {
 };
 
 using GlobalPointerMap = std::unordered_map<std::string, GlobalAddress>;
+using GlobalAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
 
 struct LocalArraySlots {
   bir::TypeKind element_type = bir::TypeKind::Void;
@@ -221,6 +222,67 @@ std::size_t type_size_bytes_from_text(std::string_view text) {
   return total_elements * element_size_bytes;
 }
 
+std::vector<std::string_view> split_top_level_initializer_items(std::string_view text) {
+  std::vector<std::string_view> items;
+  std::size_t item_start = 0;
+  int depth = 0;
+  for (std::size_t index = 0; index < text.size(); ++index) {
+    const char ch = text[index];
+    if (ch == '[' || ch == '{') {
+      ++depth;
+    } else if (ch == ']' || ch == '}') {
+      --depth;
+    } else if (ch == ',' && depth == 0) {
+      items.push_back(text.substr(item_start, index - item_start));
+      item_start = index + 1;
+    }
+  }
+  items.push_back(text.substr(item_start));
+  return items;
+}
+
+bool is_zero_integer_array_initializer(std::string_view init_text, std::string_view type_text) {
+  const auto trimmed_init = c4c::codegen::lir::trim_lir_arg_text(init_text);
+  if (trimmed_init == "zeroinitializer") {
+    return true;
+  }
+
+  if (trimmed_init.size() < 2 || trimmed_init.front() != '[' || trimmed_init.back() != ']') {
+    return false;
+  }
+
+  const auto element_type = peel_integer_array_layer(type_text);
+  if (!element_type.has_value()) {
+    return false;
+  }
+
+  const auto body = trimmed_init.substr(1, trimmed_init.size() - 2);
+  for (const auto item : split_top_level_initializer_items(body)) {
+    const auto trimmed_item = c4c::codegen::lir::trim_lir_arg_text(item);
+    if (trimmed_item.empty()) {
+      return false;
+    }
+
+    if (parse_integer_array_type(*element_type).has_value()) {
+      if (!is_zero_integer_array_initializer(trimmed_item, *element_type)) {
+        return false;
+      }
+      continue;
+    }
+
+    const auto space = trimmed_item.find(' ');
+    if (space == std::string_view::npos || space == 0 || space + 1 >= trimmed_item.size() ||
+        trimmed_item.substr(0, space) != *element_type) {
+      return false;
+    }
+    const auto zero_value = parse_i64(trimmed_item.substr(space + 1));
+    if (!zero_value.has_value() || *zero_value != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::optional<ParsedTypedOperand> parse_typed_operand(std::string_view text) {
   const auto space = text.find(' ');
   if (space == std::string_view::npos || space == 0 || space + 1 >= text.size()) {
@@ -280,6 +342,39 @@ std::optional<bir::BinaryOpcode> lower_scalar_binary_opcode(
       return bir::BinaryOpcode::LShr;
     case LirBinaryOpcode::AShr:
       return bir::BinaryOpcode::AShr;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<bir::Value> fold_i64_binary_immediates(bir::BinaryOpcode opcode,
+                                                     std::int64_t lhs,
+                                                     std::int64_t rhs) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+      return bir::Value::immediate_i64(lhs + rhs);
+    case bir::BinaryOpcode::Sub:
+      return bir::Value::immediate_i64(lhs - rhs);
+    case bir::BinaryOpcode::Mul:
+      return bir::Value::immediate_i64(lhs * rhs);
+    case bir::BinaryOpcode::SDiv:
+      if (rhs == 0) {
+        return std::nullopt;
+      }
+      return bir::Value::immediate_i64(lhs / rhs);
+    case bir::BinaryOpcode::And:
+      return bir::Value::immediate_i64(lhs & rhs);
+    case bir::BinaryOpcode::Or:
+      return bir::Value::immediate_i64(lhs | rhs);
+    case bir::BinaryOpcode::Xor:
+      return bir::Value::immediate_i64(lhs ^ rhs);
+    case bir::BinaryOpcode::Shl:
+      return bir::Value::immediate_i64(lhs << rhs);
+    case bir::BinaryOpcode::LShr:
+      return bir::Value::immediate_i64(
+          static_cast<std::int64_t>(static_cast<std::uint64_t>(lhs) >> rhs));
+    case bir::BinaryOpcode::AShr:
+      return bir::Value::immediate_i64(lhs >> rhs);
     default:
       return std::nullopt;
   }
@@ -455,10 +550,6 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
     return lowered;
   }
 
-  if (!global.is_extern_decl) {
-    return std::nullopt;
-  }
-
   const auto integer_array = parse_integer_array_type(global.llvm_type);
   if (!integer_array.has_value()) {
     return std::nullopt;
@@ -477,10 +568,31 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
   bir::Global lowered;
   lowered.name = global.name;
   lowered.type = integer_array->element_type;
-  lowered.is_extern = true;
+  lowered.is_extern = global.is_extern_decl;
   lowered.is_constant = global.is_const;
   lowered.size_bytes = total_elements * element_size_bytes;
   lowered.align_bytes = global.align_bytes > 0 ? static_cast<std::size_t>(global.align_bytes) : 0;
+  if (!global.is_extern_decl) {
+    if (!is_zero_integer_array_initializer(global.init_text, global.llvm_type)) {
+      return std::nullopt;
+    }
+    switch (integer_array->element_type) {
+      case bir::TypeKind::I1:
+        lowered.initializer = bir::Value::immediate_i1(false);
+        break;
+      case bir::TypeKind::I8:
+        lowered.initializer = bir::Value::immediate_i8(0);
+        break;
+      case bir::TypeKind::I32:
+        lowered.initializer = bir::Value::immediate_i32(0);
+        break;
+      case bir::TypeKind::I64:
+        lowered.initializer = bir::Value::immediate_i64(0);
+        break;
+      default:
+        return std::nullopt;
+    }
+  }
 
   info->value_type = integer_array->element_type;
   info->element_size_bytes = element_size_bytes;
@@ -749,6 +861,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
                                        LocalPointerSlots& local_pointer_slots,
                                        LocalArraySlotMap& local_array_slots,
                                        GlobalPointerMap& global_pointer_slots,
+                                       GlobalAddressIntMap& global_address_ints,
                                        const GlobalTypes& global_types,
                                        bir::Function* lowered_function,
                                        std::vector<bir::Inst>* lowered_insts) {
@@ -759,6 +872,17 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
   if (const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&inst)) {
     if (cast->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
       return false;
+    }
+
+    if (cast->kind == c4c::codegen::lir::LirCastKind::PtrToInt &&
+        cast->to_type.str() == "i64" &&
+        cast->operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      const auto global_ptr_it = global_pointer_slots.find(cast->operand.str());
+      if (global_ptr_it == global_pointer_slots.end()) {
+        return false;
+      }
+      global_address_ints[cast->result.str()] = global_ptr_it->second;
+      return true;
     }
 
     const auto opcode = lower_cast_opcode(cast->kind);
@@ -792,10 +916,33 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       return false;
     }
 
+    if (*opcode == bir::BinaryOpcode::Sub && *value_type == bir::TypeKind::I64 &&
+        bin->lhs.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
+        bin->rhs.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      const auto lhs_addr_it = global_address_ints.find(bin->lhs.str());
+      const auto rhs_addr_it = global_address_ints.find(bin->rhs.str());
+      if (lhs_addr_it != global_address_ints.end() && rhs_addr_it != global_address_ints.end() &&
+          lhs_addr_it->second.global_name == rhs_addr_it->second.global_name) {
+        const auto lhs_offset = static_cast<std::int64_t>(lhs_addr_it->second.byte_offset);
+        const auto rhs_offset = static_cast<std::int64_t>(rhs_addr_it->second.byte_offset);
+        value_aliases[bin->result.str()] = bir::Value::immediate_i64(lhs_offset - rhs_offset);
+        return true;
+      }
+    }
+
     const auto lhs = lower_value(bin->lhs, *value_type, value_aliases);
     const auto rhs = lower_value(bin->rhs, *value_type, value_aliases);
     if (!lhs.has_value() || !rhs.has_value()) {
       return false;
+    }
+
+    if (*value_type == bir::TypeKind::I64 && lhs->kind == bir::Value::Kind::Immediate &&
+        rhs->kind == bir::Value::Kind::Immediate) {
+      const auto folded = fold_i64_binary_immediates(*opcode, lhs->immediate, rhs->immediate);
+      if (folded.has_value()) {
+        value_aliases[bin->result.str()] = *folded;
+        return true;
+      }
     }
 
     lowered_insts->push_back(bir::BinaryInst{
@@ -1366,6 +1513,7 @@ std::optional<bir::Function> lower_branch_family_function(
   LocalPointerSlots local_pointer_slots;
   LocalArraySlotMap local_array_slots;
   GlobalPointerMap global_pointer_slots;
+  GlobalAddressIntMap global_address_ints;
   std::vector<bir::Inst> hoisted_alloca_scratch;
 
   for (const auto& inst : function.alloca_insts) {
@@ -1377,6 +1525,7 @@ std::optional<bir::Function> lower_branch_family_function(
             local_pointer_slots,
             local_array_slots,
             global_pointer_slots,
+            global_address_ints,
             global_types,
             &lowered,
             &hoisted_alloca_scratch)) {
@@ -1400,6 +1549,7 @@ std::optional<bir::Function> lower_branch_family_function(
               local_pointer_slots,
               local_array_slots,
               global_pointer_slots,
+              global_address_ints,
               global_types,
               &lowered,
               &lowered_block.insts)) {
@@ -1410,11 +1560,23 @@ std::optional<bir::Function> lower_branch_family_function(
     if (const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&block.terminator)) {
       bir::ReturnTerminator lowered_ret;
       if (ret->value_str.has_value()) {
-        const auto value = lower_value(*ret->value_str, *return_type, value_aliases);
+        const c4c::codegen::lir::LirOperand ret_value(*ret->value_str);
+        const auto value = lower_value(ret_value, *return_type, value_aliases);
         if (!value.has_value()) {
           return std::nullopt;
         }
-        lowered_ret.value = *value;
+        if (value->type != *return_type &&
+            ret_value.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
+            value->type == bir::TypeKind::I1 && *return_type == bir::TypeKind::I32) {
+          lowered_block.insts.push_back(bir::CastInst{
+              .opcode = bir::CastOpcode::ZExt,
+              .result = bir::Value::named(*return_type, ret_value.str()),
+              .operand = *value,
+          });
+          lowered_ret.value = bir::Value::named(*return_type, ret_value.str());
+        } else {
+          lowered_ret.value = *value;
+        }
       }
       lowered_block.terminator = lowered_ret;
     } else if (const auto* br = std::get_if<c4c::codegen::lir::LirBr>(&block.terminator)) {
@@ -1458,7 +1620,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
       analysis.extern_decl_count != 0) {
     context.note(
         "module",
-        "bootstrap lir_to_bir only supports minimal scalar globals, string-backed byte data, and extern integer-array globals right now");
+        "bootstrap lir_to_bir only supports minimal scalar globals, zero-initialized integer-array globals, string-backed byte data, and extern integer-array globals right now");
   }
 
   GlobalTypes global_types;
@@ -1469,7 +1631,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     if (!lowered_global.has_value()) {
       context.note(
           "module",
-          "bootstrap lir_to_bir only supports minimal scalar globals and extern integer-array globals right now");
+          "bootstrap lir_to_bir only supports minimal scalar globals, zero-initialized integer-array globals, and extern integer-array globals right now");
       return std::nullopt;
     }
     global_types.emplace(lowered_global->name, info);
