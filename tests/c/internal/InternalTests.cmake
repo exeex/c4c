@@ -2084,6 +2084,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_string_global_char_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_string_global_char.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_string_global_char_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t3 = bir.load_global i8 @g_text, offset 1|%t4 = bir.sext i8 %t3 to i32|bir.ret i32 %t4"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_string_literal_char_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/string_literal_char.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
@@ -2264,6 +2273,8 @@ if(CLANG_EXECUTABLE)
       elseif(stem STREQUAL "extern_global_array_def")
         continue()
       elseif(stem STREQUAL "defined_global_array")
+        continue()
+      elseif(stem STREQUAL "defined_string_global_char")
         continue()
       elseif(stem STREQUAL "global_char_pointer_diff")
         set(expect_exit_code 1)

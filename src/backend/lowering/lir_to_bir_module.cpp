@@ -229,6 +229,62 @@ std::optional<std::pair<std::size_t, std::string_view>> parse_integer_array_laye
   };
 }
 
+std::optional<int> parse_hex_digit(char ch) {
+  if (ch >= '0' && ch <= '9') {
+    return ch - '0';
+  }
+  if (ch >= 'a' && ch <= 'f') {
+    return 10 + (ch - 'a');
+  }
+  if (ch >= 'A' && ch <= 'F') {
+    return 10 + (ch - 'A');
+  }
+  return std::nullopt;
+}
+
+std::optional<std::vector<bir::Value>> lower_llvm_byte_string_initializer(
+    std::string_view init_text,
+    std::string_view type_text) {
+  const auto array_type = parse_integer_array_type(type_text);
+  if (!array_type.has_value() || array_type->element_type != bir::TypeKind::I8 ||
+      array_type->extents.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto trimmed_init = c4c::codegen::lir::trim_lir_arg_text(init_text);
+  if (trimmed_init.size() < 3 || trimmed_init[0] != 'c' || trimmed_init[1] != '"' ||
+      trimmed_init.back() != '"') {
+    return std::nullopt;
+  }
+
+  std::vector<bir::Value> lowered;
+  lowered.reserve(array_type->extents.front());
+  for (std::size_t index = 2; index + 1 < trimmed_init.size(); ++index) {
+    unsigned char byte = static_cast<unsigned char>(trimmed_init[index]);
+    if (trimmed_init[index] == '\\') {
+      if (index + 2 >= trimmed_init.size() - 1) {
+        return std::nullopt;
+      }
+      const auto hi = parse_hex_digit(trimmed_init[index + 1]);
+      const auto lo = parse_hex_digit(trimmed_init[index + 2]);
+      if (!hi.has_value() || !lo.has_value()) {
+        return std::nullopt;
+      }
+      byte = static_cast<unsigned char>((*hi << 4) | *lo);
+      index += 2;
+    }
+    lowered.push_back(bir::Value::immediate_i8(static_cast<std::int8_t>(byte)));
+  }
+
+  if (lowered.size() > array_type->extents.front()) {
+    return std::nullopt;
+  }
+  while (lowered.size() < array_type->extents.front()) {
+    lowered.push_back(bir::Value::immediate_i8(0));
+  }
+  return lowered;
+}
+
 std::size_t type_size_bytes_from_text(std::string_view text) {
   if (const auto scalar_type = lower_integer_type(text); scalar_type.has_value()) {
     return type_size_bytes(*scalar_type);
@@ -415,6 +471,11 @@ bool lower_integer_array_initializer_recursive(std::string_view init_text,
 
 std::optional<std::vector<bir::Value>> lower_integer_array_initializer(std::string_view init_text,
                                                                        std::string_view type_text) {
+  if (const auto lowered_bytes = lower_llvm_byte_string_initializer(init_text, type_text);
+      lowered_bytes.has_value()) {
+    return lowered_bytes;
+  }
+
   std::vector<bir::Value> lowered;
   if (!lower_integer_array_initializer_recursive(init_text, type_text, &lowered)) {
     return std::nullopt;
@@ -1852,7 +1913,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
       analysis.extern_decl_count != 0) {
     context.note(
         "module",
-        "bootstrap lir_to_bir only supports minimal scalar globals, zero-initialized integer-array globals, string-backed byte data, and extern integer-array globals right now");
+        "bootstrap lir_to_bir only supports minimal scalar globals, integer-array globals, string-backed byte data, and extern integer-array globals right now");
   }
 
   GlobalTypes global_types;
@@ -1863,7 +1924,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     if (!lowered_global.has_value()) {
       context.note(
           "module",
-          "bootstrap lir_to_bir only supports minimal scalar globals, zero-initialized integer-array globals, and extern integer-array globals right now");
+          "bootstrap lir_to_bir only supports minimal scalar globals, integer-array globals, and extern integer-array globals right now");
       return std::nullopt;
     }
     global_types.emplace(lowered_global->name, info);
