@@ -47,8 +47,6 @@ option(ENABLE_CPP_CLANG_EXTERNAL_TESTS
     "Register curated external clang C++ subset tests"
     ON)
 
-enable_testing()
-
 include("${PROJECT_SOURCE_DIR}/tests/c/internal/InternalTests.cmake")
 include("${PROJECT_SOURCE_DIR}/tests/cpp/internal/InternalTests.cmake")
 

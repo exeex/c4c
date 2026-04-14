@@ -157,4 +157,5 @@ if(CLANG_EXECUTABLE)
   )
 endif()
 
-include("${PROJECT_SOURCE_DIR}/tests/TestEntry.cmake")
+enable_testing()
+add_subdirectory(tests)
