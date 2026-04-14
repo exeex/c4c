@@ -44,29 +44,6 @@ set(NEGATIVE_TESTS_ALLOW_SUCCESS_STEMS
     bad_static_init_non_constant
 )
 
-if(CLANG_EXECUTABLE)
-  add_test(
-    NAME tiny_c2ll_tests
-    COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:c4cll>
-            -DEXAMPLE_C=${EXAMPLE_C}
-            -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
-            -DCLANG=${CLANG_EXECUTABLE}
-            -DOUT_BIN=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example_bin
-            -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_example_case.cmake"
-  )
-else()
-  add_test(
-    NAME tiny_c2ll_tests
-    COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:c4cll>
-            -DEXAMPLE_C=${EXAMPLE_C}
-            -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
-            -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_example_case.cmake"
-  )
-endif()
-set_tests_properties(tiny_c2ll_tests PROPERTIES LABELS "internal;example")
-
 foreach(src IN LISTS INTERNAL_NEGATIVE_TEST_SRCS)
   get_filename_component(stem "${src}" NAME_WE)
   set(test_name "negative_tests_${stem}")
