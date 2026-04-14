@@ -60,6 +60,16 @@ rendered-text case matchers, or equivalent workaround seams under new names.
   itself
 - if the supervisor cannot name one proof source tied to that seam in the same
   packet, stop for another lifecycle checkpoint instead of forcing execution
+- 2026-04-14 supervisor scouting widened that exhaustion result from a few
+  named stems to the current truthful C route surface as a whole:
+  checked-in riscv64 `backend_route_case` select/phi sources now lower on the
+  default prepared route to `bir.select`, not phi-slot materialization, while
+  extra throwaway statement/goto/loop probes bypass semantic `bir.phi`
+  entirely and stay mutable-local instead
+- treat further C-route testcase hunting for this seam as blocked route churn;
+  the next honest proving surface must come from a direct prepare/BIR-facing
+  harness tied to a real `src/backend/prepare/legalize.cpp` code move, or from
+  another lifecycle checkpoint if that harness still cannot be named cleanly
 - 2026-04-14 lifecycle checkpoint decision:
   keep this runbook active on the same source idea, but treat executor
   dispatch as explicitly blocked until one truthful proving surface can expose
@@ -142,8 +152,9 @@ Concrete actions:
   generalize explicit phi materialization in `src/backend/prepare/legalize.cpp`
   beyond the currently proven reducible / two-incoming path
 - tie that prepare-side code move to one truthful proving source; semantic-BIR
-  observation can support proof, but stale `*_asm_unsupported` select stems or
-  harness-only expansion cannot be the packet by themselves
+  observation can support proof, but stale `*_asm_unsupported` select stems,
+  broader C-route testcase hunting, or harness-only expansion cannot be the
+  packet by themselves
 - make later lanes consume already-lowered merge semantics:
   call lowering must use shared merged values, not carry its own private
   `phi`/CFG reconstruction rules

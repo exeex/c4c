@@ -112,6 +112,15 @@ Source Plan: plan.md
   `bir.select`, and a nested indirect-callee ternary probe also lowers to
   prepared BIR plus `bir.call` without private merge reconstruction, so those
   surfaces are route evidence only, not the next honest code-moving packet
+  a final supervisor sweep then widened that result from sampled stems to the
+  current C route surface as a whole:
+  every checked-in riscv64 `backend_route_case` select/phi source now lowers
+  on the default prepared route to `bir.select` rather than phi-slot
+  materialization, while extra throwaway statement/goto/loop probes either
+  collapse the same way when expression-shaped or bypass semantic `bir.phi`
+  entirely and stay mutable-local instead;
+  treat further C-route scouting for the explicit-phi seam as blocked route
+  churn rather than packet discovery
 - packet rule:
   do not accept more `todo` / `InternalTests.cmake` churn as proxy progress;
   stale unsupported-test promotion for the split-predecessor
@@ -162,6 +171,11 @@ Source Plan: plan.md
   materialization, using the semantic-BIR observation surface only as proof
   support;
   do not spend another packet on route-test promotion or harness-only cleanup
+- because current truthful C route cases now either collapse to prepared
+  `bir.select` or bypass semantic phi entirely, the next honest proving source
+  should be direct prepare/BIR-facing instead of another
+  `tests/c/internal/backend_route_case/*` search unless a new code move first
+  creates that surface
 - if the executor needs a new proving source to expose that code-moving target,
   it may add one minimal merge-semantic source in the same packet, but source
   or harness expansion alone is not accepted progress
@@ -217,6 +231,10 @@ Source Plan: plan.md
   accepted packet may introduce a new proving source only when it is tied to a
   real merge-semantics code move rather than pretending the exhausted
   prepared-BIR route inventory still exposes a missing merge family cleanly
+- after the 2026-04-14 supervisor sweep, that restriction now applies to the
+  truthful C route surface broadly rather than only to a few named stems:
+  prefer a direct prepare/BIR harness plus existing sentinels over more
+  `backend_route_case` hunting for the next explicit-phi packet
 - if no fresh code-moving backlog-item-1 proving source can be named without
   returning to observation churn or stale inventory cleanup, treat that as a
   route-checkpoint condition and repair lifecycle state again before sending an
