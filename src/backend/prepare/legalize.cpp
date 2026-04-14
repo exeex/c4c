@@ -175,6 +175,29 @@ bool block_uses_named_value(const bir::Block& block, const std::unordered_set<st
   return terminator_uses_named_value(block.terminator, names);
 }
 
+bool linear_branch_chain_uses_named_value(
+    const std::unordered_map<std::string, bir::Block*>& blocks_by_label,
+    std::string_view start_label,
+    const std::unordered_set<std::string>& names) {
+  std::unordered_set<std::string> visited;
+  auto current_label = std::string(start_label);
+  while (visited.emplace(current_label).second) {
+    const auto it = blocks_by_label.find(current_label);
+    if (it == blocks_by_label.end()) {
+      return false;
+    }
+    const auto& block = *it->second;
+    if (block_uses_named_value(block, names)) {
+      return true;
+    }
+    if (block.terminator.kind != bir::TerminatorKind::Branch) {
+      return false;
+    }
+    current_label = block.terminator.target_label;
+  }
+  return false;
+}
+
 struct BlockAnalysis {
   std::unordered_map<std::string, bir::Block*> blocks_by_label;
   std::unordered_map<std::string, const bir::Inst*> defs_by_name;
@@ -494,15 +517,13 @@ bool try_materialize_root_phi_block(bir::Function* function, const BlockAnalysis
     break;
   }
   const bool terminator_uses_phi = terminator_uses_named_value(block->terminator, phi_names);
-  bool immediate_successor_uses_phi = false;
+  bool branch_forwarding_chain_uses_phi = false;
   if (!has_non_phi_after_top && !terminator_uses_phi &&
       block->terminator.kind == bir::TerminatorKind::Branch) {
-    const auto successor_it = analysis.blocks_by_label.find(block->terminator.target_label);
-    if (successor_it != analysis.blocks_by_label.end()) {
-      immediate_successor_uses_phi = block_uses_named_value(*successor_it->second, phi_names);
-    }
+    branch_forwarding_chain_uses_phi = linear_branch_chain_uses_named_value(
+        analysis.blocks_by_label, block->terminator.target_label, phi_names);
   }
-  if (!saw_phi || (!has_non_phi_after_top && !terminator_uses_phi && !immediate_successor_uses_phi)) {
+  if (!saw_phi || (!has_non_phi_after_top && !terminator_uses_phi && !branch_forwarding_chain_uses_phi)) {
     return false;
   }
 
