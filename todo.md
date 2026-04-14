@@ -89,6 +89,39 @@ Source Plan: plan.md
 ## Latest Packet Progress
 
 - completed:
+  the first local array-of-struct field callee-provenance family now lowers
+  through semantic BIR instead of falling back after the repeated local
+  aggregate element step:
+  local aggregate GEP resolution now preserves repeated aggregate storage
+  provenance across constant local element selection before the existing
+  field-offset and pointer-array/value-alias machinery runs, so
+  `holders[which].slot(x)` on a stack local array of structs now lowers as
+  semantic BIR on the riscv64 backend-route surface with `bir.select` over the
+  parameter-carried unary callees before `bir.call`
+  new route proof covers `indirect_local_array_struct_field_callee_call.c` as
+  BIR, while `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, the
+  merge-preserved callee route proof, the addressed-global and earlier
+  local-aggregate callee route proofs, and the standing one-arg through
+  twenty-five-arg indirect-call plus `two_arg_*` direct-call sentinels stayed
+  in the owned proof surface
+  what remains next:
+  keep this family bounded by moving only to the next adjacent semantic
+  callee-provenance storage shape beyond the first local array-of-struct field
+  route; do not widen back into pointer-signature churn or unrelated
+  aggregate cases
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated build succeeded, the new riscv64 route test passed as
+  test `#269`, the broad `^backend_` subset still returned non-zero because
+  it remains dominated by standing unrelated failures, and the total backend
+  route surface increased from `412` to `413` while the standing failed-test
+  count held at `225`, so the first local array-of-struct field callee family
+  is now covered on the shared semantic-BIR lane without a broader regression
+  increase
+- completed:
   the first global array-of-struct field callee-provenance family now lowers
   through semantic BIR without regressing the previously accepted global
   pointer-array routes:

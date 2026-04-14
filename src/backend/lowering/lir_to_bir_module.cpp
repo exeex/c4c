@@ -85,6 +85,18 @@ struct DynamicLocalPointerArrayAccess {
 using DynamicLocalPointerArrayMap =
     std::unordered_map<std::string, DynamicLocalPointerArrayAccess>;
 
+struct DynamicLocalAggregateArrayAccess {
+  std::string element_type_text;
+  std::size_t byte_offset = 0;
+  std::size_t element_count = 0;
+  std::size_t element_stride_bytes = 0;
+  std::unordered_map<std::size_t, std::string> leaf_slots;
+  bir::Value index;
+};
+
+using DynamicLocalAggregateArrayMap =
+    std::unordered_map<std::string, DynamicLocalAggregateArrayAccess>;
+
 struct LocalPointerArrayBase {
   std::vector<std::string> element_slots;
   std::size_t base_index = 0;
@@ -116,7 +128,9 @@ using DynamicGlobalAggregateArrayMap =
     std::unordered_map<std::string, DynamicGlobalAggregateArrayAccess>;
 
 struct LocalAggregateSlots {
+  std::string storage_type_text;
   std::string type_text;
+  std::size_t base_byte_offset = 0;
   std::unordered_map<std::size_t, std::string> leaf_slots;
 };
 
@@ -2026,7 +2040,7 @@ std::optional<std::string> resolve_local_aggregate_gep_slot(
     const TypeDeclMap& type_decls,
     const LocalAggregateSlots& aggregate_slots) {
   std::string_view current_type = c4c::codegen::lir::trim_lir_arg_text(base_type_text);
-  std::size_t byte_offset = 0;
+  std::size_t byte_offset = aggregate_slots.base_byte_offset;
   bool saw_base_index = false;
 
   for (const auto& raw_index : gep.indices) {
@@ -2103,7 +2117,7 @@ std::optional<std::vector<std::string>> resolve_local_aggregate_pointer_array_sl
     const TypeDeclMap& type_decls,
     const LocalAggregateSlots& aggregate_slots) {
   std::string_view current_type = c4c::codegen::lir::trim_lir_arg_text(base_type_text);
-  std::size_t byte_offset = 0;
+  std::size_t byte_offset = aggregate_slots.base_byte_offset;
   bool saw_base_index = false;
 
   for (const auto& raw_index : gep.indices) {
@@ -2125,7 +2139,16 @@ std::optional<std::vector<std::string>> resolve_local_aggregate_pointer_array_sl
     if (!saw_base_index) {
       saw_base_index = true;
       if (*index_value != 0) {
-        return std::nullopt;
+        const auto extent = find_repeated_aggregate_extent_at_offset(
+            aggregate_slots.storage_type_text,
+            aggregate_slots.base_byte_offset,
+            base_type_text,
+            type_decls);
+        if (!extent.has_value() ||
+            static_cast<std::size_t>(*index_value) >= extent->element_count) {
+          return std::nullopt;
+        }
+        byte_offset += static_cast<std::size_t>(*index_value) * extent->element_stride_bytes;
       }
       continue;
     }
@@ -2184,7 +2207,7 @@ std::optional<DynamicLocalPointerArrayAccess> resolve_local_aggregate_dynamic_po
     const TypeDeclMap& type_decls,
     const LocalAggregateSlots& aggregate_slots) {
   std::string_view current_type = c4c::codegen::lir::trim_lir_arg_text(base_type_text);
-  std::size_t byte_offset = 0;
+  std::size_t byte_offset = aggregate_slots.base_byte_offset;
   bool saw_base_index = false;
 
   for (std::size_t index_pos = 0; index_pos < gep.indices.size(); ++index_pos) {
@@ -2229,17 +2252,68 @@ std::optional<DynamicLocalPointerArrayAccess> resolve_local_aggregate_dynamic_po
         }
 
         const auto lowered_index = lower_typed_index_value(*parsed_index, value_aliases);
-        if (!lowered_index.has_value() || index_pos + 1 != gep.indices.size() ||
-            element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
-            element_layout.scalar_type != bir::TypeKind::Ptr) {
+        if (!lowered_index.has_value()) {
+          return std::nullopt;
+        }
+
+        std::size_t element_leaf_offset = 0;
+        std::string_view element_type =
+            c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text);
+        for (std::size_t tail_pos = index_pos + 1; tail_pos < gep.indices.size(); ++tail_pos) {
+          const auto tail_index = parse_typed_operand(gep.indices[tail_pos]);
+          if (!tail_index.has_value()) {
+            return std::nullopt;
+          }
+          const auto tail_value = resolve_index_operand(tail_index->operand, value_aliases);
+          if (!tail_value.has_value() || *tail_value < 0) {
+            return std::nullopt;
+          }
+
+          const auto tail_layout = compute_aggregate_type_layout(element_type, type_decls);
+          if (tail_layout.kind == AggregateTypeLayout::Kind::Invalid ||
+              tail_layout.size_bytes == 0 || tail_layout.align_bytes == 0) {
+            return std::nullopt;
+          }
+
+          switch (tail_layout.kind) {
+            case AggregateTypeLayout::Kind::Array: {
+              const auto nested_layout =
+                  compute_aggregate_type_layout(tail_layout.element_type_text, type_decls);
+              if (nested_layout.kind == AggregateTypeLayout::Kind::Invalid ||
+                  static_cast<std::size_t>(*tail_value) >= tail_layout.array_count) {
+                return std::nullopt;
+              }
+              element_leaf_offset +=
+                  static_cast<std::size_t>(*tail_value) * nested_layout.size_bytes;
+              element_type =
+                  c4c::codegen::lir::trim_lir_arg_text(tail_layout.element_type_text);
+              break;
+            }
+            case AggregateTypeLayout::Kind::Struct:
+              if (static_cast<std::size_t>(*tail_value) >= tail_layout.fields.size()) {
+                return std::nullopt;
+              }
+              element_leaf_offset +=
+                  tail_layout.fields[static_cast<std::size_t>(*tail_value)].byte_offset;
+              element_type = c4c::codegen::lir::trim_lir_arg_text(
+                  tail_layout.fields[static_cast<std::size_t>(*tail_value)].type_text);
+              break;
+            default:
+              return std::nullopt;
+          }
+        }
+
+        const auto final_layout = compute_aggregate_type_layout(element_type, type_decls);
+        if (final_layout.kind != AggregateTypeLayout::Kind::Scalar ||
+            final_layout.scalar_type != bir::TypeKind::Ptr) {
           return std::nullopt;
         }
 
         std::vector<std::string> element_slots;
         element_slots.reserve(layout.array_count);
         for (std::size_t element_index = 0; element_index < layout.array_count; ++element_index) {
-          const auto slot_it =
-              aggregate_slots.leaf_slots.find(byte_offset + element_index * element_layout.size_bytes);
+          const auto slot_it = aggregate_slots.leaf_slots.find(
+              byte_offset + element_index * element_layout.size_bytes + element_leaf_offset);
           if (slot_it == aggregate_slots.leaf_slots.end()) {
             return std::nullopt;
           }
@@ -2267,6 +2341,125 @@ std::optional<DynamicLocalPointerArrayAccess> resolve_local_aggregate_dynamic_po
   }
 
   return std::nullopt;
+}
+
+struct LocalAggregateGepTarget {
+  std::string type_text;
+  std::size_t byte_offset = 0;
+};
+
+std::optional<LocalAggregateGepTarget> resolve_local_aggregate_gep_target(
+    std::string_view base_type_text,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const TypeDeclMap& type_decls,
+    const LocalAggregateSlots& aggregate_slots) {
+  std::string_view current_type = c4c::codegen::lir::trim_lir_arg_text(base_type_text);
+  std::size_t byte_offset = aggregate_slots.base_byte_offset;
+  bool saw_base_index = false;
+
+  for (const auto& raw_index : gep.indices) {
+    const auto parsed_index = parse_typed_operand(raw_index);
+    if (!parsed_index.has_value()) {
+      return std::nullopt;
+    }
+    const auto index_value = resolve_index_operand(parsed_index->operand, value_aliases);
+    if (!index_value.has_value() || *index_value < 0) {
+      return std::nullopt;
+    }
+
+    const auto layout = compute_aggregate_type_layout(current_type, type_decls);
+    if (layout.kind == AggregateTypeLayout::Kind::Invalid ||
+        layout.size_bytes == 0 || layout.align_bytes == 0) {
+      return std::nullopt;
+    }
+
+    if (!saw_base_index) {
+      saw_base_index = true;
+      if (*index_value != 0) {
+        const auto extent = find_repeated_aggregate_extent_at_offset(
+            aggregate_slots.storage_type_text,
+            aggregate_slots.base_byte_offset,
+            base_type_text,
+            type_decls);
+        if (!extent.has_value() ||
+            static_cast<std::size_t>(*index_value) >= extent->element_count) {
+          return std::nullopt;
+        }
+        byte_offset += static_cast<std::size_t>(*index_value) * extent->element_stride_bytes;
+      }
+      continue;
+    }
+
+    switch (layout.kind) {
+      case AggregateTypeLayout::Kind::Array: {
+        const auto element_layout =
+            compute_aggregate_type_layout(layout.element_type_text, type_decls);
+        if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
+            static_cast<std::size_t>(*index_value) >= layout.array_count) {
+          return std::nullopt;
+        }
+        byte_offset += static_cast<std::size_t>(*index_value) * element_layout.size_bytes;
+        current_type = c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text);
+        break;
+      }
+      case AggregateTypeLayout::Kind::Struct:
+        if (static_cast<std::size_t>(*index_value) >= layout.fields.size()) {
+          return std::nullopt;
+        }
+        byte_offset += layout.fields[static_cast<std::size_t>(*index_value)].byte_offset;
+        current_type = c4c::codegen::lir::trim_lir_arg_text(
+            layout.fields[static_cast<std::size_t>(*index_value)].type_text);
+        break;
+      default:
+        return std::nullopt;
+    }
+  }
+
+  return LocalAggregateGepTarget{
+      .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(current_type)),
+      .byte_offset = byte_offset,
+  };
+}
+
+std::optional<DynamicLocalAggregateArrayAccess> resolve_local_dynamic_aggregate_array_access(
+    std::string_view base_type_text,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const TypeDeclMap& type_decls,
+    const LocalAggregateSlots& aggregate_slots) {
+  if (gep.indices.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto parsed_index = parse_typed_operand(gep.indices.front());
+  if (!parsed_index.has_value() ||
+      resolve_index_operand(parsed_index->operand, value_aliases).has_value()) {
+    return std::nullopt;
+  }
+
+  const auto lowered_index = lower_typed_index_value(*parsed_index, value_aliases);
+  if (!lowered_index.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto extent = find_repeated_aggregate_extent_at_offset(
+      aggregate_slots.storage_type_text,
+      aggregate_slots.base_byte_offset,
+      base_type_text,
+      type_decls);
+  if (!extent.has_value()) {
+    return std::nullopt;
+  }
+
+  return DynamicLocalAggregateArrayAccess{
+      .element_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(base_type_text)),
+      .byte_offset = aggregate_slots.base_byte_offset,
+      .element_count = extent->element_count,
+      .element_stride_bytes = extent->element_stride_bytes,
+      .leaf_slots = aggregate_slots.leaf_slots,
+      .index = *lowered_index,
+  };
 }
 
 std::optional<bir::Value> resolve_local_aggregate_pointer_value_alias(
@@ -2789,6 +2982,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
                                        LocalArraySlotMap& local_array_slots,
                                        LocalPointerArrayBaseMap& local_pointer_array_bases,
                                        DynamicLocalPointerArrayMap& dynamic_local_pointer_arrays,
+                                       DynamicLocalAggregateArrayMap& dynamic_local_aggregate_arrays,
                                        LocalAggregateSlotMap& local_aggregate_slots,
                                        LocalAggregateFieldSet& local_aggregate_field_slots,
                                        LocalPointerValueAliasMap& local_pointer_value_aliases,
@@ -2992,12 +3186,16 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
     }
 
     const auto aggregate_layout = compute_aggregate_type_layout(alloca->type_str.str(), type_decls);
-    if (aggregate_layout.kind != AggregateTypeLayout::Kind::Struct) {
+    if (aggregate_layout.kind != AggregateTypeLayout::Kind::Struct &&
+        aggregate_layout.kind != AggregateTypeLayout::Kind::Array) {
       return false;
     }
 
     LocalAggregateSlots aggregate_slots{
+        .storage_type_text =
+            std::string(c4c::codegen::lir::trim_lir_arg_text(alloca->type_str.str())),
         .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(alloca->type_str.str())),
+        .base_byte_offset = 0,
     };
     if (!append_local_aggregate_scalar_slots(alloca->type_str.str(),
                                              slot_name,
@@ -3063,12 +3261,34 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
         };
         return true;
       }
+      const auto resolved_target = resolve_local_aggregate_gep_target(
+          aggregate_it->second.type_text, *gep, value_aliases, type_decls, aggregate_it->second);
+      if (resolved_target.has_value()) {
+        const auto target_layout =
+            compute_aggregate_type_layout(resolved_target->type_text, type_decls);
+        if (target_layout.kind == AggregateTypeLayout::Kind::Struct ||
+            target_layout.kind == AggregateTypeLayout::Kind::Array) {
+          local_aggregate_slots[gep->result.str()] = LocalAggregateSlots{
+              .storage_type_text = aggregate_it->second.storage_type_text,
+              .type_text = std::move(resolved_target->type_text),
+              .base_byte_offset = resolved_target->byte_offset,
+              .leaf_slots = aggregate_it->second.leaf_slots,
+          };
+          return true;
+        }
+      }
       const auto dynamic_array = resolve_local_aggregate_dynamic_pointer_array_access(
           aggregate_it->second.type_text, *gep, value_aliases, type_decls, aggregate_it->second);
-      if (!dynamic_array.has_value()) {
+      if (dynamic_array.has_value()) {
+        dynamic_local_pointer_arrays[gep->result.str()] = std::move(*dynamic_array);
+        return true;
+      }
+      const auto dynamic_aggregate = resolve_local_dynamic_aggregate_array_access(
+          aggregate_it->second.type_text, *gep, value_aliases, type_decls, aggregate_it->second);
+      if (!dynamic_aggregate.has_value()) {
         return false;
       }
-      dynamic_local_pointer_arrays[gep->result.str()] = std::move(*dynamic_array);
+      dynamic_local_aggregate_arrays[gep->result.str()] = std::move(*dynamic_aggregate);
       return true;
     }
 
@@ -3227,6 +3447,33 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
           .element_count = global_aggregate_it->second.element_count,
           .element_stride_bytes = global_aggregate_it->second.element_stride_bytes,
           .index = global_aggregate_it->second.index,
+      };
+      return true;
+    } else if (const auto local_aggregate_it = dynamic_local_aggregate_arrays.find(gep->ptr.str());
+               local_aggregate_it != dynamic_local_aggregate_arrays.end()) {
+      std::vector<std::string> element_slots;
+      element_slots.reserve(local_aggregate_it->second.element_count);
+      for (std::size_t element_index = 0;
+           element_index < local_aggregate_it->second.element_count;
+           ++element_index) {
+        LocalAggregateSlots element_aggregate{
+            .storage_type_text = local_aggregate_it->second.element_type_text,
+            .type_text = local_aggregate_it->second.element_type_text,
+            .base_byte_offset =
+                local_aggregate_it->second.byte_offset +
+                element_index * local_aggregate_it->second.element_stride_bytes,
+            .leaf_slots = local_aggregate_it->second.leaf_slots,
+        };
+        const auto element_slot = resolve_local_aggregate_gep_slot(
+            element_aggregate.type_text, *gep, value_aliases, type_decls, element_aggregate);
+        if (!element_slot.has_value()) {
+          return false;
+        }
+        element_slots.push_back(*element_slot);
+      }
+      dynamic_local_pointer_arrays[gep->result.str()] = DynamicLocalPointerArrayAccess{
+          .element_slots = std::move(element_slots),
+          .index = local_aggregate_it->second.index,
       };
       return true;
     } else {
@@ -4045,6 +4292,7 @@ std::optional<bir::Function> lower_branch_family_function(
   LocalArraySlotMap local_array_slots;
   LocalPointerArrayBaseMap local_pointer_array_bases;
   DynamicLocalPointerArrayMap dynamic_local_pointer_arrays;
+  DynamicLocalAggregateArrayMap dynamic_local_aggregate_arrays;
   LocalAggregateSlotMap local_aggregate_slots;
   LocalAggregateFieldSet local_aggregate_field_slots;
   LocalPointerValueAliasMap local_pointer_value_aliases;
@@ -4069,6 +4317,7 @@ std::optional<bir::Function> lower_branch_family_function(
             local_array_slots,
             local_pointer_array_bases,
             dynamic_local_pointer_arrays,
+            dynamic_local_aggregate_arrays,
             local_aggregate_slots,
             local_aggregate_field_slots,
             local_pointer_value_aliases,
@@ -4107,6 +4356,7 @@ std::optional<bir::Function> lower_branch_family_function(
               local_array_slots,
               local_pointer_array_bases,
               dynamic_local_pointer_arrays,
+              dynamic_local_aggregate_arrays,
               local_aggregate_slots,
               local_aggregate_field_slots,
               local_pointer_value_aliases,
