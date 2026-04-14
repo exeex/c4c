@@ -57,6 +57,15 @@ std::string make_phi_slot_name(std::string_view result_name) {
   return std::string(result_name) + ".phi";
 }
 
+bir::LocalSlot* find_local_slot(bir::Function* function, std::string_view slot_name) {
+  for (auto& slot : function->local_slots) {
+    if (slot.name == slot_name) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
 void lower_phi_nodes(bir::Function* function) {
   struct PhiLoweringPlan {
     std::string slot_name;
@@ -89,7 +98,17 @@ void lower_phi_nodes(bir::Function* function) {
               .type = phi->result.type,
               .size_bytes = slot_size,
               .align_bytes = slot_size,
+              .phi_observation = bir::PhiObservation{
+                  .result = phi->result,
+                  .incomings = phi->incomings,
+              },
           });
+        } else if (auto* slot = find_local_slot(function, slot_name); slot != nullptr &&
+                   !slot->phi_observation.has_value()) {
+          slot->phi_observation = bir::PhiObservation{
+              .result = phi->result,
+              .incomings = phi->incomings,
+          };
         }
 
         phis_by_block[block.label].push_back(PhiLoweringPlan{

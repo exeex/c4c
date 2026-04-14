@@ -74,6 +74,16 @@ inline bool operator!=(const Value& lhs, const Value& rhs) {
   return !(lhs == rhs);
 }
 
+struct PhiIncoming {
+  std::string label;
+  Value value;
+};
+
+struct PhiObservation {
+  Value result;
+  std::vector<PhiIncoming> incomings;
+};
+
 struct Param {
   TypeKind type = TypeKind::Void;
   std::string name;
@@ -91,6 +101,7 @@ struct LocalSlot {
   std::size_t align_bytes = 0;
   bool is_address_taken = false;
   bool is_byval_copy = false;
+  std::optional<PhiObservation> phi_observation;
 };
 
 struct Global {
@@ -204,11 +215,6 @@ struct CastInst {
   CastOpcode opcode = CastOpcode::SExt;
   Value result;
   Value operand;
-};
-
-struct PhiIncoming {
-  std::string label;
-  Value value;
 };
 
 struct PhiInst {

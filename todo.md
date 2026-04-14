@@ -100,6 +100,25 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- 2026-04-14 executor follow-up added one minimal semantic-merge observation
+  surface without changing the prepared-BIR route contract:
+  `src/backend/prepare/legalize.cpp` now preserves lowered-phi provenance on
+  the temporary phi slot, and `src/backend/bir_printer.cpp` prints that
+  preserved merge meaning as a `semantic_phi ... = bir.phi ...` trailer after
+  the prepared BIR body
+- 2026-04-14 route coverage for that observation surface landed on the active
+  backlog-item-1 family via
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_phi`,
+  while focused non-regression re-checks also kept
+  `backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir` and
+  `backend_codegen_route_riscv64_indirect_select_local_override_callee_call_defaults_to_bir`
+  green
+- 2026-04-14 exact delegated proof ran as
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+  and wrote to `test_after.log`, but that broad backend subset still fails at
+  branch scope across many existing route/runtime/toolchain cases, so this
+  slice is locally proven on its owned route surface but not yet
+  acceptance-ready from the supervisor-selected broad proof alone
 - 2026-04-14 review and supervisor inspection agreed that the post-`b21fdb42`
   execution drifted into proving-surface churn instead of backlog-item-1 code
   progress:

@@ -31,6 +31,15 @@ std::string render_call_target(const CallInst& call) {
   return call.callee;
 }
 
+void render_phi_observation(std::ostringstream& out, const PhiObservation& observation) {
+  out << "; semantic_phi " << observation.result.name << " = bir.phi "
+      << render_type(observation.result.type);
+  for (const auto& incoming : observation.incomings) {
+    out << " [" << incoming.label << ", " << render_value(incoming.value) << "]";
+  }
+  out << "\n";
+}
+
 void render_function(std::ostringstream& out, const Function& function) {
   out << "bir.func @" << function.name << "(";
   for (std::size_t index = 0; index < function.params.size(); ++index) {
@@ -142,6 +151,11 @@ void render_function(std::ostringstream& out, const Function& function) {
     out << "\n";
   }
   out << "}\n";
+  for (const auto& slot : function.local_slots) {
+    if (slot.phi_observation.has_value()) {
+      render_phi_observation(out, *slot.phi_observation);
+    }
+  }
 }
 
 }  // namespace
