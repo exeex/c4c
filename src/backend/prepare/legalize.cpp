@@ -4,6 +4,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace c4c::backend::prepare {
@@ -66,11 +67,329 @@ bir::LocalSlot* find_local_slot(bir::Function* function, std::string_view slot_n
   return nullptr;
 }
 
+bool is_materializable_inst(const bir::Inst& inst) {
+  return std::holds_alternative<bir::BinaryInst>(inst) || std::holds_alternative<bir::CastInst>(inst) ||
+         std::holds_alternative<bir::PhiInst>(inst);
+}
+
+std::optional<std::string> inst_result_name(const bir::Inst& inst) {
+  if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+    return binary->result.name;
+  }
+  if (const auto* cast = std::get_if<bir::CastInst>(&inst)) {
+    return cast->result.name;
+  }
+  if (const auto* phi = std::get_if<bir::PhiInst>(&inst)) {
+    return phi->result.name;
+  }
+  if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
+    return load_local->result.name;
+  }
+  if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
+    return load_global->result.name;
+  }
+  if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+    if (call->result.has_value()) {
+      return call->result->name;
+    }
+  }
+  return std::nullopt;
+}
+
+struct BlockAnalysis {
+  std::unordered_map<std::string, bir::Block*> blocks_by_label;
+  std::unordered_map<std::string, const bir::Inst*> defs_by_name;
+  std::unordered_map<std::string, bir::Block*> def_blocks_by_name;
+};
+
+BlockAnalysis analyze_function(bir::Function* function) {
+  BlockAnalysis analysis;
+  for (auto& block : function->blocks) {
+    analysis.blocks_by_label.emplace(block.label, &block);
+    for (auto& inst : block.insts) {
+      if (const auto result_name = inst_result_name(inst); result_name.has_value()) {
+        analysis.defs_by_name.emplace(*result_name, &inst);
+        analysis.def_blocks_by_name.emplace(*result_name, &block);
+      }
+    }
+  }
+  return analysis;
+}
+
+std::optional<std::string> funnel_leaf_label(
+    const std::unordered_map<std::string, bir::Block*>& blocks_by_label,
+    std::string_view start_label,
+    std::string_view join_label,
+    std::unordered_set<std::string>* visiting) {
+  const auto it = blocks_by_label.find(std::string(start_label));
+  if (it == blocks_by_label.end() || !visiting->emplace(std::string(start_label)).second) {
+    return std::nullopt;
+  }
+
+  const auto clear_visit = [&] { visiting->erase(std::string(start_label)); };
+  const auto* block = it->second;
+  if (block->terminator.kind == bir::TerminatorKind::Branch) {
+    if (block->terminator.target_label == join_label) {
+      clear_visit();
+      return block->label;
+    }
+    const auto next = funnel_leaf_label(
+        blocks_by_label, block->terminator.target_label, join_label, visiting);
+    clear_visit();
+    return next;
+  }
+  if (block->terminator.kind == bir::TerminatorKind::CondBranch) {
+    const auto true_leaf = funnel_leaf_label(
+        blocks_by_label, block->terminator.true_label, join_label, visiting);
+    const auto false_leaf = funnel_leaf_label(
+        blocks_by_label, block->terminator.false_label, join_label, visiting);
+    clear_visit();
+    if (true_leaf.has_value() && false_leaf.has_value() && *true_leaf == *false_leaf) {
+      return true_leaf;
+    }
+    return std::nullopt;
+  }
+
+  clear_visit();
+  return std::nullopt;
+}
+
+const bir::BinaryInst* find_compare_for_condition(const bir::Block& block,
+                                                  const bir::Value& condition) {
+  if (condition.kind != bir::Value::Kind::Named) {
+    return nullptr;
+  }
+  for (const auto& inst : block.insts) {
+    const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+    if (binary == nullptr || binary->result.name != condition.name ||
+        !bir::is_compare_opcode(binary->opcode)) {
+      continue;
+    }
+    return binary;
+  }
+  return nullptr;
+}
+
+struct PhiMaterializeContext {
+  bir::Function* function = nullptr;
+  const BlockAnalysis* analysis = nullptr;
+  bir::Block* target_block = nullptr;
+  std::vector<bir::Inst> emitted_insts;
+  std::unordered_set<std::string> removed_names;
+  std::unordered_set<std::string> materialized_names;
+};
+
+std::optional<bir::Value> materialize_value(const bir::Value& value, PhiMaterializeContext* context);
+
+std::optional<bir::Value> materialize_phi(const bir::PhiInst& phi,
+                                          const bir::Block& phi_block,
+                                          PhiMaterializeContext* context) {
+  if (phi.incomings.size() != 2) {
+    return std::nullopt;
+  }
+
+  const bir::Block* compare_block = nullptr;
+  const bir::BinaryInst* compare = nullptr;
+  std::optional<bir::Value> true_value;
+  std::optional<bir::Value> false_value;
+
+  for (const auto& [_, block] : context->analysis->blocks_by_label) {
+    if (block->terminator.kind != bir::TerminatorKind::CondBranch) {
+      continue;
+    }
+
+    std::unordered_set<std::string> visiting;
+    const auto true_leaf = funnel_leaf_label(
+        context->analysis->blocks_by_label, block->terminator.true_label, phi_block.label, &visiting);
+    visiting.clear();
+    const auto false_leaf = funnel_leaf_label(
+        context->analysis->blocks_by_label, block->terminator.false_label, phi_block.label, &visiting);
+    if (!true_leaf.has_value() || !false_leaf.has_value()) {
+      continue;
+    }
+
+    for (const auto& incoming : phi.incomings) {
+      if (incoming.label == *true_leaf) {
+        true_value = incoming.value;
+      } else if (incoming.label == *false_leaf) {
+        false_value = incoming.value;
+      }
+    }
+    if (!true_value.has_value() || !false_value.has_value()) {
+      true_value.reset();
+      false_value.reset();
+      continue;
+    }
+
+    compare_block = block;
+    compare = find_compare_for_condition(*block, block->terminator.condition);
+    if (compare != nullptr) {
+      break;
+    }
+    compare_block = nullptr;
+    true_value.reset();
+    false_value.reset();
+  }
+
+  if (compare_block == nullptr || compare == nullptr || !true_value.has_value() ||
+      !false_value.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto lowered_true = materialize_value(*true_value, context);
+  const auto lowered_false = materialize_value(*false_value, context);
+  if (!lowered_true.has_value() || !lowered_false.has_value()) {
+    return std::nullopt;
+  }
+
+  context->emitted_insts.push_back(bir::SelectInst{
+      .predicate = compare->opcode,
+      .result = phi.result,
+      .compare_type = compare->operand_type,
+      .lhs = compare->lhs,
+      .rhs = compare->rhs,
+      .true_value = *lowered_true,
+      .false_value = *lowered_false,
+  });
+  context->removed_names.insert(phi.result.name);
+  context->materialized_names.insert(phi.result.name);
+  return phi.result;
+}
+
+std::optional<bir::Value> materialize_value(const bir::Value& value, PhiMaterializeContext* context) {
+  if (value.kind != bir::Value::Kind::Named ||
+      context->materialized_names.find(value.name) != context->materialized_names.end()) {
+    return value;
+  }
+
+  const auto def_it = context->analysis->defs_by_name.find(value.name);
+  if (def_it == context->analysis->defs_by_name.end()) {
+    return value;
+  }
+
+  const auto* inst = def_it->second;
+  if (!is_materializable_inst(*inst)) {
+    return value;
+  }
+
+  if (const auto* binary = std::get_if<bir::BinaryInst>(inst)) {
+    auto lowered = *binary;
+    const auto lhs = materialize_value(lowered.lhs, context);
+    const auto rhs = materialize_value(lowered.rhs, context);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return std::nullopt;
+    }
+    lowered.lhs = *lhs;
+    lowered.rhs = *rhs;
+    context->emitted_insts.push_back(std::move(lowered));
+    context->removed_names.insert(binary->result.name);
+    context->materialized_names.insert(binary->result.name);
+    return binary->result;
+  }
+
+  if (const auto* cast = std::get_if<bir::CastInst>(inst)) {
+    auto lowered = *cast;
+    const auto operand = materialize_value(lowered.operand, context);
+    if (!operand.has_value()) {
+      return std::nullopt;
+    }
+    lowered.operand = *operand;
+    context->emitted_insts.push_back(std::move(lowered));
+    context->removed_names.insert(cast->result.name);
+    context->materialized_names.insert(cast->result.name);
+    return cast->result;
+  }
+
+  if (const auto* phi = std::get_if<bir::PhiInst>(inst)) {
+    const auto block_it = context->analysis->def_blocks_by_name.find(phi->result.name);
+    if (block_it == context->analysis->def_blocks_by_name.end()) {
+      return std::nullopt;
+    }
+    return materialize_phi(*phi, *block_it->second, context);
+  }
+
+  return value;
+}
+
+bool try_materialize_root_phi_block(bir::Function* function, const BlockAnalysis& analysis, bir::Block* block) {
+  bool saw_phi = false;
+  bool has_non_phi_after_top = false;
+  for (const auto& inst : block->insts) {
+    if (std::holds_alternative<bir::PhiInst>(inst) && !has_non_phi_after_top) {
+      saw_phi = true;
+      continue;
+    }
+    if (saw_phi) {
+      has_non_phi_after_top = true;
+      break;
+    }
+    break;
+  }
+  if (!saw_phi || !has_non_phi_after_top) {
+    return false;
+  }
+
+  PhiMaterializeContext context{
+      .function = function,
+      .analysis = &analysis,
+      .target_block = block,
+  };
+
+  for (const auto& inst : block->insts) {
+    const auto* phi = std::get_if<bir::PhiInst>(&inst);
+    if (phi == nullptr) {
+      break;
+    }
+    if (!materialize_phi(*phi, *block, &context).has_value()) {
+      return false;
+    }
+  }
+
+  if (context.emitted_insts.empty()) {
+    return false;
+  }
+
+  for (auto& rewrite_block : function->blocks) {
+    std::vector<bir::Inst> rewritten;
+    if (rewrite_block.label == block->label) {
+      rewritten = context.emitted_insts;
+    }
+    for (auto& inst : rewrite_block.insts) {
+      const auto result_name = inst_result_name(inst);
+      if (result_name.has_value() &&
+          context.removed_names.find(*result_name) != context.removed_names.end()) {
+        continue;
+      }
+      rewritten.push_back(std::move(inst));
+    }
+    rewrite_block.insts = std::move(rewritten);
+  }
+
+  return true;
+}
+
+void materialize_reducible_phi_trees(bir::Function* function) {
+  while (true) {
+    const auto analysis = analyze_function(function);
+    bir::Block* root_block = nullptr;
+    for (auto& block : function->blocks) {
+      if (!block.insts.empty() && std::holds_alternative<bir::PhiInst>(block.insts.front())) {
+        root_block = &block;
+      }
+    }
+    if (root_block == nullptr || !try_materialize_root_phi_block(function, analysis, root_block)) {
+      return;
+    }
+  }
+}
+
 void lower_phi_nodes(bir::Function* function) {
   struct PhiLoweringPlan {
     std::string slot_name;
     std::vector<bir::PhiIncoming> incomings;
   };
+
+  materialize_reducible_phi_trees(function);
 
   std::unordered_map<std::string, std::vector<PhiLoweringPlan>> phis_by_block;
   std::unordered_set<std::string> used_slot_names;

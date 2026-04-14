@@ -1680,8 +1680,8 @@ if(CLANG_EXECUTABLE)
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_select_callee_call.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_select_callee_call_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @call_select(i32 %p.flag, ptr %p.f, ptr %p.g, i32 %p.x) -> i32 {|bir.store_local %t6.phi, ptr %p.f|bir.store_local %t6.phi, ptr %p.g|%t6 = bir.load_local ptr %t6.phi|%t7 = bir.call i32 %t6(i32 %p.x)|bir.ret i32 %t7"
-      FORBIDDEN_SNIPPETS "define i32 @call_select"
+      REQUIRED_SNIPPETS "bir.func @call_select(i32 %p.flag, ptr %p.f, ptr %p.g, i32 %p.x) -> i32 {|%t6 = bir.select ne i32 %p.flag, 0, ptr %p.f, %p.g|%t7 = bir.call i32 %t6(i32 %p.x)|bir.ret i32 %t7"
+      FORBIDDEN_SNIPPETS "define i32 @call_select|bir.store_local %t6.phi|bir.load_local ptr %t6.phi"
     )
 
     c4c_add_backend_codegen_route_test(
@@ -1689,8 +1689,8 @@ if(CLANG_EXECUTABLE)
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_select_local_override_callee_call.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_select_local_override_callee_call_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @call_select_local_override(i32 %p.a, i32 %p.b, ptr %p.f, ptr %p.g, ptr %p.h, i32 %p.x) -> i32 {|bir.store_local %t6.phi, ptr %p.f|bir.store_local %t6.phi, ptr %p.g|%t6 = bir.load_local ptr %t6.phi|bir.store_local %lv.callee, ptr %t6|bir.store_local %lv.callee, ptr %p.h|%t8 = bir.load_local ptr %lv.callee|%t9 = bir.call i32 %t8(i32 %p.x)|bir.ret i32 %t9"
-      FORBIDDEN_SNIPPETS "define i32 @call_select_local_override"
+      REQUIRED_SNIPPETS "bir.func @call_select_local_override(i32 %p.a, i32 %p.b, ptr %p.f, ptr %p.g, ptr %p.h, i32 %p.x) -> i32 {|%t6 = bir.select ne i32 %p.a, 0, ptr %p.f, %p.g|bir.store_local %lv.callee, ptr %t6|bir.store_local %lv.callee, ptr %p.h|%t8 = bir.load_local ptr %lv.callee|%t9 = bir.call i32 %t8(i32 %p.x)|bir.ret i32 %t9"
+      FORBIDDEN_SNIPPETS "define i32 @call_select_local_override|bir.store_local %t6.phi|bir.load_local ptr %t6.phi"
     )
 
     c4c_add_backend_codegen_route_test(
@@ -2878,8 +2878,9 @@ if(CLANG_EXECUTABLE)
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/three_way_phi_merge_post_add_sub.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/three_way_phi_merge_post_add_sub_semantic_phi_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose3_phi_post_chain(i32 %p.x, i32 %p.y, i32 %p.z) -> i32 {|bir.store_local|bir.load_local|bir.ret i32|semantic_phi|bir.phi i32"
-      FORBIDDEN_SNIPPETS "define i32 @choose3_phi_post_chain(i32 %p.x, i32 %p.y, i32 %p.z)|bir.select"
+      EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+      REQUIRED_SNIPPETS "bir.func @choose3_phi_post_chain(i32 %p.x, i32 %p.y, i32 %p.z) -> i32 {|%t19 = bir.phi i32 [tern.then.end.13, %t17] [tern.else.end.15, %t18]|%t20 = bir.phi i32 [tern.then.end.4, %t8] [tern.else.end.6, %t19]|%t21 = bir.add i32 %t20, 6|%t22 = bir.sub i32 %t21, 2|bir.ret i32 %t22"
+      FORBIDDEN_SNIPPETS "define i32 @choose3_phi_post_chain(i32 %p.x, i32 %p.y, i32 %p.z)|bir.store_local|semantic_phi|bir.select"
     )
 
     c4c_add_backend_codegen_route_test(

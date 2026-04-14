@@ -316,3 +316,22 @@ Source Plan: plan.md
 - 2026-04-14 exact delegated proof for that harness-repair packet ran as
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_(branch_if_eq_defaults_to_bir|indirect_select_local_override_callee_call_defaults_to_bir|two_param_select_eq_split_predecessor_add_phi_post_add_sub_defaults_to_bir|two_param_select_eq_split_predecessor_add_phi_post_add_sub_add_defaults_to_bir|two_param_select_eq_split_predecessor_deeper_affine_post_add_defaults_to_bir|two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_defaults_to_bir|two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_add_defaults_to_bir|two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_defaults_to_bir|two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add_defaults_to_bir|two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_bir|two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_phi|two_param_select_eq_split_predecessor_mixed_affine_post_add_defaults_to_bir|two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_defaults_to_bir|two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_add_defaults_to_bir|two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_defaults_to_bir|two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add_defaults_to_bir))$' > test_after.log 2>&1`
   and wrote the result to `test_after.log`
+- 2026-04-14 executor folded the existing nested ternary / three-way merge
+  prepared route in `src/backend/prepare/legalize.cpp` from a reducible
+  top-of-block `bir.phi` tree into a nested `bir.select` chain while leaving
+  semantic-stage lowering unchanged, so
+  `three_way_phi_merge_post_add_sub.c` now emits prepared nested selects but
+  still exposes explicit semantic `bir.phi` under
+  `--backend-bir-stage semantic`
+- 2026-04-14 owned route expectations were updated to the truthful post-change
+  surfaces:
+  the indirect selected-callee defaults-to-BIR tests now assert
+  `bir.select`-based callee choice instead of temporary phi-slot
+  materialization, and the
+  `two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_phi`
+  sentinel now observes the semantic-stage `bir.phi` chain directly rather
+  than the old prepared `semantic_phi` trailer
+- 2026-04-14 exact delegated proof for the nested-three-way-merge packet ran
+  as
+  `cmake --build --preset default && ./build/c4cll --codegen asm --target riscv64-unknown-linux-gnu tests/c/internal/backend_route_case/three_way_phi_merge_post_add_sub.c -o build/internal_backend_route/three_way_phi_merge_post_add_sub_probe_riscv64.ll && rg -F "%t19 = bir.select eq i32 %p.x, %p.z, i32 %t17, %t18" build/internal_backend_route/three_way_phi_merge_post_add_sub_probe_riscv64.ll && rg -F "%t20 = bir.select eq i32 %p.x, %p.y, i32 %t8, %t19" build/internal_backend_route/three_way_phi_merge_post_add_sub_probe_riscv64.ll && rg -F "%t21 = bir.add i32 %t20, 6" build/internal_backend_route/three_way_phi_merge_post_add_sub_probe_riscv64.ll && ! rg -F "bir.store_local %t19.phi" build/internal_backend_route/three_way_phi_merge_post_add_sub_probe_riscv64.ll && ! rg -F "bir.store_local %t20.phi" build/internal_backend_route/three_way_phi_merge_post_add_sub_probe_riscv64.ll && ./build/c4cll --backend-bir-stage semantic --codegen asm --target riscv64-unknown-linux-gnu tests/c/internal/backend_route_case/three_way_phi_merge_post_add_sub.c -o build/internal_backend_route/three_way_phi_merge_post_add_sub_semantic_probe_riscv64.ll && rg -F "%t19 = bir.phi i32 [tern.then.end.13, %t17] [tern.else.end.15, %t18]" build/internal_backend_route/three_way_phi_merge_post_add_sub_semantic_probe_riscv64.ll && rg -F "%t20 = bir.phi i32 [tern.then.end.4, %t8] [tern.else.end.6, %t19]" build/internal_backend_route/three_way_phi_merge_post_add_sub_semantic_probe_riscv64.ll && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_(branch_if_eq_defaults_to_bir|indirect_select_local_override_callee_call_defaults_to_bir|single_param_select_eq_observes_semantic_bir|two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_phi))$' > test_after.log 2>&1`
+  and writes the result to `test_after.log`
