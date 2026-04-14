@@ -37,14 +37,32 @@ rendered-text case matchers, or equivalent workaround seams under new names.
 
 ## Current Targets
 
-- `src/backend/prepare/legalize.cpp`
 - `src/backend/lowering/lir_to_bir_module.cpp`
-- `src/backend/bir.hpp`
-- `src/backend/bir_printer.cpp`
-- `src/backend/backend.cpp`
+- `src/backend/lowering/call_decode.cpp`
+- `tests/c/internal/backend_case/param_slot.c`
+- `tests/c/internal/backend_case/param_member_array.c`
+- `tests/c/internal/backend_case/nested_param_member_array.c`
 
 ## Route Checkpoint
 
+- 2026-04-14 lifecycle checkpoint after five executor commits on the direct
+  prepare/BIR explicit-phi harness:
+  backlog-item-1 reducible explicit-phi materialization is now sufficiently
+  sampled for route purposes, with accepted direct coverage for
+  multi-incoming funnels, return-only joins, successor-consumed joins,
+  forwarded-successor joins, and conditional-successor joins
+- keep backlog item 1 parked at that accepted baseline for now; do not send
+  another executor packet that only extends the current reducible-phi harness
+  or restarts stale select/phi testcase scouting without naming a fresh
+  honest merge seam first
+- route-quality re-sequencing is now justified:
+  backlog item 2 already has truthful behavior-first proving surfaces on
+  `param_slot`, `param_member_array`, and `nested_param_member_array`, so the
+  active executor route advances there instead of leaving the whole runbook
+  blocked on an unnamed next item-1 seam
+- treat `tests/cpp/internal/backend_prepare_phi_materialize_test.cpp` and the
+  landed explicit-phi prepare work as regression baseline for backlog item 1,
+  not as the current packet source
 - 2026-04-14 supervisor validation plus review follow-up kept this runbook on
   the same source idea, but it also proved the previously sampled
   `backend_codegen_route` select/phi inventory is exhausted as a truthful next
@@ -100,9 +118,8 @@ rendered-text case matchers, or equivalent workaround seams under new names.
   not rediscovered from ad hoc testcase hunting
 - stale unsupported-route inventory is harness debt, not proof of the next
   missing capability
-- call lowering, params/signatures, globals, and intrinsics stay out of scope
-  for the next packet except as non-regression sentinels until backlog item 1
-  moves again
+- backlog item 1 explicit-phi materialization now stays parked as
+  non-regression coverage while executor focus moves to params/signatures
 
 ## Completed Capability Baseline
 
@@ -167,6 +184,9 @@ Completion check:
   test routing or proving regexes
 - the next accepted packet proves a real prepare/lowering code move on explicit
   phi handling, not just cleanup of stale unsupported inventory
+- current checkpoint state:
+  keep this lane parked at the landed reducible explicit-phi baseline until a
+  fresh honest merge seam can be named without route churn
 
 ### 2. Harden params and function signatures
 
