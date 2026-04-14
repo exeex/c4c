@@ -21,7 +21,11 @@ Source Plan: plan.md
   materialization needed by the normal backend-route output surface, and the
   compiler now has one minimal opt-in semantic-BIR observation path that can
   expose shared merge semantics before `prepare`; the next packet should
-  return to code-moving backlog-item-1 work rather than more harness churn
+  return to code-moving backlog-item-1 work rather than more harness churn;
+  supervisor follow-up has now confirmed the remaining rv64 `u8`
+  select/phi `asm_unsupported` inventory is stale too, so the current
+  `backend_codegen_route` inventory no longer exposes another honest
+  code-moving merge packet by itself
 - why now:
   supervisor follow-up confirmed that more of the remaining merge proving
   surface is stale harness debt rather than a real backlog-item-1 semantic
@@ -52,7 +56,14 @@ Source Plan: plan.md
   both `backend_codegen_route_riscv64_single_param_select_eq_asm_unsupported`
   and `backend_codegen_route_riscv64_two_param_select_eq_asm_unsupported`
   already emit BIR, so the current backend-route inventory no longer exposes a
-  remaining backlog-item-1 merge gap cleanly
+  remaining backlog-item-1 merge gap cleanly;
+  supervisor then confirmed the same exhaustion for the remaining rv64 `u8`
+  select/phi inventory:
+  both `backend_codegen_route_riscv64_single_param_u8_select_eq_asm_unsupported`
+  and
+  `backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub_asm_unsupported`
+  now fail because the backend already emits prepared BIR plus
+  `semantic_phi` observation for those stems too
 - packet rule:
   do not accept more `todo` / `InternalTests.cmake` churn as proxy progress;
   stale unsupported-test promotion for the split-predecessor
@@ -60,32 +71,35 @@ Source Plan: plan.md
   `two_param_select_eq_predecessor_add_post_add` and
   `two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub`
   stems is harness cleanup only, not backlog-item-1 progress;
-  the next accepted packet may be one minimal observation/harness slice only
-  because the supervisor has now ruled out the existing backend-route
-  inventory as an honest source of another immediate code-moving merge target;
-  that harness slice must stay generic, bounded, and merge-semantic in scope
-  rather than promoting one more named testcase surface
+  the remaining rv64 `u8` `single_param_select_eq` and
+  `two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub`
+  `asm_unsupported` stems are now the same kind of stale harness debt, not a
+  fresh merge target;
+  the authorized one-off observation/harness slice is already spent, so the
+  next accepted packet must include a real backlog-item-1 code move and may
+  use the observation surface only as proof support, not as a substitute for
+  new lowering/backend capability work
 
 ## Immediate Target
 
-- the authorized observation/harness slice is now complete, so the next packet
-  should return to one real code-moving backlog-item-1 merge target using the
-  new semantic-BIR observation surface only as proof support
+- the active plan remains on backlog item 1, generalize CFG merge and `phi`,
+  but the currently sampled `backend_codegen_route` inventory is exhausted as
+  a source of honest next packets
+- the next packet must return to one real code-moving backlog-item-1 merge
+  target using the semantic-BIR observation surface only as proof support;
+  do not spend another packet on route-test promotion or harness-only cleanup
+- if the executor needs a new proving source to expose that code-moving target,
+  it may add one minimal merge-semantic source in the same packet, but source
+  or harness expansion alone is not accepted progress
 - keep backlog item 2 params/signatures and backlog item 5 call lowering as
   sentinels only until backlog item 1 has another real code change
 - treat the split-predecessor `*_post_add_sub_add` stems plus the newly stale
   `two_param_select_eq_predecessor_add_post_add` and
   `two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub`
   stems as harness debt, not as the next executor target
-- the next executor packet is now authorized to be one minimal observation /
-  harness slice for backlog item 1:
-  expose semantic BIR before prepare on one canonical `bir.select` surface and
-  one explicit `bir.phi` surface without changing the normal prepared-BIR
-  backend contract
-- keep the harness target generic:
-  prefer one small reusable observation path or test helper that can inspect
-  semantic BIR for merge semantics by meaning, not a named-case printer hook
-  or one-off testcase branch
+- treat the remaining rv64 `u8` `single_param_select_eq` and
+  `two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub`
+  `asm_unsupported` stems as the same stale harness debt
 - keep call lowering out of scope for the next code packet except as a
   consumer-side sentinel:
   no new call-specific merge reconstruction is allowed
@@ -98,11 +112,11 @@ Source Plan: plan.md
 
 ## Done Condition For The Next Accepted Packet
 
-- one bounded semantic-BIR observation path exists that can expose both a
-  canonical `bir.select` merge and an explicit `bir.phi` merge before prepare
-- the observation path does not require testcase-shaped branches, rendered-text
-  whole-module matcher growth, or output-mode changes in the normal backend
-  contract
+- one real backlog-item-1 code move lands in lowering/BIR/prepare files rather
+  than only in route-test or harness wiring
+- the code move broadens honest merge semantics beyond the already exhausted
+  prepared-BIR route inventory, with semantic-BIR observation used only where
+  it directly proves that new capability
 - `branch_if_eq.c` still lowers cleanly
 - existing call-lane sentinels stay green without new call-specific merge logic
 - no direct route, rendered-text matcher, or tiny named-case special path is
@@ -111,20 +125,20 @@ Source Plan: plan.md
 ## Proof Routing Note
 
 - supervisor should choose a narrow build-plus-test command anchored on the
-  new semantic-BIR observation surface for one canonical select case and one
-  explicit phi case, plus `branch_if_eq` and one call-lane sentinel as
-  non-regression checks
+  new code-moving merge target, using the semantic-BIR observation surface
+  only where it directly proves that target, plus `branch_if_eq` and one
+  call-lane sentinel as non-regression checks
 - do not reuse helper-only param surfaces or arithmetic-route regex churn as
   the primary proving subset for the next executor packet
-- this authorization is for one minimal observation/harness packet only;
-  after it lands, the route should return to code-moving backlog-item-1 work
+- the one-off observation/harness authorization is already spent;
+  after it landed, the route returns to code-moving backlog-item-1 work only
 - stale unsupported split-predecessor tests may be cleaned up later, but that
   cleanup must follow a code-moving packet or be explicitly treated as harness
   debt rather than accepted capability progress
 - because current `backend_codegen_route` tests observe prepared BIR, the next
-  packet should add one minimal semantic-BIR observation surface rather than
-  pretending the existing prepared-BIR route inventory still exposes a missing
-  merge family cleanly
+  accepted packet may introduce a new proving source only when it is tied to a
+  real merge-semantics code move rather than pretending the exhausted
+  prepared-BIR route inventory still exposes a missing merge family cleanly
 
 ## Latest Packet Progress
 
@@ -207,14 +221,21 @@ Source Plan: plan.md
   already emit `bir.select`, so the current backend-route test inventory no
   longer exposes another backlog-item-1 merge gap without a new observation
   path
+- 2026-04-14 supervisor then confirmed the same stale-harness outcome for the
+  remaining rv64 `u8` merge inventory:
+  both `backend_codegen_route_riscv64_single_param_u8_select_eq_asm_unsupported`
+  and
+  `backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub_asm_unsupported`
+  currently fail because the backend already emits prepared BIR plus
+  `semantic_phi` observation for those stems too
 - ref-based route confirmation recorded:
   `ref/claudes-c-compiler/src/backend/generation.rs` handles CFG semantics in
   the shared backend pipeline before later target work, while
   `ref/claudes-c-compiler/src/backend/stack_layout/mod.rs` and
   `stack_layout/slot_assignment.rs` treat multi-definition values as a
   downstream consequence of phi elimination rather than as a call-lane concern
-- next packet therefore returns to backlog item 1:
-  add one minimal semantic-BIR observation/harness surface that can show both
-  canonical `select` and explicit `phi` merge semantics before prepare, with
-  params/calls kept as sentinels only until merge semantics move forward again
-  in code
+- next packet therefore still returns to backlog item 1, but only as one real
+  code-moving merge packet:
+  the semantic-BIR observation surface remains available as proof support,
+  while params/calls stay as sentinels and the exhausted route inventory is no
+  longer an accepted proxy for merge progress
