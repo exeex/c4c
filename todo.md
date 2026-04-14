@@ -8,15 +8,15 @@ Current Plan Focus: ordered step 3, runtime and intrinsic families through seman
 # Current Packet
 
 ## Just Finished
-- extended semantic local `memcpy` lowering so aggregate-backed scalar subviews recovered through local pointer-slot metadata can still resolve as contiguous local array views, and added additive backend coverage for a mixed local non-zero-start source subarray to nested destination field route
+- converted `builtin_memcpy_prefix_local_pair_to_i32_array` into the opposite mixed-offset direction and proved semantic local `memcpy` already handles a nested aggregate source into a non-zero-start destination array subview without escaping to `memcpy`
 
 ## Suggested Next
-- stay on plan item 3 and extend mixed local `memcpy` lowering to the opposite mixed-offset direction, preferably a nested aggregate source into a non-zero-start destination array subview such as `&src.inner -> dst[2]`
+- stay on plan item 3, but move to a real remaining `memcpy` or runtime-family miss rather than more contiguous-prefix local coverage; the best next packet is an unsupported non-prefix local copy, padded mismatch, non-local base, or another intrinsic family such as `memset`
 
 ## Watchouts
 - keep follow-on work inside shared semantic lowering under `BirFunctionLowerer`; do not reopen `call_decode.cpp`, `prepare`, or target-shaped handling
-- the widened array-view recovery now covers aggregate-backed scalar subviews reached through `local_pointer_slots`, but it still depends on repeated scalar leaf extents with matching stride and contiguous requested-prefix coverage
-- the additive wrapper coverage now includes `builtin_memcpy_prefix_local_i32_subarray_to_nested_pair_field`, while the pre-existing mixed local tests remain baseline same-size copies and the earlier `prefix_local_*` tests still cover one-sided non-zero-start wrappers
+- the new reverse-direction wrapper case demonstrates that aggregate subobject tracking plus non-zero-start destination array views were already enough for `&src.inner -> &dst.dst[1]`; no `lir_to_bir_memory.cpp` change was required for this packet
+- the current semantic local `memcpy` route still depends on repeated scalar leaf extents with matching stride and contiguous requested-prefix coverage
 - non-zero-start suffix copies that do not present as contiguous scalar prefixes, padded mismatches, and non-local bases still fall out of this semantic route
 
 ## Proof

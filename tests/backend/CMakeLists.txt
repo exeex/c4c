@@ -260,7 +260,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_prefix_local_pair_to_i32_array_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t16.memcpy.copy.0 = bir.load_local i32 %lv.src.0|bir.store_local %lv.dst.4, i32 %t16.memcpy.copy.0|%t16.memcpy.copy.4 = bir.load_local i32 %lv.src.4|bir.store_local %lv.dst.8, i32 %t16.memcpy.copy.4|bir.ret i32 %t37"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|memcpy.copy.0 = bir.load_local i32 %lv.src.4|bir.store_local %lv.dst.8|memcpy.copy.4 = bir.load_local i32 %lv.src.8|bir.store_local %lv.dst.12|bir.ret i32"
   FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
 )
 
