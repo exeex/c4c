@@ -2845,6 +2845,68 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     bool is_indirect_call = false;
     std::optional<std::string> sret_slot_name;
 
+    const auto try_lower_direct_memcpy_call =
+        [&](std::string_view symbol_name,
+            const ParsedTypedCall& typed_call) -> std::optional<bool> {
+      if (symbol_name != "memcpy") {
+        return std::nullopt;
+      }
+      if (typed_call.args.size() != 3 || typed_call.param_types.size() != 3 ||
+          c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[0]) != "ptr" ||
+          c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[1]) != "ptr" ||
+          c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[2]) != "i64") {
+        return false;
+      }
+
+      const auto copy_size =
+          lower_value(c4c::codegen::lir::LirOperand(std::string(typed_call.args[2].operand)),
+                      bir::TypeKind::I64,
+                      value_aliases);
+      if (!copy_size.has_value() || copy_size->kind != bir::Value::Kind::Immediate ||
+          copy_size->immediate < 0) {
+        return false;
+      }
+      const auto requested_size = static_cast<std::size_t>(copy_size->immediate);
+
+      const std::string dst_operand(typed_call.args[0].operand);
+      const std::string src_operand(typed_call.args[1].operand);
+      const auto alias_memcpy_result = [&]() -> bool {
+        if (call->result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+          if (return_info->returned_via_sret || return_info->type != bir::TypeKind::Ptr) {
+            return false;
+          }
+          value_aliases[call->result.str()] = bir::Value::named(bir::TypeKind::Ptr, dst_operand);
+          return true;
+        }
+        return return_info->type == bir::TypeKind::Void;
+      };
+
+      if (const auto target_aggregate_it = local_aggregate_slots.find(dst_operand);
+          target_aggregate_it != local_aggregate_slots.end()) {
+        const auto source_aggregate_it = local_aggregate_slots.find(src_operand);
+        if (source_aggregate_it == local_aggregate_slots.end() ||
+            target_aggregate_it->second.storage_type_text != source_aggregate_it->second.storage_type_text) {
+          return false;
+        }
+
+        const auto aggregate_layout =
+            lower_byval_aggregate_layout(target_aggregate_it->second.storage_type_text, type_decls);
+        if (!aggregate_layout.has_value() || requested_size != aggregate_layout->size_bytes) {
+          return false;
+        }
+
+        if (!append_local_aggregate_copy_from_slots(source_aggregate_it->second,
+                                                    target_aggregate_it->second,
+                                                    dst_operand + ".memcpy.copy",
+                                                    lowered_insts)) {
+          return false;
+        }
+        return alias_memcpy_result();
+      }
+
+      return false;
+    };
+
     if (return_info->returned_via_sret) {
       if (call->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
         return false;
@@ -2867,8 +2929,23 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       });
     }
 
+    if (const auto direct_callee = c4c::codegen::lir::parse_lir_direct_global_callee(call->callee);
+        direct_callee.has_value()) {
+      if (const auto inferred_call = parse_typed_call(*call); inferred_call.has_value()) {
+        if (const auto lowered_memcpy = try_lower_direct_memcpy_call(*direct_callee, *inferred_call);
+            lowered_memcpy.has_value()) {
+          return *lowered_memcpy;
+        }
+      }
+    }
+
     if (const auto parsed_call = parse_direct_global_typed_call(*call);
         parsed_call.has_value()) {
+      if (const auto lowered_memcpy =
+              try_lower_direct_memcpy_call(parsed_call->symbol_name, parsed_call->typed_call);
+          lowered_memcpy.has_value()) {
+        return *lowered_memcpy;
+      }
       callee_name = std::string(parsed_call->symbol_name);
       lowered_args.reserve(parsed_call->typed_call.args.size());
       lowered_arg_types.reserve(parsed_call->typed_call.param_types.size());
