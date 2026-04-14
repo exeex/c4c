@@ -2767,21 +2767,17 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     return true;
   }
 
-  if (const auto* memset = std::get_if<c4c::codegen::lir::LirMemsetOp>(&inst)) {
-    if (memset->dst.kind() != c4c::codegen::lir::LirOperandKind::SsaValue || memset->is_volatile) {
-      return false;
-    }
-    const auto fill_value = lower_value(memset->byte_val, bir::TypeKind::I8, value_aliases);
-    const auto fill_size = lower_value(memset->size, bir::TypeKind::I64, value_aliases);
-    if (!fill_value.has_value() || fill_value->kind != bir::Value::Kind::Immediate ||
-        fill_value->immediate != 0 || !fill_size.has_value() ||
-        fill_size->kind != bir::Value::Kind::Immediate || fill_size->immediate < 0) {
-      return false;
-    }
+  const auto try_lower_zero_local_memset =
+      [&](std::string_view dst_operand, std::size_t fill_size_bytes) -> bool {
+    struct LocalMemsetArrayView {
+      bir::TypeKind element_type = bir::TypeKind::Void;
+      const std::vector<std::string>* element_slots = nullptr;
+      std::size_t base_index = 0;
+    };
 
     const auto zero_leaf_slots =
         [&](const auto& leaf_slots, std::size_t total_size_bytes) -> bool {
-      if (static_cast<std::size_t>(fill_size->immediate) < total_size_bytes) {
+      if (fill_size_bytes < total_size_bytes) {
         return false;
       }
       for (const auto& [byte_offset, slot_name] : leaf_slots) {
@@ -2802,7 +2798,34 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return true;
     };
 
-    if (const auto aggregate_it = local_aggregate_slots.find(memset->dst.str());
+    const auto resolve_local_memset_array_view =
+        [&](std::string_view operand) -> std::optional<LocalMemsetArrayView> {
+      if (const auto array_it = local_array_slots.find(std::string(operand));
+          array_it != local_array_slots.end()) {
+        return LocalMemsetArrayView{
+            .element_type = array_it->second.element_type,
+            .element_slots = &array_it->second.element_slots,
+            .base_index = 0,
+        };
+      }
+      const auto array_base_it = local_pointer_array_bases.find(std::string(operand));
+      if (array_base_it == local_pointer_array_bases.end() ||
+          array_base_it->second.base_index >= array_base_it->second.element_slots.size()) {
+        return std::nullopt;
+      }
+      const auto slot_type_it =
+          local_slot_types.find(array_base_it->second.element_slots[array_base_it->second.base_index]);
+      if (slot_type_it == local_slot_types.end()) {
+        return std::nullopt;
+      }
+      return LocalMemsetArrayView{
+          .element_type = slot_type_it->second,
+          .element_slots = &array_base_it->second.element_slots,
+          .base_index = array_base_it->second.base_index,
+      };
+    };
+
+    if (const auto aggregate_it = local_aggregate_slots.find(std::string(dst_operand));
         aggregate_it != local_aggregate_slots.end()) {
       const auto aggregate_layout =
           lower_byval_aggregate_layout(aggregate_it->second.type_text, type_decls);
@@ -2813,21 +2836,41 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           collect_sorted_leaf_slots(aggregate_it->second), aggregate_layout->size_bytes);
     }
 
-    if (const auto array_it = local_array_slots.find(memset->dst.str());
-        array_it != local_array_slots.end()) {
-      const auto element_size = type_size_bytes(array_it->second.element_type);
-      if (element_size == 0) {
-        return false;
-      }
-      std::vector<std::pair<std::size_t, std::string>> leaf_slots;
-      leaf_slots.reserve(array_it->second.element_slots.size());
-      for (std::size_t index = 0; index < array_it->second.element_slots.size(); ++index) {
-        leaf_slots.emplace_back(index * element_size, array_it->second.element_slots[index]);
-      }
-      return zero_leaf_slots(leaf_slots, array_it->second.element_slots.size() * element_size);
+    const auto array_view = resolve_local_memset_array_view(dst_operand);
+    if (!array_view.has_value() || array_view->element_slots == nullptr ||
+        array_view->base_index > array_view->element_slots->size()) {
+      return false;
     }
 
-    return false;
+    const auto element_size = type_size_bytes(array_view->element_type);
+    if (element_size == 0) {
+      return false;
+    }
+
+    const auto target_count = array_view->element_slots->size() - array_view->base_index;
+    std::vector<std::pair<std::size_t, std::string>> leaf_slots;
+    leaf_slots.reserve(target_count);
+    for (std::size_t index = 0; index < target_count; ++index) {
+      leaf_slots.emplace_back(index * element_size,
+                              (*array_view->element_slots)[array_view->base_index + index]);
+    }
+    return zero_leaf_slots(leaf_slots, target_count * element_size);
+  };
+
+  if (const auto* memset = std::get_if<c4c::codegen::lir::LirMemsetOp>(&inst)) {
+    if (memset->dst.kind() != c4c::codegen::lir::LirOperandKind::SsaValue || memset->is_volatile) {
+      return false;
+    }
+    const auto fill_value = lower_value(memset->byte_val, bir::TypeKind::I8, value_aliases);
+    const auto fill_size = lower_value(memset->size, bir::TypeKind::I64, value_aliases);
+    if (!fill_value.has_value() || fill_value->kind != bir::Value::Kind::Immediate ||
+        fill_value->immediate != 0 || !fill_size.has_value() ||
+        fill_size->kind != bir::Value::Kind::Immediate || fill_size->immediate < 0) {
+      return false;
+    }
+
+    return try_lower_zero_local_memset(memset->dst.str(),
+                                       static_cast<std::size_t>(fill_size->immediate));
   }
 
   if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst)) {
@@ -2977,6 +3020,52 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
 
       return false;
     };
+    const auto try_lower_direct_memset_call =
+        [&](std::string_view symbol_name,
+            const ParsedTypedCall& typed_call) -> std::optional<bool> {
+      if (symbol_name != "memset") {
+        return std::nullopt;
+      }
+      if (typed_call.args.size() != 3 || typed_call.param_types.size() != 3 ||
+          c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[0]) != "ptr" ||
+          c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[2]) != "i64") {
+        return false;
+      }
+
+      const auto fill_type =
+          lower_integer_type(c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[1]));
+      if (!fill_type.has_value()) {
+        return false;
+      }
+
+      const auto fill_value =
+          lower_value(c4c::codegen::lir::LirOperand(std::string(typed_call.args[1].operand)),
+                      *fill_type,
+                      value_aliases);
+      const auto fill_size =
+          lower_value(c4c::codegen::lir::LirOperand(std::string(typed_call.args[2].operand)),
+                      bir::TypeKind::I64,
+                      value_aliases);
+      if (!fill_value.has_value() || fill_value->kind != bir::Value::Kind::Immediate ||
+          fill_value->immediate != 0 || !fill_size.has_value() ||
+          fill_size->kind != bir::Value::Kind::Immediate || fill_size->immediate < 0) {
+        return false;
+      }
+
+      const std::string dst_operand(typed_call.args[0].operand);
+      if (!try_lower_zero_local_memset(dst_operand,
+                                       static_cast<std::size_t>(fill_size->immediate))) {
+        return false;
+      }
+      if (call->result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+        if (return_info->returned_via_sret || return_info->type != bir::TypeKind::Ptr) {
+          return false;
+        }
+        value_aliases[call->result.str()] = bir::Value::named(bir::TypeKind::Ptr, dst_operand);
+        return true;
+      }
+      return return_info->type == bir::TypeKind::Void;
+    };
 
     if (return_info->returned_via_sret) {
       if (call->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
@@ -3003,6 +3092,10 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     if (const auto direct_callee = c4c::codegen::lir::parse_lir_direct_global_callee(call->callee);
         direct_callee.has_value()) {
       if (const auto inferred_call = parse_typed_call(*call); inferred_call.has_value()) {
+        if (const auto lowered_memset = try_lower_direct_memset_call(*direct_callee, *inferred_call);
+            lowered_memset.has_value()) {
+          return *lowered_memset;
+        }
         if (const auto lowered_memcpy = try_lower_direct_memcpy_call(*direct_callee, *inferred_call);
             lowered_memcpy.has_value()) {
           return *lowered_memcpy;
@@ -3012,6 +3105,11 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
 
     if (const auto parsed_call = parse_direct_global_typed_call(*call);
         parsed_call.has_value()) {
+      if (const auto lowered_memset =
+              try_lower_direct_memset_call(parsed_call->symbol_name, parsed_call->typed_call);
+          lowered_memset.has_value()) {
+        return *lowered_memset;
+      }
       if (const auto lowered_memcpy =
               try_lower_direct_memcpy_call(parsed_call->symbol_name, parsed_call->typed_call);
           lowered_memcpy.has_value()) {
