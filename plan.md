@@ -118,14 +118,24 @@ Primary target:
 
 Concrete actions:
 
-- support broader parsed parameter lists and return forms
-- remove fragile dependence on tiny signature subsets
+- first establish scalar multi-parameter direct helper/call lowering on the
+  existing `backend_case` `two_arg_*` family instead of using arithmetic-only
+  route stems as backlog-item-2 evidence
+- treat helper entry lowering, direct-call argument materialization, and return
+  propagation as one semantic signature lane in
+  `src/backend/lowering/lir_to_bir_module.cpp` /
+  `src/backend/lowering/call_decode.cpp`
+- follow with by-value aggregate parameter coverage using
+  `param_slot`, `param_member_array`, and `nested_param_member_array`
 - keep semantic signature lowering separate from target ABI legalization
+- do not count native-asm output on trivial helpers or frontend-promotion
+  expectation mismatches as proof of semantic signature progress
 
 Completion check:
 
-- multi-parameter and mixed simple-signature functions lower through semantic
-  BIR without ad hoc special handling
+- scalar direct multi-parameter helpers and by-value simple aggregate params
+  lower through semantic BIR without ad hoc special handling or route-only
+  expectation churn
 
 ### 3. Broaden local memory and address formation
 

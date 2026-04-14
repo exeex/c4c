@@ -31,61 +31,63 @@ Source Plan: plan.md
   semantics
 - current capability family:
   backlog item 2, harden params and function signatures
-- current packet shape:
-  the next code-changing semantic-signature packet should still target
-  `src/backend/lowering/lir_to_bir_module.cpp` and
-  `src/backend/lowering/call_decode.cpp`, but it must start from a proving
-  surface that demonstrates a real signature-lowering gap in those owned files
-  rather than from arithmetic route cases that are already covered,
-  emitter-routed, or semantically mismatched
-- route checkpoint needed:
-  the current route suite no longer provides an honest backlog-item-2
-  executor packet:
-  the remaining visible failures in existing signature-adjacent route cases
-  are either route-selection artifacts (`two_param_add` emitting native
-  riscv64 asm for a trivial helper), frontend-promotion expectation mismatches
-  (`i8`/`u8` arithmetic widening and truncation), or later-lane call/runtime
-  behavior outside the current lowering-owned proving surface
+- current packet focus:
+  start backlog item 2 from the existing `backend_case` scalar helper surface:
+  `two_arg_helper`, `two_arg_local_arg`, `two_arg_second_local_arg`, and
+  `two_arg_both_local_arg` are the first honest observation surface for
+  direct multi-parameter entry/call lowering in the owned files
+- queued follow-on surface:
+  once the direct scalar helper lane is real, continue within backlog item 2 on
+  by-value aggregate params using `param_slot`, `param_member_array`, and
+  `nested_param_member_array`
 - packet rule:
   do not accept a packet whose main effect is promoting one more named
-  riscv64 route stem from `asm_unsupported` to `defaults_to_bir`; the next
-  packet must show real signature-lowering capability growth
+  arithmetic route stem, rewriting expectations to match current native asm, or
+  suppressing frontend integer-promotion semantics; the next packet must show
+  real signature-lowering capability growth on the helper/aggregate surfaces
 
 ## Immediate Target
 
 - treat backlog item 1 as exhausted for the current proving surface unless a
   new semantic merge failure appears in lowering code
-- broaden parsed parameter and return handling in semantic BIR
-- support wider multi-parameter and mixed simple-signature lowering without
-  drifting into target ABI legalization
-- do not treat native asm output on an arithmetic route case as proof that
-  semantic BIR lowering failed
+- broaden parsed parameter and return handling in semantic BIR through the
+  existing `backend_case` `two_arg_*` helper programs before touching broader
+  call provenance or later-lane runtime surfaces
+- if observation help is needed, add or retarget lowering-owned route proof
+  around those helper programs instead of promoting more
+  `backend_route_case/two_param_*` arithmetic stems
+- keep `param_slot`, `param_member_array`, and
+  `nested_param_member_array` queued as the next by-value aggregate-param
+  proving surface within the same backlog item
+- do not treat native asm output on a trivial helper as proof that semantic BIR
+  lowering failed
 - do not "fix" the current `i8`/`u8` route mismatches by suppressing the
   frontend's promoted `sext`/`zext` + `i32` + `trunc` semantics
-- keep merge and call-lane behavior as sentinels only; do not reopen route
-  promotion or broader call provenance work in this packet
-- choose proof from backend cases that expose signature parsing or return/param
-  lowering limits in semantic BIR itself, not from mislabeled merge-route
-  stems, emitter-routed arithmetic cases, or tests whose expectation conflicts
-  with current frontend integer-promotion meaning
+- keep merge and indirect-call behavior as sentinels only; do not reopen route
+  promotion, indirect-call provenance widening, globals, or runtime intrinsics
+  in this packet
 
 ## Done Condition For The Active Packet
 
-- the next executor packet for backlog item 2 is chosen from a proving surface
-  that is owned by semantic signature lowering in the backlog-item-2 targets
-  named by `plan.md`
-- at least one broader multi-parameter or mixed simple-signature function
-  lowers through semantic BIR because of that capability change, not merely
-  because a route test was retargeted or because native asm happened to print
+- at least one existing `backend_case` `two_arg_*` helper family lowers
+  through semantic BIR because of a lowering change in the backlog-item-2
+  targets named by `plan.md`, not merely because a route test was retargeted
+  or because native asm happened to print
+- sibling scalar helper forms with local-arg materialization remain explainable
+  by the same lowering rule rather than by named-case branches
 - `branch_if_eq.c` still lowers cleanly and the already-proven merge route
   surface does not regress
 - existing call-lane sentinels stay green
 - no direct route, rendered-text matcher, or tiny named-case special path is
   introduced
 
-## Proof Command
+## Proof Routing Note
 
-- `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+- supervisor should choose a narrow build-plus-test command anchored on the
+  `backend_case` `two_arg_*` helper surface, with `branch_if_eq` and one
+  existing indirect-call sentinel as non-regression checks
+- do not reuse the exhausted arithmetic-route regexes as the proving subset for
+  the next executor packet
 
 ## Latest Packet Progress
 
@@ -148,3 +150,13 @@ Source Plan: plan.md
   promises semantic CFG/`phi` work in lowering/BIR files; future execution
   must return to code-changing merge semantics before more route-surface
   promotion is accepted
+- lifecycle route checkpoint recorded:
+  the runbook now narrows backlog item 2 onto the existing
+  `backend_case` parameter surface instead of the exhausted
+  `backend_route_case/two_param_*` arithmetic stems:
+  direct scalar helper/call lowering through `two_arg_helper`,
+  `two_arg_local_arg`, `two_arg_second_local_arg`, and
+  `two_arg_both_local_arg` is the next executor packet,
+  while `param_slot`, `param_member_array`, and
+  `nested_param_member_array` are queued as the follow-on by-value aggregate
+  parameter lane
