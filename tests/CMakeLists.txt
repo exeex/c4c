@@ -62,6 +62,9 @@ add_custom_target(ctest_core
 
 # ── Test suites ───────────────────────────────────────────────────────────────
 
+add_subdirectory(frontend)
+add_subdirectory(preprocessor)
+add_subdirectory(backend)
 add_subdirectory(c/internal)
 add_subdirectory(cpp/internal)
 add_subdirectory(c/external)

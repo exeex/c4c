@@ -14,8 +14,7 @@ file(GLOB INTERNAL_LINUX_STAGE2_REPRO_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/positive_case/linux_stage2_repro/*.c")
 file(GLOB INTERNAL_CCC_REVIEW_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/positive_case/ccc_review/*.c")
-file(GLOB INTERNAL_PREPROCESSOR_TEST_SRCS CONFIGURE_DEPENDS
-     "${PROJECT_SOURCE_DIR}/tests/c/preprocessor/*.c")
+
 
 option(NEGATIVE_TESTS_ENFORCE
        "Require internal negative_case bad_*.c cases to fail compilation (non-zero exit)"
@@ -171,33 +170,6 @@ else()
   message(WARNING "clang not found: skipping internal positive_case runtime tests")
 endif()
 
-add_test(
-    NAME frontend_cxx_preprocessor_tests
-    COMMAND frontend_cxx_preprocessor_tests
-)
-set_tests_properties(frontend_cxx_preprocessor_tests PROPERTIES
-    LABELS "internal;preprocessor")
-
-add_test(
-    NAME frontend_hir_tests
-    COMMAND frontend_hir_tests
-)
-set_tests_properties(frontend_hir_tests PROPERTIES
-    LABELS "internal;hir")
-
-add_test(
-    NAME frontend_lexer_tests
-    COMMAND frontend_lexer_tests
-)
-set_tests_properties(frontend_lexer_tests PROPERTIES
-    LABELS "internal;lex")
-
-add_test(
-    NAME frontend_parser_tests
-    COMMAND frontend_parser_tests
-)
-set_tests_properties(frontend_parser_tests PROPERTIES
-    LABELS "internal;parse")
 
 add_test(
     NAME positive_split_llvm_pragma_exec
@@ -211,18 +183,6 @@ add_test(
 set_tests_properties(positive_split_llvm_pragma_exec PROPERTIES
     LABELS "internal;positive_case;split_llvm")
 
-foreach(src IN LISTS INTERNAL_PREPROCESSOR_TEST_SRCS)
-  get_filename_component(stem "${src}" NAME_WE)
-  set(test_name "preprocessor_${stem}")
-  add_test(
-      NAME "${test_name}"
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${src}
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_preprocessor_case.cmake"
-  )
-  set_tests_properties("${test_name}" PROPERTIES LABELS "internal;preprocessor")
-endforeach()
 
 add_test(
     NAME frontend_cxx_stage1_version

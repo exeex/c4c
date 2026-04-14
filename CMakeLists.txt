@@ -59,41 +59,7 @@ set_target_properties(c4cll PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
-add_executable(frontend_cxx_preprocessor_tests
-    "${PROJECT_SOURCE_DIR}/tests/preprocessor/frontend_cxx_preprocessor_tests.cpp"
-)
-target_link_libraries(frontend_cxx_preprocessor_tests PRIVATE c4c_frontend)
-set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
 
-add_executable(frontend_hir_tests
-    "${PROJECT_SOURCE_DIR}/tests/frontend/frontend_hir_tests.cpp"
-)
-target_link_libraries(frontend_hir_tests PRIVATE c4c_frontend)
-set_target_properties(frontend_hir_tests PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
-
-add_executable(frontend_lexer_tests
-    "${PROJECT_SOURCE_DIR}/tests/frontend/frontend_lexer_tests.cpp"
-)
-target_link_libraries(frontend_lexer_tests PRIVATE c4c_frontend)
-set_target_properties(frontend_lexer_tests PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
-
-add_executable(frontend_parser_tests
-    "${PROJECT_SOURCE_DIR}/tests/frontend/frontend_parser_tests.cpp"
-)
-target_link_libraries(frontend_parser_tests PRIVATE c4c_frontend)
-set_target_properties(frontend_parser_tests PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
 add_custom_command(
   OUTPUT "${EXAMPLE_LL}"
   COMMAND $<TARGET_FILE:c4cll> "${EXAMPLE_C}" -o "${EXAMPLE_LL}"

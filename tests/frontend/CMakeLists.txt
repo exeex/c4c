@@ -1,0 +1,12 @@
+foreach(target IN ITEMS frontend_hir_tests frontend_lexer_tests frontend_parser_tests)
+  add_executable(${target} "${CMAKE_CURRENT_SOURCE_DIR}/${target}.cpp")
+  target_link_libraries(${target} PRIVATE c4c_frontend)
+  set_target_properties(${target} PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+endforeach()
+
+add_test(NAME frontend_hir_tests    COMMAND frontend_hir_tests)
+add_test(NAME frontend_lexer_tests  COMMAND frontend_lexer_tests)
+add_test(NAME frontend_parser_tests COMMAND frontend_parser_tests)
+set_tests_properties(frontend_hir_tests    PROPERTIES LABELS "internal;hir")
+set_tests_properties(frontend_lexer_tests  PROPERTIES LABELS "internal;lex")
+set_tests_properties(frontend_parser_tests PROPERTIES LABELS "internal;parse")
