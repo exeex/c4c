@@ -3,18 +3,22 @@
 #include <unordered_set>
 #include <utility>
 
-namespace c4c::backend::lir_to_bir_detail {
+namespace c4c::backend {
 
-BlockLookup make_block_lookup(const c4c::codegen::lir::LirFunction& function) {
+using lir_to_bir_detail::lower_integer_type;
+using lir_to_bir_detail::PhiLoweringPlan;
+
+BirFunctionLowerer::BlockLookup BirFunctionLowerer::make_block_lookup() const {
   BlockLookup blocks;
-  for (const auto& block : function.blocks) {
+  for (const auto& block : function_.blocks) {
     blocks.emplace(block.label, &block);
   }
   return blocks;
 }
 
-std::optional<BranchChain> follow_empty_branch_chain(const BlockLookup& blocks,
-                                                     const std::string& start_label) {
+std::optional<BirFunctionLowerer::BranchChain> BirFunctionLowerer::follow_empty_branch_chain(
+    const BlockLookup& blocks,
+    const std::string& start_label) {
   std::unordered_set<std::string> seen;
   const auto* current = [&]() -> const c4c::codegen::lir::LirBlock* {
     const auto it = blocks.find(start_label);
@@ -55,8 +59,9 @@ std::optional<BranchChain> follow_empty_branch_chain(const BlockLookup& blocks,
   return std::nullopt;
 }
 
-std::optional<BranchChain> follow_canonical_select_chain(const BlockLookup& blocks,
-                                                         const std::string& start_label) {
+std::optional<BirFunctionLowerer::BranchChain> BirFunctionLowerer::follow_canonical_select_chain(
+    const BlockLookup& blocks,
+    const std::string& start_label) {
   std::unordered_set<std::string> seen;
   const auto* current = [&]() -> const c4c::codegen::lir::LirBlock* {
     const auto it = blocks.find(start_label);
@@ -106,11 +111,11 @@ std::optional<BranchChain> follow_canonical_select_chain(const BlockLookup& bloc
   return std::nullopt;
 }
 
-std::optional<PhiBlockPlanMap> collect_phi_lowering_plans(
-    const c4c::codegen::lir::LirFunction& function) {
+std::optional<BirFunctionLowerer::PhiBlockPlanMap> BirFunctionLowerer::collect_phi_lowering_plans()
+    const {
   PhiBlockPlanMap plans;
 
-  for (const auto& block : function.blocks) {
+  for (const auto& block : function_.blocks) {
     std::vector<PhiLoweringPlan> block_plans;
     bool saw_non_phi = false;
     for (const auto& inst : block.insts) {
@@ -148,4 +153,4 @@ std::optional<PhiBlockPlanMap> collect_phi_lowering_plans(
 
   return plans;
 }
-}  // namespace c4c::backend::lir_to_bir_detail
+}  // namespace c4c::backend

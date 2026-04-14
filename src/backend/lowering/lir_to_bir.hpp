@@ -291,132 +291,193 @@ std::optional<GlobalAddress> resolve_known_global_address(
     std::unordered_set<std::string>* active);
 bool is_known_function_symbol(std::string_view symbol_name,
                               const FunctionSymbolSet& function_symbols);
-std::optional<AggregateTypeLayout> lower_byval_aggregate_layout(
-    std::string_view text,
-    const TypeDeclMap& type_decls);
-std::vector<std::pair<std::size_t, std::string>> collect_sorted_leaf_slots(
-    const LocalAggregateSlots& aggregate_slots);
-AggregateParamMap collect_aggregate_params(const c4c::codegen::lir::LirFunction& function,
-                                           const TypeDeclMap& type_decls);
-std::optional<bir::TypeKind> lower_scalar_or_function_pointer_type(std::string_view text);
-std::optional<bir::CastOpcode> lower_cast_opcode(c4c::codegen::lir::LirCastKind kind);
-std::optional<bir::BinaryOpcode> lower_scalar_binary_opcode(
-    const c4c::codegen::lir::LirBinaryOpcodeRef& opcode);
-std::optional<bir::Value> fold_i64_binary_immediates(bir::BinaryOpcode opcode,
-                                                     std::int64_t lhs,
-                                                     std::int64_t rhs);
-std::optional<bir::BinaryOpcode> lower_cmp_predicate(
-    const c4c::codegen::lir::LirCmpPredicateRef& predicate);
-std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& operand,
-                                      bir::TypeKind expected_type,
-                                      const ValueMap& value_aliases);
-std::optional<bir::Value> fold_integer_cast(c4c::codegen::lir::LirCastKind kind,
-                                            const bir::Value& operand,
-                                            bir::TypeKind to_type);
-bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
-                               ValueMap& value_aliases,
-                               CompareMap& compare_exprs,
-                               std::vector<bir::Inst>* lowered_insts);
-bool resolve_select_chain_inst(const c4c::codegen::lir::LirInst& inst,
-                               ValueMap& value_aliases,
-                               CompareMap& compare_exprs,
-                               std::vector<bir::Inst>* lowered_insts);
-bool lower_canonical_select_entry_inst(const c4c::codegen::lir::LirInst& inst,
-                                       ValueMap& value_aliases,
-                                       CompareMap& compare_exprs,
-                                       std::vector<bir::Inst>* lowered_insts);
-std::optional<bir::TypeKind> lower_param_type(const c4c::TypeSpec& type);
-std::optional<LoweredReturnInfo> lower_return_info_from_type(std::string_view type_text,
-                                                             const TypeDeclMap& type_decls);
-std::optional<LoweredReturnInfo> infer_function_return_info(
-    const c4c::codegen::lir::LirFunction& function,
-    const TypeDeclMap& type_decls);
-std::optional<LoweredReturnInfo> lower_signature_return_info(std::string_view signature_text,
-                                                             const TypeDeclMap& type_decls);
-std::optional<bir::Function> lower_extern_decl(const c4c::codegen::lir::LirExternDecl& decl);
-bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
-                           const std::optional<LoweredReturnInfo>& return_info,
-                           const TypeDeclMap& type_decls,
-                           bir::Function* lowered);
-std::optional<bir::Function> lower_decl_function(const c4c::codegen::lir::LirFunction& function);
-bool append_local_aggregate_scalar_slots(std::string_view type_text,
-                                         std::string_view slot_prefix,
-                                         std::size_t byte_offset,
-                                         std::size_t align_bytes,
-                                         const TypeDeclMap& type_decls,
-                                         LocalSlotTypes& local_slot_types,
-                                         LocalPointerSlots& local_pointer_slots,
-                                         LocalAggregateFieldSet& local_aggregate_field_slots,
-                                         bir::Function* lowered_function,
-                                         LocalAggregateSlots* aggregate_slots);
-bool declare_local_aggregate_slots(std::string_view type_text,
-                                   std::string_view slot_name,
-                                   std::size_t align_bytes,
-                                   const TypeDeclMap& type_decls,
-                                   LocalSlotTypes& local_slot_types,
-                                   LocalPointerSlots& local_pointer_slots,
-                                   LocalAggregateFieldSet& local_aggregate_field_slots,
-                                   bir::Function* lowered_function,
-                                   LocalAggregateSlotMap& local_aggregate_slots);
-bool append_local_aggregate_copy_from_slots(
-    const LocalAggregateSlots& source_slots,
-    const LocalAggregateSlots& target_slots,
-    const LocalSlotTypes& local_slot_types,
-    std::string_view temp_prefix,
-    std::vector<bir::Inst>* lowered_insts);
-bool append_local_aggregate_copy_to_pointer(const LocalAggregateSlots& source_slots,
-                                            const LocalSlotTypes& local_slot_types,
-                                            const bir::Value& target_pointer,
-                                            std::size_t target_align_bytes,
-                                            std::string_view temp_prefix,
-                                            std::vector<bir::Inst>* lowered_insts);
-bool materialize_aggregate_param_aliases(const AggregateParamMap& aggregate_params,
-                                         const TypeDeclMap& type_decls,
-                                         LocalSlotTypes& local_slot_types,
-                                         LocalPointerSlots& local_pointer_slots,
-                                         LocalAggregateFieldSet& local_aggregate_field_slots,
-                                         AggregateValueAliasMap& aggregate_value_aliases,
-                                         bir::Function* lowered_function,
-                                         LocalAggregateSlotMap& local_aggregate_slots,
-                                         std::vector<bir::Inst>* lowered_insts);
-bool lower_scalar_or_local_memory_inst(
-    const c4c::codegen::lir::LirInst& inst,
-    ValueMap& value_aliases,
-    CompareMap& compare_exprs,
-    AggregateValueAliasMap& aggregate_value_aliases,
-    LocalSlotTypes& local_slot_types,
-    LocalPointerSlots& local_pointer_slots,
-    LocalArraySlotMap& local_array_slots,
-    LocalPointerArrayBaseMap& local_pointer_array_bases,
-    DynamicLocalPointerArrayMap& dynamic_local_pointer_arrays,
-    DynamicLocalAggregateArrayMap& dynamic_local_aggregate_arrays,
-    LocalAggregateSlotMap& local_aggregate_slots,
-    LocalAggregateFieldSet& local_aggregate_field_slots,
-    LocalPointerValueAliasMap& local_pointer_value_aliases,
-    LocalAddressSlots& local_address_slots,
-    GlobalAddressSlots& global_address_slots,
-    AddressedGlobalPointerSlots& addressed_global_pointer_slots,
-    GlobalPointerMap& global_pointer_slots,
-    DynamicGlobalPointerArrayMap& dynamic_global_pointer_arrays,
-    DynamicGlobalAggregateArrayMap& dynamic_global_aggregate_arrays,
-    GlobalObjectPointerMap& global_object_pointer_slots,
-    GlobalAddressIntMap& global_address_ints,
-    GlobalObjectAddressIntMap& global_object_address_ints,
-    const AggregateParamMap& aggregate_params,
-    const GlobalTypes& global_types,
-    const FunctionSymbolSet& function_symbols,
-    const TypeDeclMap& type_decls,
-    bir::Function* lowered_function,
-    std::vector<bir::Inst>* lowered_insts);
-BlockLookup make_block_lookup(const c4c::codegen::lir::LirFunction& function);
-std::optional<BranchChain> follow_empty_branch_chain(const BlockLookup& blocks,
-                                                     const std::string& start_label);
-std::optional<BranchChain> follow_canonical_select_chain(const BlockLookup& blocks,
-                                                         const std::string& start_label);
-std::optional<PhiBlockPlanMap> collect_phi_lowering_plans(
-    const c4c::codegen::lir::LirFunction& function);
 
 }  // namespace lir_to_bir_detail
+
+class BirFunctionLowerer {
+ public:
+  using ValueMap = lir_to_bir_detail::ValueMap;
+  using CompareMap = lir_to_bir_detail::CompareMap;
+  using AggregateParamMap = lir_to_bir_detail::AggregateParamMap;
+  using AggregateTypeLayout = lir_to_bir_detail::AggregateTypeLayout;
+  using AggregateValueAliasMap = lir_to_bir_detail::AggregateValueAliasMap;
+  using AddressedGlobalPointerSlots = lir_to_bir_detail::AddressedGlobalPointerSlots;
+  using BlockLookup = lir_to_bir_detail::BlockLookup;
+  using BranchChain = lir_to_bir_detail::BranchChain;
+  using DynamicGlobalAggregateArrayMap = lir_to_bir_detail::DynamicGlobalAggregateArrayMap;
+  using DynamicGlobalPointerArrayMap = lir_to_bir_detail::DynamicGlobalPointerArrayMap;
+  using DynamicLocalAggregateArrayMap = lir_to_bir_detail::DynamicLocalAggregateArrayMap;
+  using DynamicLocalPointerArrayMap = lir_to_bir_detail::DynamicLocalPointerArrayMap;
+  using FunctionSymbolSet = lir_to_bir_detail::FunctionSymbolSet;
+  using GlobalAddressIntMap = lir_to_bir_detail::GlobalAddressIntMap;
+  using GlobalAddressSlots = lir_to_bir_detail::GlobalAddressSlots;
+  using GlobalObjectAddressIntMap = lir_to_bir_detail::GlobalObjectAddressIntMap;
+  using GlobalObjectPointerMap = lir_to_bir_detail::GlobalObjectPointerMap;
+  using GlobalPointerMap = lir_to_bir_detail::GlobalPointerMap;
+  using GlobalTypes = lir_to_bir_detail::GlobalTypes;
+  using LocalAddressSlots = lir_to_bir_detail::LocalAddressSlots;
+  using LocalAggregateFieldSet = lir_to_bir_detail::LocalAggregateFieldSet;
+  using LocalAggregateSlotMap = lir_to_bir_detail::LocalAggregateSlotMap;
+  using LocalAggregateSlots = lir_to_bir_detail::LocalAggregateSlots;
+  using LocalArraySlotMap = lir_to_bir_detail::LocalArraySlotMap;
+  using LocalPointerArrayBaseMap = lir_to_bir_detail::LocalPointerArrayBaseMap;
+  using LocalPointerSlots = lir_to_bir_detail::LocalPointerSlots;
+  using LocalPointerValueAliasMap = lir_to_bir_detail::LocalPointerValueAliasMap;
+  using LocalSlotTypes = lir_to_bir_detail::LocalSlotTypes;
+  using LoweredReturnInfo = lir_to_bir_detail::LoweredReturnInfo;
+  using PhiBlockPlanMap = lir_to_bir_detail::PhiBlockPlanMap;
+  using TypeDeclMap = lir_to_bir_detail::TypeDeclMap;
+
+  BirFunctionLowerer(BirLoweringContext& context,
+                     const c4c::codegen::lir::LirFunction& function,
+                     const GlobalTypes& global_types,
+                     const FunctionSymbolSet& function_symbols,
+                     const TypeDeclMap& type_decls);
+
+  std::optional<bir::Function> lower();
+
+  static std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& operand,
+                                               bir::TypeKind expected_type,
+                                               const ValueMap& value_aliases);
+  static std::optional<bir::Function> lower_extern_decl(
+      const c4c::codegen::lir::LirExternDecl& decl);
+  static std::optional<bir::Function> lower_decl_function(
+      const c4c::codegen::lir::LirFunction& function);
+
+ private:
+  static std::optional<AggregateTypeLayout> lower_byval_aggregate_layout(
+      std::string_view text,
+      const TypeDeclMap& type_decls);
+  static std::optional<bir::TypeKind> lower_scalar_or_function_pointer_type(
+      std::string_view text);
+  static std::optional<bir::CastOpcode> lower_cast_opcode(
+      c4c::codegen::lir::LirCastKind kind);
+  static std::optional<bir::BinaryOpcode> lower_scalar_binary_opcode(
+      const c4c::codegen::lir::LirBinaryOpcodeRef& opcode);
+  static std::optional<bir::Value> fold_i64_binary_immediates(bir::BinaryOpcode opcode,
+                                                              std::int64_t lhs,
+                                                              std::int64_t rhs);
+  static std::optional<bir::BinaryOpcode> lower_cmp_predicate(
+      const c4c::codegen::lir::LirCmpPredicateRef& predicate);
+  std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& operand,
+                                        bir::TypeKind expected_type) const;
+  static std::optional<bir::Value> fold_integer_cast(c4c::codegen::lir::LirCastKind kind,
+                                                     const bir::Value& operand,
+                                                     bir::TypeKind to_type);
+  bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
+                                 ValueMap& value_aliases,
+                                 CompareMap& compare_exprs,
+                                 std::vector<bir::Inst>* lowered_insts) const;
+  bool resolve_select_chain_inst(const c4c::codegen::lir::LirInst& inst,
+                                 ValueMap& value_aliases,
+                                 CompareMap& compare_exprs,
+                                 std::vector<bir::Inst>* lowered_insts) const;
+  bool lower_canonical_select_entry_inst(const c4c::codegen::lir::LirInst& inst,
+                                         ValueMap& value_aliases,
+                                         CompareMap& compare_exprs,
+                                         std::vector<bir::Inst>* lowered_insts) const;
+
+  static std::optional<bir::TypeKind> lower_param_type(const c4c::TypeSpec& type);
+  static std::optional<LoweredReturnInfo> lower_return_info_from_type(
+      std::string_view type_text,
+      const TypeDeclMap& type_decls);
+  std::optional<LoweredReturnInfo> infer_function_return_info() const;
+  static std::optional<LoweredReturnInfo> lower_signature_return_info(
+      std::string_view signature_text,
+      const TypeDeclMap& type_decls);
+  static bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
+                                    const std::optional<LoweredReturnInfo>& return_info,
+                                    const TypeDeclMap& type_decls,
+                                    bir::Function* lowered);
+
+  std::vector<std::pair<std::size_t, std::string>> collect_sorted_leaf_slots(
+      const LocalAggregateSlots& aggregate_slots) const;
+  AggregateParamMap collect_aggregate_params() const;
+  bool append_local_aggregate_scalar_slots(std::string_view type_text,
+                                           std::string_view slot_prefix,
+                                           std::size_t byte_offset,
+                                           std::size_t align_bytes,
+                                           LocalAggregateSlots* aggregate_slots);
+  bool declare_local_aggregate_slots(std::string_view type_text,
+                                     std::string_view slot_name,
+                                     std::size_t align_bytes);
+  bool append_local_aggregate_copy_from_slots(const LocalAggregateSlots& source_slots,
+                                              const LocalAggregateSlots& target_slots,
+                                              std::string_view temp_prefix,
+                                              std::vector<bir::Inst>* lowered_insts) const;
+  bool append_local_aggregate_copy_to_pointer(const LocalAggregateSlots& source_slots,
+                                              const bir::Value& target_pointer,
+                                              std::size_t target_align_bytes,
+                                              std::string_view temp_prefix,
+                                              std::vector<bir::Inst>* lowered_insts) const;
+  bool materialize_aggregate_param_aliases(std::vector<bir::Inst>* lowered_insts);
+
+  BlockLookup make_block_lookup() const;
+  static std::optional<BranchChain> follow_empty_branch_chain(const BlockLookup& blocks,
+                                                              const std::string& start_label);
+  static std::optional<BranchChain> follow_canonical_select_chain(
+      const BlockLookup& blocks,
+      const std::string& start_label);
+  std::optional<PhiBlockPlanMap> collect_phi_lowering_plans() const;
+
+  bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
+                                         std::vector<bir::Inst>* lowered_insts);
+
+  std::optional<bir::Function> try_lower_canonical_select_function();
+  std::optional<bir::Value> lower_select_chain_value(const BlockLookup& blocks,
+                                                     const BranchChain& chain,
+                                                     const c4c::codegen::lir::LirOperand& incoming,
+                                                     bir::TypeKind expected_type,
+                                                     const ValueMap& value_aliases,
+                                                     std::vector<bir::Inst>* lowered_insts) const;
+  bool canonicalize_compare_return_alias(const c4c::codegen::lir::LirOperand& ret_value,
+                                         const bir::Value& lowered_value,
+                                         bir::TypeKind return_type,
+                                         std::vector<bir::Inst>* lowered_insts,
+                                         bir::ReturnTerminator* lowered_ret) const;
+  bool lower_alloca_insts();
+  bool lower_block(const c4c::codegen::lir::LirBlock& block,
+                   bool* emitted_hoisted_alloca_scratch);
+  bool lower_block_phi_insts(const c4c::codegen::lir::LirBlock& block,
+                             bir::Block* lowered_block);
+  bool lower_block_insts(const c4c::codegen::lir::LirBlock& block,
+                         bir::Block* lowered_block);
+  bool lower_block_terminator(const c4c::codegen::lir::LirBlock& block,
+                              bir::Block* lowered_block);
+
+  BirLoweringContext& context_;
+  const c4c::codegen::lir::LirFunction& function_;
+  const GlobalTypes& global_types_;
+  const FunctionSymbolSet& function_symbols_;
+  const TypeDeclMap& type_decls_;
+
+  bir::Function lowered_function_;
+  std::optional<LoweredReturnInfo> return_info_;
+  PhiBlockPlanMap phi_plans_;
+  AggregateParamMap aggregate_params_;
+  ValueMap value_aliases_;
+  CompareMap compare_exprs_;
+  AggregateValueAliasMap aggregate_value_aliases_;
+  LocalSlotTypes local_slot_types_;
+  LocalPointerSlots local_pointer_slots_;
+  LocalArraySlotMap local_array_slots_;
+  LocalPointerArrayBaseMap local_pointer_array_bases_;
+  DynamicLocalPointerArrayMap dynamic_local_pointer_arrays_;
+  DynamicLocalAggregateArrayMap dynamic_local_aggregate_arrays_;
+  LocalAggregateSlotMap local_aggregate_slots_;
+  LocalAggregateFieldSet local_aggregate_field_slots_;
+  LocalPointerValueAliasMap local_pointer_value_aliases_;
+  LocalAddressSlots local_address_slots_;
+  GlobalAddressSlots global_address_slots_;
+  AddressedGlobalPointerSlots addressed_global_pointer_slots_;
+  GlobalPointerMap global_pointer_slots_;
+  DynamicGlobalPointerArrayMap dynamic_global_pointer_arrays_;
+  DynamicGlobalAggregateArrayMap dynamic_global_aggregate_arrays_;
+  GlobalObjectPointerMap global_object_pointer_slots_;
+  GlobalAddressIntMap global_address_ints_;
+  GlobalObjectAddressIntMap global_object_address_ints_;
+  std::vector<bir::Inst> hoisted_alloca_scratch_;
+};
 
 BirLoweringResult try_lower_to_bir_with_options(
     const c4c::codegen::lir::LirModule& module,

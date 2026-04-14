@@ -222,6 +222,21 @@ Source Plan: plan.md
 - 2026-04-14 temporary proof result:
   the same delegated backend proof command passes after the memory split with
   `12 / 12` `^backend_` tests green, and the proof log is `test_after.log`
+- 2026-04-14 temporary executor packet extension:
+  refactor function-scope `lir_to_bir` lowering around a `BirFunctionLowerer`
+  class so the function body path no longer routes through
+  `lir_to_bir_detail::...` helpers
+- 2026-04-14 temporary executor packet result:
+  `src/backend/lowering/lir_to_bir.hpp` now declares `BirFunctionLowerer`,
+  `src/backend/lowering/lir_to_bir_module.cpp` reduces function lowering to
+  class orchestration, and the split scalar/calling/aggregate/cfg/memory
+  implementation files now define function-scope lowering as
+  `BirFunctionLowerer::...` methods, including the former
+  `lower_scalar_or_local_memory_inst(...)` dispatcher
+- 2026-04-14 temporary proof result:
+  the same delegated backend proof command passes after the
+  `BirFunctionLowerer` refactor with `12 / 12` `^backend_` tests green, and
+  the proof log is `test_after.log`
 
 ## Parked Backlog Item 1 Baseline
 

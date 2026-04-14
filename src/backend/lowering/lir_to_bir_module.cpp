@@ -2,11 +2,7 @@
 
 #include "call_decode.hpp"
 
-#include <algorithm>
-#include <charconv>
 #include <optional>
-#include <string_view>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -14,100 +10,35 @@ namespace c4c::backend {
 
 namespace {
 
-using lir_to_bir_detail::AggregateField;
-using lir_to_bir_detail::AggregateTypeLayout;
 using lir_to_bir_detail::build_type_decl_map;
-using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::FunctionSymbolSet;
-using lir_to_bir_detail::GlobalAddress;
 using lir_to_bir_detail::GlobalInfo;
 using lir_to_bir_detail::GlobalTypes;
-using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::lower_minimal_global;
 using lir_to_bir_detail::lower_string_constant_global;
-using lir_to_bir_detail::parse_i64;
-using lir_to_bir_detail::ParsedTypedOperand;
-using lir_to_bir_detail::parse_typed_operand;
-using lir_to_bir_detail::resolve_index_operand;
 using lir_to_bir_detail::resolve_known_global_address;
 using lir_to_bir_detail::resolve_pointer_initializer_offsets;
-using lir_to_bir_detail::split_top_level_initializer_items;
-using lir_to_bir_detail::type_size_bytes;
 using lir_to_bir_detail::TypeDeclMap;
-using lir_to_bir_detail::ValueMap;
-using lir_to_bir_detail::AddressedGlobalPointerSlots;
-using lir_to_bir_detail::AggregateParamInfo;
-using lir_to_bir_detail::AggregateParamMap;
-using lir_to_bir_detail::AggregateValueAliasMap;
-using lir_to_bir_detail::BlockLookup;
-using lir_to_bir_detail::BranchChain;
-using lir_to_bir_detail::collect_phi_lowering_plans;
-using lir_to_bir_detail::CompareExpr;
-using lir_to_bir_detail::CompareMap;
-using lir_to_bir_detail::DynamicGlobalAggregateArrayAccess;
-using lir_to_bir_detail::DynamicGlobalAggregateArrayMap;
-using lir_to_bir_detail::DynamicGlobalPointerArrayAccess;
-using lir_to_bir_detail::DynamicGlobalPointerArrayMap;
-using lir_to_bir_detail::DynamicLocalAggregateArrayAccess;
-using lir_to_bir_detail::DynamicLocalAggregateArrayMap;
-using lir_to_bir_detail::DynamicLocalPointerArrayAccess;
-using lir_to_bir_detail::DynamicLocalPointerArrayMap;
-using lir_to_bir_detail::follow_canonical_select_chain;
-using lir_to_bir_detail::follow_empty_branch_chain;
-using lir_to_bir_detail::GlobalAddressIntMap;
-using lir_to_bir_detail::GlobalAddressSlots;
-using lir_to_bir_detail::GlobalObjectAddressIntMap;
-using lir_to_bir_detail::GlobalObjectPointerMap;
-using lir_to_bir_detail::GlobalPointerMap;
-using lir_to_bir_detail::GlobalPointerSlotKey;
-using lir_to_bir_detail::GlobalPointerSlotKeyHash;
-using lir_to_bir_detail::LocalAddressSlots;
-using lir_to_bir_detail::LocalAggregateFieldSet;
-using lir_to_bir_detail::LocalAggregateSlotMap;
-using lir_to_bir_detail::LocalAggregateSlots;
-using lir_to_bir_detail::LocalArraySlotMap;
-using lir_to_bir_detail::LocalArraySlots;
-using lir_to_bir_detail::LocalPointerArrayBase;
-using lir_to_bir_detail::LocalPointerArrayBaseMap;
-using lir_to_bir_detail::LocalPointerSlots;
-using lir_to_bir_detail::LocalPointerValueAliasMap;
-using lir_to_bir_detail::LocalSlotTypes;
-using lir_to_bir_detail::LoweredReturnInfo;
-using lir_to_bir_detail::make_block_lookup;
-using lir_to_bir_detail::fold_i64_binary_immediates;
-using lir_to_bir_detail::fold_integer_cast;
-using lir_to_bir_detail::infer_function_return_info;
-using lir_to_bir_detail::lower_canonical_select_entry_inst;
-using lir_to_bir_detail::lower_cast_opcode;
-using lir_to_bir_detail::lower_cmp_predicate;
-using lir_to_bir_detail::lower_decl_function;
-using lir_to_bir_detail::lower_extern_decl;
-using lir_to_bir_detail::lower_function_params;
-using lir_to_bir_detail::lower_param_type;
-using lir_to_bir_detail::lower_return_info_from_type;
-using lir_to_bir_detail::lower_scalar_binary_opcode;
-using lir_to_bir_detail::lower_scalar_compare_inst;
-using lir_to_bir_detail::lower_scalar_or_function_pointer_type;
-using lir_to_bir_detail::lower_signature_return_info;
-using lir_to_bir_detail::lower_value;
-using lir_to_bir_detail::resolve_select_chain_inst;
-using lir_to_bir_detail::PhiBlockPlanMap;
-using lir_to_bir_detail::PhiLoweringPlan;
-using lir_to_bir_detail::append_local_aggregate_copy_from_slots;
-using lir_to_bir_detail::append_local_aggregate_copy_to_pointer;
-using lir_to_bir_detail::append_local_aggregate_scalar_slots;
-using lir_to_bir_detail::collect_aggregate_params;
-using lir_to_bir_detail::collect_sorted_leaf_slots;
-using lir_to_bir_detail::declare_local_aggregate_slots;
-using lir_to_bir_detail::materialize_aggregate_param_aliases;
-using lir_to_bir_detail::lower_scalar_or_local_memory_inst;
 
-bool canonicalize_compare_return_alias(const c4c::codegen::lir::LirOperand& ret_value,
-                                       const bir::Value& lowered_value,
-                                       bir::TypeKind return_type,
-                                       const CompareMap& compare_exprs,
-                                       std::vector<bir::Inst>* lowered_insts,
-                                       bir::ReturnTerminator* lowered_ret) {
+}  // namespace
+
+BirFunctionLowerer::BirFunctionLowerer(BirLoweringContext& context,
+                                       const c4c::codegen::lir::LirFunction& function,
+                                       const GlobalTypes& global_types,
+                                       const FunctionSymbolSet& function_symbols,
+                                       const TypeDeclMap& type_decls)
+    : context_(context),
+      function_(function),
+      global_types_(global_types),
+      function_symbols_(function_symbols),
+      type_decls_(type_decls) {}
+
+bool BirFunctionLowerer::canonicalize_compare_return_alias(
+    const c4c::codegen::lir::LirOperand& ret_value,
+    const bir::Value& lowered_value,
+    bir::TypeKind return_type,
+    std::vector<bir::Inst>* lowered_insts,
+    bir::ReturnTerminator* lowered_ret) const {
   if (ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
       lowered_value.kind != bir::Value::Kind::Named ||
       lowered_value.type != bir::TypeKind::I1 ||
@@ -115,17 +46,14 @@ bool canonicalize_compare_return_alias(const c4c::codegen::lir::LirOperand& ret_
     return false;
   }
 
-  const auto compare_it = compare_exprs.find(ret_value.str());
-  if (compare_it == compare_exprs.end()) {
+  const auto compare_it = compare_exprs_.find(ret_value.str());
+  if (compare_it == compare_exprs_.end()) {
     return false;
   }
 
   for (auto inst_it = lowered_insts->rbegin(); inst_it != lowered_insts->rend(); ++inst_it) {
     auto* binary = std::get_if<bir::BinaryInst>(&*inst_it);
-    if (binary == nullptr) {
-      continue;
-    }
-    if (binary->result.name != lowered_value.name) {
+    if (binary == nullptr || binary->result.name != lowered_value.name) {
       continue;
     }
 
@@ -137,12 +65,13 @@ bool canonicalize_compare_return_alias(const c4c::codegen::lir::LirOperand& ret_
   return false;
 }
 
-std::optional<bir::Value> lower_select_chain_value(const BlockLookup& blocks,
-                                                   const BranchChain& chain,
-                                                   const c4c::codegen::lir::LirOperand& incoming,
-                                                   bir::TypeKind expected_type,
-                                                   const ValueMap& value_aliases,
-                                                   std::vector<bir::Inst>* lowered_insts) {
+std::optional<bir::Value> BirFunctionLowerer::lower_select_chain_value(
+    const BlockLookup& blocks,
+    const BranchChain& chain,
+    const c4c::codegen::lir::LirOperand& incoming,
+    bir::TypeKind expected_type,
+    const ValueMap& value_aliases,
+    std::vector<bir::Inst>* lowered_insts) const {
   if (incoming.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
     return lower_value(incoming, expected_type, value_aliases);
   }
@@ -171,21 +100,17 @@ std::optional<bir::Value> lower_select_chain_value(const BlockLookup& blocks,
   return lower_value(incoming, expected_type, chain_aliases);
 }
 
-std::optional<bir::Function> lower_canonical_select_function(
-    BirLoweringContext& context,
-    const c4c::codegen::lir::LirFunction& function,
-    const TypeDeclMap& type_decls) {
-  (void)context;
-  if (function.is_declaration || function.blocks.empty()) {
+std::optional<bir::Function> BirFunctionLowerer::try_lower_canonical_select_function() {
+  if (function_.is_declaration || function_.blocks.empty()) {
     return std::nullopt;
   }
 
-  const auto return_info = infer_function_return_info(function, type_decls);
+  const auto return_info = infer_function_return_info();
   if (!return_info.has_value() || return_info->returned_via_sret) {
     return std::nullopt;
   }
 
-  const auto& entry = function.blocks.front();
+  const auto& entry = function_.blocks.front();
   const auto* cond_br = std::get_if<c4c::codegen::lir::LirCondBr>(&entry.terminator);
   if (cond_br == nullptr) {
     return std::nullopt;
@@ -205,7 +130,7 @@ std::optional<bir::Function> lower_canonical_select_function(
     return std::nullopt;
   }
 
-  const auto blocks = make_block_lookup(function);
+  const auto blocks = make_block_lookup();
   const auto true_chain = follow_canonical_select_chain(blocks, cond_br->true_label);
   const auto false_chain = follow_canonical_select_chain(blocks, cond_br->false_label);
   if (!true_chain.has_value() || !false_chain.has_value() ||
@@ -231,7 +156,7 @@ std::optional<bir::Function> lower_canonical_select_function(
       return std::nullopt;
     }
   }
-  const auto phi_type = lower_integer_type(phi->type_str.str());
+  const auto phi_type = lir_to_bir_detail::lower_integer_type(phi->type_str.str());
   if (!phi_type.has_value()) {
     return std::nullopt;
   }
@@ -240,7 +165,7 @@ std::optional<bir::Function> lower_canonical_select_function(
   if (ret == nullptr || !ret->value_str.has_value()) {
     return std::nullopt;
   }
-  const auto ret_value = c4c::codegen::lir::LirOperand(*ret->value_str);
+  const c4c::codegen::lir::LirOperand ret_value(*ret->value_str);
 
   std::optional<c4c::codegen::lir::LirOperand> true_incoming;
   std::optional<c4c::codegen::lir::LirOperand> false_incoming;
@@ -260,27 +185,25 @@ std::optional<bir::Function> lower_canonical_select_function(
   covered_labels.insert(join_block.label);
   covered_labels.insert(true_chain->labels.begin(), true_chain->labels.end());
   covered_labels.insert(false_chain->labels.begin(), false_chain->labels.end());
-  if (covered_labels.size() != function.blocks.size()) {
+  if (covered_labels.size() != function_.blocks.size()) {
     return std::nullopt;
   }
 
-  const auto true_value =
-      lower_select_chain_value(
-          blocks, *true_chain, *true_incoming, *phi_type, value_aliases, &prelude_insts);
-  const auto false_value =
-      lower_select_chain_value(
-          blocks, *false_chain, *false_incoming, *phi_type, value_aliases, &prelude_insts);
+  const auto true_value = lower_select_chain_value(
+      blocks, *true_chain, *true_incoming, *phi_type, value_aliases, &prelude_insts);
+  const auto false_value = lower_select_chain_value(
+      blocks, *false_chain, *false_incoming, *phi_type, value_aliases, &prelude_insts);
   if (!true_value.has_value() || !false_value.has_value()) {
     return std::nullopt;
   }
 
   bir::Function lowered;
-  lowered.name = function.name;
+  lowered.name = function_.name;
   lowered.return_type = return_info->type;
-  if (!lower_function_params(function, return_info, type_decls, &lowered)) {
+  if (!lower_function_params(function_, return_info, type_decls_, &lowered)) {
     return std::nullopt;
   }
-  if (!collect_phi_lowering_plans(function).has_value()) {
+  if (!collect_phi_lowering_plans().has_value()) {
     return std::nullopt;
   }
 
@@ -317,244 +240,187 @@ std::optional<bir::Function> lower_canonical_select_function(
   return lowered;
 }
 
-std::optional<bir::Function> lower_branch_family_function(
-    BirLoweringContext& context,
-    const c4c::codegen::lir::LirFunction& function,
-    const GlobalTypes& global_types,
-    const FunctionSymbolSet& function_symbols,
-    const TypeDeclMap& type_decls) {
-  (void)context;
-  if (function.is_declaration || function.blocks.empty()) {
+bool BirFunctionLowerer::lower_alloca_insts() {
+  for (const auto& inst : function_.alloca_insts) {
+    if (!lower_scalar_or_local_memory_inst(inst, &hoisted_alloca_scratch_)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool BirFunctionLowerer::lower_block_phi_insts(const c4c::codegen::lir::LirBlock& block,
+                                               bir::Block* lowered_block) {
+  const auto phi_it = phi_plans_.find(block.label);
+  if (phi_it == phi_plans_.end()) {
+    return true;
+  }
+
+  for (const auto& phi_plan : phi_it->second) {
+    std::vector<bir::PhiIncoming> incomings;
+    incomings.reserve(phi_plan.incomings.size());
+    for (const auto& [label, operand] : phi_plan.incomings) {
+      const auto incoming_value = lower_value(operand, phi_plan.type);
+      if (!incoming_value.has_value()) {
+        return false;
+      }
+      incomings.push_back(bir::PhiIncoming{
+          .label = label,
+          .value = *incoming_value,
+      });
+    }
+    lowered_block->insts.push_back(bir::PhiInst{
+        .result = bir::Value::named(phi_plan.type, phi_plan.result_name),
+        .incomings = std::move(incomings),
+    });
+  }
+
+  return true;
+}
+
+bool BirFunctionLowerer::lower_block_insts(const c4c::codegen::lir::LirBlock& block,
+                                           bir::Block* lowered_block) {
+  for (const auto& inst : block.insts) {
+    if (std::holds_alternative<c4c::codegen::lir::LirPhiOp>(inst)) {
+      continue;
+    }
+    if (!lower_scalar_or_local_memory_inst(inst, &lowered_block->insts)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool BirFunctionLowerer::lower_block_terminator(const c4c::codegen::lir::LirBlock& block,
+                                                bir::Block* lowered_block) {
+  if (!return_info_.has_value()) {
+    return false;
+  }
+
+  if (const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&block.terminator)) {
+    bir::ReturnTerminator lowered_ret;
+    if (ret->value_str.has_value()) {
+      const c4c::codegen::lir::LirOperand ret_value(*ret->value_str);
+      if (return_info_->returned_via_sret) {
+        if (ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+          return false;
+        }
+        const auto aggregate_alias_it = aggregate_value_aliases_.find(ret_value.str());
+        if (aggregate_alias_it == aggregate_value_aliases_.end()) {
+          return false;
+        }
+        const auto source_aggregate_it = local_aggregate_slots_.find(aggregate_alias_it->second);
+        if (source_aggregate_it == local_aggregate_slots_.end()) {
+          return false;
+        }
+        if (!append_local_aggregate_copy_to_pointer(source_aggregate_it->second,
+                                                    bir::Value::named(bir::TypeKind::Ptr,
+                                                                      "%ret.sret"),
+                                                    return_info_->align_bytes,
+                                                    function_.name + ".ret.sret.copy",
+                                                    &lowered_block->insts)) {
+          return false;
+        }
+      } else {
+        const auto value = lower_value(ret_value, return_info_->type);
+        if (!value.has_value()) {
+          return false;
+        }
+        if (!canonicalize_compare_return_alias(
+                ret_value, *value, return_info_->type, &lowered_block->insts, &lowered_ret)) {
+          lowered_ret.value = *value;
+        }
+      }
+    }
+    lowered_block->terminator = lowered_ret;
+    return true;
+  }
+
+  if (const auto* br = std::get_if<c4c::codegen::lir::LirBr>(&block.terminator)) {
+    lowered_block->terminator = bir::BranchTerminator{.target_label = br->target_label};
+    return true;
+  }
+
+  if (const auto* cond_br = std::get_if<c4c::codegen::lir::LirCondBr>(&block.terminator)) {
+    const auto condition = lower_value(cond_br->cond_name, bir::TypeKind::I1);
+    if (!condition.has_value()) {
+      return false;
+    }
+    lowered_block->terminator = bir::CondBranchTerminator{
+        .condition = *condition,
+        .true_label = cond_br->true_label,
+        .false_label = cond_br->false_label,
+    };
+    return true;
+  }
+
+  return false;
+}
+
+bool BirFunctionLowerer::lower_block(const c4c::codegen::lir::LirBlock& block,
+                                     bool* emitted_hoisted_alloca_scratch) {
+  bir::Block lowered_block;
+  lowered_block.label = block.label;
+  if (!*emitted_hoisted_alloca_scratch &&
+      block.label == function_.blocks.front().label &&
+      !hoisted_alloca_scratch_.empty()) {
+    lowered_block.insts = std::move(hoisted_alloca_scratch_);
+    *emitted_hoisted_alloca_scratch = true;
+  }
+
+  if (!lower_block_phi_insts(block, &lowered_block) ||
+      !lower_block_insts(block, &lowered_block) ||
+      !lower_block_terminator(block, &lowered_block)) {
+    return false;
+  }
+
+  lowered_function_.blocks.push_back(std::move(lowered_block));
+  return true;
+}
+
+std::optional<bir::Function> BirFunctionLowerer::lower() {
+  (void)context_;
+  if (function_.is_declaration || function_.blocks.empty()) {
     return std::nullopt;
   }
 
-  if (auto lowered = lower_canonical_select_function(context, function, type_decls);
-      lowered.has_value()) {
+  if (auto lowered = try_lower_canonical_select_function(); lowered.has_value()) {
     return lowered;
   }
 
-  const auto return_info = infer_function_return_info(function, type_decls);
-  if (!return_info.has_value()) {
+  return_info_ = infer_function_return_info();
+  if (!return_info_.has_value()) {
     return std::nullopt;
   }
 
-  bir::Function lowered;
-  lowered.name = function.name;
-  lowered.return_type = return_info->type;
-  lowered.return_size_bytes = return_info->size_bytes;
-  lowered.return_align_bytes = return_info->align_bytes;
-  if (!lower_function_params(function, return_info, type_decls, &lowered)) {
+  lowered_function_.name = function_.name;
+  lowered_function_.return_type = return_info_->type;
+  lowered_function_.return_size_bytes = return_info_->size_bytes;
+  lowered_function_.return_align_bytes = return_info_->align_bytes;
+  if (!lower_function_params(function_, return_info_, type_decls_, &lowered_function_)) {
     return std::nullopt;
   }
-  const auto phi_plans = collect_phi_lowering_plans(function);
+
+  auto phi_plans = collect_phi_lowering_plans();
   if (!phi_plans.has_value()) {
     return std::nullopt;
   }
-  const auto aggregate_params = collect_aggregate_params(function, type_decls);
+  phi_plans_ = std::move(*phi_plans);
+  aggregate_params_ = collect_aggregate_params();
 
-  ValueMap value_aliases;
-  CompareMap compare_exprs;
-  AggregateValueAliasMap aggregate_value_aliases;
-  LocalSlotTypes local_slot_types;
-  LocalPointerSlots local_pointer_slots;
-  LocalArraySlotMap local_array_slots;
-  LocalPointerArrayBaseMap local_pointer_array_bases;
-  DynamicLocalPointerArrayMap dynamic_local_pointer_arrays;
-  DynamicLocalAggregateArrayMap dynamic_local_aggregate_arrays;
-  LocalAggregateSlotMap local_aggregate_slots;
-  LocalAggregateFieldSet local_aggregate_field_slots;
-  LocalPointerValueAliasMap local_pointer_value_aliases;
-  LocalAddressSlots local_address_slots;
-  GlobalAddressSlots global_address_slots;
-  AddressedGlobalPointerSlots addressed_global_pointer_slots;
-  GlobalPointerMap global_pointer_slots;
-  DynamicGlobalPointerArrayMap dynamic_global_pointer_arrays;
-  DynamicGlobalAggregateArrayMap dynamic_global_aggregate_arrays;
-  GlobalObjectPointerMap global_object_pointer_slots;
-  GlobalAddressIntMap global_address_ints;
-  GlobalObjectAddressIntMap global_object_address_ints;
-  std::vector<bir::Inst> hoisted_alloca_scratch;
-
-  if (!materialize_aggregate_param_aliases(aggregate_params,
-                                           type_decls,
-                                           local_slot_types,
-                                           local_pointer_slots,
-                                           local_aggregate_field_slots,
-                                           aggregate_value_aliases,
-                                           &lowered,
-                                           local_aggregate_slots,
-                                           &hoisted_alloca_scratch)) {
+  if (!materialize_aggregate_param_aliases(&hoisted_alloca_scratch_) || !lower_alloca_insts()) {
     return std::nullopt;
   }
 
-  for (const auto& inst : function.alloca_insts) {
-    if (!lower_scalar_or_local_memory_inst(
-            inst,
-            value_aliases,
-            compare_exprs,
-            aggregate_value_aliases,
-            local_slot_types,
-            local_pointer_slots,
-            local_array_slots,
-            local_pointer_array_bases,
-            dynamic_local_pointer_arrays,
-            dynamic_local_aggregate_arrays,
-            local_aggregate_slots,
-            local_aggregate_field_slots,
-            local_pointer_value_aliases,
-            local_address_slots,
-            global_address_slots,
-            addressed_global_pointer_slots,
-            global_pointer_slots,
-            dynamic_global_pointer_arrays,
-            dynamic_global_aggregate_arrays,
-            global_object_pointer_slots,
-            global_address_ints,
-            global_object_address_ints,
-            aggregate_params,
-            global_types,
-            function_symbols,
-            type_decls,
-            &lowered,
-            &hoisted_alloca_scratch)) {
-      return std::nullopt;
-    }
-  }
-
   bool emitted_hoisted_alloca_scratch = false;
-
-  for (const auto& block : function.blocks) {
-    bir::Block lowered_block;
-    lowered_block.label = block.label;
-    if (!emitted_hoisted_alloca_scratch && block.label == function.blocks.front().label &&
-        !hoisted_alloca_scratch.empty()) {
-      lowered_block.insts = std::move(hoisted_alloca_scratch);
-      emitted_hoisted_alloca_scratch = true;
-    }
-
-    if (const auto phi_it = phi_plans->find(block.label); phi_it != phi_plans->end()) {
-      for (const auto& phi_plan : phi_it->second) {
-        std::vector<bir::PhiIncoming> incomings;
-        incomings.reserve(phi_plan.incomings.size());
-        for (const auto& [label, operand] : phi_plan.incomings) {
-          const auto incoming_value = lower_value(operand, phi_plan.type, value_aliases);
-          if (!incoming_value.has_value()) {
-            return std::nullopt;
-          }
-          incomings.push_back(bir::PhiIncoming{
-              .label = label,
-              .value = *incoming_value,
-          });
-        }
-        lowered_block.insts.push_back(bir::PhiInst{
-            .result = bir::Value::named(phi_plan.type, phi_plan.result_name),
-            .incomings = std::move(incomings),
-        });
-      }
-    }
-
-    for (const auto& inst : block.insts) {
-      if (std::holds_alternative<c4c::codegen::lir::LirPhiOp>(inst)) {
-        continue;
-      }
-      if (!lower_scalar_or_local_memory_inst(
-              inst,
-              value_aliases,
-              compare_exprs,
-              aggregate_value_aliases,
-              local_slot_types,
-              local_pointer_slots,
-              local_array_slots,
-              local_pointer_array_bases,
-              dynamic_local_pointer_arrays,
-              dynamic_local_aggregate_arrays,
-              local_aggregate_slots,
-              local_aggregate_field_slots,
-              local_pointer_value_aliases,
-              local_address_slots,
-              global_address_slots,
-              addressed_global_pointer_slots,
-              global_pointer_slots,
-              dynamic_global_pointer_arrays,
-              dynamic_global_aggregate_arrays,
-              global_object_pointer_slots,
-              global_address_ints,
-              global_object_address_ints,
-              aggregate_params,
-              global_types,
-              function_symbols,
-              type_decls,
-              &lowered,
-              &lowered_block.insts)) {
-        return std::nullopt;
-      }
-    }
-
-    if (const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&block.terminator)) {
-      bir::ReturnTerminator lowered_ret;
-      if (ret->value_str.has_value()) {
-        const c4c::codegen::lir::LirOperand ret_value(*ret->value_str);
-        if (return_info->returned_via_sret) {
-          if (ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-            return std::nullopt;
-          }
-          const auto aggregate_alias_it = aggregate_value_aliases.find(ret_value.str());
-          if (aggregate_alias_it == aggregate_value_aliases.end()) {
-            return std::nullopt;
-          }
-          const auto source_aggregate_it = local_aggregate_slots.find(aggregate_alias_it->second);
-          if (source_aggregate_it == local_aggregate_slots.end()) {
-            return std::nullopt;
-          }
-          if (!append_local_aggregate_copy_to_pointer(source_aggregate_it->second,
-                                                      local_slot_types,
-                                                      bir::Value::named(bir::TypeKind::Ptr,
-                                                                        "%ret.sret"),
-                                                      return_info->align_bytes,
-                                                      function.name + ".ret.sret.copy",
-                                                      &lowered_block.insts)) {
-            return std::nullopt;
-          }
-        } else {
-          const auto value = lower_value(ret_value, return_info->type, value_aliases);
-          if (!value.has_value()) {
-            return std::nullopt;
-          }
-          if (!canonicalize_compare_return_alias(ret_value,
-                                                 *value,
-                                                 return_info->type,
-                                                 compare_exprs,
-                                                 &lowered_block.insts,
-                                                 &lowered_ret)) {
-            lowered_ret.value = *value;
-          }
-        }
-      }
-      lowered_block.terminator = lowered_ret;
-    } else if (const auto* br = std::get_if<c4c::codegen::lir::LirBr>(&block.terminator)) {
-      lowered_block.terminator = bir::BranchTerminator{.target_label = br->target_label};
-    } else if (const auto* cond_br =
-                   std::get_if<c4c::codegen::lir::LirCondBr>(&block.terminator)) {
-      const auto condition = lower_value(cond_br->cond_name, bir::TypeKind::I1, value_aliases);
-      if (!condition.has_value()) {
-        return std::nullopt;
-      }
-      lowered_block.terminator = bir::CondBranchTerminator{
-          .condition = *condition,
-          .true_label = cond_br->true_label,
-          .false_label = cond_br->false_label,
-      };
-    } else {
+  for (const auto& block : function_.blocks) {
+    if (!lower_block(block, &emitted_hoisted_alloca_scratch)) {
       return std::nullopt;
     }
-
-    lowered.blocks.push_back(std::move(lowered_block));
   }
 
-  return lowered;
+  return lowered_function_;
 }
-
-}  // namespace
 
 std::optional<bir::Module> lower_module(BirLoweringContext& context,
                                         const BirModuleAnalysis& analysis) {
@@ -636,7 +502,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   }
 
   for (const auto& decl : context.lir_module.extern_decls) {
-    auto lowered_decl = lower_extern_decl(decl);
+    auto lowered_decl = BirFunctionLowerer::lower_extern_decl(decl);
     if (!lowered_decl.has_value()) {
       continue;
     }
@@ -645,7 +511,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
 
   for (const auto& function : context.lir_module.functions) {
     if (function.is_declaration) {
-      auto lowered_decl = lower_decl_function(function);
+      auto lowered_decl = BirFunctionLowerer::lower_decl_function(function);
       if (!lowered_decl.has_value()) {
         continue;
       }
@@ -653,8 +519,9 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
       continue;
     }
 
-    auto lowered_function = lower_branch_family_function(
+    BirFunctionLowerer function_lowerer(
         context, function, global_types, function_symbols, type_decls);
+    auto lowered_function = function_lowerer.lower();
     if (!lowered_function.has_value()) {
       context.note(
           "module",

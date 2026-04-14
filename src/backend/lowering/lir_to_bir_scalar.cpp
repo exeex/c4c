@@ -2,7 +2,11 @@
 
 #include "call_decode.hpp"
 
-namespace c4c::backend::lir_to_bir_detail {
+namespace c4c::backend {
+
+using lir_to_bir_detail::CompareExpr;
+using lir_to_bir_detail::lower_integer_type;
+using lir_to_bir_detail::parse_i64;
 
 namespace {
 
@@ -65,7 +69,8 @@ bool is_canonical_select_chain_binop(bir::BinaryOpcode opcode) {
 
 }  // namespace
 
-std::optional<bir::TypeKind> lower_scalar_or_function_pointer_type(std::string_view text) {
+std::optional<bir::TypeKind> BirFunctionLowerer::lower_scalar_or_function_pointer_type(
+    std::string_view text) {
   const auto lowered = lower_integer_type(text);
   if (lowered.has_value()) {
     return lowered;
@@ -77,7 +82,8 @@ std::optional<bir::TypeKind> lower_scalar_or_function_pointer_type(std::string_v
   return std::nullopt;
 }
 
-std::optional<bir::CastOpcode> lower_cast_opcode(c4c::codegen::lir::LirCastKind kind) {
+std::optional<bir::CastOpcode> BirFunctionLowerer::lower_cast_opcode(
+    c4c::codegen::lir::LirCastKind kind) {
   switch (kind) {
     case c4c::codegen::lir::LirCastKind::SExt:
       return bir::CastOpcode::SExt;
@@ -90,7 +96,7 @@ std::optional<bir::CastOpcode> lower_cast_opcode(c4c::codegen::lir::LirCastKind 
   }
 }
 
-std::optional<bir::BinaryOpcode> lower_scalar_binary_opcode(
+std::optional<bir::BinaryOpcode> BirFunctionLowerer::lower_scalar_binary_opcode(
     const c4c::codegen::lir::LirBinaryOpcodeRef& opcode) {
   using c4c::codegen::lir::LirBinaryOpcode;
   switch (opcode.typed().value_or(LirBinaryOpcode::FNeg)) {
@@ -125,9 +131,10 @@ std::optional<bir::BinaryOpcode> lower_scalar_binary_opcode(
   }
 }
 
-std::optional<bir::Value> fold_i64_binary_immediates(bir::BinaryOpcode opcode,
-                                                     std::int64_t lhs,
-                                                     std::int64_t rhs) {
+std::optional<bir::Value> BirFunctionLowerer::fold_i64_binary_immediates(
+    bir::BinaryOpcode opcode,
+    std::int64_t lhs,
+    std::int64_t rhs) {
   switch (opcode) {
     case bir::BinaryOpcode::Add:
       return bir::Value::immediate_i64(lhs + rhs);
@@ -158,7 +165,7 @@ std::optional<bir::Value> fold_i64_binary_immediates(bir::BinaryOpcode opcode,
   }
 }
 
-std::optional<bir::BinaryOpcode> lower_cmp_predicate(
+std::optional<bir::BinaryOpcode> BirFunctionLowerer::lower_cmp_predicate(
     const c4c::codegen::lir::LirCmpPredicateRef& predicate) {
   using c4c::codegen::lir::LirCmpPredicate;
   switch (predicate.typed().value_or(LirCmpPredicate::Ord)) {
@@ -187,9 +194,10 @@ std::optional<bir::BinaryOpcode> lower_cmp_predicate(
   }
 }
 
-std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& operand,
-                                      bir::TypeKind expected_type,
-                                      const ValueMap& value_aliases) {
+std::optional<bir::Value> BirFunctionLowerer::lower_value(
+    const c4c::codegen::lir::LirOperand& operand,
+    bir::TypeKind expected_type,
+    const ValueMap& value_aliases) {
   if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
     const auto alias = value_aliases.find(operand.str());
     if (alias != value_aliases.end()) {
@@ -231,9 +239,16 @@ std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& opera
   }
 }
 
-std::optional<bir::Value> fold_integer_cast(c4c::codegen::lir::LirCastKind kind,
-                                            const bir::Value& operand,
-                                            bir::TypeKind to_type) {
+std::optional<bir::Value> BirFunctionLowerer::lower_value(
+    const c4c::codegen::lir::LirOperand& operand,
+    bir::TypeKind expected_type) const {
+  return lower_value(operand, expected_type, value_aliases_);
+}
+
+std::optional<bir::Value> BirFunctionLowerer::fold_integer_cast(
+    c4c::codegen::lir::LirCastKind kind,
+    const bir::Value& operand,
+    bir::TypeKind to_type) {
   const auto from_bits = integer_type_bit_width(operand.type);
   const auto to_bits = integer_type_bit_width(to_type);
   if (!from_bits.has_value() || !to_bits.has_value()) {
@@ -263,10 +278,10 @@ std::optional<bir::Value> fold_integer_cast(c4c::codegen::lir::LirCastKind kind,
   return make_integer_immediate(to_type, cast_value);
 }
 
-bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
-                               ValueMap& value_aliases,
-                               CompareMap& compare_exprs,
-                               std::vector<bir::Inst>* lowered_insts) {
+bool BirFunctionLowerer::lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
+                                                   ValueMap& value_aliases,
+                                                   CompareMap& compare_exprs,
+                                                   std::vector<bir::Inst>* lowered_insts) const {
   if (const auto* cmp = std::get_if<c4c::codegen::lir::LirCmpOp>(&inst)) {
     if (cmp->is_float) {
       return false;
@@ -364,10 +379,10 @@ bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
   return false;
 }
 
-bool resolve_select_chain_inst(const c4c::codegen::lir::LirInst& inst,
-                               ValueMap& value_aliases,
-                               CompareMap& compare_exprs,
-                               std::vector<bir::Inst>* lowered_insts) {
+bool BirFunctionLowerer::resolve_select_chain_inst(const c4c::codegen::lir::LirInst& inst,
+                                                   ValueMap& value_aliases,
+                                                   CompareMap& compare_exprs,
+                                                   std::vector<bir::Inst>* lowered_insts) const {
   if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, lowered_insts)) {
     return true;
   }
@@ -457,10 +472,11 @@ bool resolve_select_chain_inst(const c4c::codegen::lir::LirInst& inst,
   return false;
 }
 
-bool lower_canonical_select_entry_inst(const c4c::codegen::lir::LirInst& inst,
-                                       ValueMap& value_aliases,
-                                       CompareMap& compare_exprs,
-                                       std::vector<bir::Inst>* lowered_insts) {
+bool BirFunctionLowerer::lower_canonical_select_entry_inst(
+    const c4c::codegen::lir::LirInst& inst,
+    ValueMap& value_aliases,
+    CompareMap& compare_exprs,
+    std::vector<bir::Inst>* lowered_insts) const {
   if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, nullptr)) {
     return true;
   }
@@ -495,4 +511,4 @@ bool lower_canonical_select_entry_inst(const c4c::codegen::lir::LirInst& inst,
   return true;
 }
 
-}  // namespace c4c::backend::lir_to_bir_detail
+}  // namespace c4c::backend

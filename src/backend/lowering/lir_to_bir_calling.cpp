@@ -2,7 +2,9 @@
 
 #include "call_decode.hpp"
 
-namespace c4c::backend::lir_to_bir_detail {
+namespace c4c::backend {
+
+using lir_to_bir_detail::lower_integer_type;
 
 namespace {
 
@@ -12,15 +14,16 @@ bool is_void_param_sentinel(const c4c::TypeSpec& type) {
 
 }  // namespace
 
-std::optional<bir::TypeKind> lower_param_type(const c4c::TypeSpec& type) {
+std::optional<bir::TypeKind> BirFunctionLowerer::lower_param_type(const c4c::TypeSpec& type) {
   if (type.base == TB_BOOL && type.ptr_level == 0 && type.array_rank == 0) {
     return bir::TypeKind::I1;
   }
   return backend_lir_lower_minimal_scalar_type(type);
 }
 
-std::optional<LoweredReturnInfo> lower_return_info_from_type(std::string_view type_text,
-                                                             const TypeDeclMap& type_decls) {
+std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_return_info_from_type(
+    std::string_view type_text,
+    const TypeDeclMap& type_decls) {
   const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type_text);
   if (trimmed == "void") {
     return LoweredReturnInfo{};
@@ -42,16 +45,15 @@ std::optional<LoweredReturnInfo> lower_return_info_from_type(std::string_view ty
   return std::nullopt;
 }
 
-std::optional<LoweredReturnInfo> infer_function_return_info(
-    const c4c::codegen::lir::LirFunction& function,
-    const TypeDeclMap& type_decls) {
+std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::infer_function_return_info()
+    const {
   std::optional<LoweredReturnInfo> return_info;
-  for (const auto& block : function.blocks) {
+  for (const auto& block : function_.blocks) {
     const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&block.terminator);
     if (ret == nullptr) {
       continue;
     }
-    const auto lowered_type = lower_return_info_from_type(ret->type_str, type_decls);
+    const auto lowered_type = lower_return_info_from_type(ret->type_str, type_decls_);
     if (!lowered_type.has_value()) {
       return std::nullopt;
     }
@@ -69,8 +71,9 @@ std::optional<LoweredReturnInfo> infer_function_return_info(
   return return_info;
 }
 
-std::optional<LoweredReturnInfo> lower_signature_return_info(std::string_view signature_text,
-                                                             const TypeDeclMap& type_decls) {
+std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_signature_return_info(
+    std::string_view signature_text,
+    const TypeDeclMap& type_decls) {
   const auto line = c4c::codegen::lir::trim_lir_arg_text(signature_text);
   const auto first_space = line.find(' ');
   const auto at_pos = line.find('@');
@@ -83,7 +86,8 @@ std::optional<LoweredReturnInfo> lower_signature_return_info(std::string_view si
   return lower_return_info_from_type(return_type_text, type_decls);
 }
 
-std::optional<bir::Function> lower_extern_decl(const c4c::codegen::lir::LirExternDecl& decl) {
+std::optional<bir::Function> BirFunctionLowerer::lower_extern_decl(
+    const c4c::codegen::lir::LirExternDecl& decl) {
   auto return_type = lower_integer_type(decl.return_type_str);
   if (!return_type.has_value()) {
     return_type = lower_integer_type(decl.return_type.str());
@@ -104,10 +108,11 @@ std::optional<bir::Function> lower_extern_decl(const c4c::codegen::lir::LirExter
   return lowered;
 }
 
-bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
-                           const std::optional<LoweredReturnInfo>& return_info,
-                           const TypeDeclMap& type_decls,
-                           bir::Function* lowered) {
+bool BirFunctionLowerer::lower_function_params(
+    const c4c::codegen::lir::LirFunction& function,
+    const std::optional<LoweredReturnInfo>& return_info,
+    const TypeDeclMap& type_decls,
+    bir::Function* lowered) {
   const auto initial_param_count = lowered->params.size();
   if (return_info.has_value() && return_info->returned_via_sret) {
     lowered->params.push_back(bir::Param{
@@ -211,7 +216,8 @@ bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
   return true;
 }
 
-std::optional<bir::Function> lower_decl_function(const c4c::codegen::lir::LirFunction& function) {
+std::optional<bir::Function> BirFunctionLowerer::lower_decl_function(
+    const c4c::codegen::lir::LirFunction& function) {
   bir::Function lowered;
   lowered.name = function.name;
   auto return_info = lower_signature_return_info(function.signature_text, TypeDeclMap{});
@@ -229,4 +235,4 @@ std::optional<bir::Function> lower_decl_function(const c4c::codegen::lir::LirFun
   return lowered;
 }
 
-}  // namespace c4c::backend::lir_to_bir_detail
+}  // namespace c4c::backend

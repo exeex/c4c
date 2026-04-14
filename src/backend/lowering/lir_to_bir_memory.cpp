@@ -9,7 +9,9 @@
 #include <utility>
 #include <vector>
 
-namespace c4c::backend::lir_to_bir_detail {
+namespace c4c::backend {
+
+using namespace lir_to_bir_detail;
 
 namespace {
 
@@ -78,7 +80,7 @@ std::optional<bir::Value> lower_typed_index_value(const ParsedTypedOperand& inde
       (*index_type != bir::TypeKind::I32 && *index_type != bir::TypeKind::I64)) {
     return std::nullopt;
   }
-  return lower_value(index_operand.operand, *index_type, value_aliases);
+  return BirFunctionLowerer::lower_value(index_operand.operand, *index_type, value_aliases);
 }
 
 std::optional<bir::Value> make_index_immediate(bir::TypeKind type, std::size_t value) {
@@ -1066,7 +1068,7 @@ std::optional<bir::Value> resolve_local_aggregate_pointer_value_alias(
     const ValueMap& value_aliases,
     const FunctionSymbolSet& function_symbols) {
   if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
-    return lower_value(operand, bir::TypeKind::Ptr, value_aliases);
+    return BirFunctionLowerer::lower_value(operand, bir::TypeKind::Ptr, value_aliases);
   }
   if (operand.kind() != c4c::codegen::lir::LirOperandKind::Global) {
     return std::nullopt;
@@ -1085,7 +1087,7 @@ std::optional<bir::Value> lower_call_pointer_arg_value(
     const GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols) {
   if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
-    return lower_value(operand, bir::TypeKind::Ptr, value_aliases);
+    return BirFunctionLowerer::lower_value(operand, bir::TypeKind::Ptr, value_aliases);
   }
   if (operand.kind() != c4c::codegen::lir::LirOperandKind::Global) {
     return std::nullopt;
@@ -1149,34 +1151,35 @@ GlobalPointerSlotKey make_global_pointer_slot_key(const GlobalAddress& address) 
 
 }  // namespace
 
-bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
-                                       ValueMap& value_aliases,
-                                       CompareMap& compare_exprs,
-                                       AggregateValueAliasMap& aggregate_value_aliases,
-                                       LocalSlotTypes& local_slot_types,
-                                       LocalPointerSlots& local_pointer_slots,
-                                       LocalArraySlotMap& local_array_slots,
-                                       LocalPointerArrayBaseMap& local_pointer_array_bases,
-                                       DynamicLocalPointerArrayMap& dynamic_local_pointer_arrays,
-                                       DynamicLocalAggregateArrayMap& dynamic_local_aggregate_arrays,
-                                       LocalAggregateSlotMap& local_aggregate_slots,
-                                       LocalAggregateFieldSet& local_aggregate_field_slots,
-                                       LocalPointerValueAliasMap& local_pointer_value_aliases,
-                                       LocalAddressSlots& local_address_slots,
-                                       GlobalAddressSlots& global_address_slots,
-                                       AddressedGlobalPointerSlots& addressed_global_pointer_slots,
-                                       GlobalPointerMap& global_pointer_slots,
-                                       DynamicGlobalPointerArrayMap& dynamic_global_pointer_arrays,
-                                       DynamicGlobalAggregateArrayMap& dynamic_global_aggregate_arrays,
-                                       GlobalObjectPointerMap& global_object_pointer_slots,
-                                       GlobalAddressIntMap& global_address_ints,
-                                       GlobalObjectAddressIntMap& global_object_address_ints,
-                                       const AggregateParamMap& aggregate_params,
-                                       const GlobalTypes& global_types,
-                                       const FunctionSymbolSet& function_symbols,
-                                       const TypeDeclMap& type_decls,
-                                       bir::Function* lowered_function,
-                                       std::vector<bir::Inst>* lowered_insts) {
+bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
+    const c4c::codegen::lir::LirInst& inst,
+    std::vector<bir::Inst>* lowered_insts) {
+  auto& value_aliases = value_aliases_;
+  auto& compare_exprs = compare_exprs_;
+  auto& aggregate_value_aliases = aggregate_value_aliases_;
+  auto& local_slot_types = local_slot_types_;
+  auto& local_pointer_slots = local_pointer_slots_;
+  auto& local_array_slots = local_array_slots_;
+  auto& local_pointer_array_bases = local_pointer_array_bases_;
+  auto& dynamic_local_pointer_arrays = dynamic_local_pointer_arrays_;
+  auto& dynamic_local_aggregate_arrays = dynamic_local_aggregate_arrays_;
+  auto& local_aggregate_slots = local_aggregate_slots_;
+  auto& local_aggregate_field_slots = local_aggregate_field_slots_;
+  auto& local_pointer_value_aliases = local_pointer_value_aliases_;
+  auto& local_address_slots = local_address_slots_;
+  auto& global_address_slots = global_address_slots_;
+  auto& addressed_global_pointer_slots = addressed_global_pointer_slots_;
+  auto& global_pointer_slots = global_pointer_slots_;
+  auto& dynamic_global_pointer_arrays = dynamic_global_pointer_arrays_;
+  auto& dynamic_global_aggregate_arrays = dynamic_global_aggregate_arrays_;
+  auto& global_object_pointer_slots = global_object_pointer_slots_;
+  auto& global_address_ints = global_address_ints_;
+  auto& global_object_address_ints = global_object_address_ints_;
+  const auto& aggregate_params = aggregate_params_;
+  const auto& global_types = global_types_;
+  const auto& function_symbols = function_symbols_;
+  const auto& type_decls = type_decls_;
+  auto* lowered_function = &lowered_function_;
   if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, lowered_insts)) {
     return true;
   }
@@ -1365,13 +1368,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
     return declare_local_aggregate_slots(alloca->type_str.str(),
                                          slot_name,
                                          alloca->align > 0 ? static_cast<std::size_t>(alloca->align)
-                                                           : 0,
-                                         type_decls,
-                                         local_slot_types,
-                                         local_pointer_slots,
-                                         local_aggregate_field_slots,
-                                         lowered_function,
-                                         local_aggregate_slots);
+                                                           : 0);
   }
 
   if (const auto* gep = std::get_if<c4c::codegen::lir::LirGepOp>(&inst)) {
@@ -1781,7 +1778,6 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       }
       return append_local_aggregate_copy_from_slots(source_aggregate_it->second,
                                                     target_aggregate_it->second,
-                                                    local_slot_types,
                                                     store->ptr.str() + ".aggregate.copy",
                                                     lowered_insts);
     }
@@ -2271,13 +2267,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       sret_slot_name = call->result.str();
       if (!declare_local_aggregate_slots(call->return_type.str(),
                                          *sret_slot_name,
-                                         return_info->align_bytes,
-                                         type_decls,
-                                         local_slot_types,
-                                         local_pointer_slots,
-                                         local_aggregate_field_slots,
-                                         lowered_function,
-                                         local_aggregate_slots)) {
+                                         return_info->align_bytes)) {
         return false;
       }
       aggregate_value_aliases[*sret_slot_name] = *sret_slot_name;
@@ -2488,4 +2478,4 @@ bool canonicalize_compare_return_alias(const c4c::codegen::lir::LirOperand& ret_
   return false;
 }
 
-}  // namespace c4c::backend::lir_to_bir_detail
+}  // namespace c4c::backend
