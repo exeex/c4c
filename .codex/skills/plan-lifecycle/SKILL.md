@@ -96,6 +96,15 @@ Execution state should declare near the top:
 - `Source Idea: ideas/open/<name>.md`
 - `Source Plan: plan.md`
 
+When lifecycle work creates or resets [`todo.md`](/workspaces/c4c/todo.md), use
+an executor-compatible skeleton instead of a custom format. The mutable packet
+body should be framed with:
+
+- `Just Finished`
+- `Suggested Next`
+- `Watchouts`
+- `Proof`
+
 ### `ideas/open/*.md` and `ideas/closed/*.md`
 
 When touched as part of lifecycle work, path already carries most status:
@@ -121,6 +130,8 @@ Do this:
 5. rewrite [`plan.md`](/workspaces/c4c/plan.md) as a runbook derived from the chosen idea
 6. include the source-idea link in [`plan.md`](/workspaces/c4c/plan.md)
 7. create or reset [`todo.md`](/workspaces/c4c/todo.md) for the new active plan
+8. when doing so, write only metadata plus an executor-compatible skeleton;
+   routine packet content belongs to later executor updates
 
 ### Execute Plan
 
@@ -169,7 +180,9 @@ Do this in order:
 1. deactivate the old active plan
 2. preserve relevant execution knowledge back into the old source idea
 3. activate the new source idea into [`plan.md`](/workspaces/c4c/plan.md)
-4. reset [`todo.md`](/workspaces/c4c/todo.md) to the new plan
+4. reset [`todo.md`](/workspaces/c4c/todo.md) to the new plan using metadata
+   plus an executor-compatible skeleton, not a separate plan-owner packet
+   format
 
 ### Close Plan
 
