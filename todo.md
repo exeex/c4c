@@ -24,8 +24,11 @@ Source Plan: plan.md
   supervisor should not send another executor packet from the stale
   `asm_unsupported` select/phi stems, the nearby prepared-BIR select surfaces,
   or observation-only harness churn;
-  the next supervisor action is a broader validation / route checkpoint, not a
-  new executor packet;
+  the broader validation / route checkpoint is now complete and confirmed the
+  active backend baseline is stable at `208 passed / 211 failed / 419 total`
+  with no regression delta on the backend subset;
+  that checkpoint did not reveal a fresh truthful proving seam for another
+  backlog-item-1 executor packet;
   only after that checkpoint identifies one fresh honest merge-semantics code
   move should execution return to `c4c-executor`
 
@@ -227,6 +230,16 @@ Source Plan: plan.md
   current C route inventory; treat backlog-item-1 execution as blocked on the
   next route checkpoint rather than forcing another executor packet from this
   exhausted surface
+- 2026-04-14 supervisor broader-checkpoint confirmation:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+  passed against the canonical backend checkpoint logs, confirming that the
+  current route is non-regressive at the broader backend subset level even
+  though pass count did not increase;
+  a follow-up scout of `src/backend/prepare/legalize.cpp` confirmed the only
+  obvious remaining backlog-item-1 code seam is still explicit phi
+  materialization beyond the current two-incoming/reducible path, and the
+  checked-in semantic/default-route probes still do not expose that seam as one
+  honest next packet yet
 
 ## Latest Packet Progress
 
