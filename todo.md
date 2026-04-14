@@ -68,7 +68,14 @@ Source Plan: plan.md
   and
   `backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub_asm_unsupported`
   now fail because the backend already emits prepared BIR plus
-  `semantic_phi` observation for those stems too
+  `semantic_phi` observation for those stems too;
+  supervisor then spot-checked the nearest "fresh-looking" non-stale merge
+  surfaces and found that they are already green on the truthful prepared-BIR
+  route too:
+  `three_way_phi_merge_post_add_sub.c` now lowers to nested prepared
+  `bir.select`, and a nested indirect-callee ternary probe also lowers to
+  prepared BIR plus `bir.call` without private merge reconstruction, so those
+  surfaces are route evidence only, not the next honest code-moving packet
 - packet rule:
   do not accept more `todo` / `InternalTests.cmake` churn as proxy progress;
   stale unsupported-test promotion for the split-predecessor
@@ -90,6 +97,13 @@ Source Plan: plan.md
 - the active plan remains on backlog item 1, generalize CFG merge and `phi`,
   but the currently sampled `backend_codegen_route` inventory is exhausted as
   a source of honest next packets
+- lifecycle repair outcome:
+  do not dispatch another executor packet from the current scalar
+  select/phi/callee inventory;
+  the next action is to identify one fresh backlog-item-1 code-moving merge
+  target outside that exhausted surface, or else perform another route
+  checkpoint instead of pretending the nearby prepared-BIR cases are still
+  exposing a missing capability
 - the next packet must return to one real code-moving backlog-item-1 merge
   target using the semantic-BIR observation surface only as proof support;
   do not spend another packet on route-test promotion or harness-only cleanup
@@ -110,6 +124,10 @@ Source Plan: plan.md
   no new call-specific merge reconstruction is allowed
 - keep helper params, indirect-call provenance, globals, and runtime intrinsics
   out of scope for this repair
+- treat `three_way_phi_merge_post_add_sub.c` and nested indirect-callee
+  ternary probes as confirmation that the current route already handles those
+  nearby prepared-BIR shapes; they are not the next executor target unless a
+  new code change broadens semantics beyond the now-proven route
 - for proof, anchor the harness on one canonical diamond-select case and one
   explicit merge case, then keep `branch_if_eq` and one existing call-lane
   sentinel as non-regression checks; do not use `two_arg_*` helper output mode
@@ -144,6 +162,10 @@ Source Plan: plan.md
   accepted packet may introduce a new proving source only when it is tied to a
   real merge-semantics code move rather than pretending the exhausted
   prepared-BIR route inventory still exposes a missing merge family cleanly
+- if no fresh code-moving backlog-item-1 proving source can be named without
+  returning to observation churn or stale inventory cleanup, treat that as a
+  route-checkpoint condition and repair lifecycle state again before sending an
+  executor
 
 ## Latest Packet Progress
 
