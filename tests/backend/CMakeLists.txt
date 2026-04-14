@@ -95,3 +95,21 @@ c4c_add_backend_codegen_route_test(
   REQUIRED_SNIPPETS "bir.func @choose3_phi_post_chain(i32 %p.x, i32 %p.y, i32 %p.z) -> i32 {|bir.phi i32|bir.ret i32"
   FORBIDDEN_SNIPPETS "define i32 @choose3_phi_post_chain(i32 %p.x, i32 %p.y, i32 %p.z)|bir.store_local|semantic_phi|bir.select"
 )
+
+add_test(
+  NAME backend_codegen_route_x86_64_byval_member_array_params_observe_semantic_bir
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DSRC_A=${BACKEND_CASE_ROOT}/param_member_array.c
+          -DOUT_A=${CMAKE_BINARY_DIR}/backend_route/param_member_array_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_A=bir.func @get_second(ptr byval(size=8, align=4) %p.p) -> i32 {|bir.call i32 get_second(ptr byval(size=8, align=4) %lv.p)|bir.ret i32 %t9"
+          -DSRC_B=${BACKEND_CASE_ROOT}/nested_param_member_array.c
+          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/nested_param_member_array_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_B=bir.func @get_second(ptr byval(size=8, align=4) %p.o) -> i32 {|bir.call i32 get_second(ptr byval(size=8, align=4) %lv.outer)|bir.ret i32 %t11"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
+)
+c4c_set_backend_test_labels(
+  "backend_codegen_route_x86_64_byval_member_array_params_observe_semantic_bir"
+  backend_route
+)
