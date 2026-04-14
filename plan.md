@@ -161,10 +161,20 @@ Concrete actions:
   values rather than rediscovering CFG semantics inside call lowering
 - widen beyond `diamond + phi -> bir.select`
 - support ordinary block-merge `phi` forms without testcase-shaped CFG probes
+- treat testcase families only as proving surfaces for this lane, never as the
+  semantic classification used by lowering or prepare:
+  loop-header merges, nested non-diamond joins, successor-forwarded merge
+  values, and `break` / `continue`-driven joins must all flow through the same
+  shared merge mechanism rather than per-pattern special paths
 - define the first honest semantic split:
   canonical diamonds may still lower to `select`, but non-diamond or
   predecessor-attributed merges must remain explicit shared merge semantics
   until later prepare work
+- when backlog item 1 is resumed, drive it toward a general CFG-based
+  explicit-phi materialization / elimination route in
+  `src/backend/prepare/legalize.cpp`, centered on predecessor-edge value
+  assignment, critical-edge splitting where needed, and parallel-copy style
+  resolution of multi-phi updates instead of syntax-shaped case matching
 - checkpoint the next packet on the remaining honest seam:
   generalize explicit phi materialization in `src/backend/prepare/legalize.cpp`
   beyond the currently proven reducible / two-incoming path
@@ -180,6 +190,9 @@ Completion check:
 
 - non-trivial merge shapes no longer require raw-LIR fallback
 - `phi` handling is explained by CFG semantics, not by one named case family
+- accepted widening work demonstrates one shared elimination/materialization
+  strategy across distinct CFG shapes rather than separate testcase-specific
+  lowering rules
 - the first implementation slice changes lowering/BIR files rather than only
   test routing or proving regexes
 - the next accepted packet proves a real prepare/lowering code move on explicit
