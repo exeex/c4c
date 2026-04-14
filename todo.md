@@ -128,6 +128,32 @@ Source Plan: plan.md
   bounded dynamic scalar member-array loads now stay on semantic BIR, but
   dynamic addressed stores and broader non-scalar / later ABI-legalized local
   address flows remain outside the current packet
+- 2026-04-14 executor packet extension:
+  bounded dynamic scalar addressed stores now stay on semantic BIR too when a
+  pointer-param/member-array path carries the local object root as addressed
+  pointer metadata; lowering materializes addressed load/select/store ladders
+  at fixed offsets instead of falling back to LLVM `getelementptr` / `store`
+  text for the non-constant index
+- 2026-04-14 executor packet result:
+  `tests/backend/case/local_dynamic_member_array_store.c` now reaches semantic
+  BIR on x86_64 with three addressed loads from `%p.p`, per-element
+  `bir.select` updates against the lowered index, and addressed
+  `bir.store_local ... , addr %p.p+N` writes in `set_at`; nearby
+  `local_dynamic_member_array.c` and `nested_member_pointer_array.c` stay on
+  their accepted local-address routes
+- 2026-04-14 proof extension:
+  add
+  `backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir`
+  as the bounded dynamic-store sentinel while keeping the earlier
+  read-oriented local-address sentinels in the same proof subset
+- 2026-04-14 proof result:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_codegen_route_x86_64_(nested_member_pointer_array|local_dynamic_member_array|local_dynamic_member_array_store).*semantic_bir'`
+  now passes `3 / 3`, and `test_after.log` is the proof log path
+- next adjacent local-address gap:
+  bounded dynamic scalar member-array stores now stay on semantic BIR for
+  addressed pointer-value roots, but the same store semantics are still not
+  generalized to direct local aggregate-slot roots or broader non-scalar /
+  later ABI-legalized local address flows
 - previous backlog-item-2 history below is accepted baseline only; do not mine
   it for the next packet unless a fresh non-ABI signature seam is named
 - current capability family:

@@ -2005,6 +2005,119 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return false;
     }
 
+    const auto append_addressed_store =
+        [&](std::string_view scratch_prefix, const bir::MemoryAddress& address) -> bool {
+      const auto slot_size = type_size_bytes(*value_type);
+      if (slot_size == 0) {
+        return false;
+      }
+      const std::string scratch_slot = std::string(scratch_prefix) + ".addr";
+      if (!ensure_local_scratch_slot(scratch_slot, *value_type, slot_size)) {
+        return false;
+      }
+      lowered_insts->push_back(bir::StoreLocalInst{
+          .slot_name = scratch_slot,
+          .value = *value,
+          .address = address,
+      });
+      return true;
+    };
+
+    const auto append_dynamic_pointer_array_store =
+        [&](std::string_view scratch_prefix,
+            const DynamicPointerValueArrayAccess& access) -> bool {
+      if (access.element_type != *value_type || access.element_count == 0) {
+        return false;
+      }
+
+      const auto slot_size = type_size_bytes(*value_type);
+      if (slot_size == 0) {
+        return false;
+      }
+
+      for (std::size_t element_index = 0; element_index < access.element_count; ++element_index) {
+        const std::string element_name =
+            std::string(scratch_prefix) + ".elt" + std::to_string(element_index);
+        const std::string load_slot = element_name + ".load.addr";
+        if (!ensure_local_scratch_slot(load_slot, *value_type, slot_size)) {
+          return false;
+        }
+        lowered_insts->push_back(bir::LoadLocalInst{
+            .result = bir::Value::named(*value_type, element_name),
+            .slot_name = load_slot,
+            .address =
+                bir::MemoryAddress{
+                    .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                    .base_value = access.base_value,
+                    .byte_offset = static_cast<std::int64_t>(
+                        access.byte_offset + element_index * access.element_stride_bytes),
+                    .size_bytes = slot_size,
+                    .align_bytes = slot_size,
+                },
+        });
+
+        bir::Value stored_value = *value;
+        if (access.element_count > 1) {
+          const auto compare_rhs = make_index_immediate(access.index.type, element_index);
+          if (!compare_rhs.has_value()) {
+            return false;
+          }
+          const std::string select_name =
+              std::string(scratch_prefix) + ".store" + std::to_string(element_index);
+          lowered_insts->push_back(bir::SelectInst{
+              .predicate = bir::BinaryOpcode::Eq,
+              .result = bir::Value::named(*value_type, select_name),
+              .compare_type = access.index.type,
+              .lhs = access.index,
+              .rhs = *compare_rhs,
+              .true_value = *value,
+              .false_value = bir::Value::named(*value_type, element_name),
+          });
+          stored_value = bir::Value::named(*value_type, select_name);
+        }
+
+        const std::string store_slot = element_name + ".store.addr";
+        if (!ensure_local_scratch_slot(store_slot, *value_type, slot_size)) {
+          return false;
+        }
+        lowered_insts->push_back(bir::StoreLocalInst{
+            .slot_name = store_slot,
+            .value = stored_value,
+            .address =
+                bir::MemoryAddress{
+                    .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                    .base_value = access.base_value,
+                    .byte_offset = static_cast<std::int64_t>(
+                        access.byte_offset + element_index * access.element_stride_bytes),
+                    .size_bytes = slot_size,
+                    .align_bytes = slot_size,
+                },
+        });
+      }
+      return true;
+    };
+
+    if (const auto addressed_ptr_it = pointer_value_addresses.find(store->ptr.str());
+        addressed_ptr_it != pointer_value_addresses.end()) {
+      if (addressed_ptr_it->second.value_type != *value_type) {
+        return false;
+      }
+      return append_addressed_store(
+          store->ptr.str(),
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+              .base_value = addressed_ptr_it->second.base_value,
+              .byte_offset = static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
+              .size_bytes = type_size_bytes(*value_type),
+              .align_bytes = type_size_bytes(*value_type),
+          });
+    }
+
+    if (const auto dynamic_ptr_it = dynamic_pointer_value_arrays.find(store->ptr.str());
+        dynamic_ptr_it != dynamic_pointer_value_arrays.end()) {
+      return append_dynamic_pointer_array_store(store->ptr.str(), dynamic_ptr_it->second);
+    }
+
     if (store->ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
       const std::string global_name = store->ptr.str().substr(1);
       const auto global_it = global_types.find(global_name);
