@@ -6,7 +6,6 @@
 namespace c4c::backend {
 
 using lir_to_bir_detail::lower_integer_type;
-using lir_to_bir_detail::PhiLoweringPlan;
 
 BirFunctionLowerer::BlockLookup BirFunctionLowerer::make_block_lookup() const {
   BlockLookup blocks;

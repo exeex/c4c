@@ -258,6 +258,26 @@ Source Plan: plan.md
   the same delegated backend proof command passes after the helper migration
   with `12 / 12` `^backend_` tests green, and the proof log is
   `test_after.log`
+- 2026-04-14 temporary executor packet extension:
+  continue the `BirFunctionLowerer` ownership cleanup by moving the
+  function-only helper types and maps that are now used exclusively by the
+  function-body lowering path out of `lir_to_bir_detail` and onto
+  `BirFunctionLowerer`, without changing backend behavior or the active proof
+  surface
+- 2026-04-14 temporary executor packet result:
+  `src/backend/lowering/lir_to_bir.hpp` no longer keeps
+  `CompareExpr`/`CompareMap`, `BlockLookup`, `BranchChain`,
+  `PhiLoweringPlan`/`PhiBlockPlanMap`, `AggregateParamInfo`/
+  `AggregateParamMap`, `LoweredReturnInfo`, or
+  `AggregateValueAliasMap` under `lir_to_bir_detail`; those function-scope
+  ownership types now live on `BirFunctionLowerer`, and the split
+  scalar/calling/aggregate/cfg/memory implementation files were updated to
+  use the class-owned types directly while leaving truly shared utility types
+  in `lir_to_bir_detail`
+- 2026-04-14 temporary proof result:
+  the same delegated backend proof command passes after the type-ownership
+  migration with `12 / 12` `^backend_` tests green, and the proof log is
+  `test_after.log`
 
 ## Parked Backlog Item 1 Baseline
 

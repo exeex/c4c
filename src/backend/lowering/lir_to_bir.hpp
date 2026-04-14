@@ -225,45 +225,6 @@ using LocalAggregateSlotMap = std::unordered_map<std::string, LocalAggregateSlot
 using LocalAggregateFieldSet = std::unordered_set<std::string>;
 using LocalPointerValueAliasMap = std::unordered_map<std::string, bir::Value>;
 
-struct CompareExpr {
-  bir::BinaryOpcode opcode = bir::BinaryOpcode::Eq;
-  bir::TypeKind operand_type = bir::TypeKind::Void;
-  bir::Value lhs;
-  bir::Value rhs;
-};
-
-using CompareMap = std::unordered_map<std::string, CompareExpr>;
-using BlockLookup = std::unordered_map<std::string, const c4c::codegen::lir::LirBlock*>;
-using AggregateValueAliasMap = std::unordered_map<std::string, std::string>;
-
-struct BranchChain {
-  std::vector<std::string> labels;
-  std::string leaf_label;
-  std::string join_label;
-};
-
-struct PhiLoweringPlan {
-  std::string result_name;
-  bir::TypeKind type = bir::TypeKind::Void;
-  std::vector<std::pair<std::string, c4c::codegen::lir::LirOperand>> incomings;
-};
-
-using PhiBlockPlanMap = std::unordered_map<std::string, std::vector<PhiLoweringPlan>>;
-
-struct AggregateParamInfo {
-  std::string type_text;
-  AggregateTypeLayout layout;
-};
-
-using AggregateParamMap = std::unordered_map<std::string, AggregateParamInfo>;
-
-struct LoweredReturnInfo {
-  bir::TypeKind type = bir::TypeKind::Void;
-  std::size_t size_bytes = 0;
-  std::size_t align_bytes = 0;
-  bool returned_via_sret = false;
-};
-
 TypeDeclMap build_type_decl_map(const std::vector<std::string>& type_decls);
 std::optional<std::int64_t> parse_i64(std::string_view text);
 std::optional<bir::TypeKind> lower_integer_type(std::string_view text);
@@ -297,13 +258,8 @@ bool is_known_function_symbol(std::string_view symbol_name,
 class BirFunctionLowerer {
  public:
   using ValueMap = lir_to_bir_detail::ValueMap;
-  using CompareMap = lir_to_bir_detail::CompareMap;
-  using AggregateParamMap = lir_to_bir_detail::AggregateParamMap;
   using AggregateTypeLayout = lir_to_bir_detail::AggregateTypeLayout;
-  using AggregateValueAliasMap = lir_to_bir_detail::AggregateValueAliasMap;
   using AddressedGlobalPointerSlots = lir_to_bir_detail::AddressedGlobalPointerSlots;
-  using BlockLookup = lir_to_bir_detail::BlockLookup;
-  using BranchChain = lir_to_bir_detail::BranchChain;
   using DynamicGlobalAggregateArrayMap = lir_to_bir_detail::DynamicGlobalAggregateArrayMap;
   using DynamicGlobalAggregateArrayAccess =
       lir_to_bir_detail::DynamicGlobalAggregateArrayAccess;
@@ -331,10 +287,47 @@ class BirFunctionLowerer {
   using LocalPointerSlots = lir_to_bir_detail::LocalPointerSlots;
   using LocalPointerValueAliasMap = lir_to_bir_detail::LocalPointerValueAliasMap;
   using LocalSlotTypes = lir_to_bir_detail::LocalSlotTypes;
-  using LoweredReturnInfo = lir_to_bir_detail::LoweredReturnInfo;
   using ParsedTypedOperand = lir_to_bir_detail::ParsedTypedOperand;
-  using PhiBlockPlanMap = lir_to_bir_detail::PhiBlockPlanMap;
   using TypeDeclMap = lir_to_bir_detail::TypeDeclMap;
+
+  struct CompareExpr {
+    bir::BinaryOpcode opcode = bir::BinaryOpcode::Eq;
+    bir::TypeKind operand_type = bir::TypeKind::Void;
+    bir::Value lhs;
+    bir::Value rhs;
+  };
+
+  using CompareMap = std::unordered_map<std::string, CompareExpr>;
+  using BlockLookup = std::unordered_map<std::string, const c4c::codegen::lir::LirBlock*>;
+  using AggregateValueAliasMap = std::unordered_map<std::string, std::string>;
+
+  struct BranchChain {
+    std::vector<std::string> labels;
+    std::string leaf_label;
+    std::string join_label;
+  };
+
+  struct PhiLoweringPlan {
+    std::string result_name;
+    bir::TypeKind type = bir::TypeKind::Void;
+    std::vector<std::pair<std::string, c4c::codegen::lir::LirOperand>> incomings;
+  };
+
+  using PhiBlockPlanMap = std::unordered_map<std::string, std::vector<PhiLoweringPlan>>;
+
+  struct AggregateParamInfo {
+    std::string type_text;
+    AggregateTypeLayout layout;
+  };
+
+  using AggregateParamMap = std::unordered_map<std::string, AggregateParamInfo>;
+
+  struct LoweredReturnInfo {
+    bir::TypeKind type = bir::TypeKind::Void;
+    std::size_t size_bytes = 0;
+    std::size_t align_bytes = 0;
+    bool returned_via_sret = false;
+  };
 
   BirFunctionLowerer(BirLoweringContext& context,
                      const c4c::codegen::lir::LirFunction& function,

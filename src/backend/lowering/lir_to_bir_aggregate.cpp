@@ -6,7 +6,6 @@
 
 namespace c4c::backend {
 
-using lir_to_bir_detail::AggregateParamInfo;
 using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::type_size_bytes;

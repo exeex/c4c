@@ -11,7 +11,22 @@
 
 namespace c4c::backend {
 
-using namespace lir_to_bir_detail;
+using DynamicGlobalAggregateArrayAccess = BirFunctionLowerer::DynamicGlobalAggregateArrayAccess;
+using DynamicGlobalPointerArrayAccess = BirFunctionLowerer::DynamicGlobalPointerArrayAccess;
+using DynamicLocalAggregateArrayAccess = BirFunctionLowerer::DynamicLocalAggregateArrayAccess;
+using DynamicLocalPointerArrayAccess = BirFunctionLowerer::DynamicLocalPointerArrayAccess;
+using GlobalAddress = BirFunctionLowerer::GlobalAddress;
+using GlobalPointerSlotKey = BirFunctionLowerer::GlobalPointerSlotKey;
+using lir_to_bir_detail::compute_aggregate_type_layout;
+using lir_to_bir_detail::GlobalInfo;
+using lir_to_bir_detail::is_known_function_symbol;
+using lir_to_bir_detail::LocalArraySlots;
+using lir_to_bir_detail::LocalPointerArrayBase;
+using lir_to_bir_detail::lower_integer_type;
+using lir_to_bir_detail::parse_i64;
+using lir_to_bir_detail::parse_typed_operand;
+using lir_to_bir_detail::resolve_index_operand;
+using lir_to_bir_detail::type_size_bytes;
 
 bool BirFunctionLowerer::is_local_array_element_slot(std::string_view slot_name,
                                                      const LocalArraySlotMap& local_array_slots) {

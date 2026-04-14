@@ -4,7 +4,6 @@
 
 namespace c4c::backend {
 
-using lir_to_bir_detail::CompareExpr;
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::parse_i64;
 
