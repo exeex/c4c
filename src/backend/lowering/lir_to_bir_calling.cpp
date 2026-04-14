@@ -6,17 +6,6 @@ namespace c4c::backend::lir_to_bir_detail {
 
 namespace {
 
-std::optional<AggregateTypeLayout> lower_byval_aggregate_layout(std::string_view text,
-                                                                const TypeDeclMap& type_decls) {
-  auto layout = compute_aggregate_type_layout(text, type_decls);
-  if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
-       layout.kind != AggregateTypeLayout::Kind::Array) ||
-      layout.size_bytes == 0 || layout.align_bytes == 0) {
-    return std::nullopt;
-  }
-  return layout;
-}
-
 bool is_void_param_sentinel(const c4c::TypeSpec& type) {
   return type.base == TB_VOID && type.ptr_level == 0 && type.array_rank == 0;
 }

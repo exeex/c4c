@@ -270,11 +270,6 @@ std::optional<GlobalAddress> parse_global_address_initializer(std::string_view t
   return parse_global_gep_initializer(text, type_decls);
 }
 
-bool is_known_function_symbol(std::string_view symbol_name,
-                              const FunctionSymbolSet& function_symbols) {
-  return function_symbols.find(std::string(symbol_name)) != function_symbols.end();
-}
-
 std::optional<bir::Value> lower_global_initializer(std::string_view text,
                                                    bir::TypeKind type) {
   const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
@@ -671,6 +666,11 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
 }
 
 }  // namespace
+
+bool is_known_function_symbol(std::string_view symbol_name,
+                              const FunctionSymbolSet& function_symbols) {
+  return function_symbols.find(std::string(symbol_name)) != function_symbols.end();
+}
 
 std::optional<GlobalAddress> resolve_known_global_address(std::string_view global_name,
                                                           GlobalTypes& global_types,

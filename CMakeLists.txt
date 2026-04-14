@@ -38,6 +38,7 @@ set(BACKEND_LOWERING_BOOTSTRAP_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_scalar.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_calling.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_aggregate.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_memory.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_cfg.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_types.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_globals.cpp"

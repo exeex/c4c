@@ -207,6 +207,21 @@ Source Plan: plan.md
 - 2026-04-14 temporary proof result:
   the same delegated backend proof command passes after the aggregate split,
   and the proof log is `test_after.log`
+- 2026-04-14 temporary executor packet extension:
+  split the remaining local/global memory, address, pointer, and call-memory
+  lowering lane out of `src/backend/lowering/lir_to_bir_module.cpp` into a
+  dedicated memory slice without changing the active backend capability packet
+- 2026-04-14 temporary executor packet result:
+  `src/backend/lowering/lir_to_bir_memory.cpp` now owns
+  `lower_scalar_or_local_memory_inst(...)` plus the global-address, local-slot,
+  GEP, pointer-array, load/store, memset, and call-memory helper cluster;
+  `src/backend/lowering/lir_to_bir_module.cpp` now keeps branch-family/module
+  orchestration, `lir_to_bir_aggregate.cpp` owns the shared
+  `lower_byval_aggregate_layout(...)` helper, and `lir_to_bir.hpp` exposes the
+  final cross-file memory API used by the split
+- 2026-04-14 temporary proof result:
+  the same delegated backend proof command passes after the memory split with
+  `12 / 12` `^backend_` tests green, and the proof log is `test_after.log`
 
 ## Parked Backlog Item 1 Baseline
 

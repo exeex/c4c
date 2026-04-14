@@ -289,6 +289,11 @@ std::optional<GlobalAddress> resolve_known_global_address(
     GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols,
     std::unordered_set<std::string>* active);
+bool is_known_function_symbol(std::string_view symbol_name,
+                              const FunctionSymbolSet& function_symbols);
+std::optional<AggregateTypeLayout> lower_byval_aggregate_layout(
+    std::string_view text,
+    const TypeDeclMap& type_decls);
 std::vector<std::pair<std::size_t, std::string>> collect_sorted_leaf_slots(
     const LocalAggregateSlots& aggregate_slots);
 AggregateParamMap collect_aggregate_params(const c4c::codegen::lir::LirFunction& function,
@@ -374,6 +379,35 @@ bool materialize_aggregate_param_aliases(const AggregateParamMap& aggregate_para
                                          bir::Function* lowered_function,
                                          LocalAggregateSlotMap& local_aggregate_slots,
                                          std::vector<bir::Inst>* lowered_insts);
+bool lower_scalar_or_local_memory_inst(
+    const c4c::codegen::lir::LirInst& inst,
+    ValueMap& value_aliases,
+    CompareMap& compare_exprs,
+    AggregateValueAliasMap& aggregate_value_aliases,
+    LocalSlotTypes& local_slot_types,
+    LocalPointerSlots& local_pointer_slots,
+    LocalArraySlotMap& local_array_slots,
+    LocalPointerArrayBaseMap& local_pointer_array_bases,
+    DynamicLocalPointerArrayMap& dynamic_local_pointer_arrays,
+    DynamicLocalAggregateArrayMap& dynamic_local_aggregate_arrays,
+    LocalAggregateSlotMap& local_aggregate_slots,
+    LocalAggregateFieldSet& local_aggregate_field_slots,
+    LocalPointerValueAliasMap& local_pointer_value_aliases,
+    LocalAddressSlots& local_address_slots,
+    GlobalAddressSlots& global_address_slots,
+    AddressedGlobalPointerSlots& addressed_global_pointer_slots,
+    GlobalPointerMap& global_pointer_slots,
+    DynamicGlobalPointerArrayMap& dynamic_global_pointer_arrays,
+    DynamicGlobalAggregateArrayMap& dynamic_global_aggregate_arrays,
+    GlobalObjectPointerMap& global_object_pointer_slots,
+    GlobalAddressIntMap& global_address_ints,
+    GlobalObjectAddressIntMap& global_object_address_ints,
+    const AggregateParamMap& aggregate_params,
+    const GlobalTypes& global_types,
+    const FunctionSymbolSet& function_symbols,
+    const TypeDeclMap& type_decls,
+    bir::Function* lowered_function,
+    std::vector<bir::Inst>* lowered_insts);
 BlockLookup make_block_lookup(const c4c::codegen::lir::LirFunction& function);
 std::optional<BranchChain> follow_empty_branch_chain(const BlockLookup& blocks,
                                                      const std::string& start_label);

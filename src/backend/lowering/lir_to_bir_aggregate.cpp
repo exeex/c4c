@@ -8,17 +8,6 @@ namespace c4c::backend::lir_to_bir_detail {
 
 namespace {
 
-std::optional<AggregateTypeLayout> lower_byval_aggregate_layout(std::string_view text,
-                                                                const TypeDeclMap& type_decls) {
-  auto layout = compute_aggregate_type_layout(text, type_decls);
-  if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
-       layout.kind != AggregateTypeLayout::Kind::Array) ||
-      layout.size_bytes == 0 || layout.align_bytes == 0) {
-    return std::nullopt;
-  }
-  return layout;
-}
-
 std::string aggregate_param_slot_base(std::string_view param_name) {
   std::string sanitized(param_name);
   if (!sanitized.empty() && sanitized.front() == '%') {
@@ -31,6 +20,17 @@ std::string aggregate_param_slot_base(std::string_view param_name) {
 }
 
 }  // namespace
+
+std::optional<AggregateTypeLayout> lower_byval_aggregate_layout(std::string_view text,
+                                                                const TypeDeclMap& type_decls) {
+  auto layout = compute_aggregate_type_layout(text, type_decls);
+  if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
+       layout.kind != AggregateTypeLayout::Kind::Array) ||
+      layout.size_bytes == 0 || layout.align_bytes == 0) {
+    return std::nullopt;
+  }
+  return layout;
+}
 
 std::vector<std::pair<std::size_t, std::string>> collect_sorted_leaf_slots(
     const LocalAggregateSlots& aggregate_slots) {
