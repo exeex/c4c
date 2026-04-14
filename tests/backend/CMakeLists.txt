@@ -205,6 +205,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memcpy_local_i32_array_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_local_i32_array.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_local_i32_array_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t36.memcpy.copy.0 = bir.load_local i32 %lv.src.0|bir.store_local %lv.dst.0, i32 %t36.memcpy.copy.0|%t36.memcpy.copy.4 = bir.load_local i32 %lv.src.1|bir.store_local %lv.dst.1, i32 %t36.memcpy.copy.4|%t36.memcpy.copy.8 = bir.load_local i32 %lv.src.2|bir.store_local %lv.dst.2, i32 %t36.memcpy.copy.8|bir.ret i32 %t52"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_pointer_param_direct_global_arg_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/pointer_param_direct_global_arg.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu
