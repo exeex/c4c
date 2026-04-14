@@ -31,20 +31,22 @@ Source Plan: plan.md
   indirect callees loaded from pointer globals, addressed global struct
   fields, and local struct-backed stack state now lower through semantic BIR
   on the riscv64 backend-route surface without reopening width-only packet
-  churn; follow-on backlog item 5 work should continue broadening callee
+  churn, and local struct-owned function-pointer arrays now compose that same
+  aggregate provenance with dynamic indexed selection through semantic BIR as
+  well; follow-on backlog item 5 work should continue broadening callee
   provenance or signature semantics rather than returning to "next wider
   indirect-call signature" proofs
 - candidate proving surface:
   the next honest proving surface should keep forcing semantic handling of
   callee identity rather than one more width proof: prefer internal
   backend-route cases where the indirect callee is loaded from shared
-  memory/state structures beyond the first local-struct field slice or from
-  richer addressed function-pointer storage, while keeping `branch_if_eq.c`,
-  `call_helper.c`, `local_arg_call.c`, the new merge-preserved callee route
-  test, the addressed-global and local-aggregate callee route proofs, and the
-  standing one-arg through twenty-five-arg indirect-call plus `two_arg_*`
-  direct-call route tests only as sentinels, not as the packet-selection
-  mechanism
+  memory/state structures beyond the first local aggregate-owned array slice
+  or from richer addressed function-pointer storage, while keeping
+  `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, the new
+  merge-preserved callee route test, the addressed-global and local-aggregate
+  callee route proofs, and the standing one-arg through twenty-five-arg
+  indirect-call plus `two_arg_*` direct-call route tests only as sentinels,
+  not as the packet-selection mechanism
 
 ## Immediate Target
 
@@ -85,6 +87,33 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  the first local aggregate-owned function-pointer array callee-provenance
+  family now lowers through semantic BIR instead of falling back to raw LLVM
+  text:
+  local struct-owned pointer arrays now preserve callee identity across the
+  frontend's split aggregate-field and array-element `gep` chain, so a
+  parameter-carried pair of unary callees stored into a local struct field and
+  called back through a dynamic array index lowers as semantic BIR on the
+  riscv64 backend-route surface without reopening width-only packet churn
+  new route proof covers `indirect_local_struct_array_callee_call.c` as BIR,
+  while `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, the
+  merge-preserved callee route proof, the addressed-global and earlier
+  local-aggregate callee route proofs, and the standing one-arg through
+  twenty-five-arg indirect-call plus `two_arg_*` direct-call sentinels stayed
+  in the owned proof surface
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated build succeeded, the new riscv64 route test passed as
+  test `#268`, the broad `^backend_` subset still returned non-zero because
+  it remains dominated by standing unrelated failures, and the total backend
+  route surface increased from `409` to `410` while the standing failed-test
+  count held at `225`, so the first local aggregate-owned function-pointer
+  array callee-provenance slice is now covered on the shared semantic-BIR
+  lane without a broader regression increase
 - completed:
   the first addressed function-pointer array callee-provenance family now
   lowers through semantic BIR instead of falling back to raw LLVM text:
