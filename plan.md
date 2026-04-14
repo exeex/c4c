@@ -37,13 +37,29 @@ rendered-text case matchers, or equivalent workaround seams under new names.
 
 ## Current Targets
 
+- `src/backend/prepare/legalize.cpp`
 - `src/backend/lowering/lir_to_bir_module.cpp`
 - `src/backend/bir.hpp`
 - `src/backend/bir_printer.cpp`
-- `src/backend/bir_validate.cpp`
-- `src/backend/prepare/legalize.cpp`
-- `src/backend/prepare/prepare.cpp`
 - `src/backend/backend.cpp`
+
+## Route Checkpoint
+
+- 2026-04-14 supervisor validation plus review follow-up kept this runbook on
+  the same source idea, but it also proved the previously sampled
+  `backend_codegen_route` select/phi inventory is exhausted as a truthful next
+  executor surface for backlog item 1
+- do not send another packet from stale `*_asm_unsupported`
+  select/phi/callee stems, nearby already-green prepared-BIR select routes, or
+  observation-only harness churn
+- the next honest backlog-item-1 seam is prepare-side explicit phi
+  materialization in `src/backend/prepare/legalize.cpp` beyond the currently
+  proven reducible / two-incoming path
+- semantic-BIR observation may still be used, but only as proof support for a
+  real lowering/prepare code move; it is no longer an authorized packet by
+  itself
+- if the supervisor cannot name one proof source tied to that seam in the same
+  packet, stop for another lifecycle checkpoint instead of forcing execution
 
 ## Non-Goals
 
@@ -63,6 +79,11 @@ rendered-text case matchers, or equivalent workaround seams under new names.
   semantic lowering
 - executor packets should be chosen from the ordered capability backlog below,
   not rediscovered from ad hoc testcase hunting
+- stale unsupported-route inventory is harness debt, not proof of the next
+  missing capability
+- call lowering, params/signatures, globals, and intrinsics stay out of scope
+  for the next packet except as non-regression sentinels until backlog item 1
+  moves again
 
 ## Completed Capability Baseline
 
@@ -108,6 +129,12 @@ Concrete actions:
   canonical diamonds may still lower to `select`, but non-diamond or
   predecessor-attributed merges must remain explicit shared merge semantics
   until later prepare work
+- checkpoint the next packet on the remaining honest seam:
+  generalize explicit phi materialization in `src/backend/prepare/legalize.cpp`
+  beyond the currently proven reducible / two-incoming path
+- tie that prepare-side code move to one truthful proving source; semantic-BIR
+  observation can support proof, but stale `*_asm_unsupported` select stems or
+  harness-only expansion cannot be the packet by themselves
 - make later lanes consume already-lowered merge semantics:
   call lowering must use shared merged values, not carry its own private
   `phi`/CFG reconstruction rules
@@ -118,6 +145,8 @@ Completion check:
 - `phi` handling is explained by CFG semantics, not by one named case family
 - the first implementation slice changes lowering/BIR files rather than only
   test routing or proving regexes
+- the next accepted packet proves a real prepare/lowering code move on explicit
+  phi handling, not just cleanup of stale unsupported inventory
 
 ### 2. Harden params and function signatures
 

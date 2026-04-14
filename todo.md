@@ -6,31 +6,31 @@ Source Plan: plan.md
 
 ## Lifecycle Repair Decision
 
-- 2026-04-14 plan-owner checkpoint:
-  this remains the same active source idea and the same active runbook, so no
-  `plan.md` or source-idea rewrite is justified yet
-- 2026-04-14 follow-up plan-owner repair:
-  reviewer guidance plus supervisor scouting now agree that the active
-  backlog-item-1 prepared-BIR inventory is exhausted as a truthful source of
-  another code-moving packet; this is still the same runbook, but routine
-  execution must pause rather than forcing another stale-inventory or
-  observation-only packet
+- 2026-04-14 plan-owner route checkpoint:
+  this remains the same active source idea, but it is no longer just a
+  `todo.md`-only pause;
+  reviewer guidance, the completed broader checkpoint, and supervisor scouting
+  now agree that the previously sampled backlog-item-1 prepared-BIR inventory
+  is exhausted as a truthful source of another code-moving packet, so
+  `plan.md` is now refreshed onto the remaining honest seam:
+  explicit phi materialization in `src/backend/prepare/legalize.cpp` beyond
+  the currently proven reducible / two-incoming path
 - execution state:
   blocked for routine executor dispatch from the currently sampled scalar
-  select/phi/callee inventory until either a broader supervisor checkpoint
-  exposes a fresh honest proving seam or a later route repair rewrites the
-  executable next target
+  select/phi/callee inventory until the supervisor can tie one honest proving
+  surface to that prepare-side seam;
+  do not resume execution from stale inventory or observation-only churn
 - next lifecycle expectation:
   supervisor should not send another executor packet from the stale
   `asm_unsupported` select/phi stems, the nearby prepared-BIR select surfaces,
   or observation-only harness churn;
-  the broader validation / route checkpoint is now complete and confirmed the
+  the broader validation / route checkpoint is complete and confirmed the
   active backend baseline is stable at `208 passed / 211 failed / 419 total`
   with no regression delta on the backend subset;
-  that checkpoint did not reveal a fresh truthful proving seam for another
-  backlog-item-1 executor packet;
-  only after that checkpoint identifies one fresh honest merge-semantics code
-  move should execution return to `c4c-executor`
+  execution should return to `c4c-executor` only for one real code-moving
+  backlog-item-1 packet centered on the prepare-side explicit-phi seam, or
+  else trigger another lifecycle checkpoint instead of forcing stale-inventory
+  progress
 
 ## Current Active Item
 
@@ -126,17 +126,21 @@ Source Plan: plan.md
   but the currently sampled `backend_codegen_route` inventory is exhausted as
   a source of honest next packets
 - plan-owner repair outcome:
-  keep `plan.md` unchanged and treat this as a `todo.md`-only lifecycle repair;
+  keep the same source idea, but refresh `plan.md` onto the remaining
+  backlog-item-1 seam:
+  generalize explicit phi materialization in
+  `src/backend/prepare/legalize.cpp` beyond the currently proven reducible /
+  two-incoming path, with semantic/default-route observation used only as
+  proof support for that code move;
   reviewer output remains `on track`, so no immediate reviewer re-dispatch is
-  needed, but execution should stay paused until the supervisor performs the
-  broader checkpoint already called for by review
+  needed
 - lifecycle repair outcome:
   do not dispatch another executor packet from the current scalar
   select/phi/callee inventory;
-  the next action is to identify one fresh backlog-item-1 code-moving merge
-  target outside that exhausted surface, or else perform another route
-  checkpoint instead of pretending the nearby prepared-BIR cases are still
-  exposing a missing capability
+  the next action is to identify one honest proving source tied to the
+  prepare-side explicit-phi seam now named in `plan.md`, or else perform
+  another route checkpoint instead of pretending the nearby prepared-BIR cases
+  are still exposing a missing capability
 - 2026-04-14 supervisor repair probe:
   checked-in `three_way_phi_merge_post_add_sub.c` still lowers cleanly on the
   default prepared route to nested `bir.select`, and a fresh throwaway
@@ -146,7 +150,9 @@ Source Plan: plan.md
   non-reducible/default-route phi seam honestly enough to justify another
   executor packet from backlog item 1 yet
 - the next packet must return to one real code-moving backlog-item-1 merge
-  target using the semantic-BIR observation surface only as proof support;
+  target centered on `src/backend/prepare/legalize.cpp` explicit-phi
+  materialization, using the semantic-BIR observation surface only as proof
+  support;
   do not spend another packet on route-test promotion or harness-only cleanup
 - if the executor needs a new proving source to expose that code-moving target,
   it may add one minimal merge-semantic source in the same packet, but source
