@@ -390,6 +390,7 @@ bool move_riscv_call_args_into_regs(const std::vector<Value>& args,
 struct PendingRiscvStackCallArg {
   TypeKind type = TypeKind::Void;
   std::string reg;
+  std::int64_t stack_offset = 0;
 };
 
 std::optional<PendingRiscvStackCallArg> materialize_riscv_stack_call_arg(const Value& value,
@@ -461,7 +462,7 @@ bool lower_riscv_binary_inst(const BinaryInst& inst,
 bool lower_riscv_call_inst(const CallInst& inst,
                            RiscvEmitState& state,
                            std::ostringstream& out) {
-  constexpr std::size_t kMaxSupportedRiscvCallArgs = kRiscvArgRegs.size() + 1;
+  constexpr std::size_t kMaxSupportedRiscvCallArgs = kRiscvArgRegs.size() + 2;
 
   if (inst.is_variadic || inst.calling_convention != c4c::backend::bir::CallingConv::C ||
       inst.args.size() > kMaxSupportedRiscvCallArgs || inst.arg_types.size() != inst.args.size()) {
@@ -502,12 +503,19 @@ bool lower_riscv_call_inst(const CallInst& inst,
     }
   }
 
-  std::optional<PendingRiscvStackCallArg> stack_arg;
+  std::vector<PendingRiscvStackCallArg> stack_args;
   if (inst.args.size() > kRiscvArgRegs.size()) {
-    stack_arg = materialize_riscv_stack_call_arg(
-        inst.args[kRiscvArgRegs.size()], inst.arg_types[kRiscvArgRegs.size()], state, out);
-    if (!stack_arg.has_value()) {
-      return false;
+    constexpr std::int64_t kRiscvCallStackSlotSize = 8;
+    stack_args.reserve(inst.args.size() - kRiscvArgRegs.size());
+    for (std::size_t index = kRiscvArgRegs.size(); index < inst.args.size(); ++index) {
+      auto stack_arg =
+          materialize_riscv_stack_call_arg(inst.args[index], inst.arg_types[index], state, out);
+      if (!stack_arg.has_value()) {
+        return false;
+      }
+      stack_arg->stack_offset =
+          static_cast<std::int64_t>((index - kRiscvArgRegs.size()) * kRiscvCallStackSlotSize);
+      stack_args.push_back(std::move(*stack_arg));
     }
   }
 
@@ -520,15 +528,20 @@ bool lower_riscv_call_inst(const CallInst& inst,
     return false;
   }
 
-  constexpr std::int64_t kRiscvCallStackAreaSize = 16;
-  if (stack_arg.has_value()) {
-    out << "    addi sp, sp, -" << kRiscvCallStackAreaSize << "\n";
-    if (stack_arg->type == TypeKind::I32) {
-      out << "    sw " << stack_arg->reg << ", 0(sp)\n";
-    } else if (stack_arg->type == TypeKind::Ptr) {
-      out << "    sd " << stack_arg->reg << ", 0(sp)\n";
-    } else {
-      return false;
+  constexpr std::int64_t kRiscvCallStackAreaAlign = 16;
+  std::int64_t stack_area_size = 0;
+  if (!stack_args.empty()) {
+    stack_area_size = align_up(static_cast<std::int64_t>(stack_args.size() * 8),
+                               kRiscvCallStackAreaAlign);
+    out << "    addi sp, sp, -" << stack_area_size << "\n";
+    for (const auto& stack_arg : stack_args) {
+      if (stack_arg.type == TypeKind::I32) {
+        out << "    sw " << stack_arg.reg << ", " << stack_arg.stack_offset << "(sp)\n";
+      } else if (stack_arg.type == TypeKind::Ptr) {
+        out << "    sd " << stack_arg.reg << ", " << stack_arg.stack_offset << "(sp)\n";
+      } else {
+        return false;
+      }
     }
   }
 
@@ -537,8 +550,8 @@ bool lower_riscv_call_inst(const CallInst& inst,
   } else {
     out << "    call " << inst.callee << "\n";
   }
-  if (stack_arg.has_value()) {
-    out << "    addi sp, sp, " << kRiscvCallStackAreaSize << "\n";
+  if (!stack_args.empty()) {
+    out << "    addi sp, sp, " << stack_area_size << "\n";
   }
   state.value_regs.clear();
   state.next_temp_index = 0;
