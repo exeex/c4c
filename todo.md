@@ -10,84 +10,48 @@ Source Plan: plan.md
   semantic BIR is the new truth surface, `prepare` owns target legality, and
   target backends should eventually ingest prepared BIR only
 - runbook repair:
-  `plan.md` now carries the ordered remaining capability backlog so future
-  executor packets can be chosen from a durable semantic queue rather than
-  rediscovering the next testcase family from chat
+  `plan.md` is now the durable ordered backlog; `todo.md` should point only at
+  the current bounded packet instead of acting like a second long-lived route
+  history
 - review checkpoint:
   a reviewer judged the active plan still aligned to the source idea but
-  called for a route reset before more execution because the riscv64
-  indirect-call work had drifted into proof-only arg-count churn
+  warned that execution was drifting toward adjacent call-lane proof surfaces;
+  the route correction is to pivot back to the source problem first:
+  general `phi`/CFG merge semantics
 - current capability family:
-  backlog item 5 is now reset onto semantic callee-provenance work instead of
-  further riscv64 arg-count widening:
-  the accepted route already proves the shared indirect-call lane through the
-  first mixed `ptr` families, the first ptr-capable result families, and the
-  first honest seventeen-stack-slot integer-class surface at twenty-five args,
-  and the first merge-preserved callee-value family now lowers through
-  semantic BIR as well, which is enough width evidence for now
+  backlog item 1, generalize CFG merge and `phi`
 - current packet shape:
-  the first global-state and local-aggregate memory-carried
-  callee-provenance slices are now landed:
-  indirect callees loaded from pointer globals, addressed global struct
-  fields, and local struct-backed stack state now lower through semantic BIR
-  on the riscv64 backend-route surface without reopening width-only packet
-  churn, and local struct-owned function-pointer arrays now compose that same
-  aggregate provenance with dynamic indexed selection through semantic BIR as
-  well; addressed global struct-owned function-pointer arrays now join that
-  same aggregate-backed route too, so follow-on backlog item 5 work should
-  continue broadening callee provenance or signature semantics rather than
-  returning to "next wider indirect-call signature" proofs; the addressed
-  global array-of-struct field ptr-return variant now joins that same shared
-  route as an explicit proof surface too, and nested merge-preserved callees
-  that flow through a local override now lower through semantic BIR as well,
-  so follow-on work should keep pushing beyond the first two-way `phi`
-  handoff instead of returning to adjacent storage-only proofs
+  first bounded `phi` packet:
+  widen beyond the current narrow two-way `diamond + phi` patterns so merged
+  values survive ordinary block joins by CFG meaning, with `select`
+  canonicalization only where it is semantically honest
 - candidate proving surface:
-  the next honest proving surface should keep forcing semantic handling of
-  callee identity rather than one more width proof: prefer internal
-  backend-route cases where merge-preserved callee values survive richer CFG
-  joins than the first two-way `phi` handoff or compose with another honest
-  semantic transformation beyond the just-landed local override, while
-  keeping `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, the
-  merge-preserved callee route proofs, the addressed-global and
-  local-aggregate callee route proofs, and the standing one-arg through
-  twenty-five-arg indirect-call plus `two_arg_*` direct-call route tests only
-  as sentinels, not as the packet-selection mechanism
+  prefer internal backend-route cases that force merged SSA values to survive
+  richer CFG joins than the current two-way handoff; keep existing call-lane
+  route tests only as sentinels so call lowering proves it can consume the
+  shared merge semantics after the fact
 
 ## Immediate Target
 
 - keep packet selection attached to the ordered semantic backlog in `plan.md`
-- carry the now-green addressed-global work forward by moving to the next
-  semantic family instead of stretching backlog item 4 past its proving surface
-- freeze further indirect-call width-only proofs beyond the accepted
-  twenty-five-arg family unless a future packet also repairs a real shared
-  lowering/backend limitation
-- keep backlog item 5 on call lowering, but shift from width counting to
-  semantic callee-provenance coverage:
-  globals, loaded/stored function pointers, and merge-preserved callee values
-  should lower through BIR without reopening fallback routes
+- make backlog item 1 the next execution family before more call-lane
+  broadening
+- stop adding call-specific merge handling in `lir_to_bir`
+- widen merge support by CFG semantics, not by named testcase shape
+- keep call-lane proofs as sentinels only; do not use them to select the next
+  packet
 - avoid reintroducing testcase-shaped routing while broadening the shared
-  entry-signature and call lanes
-- do not add new exact rendered-asm snippet ladders whose main effect is to
-  prove one more named arg-count case
+  merge lane
 
 ## Done Condition For The Active Packet
 
 - `branch_if_eq.c` still lowers to clean BIR
-- the existing direct-call sentinels, one-arg indirect-call tests, and
-  rewrite-only two-arg route tests stay green on riscv64
-- the next accepted call-lane slice must include real lowering/backend work for
-  callee provenance or signature semantics; proof-only width growth is not a
-  done condition
-- simple param-carried and local-slot indirect helper wrappers whose callee
-  signature includes at least one `ptr` arg or returns `ptr` still lower
-  through the same riscv64 backend-route surface instead of reopening
-  host-runtime x86 fallback or jumping ahead to ABI-shaped call work
-- semantic call lowering keeps callee identity, result type, and minimal arg
-  metadata available for later prepare/ABI shaping without performing that
-  shaping inside `lir_to_bir`
-- the widened call-lane route proofs still cover internal helper-shaped bodies
-  without introducing target-specific shortcuts
+- at least one richer non-diamond merge shape lowers through semantic BIR
+  without raw-LIR fallback
+- the resulting merged value is represented by shared merge semantics rather
+  than a call-specific `phi` shortcut
+- existing call-lane sentinels stay green so later call lowering can consume
+  the same merged values without reopening direct-route behavior
 - no new direct route, rendered-text matcher, or tiny case-family special path
   is introduced
 

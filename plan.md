@@ -97,6 +97,9 @@ Concrete actions:
 - support ordinary block-merge `phi` forms without testcase-shaped CFG probes
 - define when semantic BIR keeps `phi`-like merge structure versus lowering to
   `select`
+- make later lanes consume already-lowered merge semantics:
+  call lowering must use shared merged values, not carry its own private
+  `phi`/CFG reconstruction rules
 
 Completion check:
 
@@ -181,6 +184,10 @@ Concrete actions:
 
 - support richer direct-call signatures
 - support indirect calls and callee pointer forms
+- treat general `phi`/CFG merge handling as an input contract to this family:
+  call lowering should consume merge-preserved values that semantic BIR
+  already knows how to represent, rather than extending call-specific merge
+  workarounds
 - treat callee provenance as a semantic family:
   globals, loaded/stored function pointers, and merge-preserved callee values
   should be lowered by meaning rather than rediscovered by wider arg-count
