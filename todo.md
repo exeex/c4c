@@ -8,17 +8,16 @@ Current Plan Focus: ordered step 3, runtime and intrinsic families through seman
 # Current Packet
 
 ## Just Finished
-- converted `builtin_memcpy_prefix_local_pair_to_i32_array` into the opposite mixed-offset direction and proved semantic local `memcpy` already handles a nested aggregate source into a non-zero-start destination array subview without escaping to `memcpy`
+- widened semantic local `memset` beyond zero-only fills by lowering repeated-byte immediate fills over supported local integer leaf views, and proved the route with non-zero array and pair backend cases
 
 ## Suggested Next
-- stay on plan item 3, but move to a real remaining `memcpy` or runtime-family miss rather than more contiguous-prefix local coverage; the best next packet is an unsupported non-prefix local copy, padded mismatch, non-local base, or another intrinsic family such as `memset`
+- stay on plan item 3, but push the same semantic `memset` family into an honest remaining miss such as local subviews with non-zero base indices, or another runtime family with similarly shared lowering value
 
 ## Watchouts
 - keep follow-on work inside shared semantic lowering under `BirFunctionLowerer`; do not reopen `call_decode.cpp`, `prepare`, or target-shaped handling
-- the new reverse-direction wrapper case demonstrates that aggregate subobject tracking plus non-zero-start destination array views were already enough for `&src.inner -> &dst.dst[1]`; no `lir_to_bir_memory.cpp` change was required for this packet
-- the current semantic local `memcpy` route still depends on repeated scalar leaf extents with matching stride and contiguous requested-prefix coverage
-- non-zero-start suffix copies that do not present as contiguous scalar prefixes, padded mismatches, and non-local bases still fall out of this semantic route
+- the widened `memset` route still only accepts immediate repeated-byte fills over supported local integer leaf views; non-zero fills for pointer-bearing or padding-sensitive locals remain intentionally unsupported
+- zero local `memset` keeps the broader zero-initializer coverage, including null pointers; the new non-zero support is narrower by design and should not be stretched into target- or testcase-shaped byte tricks
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-- passed with `test_after.log`; backend subset result is `passed=33 failed=0 total=33`
+- passed with `test_after.log`; backend subset result is `passed=35 failed=0 total=35`

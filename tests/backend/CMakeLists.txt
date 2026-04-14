@@ -295,6 +295,26 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memset_nonzero_local_pair_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memset_nonzero_local_pair.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nonzero_local_pair_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 1|bir.store_local %lv.dst.4, i32 2|bir.store_local %lv.dst.0, i32 -1|bir.store_local %lv.dst.4, i32 -1|bir.ret i32 %t27"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memset_nonzero_local_i32_array_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memset_nonzero_local_i32_array.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nonzero_local_i32_array_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 1|bir.store_local %lv.dst.1, i32 2|bir.store_local %lv.dst.2, i32 3|bir.store_local %lv.dst.0, i32 -1|bir.store_local %lv.dst.1, i32 -1|bir.store_local %lv.dst.2, i32 -1|bir.ret i32 %t63"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_builtin_memset_nested_i32_array_field_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/builtin_memset_nested_i32_array_field.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu

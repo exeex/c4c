@@ -475,6 +475,9 @@ class BirFunctionLowerer {
   static std::optional<std::pair<std::size_t, bir::TypeKind>> parse_local_array_type(
       std::string_view text);
   static std::optional<bir::Value> lower_zero_initializer_value(bir::TypeKind type);
+  static std::optional<bir::Value> lower_repeated_byte_initializer_value(
+      bir::TypeKind type,
+      std::uint8_t fill_byte);
   static std::optional<bir::Value> lower_typed_index_value(const ParsedTypedOperand& index_operand,
                                                            const ValueMap& value_aliases);
   static std::optional<bir::Value> make_index_immediate(bir::TypeKind type,

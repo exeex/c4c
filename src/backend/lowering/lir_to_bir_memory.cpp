@@ -1,6 +1,7 @@
 #include "lir_to_bir.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -83,6 +84,46 @@ std::optional<bir::Value> BirFunctionLowerer::lower_zero_initializer_value(bir::
     default:
       return std::nullopt;
   }
+}
+
+std::optional<bir::Value> BirFunctionLowerer::lower_repeated_byte_initializer_value(
+    bir::TypeKind type,
+    std::uint8_t fill_byte) {
+  if (fill_byte == 0) {
+    return lower_zero_initializer_value(type);
+  }
+
+  switch (type) {
+    case bir::TypeKind::I8:
+      return bir::Value::immediate_i8(static_cast<std::int8_t>(fill_byte));
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+      break;
+    default:
+      return std::nullopt;
+  }
+
+  const auto bit_width = integer_type_bit_width(type);
+  if (!bit_width.has_value() || *bit_width % 8u != 0u) {
+    return std::nullopt;
+  }
+
+  std::uint64_t repeated_bits = 0;
+  for (unsigned shift = 0; shift < *bit_width; shift += 8u) {
+    repeated_bits |= std::uint64_t{fill_byte} << shift;
+  }
+
+  if (*bit_width < 64u) {
+    return make_integer_immediate(type, sign_extend_bits(repeated_bits, *bit_width));
+  }
+
+  if ((repeated_bits & (std::uint64_t{1} << 63u)) == 0u) {
+    return bir::Value::immediate_i64(static_cast<std::int64_t>(repeated_bits));
+  }
+  if (repeated_bits == (std::uint64_t{1} << 63u)) {
+    return bir::Value::immediate_i64(std::numeric_limits<std::int64_t>::min());
+  }
+  return bir::Value::immediate_i64(-static_cast<std::int64_t>((~repeated_bits) + 1u));
 }
 
 std::optional<bir::Value> BirFunctionLowerer::lower_typed_index_value(
@@ -2844,15 +2885,15 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     return true;
   }
 
-  const auto try_lower_zero_local_memset =
-      [&](std::string_view dst_operand, std::size_t fill_size_bytes) -> bool {
+  const auto try_lower_immediate_local_memset =
+      [&](std::string_view dst_operand, std::uint8_t fill_byte, std::size_t fill_size_bytes) -> bool {
     struct LocalMemsetArrayView {
       bir::TypeKind element_type = bir::TypeKind::Void;
       const std::vector<std::string>* element_slots = nullptr;
       std::size_t base_index = 0;
     };
 
-    const auto zero_leaf_slots =
+    const auto fill_leaf_slots =
         [&](const auto& leaf_slots, std::size_t total_size_bytes) -> bool {
       if (fill_size_bytes < total_size_bytes) {
         return false;
@@ -2863,13 +2904,14 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         if (slot_type_it == local_slot_types.end()) {
           return false;
         }
-        const auto zero_value = lower_zero_initializer_value(slot_type_it->second);
-        if (!zero_value.has_value()) {
+        const auto fill_value =
+            lower_repeated_byte_initializer_value(slot_type_it->second, fill_byte);
+        if (!fill_value.has_value()) {
           return false;
         }
         lowered_insts->push_back(bir::StoreLocalInst{
             .slot_name = slot_name,
-            .value = *zero_value,
+            .value = *fill_value,
         });
       }
       return true;
@@ -2909,7 +2951,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       if (!aggregate_layout.has_value()) {
         return false;
       }
-      return zero_leaf_slots(
+      return fill_leaf_slots(
           collect_sorted_leaf_slots(aggregate_it->second), aggregate_layout->size_bytes);
     }
 
@@ -2931,7 +2973,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       leaf_slots.emplace_back(index * element_size,
                               (*array_view->element_slots)[array_view->base_index + index]);
     }
-    return zero_leaf_slots(leaf_slots, target_count * element_size);
+    return fill_leaf_slots(leaf_slots, target_count * element_size);
   };
 
   if (const auto* memset = std::get_if<c4c::codegen::lir::LirMemsetOp>(&inst)) {
@@ -2941,13 +2983,15 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     const auto fill_value = lower_value(memset->byte_val, bir::TypeKind::I8, value_aliases);
     const auto fill_size = lower_value(memset->size, bir::TypeKind::I64, value_aliases);
     if (!fill_value.has_value() || fill_value->kind != bir::Value::Kind::Immediate ||
-        fill_value->immediate != 0 || !fill_size.has_value() ||
+        !fill_size.has_value() ||
         fill_size->kind != bir::Value::Kind::Immediate || fill_size->immediate < 0) {
       return false;
     }
 
-    return try_lower_zero_local_memset(memset->dst.str(),
-                                       static_cast<std::size_t>(fill_size->immediate));
+    return try_lower_immediate_local_memset(
+        memset->dst.str(),
+        static_cast<std::uint8_t>(fill_value->immediate & 0xff),
+        static_cast<std::size_t>(fill_size->immediate));
   }
 
   if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst)) {
@@ -3258,14 +3302,16 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
                       bir::TypeKind::I64,
                       value_aliases);
       if (!fill_value.has_value() || fill_value->kind != bir::Value::Kind::Immediate ||
-          fill_value->immediate != 0 || !fill_size.has_value() ||
+          !fill_size.has_value() ||
           fill_size->kind != bir::Value::Kind::Immediate || fill_size->immediate < 0) {
         return false;
       }
 
       const std::string dst_operand(typed_call.args[0].operand);
-      if (!try_lower_zero_local_memset(dst_operand,
-                                       static_cast<std::size_t>(fill_size->immediate))) {
+      if (!try_lower_immediate_local_memset(
+              dst_operand,
+              static_cast<std::uint8_t>(fill_value->immediate & 0xff),
+              static_cast<std::size_t>(fill_size->immediate))) {
         return false;
       }
       if (call->result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
