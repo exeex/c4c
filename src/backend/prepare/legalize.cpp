@@ -110,6 +110,71 @@ bool terminator_uses_named_value(const bir::Terminator& terminator,
          names.find(terminator.condition.name) != names.end();
 }
 
+bool block_uses_named_value(const bir::Block& block, const std::unordered_set<std::string>& names) {
+  for (const auto& inst : block.insts) {
+    const auto matches = [&](const bir::Value& value) {
+      return value.kind == bir::Value::Kind::Named && names.find(value.name) != names.end();
+    };
+    if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+      if (matches(binary->lhs) || matches(binary->rhs)) {
+        return true;
+      }
+      continue;
+    }
+    if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
+      if (matches(select->lhs) || matches(select->rhs) || matches(select->true_value) ||
+          matches(select->false_value)) {
+        return true;
+      }
+      continue;
+    }
+    if (const auto* cast = std::get_if<bir::CastInst>(&inst)) {
+      if (matches(cast->operand)) {
+        return true;
+      }
+      continue;
+    }
+    if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+      if (call->callee_value.has_value() && matches(*call->callee_value)) {
+        return true;
+      }
+      for (const auto& arg : call->args) {
+        if (matches(arg)) {
+          return true;
+        }
+      }
+      continue;
+    }
+    if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
+      if (load_local->address.has_value() && matches(load_local->address->base_value)) {
+        return true;
+      }
+      continue;
+    }
+    if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
+      if (load_global->address.has_value() && matches(load_global->address->base_value)) {
+        return true;
+      }
+      continue;
+    }
+    if (const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst)) {
+      if (matches(store_local->value) ||
+          (store_local->address.has_value() && matches(store_local->address->base_value))) {
+        return true;
+      }
+      continue;
+    }
+    if (const auto* store_global = std::get_if<bir::StoreGlobalInst>(&inst)) {
+      if (matches(store_global->value) ||
+          (store_global->address.has_value() && matches(store_global->address->base_value))) {
+        return true;
+      }
+      continue;
+    }
+  }
+  return terminator_uses_named_value(block.terminator, names);
+}
+
 struct BlockAnalysis {
   std::unordered_map<std::string, bir::Block*> blocks_by_label;
   std::unordered_map<std::string, const bir::Inst*> defs_by_name;
@@ -429,7 +494,15 @@ bool try_materialize_root_phi_block(bir::Function* function, const BlockAnalysis
     break;
   }
   const bool terminator_uses_phi = terminator_uses_named_value(block->terminator, phi_names);
-  if (!saw_phi || (!has_non_phi_after_top && !terminator_uses_phi)) {
+  bool immediate_successor_uses_phi = false;
+  if (!has_non_phi_after_top && !terminator_uses_phi &&
+      block->terminator.kind == bir::TerminatorKind::Branch) {
+    const auto successor_it = analysis.blocks_by_label.find(block->terminator.target_label);
+    if (successor_it != analysis.blocks_by_label.end()) {
+      immediate_successor_uses_phi = block_uses_named_value(*successor_it->second, phi_names);
+    }
+  }
+  if (!saw_phi || (!has_non_phi_after_top && !terminator_uses_phi && !immediate_successor_uses_phi)) {
     return false;
   }
 

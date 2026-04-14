@@ -197,6 +197,16 @@ Source Plan: plan.md
   `tests/cpp/internal/backend_prepare_phi_materialize_test.cpp` now proves
   both the existing trailing-add case and the new return-only case on the same
   direct prepare/BIR surface
+- 2026-04-14 executor packet result:
+  reducible explicit-phi materialization now also handles a phi-only join
+  whose first live consumer sits in the immediate successor block, so
+  `prepare` no longer falls back to `.phi` local-slot lowering just because
+  the join branches once before the value is used;
+  `src/backend/prepare/legalize.cpp` now treats a root phi block as
+  materializable when its branch successor is the first consumer of the top
+  phi result, and `tests/cpp/internal/backend_prepare_phi_materialize_test.cpp`
+  now proves the successor-consumed case on the same direct prepare/BIR
+  surface without adding route-test churn
 - proof result:
   the exact backend proof command
   `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
@@ -204,6 +214,13 @@ Source Plan: plan.md
   failed`, and focused re-run
   `ctest --test-dir build --output-on-failure -R '^backend_prepare_phi_materialize$'`
   passed with the new return-only coverage
+- proof result:
+  the exact backend proof command
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  preserved the current backend subset envelope at `420 total / 209 passed /
+  211 failed`, and `backend_prepare_phi_materialize` stayed passing while the
+  successor-consumed join coverage ran inside that owned test binary; proof
+  log: `test_after.log`
 - if the executor needs a new proving source to expose that code-moving target,
   it may add one minimal merge-semantic source in the same packet, but source
   or harness expansion alone is not accepted progress
