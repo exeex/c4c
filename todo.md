@@ -104,6 +104,14 @@ Source Plan: plan.md
   target outside that exhausted surface, or else perform another route
   checkpoint instead of pretending the nearby prepared-BIR cases are still
   exposing a missing capability
+- 2026-04-14 supervisor repair probe:
+  checked-in `three_way_phi_merge_post_add_sub.c` still lowers cleanly on the
+  default prepared route to nested `bir.select`, and a fresh throwaway
+  three-predecessor local-join sample lowered through ordinary local-slot
+  stores/loads rather than semantic `bir.phi`;
+  current C backend-route coverage therefore still does not expose a fresh
+  non-reducible/default-route phi seam honestly enough to justify another
+  executor packet from backlog item 1 yet
 - the next packet must return to one real code-moving backlog-item-1 merge
   target using the semantic-BIR observation surface only as proof support;
   do not spend another packet on route-test promotion or harness-only cleanup
@@ -181,6 +189,14 @@ Source Plan: plan.md
   `src/backend/prepare/legalize.cpp`; do not dispatch another executor packet
   until that seam is tied to one honest proving surface instead of another
   stale-harness promotion
+- 2026-04-14 supervisor route-repair follow-up then tested whether a new
+  three-predecessor C probe could expose that seam on the normal route and it
+  could not:
+  the throwaway sample lowered as mutable-local slot traffic instead of
+  semantic `bir.phi`, so no truthful new proving surface was found from the
+  current C route inventory; treat backlog-item-1 execution as blocked on the
+  next route checkpoint rather than forcing another executor packet from this
+  exhausted surface
 
 ## Latest Packet Progress
 
