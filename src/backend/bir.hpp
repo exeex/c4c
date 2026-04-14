@@ -152,6 +152,7 @@ struct CallArgAbiInfo {
   bool passed_in_register = false;
   bool passed_on_stack = false;
   bool byval_copy = false;
+  bool sret_pointer = false;
 };
 
 struct CallResultAbiInfo {

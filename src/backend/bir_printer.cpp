@@ -31,6 +31,65 @@ std::string render_call_target(const CallInst& call) {
   return call.callee;
 }
 
+void render_byval_suffix(std::ostringstream& out, std::size_t size_bytes, std::size_t align_bytes) {
+  out << " byval";
+  if (size_bytes != 0 || align_bytes != 0) {
+    out << "(";
+    bool wrote_field = false;
+    if (size_bytes != 0) {
+      out << "size=" << size_bytes;
+      wrote_field = true;
+    }
+    if (align_bytes != 0) {
+      if (wrote_field) {
+        out << ", ";
+      }
+      out << "align=" << align_bytes;
+    }
+    out << ")";
+  }
+}
+
+void render_sret_suffix(std::ostringstream& out, std::size_t size_bytes, std::size_t align_bytes) {
+  out << " sret";
+  if (size_bytes != 0 || align_bytes != 0) {
+    out << "(";
+    bool wrote_field = false;
+    if (size_bytes != 0) {
+      out << "size=" << size_bytes;
+      wrote_field = true;
+    }
+    if (align_bytes != 0) {
+      if (wrote_field) {
+        out << ", ";
+      }
+      out << "align=" << align_bytes;
+    }
+    out << ")";
+  }
+}
+
+void render_memory_address(std::ostringstream& out, const MemoryAddress& address) {
+  out << ", addr ";
+  switch (address.base_kind) {
+    case MemoryAddress::BaseKind::LocalSlot:
+    case MemoryAddress::BaseKind::GlobalSymbol:
+    case MemoryAddress::BaseKind::Label:
+    case MemoryAddress::BaseKind::StringConstant:
+      out << address.base_name;
+      break;
+    case MemoryAddress::BaseKind::PointerValue:
+      out << render_value(address.base_value);
+      break;
+    case MemoryAddress::BaseKind::None:
+      out << "<none>";
+      break;
+  }
+  if (address.byte_offset != 0) {
+    out << (address.byte_offset > 0 ? "+" : "") << address.byte_offset;
+  }
+}
+
 void render_phi_observation(std::ostringstream& out, const PhiObservation& observation) {
   out << "; semantic_phi " << observation.result.name << " = bir.phi "
       << render_type(observation.result.type);
@@ -46,8 +105,15 @@ void render_function(std::ostringstream& out, const Function& function) {
     if (index != 0) {
       out << ", ";
     }
-    out << render_type(function.params[index].type) << " "
-        << function.params[index].name;
+    out << render_type(function.params[index].type);
+    if (function.params[index].is_sret) {
+      render_sret_suffix(
+          out, function.params[index].size_bytes, function.params[index].align_bytes);
+    } else if (function.params[index].is_byval) {
+      render_byval_suffix(
+          out, function.params[index].size_bytes, function.params[index].align_bytes);
+    }
+    out << " " << function.params[index].name;
   }
   out << ") -> " << render_type(function.return_type);
   if (function.is_declaration) {
@@ -101,13 +167,30 @@ void render_function(std::ostringstream& out, const Function& function) {
                 if (arg_index != 0) {
                   out << ", ";
                 }
-                out << render_type(lowered.args[arg_index].type) << " "
-                    << render_value(lowered.args[arg_index]);
+                out << render_type(lowered.args[arg_index].type);
+                if (arg_index < lowered.arg_abi.size()) {
+                  if (lowered.arg_abi[arg_index].sret_pointer) {
+                    render_sret_suffix(
+                        out,
+                        lowered.arg_abi[arg_index].size_bytes,
+                        lowered.arg_abi[arg_index].align_bytes);
+                  } else if (lowered.arg_abi[arg_index].byval_copy) {
+                    render_byval_suffix(
+                        out,
+                        lowered.arg_abi[arg_index].size_bytes,
+                        lowered.arg_abi[arg_index].align_bytes);
+                  }
+                }
+                out << " " << render_value(lowered.args[arg_index]);
               }
               out << ")\n";
             } else if constexpr (std::is_same_v<T, LoadLocalInst>) {
               out << "  " << lowered.result.name << " = bir.load_local "
-                  << render_type(lowered.result.type) << " " << lowered.slot_name << "\n";
+                  << render_type(lowered.result.type) << " " << lowered.slot_name;
+              if (lowered.address.has_value()) {
+                render_memory_address(out, *lowered.address);
+              }
+              out << "\n";
             } else if constexpr (std::is_same_v<T, LoadGlobalInst>) {
               out << "  " << lowered.result.name << " = bir.load_global "
                   << render_type(lowered.result.type) << " @" << lowered.global_name;
@@ -124,8 +207,11 @@ void render_function(std::ostringstream& out, const Function& function) {
                   << render_value(lowered.value) << "\n";
             } else if constexpr (std::is_same_v<T, StoreLocalInst>) {
               out << "  bir.store_local " << lowered.slot_name << ", "
-                  << render_type(lowered.value.type) << " " << render_value(lowered.value)
-                  << "\n";
+                  << render_type(lowered.value.type) << " " << render_value(lowered.value);
+              if (lowered.address.has_value()) {
+                render_memory_address(out, *lowered.address);
+              }
+              out << "\n";
             }
           },
           inst);
