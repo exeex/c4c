@@ -118,24 +118,33 @@ Primary target:
 
 Concrete actions:
 
-- first establish scalar multi-parameter direct helper/call lowering on the
-  existing `backend_case` `two_arg_*` family instead of using arithmetic-only
-  route stems as backlog-item-2 evidence
+- do not use the existing `backend_case` `two_arg_*` route stems as
+  printed-BIR proof under the current backend contract:
+  once lowering succeeds, `src/backend/backend.cpp` legitimately prepares BIR
+  and emits target asm for those helpers
 - treat helper entry lowering, direct-call argument materialization, and return
   propagation as one semantic signature lane in
   `src/backend/lowering/lir_to_bir_module.cpp` /
-  `src/backend/lowering/call_decode.cpp`
-- follow with by-value aggregate parameter coverage using
-  `param_slot`, `param_member_array`, and `nested_param_member_array`
+  `src/backend/lowering/call_decode.cpp`, but keep the `two_arg_*` helper
+  family as runtime/regression sentinels rather than the primary proof anchor
+- use `param_slot`, `param_member_array`, and
+  `nested_param_member_array` as the first honest backlog-item-2 proving
+  surface because they exercise parameter handling by behavior rather than by
+  output-mode choice
+- if direct observation of signature-lowering success still needs more than
+  runtime behavior, allow one narrow harness packet that can observe semantic
+  BIR coverage without regressing supported prepared-BIR emission
 - keep semantic signature lowering separate from target ABI legalization
 - do not count native-asm output on trivial helpers or frontend-promotion
   expectation mismatches as proof of semantic signature progress
 
 Completion check:
 
-- scalar direct multi-parameter helpers and by-value simple aggregate params
-  lower through semantic BIR without ad hoc special handling or route-only
-  expectation churn
+- parameter-slot and simple aggregate-param cases are proven by honest
+  backend-case behavior or approved harness observation, not by forcing
+  supported prepared-BIR emission to print BIR
+- scalar direct helper/runtime sentinels remain consistent with the same
+  signature-lowering rule instead of requiring named-case branches
 
 ### 3. Broaden local memory and address formation
 

@@ -32,33 +32,40 @@ Source Plan: plan.md
 - current capability family:
   backlog item 2, harden params and function signatures
 - current packet focus:
-  start backlog item 2 from the existing `backend_case` scalar helper surface:
-  `two_arg_helper`, `two_arg_local_arg`, `two_arg_second_local_arg`, and
-  `two_arg_both_local_arg` are the first honest observation surface for
-  direct multi-parameter entry/call lowering in the owned files
+  the `two_arg_*` helper route surface is not an honest proving anchor under
+  the current backend emission contract:
+  once semantic BIR lowering succeeds there, `src/backend/backend.cpp`
+  prepares BIR and emits native target asm, so the next packet must pivot to
+  signature-sensitive backend behavior rather than printed-BIR expectations on
+  those helpers
 - queued follow-on surface:
-  once the direct scalar helper lane is real, continue within backlog item 2 on
-  by-value aggregate params using `param_slot`, `param_member_array`, and
-  `nested_param_member_array`
+  use `param_slot`, `param_member_array`, and
+  `nested_param_member_array` as the next honest backlog-item-2 proving
+  surface, while keeping the existing `two_arg_*` helper family only as
+  runtime/regression sentinels
 - packet rule:
   do not accept a packet whose main effect is promoting one more named
   arithmetic route stem, rewriting expectations to match current native asm, or
   suppressing frontend integer-promotion semantics; the next packet must show
-  real signature-lowering capability growth on the helper/aggregate surfaces
+  real signature-lowering capability growth on the parameter/aggregate surface
+  or explicitly add the minimal harness observation needed to see that growth
 
 ## Immediate Target
 
 - treat backlog item 1 as exhausted for the current proving surface unless a
   new semantic merge failure appears in lowering code
-- broaden parsed parameter and return handling in semantic BIR through the
-  existing `backend_case` `two_arg_*` helper programs before touching broader
-  call provenance or later-lane runtime surfaces
-- if observation help is needed, add or retarget lowering-owned route proof
-  around those helper programs instead of promoting more
-  `backend_route_case/two_param_*` arithmetic stems
-- keep `param_slot`, `param_member_array`, and
-  `nested_param_member_array` queued as the next by-value aggregate-param
-  proving surface within the same backlog item
+- treat the `two_arg_*` helper route cases as sentinels only:
+  they may remain in proof as regression checks, but they are no longer the
+  packet's primary evidence surface because successful lowering there still
+  prints supported target asm
+- broaden parsed parameter and return handling in semantic BIR through
+  `param_slot`, `param_member_array`, and
+  `nested_param_member_array` before touching broader call provenance or
+  later-lane runtime surfaces
+- if direct observation help is needed, authorize the smallest harness packet
+  that can distinguish semantic-BIR signature success without regressing
+  prepared-BIR emission, instead of retargeting helper-route expectations
+- keep existing helper and indirect-call cases as non-regression sentinels only
 - do not treat native asm output on a trivial helper as proof that semantic BIR
   lowering failed
 - do not "fix" the current `i8`/`u8` route mismatches by suppressing the
@@ -69,12 +76,12 @@ Source Plan: plan.md
 
 ## Done Condition For The Active Packet
 
-- at least one existing `backend_case` `two_arg_*` helper family lowers
-  through semantic BIR because of a lowering change in the backlog-item-2
-  targets named by `plan.md`, not merely because a route test was retargeted
-  or because native asm happened to print
-- sibling scalar helper forms with local-arg materialization remain explainable
-  by the same lowering rule rather than by named-case branches
+- at least one of `param_slot`, `param_member_array`, or
+  `nested_param_member_array` demonstrates real backlog-item-2
+  signature-lowering progress in the targets named by `plan.md`, either by
+  honest backend behavior or by an explicitly authorized harness observation
+- existing `two_arg_*` helper forms remain consistent as regression sentinels
+  rather than requiring named-case branches or output-mode rewrites
 - `branch_if_eq.c` still lowers cleanly and the already-proven merge route
   surface does not regress
 - existing call-lane sentinels stay green
@@ -83,11 +90,15 @@ Source Plan: plan.md
 
 ## Proof Routing Note
 
-- supervisor should choose a narrow build-plus-test command anchored on the
-  `backend_case` `two_arg_*` helper surface, with `branch_if_eq` and one
-  existing indirect-call sentinel as non-regression checks
-- do not reuse the exhausted arithmetic-route regexes as the proving subset for
-  the next executor packet
+- supervisor should choose a narrow build-plus-test command anchored on
+  `param_slot`, `param_member_array`, and `nested_param_member_array`, with
+  one existing `two_arg_*` helper case, `branch_if_eq`, and one indirect-call
+  sentinel as non-regression checks
+- if that subset still cannot directly observe signature-lowering success, the
+  next packet may be a minimal harness-observation slice rather than a
+  lowering-only slice
+- do not reuse the exhausted arithmetic-route regexes or the helper-only route
+  regex as the primary proving subset for the next executor packet
 
 ## Latest Packet Progress
 
@@ -160,3 +171,25 @@ Source Plan: plan.md
   while `param_slot`, `param_member_array`, and
   `nested_param_member_array` are queued as the follow-on by-value aggregate
   parameter lane
+- helper proving-surface invalidation recorded:
+  the supervisor captured `test_before.log` with the helper-focused subset
+  `cmake --build --preset default > test_before.log 2>&1 &&
+   ctest --test-dir build -j --output-on-failure -R
+   '^(backend_codegen_route_riscv64_two_arg_helper_defaults_to_asm|
+      backend_codegen_route_riscv64_two_arg_local_arg_defaults_to_asm|
+      backend_codegen_route_riscv64_two_arg_second_local_arg_defaults_to_asm|
+      backend_codegen_route_riscv64_two_arg_both_local_arg_defaults_to_asm|
+      backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|
+      backend_codegen_route_riscv64_indirect_select_callee_call_defaults_to_bir)$'
+   >> test_before.log 2>&1`
+  and that subset passed unchanged, confirming only that the helper surface
+  still emits supported riscv64 asm
+  executor inspection then showed that `src/backend/backend.cpp` routes
+  successful lowering through prepared BIR and still emits target asm on that
+  path, so converting `two_arg_*` helper route tests into printed-BIR
+  expectations would require either regressing supported emission or widening
+  into harness work
+  backlog item 2 therefore needs a route repair:
+  `param_slot`, `param_member_array`, and `nested_param_member_array`
+  become the next honest proving surface, while `two_arg_*` helper cases stay
+  as regression sentinels only
