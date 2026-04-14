@@ -1,8 +1,29 @@
 # Backend Reboot From BIR Spine
 
-Status: Open
+Status: Closed
 Created: 2026-04-13
+Closed: 2026-04-14
 Supersedes: ideas/closed/45_fix_x86_backend_fails.md
+
+## Closure Summary
+
+Closed after the backend reboot source-idea scope was satisfied on the shared
+semantic-BIR route:
+
+- semantic BIR now covers the active scalar / CFG baseline, non-variadic
+  call-signature lane, local object/address lane, and addressed-global lane
+  without raw-LIR escape hatches in the checked backend case inventory
+- `BirFunctionLowerer` now owns the active semantic call/signature parsing path
+  under `lir_to_bir_*`; `call_decode.cpp` remains only as legacy compatibility
+  instead of the route owner
+- `prepare` remains the stated legality owner, and the remaining long-tail work
+  now belongs to the already-split follow-on ideas rather than this reboot idea
+
+Remaining work was intentionally split out and stays open under:
+
+- `ideas/open/47_semantic_call_runtime_boundary.md`
+- `ideas/open/48_prepare_pipeline_rebuild.md`
+- `ideas/open/49_prepared_bir_target_ingestion.md`
 
 ## Why This Idea Exists
 
