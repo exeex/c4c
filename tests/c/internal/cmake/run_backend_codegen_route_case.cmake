@@ -17,8 +17,13 @@ endif()
 get_filename_component(out_dir "${OUT_TEXT}" DIRECTORY)
 file(MAKE_DIRECTORY "${out_dir}")
 
+set(extra_compiler_args)
+if(DEFINED EXTRA_COMPILER_ARGS AND NOT "${EXTRA_COMPILER_ARGS}" STREQUAL "")
+  string(REPLACE "|" ";" extra_compiler_args "${EXTRA_COMPILER_ARGS}")
+endif()
+
 execute_process(
-  COMMAND "${COMPILER}" --codegen asm --target "${TARGET_TRIPLE}" "${SRC}" -o "${OUT_TEXT}"
+  COMMAND "${COMPILER}" ${extra_compiler_args} --codegen asm --target "${TARGET_TRIPLE}" "${SRC}" -o "${OUT_TEXT}"
   TIMEOUT "${CASE_TIMEOUT_SEC}"
   RESULT_VARIABLE compiler_rc
   OUTPUT_VARIABLE compiler_out

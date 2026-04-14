@@ -2846,12 +2846,32 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_single_param_select_eq_observes_semantic_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/single_param_select_eq.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/single_param_select_eq_semantic_bir_riscv64.ll"
+      EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+      REQUIRED_SNIPPETS "bir.func @choose(i32 %p.x) -> i32 {|entry:|%t8 = bir.select eq i32 %p.x, 7, i32 11, 4|bir.ret i32 %t8"
+      FORBIDDEN_SNIPPETS "define i32 @choose|semantic_phi"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_phi
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_semantic_phi_riscv64.ll"
       REQUIRED_SNIPPETS "bir.func @choose2_deeper_post_chain(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t13.phi, i32 %t10|bir.store_local %t13.phi, i32 %t12|%t13 = bir.load_local i32 %t13.phi|%t14 = bir.add i32 %t13, 6|%t15 = bir.sub i32 %t14, 2|bir.ret i32 %t15|semantic_phi %t13 = bir.phi i32 [tern.then.end.4, %t10] [tern.else.end.6, %t12]"
       FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_post_chain(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_semantic_bir_riscv64.ll"
+      EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+      REQUIRED_SNIPPETS "bir.func @choose2_deeper_post_chain(i32 %p.x, i32 %p.y) -> i32 {|tern.end.7:|%t13 = bir.phi i32 [tern.then.end.4, %t10] [tern.else.end.6, %t12]|%t14 = bir.add i32 %t13, 6|%t15 = bir.sub i32 %t14, 2|bir.ret i32 %t15"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_post_chain(i32 %p.x, i32 %p.y)|bir.store_local %t13.phi|semantic_phi"
     )
 
     set(riscv64_backend_unsupported_asm_route_stems

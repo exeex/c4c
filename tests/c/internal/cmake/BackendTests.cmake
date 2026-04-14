@@ -33,7 +33,8 @@ endfunction()
 
 function(c4c_add_backend_codegen_route_test test_name)
   set(options)
-  set(one_value_args SRC TARGET_TRIPLE OUT_TEXT REQUIRED_SNIPPETS FORBIDDEN_SNIPPETS)
+  set(one_value_args SRC TARGET_TRIPLE OUT_TEXT REQUIRED_SNIPPETS FORBIDDEN_SNIPPETS
+                     EXTRA_COMPILER_ARGS)
   set(multi_value_args LABELS)
   cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
@@ -58,6 +59,7 @@ function(c4c_add_backend_codegen_route_test test_name)
             -DOUT_TEXT=${ARG_OUT_TEXT}
             "-DREQUIRED_SNIPPETS=${ARG_REQUIRED_SNIPPETS}"
             "-DFORBIDDEN_SNIPPETS=${ARG_FORBIDDEN_SNIPPETS}"
+            "-DEXTRA_COMPILER_ARGS=${ARG_EXTRA_COMPILER_ARGS}"
             -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
   )
   c4c_set_backend_test_labels("${test_name}" backend_route ${ARG_LABELS})

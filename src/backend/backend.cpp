@@ -835,6 +835,9 @@ BackendAssembleResult assemble_target_lir_module(
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options) {
   if (input.holds_bir_module()) {
+    if (options.emit_semantic_bir) {
+      return c4c::backend::bir::print(input.bir_module());
+    }
     return emit_target_bir_module(input.bir_module(), options.target);
   }
 
@@ -847,6 +850,9 @@ std::string emit_module(const BackendModuleInput& input,
       lir_module, target, c4c::backend::prepare::PrepareOptions{});
 
   if (lowering.module.has_value()) {
+    if (options.emit_semantic_bir) {
+      return c4c::backend::bir::print(*lowering.module);
+    }
     const auto prepared_bir = c4c::backend::prepare::prepare_bir_module_with_options(
         *lowering.module, target, c4c::backend::prepare::PrepareOptions{});
     return emit_prepared_bir_or_fallback(prepared_bir.module, target);

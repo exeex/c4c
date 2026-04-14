@@ -14,14 +14,14 @@ Source Plan: plan.md
 - current packet focus:
   the first explicit semantic `bir.phi` / CFG merge packet is now considered
   exhausted, and the active route is authorized to spend exactly one bounded
-  follow-up packet on observation/harness work:
+  follow-up packet on observation/harness work;
+  that bounded slice is now landed:
   `src/backend/lowering/lir_to_bir_module.cpp` and owned BIR files already
-  gained semantic phi lowering, `prepare` owns the temporary phi-slot
-  materialization needed by the current backend-route output surface, and one
-  minimal semantic-phi observation surface is already in place; the next
-  packet may therefore add one minimal semantic-BIR observation path that can
-  expose shared merge semantics more honestly than the stale prepared-BIR
-  `asm_unsupported` inventory
+  gained semantic phi lowering, `prepare` still owns the temporary phi-slot
+  materialization needed by the normal backend-route output surface, and the
+  compiler now has one minimal opt-in semantic-BIR observation path that can
+  expose shared merge semantics before `prepare`; the next packet should
+  return to code-moving backlog-item-1 work rather than more harness churn
 - why now:
   supervisor follow-up confirmed that more of the remaining merge proving
   surface is stale harness debt rather than a real backlog-item-1 semantic
@@ -68,6 +68,9 @@ Source Plan: plan.md
 
 ## Immediate Target
 
+- the authorized observation/harness slice is now complete, so the next packet
+  should return to one real code-moving backlog-item-1 merge target using the
+  new semantic-BIR observation surface only as proof support
 - keep backlog item 2 params/signatures and backlog item 5 call lowering as
   sentinels only until backlog item 1 has another real code change
 - treat the split-predecessor `*_post_add_sub_add` stems plus the newly stale
@@ -125,6 +128,23 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- 2026-04-14 executor added one generic opt-in semantic-BIR observation path
+  for backend route tests without changing the default prepared-BIR contract:
+  `c4cll --backend-bir-stage semantic --codegen asm ...` now emits the raw
+  semantic BIR produced before `prepare`, while the default `--codegen asm`
+  route still prepares BIR exactly as before
+- 2026-04-14 route coverage for that bounded harness packet now includes both
+  a canonical select surface and an explicit phi surface via
+  `backend_codegen_route_riscv64_single_param_select_eq_observes_semantic_bir`
+  and
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_bir`
+  while keeping
+  `backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir` and
+  `backend_codegen_route_riscv64_indirect_select_local_override_callee_call_defaults_to_bir`
+  as non-regression sentinels
+- 2026-04-14 exact delegated proof for the observation packet passed as
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_(single_param_select_eq_observes_semantic_bir|two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_bir|branch_if_eq_defaults_to_bir|indirect_select_local_override_callee_call_defaults_to_bir))$'`
+  and wrote the result to `test_after.log`
 - 2026-04-14 executor follow-up added one minimal semantic-merge observation
   surface without changing the prepared-BIR route contract:
   `src/backend/prepare/legalize.cpp` now preserves lowered-phi provenance on

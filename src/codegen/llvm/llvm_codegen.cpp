@@ -17,17 +17,22 @@ std::string emit_legacy(const lir::LirModule& lir_mod) {
 }
 
 std::string emit_via_backend(const lir::LirModule& lir_mod,
-                             std::string_view target_triple) {
+                             std::string_view target_triple,
+                             bool emit_semantic_bir) {
   const auto target = backend::target_from_triple(target_triple);
   return backend::emit_module(backend::BackendModuleInput{lir_mod},
-                              backend::BackendOptions{.target = target});
+                              backend::BackendOptions{
+                                  .target = target,
+                                  .emit_semantic_bir = emit_semantic_bir,
+                              });
 }
 
 }  // namespace
 
 std::string emit_module_native(const Module& mod,
                                std::string_view target_triple,
-                               CodegenPath path) {
+                               CodegenPath path,
+                               bool emit_semantic_bir) {
   auto lir_mod = lir::lower(mod);
   if (path == CodegenPath::Llvm) {
     return emit_legacy(lir_mod);
@@ -39,7 +44,7 @@ std::string emit_module_native(const Module& mod,
     return result;
   }
 
-  auto result = emit_via_backend(lir_mod, target_triple);
+  auto result = emit_via_backend(lir_mod, target_triple, emit_semantic_bir);
   return result;
 }
 

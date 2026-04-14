@@ -262,6 +262,10 @@ void print_usage(const char *argv0) {
       << "\n"
       << "Code generation:\n"
       << "  --codegen llvm|asm|compare Select codegen backend path\n"
+      << "  --backend-bir-stage prepared|semantic\n"
+      << "                            For --codegen asm, choose prepared BIR\n"
+      << "                            output (default) or semantic BIR before\n"
+      << "                            prepare for bounded observation\n"
       << "\n"
       << "Preprocessor configuration:\n"
       << "  -D macro[=val]             Define macro\n"
@@ -332,6 +336,7 @@ int main(int argc, char **argv) {
     std::string device_target_triple;
     std::string host_output;
     std::string device_output;
+    bool emit_semantic_bir = false;
 
     // Preprocessor configuration collected from CLI flags.
     std::vector<std::string> defines;
@@ -378,6 +383,17 @@ int main(int argc, char **argv) {
         device_output = args[++i];
       } else if (arg == "--emit-split-llvm") {
         emit_split_llvm = true;
+      } else if (arg == "--backend-bir-stage" && i + 1 < args.size()) {
+        const std::string& val = args[++i];
+        if (val == "prepared") {
+          emit_semantic_bir = false;
+        } else if (val == "semantic") {
+          emit_semantic_bir = true;
+        } else {
+          std::cerr << "unknown --backend-bir-stage value: " << val
+                    << " (expected prepared or semantic)\n";
+          return 2;
+        }
       } else if (arg == "-D" && i + 1 < args.size()) {
         defines.push_back(args[++i]);
       } else if (arg.size() > 2 && arg[0] == '-' && arg[1] == 'D') {
@@ -458,6 +474,11 @@ int main(int argc, char **argv) {
       }
       if (host_output.empty()) host_output = default_split_host_output_path(input);
       if (device_output.empty()) device_output = default_split_device_output_path(input);
+    }
+    if (emit_semantic_bir &&
+        codegen_path != c4c::codegen::llvm_backend::CodegenPath::Lir) {
+      std::cerr << "--backend-bir-stage semantic requires --codegen asm\n";
+      return 2;
     }
     {
       int mode_count = (pp_only ? 1 : 0) + (lex_only ? 1 : 0) + (parse_only ? 1 : 0) +
@@ -597,9 +618,13 @@ int main(int argc, char **argv) {
       auto device_module = filter_hir_module_for_domain(
           *sema_result.hir_module, c4c::ExecutionDomain::Device, device_target_triple);
       const std::string host_ir = c4c::codegen::llvm_backend::emit_module_native(
-          host_module, target_triple, c4c::codegen::llvm_backend::CodegenPath::Llvm);
+          host_module,
+          target_triple,
+          c4c::codegen::llvm_backend::CodegenPath::Llvm);
       const std::string device_ir = c4c::codegen::llvm_backend::emit_module_native(
-          device_module, device_target_triple, c4c::codegen::llvm_backend::CodegenPath::Llvm);
+          device_module,
+          device_target_triple,
+          c4c::codegen::llvm_backend::CodegenPath::Llvm);
       const auto host_parent = std::filesystem::path(host_output).parent_path();
       const auto device_parent = std::filesystem::path(device_output).parent_path();
       if (!host_parent.empty()) std::filesystem::create_directories(host_parent);
@@ -616,7 +641,7 @@ int main(int argc, char **argv) {
     }
 
     std::string ir = c4c::codegen::llvm_backend::emit_module_native(
-        *sema_result.hir_module, target_triple, codegen_path);
+        *sema_result.hir_module, target_triple, codegen_path, emit_semantic_bir);
 
     const bool wants_asm_output =
         output.empty() || has_suffix(output, ".s") || has_suffix(output, ".S");

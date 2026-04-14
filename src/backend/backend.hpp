@@ -47,6 +47,7 @@ struct BackendModuleInput {
 
 struct BackendOptions {
   Target target;
+  bool emit_semantic_bir = false;
 };
 
 struct BackendAssembleResult {
