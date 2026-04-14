@@ -36,6 +36,19 @@ and riscv64 no longer need direct LIR fallbacks or testcase-shaped routing.
 
 `src/backend/lowering/lir_to_bir.cpp` and siblings should produce semantic BIR.
 
+The active lowering shape is now split by ownership instead of one monolithic
+`lir_to_bir_module.cpp` bucket:
+
+- `src/backend/lowering/lir_to_bir.cpp` keeps the module-level pipeline entry
+- `src/backend/lowering/lir_to_bir.hpp` exposes the searchable lowering API
+- `BirFunctionLowerer` owns function-body lowering across the split
+  `lir_to_bir_cfg.cpp`, `lir_to_bir_calling.cpp`,
+  `lir_to_bir_aggregate.cpp`, `lir_to_bir_memory.cpp`,
+  `lir_to_bir_types.cpp`, and `lir_to_bir_globals.cpp` lanes
+- semantic call/signature parsing for this route belongs under
+  `lir_to_bir_calling.cpp`; `src/backend/lowering/call_decode.cpp` is now a
+  legacy compatibility layer rather than the active semantic-lowering owner
+
 This layer owns:
 
 - function params and returns
@@ -68,13 +81,34 @@ Each target backend should ingest prepared BIR with an explicit contract.
 No target should recover by falling back to raw LIR or by introducing direct
 special-case emission routes.
 
-## Initial Priorities
+## Current Route Checkpoint
 
-1. make semantic BIR credible for scalar control flow
-2. make semantic BIR credible for params and returns
-3. add canonical `select` / `phi` handling
-4. add memory/global/call lowering
-5. make `prepare` real enough that targets consume legalized BIR only
+- backlog item 1, CFG merge / explicit-phi work, is parked at an accepted
+  reducible explicit-phi baseline; the next honest seam there is broader
+  prepare-side explicit-phi materialization rather than more select/phi
+  testcase scouting
+- backlog item 2, non-variadic params / function signatures, is parked at an
+  accepted semantic-signature baseline covering scalar params, aggregate
+  `byval`, hidden `sret`, direct and indirect function-pointer calls, and
+  aggregate call-through on the semantic BIR route
+- the active near-term capability focus is backlog item 3:
+  broaden local memory and address formation around one shared local
+  object-plus-offset model for aggregates, arrays, pointer-bearing locals, and
+  their addressed load/store/call flows
+- backlog item 4, addressed globals and broader module data, stays adjacent to
+  the active route and should reuse the same semantic object/address model as
+  honest local lowering where possible
+
+## Active Priorities
+
+1. generalize CFG merge and `phi` without regressing to testcase-shaped
+   select/merge routing
+2. keep params and function signatures honest as the accepted non-variadic
+   baseline for semantic BIR
+3. broaden local memory and address formation through shared local-object
+   semantics
+4. broaden global data and addressed globals through the same semantic
+   object-address principles
 
 ## First Proving Surface
 
@@ -88,14 +122,31 @@ be real, not guessed from constants:
 These are not the end goal; they are the first observation surface for whether
 semantic BIR is shaped correctly.
 
+Those early proving surfaces are now baseline only. The current active proving
+focus should come from the remaining honest seams in local memory/address
+formation and then addressed globals, not from reopening already-parked
+signature or select/phi harness churn.
+
+## Deferred Follow-On Ideas
+
+The long-tail work that used to sit behind this route now lives in separate
+ideas and should not be silently reabsorbed here:
+
+- `ideas/open/47_semantic_call_runtime_boundary.md`
+- `ideas/open/48_prepare_pipeline_rebuild.md`
+- `ideas/open/49_prepared_bir_target_ingestion.md`
+
 ## Success Condition
 
 This idea is complete only when:
 
-- semantic BIR covers the core scalar/memory/call lanes without direct LIR
-  escape hatches
+- semantic BIR covers the active scalar / CFG / local-memory / addressed-global
+  lanes without direct LIR escape hatches
 - `prepare` owns target legality instead of `lir_to_bir`
-- x86, aarch64, and riscv64 target backends ingest prepared BIR as the normal
-  path
+- this idea's route no longer depends on legacy `call_decode.cpp` ownership for
+  semantic call/signature parsing
+- later target-ingestion and prepare-rebuild work can proceed from the deferred
+  follow-on ideas instead of reopening this source idea into another monolithic
+  backlog
 - backend progress is explained by capability growth, not testcase-shaped
   routing
