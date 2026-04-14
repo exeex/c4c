@@ -89,6 +89,39 @@ Source Plan: plan.md
 ## Latest Packet Progress
 
 - completed:
+  the first local aggregate-backed ptr-return callee-provenance family is now
+  explicitly proved on the same semantic BIR lane as the earlier integer-only
+  local array-of-struct-field route:
+  a local array of structs whose function-pointer field has the already-landed
+  `ptr, i32 -> ptr` signature now lowers `holders[which].slot(p, x)` as
+  semantic BIR on the riscv64 backend-route surface, preserving the dynamic
+  aggregate-backed callee select before the indirect call instead of
+  reopening fallback routing or width-only churn
+  new route proof covers
+  `indirect_local_array_struct_field_ptr_return_callee_call.c` as BIR, while
+  `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, the merge-preserved
+  callee route proof, the addressed-global and earlier local-aggregate callee
+  route proofs, and the standing one-arg through twenty-five-arg indirect-call
+  plus `two_arg_*` direct-call sentinels stayed in the owned proof surface
+  what remains next:
+  keep backlog item 5 on adjacent semantic callee-provenance/signature
+  combinations rather than widening arg-count proofs again; the next bounded
+  packet should move to another memory-carried callee family only if it adds a
+  genuinely new provenance shape or signature interaction beyond this first
+  local aggregate-backed ptr-return proof
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated build succeeded, the new riscv64 route test passed as
+  test `#270`, the broad `^backend_` subset still returned non-zero because
+  it remains dominated by standing unrelated failures, and the total backend
+  route surface increased from `413` to `414` while the standing failed-test
+  count held at `225`, so this first local aggregate-backed ptr-return callee
+  family is now explicitly covered on the shared semantic-BIR lane without a
+  broader regression increase
+- completed:
   the first local array-of-struct field callee-provenance family now lowers
   through semantic BIR instead of falling back after the repeated local
   aggregate element step:

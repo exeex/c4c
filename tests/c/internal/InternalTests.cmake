@@ -1739,6 +1739,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_local_array_struct_field_ptr_return_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_local_array_struct_field_ptr_return_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_local_array_struct_field_ptr_return_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_local_array_struct_field_ptr_return(ptr %p.f, ptr %p.g, i32 %p.which, ptr %p.p, i32 %p.x) -> ptr {|bir.select eq i64|ptr %p.f, %p.g|bir.call ptr"
+      FORBIDDEN_SNIPPETS "define ptr @call_local_array_struct_field_ptr_return"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_indirect_global_array_callee_call_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_global_array_callee_call.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
