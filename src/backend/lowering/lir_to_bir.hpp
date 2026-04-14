@@ -304,6 +304,13 @@ class BirFunctionLowerer {
   using LocalAggregateSlotMap = std::unordered_map<std::string, LocalAggregateSlots>;
   using LocalAggregateFieldSet = std::unordered_set<std::string>;
   using LocalPointerValueAliasMap = std::unordered_map<std::string, bir::Value>;
+  struct PointerAddress {
+    bir::Value base_value;
+    bir::TypeKind value_type = bir::TypeKind::Void;
+    std::size_t byte_offset = 0;
+  };
+
+  using PointerAddressMap = std::unordered_map<std::string, PointerAddress>;
 
   struct CompareExpr {
     bir::BinaryOpcode opcode = bir::BinaryOpcode::Eq;
@@ -547,10 +554,12 @@ class BirFunctionLowerer {
   static std::optional<bir::Value> resolve_local_aggregate_pointer_value_alias(
       const c4c::codegen::lir::LirOperand& operand,
       const ValueMap& value_aliases,
+      const LocalAggregateSlotMap& local_aggregate_slots,
       const FunctionSymbolSet& function_symbols);
   static std::optional<bir::Value> lower_call_pointer_arg_value(
       const c4c::codegen::lir::LirOperand& operand,
       const ValueMap& value_aliases,
+      const LocalAggregateSlotMap& local_aggregate_slots,
       const GlobalTypes& global_types,
       const FunctionSymbolSet& function_symbols);
   static std::optional<GlobalAddress> resolve_honest_pointer_base(
@@ -561,6 +570,9 @@ class BirFunctionLowerer {
       bir::TypeKind accessed_type,
       const GlobalTypes& global_types);
   static GlobalPointerSlotKey make_global_pointer_slot_key(const GlobalAddress& address);
+  bool ensure_local_scratch_slot(std::string_view slot_name,
+                                 bir::TypeKind type,
+                                 std::size_t align_bytes);
 
   // Function assembly flow.
   bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
@@ -611,6 +623,7 @@ class BirFunctionLowerer {
   LocalAggregateSlotMap local_aggregate_slots_;
   LocalAggregateFieldSet local_aggregate_field_slots_;
   LocalPointerValueAliasMap local_pointer_value_aliases_;
+  PointerAddressMap pointer_value_addresses_;
   LocalAddressSlots local_address_slots_;
   GlobalAddressSlots global_address_slots_;
   AddressedGlobalPointerSlots addressed_global_pointer_slots_;

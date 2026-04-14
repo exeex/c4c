@@ -78,6 +78,30 @@ Source Plan: plan.md
 - packet rule:
   do not spend the next packet on more backlog-item-2 harness churn or on
   variadic ABI work
+- 2026-04-14 executor packet extension:
+  shared local object/address lowering now accepts plain local aggregate base
+  pointers as honest `ptr` values, keeps constant-offset pointer GEP chains as
+  pointer-address metadata, and materializes pointer-address loads through
+  scratch local slots so `struct Outer *` / nested pointer-member dereference
+  routes can stay on semantic BIR instead of falling back to LLVM text
+- 2026-04-14 executor packet result:
+  `tests/backend/case/nested_member_pointer_array.c` now reaches semantic BIR
+  on x86_64 with `bir.load_local ... , addr %p.o` for the outer field load,
+  `bir.load_local ... , addr %t1+4` for the nested array element load, and a
+  direct semantic caller `bir.call i32 get_second(ptr %lv.outer)`; nearby
+  `tests/backend/case/local_array.c` remains on its prior local-slot route
+- 2026-04-14 proof extension:
+  add
+  `backend_codegen_route_x86_64_nested_member_pointer_array_observe_semantic_bir`
+  as a dual backend-route sentinel that proves the new nested pointer-bearing
+  aggregate route while keeping `local_array.c` as nearby regression coverage
+- 2026-04-14 proof result:
+  the delegated proof command passes with the new nested-member/local-array
+  backend route sentinel included, and `test_after.log` is the proof log path
+- next adjacent local-address gap:
+  this slice makes constant-offset pointer-param/member dereference stay on
+  semantic BIR, but broader dynamic-index local-address formation and later
+  ABI/legalization work remain outside the current packet
 - previous backlog-item-2 history below is accepted baseline only; do not mine
   it for the next packet unless a fresh non-ABI signature seam is named
 - current capability family:
