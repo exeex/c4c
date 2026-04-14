@@ -144,6 +144,9 @@ Choose the next specialist with these rules:
   call `c4c-plan-owner`
 - if routine packet progress only needs checklist/status refresh:
   keep `plan.md` and the source idea unchanged; let the executor update `todo.md`
+- treat executor-written `Suggested Next` in [`todo.md`](/workspaces/c4c/todo.md)
+  as advisory handoff context only; the supervisor still owns packet
+  selection and may reuse, refine, or replace that suggestion
 - if route friction can be fixed in `todo.md`, do that before `plan.md`
 - if route friction can be fixed in `plan.md`, do not touch the source idea
 - if an active plan exists and code must change:
@@ -209,13 +212,16 @@ After a specialist returns:
 9. inspect deeper git history only if that quick check suggests real route risk
 10. check both whether the slice matches `plan.md` and whether `plan.md` still
     matches the linked source idea
-11. reject the slice if it is testcase-overfit, even if the chosen subset is
+11. if executor-written `Suggested Next` in [`todo.md`](/workspaces/c4c/todo.md)
+    drifts from `plan.md` or the linked source idea, update that `Suggested
+    Next` field before sending the next packet
+12. reject the slice if it is testcase-overfit, even if the chosen subset is
     now green
-12. if overfit risk is non-trivial and not already resolved, call
+13. if overfit risk is non-trivial and not already resolved, call
     `c4c-reviewer` instead of accepting the slice on supervisor judgment alone
-13. if the reviewer says `route reset needed`, delegate rewrite of `todo.md` /
+14. if the reviewer says `route reset needed`, delegate rewrite of `todo.md` /
     `plan.md` before more execution
-14. if the slice is complete, validation is sufficient, and no overfit concern
+15. if the slice is complete, validation is sufficient, and no overfit concern
     remains, commit it promptly
 
 Commit guidance:
@@ -231,11 +237,13 @@ Commit guidance:
 ## Commit Subject Rules
 
 1. The supervisor creates the final commit for every accepted slice.
-2. If staged changes touch `plan.md`, include `[plan_change]`.
-3. If staged changes touch `todo.md`, include `[todo_change]`.
-4. If staged changes touch `ideas/open/*`, include `[idea_open_change]`.
-5. Keep the remaining subject text explicit about the lifecycle or slice
+2. If staged changes touch `plan.md`, `todo.md`, or `ideas/open/*`, rely on
+   the git hook to inject or validate the canonical compact lifecycle tag.
+3. Do not manually duplicate lifecycle tags that the hook already manages.
+4. Keep the remaining subject text explicit about the lifecycle or slice
    action.
+5. Prefer compact lifecycle tags such as `[plan]`, `[plan+idea]`, or
+   `[todo_only]` when a manual subject must already include one.
 6. Do not use vague subjects like `update plan` or `reset todo`.
 
 ## Completion

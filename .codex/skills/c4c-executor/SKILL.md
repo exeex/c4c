@@ -39,8 +39,8 @@ Follow this flow in order:
 4. Inspect only the files needed for that slice.
 5. Make the smallest coherent code change.
 6. Run the delegated `Proof` command.
-7. Update [`todo.md`](/workspaces/c4c/todo.md) with what finished, what
-   remains, and what proof ran.
+7. Update [`todo.md`](/workspaces/c4c/todo.md) with what just finished, the
+   executor-suggested next packet, any watchouts, and what proof ran.
 8. Preserve `test_after.log` on disk.
 9. Return concise handoff notes and stop.
 
@@ -68,12 +68,22 @@ Executor packets should normally include [`todo.md`](/workspaces/c4c/todo.md) in
 When updating [`todo.md`](/workspaces/c4c/todo.md):
 
 - edit only the relevant section for the active packet
-- mark what was completed
-- note what remains next
-- record the proof command or test subset used
-- record whether the supervisor-selected proof was sufficient or blocked
-- record `test_after.log` as the proof log path
-- record only real, current blockers
+- record `Just Finished`: what this packet actually completed
+- keep `Just Finished` as a short overwrite-style summary for the latest packet,
+  not an accumulating history list
+- record `Suggested Next`: the next coherent packet the executor recommends
+- keep `Suggested Next` limited to the next packet only; do not build a queued
+  backlog there
+- treat `Suggested Next` as advisory only; the supervisor still owns packet
+  selection and may override it
+- record `Watchouts`: extra findings, risks, or route notes that the next
+  packet should not miss
+- keep `Watchouts` focused on live notes for the next handoff, not a growing
+  archive
+- record `Proof`: the proof command or test subset used, whether the
+  supervisor-selected proof was sufficient or blocked, and `test_after.log` as
+  the proof log path
+- record blockers only when they are real and current
 
 Do not repave the whole file. Do not rewrite plan structure. Do not convert routine packet progress into a `plan.md` rewrite.
 
@@ -133,7 +143,7 @@ Return concise handoff notes with:
 - test subset used
 - log paths
 - assumptions
-- blockers or follow-up notes
+- blockers, if any
 
 If a proof command failed, include:
 
@@ -142,4 +152,4 @@ If a proof command failed, include:
 - the log path for that command
 - whether the blocker is inside or outside owned files
 - whether the slice should remain uncommitted
-- the smallest follow-up packet that would unblock progress
+- the smallest suggested next packet that would unblock progress

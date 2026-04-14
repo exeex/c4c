@@ -49,11 +49,11 @@ If Blocked: stop and report the exact history ambiguity
 The review base must come from git history.
 
 1. Run `scripts/plan_change_gap.sh` first, then inspect
-   `git log --oneline --grep='\[plan_change\]' -- plan.md todo.md ideas/open/`.
-2. Prefer commits whose subjects use the canonical lifecycle scope tags such as
-   `[plan_change]`, `[todo_change]`, and `[idea_open_change]`, then use the
-   remaining subject text to find the commit that began the current active plan
-   or the last reviewer checkpoint for that same plan.
+   `git log --oneline --extended-regexp --grep='\[[^]]*plan[^]]*\]' -- plan.md todo.md ideas/open/`.
+2. Prefer commits whose subjects use the canonical compact lifecycle scope tags
+   such as `[plan]`, `[plan+idea]`, and `[todo_only]`, then use the remaining
+   subject text to find the commit that began the current active plan or the
+   last reviewer checkpoint for that same plan.
 3. If `plan.md` was later edited for housekeeping, do not use the latest
    `plan.md` commit blindly; keep walking history until you find the commit
    that actually reset, activated, or reviewer-checkpointed the current plan.
