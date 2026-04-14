@@ -16,3 +16,6 @@
 [submodule "tests/c/external/clang"]
 	path = tests/c/external/clang
 	url = https://github.com/exeex/c4c-clangtestc.git
+[submodule "ref/c4c-clang-tools"]
+	path = ref/c4c-clang-tools
+	url = https://github.com/exeex/c4c-clang-tools.git

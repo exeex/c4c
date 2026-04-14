@@ -1,0 +1,4 @@
+interface:
+  display_name: "C4C Clang Tools"
+  short_description: "Query C++ AST structure, symbols, and local call/type relationships"
+  default_prompt: "Use the repo-local c4c clang tools to inspect C++ structure through AST-backed queries such as function signatures, definitions, declarations, direct callers/callees, and type references before reading large files wholesale."
