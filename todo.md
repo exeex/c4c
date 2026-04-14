@@ -152,6 +152,21 @@ Source Plan: plan.md
 - packet rule:
   do not treat trivial native-asm output on helper cases as proof of semantic
   signature progress, and do not spend the next packet on harness-only churn
+- 2026-04-14 temporary executor packet:
+  refactor `src/backend/lowering/lir_to_bir*` into clearer functional slices
+  ahead of the active backlog-item-2 code path, without changing backend
+  capability or test scope
+- 2026-04-14 temporary executor packet result:
+  `src/backend/lowering/lir_to_bir.hpp` now exposes the shared cross-file
+  lowering API for agent discovery, shared type/layout helpers moved into
+  `src/backend/lowering/lir_to_bir_types.cpp`, global/address lowering moved
+  into `src/backend/lowering/lir_to_bir_globals.cpp`, and
+  `src/backend/lowering/lir_to_bir_module.cpp` now keeps the remaining
+  module/function lowering flow instead of owning those helper buckets too;
+  `CMakeLists.txt` was updated to build the new files
+- 2026-04-14 temporary proof result:
+  the delegated proof command passes `12 / 12` `^backend_` tests after the
+  refactor, and the proof log is `test_after.log`
 
 ## Parked Backlog Item 1 Baseline
 

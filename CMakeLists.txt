@@ -35,6 +35,8 @@ set(BACKEND_LOWERING_BOOTSTRAP_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_context.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_analysis.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_types.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_globals.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_module.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prepare/prepare.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prepare/legalize.cpp"
