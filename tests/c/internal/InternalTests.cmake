@@ -1703,6 +1703,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_local_struct_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_local_struct_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_local_struct_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_local_struct(ptr %p.f, i32 %p.x) -> i32 {|bir.call i32 %p.f(i32 %p.x)|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @call_local_struct"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_indirect_i32_ptr_arg_param_call_defaults_to_asm
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_i32_ptr_arg_param_call.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
