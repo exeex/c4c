@@ -6,6 +6,34 @@ Source Plan: plan.md
 
 ## Lifecycle Repair Decision
 
+- 2026-04-14 supervisor route checkpoint after backlog-item-2 scouting:
+  keep the same active source idea and active runbook; do not close, split,
+  or switch ideas
+- backlog item 2 is now parked at the accepted non-variadic signature
+  baseline:
+  the checked-in x86 semantic-BIR sentinels already cover scalar params,
+  aggregate `byval`, hidden `sret`, direct/indirect function-pointer calls,
+  direct object-address pointer args, loaded global-pointer args/returns, and
+  aggregate function-pointer call-through
+- scouting result:
+  the only nearby non-BIR misses are
+  `tests/backend/case/nested_member_pointer_array.c`, which belongs to local
+  pointer-bearing address formation, and
+  `tests/backend/case/variadic_sum2.c`,
+  `tests/backend/case/variadic_pair_second.c`, and
+  `tests/backend/case/variadic_double_bytes.c`, which belong to later
+  ABI/variadic work rather than the active non-variadic signature lane
+- lifecycle decision:
+  re-sequence active executor dispatch onto backlog item 3, broaden local
+  memory and address formation
+- execution state:
+  ready for a bounded backlog-item-3 executor packet centered on shared local
+  object/address semantics, starting from
+  `tests/backend/case/nested_member_pointer_array.c`
+- next lifecycle expectation:
+  do not send another backlog-item-2 packet whose main effect is more
+  signature-lane sentinel churn unless a fresh honest non-ABI signature seam
+  appears
 - 2026-04-14 plan-owner route checkpoint:
   keep the same active source idea and active runbook; do not close, split,
   or switch ideas
@@ -36,6 +64,22 @@ Source Plan: plan.md
 - active route:
   semantic BIR remains the truth surface, `prepare` owns target legality, and
   target backends should ingest prepared BIR as the normal path
+- current capability family:
+  backlog item 3, broaden local memory and address formation
+- current packet focus:
+  `src/backend/lowering/lir_to_bir_memory.cpp` /
+  `src/backend/lowering/lir_to_bir_types.cpp` on shared local object/address
+  semantics for pointer-bearing local aggregates, starting with
+  `nested_member_pointer_array.c`
+- proving surface:
+  use `tests/backend/case/nested_member_pointer_array.c` as the first honest
+  miss for this lane; keep `tests/backend/case/local_array.c` as nearby
+  regression coverage rather than expanding signature-only sentinels again
+- packet rule:
+  do not spend the next packet on more backlog-item-2 harness churn or on
+  variadic ABI work
+- previous backlog-item-2 history below is accepted baseline only; do not mine
+  it for the next packet unless a fresh non-ABI signature seam is named
 - current capability family:
   backlog item 2, harden params and function signatures
 - current packet focus:
@@ -222,20 +266,16 @@ Source Plan: plan.md
 
 ## Immediate Target
 
-- 2026-04-14 executor packet result:
-  `src/backend/lowering/lir_to_bir.hpp` now leads with the actual
-  `BirFunctionLowerer` construction/lowering and legacy parse interface, keeps
-  the split-TU helper type buckets grouped together as shared declaration
-  support, moves `lower_value` and `lower_minimal_scalar_type` behind the
-  private boundary, and regroups the remaining private methods into explicit
-  scalar/calling/aggregate/cfg/memory/function-flow buckets without changing
-  backend behavior or reopening `call_decode.*`
-- 2026-04-14 proof result:
-  the delegated proof command still passes `12 / 12` `^backend_` tests after
-  the header regrouping, and `test_after.log` is the proof log path
+- 2026-04-14 lifecycle checkpoint result:
+  the temporary `lir_to_bir` shape-cleanup packet is complete, and follow-up
+  scouting shows backlog item 2 has no remaining honest non-ABI executor
+  packet on the current x86 semantic-BIR surface
 - next adjacent follow-up:
-  this class-shape packet is complete; resume backlog-item-2 semantic
-  signature capability work next unless a fresh compileability pain point
-  justifies another structural-only packet
+  prepare a bounded backlog-item-3 executor packet on shared local
+  object/address semantics, starting with pointer-bearing local aggregate
+  addressing in `tests/backend/case/nested_member_pointer_array.c`
+- route guard:
+  do not pull `variadic_*` cases forward here, and do not spend the next
+  packet only on more item-2 signature sentinels
 - delegated proof command:
   `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`

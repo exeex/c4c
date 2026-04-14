@@ -37,11 +37,10 @@ rendered-text case matchers, or equivalent workaround seams under new names.
 
 ## Current Targets
 
-- `src/backend/lowering/lir_to_bir_module.cpp`
-- `src/backend/lowering/call_decode.cpp`
-- `tests/c/internal/backend_case/param_slot.c`
-- `tests/c/internal/backend_case/param_member_array.c`
-- `tests/c/internal/backend_case/nested_param_member_array.c`
+- `src/backend/lowering/lir_to_bir_memory.cpp`
+- `src/backend/lowering/lir_to_bir_types.cpp`
+- `tests/backend/case/nested_member_pointer_array.c`
+- `tests/backend/case/local_array.c`
 
 ## Route Checkpoint
 
@@ -97,6 +96,26 @@ rendered-text case matchers, or equivalent workaround seams under new names.
 - until that proving surface exists, supervisor should commit only lifecycle
   state for this checkpoint and stop rather than inventing another bounded
   executor packet from exhausted backlog-item-1 evidence
+- 2026-04-14 lifecycle checkpoint after backlog-item-2 signature scouting:
+  keep the same source idea and runbook, but park backlog item 2 at the
+  accepted non-variadic semantic-signature baseline instead of forcing more
+  x86 signature-lane churn
+- honest x86 semantic-BIR signature coverage now includes the accepted
+  parameter, aggregate `byval`, hidden `sret`, direct function-symbol,
+  indirect function-pointer, direct object-address pointer, loaded global
+  pointer, and aggregate function-pointer call surfaces already checked into
+  `tests/backend/CMakeLists.txt`
+- the nearby non-BIR misses found during supervisor scouting are
+  `tests/backend/case/nested_member_pointer_array.c`, which belongs to shared
+  local pointer-bearing address formation, and the `variadic_*` cases, which
+  belong to later ABI/variadic work rather than the active non-variadic
+  signature lane
+- route-quality re-sequencing is therefore justified again:
+  the next honest executor packet advances to backlog item 3 local
+  memory/address semantics instead of extending item-2 harness inventory or
+  pulling variadic ABI work forward
+- do not send another executor packet whose main effect is more backlog-item-2
+  semantic-BIR sentinel churn unless a fresh non-ABI signature seam appears
 
 ## Non-Goals
 
@@ -119,7 +138,9 @@ rendered-text case matchers, or equivalent workaround seams under new names.
 - stale unsupported-route inventory is harness debt, not proof of the next
   missing capability
 - backlog item 1 explicit-phi materialization now stays parked as
-  non-regression coverage while executor focus moves to params/signatures
+  non-regression coverage, backlog item 2 signature work stays parked as the
+  accepted non-variadic baseline, and executor focus now moves to local
+  memory/address formation
 
 ## Completed Capability Baseline
 
@@ -128,7 +149,9 @@ added:
 
 - scalar compare / branch / return
 - single-parameter `select` lowering from `diamond + phi`
-- minimal function signature and direct scalar param handling
+- non-variadic semantic function signatures for scalar params, aggregate
+  `byval`, hidden `sret`, direct/indirect pointer calls, and loaded-global
+  pointer call/return flows
 - local scalar slots, loads, and stores
 - local arrays with constant indexing
 - direct global calls with minimal typed args
@@ -240,6 +263,10 @@ Completion check:
   supported prepared-BIR emission to print BIR
 - scalar direct helper/runtime sentinels remain consistent with the same
   signature-lowering rule instead of requiring named-case branches
+- current checkpoint state:
+  keep this lane parked at the accepted non-variadic signature baseline until
+  a fresh honest signature seam appears that does not actually belong to local
+  address formation or later ABI/variadic work
 
 ### 3. Broaden local memory and address formation
 
@@ -248,8 +275,8 @@ address semantics.
 
 Primary target:
 
-- `src/backend/lowering/lir_to_bir_module.cpp`
-- `src/backend/bir.hpp`
+- `src/backend/lowering/lir_to_bir_memory.cpp`
+- `src/backend/lowering/lir_to_bir_types.cpp`
 
 Design contract:
 
@@ -299,6 +326,11 @@ Completion check:
   recoveries
 - local address formation is reusable by later call/memory lanes without
   re-inferring aggregate layout from testcase shape
+- current checkpoint state:
+  start this lane from pointer-bearing local aggregate address formation on
+  `tests/backend/case/nested_member_pointer_array.c`; keep
+  `tests/backend/case/local_array.c` as nearby regression coverage, and do not
+  mix variadic ABI work into this packet
 
 ### 4. Broaden global data and addressed globals
 
