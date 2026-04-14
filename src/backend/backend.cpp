@@ -387,6 +387,38 @@ bool move_riscv_call_args_into_regs(const std::vector<Value>& args,
   return true;
 }
 
+struct PendingRiscvStackCallArg {
+  TypeKind type = TypeKind::Void;
+  std::string reg;
+};
+
+std::optional<PendingRiscvStackCallArg> materialize_riscv_stack_call_arg(const Value& value,
+                                                                         TypeKind type,
+                                                                         RiscvEmitState& state,
+                                                                         std::ostringstream& out) {
+  if (!is_supported_riscv_call_arg_type(type) || value.type != type) {
+    return std::nullopt;
+  }
+
+  auto reg = allocate_riscv_temp(state);
+  if (!reg.has_value()) {
+    return std::nullopt;
+  }
+
+  if (value.kind == Value::Kind::Immediate) {
+    if (type != TypeKind::I32) {
+      return std::nullopt;
+    }
+    out << "    li " << *reg << ", " << value.immediate << "\n";
+    return PendingRiscvStackCallArg{.type = type, .reg = *reg};
+  }
+
+  if (!move_riscv_value_into_reg(value, *reg, state, out)) {
+    return std::nullopt;
+  }
+  return PendingRiscvStackCallArg{.type = type, .reg = *reg};
+}
+
 bool lower_riscv_binary_inst(const BinaryInst& inst,
                              RiscvEmitState& state,
                              std::ostringstream& out) {
@@ -429,8 +461,10 @@ bool lower_riscv_binary_inst(const BinaryInst& inst,
 bool lower_riscv_call_inst(const CallInst& inst,
                            RiscvEmitState& state,
                            std::ostringstream& out) {
+  constexpr std::size_t kMaxSupportedRiscvCallArgs = kRiscvArgRegs.size() + 1;
+
   if (inst.is_variadic || inst.calling_convention != c4c::backend::bir::CallingConv::C ||
-      inst.args.size() > kRiscvArgRegs.size() || inst.arg_types.size() != inst.args.size()) {
+      inst.args.size() > kMaxSupportedRiscvCallArgs || inst.arg_types.size() != inst.args.size()) {
     return false;
   }
   if (inst.return_type != TypeKind::Void && inst.return_type != TypeKind::I32 &&
@@ -442,6 +476,8 @@ bool lower_riscv_call_inst(const CallInst& inst,
       return false;
     }
   }
+
+  const auto reg_arg_count = std::min(inst.args.size(), kRiscvArgRegs.size());
   std::optional<std::string> indirect_callee_reg;
   if (inst.is_indirect) {
     if (!inst.callee_value.has_value()) {
@@ -452,9 +488,9 @@ bool lower_riscv_call_inst(const CallInst& inst,
       return false;
     }
     const bool callee_in_arg_reg = std::find(kRiscvArgRegs.begin(),
-                                             kRiscvArgRegs.begin() + inst.args.size(),
+                                             kRiscvArgRegs.begin() + reg_arg_count,
                                              std::string_view(*callee_reg)) !=
-                                   kRiscvArgRegs.begin() + inst.args.size();
+                                   kRiscvArgRegs.begin() + reg_arg_count;
     if (callee_in_arg_reg) {
       indirect_callee_reg = allocate_riscv_temp(state);
       if (!indirect_callee_reg.has_value()) {
@@ -465,14 +501,44 @@ bool lower_riscv_call_inst(const CallInst& inst,
       indirect_callee_reg = *callee_reg;
     }
   }
-  if (!move_riscv_call_args_into_regs(inst.args, inst.arg_types, state, out)) {
+
+  std::optional<PendingRiscvStackCallArg> stack_arg;
+  if (inst.args.size() > kRiscvArgRegs.size()) {
+    stack_arg = materialize_riscv_stack_call_arg(
+        inst.args[kRiscvArgRegs.size()], inst.arg_types[kRiscvArgRegs.size()], state, out);
+    if (!stack_arg.has_value()) {
+      return false;
+    }
+  }
+
+  const std::vector<Value> reg_args(inst.args.begin(),
+                                    inst.args.begin() + static_cast<std::ptrdiff_t>(reg_arg_count));
+  const std::vector<TypeKind> reg_arg_types(inst.arg_types.begin(),
+                                            inst.arg_types.begin() +
+                                                static_cast<std::ptrdiff_t>(reg_arg_count));
+  if (!move_riscv_call_args_into_regs(reg_args, reg_arg_types, state, out)) {
     return false;
+  }
+
+  constexpr std::int64_t kRiscvCallStackAreaSize = 16;
+  if (stack_arg.has_value()) {
+    out << "    addi sp, sp, -" << kRiscvCallStackAreaSize << "\n";
+    if (stack_arg->type == TypeKind::I32) {
+      out << "    sw " << stack_arg->reg << ", 0(sp)\n";
+    } else if (stack_arg->type == TypeKind::Ptr) {
+      out << "    sd " << stack_arg->reg << ", 0(sp)\n";
+    } else {
+      return false;
+    }
   }
 
   if (inst.is_indirect) {
     out << "    jalr ra, " << *indirect_callee_reg << ", 0\n";
   } else {
     out << "    call " << inst.callee << "\n";
+  }
+  if (stack_arg.has_value()) {
+    out << "    addi sp, sp, " << kRiscvCallStackAreaSize << "\n";
   }
   state.value_regs.clear();
   state.next_temp_index = 0;
