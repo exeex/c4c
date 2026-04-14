@@ -129,16 +129,23 @@ Source Plan: plan.md
 - 2026-04-14 proof result:
   the delegated proof command passes with the two new pointer-return backend
   route sentinels included, and `test_after.log` is the proof log path
+- 2026-04-14 executor packet extension:
+  plain `ptr` call arguments sourced from direct global/object addresses now
+  stay on the semantic signature lane too, instead of forcing direct-global
+  call sites such as `consume(&g)` back to raw LLVM call text
+- 2026-04-14 executor packet result:
+  `tests/backend/case/pointer_param_direct_global_arg.c` now proves the
+  object-address pointer-arg route on x86_64: semantic BIR shows
+  `bir.call i32 consume(ptr @g)` in `main` instead of LLVM
+  `call i32 (ptr) @consume(ptr @g)` fallback text
+- 2026-04-14 proof result:
+  the delegated proof command now passes `12 / 12` backend tests with the new
+  `backend_codegen_route_x86_64_pointer_param_direct_global_arg_observe_semantic_bir`
+  sentinel included, and `test_after.log` is the proof log path
 - next adjacent signature-lane gap:
-  plain `ptr` call arguments sourced from object addresses such as `@g` still
-  fall off the semantic lane on x86_64, so pointer-return routes currently
-  need param-routed operands rather than direct object-address actuals
-  add
-  `backend_codegen_route_x86_64_function_pointer_param_direct_arg_observe_semantic_bir`
-  as the minimal pointer-arg sentinel and
-  `backend_codegen_route_x86_64_aggregate_param_return_pair_fn_param_observe_semantic_bir`
-  as the honest aggregate function-pointer-param route sentinel for this
-  signature slice
+  this slice closes the direct `@g`-style object-address pointer-arg hole, but
+  broader pointer-source coverage and downstream ABI/legalization work remain
+  outside the current packet
 - regression sentinels:
   keep the `two_arg_*` helper family as runtime and route sentinels, not as
   the primary proof source for this lane

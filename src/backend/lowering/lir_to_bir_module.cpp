@@ -3020,6 +3020,7 @@ std::optional<bir::Value> resolve_local_aggregate_pointer_value_alias(
 std::optional<bir::Value> lower_call_pointer_arg_value(
     const c4c::codegen::lir::LirOperand& operand,
     const ValueMap& value_aliases,
+    const GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols) {
   if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
     return lower_value(operand, bir::TypeKind::Ptr, value_aliases);
@@ -3029,7 +3030,8 @@ std::optional<bir::Value> lower_call_pointer_arg_value(
   }
 
   const std::string symbol_name = operand.str().substr(1);
-  if (!is_known_function_symbol(symbol_name, function_symbols)) {
+  if (!is_known_function_symbol(symbol_name, function_symbols) &&
+      global_types.find(symbol_name) == global_types.end()) {
     return std::nullopt;
   }
   return bir::Value::named(bir::TypeKind::Ptr, "@" + symbol_name);
@@ -4757,6 +4759,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
           const auto arg = lower_call_pointer_arg_value(
               c4c::codegen::lir::LirOperand(std::string(parsed_call->typed_call.args[index].operand)),
               value_aliases,
+              global_types,
               function_symbols);
           if (!arg.has_value()) {
             return false;
@@ -4819,6 +4822,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
           const auto arg = lower_call_pointer_arg_value(
               c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand)),
               value_aliases,
+              global_types,
               function_symbols);
           if (!arg.has_value()) {
             return false;

@@ -165,6 +165,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_pointer_param_direct_global_arg_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/pointer_param_direct_global_arg.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/pointer_param_direct_global_arg_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @consume(ptr %p.p) -> i32 {|bir.call i32 consume(ptr @g)|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (ptr) @consume(ptr @g)"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_pointer_return_fn_param_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/pointer_return_fn_param.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu
