@@ -264,6 +264,18 @@ class BirFunctionLowerer {
   using DynamicLocalAggregateArrayMap =
       std::unordered_map<std::string, DynamicLocalAggregateArrayAccess>;
 
+  struct DynamicPointerValueArrayAccess {
+    bir::Value base_value;
+    bir::TypeKind element_type = bir::TypeKind::Void;
+    std::size_t byte_offset = 0;
+    std::size_t element_count = 0;
+    std::size_t element_stride_bytes = 0;
+    bir::Value index;
+  };
+
+  using DynamicPointerValueArrayMap =
+      std::unordered_map<std::string, DynamicPointerValueArrayAccess>;
+
   struct LocalPointerArrayBase {
     std::vector<std::string> element_slots;
     std::size_t base_index = 0;
@@ -308,6 +320,8 @@ class BirFunctionLowerer {
     bir::Value base_value;
     bir::TypeKind value_type = bir::TypeKind::Void;
     std::size_t byte_offset = 0;
+    std::string storage_type_text;
+    std::string type_text;
   };
 
   using PointerAddressMap = std::unordered_map<std::string, PointerAddress>;
@@ -463,6 +477,11 @@ class BirFunctionLowerer {
                                                            const ValueMap& value_aliases);
   static std::optional<bir::Value> make_index_immediate(bir::TypeKind type,
                                                         std::size_t value);
+  static std::optional<bir::Value> synthesize_value_array_selects(
+      std::string_view result_name,
+      const std::vector<bir::Value>& element_values,
+      const bir::Value& index_value,
+      std::vector<bir::Inst>* lowered_insts);
   static std::optional<bir::Value> synthesize_pointer_array_selects(
       std::string_view result_name,
       const std::vector<bir::Value>& element_values,
@@ -478,6 +497,12 @@ class BirFunctionLowerer {
       std::string_view type_text,
       std::size_t target_offset,
       std::string_view repeated_type_text,
+      const TypeDeclMap& type_decls);
+  static std::optional<LocalAggregateGepTarget> resolve_relative_gep_target(
+      std::string_view type_text,
+      std::size_t base_byte_offset,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
       const TypeDeclMap& type_decls);
   static std::optional<std::size_t> find_pointer_array_length_at_offset(
       std::string_view type_text,
@@ -620,6 +645,7 @@ class BirFunctionLowerer {
   LocalPointerArrayBaseMap local_pointer_array_bases_;
   DynamicLocalPointerArrayMap dynamic_local_pointer_arrays_;
   DynamicLocalAggregateArrayMap dynamic_local_aggregate_arrays_;
+  DynamicPointerValueArrayMap dynamic_pointer_value_arrays_;
   LocalAggregateSlotMap local_aggregate_slots_;
   LocalAggregateFieldSet local_aggregate_field_slots_;
   LocalPointerValueAliasMap local_pointer_value_aliases_;

@@ -102,6 +102,32 @@ Source Plan: plan.md
   this slice makes constant-offset pointer-param/member dereference stay on
   semantic BIR, but broader dynamic-index local-address formation and later
   ABI/legalization work remain outside the current packet
+- 2026-04-14 executor packet extension:
+  addressed-pointer metadata now preserves the originating aggregate storage
+  shape for semantic local-address roots, and bounded dynamic scalar member
+  arrays lower as addressed load ladders plus select chains instead of
+  falling back to LLVM `getelementptr` / `load` text when the index is
+  non-constant
+- 2026-04-14 executor packet result:
+  `tests/backend/case/local_dynamic_member_array.c` now reaches semantic BIR
+  on x86_64 with three addressed loads from `%p.p`, a bounded `bir.select`
+  ladder on the lowered dynamic index, and a semantic caller
+  `bir.call i32 get_at(ptr %lv.p, i32 2)`; nearby
+  `nested_member_pointer_array.c` and `local_array.c` stay on their accepted
+  local-address routes
+- 2026-04-14 proof extension:
+  add
+  `backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir`
+  as a dual backend-route sentinel that proves bounded dynamic local member
+  array addressing while keeping `local_array.c` as nearby regression coverage
+- 2026-04-14 proof result:
+  the delegated proof command now passes `16 / 16` backend tests with the new
+  dynamic-member/local-array route sentinel included, and `test_after.log` is
+  the proof log path
+- next adjacent local-address gap:
+  bounded dynamic scalar member-array loads now stay on semantic BIR, but
+  dynamic addressed stores and broader non-scalar / later ABI-legalized local
+  address flows remain outside the current packet
 - previous backlog-item-2 history below is accepted baseline only; do not mine
   it for the next packet unless a fresh non-ABI signature seam is named
 - current capability family:

@@ -231,3 +231,22 @@ c4c_set_backend_test_labels(
   "backend_codegen_route_x86_64_nested_member_pointer_array_observe_semantic_bir"
   backend_route
 )
+
+add_test(
+  NAME backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DSRC_A=${BACKEND_CASE_ROOT}/local_dynamic_member_array.c
+          -DOUT_A=${CMAKE_BINARY_DIR}/backend_route/local_dynamic_member_array_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_A=bir.func @get_at(ptr %p.p, i32 %p.i) -> i32 {|%t4.elt0 = bir.load_local i32 %t4.elt0.addr, addr %p.p|%t4.elt1 = bir.load_local i32 %t4.elt1.addr, addr %p.p+4|%t4.elt2 = bir.load_local i32 %t4.elt2.addr, addr %p.p+8|%t4 = bir.select eq i64 %t2, 0, i32 %t4.elt0, %t4.sel1|bir.call i32 get_at(ptr %lv.p, i32 2)|bir.ret i32 %t12"
+          "-DFORBIDDEN_SNIPPETS_A=define i32 @get_at|getelementptr [3 x i32], ptr"
+          -DSRC_B=${BACKEND_CASE_ROOT}/local_array.c
+          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/local_array_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_B=bir.func @main() -> i32 {|bir.store_local %lv.xs.0, i32 4|bir.store_local %lv.xs.1, i32 3|%t14 = bir.add i32 %t9, %t13|bir.ret i32 %t14"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
+)
+c4c_set_backend_test_labels(
+  "backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir"
+  backend_route
+)
