@@ -93,10 +93,21 @@ Primary target:
 
 Concrete actions:
 
+- use `ref/claudes-c-compiler/src/backend/generation.rs` as the shape
+  reference for shared pre-codegen CFG semantics:
+  terminators and ordinary value flow are handled in the shared pipeline
+  before later target phases
+- use `ref/claudes-c-compiler/src/backend/stack_layout/mod.rs`,
+  `stack_layout/slot_assignment.rs`, and `stack_layout/README.md` as the
+  downstream contract reference:
+  later prepare/stack work should consume phi-eliminated or merge-attributed
+  values rather than rediscovering CFG semantics inside call lowering
 - widen beyond `diamond + phi -> bir.select`
 - support ordinary block-merge `phi` forms without testcase-shaped CFG probes
-- define when semantic BIR keeps `phi`-like merge structure versus lowering to
-  `select`
+- define the first honest semantic split:
+  canonical diamonds may still lower to `select`, but non-diamond or
+  predecessor-attributed merges must remain explicit shared merge semantics
+  until later prepare work
 - make later lanes consume already-lowered merge semantics:
   call lowering must use shared merged values, not carry its own private
   `phi`/CFG reconstruction rules
@@ -105,6 +116,8 @@ Completion check:
 
 - non-trivial merge shapes no longer require raw-LIR fallback
 - `phi` handling is explained by CFG semantics, not by one named case family
+- the first implementation slice changes lowering/BIR files rather than only
+  test routing or proving regexes
 
 ### 2. Harden params and function signatures
 
