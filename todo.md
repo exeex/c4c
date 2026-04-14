@@ -42,12 +42,26 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir_module.cpp` and
   `src/backend/lowering/call_decode.cpp` on parameter entry lowering,
   direct-call argument materialization, and return propagation
+- 2026-04-14 executor packet result:
+  `src/backend/lowering/lir_to_bir_module.cpp` now consumes the existing
+  hoisted entry-scratch instructions for scalar param-entry spills instead of
+  rejecting them at branch-family lowering time, so the truthful scalar
+  `param_slot` path now reaches prepared BIR/toolchain output instead of
+  stopping at the earlier frontend route rejection
 - proving surface:
   use `tests/c/internal/backend_case/param_slot.c`,
   `tests/c/internal/backend_case/param_member_array.c`, and
   `tests/c/internal/backend_case/nested_param_member_array.c` as the first
   honest packet anchor because they prove signature behavior without forcing
   supported prepared-BIR emission to print BIR
+- remaining blocker:
+  `param_member_array` and `nested_param_member_array` still require a wider
+  by-value aggregate param contract than this scalar packet owned; do not
+  fake progress there with route-specific shortcuts
+- supporting proof surface:
+  `backend_codegen_route_x86_64_param_slot_observes_prepared_bir` now serves
+  as the authorized one-off harness proof for this scalar packet, because the
+  truthful x86 runtime path still stops at prepared-BIR toolchain output
 - regression sentinels:
   keep the `two_arg_*` helper family as runtime and route sentinels, not as
   the primary proof source for this lane
@@ -81,6 +95,14 @@ Source Plan: plan.md
   `param_slot`, `param_member_array`, and `nested_param_member_array`
 - default proving command for the next backend packet remains:
   `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+- 2026-04-14 proof result:
+  the exact backend proof command above moved `backend_runtime_param_slot`
+  from `[BACKEND_FRONTEND_FAIL]` to `[BACKEND_TOOLCHAIN_FAIL]` on printed BIR
+  output, while `param_member_array` and `nested_param_member_array` remain
+  the honest frontend blockers for the wider by-value aggregate step;
+  `backend_codegen_route_x86_64_param_slot_observes_prepared_bir` passed on
+  the same backend subset run, the accepted subset envelope is now
+  `421 total / 210 passed / 211 failed`, and the proof log is `test_after.log`
 - if runtime behavior alone cannot expose the signature change cleanly,
   authorize at most one narrow harness packet that supports the same code move
   without regressing supported prepared-BIR emission

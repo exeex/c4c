@@ -4683,13 +4683,17 @@ std::optional<bir::Function> lower_branch_family_function(
       return std::nullopt;
     }
   }
-  if (!hoisted_alloca_scratch.empty()) {
-    return std::nullopt;
-  }
+
+  bool emitted_hoisted_alloca_scratch = false;
 
   for (const auto& block : function.blocks) {
     bir::Block lowered_block;
     lowered_block.label = block.label;
+    if (!emitted_hoisted_alloca_scratch && block.label == function.blocks.front().label &&
+        !hoisted_alloca_scratch.empty()) {
+      lowered_block.insts = std::move(hoisted_alloca_scratch);
+      emitted_hoisted_alloca_scratch = true;
+    }
 
     if (const auto phi_it = phi_plans->find(block.label); phi_it != phi_plans->end()) {
       for (const auto& phi_plan : phi_it->second) {

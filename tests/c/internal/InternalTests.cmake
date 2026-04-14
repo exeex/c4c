@@ -1622,6 +1622,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_param_slot_observes_prepared_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/param_slot.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/param_slot_x86_64.ll"
+      REQUIRED_SNIPPETS "bir.func @add_one(i32 %p.x) -> i32 {|bir.store_local %lv.param.x, i32 %p.x|%t0 = bir.load_local i32 %lv.param.x|%t1 = bir.add i32 %t0, 1|bir.store_local %lv.param.x, i32 %t1|%t2 = bir.load_local i32 %lv.param.x|bir.ret i32 %t2|bir.func @main() -> i32 {|%t0 = bir.call i32 add_one(i32 5)|bir.ret i32 %t0"
+      FORBIDDEN_SNIPPETS "define i32 @add_one|error: --codegen asm requires backend-native assembly output."
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_indirect_param_call_defaults_to_asm
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_param_call.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
