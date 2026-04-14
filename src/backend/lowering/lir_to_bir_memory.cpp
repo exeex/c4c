@@ -3100,14 +3100,48 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       };
       const auto append_local_leaf_copy = [&](const LocalMemcpyLeafView& source_view,
                                               const LocalMemcpyLeafView& target_view) -> bool {
-        if (source_view.size_bytes != target_view.size_bytes ||
-            requested_size != target_view.size_bytes ||
-            source_view.leaves.size() != target_view.leaves.size()) {
+        const auto collect_requested_prefix =
+            [&](const LocalMemcpyLeafView& view) -> std::optional<std::vector<LocalMemcpyLeaf>> {
+          if (requested_size > view.size_bytes) {
+            return std::nullopt;
+          }
+
+          std::vector<LocalMemcpyLeaf> prefix;
+          prefix.reserve(view.leaves.size());
+          std::size_t covered_bytes = 0;
+          for (const auto& leaf : view.leaves) {
+            if (covered_bytes == requested_size) {
+              break;
+            }
+            if (leaf.byte_offset != covered_bytes) {
+              return std::nullopt;
+            }
+
+            const auto leaf_size = type_size_bytes(leaf.type);
+            if (leaf_size == 0 || leaf.byte_offset + leaf_size > requested_size) {
+              return std::nullopt;
+            }
+
+            prefix.push_back(leaf);
+            covered_bytes += leaf_size;
+          }
+
+          if (covered_bytes != requested_size) {
+            return std::nullopt;
+          }
+          return prefix;
+        };
+
+        const auto source_prefix = collect_requested_prefix(source_view);
+        const auto target_prefix = collect_requested_prefix(target_view);
+        if (!source_prefix.has_value() || !target_prefix.has_value() ||
+            source_prefix->size() != target_prefix->size()) {
           return false;
         }
-        for (std::size_t index = 0; index < target_view.leaves.size(); ++index) {
-          const auto& source_leaf = source_view.leaves[index];
-          const auto& target_leaf = target_view.leaves[index];
+
+        for (std::size_t index = 0; index < target_prefix->size(); ++index) {
+          const auto& source_leaf = (*source_prefix)[index];
+          const auto& target_leaf = (*target_prefix)[index];
           if (source_leaf.byte_offset != target_leaf.byte_offset || source_leaf.type != target_leaf.type) {
             return false;
           }
