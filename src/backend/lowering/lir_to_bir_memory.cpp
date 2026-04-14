@@ -2885,12 +2885,12 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           target_aggregate_it != local_aggregate_slots.end()) {
         const auto source_aggregate_it = local_aggregate_slots.find(src_operand);
         if (source_aggregate_it == local_aggregate_slots.end() ||
-            target_aggregate_it->second.storage_type_text != source_aggregate_it->second.storage_type_text) {
+            target_aggregate_it->second.type_text != source_aggregate_it->second.type_text) {
           return false;
         }
 
         const auto aggregate_layout =
-            lower_byval_aggregate_layout(target_aggregate_it->second.storage_type_text, type_decls);
+            lower_byval_aggregate_layout(target_aggregate_it->second.type_text, type_decls);
         if (!aggregate_layout.has_value() || requested_size != aggregate_layout->size_bytes) {
           return false;
         }

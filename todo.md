@@ -28,9 +28,10 @@ Source Plan: plan.md
 - current capability family:
   semantic call ownership and runtime-facing lowering
 - current packet focus:
-  semantic runtime/intrinsic lowering now covers integer `abs` plus local
-  aggregate `memcpy` call lowering in `lir_to_bir`; the next packet should
-  stay on adjacent runtime/call families instead of drifting into `prepare`
+  semantic runtime/intrinsic lowering now covers integer `abs` plus direct
+  `memcpy` lowering for matching local aggregates and nested GEP-derived local
+  subobjects in `lir_to_bir`; the next packet should stay on adjacent
+  runtime/call families instead of drifting into `prepare`
 - packet rule:
   the first executor packet must change shared semantic lowering, not just add
   new test observers or rename unsupported cases
@@ -39,25 +40,28 @@ Source Plan: plan.md
   exercises one semantic call/runtime family with a fresh build before broader
   validation
 - Just Finished:
-  lowered direct `@memcpy(ptr, ptr, i64)` calls into semantic BIR when both
-  operands are matching local aggregate objects, aliased the pointer return to
-  the destination object, and added backend-route proof with
-  `builtin_memcpy_local_pair.c`
+  lowered direct `@memcpy(ptr, ptr, i64)` calls into semantic BIR for matching
+  local aggregate objects and matching GEP-derived local aggregate subobjects,
+  taught aggregate leaf helpers to respect subobject-relative offsets, aliased
+  the pointer return to the destination object, and added backend-route proof
+  with `builtin_memcpy_nested_pair_field.c`
 - Watchouts:
-  direct `memcpy` calls whose operands arrive as GEP-derived pointers or local
-  arrays still fall back today; keep follow-on work in shared semantic
-  lowering rather than target- or testcase-shaped handling
+  direct `memcpy` calls whose operands arrive as local arrays, mixed-shape
+  pointers, or non-local bases still fall back today; keep follow-on work in
+  shared semantic lowering rather than target- or testcase-shaped handling
 - Proof:
   `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
   passed, including
-  `backend_codegen_route_x86_64_builtin_memcpy_local_pair_observe_semantic_bir`;
+  `backend_codegen_route_x86_64_builtin_memcpy_local_pair_observe_semantic_bir`
+  and
+  `backend_codegen_route_x86_64_builtin_memcpy_nested_pair_field_observe_semantic_bir`;
   `test_after.log` preserved
 
 ## Suggested Next
 
 - extend semantic `memcpy` lowering from matching local aggregate objects to
-  the next nearby shared shape, preferably GEP-derived local object pointers
-  if that can stay semantic and planner-honest
+  the next nearby shared shape that still stays semantic and planner-honest,
+  preferably local array objects or another shared local-subobject path
 - if that next `memcpy` shape needs new semantic BIR surface, keep that
   surface shared and planner-honest rather than encoding direct target
   behavior

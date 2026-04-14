@@ -33,10 +33,20 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> BirFunctionLowerer::lower
 
 std::vector<std::pair<std::size_t, std::string>> BirFunctionLowerer::collect_sorted_leaf_slots(
     const LocalAggregateSlots& aggregate_slots) const {
+  const auto layout = lower_byval_aggregate_layout(aggregate_slots.type_text, type_decls_);
+  if (!layout.has_value()) {
+    return {};
+  }
+
+  const auto begin_offset = aggregate_slots.base_byte_offset;
+  const auto end_offset = begin_offset + layout->size_bytes;
   std::vector<std::pair<std::size_t, std::string>> leaves;
   leaves.reserve(aggregate_slots.leaf_slots.size());
   for (const auto& [byte_offset, slot_name] : aggregate_slots.leaf_slots) {
-    leaves.push_back({byte_offset, slot_name});
+    if (byte_offset < begin_offset || byte_offset >= end_offset) {
+      continue;
+    }
+    leaves.push_back({byte_offset - begin_offset, slot_name});
   }
   std::sort(leaves.begin(),
             leaves.end(),
@@ -176,14 +186,25 @@ bool BirFunctionLowerer::append_local_aggregate_copy_from_slots(
     const LocalAggregateSlots& target_slots,
     std::string_view temp_prefix,
     std::vector<bir::Inst>* lowered_insts) const {
+  const auto source_layout = lower_byval_aggregate_layout(source_slots.type_text, type_decls_);
+  const auto target_layout = lower_byval_aggregate_layout(target_slots.type_text, type_decls_);
+  if (!source_layout.has_value() || !target_layout.has_value() ||
+      source_layout->size_bytes != target_layout->size_bytes) {
+    return false;
+  }
+
   const auto target_leaves = collect_sorted_leaf_slots(target_slots);
   for (const auto& [byte_offset, target_slot_name] : target_leaves) {
-    const auto source_slot_it = source_slots.leaf_slots.find(byte_offset);
+    const auto source_slot_it =
+        source_slots.leaf_slots.find(source_slots.base_byte_offset + byte_offset);
     if (source_slot_it == source_slots.leaf_slots.end()) {
       return false;
     }
     const auto slot_type_it = local_slot_types_.find(target_slot_name);
-    if (slot_type_it == local_slot_types_.end()) {
+    const auto source_slot_type_it = local_slot_types_.find(source_slot_it->second);
+    if (slot_type_it == local_slot_types_.end() ||
+        source_slot_type_it == local_slot_types_.end() ||
+        source_slot_type_it->second != slot_type_it->second) {
       return false;
     }
     const std::string temp_name =
