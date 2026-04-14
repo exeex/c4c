@@ -94,6 +94,8 @@ using LocalPointerArrayBaseMap = std::unordered_map<std::string, LocalPointerArr
 
 struct DynamicGlobalPointerArrayAccess {
   std::string global_name;
+  std::size_t byte_offset = 0;
+  std::size_t element_count = 0;
   bir::Value index;
 };
 
@@ -1587,28 +1589,21 @@ std::optional<std::vector<bir::Value>> collect_local_pointer_values(
 }
 
 std::optional<std::vector<bir::Value>> collect_global_array_pointer_values(
-    std::string_view global_name,
-    const GlobalTypes& global_types,
-    const TypeDeclMap& type_decls) {
-  const auto global_it = global_types.find(std::string(global_name));
+    const DynamicGlobalPointerArrayAccess& access,
+    const GlobalTypes& global_types) {
+  const auto global_it = global_types.find(access.global_name);
   if (global_it == global_types.end()) {
     return std::nullopt;
   }
-
-  const auto layout = compute_aggregate_type_layout(global_it->second.type_text, type_decls);
-  if (layout.kind != AggregateTypeLayout::Kind::Array) {
-    return std::nullopt;
-  }
-  const auto element_layout = compute_aggregate_type_layout(layout.element_type_text, type_decls);
-  if (element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
-      element_layout.scalar_type != bir::TypeKind::Ptr || element_layout.size_bytes == 0) {
+  if (access.element_count == 0) {
     return std::nullopt;
   }
 
   std::vector<bir::Value> element_values;
-  element_values.reserve(layout.array_count);
-  for (std::size_t index = 0; index < layout.array_count; ++index) {
-    const auto offset = index * element_layout.size_bytes;
+  element_values.reserve(access.element_count);
+  for (std::size_t index = 0; index < access.element_count; ++index) {
+    const auto offset =
+        access.byte_offset + index * type_size_bytes(bir::TypeKind::Ptr);
     const auto init_it = global_it->second.pointer_initializer_offsets.find(offset);
     if (init_it == global_it->second.pointer_initializer_offsets.end() ||
         init_it->second.value_type != bir::TypeKind::Ptr || init_it->second.byte_offset != 0) {
@@ -1618,6 +1613,148 @@ std::optional<std::vector<bir::Value>> collect_global_array_pointer_values(
         bir::Value::named(bir::TypeKind::Ptr, "@" + init_it->second.global_name));
   }
   return element_values;
+}
+
+std::optional<std::size_t> find_pointer_array_length_at_offset(
+    std::string_view type_text,
+    std::size_t target_offset,
+    const TypeDeclMap& type_decls) {
+  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
+  if (layout.kind == AggregateTypeLayout::Kind::Invalid || target_offset >= layout.size_bytes) {
+    return std::nullopt;
+  }
+
+  switch (layout.kind) {
+    case AggregateTypeLayout::Kind::Array: {
+      const auto element_layout =
+          compute_aggregate_type_layout(layout.element_type_text, type_decls);
+      if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
+          element_layout.size_bytes == 0) {
+        return std::nullopt;
+      }
+      if (target_offset == 0 &&
+          element_layout.kind == AggregateTypeLayout::Kind::Scalar &&
+          element_layout.scalar_type == bir::TypeKind::Ptr) {
+        return layout.array_count;
+      }
+      const auto element_index = target_offset / element_layout.size_bytes;
+      if (element_index >= layout.array_count) {
+        return std::nullopt;
+      }
+      const auto nested_offset = target_offset % element_layout.size_bytes;
+      return find_pointer_array_length_at_offset(
+          layout.element_type_text, nested_offset, type_decls);
+    }
+    case AggregateTypeLayout::Kind::Struct:
+      for (std::size_t index = 0; index < layout.fields.size(); ++index) {
+        const auto field_begin = layout.fields[index].byte_offset;
+        const auto field_end =
+            index + 1 < layout.fields.size() ? layout.fields[index + 1].byte_offset
+                                             : layout.size_bytes;
+        if (target_offset < field_begin || target_offset >= field_end) {
+          continue;
+        }
+        return find_pointer_array_length_at_offset(
+            layout.fields[index].type_text, target_offset - field_begin, type_decls);
+      }
+      return std::nullopt;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<DynamicGlobalPointerArrayAccess> resolve_global_dynamic_pointer_array_access(
+    std::string_view global_name,
+    std::string_view base_type_text,
+    std::size_t initial_byte_offset,
+    bool relative_base,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const TypeDeclMap& type_decls) {
+  if (gep.indices.empty()) {
+    return std::nullopt;
+  }
+
+  std::string_view current_type = c4c::codegen::lir::trim_lir_arg_text(base_type_text);
+  std::size_t byte_offset = initial_byte_offset;
+  for (std::size_t index_pos = 0; index_pos < gep.indices.size(); ++index_pos) {
+    const auto parsed_index = parse_typed_operand(gep.indices[index_pos]);
+    if (!parsed_index.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto layout = compute_aggregate_type_layout(current_type, type_decls);
+    if (layout.kind == AggregateTypeLayout::Kind::Invalid || layout.size_bytes == 0) {
+      return std::nullopt;
+    }
+
+    if (index_pos == 0 && !relative_base) {
+      const auto index_value = resolve_index_operand(parsed_index->operand, value_aliases);
+      if (!index_value.has_value() || *index_value != 0) {
+        return std::nullopt;
+      }
+      continue;
+    }
+
+    if (index_pos == 0 && relative_base) {
+      const auto index_value = resolve_index_operand(parsed_index->operand, value_aliases);
+      if (!index_value.has_value() || *index_value < 0) {
+        return std::nullopt;
+      }
+      byte_offset += static_cast<std::size_t>(*index_value) * layout.size_bytes;
+      continue;
+    }
+
+    switch (layout.kind) {
+      case AggregateTypeLayout::Kind::Array: {
+        const auto element_layout =
+            compute_aggregate_type_layout(layout.element_type_text, type_decls);
+        if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
+            element_layout.size_bytes == 0) {
+          return std::nullopt;
+        }
+
+        if (const auto index_value = resolve_index_operand(parsed_index->operand, value_aliases);
+            index_value.has_value()) {
+          if (*index_value < 0 ||
+              static_cast<std::size_t>(*index_value) >= layout.array_count) {
+            return std::nullopt;
+          }
+          byte_offset += static_cast<std::size_t>(*index_value) * element_layout.size_bytes;
+          current_type = c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text);
+          break;
+        }
+
+        const auto lowered_index = lower_typed_index_value(*parsed_index, value_aliases);
+        if (!lowered_index.has_value() || index_pos + 1 != gep.indices.size() ||
+            element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
+            element_layout.scalar_type != bir::TypeKind::Ptr) {
+          return std::nullopt;
+        }
+        return DynamicGlobalPointerArrayAccess{
+            .global_name = std::string(global_name),
+            .byte_offset = byte_offset,
+            .element_count = layout.array_count,
+            .index = *lowered_index,
+        };
+      }
+      case AggregateTypeLayout::Kind::Struct: {
+        const auto index_value = resolve_index_operand(parsed_index->operand, value_aliases);
+        if (!index_value.has_value() || *index_value < 0 ||
+            static_cast<std::size_t>(*index_value) >= layout.fields.size()) {
+          return std::nullopt;
+        }
+        byte_offset += layout.fields[static_cast<std::size_t>(*index_value)].byte_offset;
+        current_type = c4c::codegen::lir::trim_lir_arg_text(
+            layout.fields[static_cast<std::size_t>(*index_value)].type_text);
+        break;
+      }
+      default:
+        return std::nullopt;
+    }
+  }
+
+  return std::nullopt;
 }
 
 void record_pointer_global_object_alias(std::string_view result_name,
@@ -2774,25 +2911,12 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
         global_pointer_slots[gep->result.str()] = *resolved_address;
         return true;
       }
-      const auto layout = compute_aggregate_type_layout(global_it->second.type_text, type_decls);
-      if (layout.kind != AggregateTypeLayout::Kind::Array || layout.element_type_text != "ptr" ||
-          gep->indices.size() != 2) {
+      const auto dynamic_array = resolve_global_dynamic_pointer_array_access(
+          global_name, global_it->second.type_text, 0, false, *gep, value_aliases, type_decls);
+      if (!dynamic_array.has_value()) {
         return false;
       }
-      const auto base_index = parse_typed_operand(gep->indices[0]);
-      const auto elem_index = parse_typed_operand(gep->indices[1]);
-      if (!base_index.has_value() || !elem_index.has_value()) {
-        return false;
-      }
-      const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
-      const auto elem_value = lower_typed_index_value(*elem_index, value_aliases);
-      if (!base_imm.has_value() || *base_imm != 0 || !elem_value.has_value()) {
-        return false;
-      }
-      dynamic_global_pointer_arrays[gep->result.str()] = DynamicGlobalPointerArrayAccess{
-          .global_name = global_name,
-          .index = *elem_value,
-      };
+      dynamic_global_pointer_arrays[gep->result.str()] = std::move(*dynamic_array);
       return true;
     }
 
@@ -2915,35 +3039,44 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
         global_pointer_slots[gep->result.str()] = *resolved_address;
         return true;
       }
-      if (gep->indices.size() != 1 ||
-          base_address.value_type != bir::TypeKind::Ptr ||
-          base_address.byte_offset % type_size_bytes(bir::TypeKind::Ptr) != 0) {
-        return false;
+      const auto dynamic_array = resolve_global_dynamic_pointer_array_access(
+          base_address.global_name,
+          gep->element_type.str(),
+          base_address.byte_offset,
+          true,
+          *gep,
+          value_aliases,
+          type_decls);
+      if (!dynamic_array.has_value()) {
+        if (gep->indices.size() != 1 || base_address.value_type != bir::TypeKind::Ptr) {
+          return false;
+        }
+        const auto parsed_index = parse_typed_operand(gep->indices.front());
+        if (!parsed_index.has_value()) {
+          return false;
+        }
+        const auto index_value = lower_typed_index_value(*parsed_index, value_aliases);
+        if (!index_value.has_value()) {
+          return false;
+        }
+        const auto global_it = global_types.find(base_address.global_name);
+        if (global_it == global_types.end()) {
+          return false;
+        }
+        const auto array_length = find_pointer_array_length_at_offset(
+            global_it->second.type_text, base_address.byte_offset, type_decls);
+        if (!array_length.has_value()) {
+          return false;
+        }
+        dynamic_global_pointer_arrays[gep->result.str()] = DynamicGlobalPointerArrayAccess{
+            .global_name = base_address.global_name,
+            .byte_offset = base_address.byte_offset,
+            .element_count = *array_length,
+            .index = *index_value,
+        };
+        return true;
       }
-      const auto global_it = global_types.find(base_address.global_name);
-      if (global_it == global_types.end()) {
-        return false;
-      }
-      const auto layout = compute_aggregate_type_layout(global_it->second.type_text, type_decls);
-      if (layout.kind != AggregateTypeLayout::Kind::Array || layout.element_type_text != "ptr") {
-        return false;
-      }
-      const auto parsed_index = parse_typed_operand(gep->indices.front());
-      if (!parsed_index.has_value()) {
-        return false;
-      }
-      const auto index_value = lower_typed_index_value(*parsed_index, value_aliases);
-      if (!index_value.has_value()) {
-        return false;
-      }
-      const auto base_index = base_address.byte_offset / type_size_bytes(bir::TypeKind::Ptr);
-      if (base_index != 0) {
-        return false;
-      }
-      dynamic_global_pointer_arrays[gep->result.str()] = DynamicGlobalPointerArrayAccess{
-          .global_name = base_address.global_name,
-          .index = *index_value,
-      };
+      dynamic_global_pointer_arrays[gep->result.str()] = std::move(*dynamic_array);
       return true;
     } else {
       const auto ptr_it = local_pointer_slots.find(gep->ptr.str());
@@ -3320,8 +3453,8 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
         }
         if (const auto global_array_it = dynamic_global_pointer_arrays.find(load->ptr.str());
             global_array_it != dynamic_global_pointer_arrays.end()) {
-          const auto element_values = collect_global_array_pointer_values(
-              global_array_it->second.global_name, global_types, type_decls);
+          const auto element_values =
+              collect_global_array_pointer_values(global_array_it->second, global_types);
           if (!element_values.has_value()) {
             return false;
           }
