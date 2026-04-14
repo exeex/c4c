@@ -58,6 +58,39 @@ Source Plan: plan.md
 ## Latest Packet Progress
 
 - completed:
+  one more materially distinct deeper-both split-predecessor CFG merge route
+  case is now explicitly proved on the riscv64 semantic-BIR route instead of
+  remaining only under generic asm-unsupported coverage:
+  `two_param_select_eq_split_predecessor_deeper_affine_post_add_sub.c` now
+  has a dedicated defaults-to-BIR backend-route assertion that checks the
+  deeper-both join-shape snippets where the then-side affine chain stores
+  `%t10` into `%t14.phi`, the else-side affine chain stores `%t13` into that
+  same merge slot, and the shared post-merge add/sub chain reloads through
+  `%t14 = bir.load_local i32 %t14.phi` before return
+  the matching generic riscv64 `asm_unsupported` registration for that same
+  stem was removed so the route surface now records this deeper-both
+  split-predecessor merge shape as explicit BIR coverage rather than
+  fallback-only inventory
+  what remains next:
+  keep backlog item 1 on the next materially distinct richer merge shape from
+  the remaining split-predecessor families, such as one of the still-generic
+  mixed-post or post-chain-tail variants, without widening into
+  testcase-shaped route logic or drifting back into call-lane work
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated build succeeded, the new riscv64 route test passed as
+  test `#384`, and the standing `^backend_` subset remained monotonic while
+  replacing the old failing generic `asm_unsupported` registration:
+  the subset still exited nonzero because of pre-existing backend failures,
+  but the backend subset improved monotonically from `194` passed / `222`
+  failed in `test_before.log` to `195` passed / `221` failed in
+  `test_after.log` out of `416` with no new failures, so this deeper-both
+  split-predecessor merge case is now explicitly covered on the semantic-BIR
+  route without adding regression
+- completed:
   one more materially distinct converse-asymmetric split-predecessor CFG merge
   route case is now explicitly proved on the riscv64 semantic-BIR route
   instead of remaining only under generic asm-unsupported coverage:
