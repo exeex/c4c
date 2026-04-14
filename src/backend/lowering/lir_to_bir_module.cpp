@@ -574,6 +574,18 @@ std::optional<bir::TypeKind> lower_integer_type(std::string_view text) {
   return std::nullopt;
 }
 
+std::optional<bir::TypeKind> lower_scalar_or_function_pointer_type(std::string_view text) {
+  const auto lowered = lower_integer_type(text);
+  if (lowered.has_value()) {
+    return lowered;
+  }
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (trimmed == "ptr" || trimmed.rfind("ptr ", 0) == 0) {
+    return bir::TypeKind::Ptr;
+  }
+  return std::nullopt;
+}
+
 std::optional<bir::CastOpcode> lower_cast_opcode(c4c::codegen::lir::LirCastKind kind) {
   switch (kind) {
     case c4c::codegen::lir::LirCastKind::SExt:
@@ -4144,7 +4156,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       return false;
     }
 
-    const auto value_type = lower_integer_type(store->type_str.str());
+    const auto value_type = lower_scalar_or_function_pointer_type(store->type_str.str());
     if (!value_type.has_value()) {
       const auto aggregate_layout = lower_byval_aggregate_layout(store->type_str.str(), type_decls);
       if (!aggregate_layout.has_value() ||
@@ -4206,6 +4218,29 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
                                                     local_slot_types,
                                                     store->ptr.str() + ".aggregate.copy",
                                                     lowered_insts);
+    }
+
+    if (*value_type == bir::TypeKind::Ptr &&
+        store->val.kind() == c4c::codegen::lir::LirOperandKind::Global &&
+        store->ptr.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      const auto ptr_it = local_pointer_slots.find(store->ptr.str());
+      if (ptr_it == local_pointer_slots.end()) {
+        return false;
+      }
+      const auto slot_it = local_slot_types.find(ptr_it->second);
+      if (slot_it == local_slot_types.end() || slot_it->second != *value_type) {
+        return false;
+      }
+      const std::string global_name = store->val.str().substr(1);
+      if (!is_known_function_symbol(global_name, function_symbols)) {
+        return false;
+      }
+      local_address_slots[ptr_it->second] = GlobalAddress{
+          .global_name = global_name,
+          .value_type = bir::TypeKind::Ptr,
+          .byte_offset = 0,
+      };
+      return true;
     }
 
     const auto value = lower_value(store->val, *value_type, value_aliases);
@@ -4568,6 +4603,11 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
     } else if (*value_type == bir::TypeKind::Ptr) {
       if (const auto addr_it = local_address_slots.find(ptr_it->second);
           addr_it != local_address_slots.end()) {
+        if (addr_it->second.byte_offset == 0 &&
+            is_known_function_symbol(addr_it->second.global_name, function_symbols)) {
+          value_aliases[load->result.str()] =
+              bir::Value::named(bir::TypeKind::Ptr, "@" + addr_it->second.global_name);
+        }
         global_pointer_slots[load->result.str()] = addr_it->second;
         return true;
       }

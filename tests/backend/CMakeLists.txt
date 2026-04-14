@@ -133,3 +133,13 @@ c4c_add_backend_codegen_route_test(
   REQUIRED_SNIPPETS "bir.func @id_pair(ptr sret(size=8, align=4) %ret.sret, ptr byval(size=8, align=4) %p.p) -> void {|%lv.param.p.p.aggregate.param.copy.0 = bir.load_local i32 %lv.param.p.p.0, addr %p.p|bir.store_local %lv.param.p.p.0, i32 id_pair.ret.sret.copy.0, addr %ret.sret|bir.call void id_pair(ptr sret(size=8, align=4) %t3, ptr byval(size=8, align=4) %lv.p)|bir.ret i32 %t5"
   FORBIDDEN_SNIPPETS "define %struct.Pair @id_pair(%struct.Pair %p.p)|call %struct.Pair (%struct.Pair) @id_pair(%struct.Pair %t2)"
 )
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_indirect_aggregate_param_return_pair_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/indirect_aggregate_param_return_pair.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/indirect_aggregate_param_return_pair_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @id_pair(ptr sret(size=8, align=4) %ret.sret, ptr byval(size=8, align=4) %p.p) -> void {|bir.store_local %lv.p.0, i32 4|bir.call void @id_pair(ptr sret(size=8, align=4) %t4, ptr byval(size=8, align=4) %lv.p)|bir.ret i32 %t6"
+  FORBIDDEN_SNIPPETS "define %struct.Pair @id_pair(%struct.Pair %p.p)|call %struct.Pair (%struct.Pair) %t2(%struct.Pair %t3)"
+)

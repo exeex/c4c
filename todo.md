@@ -82,12 +82,24 @@ Source Plan: plan.md
   add `backend_codegen_route_x86_64_aggregate_param_return_pair_observe_semantic_bir`
   as the first combined byval-param plus sret-return sentinel so the active
   packet proves more than separate one-sided aggregate signature moves
+- 2026-04-14 executor packet extension:
+  constant function-pointer aggregate call sites now stay on the semantic
+  signature lane too: backend call decoding canonicalizes `ptr byval(...)`
+  call-site args back to their aggregate param types, and lowering carries
+  known function-symbol pointer aliases through the call edge instead of
+  falling back to raw LLVM aggregate signatures
+- 2026-04-14 executor packet result:
+  `tests/backend/case/indirect_aggregate_param_return_pair.c` now proves the
+  same aggregate param+return rule through a local function-pointer call site;
+  semantic BIR shows `bir.call void @id_pair(ptr sret(...), ptr byval(...))`
+  instead of LLVM `%struct.Pair (%struct.Pair) %tN(...)` fallback text
 - 2026-04-14 proof result:
-  the exact backend proof command now passes `6 / 6` backend tests, including
-  the new combined aggregate signature sentinel; semantic BIR for
-  `aggregate_param_return_pair.c` shows `id_pair` lowering as
-  `ptr sret(...)` plus `ptr byval(...)` instead of a raw `%struct.Pair`
-  signature and call
+  the exact backend proof command now passes `7 / 7` backend tests, including
+  the new indirect aggregate function-pointer sentinel; semantic BIR for both
+  `aggregate_param_return_pair.c` and
+  `indirect_aggregate_param_return_pair.c` shows `id_pair` lowering as
+  `ptr sret(...)` plus `ptr byval(...)` instead of raw `%struct.Pair`
+  signatures/calls, and the proof log is `test_after.log`
 - regression sentinels:
   keep the `two_arg_*` helper family as runtime and route sentinels, not as
   the primary proof source for this lane
