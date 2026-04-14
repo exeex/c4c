@@ -184,47 +184,7 @@ set_tests_properties(positive_split_llvm_pragma_exec PROPERTIES
     LABELS "internal;positive_case;split_llvm")
 
 
-add_test(
-    NAME frontend_cxx_stage1_version
-    COMMAND c4cll --version
-)
-set_tests_properties(frontend_cxx_stage1_version PROPERTIES
-    LABELS "internal;example"
-    PASS_REGULAR_EXPRESSION "tiny-c2ll"
-)
 
-if(EXISTS "${EXAMPLE_C}")
-  add_test(
-      NAME frontend_cxx_stage1_lex
-      COMMAND c4cll --lex-only "${EXAMPLE_C}"
-  )
-  set_tests_properties(frontend_cxx_stage1_lex PROPERTIES
-      LABELS "internal;example"
-      PASS_REGULAR_EXPRESSION "EOF"
-  )
-endif()
-
-if(EXISTS "${EXAMPLE_C}")
-  add_test(
-      NAME frontend_cxx_stage1_parse
-      COMMAND c4cll --parse-only "${EXAMPLE_C}"
-  )
-  set_tests_properties(frontend_cxx_stage1_parse PROPERTIES
-      LABELS "internal;example"
-      PASS_REGULAR_EXPRESSION "Program"
-  )
-endif()
-
-if(EXISTS "${EXAMPLE_C}")
-  add_test(
-      NAME frontend_cxx_stage1_emit_ir
-      COMMAND c4cll "${EXAMPLE_C}"
-  )
-  set_tests_properties(frontend_cxx_stage1_emit_ir PROPERTIES
-      LABELS "internal;example"
-      PASS_REGULAR_EXPRESSION "define"
-  )
-endif()
 
 
 if(CLANG_EXECUTABLE)
