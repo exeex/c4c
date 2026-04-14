@@ -192,6 +192,36 @@ Source Plan: plan.md
   both addressed pointer-value roots and direct local aggregate-slot roots,
   but direct-local dynamic loads plus broader non-scalar / later
   ABI-legalized local address flows remain outside the current packet
+- 2026-04-14 executor packet extension:
+  bounded dynamic scalar member-array loads now stay on semantic BIR for
+  direct local aggregate-slot roots too when the local array base is already
+  represented as a leaf-slot pointer; lowering reuses the existing
+  `DynamicLocalAggregateArrayAccess` path to materialize per-element local
+  loads plus a bounded select ladder instead of falling back to LLVM
+  `getelementptr` / `load` text for the non-constant index
+- 2026-04-14 executor packet result:
+  `tests/backend/case/local_direct_dynamic_member_array_load.c` now reaches
+  semantic BIR on x86_64 with three direct local-slot loads from `%lv.p.0`,
+  `%lv.p.4`, and `%lv.p.8`, a bounded `bir.select` ladder against the lowered
+  dynamic index, and a direct semantic return from the selected local-slot
+  value; nearby
+  `local_direct_dynamic_member_array_store.c`,
+  `local_dynamic_member_array_store.c`, `local_dynamic_member_array.c`, and
+  `nested_member_pointer_array.c` stay on their accepted local-address routes
+- 2026-04-14 proof extension:
+  add
+  `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`
+  as the direct-local bounded dynamic-load sentinel while keeping the earlier
+  local-address sentinels in the same proof subset
+- 2026-04-14 proof result:
+  the delegated proof command now passes `5 / 5` backend tests with the new
+  direct-local dynamic-load sentinel included, and `test_after.log` is the
+  proof log path
+- next adjacent local-address gap:
+  bounded dynamic scalar member-array loads and stores now stay on semantic
+  BIR for both addressed pointer-value roots and direct local
+  aggregate-slot roots, but broader non-scalar local object/address flows and
+  later ABI-legalized address work remain outside the current packet
 - previous backlog-item-2 history below is accepted baseline only; do not mine
   it for the next packet unless a fresh non-ABI signature seam is named
 - current capability family:

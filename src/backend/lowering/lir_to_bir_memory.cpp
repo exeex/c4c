@@ -2580,6 +2580,59 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return true;
     }
 
+    if (const auto dynamic_local_aggregate_it = dynamic_local_aggregate_arrays.find(load->ptr.str());
+        dynamic_local_aggregate_it != dynamic_local_aggregate_arrays.end()) {
+      if (dynamic_local_aggregate_it->second.element_count == 0) {
+        return false;
+      }
+
+      const auto element_layout =
+          compute_aggregate_type_layout(dynamic_local_aggregate_it->second.element_type_text, type_decls);
+      if (element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
+          element_layout.scalar_type != *value_type) {
+        return false;
+      }
+
+      std::vector<bir::Value> element_values;
+      element_values.reserve(dynamic_local_aggregate_it->second.element_count);
+      for (std::size_t element_index = 0;
+           element_index < dynamic_local_aggregate_it->second.element_count;
+           ++element_index) {
+        const auto leaf_offset =
+            dynamic_local_aggregate_it->second.byte_offset +
+            element_index * dynamic_local_aggregate_it->second.element_stride_bytes;
+        const auto leaf_slot_it = dynamic_local_aggregate_it->second.leaf_slots.find(leaf_offset);
+        if (leaf_slot_it == dynamic_local_aggregate_it->second.leaf_slots.end()) {
+          return false;
+        }
+
+        const auto slot_it = local_slot_types.find(leaf_slot_it->second);
+        if (slot_it == local_slot_types.end() || slot_it->second != *value_type) {
+          return false;
+        }
+
+        const std::string element_name =
+            load->result.str() + ".elt" + std::to_string(element_index);
+        lowered_insts->push_back(bir::LoadLocalInst{
+            .result = bir::Value::named(*value_type, element_name),
+            .slot_name = leaf_slot_it->second,
+        });
+        element_values.push_back(bir::Value::named(*value_type, element_name));
+      }
+
+      const auto selected_value = synthesize_value_array_selects(
+          load->result.str(), element_values, dynamic_local_aggregate_it->second.index, lowered_insts);
+      if (!selected_value.has_value()) {
+        return false;
+      }
+      if (selected_value->kind == bir::Value::Kind::Named &&
+          selected_value->name == load->result.str()) {
+        return true;
+      }
+      value_aliases[load->result.str()] = *selected_value;
+      return true;
+    }
+
     const auto ptr_it = local_pointer_slots.find(load->ptr.str());
     if (ptr_it == local_pointer_slots.end()) {
       if (*value_type == bir::TypeKind::Ptr) {
