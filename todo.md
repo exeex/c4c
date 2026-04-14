@@ -272,3 +272,18 @@ Source Plan: plan.md
   the semantic-BIR observation surface remains available as proof support,
   while params/calls stay as sentinels and the exhausted route inventory is no
   longer an accepted proxy for merge progress
+- 2026-04-14 executor landed one backlog-item-1 canonical-diamond code move
+  in `src/backend/lowering/lir_to_bir_module.cpp`:
+  `lower_canonical_select_function` now accepts the narrow compare prelude and
+  foldable arm-cast chain needed by `single_param_u8_select_eq.c`, so that
+  case lowers through `bir.select` instead of falling back to the temporary
+  phi-slot load/store path
+- 2026-04-14 exact delegated proof for that canonical-`u8` select packet
+  passed as
+  `cmake --build --preset default && rm -f build/internal_backend_route/single_param_u8_select_eq_probe_riscv64.ll && ./build/c4cll --codegen asm --target riscv64-unknown-linux-gnu tests/c/internal/backend_route_case/single_param_u8_select_eq.c -o build/internal_backend_route/single_param_u8_select_eq_probe_riscv64.ll && rg -F "bir.select eq i32 %t0, 7, i8 11, 4" build/internal_backend_route/single_param_u8_select_eq_probe_riscv64.ll && ! rg -F "bir.store_local %t11.phi" build/internal_backend_route/single_param_u8_select_eq_probe_riscv64.ll && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_(branch_if_eq_defaults_to_bir|indirect_select_local_override_callee_call_defaults_to_bir))$'`
+  and wrote the result to `test_after.log`
+- the remaining backlog-item-1 gap after this packet is broader than this one
+  canonical-`u8` arm fold:
+  stale `asm_unsupported` route entries remain harness debt only, while the
+  next accepted packet still needs another real merge-semantics code move
+  rather than unsupported-test promotion
