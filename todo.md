@@ -166,6 +166,21 @@ Source Plan: plan.md
   returning to observation churn or stale inventory cleanup, treat that as a
   route-checkpoint condition and repair lifecycle state again before sending an
   executor
+- 2026-04-14 supervisor route-checkpoint follow-up tightened that condition:
+  broader backend logs are currently stable at `208 passed / 211 failed / 419
+  total`, so acceptance confidence is no longer blocked on a fresh regression
+  delta, but the nearby "fresh-looking" merge surfaces are exhausted too;
+  `return_select_eq[_u8]` and `return_select_ne[_u8]` currently fail because
+  the route emits truthful prepared BIR or native asm shape rather than the old
+  literal-snippet expectations, and `three_way_phi_merge_post_add_sub.c`
+  already lowers on the default prepared route to nested `bir.select` while the
+  semantic observation route still exposes explicit `bir.phi`
+- the remaining plausible backlog-item-1 seam after that check is no longer the
+  stale select inventory itself but a future generalization of explicit phi
+  handling beyond the currently proven binary/reducible shapes in
+  `src/backend/prepare/legalize.cpp`; do not dispatch another executor packet
+  until that seam is tied to one honest proving surface instead of another
+  stale-harness promotion
 
 ## Latest Packet Progress
 
