@@ -89,6 +89,40 @@ Source Plan: plan.md
 ## Latest Packet Progress
 
 - completed:
+  the first global array-of-struct field callee-provenance family now lowers
+  through semantic BIR without regressing the previously accepted global
+  pointer-array routes:
+  dynamic global aggregate-array indexing now stays on the shared provenance
+  lane only for aggregate element types, so `holders[which].slot(x)` can carry
+  the selected struct element plus constant field offset through to the
+  existing global pointer-array select path while the older plain global array
+  and global-struct-array callee routes keep using their accepted BIR path
+  new route proof covers `indirect_global_array_struct_field_callee_call.c` as
+  BIR, and the regression repair keeps
+  `indirect_global_array_callee_call.c` and
+  `indirect_global_struct_array_callee_call.c` lowering as BIR too, while
+  `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, the
+  merge-preserved callee route proof, the addressed-global and
+  local-aggregate callee route proofs, and the standing one-arg through
+  twenty-five-arg indirect-call plus `two_arg_*` direct-call sentinels stayed
+  in the owned proof surface
+  what remains next:
+  keep this family bounded by moving only to the adjacent local
+  array-of-struct field callee route in a follow-up packet; do not widen back
+  into pointer-signature churn or unrelated aggregate cases
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated build succeeded, the repaired broad `^backend_` subset
+  remained monotonic under regression guard, the new riscv64 route test passed
+  as test `#271`, the total backend route surface increased from `411` to
+  `412`, and the standing failed-test count held at `225`, so the first
+  global shared-state array-of-struct field callee family is now covered on
+  the shared semantic-BIR lane without regressing the accepted global array
+  and global-struct-array callee routes
+- completed:
   the first addressed global aggregate-owned function-pointer array callee
   family now lowers through semantic BIR instead of falling back after the
   struct-field `gep` step:

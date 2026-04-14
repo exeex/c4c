@@ -96,11 +96,24 @@ struct DynamicGlobalPointerArrayAccess {
   std::string global_name;
   std::size_t byte_offset = 0;
   std::size_t element_count = 0;
+  std::size_t element_stride_bytes = 0;
   bir::Value index;
 };
 
 using DynamicGlobalPointerArrayMap =
     std::unordered_map<std::string, DynamicGlobalPointerArrayAccess>;
+
+struct DynamicGlobalAggregateArrayAccess {
+  std::string global_name;
+  std::string element_type_text;
+  std::size_t byte_offset = 0;
+  std::size_t element_count = 0;
+  std::size_t element_stride_bytes = 0;
+  bir::Value index;
+};
+
+using DynamicGlobalAggregateArrayMap =
+    std::unordered_map<std::string, DynamicGlobalAggregateArrayAccess>;
 
 struct LocalAggregateSlots {
   std::string type_text;
@@ -1601,9 +1614,11 @@ std::optional<std::vector<bir::Value>> collect_global_array_pointer_values(
 
   std::vector<bir::Value> element_values;
   element_values.reserve(access.element_count);
+  const auto element_stride =
+      access.element_stride_bytes == 0 ? type_size_bytes(bir::TypeKind::Ptr)
+                                       : access.element_stride_bytes;
   for (std::size_t index = 0; index < access.element_count; ++index) {
-    const auto offset =
-        access.byte_offset + index * type_size_bytes(bir::TypeKind::Ptr);
+    const auto offset = access.byte_offset + index * element_stride;
     const auto init_it = global_it->second.pointer_initializer_offsets.find(offset);
     if (init_it == global_it->second.pointer_initializer_offsets.end() ||
         init_it->second.value_type != bir::TypeKind::Ptr || init_it->second.byte_offset != 0) {
@@ -1613,6 +1628,65 @@ std::optional<std::vector<bir::Value>> collect_global_array_pointer_values(
         bir::Value::named(bir::TypeKind::Ptr, "@" + init_it->second.global_name));
   }
   return element_values;
+}
+
+struct AggregateArrayExtent {
+  std::size_t element_count = 0;
+  std::size_t element_stride_bytes = 0;
+};
+
+std::optional<AggregateArrayExtent> find_repeated_aggregate_extent_at_offset(
+    std::string_view type_text,
+    std::size_t target_offset,
+    std::string_view repeated_type_text,
+    const TypeDeclMap& type_decls) {
+  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
+  if (layout.kind == AggregateTypeLayout::Kind::Invalid || target_offset >= layout.size_bytes) {
+    return std::nullopt;
+  }
+
+  switch (layout.kind) {
+    case AggregateTypeLayout::Kind::Array: {
+      const auto element_layout =
+          compute_aggregate_type_layout(layout.element_type_text, type_decls);
+      if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
+          element_layout.size_bytes == 0) {
+        return std::nullopt;
+      }
+      const auto element_index = target_offset / element_layout.size_bytes;
+      if (element_index >= layout.array_count) {
+        return std::nullopt;
+      }
+      const auto nested_offset = target_offset % element_layout.size_bytes;
+      if (nested_offset == 0 &&
+          c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text) ==
+              c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
+        return AggregateArrayExtent{
+            .element_count = layout.array_count - element_index,
+            .element_stride_bytes = element_layout.size_bytes,
+        };
+      }
+      return find_repeated_aggregate_extent_at_offset(
+          layout.element_type_text, nested_offset, repeated_type_text, type_decls);
+    }
+    case AggregateTypeLayout::Kind::Struct:
+      for (std::size_t index = 0; index < layout.fields.size(); ++index) {
+        const auto field_begin = layout.fields[index].byte_offset;
+        const auto field_end =
+            index + 1 < layout.fields.size() ? layout.fields[index + 1].byte_offset
+                                             : layout.size_bytes;
+        if (target_offset < field_begin || target_offset >= field_end) {
+          continue;
+        }
+        return find_repeated_aggregate_extent_at_offset(layout.fields[index].type_text,
+                                                        target_offset - field_begin,
+                                                        repeated_type_text,
+                                                        type_decls);
+      }
+      return std::nullopt;
+    default:
+      return std::nullopt;
+  }
 }
 
 std::optional<std::size_t> find_pointer_array_length_at_offset(
@@ -1755,6 +1829,57 @@ std::optional<DynamicGlobalPointerArrayAccess> resolve_global_dynamic_pointer_ar
   }
 
   return std::nullopt;
+}
+
+std::optional<DynamicGlobalAggregateArrayAccess> resolve_global_dynamic_aggregate_array_access(
+    const GlobalAddress& base_address,
+    std::string_view base_type_text,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const GlobalTypes& global_types,
+    const TypeDeclMap& type_decls) {
+  if (gep.indices.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto base_layout =
+      compute_aggregate_type_layout(c4c::codegen::lir::trim_lir_arg_text(base_type_text), type_decls);
+  if (base_layout.kind != AggregateTypeLayout::Kind::Struct &&
+      base_layout.kind != AggregateTypeLayout::Kind::Array) {
+    return std::nullopt;
+  }
+
+  const auto parsed_index = parse_typed_operand(gep.indices.front());
+  if (!parsed_index.has_value() ||
+      resolve_index_operand(parsed_index->operand, value_aliases).has_value()) {
+    return std::nullopt;
+  }
+
+  const auto lowered_index = lower_typed_index_value(*parsed_index, value_aliases);
+  if (!lowered_index.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto global_it = global_types.find(base_address.global_name);
+  if (global_it == global_types.end()) {
+    return std::nullopt;
+  }
+
+  const auto extent = find_repeated_aggregate_extent_at_offset(
+      global_it->second.type_text, base_address.byte_offset, base_type_text, type_decls);
+  if (!extent.has_value()) {
+    return std::nullopt;
+  }
+
+  return DynamicGlobalAggregateArrayAccess{
+      .global_name = base_address.global_name,
+      .element_type_text =
+          std::string(c4c::codegen::lir::trim_lir_arg_text(base_type_text)),
+      .byte_offset = base_address.byte_offset,
+      .element_count = extent->element_count,
+      .element_stride_bytes = extent->element_stride_bytes,
+      .index = *lowered_index,
+  };
 }
 
 void record_pointer_global_object_alias(std::string_view result_name,
@@ -2672,6 +2797,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
                                        AddressedGlobalPointerSlots& addressed_global_pointer_slots,
                                        GlobalPointerMap& global_pointer_slots,
                                        DynamicGlobalPointerArrayMap& dynamic_global_pointer_arrays,
+                                       DynamicGlobalAggregateArrayMap& dynamic_global_aggregate_arrays,
                                        GlobalObjectPointerMap& global_object_pointer_slots,
                                        GlobalAddressIntMap& global_address_ints,
                                        GlobalObjectAddressIntMap& global_object_address_ints,
@@ -3048,6 +3174,12 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
           value_aliases,
           type_decls);
       if (!dynamic_array.has_value()) {
+        const auto dynamic_aggregate = resolve_global_dynamic_aggregate_array_access(
+            base_address, gep->element_type.str(), *gep, value_aliases, global_types, type_decls);
+        if (dynamic_aggregate.has_value()) {
+          dynamic_global_aggregate_arrays[gep->result.str()] = std::move(*dynamic_aggregate);
+          return true;
+        }
         if (gep->indices.size() != 1 || base_address.value_type != bir::TypeKind::Ptr) {
           return false;
         }
@@ -3077,6 +3209,25 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
         return true;
       }
       dynamic_global_pointer_arrays[gep->result.str()] = std::move(*dynamic_array);
+      return true;
+    } else if (const auto global_aggregate_it = dynamic_global_aggregate_arrays.find(gep->ptr.str());
+               global_aggregate_it != dynamic_global_aggregate_arrays.end()) {
+      const auto element_leaf = resolve_relative_global_gep_address(
+          GlobalAddress{},
+          global_aggregate_it->second.element_type_text,
+          *gep,
+          value_aliases,
+          type_decls);
+      if (!element_leaf.has_value() || element_leaf->value_type != bir::TypeKind::Ptr) {
+        return false;
+      }
+      dynamic_global_pointer_arrays[gep->result.str()] = DynamicGlobalPointerArrayAccess{
+          .global_name = global_aggregate_it->second.global_name,
+          .byte_offset = global_aggregate_it->second.byte_offset + element_leaf->byte_offset,
+          .element_count = global_aggregate_it->second.element_count,
+          .element_stride_bytes = global_aggregate_it->second.element_stride_bytes,
+          .index = global_aggregate_it->second.index,
+      };
       return true;
     } else {
       const auto ptr_it = local_pointer_slots.find(gep->ptr.str());
@@ -3902,6 +4053,7 @@ std::optional<bir::Function> lower_branch_family_function(
   AddressedGlobalPointerSlots addressed_global_pointer_slots;
   GlobalPointerMap global_pointer_slots;
   DynamicGlobalPointerArrayMap dynamic_global_pointer_arrays;
+  DynamicGlobalAggregateArrayMap dynamic_global_aggregate_arrays;
   GlobalObjectPointerMap global_object_pointer_slots;
   GlobalAddressIntMap global_address_ints;
   GlobalObjectAddressIntMap global_object_address_ints;
@@ -3925,6 +4077,7 @@ std::optional<bir::Function> lower_branch_family_function(
             addressed_global_pointer_slots,
             global_pointer_slots,
             dynamic_global_pointer_arrays,
+            dynamic_global_aggregate_arrays,
             global_object_pointer_slots,
             global_address_ints,
             global_object_address_ints,
@@ -3962,6 +4115,7 @@ std::optional<bir::Function> lower_branch_family_function(
               addressed_global_pointer_slots,
               global_pointer_slots,
               dynamic_global_pointer_arrays,
+              dynamic_global_aggregate_arrays,
               global_object_pointer_slots,
               global_address_ints,
               global_object_address_ints,
