@@ -4142,7 +4142,7 @@ std::optional<PhiBlockPlanMap> collect_phi_lowering_plans(
   return plans;
 }
 
-std::optional<bir::Function> lower_select_family_function(
+std::optional<bir::Function> lower_canonical_select_function(
     BirLoweringContext& context,
     const c4c::codegen::lir::LirFunction& function) {
   (void)context;
@@ -4325,6 +4325,10 @@ std::optional<bir::Function> lower_branch_family_function(
   (void)context;
   if (function.is_declaration || function.blocks.empty()) {
     return std::nullopt;
+  }
+
+  if (auto lowered = lower_canonical_select_function(context, function); lowered.has_value()) {
+    return lowered;
   }
 
   const auto return_type = infer_function_return_type(function);
@@ -4596,11 +4600,8 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
       continue;
     }
 
-    auto lowered_function = lower_select_family_function(context, function);
-    if (!lowered_function.has_value()) {
-      lowered_function = lower_branch_family_function(
-          context, function, global_types, function_symbols, type_decls);
-    }
+    auto lowered_function = lower_branch_family_function(
+        context, function, global_types, function_symbols, type_decls);
     if (!lowered_function.has_value()) {
       context.note(
           "module",

@@ -25,7 +25,12 @@ Source Plan: plan.md
   supervisor follow-up has now confirmed the remaining rv64 `u8`
   select/phi `asm_unsupported` inventory is stale too, so the current
   `backend_codegen_route` inventory no longer exposes another honest
-  code-moving merge packet by itself
+  code-moving merge packet by itself;
+  one route-unification follow-up packet has now landed too:
+  canonical diamond-select lowering no longer enters BIR through a separate
+  top-level select-only dispatch, because `lower_module` now routes active
+  backend functions through `lower_branch_family_function`, and that shared
+  branch/phi lane directly owns the canonical select lowering helper
 - why now:
   supervisor follow-up confirmed that more of the remaining merge proving
   surface is stale harness debt rather than a real backlog-item-1 semantic
@@ -142,6 +147,15 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- 2026-04-14 executor landed one backlog-item-1 route-unification code move
+  in `src/backend/lowering/lir_to_bir_module.cpp`:
+  `lower_module` now dispatches active backend functions directly through
+  `lower_branch_family_function`, and that shared branch/phi lane now owns
+  the canonical diamond-select lowering helper instead of relying on a
+  separate top-level select-family fast path
+- 2026-04-14 exact delegated proof for that route-unification packet passed as
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_(single_param_select_eq_observes_semantic_bir|two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_bir|branch_if_eq_defaults_to_bir|indirect_select_local_override_callee_call_defaults_to_bir))$'`
+  and wrote the result to `test_after.log`
 - 2026-04-14 executor added one generic opt-in semantic-BIR observation path
   for backend route tests without changing the default prepared-BIR contract:
   `c4cll --backend-bir-stage semantic --codegen asm ...` now emits the raw
