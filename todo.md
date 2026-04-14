@@ -188,6 +188,22 @@ Source Plan: plan.md
   completed with the expected backend-subset baseline delta shape and one new
   passing test at `420 total / 209 passed / 211 failed`; proof log:
   `test_after.log`
+- 2026-04-14 executor packet result:
+  reducible explicit-phi materialization now also handles phi-only join blocks
+  when the live consumer is the terminator itself, so `prepare` no longer
+  falls back to `.phi` local-slot lowering for the direct `return phi` shape;
+  `src/backend/prepare/legalize.cpp` now treats a root phi block as
+  materializable when its terminator consumes one of the top phi results, and
+  `tests/cpp/internal/backend_prepare_phi_materialize_test.cpp` now proves
+  both the existing trailing-add case and the new return-only case on the same
+  direct prepare/BIR surface
+- proof result:
+  the exact backend proof command
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  preserved the current subset envelope at `420 total / 209 passed / 211
+  failed`, and focused re-run
+  `ctest --test-dir build --output-on-failure -R '^backend_prepare_phi_materialize$'`
+  passed with the new return-only coverage
 - if the executor needs a new proving source to expose that code-moving target,
   it may add one minimal merge-semantic source in the same packet, but source
   or harness expansion alone is not accepted progress

@@ -31,12 +31,10 @@ bool is_immediate_i32(const bir::Value& value, std::int64_t expected) {
          value.immediate == expected;
 }
 
-}  // namespace
-
-int main() {
+prepare::PreparedBirModule legalize_merge3_module(bool add_trailing_use) {
   bir::Module module;
   bir::Function function;
-  function.name = "merge3";
+  function.name = add_trailing_use ? "merge3_add" : "merge3_return";
   function.return_type = bir::TypeKind::I32;
 
   bir::Block entry;
@@ -91,14 +89,18 @@ int main() {
           bir::PhiIncoming{.label = "right", .value = bir::Value::immediate_i32(33)},
       },
   });
-  join.insts.push_back(bir::BinaryInst{
-      .opcode = bir::BinaryOpcode::Add,
-      .result = bir::Value::named(bir::TypeKind::I32, "sum"),
-      .operand_type = bir::TypeKind::I32,
-      .lhs = bir::Value::named(bir::TypeKind::I32, "merge"),
-      .rhs = bir::Value::immediate_i32(5),
-  });
-  join.terminator = bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "sum")};
+  if (add_trailing_use) {
+    join.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I32, "sum"),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::named(bir::TypeKind::I32, "merge"),
+        .rhs = bir::Value::immediate_i32(5),
+    });
+    join.terminator = bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "sum")};
+  } else {
+    join.terminator = bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "merge")};
+  }
 
   function.blocks = {std::move(entry), std::move(left), std::move(split), std::move(middle),
                      std::move(right), std::move(join)};
@@ -113,11 +115,10 @@ int main() {
   options.run_liveness = false;
   options.run_regalloc = false;
   prepare::run_legalize(prepared, options);
+  return prepared;
+}
 
-  if (prepared.module.functions.size() != 1) {
-    return fail("expected exactly one function after legalize");
-  }
-  const auto& legalized = prepared.module.functions.front();
+int check_materialized_join(const bir::Function& legalized, bool add_trailing_use) {
   if (!legalized.local_slots.empty()) {
     return fail("expected reducible phi tree to materialize without local slots");
   }
@@ -126,15 +127,16 @@ int main() {
   if (join_block == nullptr) {
     return fail("missing join block after legalize");
   }
-  if (join_block->insts.size() != 3) {
-    return fail("expected nested selects plus trailing add in join block");
+
+  const std::size_t expected_inst_count = add_trailing_use ? 3u : 2u;
+  if (join_block->insts.size() != expected_inst_count) {
+    return fail("expected nested selects and only the live trailing join instructions");
   }
 
   const auto* nested_select = std::get_if<bir::SelectInst>(&join_block->insts[0]);
   const auto* root_select = std::get_if<bir::SelectInst>(&join_block->insts[1]);
-  const auto* add = std::get_if<bir::BinaryInst>(&join_block->insts[2]);
-  if (nested_select == nullptr || root_select == nullptr || add == nullptr) {
-    return fail("expected select/select/add sequence after phi materialization");
+  if (nested_select == nullptr || root_select == nullptr) {
+    return fail("expected join block to begin with nested select materialization");
   }
   if (!is_immediate_i32(nested_select->true_value, 22) ||
       !is_immediate_i32(nested_select->false_value, 33)) {
@@ -148,8 +150,19 @@ int main() {
   if (root_select->result.name != "merge") {
     return fail("expected root select to define the original phi result");
   }
-  if (add->lhs.kind != bir::Value::Kind::Named || add->lhs.name != "merge") {
-    return fail("expected trailing add to consume the materialized phi result");
+
+  if (add_trailing_use) {
+    const auto* add = std::get_if<bir::BinaryInst>(&join_block->insts[2]);
+    if (add == nullptr) {
+      return fail("expected trailing add after select materialization");
+    }
+    if (add->lhs.kind != bir::Value::Kind::Named || add->lhs.name != "merge") {
+      return fail("expected trailing add to consume the materialized phi result");
+    }
+  } else if (!legalized.blocks.back().terminator.value.has_value() ||
+             legalized.blocks.back().terminator.value->kind != bir::Value::Kind::Named ||
+             legalized.blocks.back().terminator.value->name != "merge") {
+    return fail("expected return terminator to consume the materialized phi result");
   }
 
   for (const auto& inst : join_block->insts) {
@@ -160,4 +173,22 @@ int main() {
   }
 
   return 0;
+}
+
+}  // namespace
+
+int main() {
+  const auto prepared_with_add = legalize_merge3_module(true);
+  if (prepared_with_add.module.functions.size() != 1) {
+    return fail("expected exactly one function after legalize for add-using case");
+  }
+  if (const int status = check_materialized_join(prepared_with_add.module.functions.front(), true); status != 0) {
+    return status;
+  }
+
+  const auto prepared_return_only = legalize_merge3_module(false);
+  if (prepared_return_only.module.functions.size() != 1) {
+    return fail("expected exactly one function after legalize for return-only case");
+  }
+  return check_materialized_join(prepared_return_only.module.functions.front(), false);
 }

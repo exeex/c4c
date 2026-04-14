@@ -96,6 +96,20 @@ std::optional<std::string> inst_result_name(const bir::Inst& inst) {
   return std::nullopt;
 }
 
+bool terminator_uses_named_value(const bir::Terminator& terminator,
+                                 const std::unordered_set<std::string>& names) {
+  const auto matches = [&](const std::optional<bir::Value>& value) {
+    return value.has_value() && value->kind == bir::Value::Kind::Named &&
+           names.find(value->name) != names.end();
+  };
+  if (matches(terminator.value)) {
+    return true;
+  }
+  return terminator.kind == bir::TerminatorKind::CondBranch &&
+         terminator.condition.kind == bir::Value::Kind::Named &&
+         names.find(terminator.condition.name) != names.end();
+}
+
 struct BlockAnalysis {
   std::unordered_map<std::string, bir::Block*> blocks_by_label;
   std::unordered_map<std::string, const bir::Inst*> defs_by_name;
@@ -401,9 +415,11 @@ std::optional<bir::Value> materialize_value(const bir::Value& value, PhiMaterial
 bool try_materialize_root_phi_block(bir::Function* function, const BlockAnalysis& analysis, bir::Block* block) {
   bool saw_phi = false;
   bool has_non_phi_after_top = false;
+  std::unordered_set<std::string> phi_names;
   for (const auto& inst : block->insts) {
-    if (std::holds_alternative<bir::PhiInst>(inst) && !has_non_phi_after_top) {
+    if (const auto* phi = std::get_if<bir::PhiInst>(&inst); phi != nullptr && !has_non_phi_after_top) {
       saw_phi = true;
+      phi_names.insert(phi->result.name);
       continue;
     }
     if (saw_phi) {
@@ -412,7 +428,8 @@ bool try_materialize_root_phi_block(bir::Function* function, const BlockAnalysis
     }
     break;
   }
-  if (!saw_phi || !has_non_phi_after_top) {
+  const bool terminator_uses_phi = terminator_uses_named_value(block->terminator, phi_names);
+  if (!saw_phi || (!has_non_phi_after_top && !terminator_uses_phi)) {
     return false;
   }
 
