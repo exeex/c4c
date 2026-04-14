@@ -1,3 +1,3 @@
-extern int ext_arr[2];
+extern int ext_arr[2][2];
 
-int main(void) { return ext_arr[1]; }
+int main(void) { return ext_arr[1][1]; }

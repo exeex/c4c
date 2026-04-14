@@ -434,6 +434,76 @@ std::string ConstInitEmitter::emit_const_int_like(long long value, const TypeSpe
   return std::to_string(value);
 }
 
+std::optional<std::string> ConstInitEmitter::try_emit_global_address_expr(ExprId id) {
+  struct GlobalAddressExpr {
+    std::string global_name;
+    std::string root_type_text;
+    TypeSpec current_type;
+    std::vector<std::string> indices;
+  };
+
+  std::function<std::optional<GlobalAddressExpr>(ExprId)> lower_expr =
+      [&](ExprId expr_id) -> std::optional<GlobalAddressExpr> {
+    const Expr& expr = get_expr(expr_id);
+    return std::visit(
+        [&](const auto& payload) -> std::optional<GlobalAddressExpr> {
+          using T = std::decay_t<decltype(payload)>;
+          if constexpr (std::is_same_v<T, DeclRef>) {
+            auto git = mod_.global_index.find(payload.name);
+            if (git == mod_.global_index.end()) return std::nullopt;
+            const GlobalVar* gv = select_global_object(git->second);
+            if (!gv) return std::nullopt;
+            return GlobalAddressExpr{
+                .global_name = payload.name,
+                .root_type_text = llvm_alloca_ty(gv->type.spec),
+                .current_type = gv->type.spec,
+                .indices = {},
+            };
+          } else if constexpr (std::is_same_v<T, IndexExpr>) {
+            auto base = lower_expr(payload.base);
+            const auto index_value = try_const_eval_int(payload.index);
+            if (!base || !index_value || *index_value < 0) return std::nullopt;
+            if (base->current_type.array_rank <= 0) return std::nullopt;
+            base->indices.push_back("i64 " + std::to_string(*index_value));
+            base->current_type = drop_one_array_dim(base->current_type);
+            return base;
+          } else if constexpr (std::is_same_v<T, MemberExpr>) {
+            if (payload.is_arrow) return std::nullopt;
+            auto base = lower_expr(payload.base);
+            if (!base || !base->current_type.tag || !base->current_type.tag[0]) return std::nullopt;
+            const auto sit = mod_.struct_defs.find(base->current_type.tag);
+            if (sit == mod_.struct_defs.end()) return std::nullopt;
+            const HirStructDef& sd = sit->second;
+            const auto fit =
+                std::find_if(sd.fields.begin(), sd.fields.end(), [&](const HirStructField& field) {
+                  return field.name == payload.field;
+                });
+            if (fit == sd.fields.end()) return std::nullopt;
+            base->indices.push_back(
+                "i32 " + std::to_string(llvm_struct_field_slot(sd, fit->llvm_idx)));
+            base->current_type = field_decl_type(*fit);
+            return base;
+          } else {
+            return std::nullopt;
+          }
+        },
+        expr.payload);
+  };
+
+  auto address = lower_expr(id);
+  if (!address.has_value()) {
+    return std::nullopt;
+  }
+  if (address->indices.empty()) {
+    return llvm_global_sym(address->global_name);
+  }
+  std::string gep = "getelementptr inbounds (" + address->root_type_text + ", ptr @" +
+                    address->global_name + ", i64 0";
+  for (const auto& index : address->indices) gep += ", " + index;
+  gep += ")";
+  return gep;
+}
+
 std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expected_ts) {
   const Expr& e = get_expr(id);
   return std::visit([&](const auto& p) -> std::string {
@@ -495,6 +565,9 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
           const size_t len = bytes.size() + 1;
           return "getelementptr inbounds ([" + std::to_string(len) + " x i8], ptr " +
                  gname + ", i64 0, i64 0)";
+        }
+        if (const auto global_addr = try_emit_global_address_expr(p.operand); global_addr.has_value()) {
+          return *global_addr;
         }
         if (const auto* idx_e = std::get_if<IndexExpr>(&op_e.payload)) {
           std::vector<long long> indices;

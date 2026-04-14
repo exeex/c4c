@@ -18,6 +18,7 @@ enum class CodegenPath {
 
 std::string emit_module_native(const Module& mod,
                                std::string_view target_triple,
-                               CodegenPath path = CodegenPath::Llvm);
+                               CodegenPath path = CodegenPath::Llvm,
+                               bool emit_semantic_bir = false);
 
 }  // namespace c4c::codegen::llvm_backend

@@ -24,6 +24,22 @@ std::string render_call_type_name(const CallInst& call) {
   return "void";
 }
 
+std::string render_call_target(const CallInst& call) {
+  if (call.is_indirect && call.callee_value.has_value()) {
+    return render_value(*call.callee_value);
+  }
+  return call.callee;
+}
+
+void render_phi_observation(std::ostringstream& out, const PhiObservation& observation) {
+  out << "; semantic_phi " << observation.result.name << " = bir.phi "
+      << render_type(observation.result.type);
+  for (const auto& incoming : observation.incomings) {
+    out << " [" << incoming.label << ", " << render_value(incoming.value) << "]";
+  }
+  out << "\n";
+}
+
 void render_function(std::ostringstream& out, const Function& function) {
   out << "bir.func @" << function.name << "(";
   for (std::size_t index = 0; index < function.params.size(); ++index) {
@@ -49,15 +65,16 @@ void render_function(std::ostringstream& out, const Function& function) {
             if constexpr (std::is_same_v<T, BinaryInst>) {
               out << "  " << lowered.result.name << " = bir."
                   << render_binary_opcode(lowered.opcode) << " "
-                  << render_type(lowered.result.type) << " "
+                  << render_type(binary_operand_type(lowered)) << " "
                   << render_value(lowered.lhs) << ", " << render_value(lowered.rhs)
                   << "\n";
             } else if constexpr (std::is_same_v<T, SelectInst>) {
               out << "  " << lowered.result.name << " = bir.select "
                   << render_binary_opcode(lowered.predicate) << " "
-                  << render_type(lowered.result.type) << " "
+                  << render_type(select_compare_type(lowered)) << " "
                   << render_value(lowered.lhs) << ", " << render_value(lowered.rhs)
-                  << ", " << render_value(lowered.true_value) << ", "
+                  << ", " << render_type(lowered.result.type) << " "
+                  << render_value(lowered.true_value) << ", "
                   << render_value(lowered.false_value) << "\n";
             } else if constexpr (std::is_same_v<T, CastInst>) {
               out << "  " << lowered.result.name << " = bir."
@@ -65,6 +82,13 @@ void render_function(std::ostringstream& out, const Function& function) {
                   << render_type(lowered.operand.type) << " "
                   << render_value(lowered.operand) << " to "
                   << render_type(lowered.result.type) << "\n";
+            } else if constexpr (std::is_same_v<T, PhiInst>) {
+              out << "  " << lowered.result.name << " = bir.phi "
+                  << render_type(lowered.result.type);
+              for (const auto& incoming : lowered.incomings) {
+                out << " [" << incoming.label << ", " << render_value(incoming.value) << "]";
+              }
+              out << "\n";
             } else if constexpr (std::is_same_v<T, CallInst>) {
               if (lowered.result.has_value()) {
                 out << "  " << lowered.result->name << " = ";
@@ -72,7 +96,7 @@ void render_function(std::ostringstream& out, const Function& function) {
                 out << "  ";
               }
               out << "bir.call " << render_call_type_name(lowered) << " "
-                  << lowered.callee << "(";
+                  << render_call_target(lowered) << "(";
               for (std::size_t arg_index = 0; arg_index < lowered.args.size(); ++arg_index) {
                 if (arg_index != 0) {
                   out << ", ";
@@ -92,9 +116,12 @@ void render_function(std::ostringstream& out, const Function& function) {
               }
               out << "\n";
             } else if constexpr (std::is_same_v<T, StoreGlobalInst>) {
-              out << "  bir.store_global @" << lowered.global_name << ", "
-                  << render_type(lowered.value.type) << " " << render_value(lowered.value)
-                  << "\n";
+              out << "  bir.store_global @" << lowered.global_name;
+              if (lowered.byte_offset != 0) {
+                out << ", offset " << lowered.byte_offset;
+              }
+              out << ", " << render_type(lowered.value.type) << " "
+                  << render_value(lowered.value) << "\n";
             } else if constexpr (std::is_same_v<T, StoreLocalInst>) {
               out << "  bir.store_local " << lowered.slot_name << ", "
                   << render_type(lowered.value.type) << " " << render_value(lowered.value)
@@ -124,6 +151,11 @@ void render_function(std::ostringstream& out, const Function& function) {
     out << "\n";
   }
   out << "}\n";
+  for (const auto& slot : function.local_slots) {
+    if (slot.phi_observation.has_value()) {
+      render_phi_observation(out, *slot.phi_observation);
+    }
+  }
 }
 
 }  // namespace

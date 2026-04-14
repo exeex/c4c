@@ -227,16 +227,6 @@ foreach(src IN LISTS INTERNAL_PREPROCESSOR_TEST_SRCS)
   set_tests_properties("${test_name}" PROPERTIES LABELS "internal;preprocessor")
 endforeach()
 
-c4c_add_backend_test(
-    backend_bir_tests
-    COMMAND backend_bir_tests
-)
-
-c4c_add_backend_test(
-    backend_shared_util_tests
-    COMMAND backend_shared_util_tests
-)
-
 add_test(
     NAME frontend_cxx_stage1_version
     COMMAND c4cll --version
@@ -732,12 +722,562 @@ if(CLANG_EXECUTABLE)
         LABELS "internal;backend")
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00005_double_indirect_local_store_one_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00005.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00005_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 0"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00006_countdown_loop_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00006.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00006_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 50|cmp eax, 0|sub eax, 1|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00007_double_countdown_guarded_zero_return_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00007.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00007_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 0"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00009_local_arithmetic_chain_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00009.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00009_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|idiv"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00011_two_local_zero_init_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00011.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00011_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_x86_64_c_testsuite_00012_retries_after_direct_bir_rejection
       SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00012.c"
       TARGET_TRIPLE x86_64-unknown-linux-gnu
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00012_x86_64.s"
       REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
       FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00013_local_pointer_gep_zero_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00013.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00013_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00014_local_pointer_gep_zero_store_slot_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00014.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00014_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00015_local_array_two_slot_sum_sub_three_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00015.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00015_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00016_local_array_second_slot_pointer_store_zero_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00016.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00016_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00017_local_two_field_struct_sub_sub_two_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00017.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00017_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00018_local_struct_pointer_alias_add_sub_three_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00018.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00018_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00019_local_self_referential_struct_pointer_chain_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00019.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00019_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00020_double_indirect_local_pointer_chain_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00020.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00020_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00023_zero_initialized_scalar_global_store_reload_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00023.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00023_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.data|.globl x|.text|.globl main|mov dword ptr [rax], 0|mov eax, dword ptr [rax]|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00024_global_two_field_struct_store_sub_sub_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00024.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00024_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.data|.globl v|.text|.globl main|mov dword ptr [rax], 1|mov dword ptr [rax + 4], 2|sub ecx, dword ptr [rax + 4]|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00025_string_literal_strlen_sub_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00025.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00025_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|call strlen"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00026_string_literal_char_sub_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00026.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00026_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|movsx eax, byte ptr"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00027_local_i32_store_or_sub_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00027.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00027_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|or eax, 4"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00028_local_i32_store_and_sub_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00028.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00028_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|and eax, 3"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00029_local_i32_store_xor_sub_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00029.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00029_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|xor eax, 3"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00030_repeated_call_compare_zero_return_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00030.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00030_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl f|mov eax, 100|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|call f|cmp eax, 1000"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00031_local_i32_inc_dec_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00031.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00031_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl zero|mov eax, 0|.globl one|mov eax, 1|.globl main|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|call zero|call one|cmp eax, 1"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00032_local_array_pointer_inc_dec_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00032.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00032_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 3|cmp eax, 2"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00033_short_circuit_effect_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00033.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00033_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.globl g|.globl effect|mov dword ptr [rax], 1|mov eax, 1|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|call effect|cmp eax, 1"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00034_loop_break_ladder_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00034.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00034_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 5|cmp eax, 10|cmp eax, 15"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00035_unary_not_minus_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00035.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00035_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 4"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00036_add_sub_mul_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00036.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00036_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 4|cmp eax, 3|cmp eax, 6"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00037_local_array_pointer_add_deref_diff_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00037.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00037_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 7|idiv"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00038_sizeof_compare_chain_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00038.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00038_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 8|cmp eax, 4"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00039_void_pointer_alias_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00039.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00039_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 2"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00041_prime_counter_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00041.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00041_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|idiv|cmp eax, 669"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00042_union_alias_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00042.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00042_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 3"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00043_nested_struct_sum_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00043.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00043_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 6"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00044_local_struct_shadow_store_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00044.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00044_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 2"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00045_three_global_load_pointer_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00045.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00045_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 5|cmp rax, 6"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00046_nested_anonymous_aggregate_alias_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00046.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00046_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 1|cmp eax, 2|cmp eax, 3|cmp eax, 4"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00047_global_anonymous_struct_field_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00047.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00047_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 1|cmp eax, 2|cmp eax, 3"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00048_named_two_field_designated_init_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00048.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00048_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 1|cmp eax, 2"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00049_named_int_pointer_designated_init_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00049.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00049_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 1|cmp eax, 2"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00050_nested_struct_anonymous_union_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00050.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00050_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 1|cmp eax, 2|cmp eax, 3|cmp eax, 4|cmp eax, 5"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00051_switch_goto_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00051.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00051_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.bss|.globl x|.text|.globl main|cmp eax, 0|cmp eax, 1|mov DWORD PTR [rip + x], 2|mov eax, DWORD PTR [rip + x]|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|error: x86 backend emitter does not support this direct LIR module"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00052_local_single_field_struct_store_load_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00052.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00052_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00053_local_paired_single_field_struct_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00053.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00053_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00054_local_enum_constant_compare_store_load_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00054.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00054_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 1|cmp eax, 2|cmp eax, 3"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00055_shifted_local_enum_constant_compare_store_load_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00055.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00055_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|cmp eax, 1|cmp eax, 2|cmp eax, 3"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00056_repeated_printf_local_i32_calls_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00056.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00056_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.section .rodata|call printf|mov esi, 42|mov esi, 64|mov esi, 12|mov edx, 34|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|x86 backend emitter does not support this direct LIR module"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00058_local_string_literal_char_compare_ladder_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00058.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00058_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|x86 backend emitter does not support this direct LIR module|cmp eax, 97|cmp eax, 98|cmp eax, 99|cmp eax, 100|cmp eax, 101|cmp eax, 102"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00063_single_global_zero_return_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00063.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00063_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|x86 backend emitter does not support this direct LIR module"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00066_three_block_add_compare_zero_return_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00066.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00066_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|x86 backend emitter does not support this direct LIR module|cmp eax, 6"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00072_pointer_increment_store_compare_123_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00072.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00072_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|x86 backend emitter does not support this direct LIR module|cmp eax, 123"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00073_pointer_decrement_store_compare_123_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00073.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00073_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|x86 backend emitter does not support this direct LIR module|cmp eax, 123"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00076_constant_false_conditional_ladder_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00076.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00076_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|x86 backend emitter does not support this direct LIR module|cmp eax, 0"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00077_local_array_pointer_alias_sizeof_helper_call_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00077.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00077_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|x86 backend emitter does not support this direct LIR module|cmp eax, 1000|cmp eax, 2000"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00079_local_macro_add_compare_one_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00079.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00079_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|x86 backend emitter does not support this direct LIR module|cmp eax, 1"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00080_void_direct_call_zero_return_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00080.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00080_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl voidfn|.globl main|call voidfn|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|x86 backend emitter does not support this direct LIR module"
       LABELS x86_backend
     )
 
@@ -759,6 +1299,76 @@ if(CLANG_EXECUTABLE)
       REQUIRED_SNIPPETS ".text|.globl main|mov w0, #0|ret"
       FORBIDDEN_SNIPPETS "define i32 @main()"
       LABELS aarch64_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00057_dead_local_sizeof_branch_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00057.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00057_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00086_signed_local_slot_increment_compare_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00086.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00086_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00138_string_literal_compare_phi_return_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00138.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00138_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|.section .rodata"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00141_dead_local_add_store_chain_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00141.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00141_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00180_local_buffer_copy_printf_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00180.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00180_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.section .rodata|call strcpy|call printf|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00183_counted_printf_ternary_loop_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00183.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00183_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.section .rodata|cmp eax, 10|imul esi, eax|lea esi, [rax + rax*2]|call printf|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00184_repeated_printf_immediates_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00184.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00184_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.section .rodata|call printf|mov rsi, 1|mov rdx, 1|mov rsi, 2|mov rdx, 2|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
     )
 
     c4c_add_backend_codegen_route_test(
@@ -792,12 +1402,12 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_return_add_defaults_to_bir
+      backend_codegen_route_riscv64_return_add_emits_native_asm
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/return_add.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.add i32 2, 3"
-      FORBIDDEN_SNIPPETS "define i32 @main()"
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_add_riscv64.s"
+      REQUIRED_SNIPPETS ".text|.globl main|addi a0, zero, 5|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @main()"
     )
 
     c4c_add_backend_codegen_route_test(
@@ -996,6 +1606,861 @@ if(CLANG_EXECUTABLE)
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_eq_riscv64.ll"
       REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t1 = bir.eq i32 7, 7|bir.ret i32 %t1"
       FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/branch_if_eq.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/branch_if_eq_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.eq i32 2, 2|bir.cond_br i32 %t0, block_1, block_2|bir.ret i32 0|bir.ret i32 1"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_call_helper_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/call_helper.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/call_helper_riscv64.s"
+      REQUIRED_SNIPPETS ".text|.globl main|main:|call helper|ret"
+      FORBIDDEN_SNIPPETS "bir.func @main()|define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_local_arg_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/local_arg_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/local_arg_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl add_one|add_one:|addi a0, a0, 1|.globl main|main:|call add_one|ret"
+      FORBIDDEN_SNIPPETS "bir.func @add_one|bir.func @main()|define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_two_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_two_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_two_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_two_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_two_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_two_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_ptr_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_ptr_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_ptr_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_ptr_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_ptr_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_ptr_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_select_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_select_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_select_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_select(i32 %p.flag, ptr %p.f, ptr %p.g, i32 %p.x) -> i32 {|%t6 = bir.select ne i32 %p.flag, 0, ptr %p.f, %p.g|%t7 = bir.call i32 %t6(i32 %p.x)|bir.ret i32 %t7"
+      FORBIDDEN_SNIPPETS "define i32 @call_select"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_select_local_override_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_select_local_override_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_select_local_override_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_select_local_override(i32 %p.a, i32 %p.b, ptr %p.f, ptr %p.g, ptr %p.h, i32 %p.x) -> i32 {|bir.store_local %t6.phi, ptr %p.f|bir.store_local %t6.phi, ptr %p.g|%t6 = bir.load_local ptr %t6.phi|bir.store_local %lv.callee, ptr %t6|bir.store_local %lv.callee, ptr %p.h|%t8 = bir.load_local ptr %lv.callee|%t9 = bir.call i32 %t8(i32 %p.x)|bir.ret i32 %t9"
+      FORBIDDEN_SNIPPETS "define i32 @call_select_local_override"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_global_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_global_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_global_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_global(i32 %p.x) -> i32 {|%t0 = bir.load_global ptr @gp|%t1 = bir.call i32 %t0(i32 %p.x)|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @call_global"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_global_struct_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_global_struct_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_global_struct_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_holder(i32 %p.x) -> i32 {|%t1 = bir.load_global ptr @holder, offset 8|%t2 = bir.call i32 %t1(i32 %p.x)|bir.ret i32 %t2"
+      FORBIDDEN_SNIPPETS "define i32 @call_holder"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_local_struct_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_local_struct_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_local_struct_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_local_struct(ptr %p.f, i32 %p.x) -> i32 {|bir.call i32 %p.f(i32 %p.x)|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @call_local_struct"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_local_array_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_local_array_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_local_array_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_local_array(ptr %p.f, ptr %p.g, i32 %p.which, i32 %p.x) -> i32 {|bir.select eq i64|ptr %p.f, %p.g|bir.call i32"
+      FORBIDDEN_SNIPPETS "define i32 @call_local_array"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_local_struct_array_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_local_struct_array_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_local_struct_array_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_local_struct_array(ptr %p.f, ptr %p.g, i32 %p.which, i32 %p.x) -> i32 {|bir.select eq i64|ptr %p.f, %p.g|bir.call i32"
+      FORBIDDEN_SNIPPETS "define i32 @call_local_struct_array"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_local_array_struct_field_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_local_array_struct_field_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_local_array_struct_field_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_local_array_struct_field(ptr %p.f, ptr %p.g, i32 %p.which, i32 %p.x) -> i32 {|bir.select eq i64|ptr %p.f, %p.g|bir.call i32"
+      FORBIDDEN_SNIPPETS "define i32 @call_local_array_struct_field"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_local_array_struct_field_ptr_return_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_local_array_struct_field_ptr_return_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_local_array_struct_field_ptr_return_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_local_array_struct_field_ptr_return(ptr %p.f, ptr %p.g, i32 %p.which, ptr %p.p, i32 %p.x) -> ptr {|bir.select eq i64|ptr %p.f, %p.g|bir.call ptr"
+      FORBIDDEN_SNIPPETS "define ptr @call_local_array_struct_field_ptr_return"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_global_array_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_global_array_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_global_array_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_global_array(i32 %p.which, i32 %p.x) -> i32 {|bir.select eq i64|ptr @inc, @dec|bir.call i32"
+      FORBIDDEN_SNIPPETS "define i32 @call_global_array"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_global_struct_array_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_global_struct_array_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_global_struct_array_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_global_struct_array(i32 %p.which, i32 %p.x) -> i32 {|bir.select eq i64|ptr @inc, @dec|bir.call i32"
+      FORBIDDEN_SNIPPETS "define i32 @call_global_struct_array"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_global_array_struct_field_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_global_array_struct_field_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_global_array_struct_field_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_global_array_struct_field(i32 %p.which, i32 %p.x) -> i32 {|bir.select eq i64|ptr @inc, @dec|bir.call i32"
+      FORBIDDEN_SNIPPETS "define i32 @call_global_array_struct_field"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_global_array_struct_field_ptr_return_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_global_array_struct_field_ptr_return_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_global_array_struct_field_ptr_return_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_global_array_struct_field_ptr_return(i32 %p.which, ptr %p.p, i32 %p.x) -> ptr {|bir.select eq i64|ptr @keep, @bump|bir.call ptr"
+      FORBIDDEN_SNIPPETS "define ptr @call_global_array_struct_field_ptr_return"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_i32_ptr_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_i32_ptr_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_i32_ptr_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_i32_ptr_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_i32_ptr_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_i32_ptr_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_two_ptr_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_two_ptr_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_two_ptr_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_two_ptr_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_two_ptr_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_two_ptr_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_i32_two_ptr_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_i32_two_ptr_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_i32_two_ptr_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|mv a2, a3|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_i32_two_ptr_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_i32_two_ptr_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_i32_two_ptr_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|mv a2, a3|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_ptr_i32_ptr_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_ptr_i32_ptr_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_ptr_i32_ptr_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|mv a2, a3|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_ptr_i32_ptr_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_ptr_i32_ptr_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_ptr_i32_ptr_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|mv a2, a3|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_two_ptr_i32_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_two_ptr_i32_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_two_ptr_i32_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|mv a2, a3|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_two_ptr_i32_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_two_ptr_i32_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_two_ptr_i32_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|mv a2, a3|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_ptr_return_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_ptr_return_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_ptr_return_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define ptr @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_ptr_return_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_ptr_return_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_ptr_return_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define ptr @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_ptr_arg_ptr_return_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_ptr_arg_ptr_return_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_ptr_arg_ptr_return_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define ptr @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_ptr_arg_ptr_return_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_ptr_arg_ptr_return_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_ptr_arg_ptr_return_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define ptr @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_three_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_three_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_three_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|mv a2, a3|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_three_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_three_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_three_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|mv a2, a3|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_four_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_four_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_four_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_four_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_four_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_four_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_five_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_five_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_five_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_five_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_five_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_five_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_six_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_six_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_six_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_six_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_six_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_six_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_seven_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_seven_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_seven_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_seven_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_seven_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_seven_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_eight_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_eight_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_eight_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|li a7, 9|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_eight_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_eight_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_eight_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|li a7, 9|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_eight_arg_stack_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_eight_arg_stack_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_eight_arg_stack_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_eight_arg_stack_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_eight_arg_stack_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_eight_arg_stack_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_eight_arg_two_stack_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_eight_arg_two_stack_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_eight_arg_two_stack_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|mv a0, a2|mv a1, a3|mv a2, a4|mv a3, a5|mv a4, a6|mv a5, a7|lw a6, 16(sp)|lw a7, 24(sp)|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_eight_arg_two_stack_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_eight_arg_two_stack_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_eight_arg_two_stack_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|mv a0, a2|mv a1, a3|mv a2, a4|mv a3, a5|mv a4, a6|mv a5, a7|lw a6, 16(sp)|lw a7, 24(sp)|jalr ra, t0, 0|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_nine_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_nine_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_nine_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|li t1, 9|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|addi sp, sp, -16|sw t1, 0(sp)|jalr ra, t0, 0|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_nine_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_nine_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_nine_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|li t1, 9|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|addi sp, sp, -16|sw t1, 0(sp)|jalr ra, t0, 0|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_ten_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_ten_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_ten_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|lw t1, 24(sp)|li t2, 10|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|addi sp, sp, -16|sw t1, 0(sp)|sw t2, 8(sp)|jalr ra, t0, 0|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_ten_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_ten_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_ten_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|lw t1, 24(sp)|li t2, 10|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|addi sp, sp, -16|sw t1, 0(sp)|sw t2, 8(sp)|jalr ra, t0, 0|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_eleven_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_eleven_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_eleven_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|lw t1, 24(sp)|lw t2, 32(sp)|li t3, 11|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|addi sp, sp, -32|sw t1, 0(sp)|sw t2, 8(sp)|sw t3, 16(sp)|jalr ra, t0, 0|addi sp, sp, 32|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_eleven_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_eleven_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_eleven_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|lw t1, 24(sp)|lw t2, 32(sp)|li t3, 11|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|addi sp, sp, -32|sw t1, 0(sp)|sw t2, 8(sp)|sw t3, 16(sp)|jalr ra, t0, 0|addi sp, sp, 32|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twelve_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twelve_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twelve_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|lw t1, 24(sp)|lw t2, 32(sp)|lw t3, 40(sp)|li t4, 12|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|addi sp, sp, -32|sw t1, 0(sp)|sw t2, 8(sp)|sw t3, 16(sp)|sw t4, 24(sp)|jalr ra, t0, 0|addi sp, sp, 32|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twelve_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twelve_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twelve_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|lw t1, 24(sp)|lw t2, 32(sp)|lw t3, 40(sp)|li t4, 12|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|addi sp, sp, -32|sw t1, 0(sp)|sw t2, 8(sp)|sw t3, 16(sp)|sw t4, 24(sp)|jalr ra, t0, 0|addi sp, sp, 32|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_thirteen_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_thirteen_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_thirteen_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|lw t1, 24(sp)|lw t2, 32(sp)|lw t3, 40(sp)|lw t4, 48(sp)|li t5, 13|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|addi sp, sp, -48|sw t1, 0(sp)|sw t2, 8(sp)|sw t3, 16(sp)|sw t4, 24(sp)|sw t5, 32(sp)|jalr ra, t0, 0|addi sp, sp, 48|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_thirteen_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_thirteen_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_thirteen_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|lw t1, 24(sp)|lw t2, 32(sp)|lw t3, 40(sp)|lw t4, 48(sp)|li t5, 13|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|addi sp, sp, -48|sw t1, 0(sp)|sw t2, 8(sp)|sw t3, 16(sp)|sw t4, 24(sp)|sw t5, 32(sp)|jalr ra, t0, 0|addi sp, sp, 48|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_fourteen_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_fourteen_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_fourteen_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|lw t1, 24(sp)|lw t2, 32(sp)|lw t3, 40(sp)|lw t4, 48(sp)|lw t5, 56(sp)|li t6, 14|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|addi sp, sp, -48|sw t1, 0(sp)|sw t2, 8(sp)|sw t3, 16(sp)|sw t4, 24(sp)|sw t5, 32(sp)|sw t6, 40(sp)|jalr ra, t0, 0|addi sp, sp, 48|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_fourteen_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_fourteen_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_fourteen_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|lw t1, 24(sp)|lw t2, 32(sp)|lw t3, 40(sp)|lw t4, 48(sp)|lw t5, 56(sp)|li t6, 14|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 16(sp)|addi sp, sp, -48|sw t1, 0(sp)|sw t2, 8(sp)|sw t3, 16(sp)|sw t4, 24(sp)|sw t5, 32(sp)|sw t6, 40(sp)|jalr ra, t0, 0|addi sp, sp, 48|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_fifteen_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_fifteen_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_fifteen_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|addi sp, sp, -64|lw t1, 88(sp)|sw t1, 0(sp)|lw t1, 96(sp)|sw t1, 8(sp)|lw t1, 104(sp)|sw t1, 16(sp)|lw t1, 112(sp)|sw t1, 24(sp)|lw t1, 120(sp)|sw t1, 32(sp)|lw t1, 128(sp)|sw t1, 40(sp)|li t1, 15|sw t1, 48(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 80(sp)|jalr ra, t0, 0|addi sp, sp, 64|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_fifteen_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_fifteen_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_fifteen_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|addi sp, sp, -64|lw t1, 88(sp)|sw t1, 0(sp)|lw t1, 96(sp)|sw t1, 8(sp)|lw t1, 104(sp)|sw t1, 16(sp)|lw t1, 112(sp)|sw t1, 24(sp)|lw t1, 120(sp)|sw t1, 32(sp)|lw t1, 128(sp)|sw t1, 40(sp)|li t1, 15|sw t1, 48(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 80(sp)|jalr ra, t0, 0|addi sp, sp, 64|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_sixteen_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_sixteen_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_sixteen_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|addi sp, sp, -64|lw t1, 88(sp)|sw t1, 0(sp)|lw t1, 96(sp)|sw t1, 8(sp)|lw t1, 104(sp)|sw t1, 16(sp)|lw t1, 112(sp)|sw t1, 24(sp)|lw t1, 120(sp)|sw t1, 32(sp)|lw t1, 128(sp)|sw t1, 40(sp)|lw t1, 136(sp)|sw t1, 48(sp)|li t1, 16|sw t1, 56(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 80(sp)|jalr ra, t0, 0|addi sp, sp, 64|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_sixteen_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_sixteen_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_sixteen_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|addi sp, sp, -64|lw t1, 88(sp)|sw t1, 0(sp)|lw t1, 96(sp)|sw t1, 8(sp)|lw t1, 104(sp)|sw t1, 16(sp)|lw t1, 112(sp)|sw t1, 24(sp)|lw t1, 120(sp)|sw t1, 32(sp)|lw t1, 128(sp)|sw t1, 40(sp)|lw t1, 136(sp)|sw t1, 48(sp)|li t1, 16|sw t1, 56(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 80(sp)|jalr ra, t0, 0|addi sp, sp, 64|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_seventeen_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_seventeen_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_seventeen_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|addi sp, sp, -80|lw t1, 104(sp)|sw t1, 0(sp)|lw t1, 112(sp)|sw t1, 8(sp)|lw t1, 120(sp)|sw t1, 16(sp)|lw t1, 128(sp)|sw t1, 24(sp)|lw t1, 136(sp)|sw t1, 32(sp)|lw t1, 144(sp)|sw t1, 40(sp)|lw t1, 152(sp)|sw t1, 48(sp)|lw t1, 160(sp)|sw t1, 56(sp)|li t1, 17|sw t1, 64(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 96(sp)|jalr ra, t0, 0|addi sp, sp, 80|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_seventeen_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_seventeen_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_seventeen_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|addi sp, sp, -80|lw t1, 104(sp)|sw t1, 0(sp)|lw t1, 112(sp)|sw t1, 8(sp)|lw t1, 120(sp)|sw t1, 16(sp)|lw t1, 128(sp)|sw t1, 24(sp)|lw t1, 136(sp)|sw t1, 32(sp)|lw t1, 144(sp)|sw t1, 40(sp)|lw t1, 152(sp)|sw t1, 48(sp)|lw t1, 160(sp)|sw t1, 56(sp)|li t1, 17|sw t1, 64(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 96(sp)|jalr ra, t0, 0|addi sp, sp, 80|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_eighteen_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_eighteen_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_eighteen_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|addi sp, sp, -80|lw t1, 104(sp)|sw t1, 0(sp)|lw t1, 112(sp)|sw t1, 8(sp)|lw t1, 120(sp)|sw t1, 16(sp)|lw t1, 128(sp)|sw t1, 24(sp)|lw t1, 136(sp)|sw t1, 32(sp)|lw t1, 144(sp)|sw t1, 40(sp)|lw t1, 152(sp)|sw t1, 48(sp)|lw t1, 160(sp)|sw t1, 56(sp)|lw t1, 168(sp)|sw t1, 64(sp)|li t1, 18|sw t1, 72(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 96(sp)|jalr ra, t0, 0|addi sp, sp, 80|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_eighteen_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_eighteen_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_eighteen_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|addi sp, sp, -80|lw t1, 104(sp)|sw t1, 0(sp)|lw t1, 112(sp)|sw t1, 8(sp)|lw t1, 120(sp)|sw t1, 16(sp)|lw t1, 128(sp)|sw t1, 24(sp)|lw t1, 136(sp)|sw t1, 32(sp)|lw t1, 144(sp)|sw t1, 40(sp)|lw t1, 152(sp)|sw t1, 48(sp)|lw t1, 160(sp)|sw t1, 56(sp)|lw t1, 168(sp)|sw t1, 64(sp)|li t1, 18|sw t1, 72(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 96(sp)|jalr ra, t0, 0|addi sp, sp, 80|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_nineteen_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_nineteen_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_nineteen_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|addi sp, sp, -96|lw t1, 120(sp)|sw t1, 0(sp)|lw t1, 128(sp)|sw t1, 8(sp)|lw t1, 136(sp)|sw t1, 16(sp)|lw t1, 144(sp)|sw t1, 24(sp)|lw t1, 152(sp)|sw t1, 32(sp)|lw t1, 160(sp)|sw t1, 40(sp)|lw t1, 168(sp)|sw t1, 48(sp)|lw t1, 176(sp)|sw t1, 56(sp)|lw t1, 184(sp)|sw t1, 64(sp)|lw t1, 192(sp)|sw t1, 72(sp)|li t1, 19|sw t1, 80(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 112(sp)|jalr ra, t0, 0|addi sp, sp, 96|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_nineteen_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_nineteen_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_nineteen_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|addi sp, sp, -96|lw t1, 120(sp)|sw t1, 0(sp)|lw t1, 128(sp)|sw t1, 8(sp)|lw t1, 136(sp)|sw t1, 16(sp)|lw t1, 144(sp)|sw t1, 24(sp)|lw t1, 152(sp)|sw t1, 32(sp)|lw t1, 160(sp)|sw t1, 40(sp)|lw t1, 168(sp)|sw t1, 48(sp)|lw t1, 176(sp)|sw t1, 56(sp)|lw t1, 184(sp)|sw t1, 64(sp)|lw t1, 192(sp)|sw t1, 72(sp)|li t1, 19|sw t1, 80(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 112(sp)|jalr ra, t0, 0|addi sp, sp, 96|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twenty_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twenty_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twenty_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|addi sp, sp, -96|lw t1, 120(sp)|sw t1, 0(sp)|lw t1, 128(sp)|sw t1, 8(sp)|lw t1, 136(sp)|sw t1, 16(sp)|lw t1, 144(sp)|sw t1, 24(sp)|lw t1, 152(sp)|sw t1, 32(sp)|lw t1, 160(sp)|sw t1, 40(sp)|lw t1, 168(sp)|sw t1, 48(sp)|lw t1, 176(sp)|sw t1, 56(sp)|lw t1, 184(sp)|sw t1, 64(sp)|lw t1, 192(sp)|sw t1, 72(sp)|lw t1, 200(sp)|sw t1, 80(sp)|li t1, 20|sw t1, 88(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 112(sp)|jalr ra, t0, 0|addi sp, sp, 96|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twenty_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twenty_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twenty_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|addi sp, sp, -96|lw t1, 120(sp)|sw t1, 0(sp)|lw t1, 128(sp)|sw t1, 8(sp)|lw t1, 136(sp)|sw t1, 16(sp)|lw t1, 144(sp)|sw t1, 24(sp)|lw t1, 152(sp)|sw t1, 32(sp)|lw t1, 160(sp)|sw t1, 40(sp)|lw t1, 168(sp)|sw t1, 48(sp)|lw t1, 176(sp)|sw t1, 56(sp)|lw t1, 184(sp)|sw t1, 64(sp)|lw t1, 192(sp)|sw t1, 72(sp)|lw t1, 200(sp)|sw t1, 80(sp)|li t1, 20|sw t1, 88(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 112(sp)|jalr ra, t0, 0|addi sp, sp, 96|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twenty_one_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twenty_one_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twenty_one_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|sd ra, 0(sp)|mv t0, a0|addi sp, sp, -112|lw t1, 136(sp)|sw t1, 0(sp)|lw t1, 144(sp)|sw t1, 8(sp)|lw t1, 152(sp)|sw t1, 16(sp)|lw t1, 160(sp)|sw t1, 24(sp)|lw t1, 168(sp)|sw t1, 32(sp)|lw t1, 176(sp)|sw t1, 40(sp)|lw t1, 184(sp)|sw t1, 48(sp)|lw t1, 192(sp)|sw t1, 56(sp)|lw t1, 200(sp)|sw t1, 64(sp)|lw t1, 208(sp)|sw t1, 72(sp)|lw t1, 216(sp)|sw t1, 80(sp)|lw t1, 224(sp)|sw t1, 88(sp)|li t1, 21|sw t1, 96(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 128(sp)|jalr ra, t0, 0|addi sp, sp, 112|ld ra, 0(sp)|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twenty_one_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twenty_one_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twenty_one_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd ra, 8(sp)|sd a0, 0(sp)|ld t0, 0(sp)|addi sp, sp, -112|lw t1, 136(sp)|sw t1, 0(sp)|lw t1, 144(sp)|sw t1, 8(sp)|lw t1, 152(sp)|sw t1, 16(sp)|lw t1, 160(sp)|sw t1, 24(sp)|lw t1, 168(sp)|sw t1, 32(sp)|lw t1, 176(sp)|sw t1, 40(sp)|lw t1, 184(sp)|sw t1, 48(sp)|lw t1, 192(sp)|sw t1, 56(sp)|lw t1, 200(sp)|sw t1, 64(sp)|lw t1, 208(sp)|sw t1, 72(sp)|lw t1, 216(sp)|sw t1, 80(sp)|lw t1, 224(sp)|sw t1, 88(sp)|li t1, 21|sw t1, 96(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 128(sp)|jalr ra, t0, 0|addi sp, sp, 112|ld ra, 8(sp)|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twenty_two_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twenty_two_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twenty_two_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|sd ra, 0(sp)|mv t0, a0|addi sp, sp, -112|lw t1, 136(sp)|sw t1, 0(sp)|lw t1, 144(sp)|sw t1, 8(sp)|lw t1, 152(sp)|sw t1, 16(sp)|lw t1, 160(sp)|sw t1, 24(sp)|lw t1, 168(sp)|sw t1, 32(sp)|lw t1, 176(sp)|sw t1, 40(sp)|lw t1, 184(sp)|sw t1, 48(sp)|lw t1, 192(sp)|sw t1, 56(sp)|lw t1, 200(sp)|sw t1, 64(sp)|lw t1, 208(sp)|sw t1, 72(sp)|lw t1, 216(sp)|sw t1, 80(sp)|lw t1, 224(sp)|sw t1, 88(sp)|lw t1, 232(sp)|sw t1, 96(sp)|li t1, 22|sw t1, 104(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 128(sp)|jalr ra, t0, 0|addi sp, sp, 112|ld ra, 0(sp)|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twenty_two_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twenty_two_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twenty_two_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd ra, 8(sp)|sd a0, 0(sp)|ld t0, 0(sp)|addi sp, sp, -112|lw t1, 136(sp)|sw t1, 0(sp)|lw t1, 144(sp)|sw t1, 8(sp)|lw t1, 152(sp)|sw t1, 16(sp)|lw t1, 160(sp)|sw t1, 24(sp)|lw t1, 168(sp)|sw t1, 32(sp)|lw t1, 176(sp)|sw t1, 40(sp)|lw t1, 184(sp)|sw t1, 48(sp)|lw t1, 192(sp)|sw t1, 56(sp)|lw t1, 200(sp)|sw t1, 64(sp)|lw t1, 208(sp)|sw t1, 72(sp)|lw t1, 216(sp)|sw t1, 80(sp)|lw t1, 224(sp)|sw t1, 88(sp)|lw t1, 232(sp)|sw t1, 96(sp)|li t1, 22|sw t1, 104(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 128(sp)|jalr ra, t0, 0|addi sp, sp, 112|ld ra, 8(sp)|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twenty_three_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twenty_three_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twenty_three_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|sd ra, 0(sp)|mv t0, a0|addi sp, sp, -128|lw t1, 152(sp)|sw t1, 0(sp)|lw t1, 160(sp)|sw t1, 8(sp)|lw t1, 168(sp)|sw t1, 16(sp)|lw t1, 176(sp)|sw t1, 24(sp)|lw t1, 184(sp)|sw t1, 32(sp)|lw t1, 192(sp)|sw t1, 40(sp)|lw t1, 200(sp)|sw t1, 48(sp)|lw t1, 208(sp)|sw t1, 56(sp)|lw t1, 216(sp)|sw t1, 64(sp)|lw t1, 224(sp)|sw t1, 72(sp)|lw t1, 232(sp)|sw t1, 80(sp)|lw t1, 240(sp)|sw t1, 88(sp)|lw t1, 248(sp)|sw t1, 96(sp)|lw t1, 256(sp)|sw t1, 104(sp)|li t1, 23|sw t1, 112(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 144(sp)|jalr ra, t0, 0|addi sp, sp, 128|ld ra, 0(sp)|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twenty_three_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twenty_three_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twenty_three_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd ra, 8(sp)|sd a0, 0(sp)|ld t0, 0(sp)|addi sp, sp, -128|lw t1, 152(sp)|sw t1, 0(sp)|lw t1, 160(sp)|sw t1, 8(sp)|lw t1, 168(sp)|sw t1, 16(sp)|lw t1, 176(sp)|sw t1, 24(sp)|lw t1, 184(sp)|sw t1, 32(sp)|lw t1, 192(sp)|sw t1, 40(sp)|lw t1, 200(sp)|sw t1, 48(sp)|lw t1, 208(sp)|sw t1, 56(sp)|lw t1, 216(sp)|sw t1, 64(sp)|lw t1, 224(sp)|sw t1, 72(sp)|lw t1, 232(sp)|sw t1, 80(sp)|lw t1, 240(sp)|sw t1, 88(sp)|lw t1, 248(sp)|sw t1, 96(sp)|lw t1, 256(sp)|sw t1, 104(sp)|li t1, 23|sw t1, 112(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 144(sp)|jalr ra, t0, 0|addi sp, sp, 128|ld ra, 8(sp)|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twenty_four_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twenty_four_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twenty_four_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|sd ra, 0(sp)|mv t0, a0|addi sp, sp, -128|lw t1, 152(sp)|sw t1, 0(sp)|lw t1, 160(sp)|sw t1, 8(sp)|lw t1, 168(sp)|sw t1, 16(sp)|lw t1, 176(sp)|sw t1, 24(sp)|lw t1, 184(sp)|sw t1, 32(sp)|lw t1, 192(sp)|sw t1, 40(sp)|lw t1, 200(sp)|sw t1, 48(sp)|lw t1, 208(sp)|sw t1, 56(sp)|lw t1, 216(sp)|sw t1, 64(sp)|lw t1, 224(sp)|sw t1, 72(sp)|lw t1, 232(sp)|sw t1, 80(sp)|lw t1, 240(sp)|sw t1, 88(sp)|lw t1, 248(sp)|sw t1, 96(sp)|lw t1, 256(sp)|sw t1, 104(sp)|lw t1, 264(sp)|sw t1, 112(sp)|li t1, 24|sw t1, 120(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 144(sp)|jalr ra, t0, 0|addi sp, sp, 128|ld ra, 0(sp)|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twenty_four_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twenty_four_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twenty_four_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd ra, 8(sp)|sd a0, 0(sp)|ld t0, 0(sp)|addi sp, sp, -128|lw t1, 152(sp)|sw t1, 0(sp)|lw t1, 160(sp)|sw t1, 8(sp)|lw t1, 168(sp)|sw t1, 16(sp)|lw t1, 176(sp)|sw t1, 24(sp)|lw t1, 184(sp)|sw t1, 32(sp)|lw t1, 192(sp)|sw t1, 40(sp)|lw t1, 200(sp)|sw t1, 48(sp)|lw t1, 208(sp)|sw t1, 56(sp)|lw t1, 216(sp)|sw t1, 64(sp)|lw t1, 224(sp)|sw t1, 72(sp)|lw t1, 232(sp)|sw t1, 80(sp)|lw t1, 240(sp)|sw t1, 88(sp)|lw t1, 248(sp)|sw t1, 96(sp)|lw t1, 256(sp)|sw t1, 104(sp)|lw t1, 264(sp)|sw t1, 112(sp)|li t1, 24|sw t1, 120(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 144(sp)|jalr ra, t0, 0|addi sp, sp, 128|ld ra, 8(sp)|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twenty_five_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twenty_five_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twenty_five_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|sd ra, 0(sp)|mv t0, a0|addi sp, sp, -144|lw t1, 168(sp)|sw t1, 0(sp)|lw t1, 176(sp)|sw t1, 8(sp)|lw t1, 184(sp)|sw t1, 16(sp)|lw t1, 192(sp)|sw t1, 24(sp)|lw t1, 200(sp)|sw t1, 32(sp)|lw t1, 208(sp)|sw t1, 40(sp)|lw t1, 216(sp)|sw t1, 48(sp)|lw t1, 224(sp)|sw t1, 56(sp)|lw t1, 232(sp)|sw t1, 64(sp)|lw t1, 240(sp)|sw t1, 72(sp)|lw t1, 248(sp)|sw t1, 80(sp)|lw t1, 256(sp)|sw t1, 88(sp)|lw t1, 264(sp)|sw t1, 96(sp)|lw t1, 272(sp)|sw t1, 104(sp)|lw t1, 280(sp)|sw t1, 112(sp)|lw t1, 288(sp)|sw t1, 120(sp)|li t1, 25|sw t1, 128(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 160(sp)|jalr ra, t0, 0|addi sp, sp, 144|ld ra, 0(sp)|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_twenty_five_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_twenty_five_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_twenty_five_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd ra, 8(sp)|sd a0, 0(sp)|ld t0, 0(sp)|addi sp, sp, -144|lw t1, 168(sp)|sw t1, 0(sp)|lw t1, 176(sp)|sw t1, 8(sp)|lw t1, 184(sp)|sw t1, 16(sp)|lw t1, 192(sp)|sw t1, 24(sp)|lw t1, 200(sp)|sw t1, 32(sp)|lw t1, 208(sp)|sw t1, 40(sp)|lw t1, 216(sp)|sw t1, 48(sp)|lw t1, 224(sp)|sw t1, 56(sp)|lw t1, 232(sp)|sw t1, 64(sp)|lw t1, 240(sp)|sw t1, 72(sp)|lw t1, 248(sp)|sw t1, 80(sp)|lw t1, 256(sp)|sw t1, 88(sp)|lw t1, 264(sp)|sw t1, 96(sp)|lw t1, 272(sp)|sw t1, 104(sp)|lw t1, 280(sp)|sw t1, 112(sp)|lw t1, 288(sp)|sw t1, 120(sp)|li t1, 25|sw t1, 128(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 160(sp)|jalr ra, t0, 0|addi sp, sp, 144|ld ra, 8(sp)|addi sp, sp, 16|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_arg_helper_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/two_arg_helper.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_arg_helper_riscv64.s"
+      REQUIRED_SNIPPETS ".globl add_pair|add_pair:|add a0, a0, a1|.globl main|main:|li a0, 5|li a1, 7|call add_pair|ret"
+      FORBIDDEN_SNIPPETS "bir.func @add_pair|bir.func @main()|define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_arg_local_arg_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/two_arg_local_arg.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_arg_local_arg_riscv64.s"
+      REQUIRED_SNIPPETS ".globl add_pair|add_pair:|add a0, a0, a1|main:|sw t0, 0(sp)|lw t1, 0(sp)|mv a0, t1|li a1, 7|call add_pair|ret"
+      FORBIDDEN_SNIPPETS "bir.func @add_pair|bir.func @main()|define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_arg_second_local_arg_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/two_arg_second_local_arg.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_arg_second_local_arg_riscv64.s"
+      REQUIRED_SNIPPETS ".globl add_pair|add_pair:|add a0, a0, a1|main:|sw t0, 0(sp)|lw t1, 0(sp)|li a0, 5|mv a1, t1|call add_pair|ret"
+      FORBIDDEN_SNIPPETS "bir.func @add_pair|bir.func @main()|define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_arg_both_local_arg_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/two_arg_both_local_arg.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_arg_both_local_arg_riscv64.s"
+      REQUIRED_SNIPPETS ".globl add_pair|add_pair:|add a0, a0, a1|main:|sw t0, 0(sp)|sw t1, 4(sp)|lw t2, 0(sp)|lw t3, 4(sp)|mv a0, t2|mv a1, t3|call add_pair|ret"
+      FORBIDDEN_SNIPPETS "bir.func @add_pair|bir.func @main()|define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_arg_first_local_rewrite_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/two_arg_first_local_rewrite.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_arg_first_local_rewrite_riscv64.s"
+      REQUIRED_SNIPPETS ".globl add_pair|add_pair:|add a0, a0, a1|main:|lw t1, 0(sp)|addi t1, t1, 0|sw t1, 0(sp)|lw t2, 0(sp)|mv a0, t2|li a1, 7|call add_pair|ret"
+      FORBIDDEN_SNIPPETS "bir.func @add_pair|bir.func @main()|define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_arg_second_local_rewrite_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/two_arg_second_local_rewrite.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_arg_second_local_rewrite_riscv64.s"
+      REQUIRED_SNIPPETS ".globl add_pair|add_pair:|add a0, a0, a1|main:|lw t1, 0(sp)|addi t1, t1, 0|sw t1, 0(sp)|lw t2, 0(sp)|li a0, 5|mv a1, t2|call add_pair|ret"
+      FORBIDDEN_SNIPPETS "bir.func @add_pair|bir.func @main()|define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_arg_both_local_first_rewrite_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/two_arg_both_local_first_rewrite.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_arg_both_local_first_rewrite_riscv64.s"
+      REQUIRED_SNIPPETS ".globl add_pair|add_pair:|add a0, a0, a1|main:|sw t0, 0(sp)|sw t1, 4(sp)|lw t2, 0(sp)|addi t2, t2, 0|sw t2, 0(sp)|lw t3, 0(sp)|lw t4, 4(sp)|mv a0, t3|mv a1, t4|call add_pair|ret"
+      FORBIDDEN_SNIPPETS "bir.func @add_pair|bir.func @main()|define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_arg_both_local_second_rewrite_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/two_arg_both_local_second_rewrite.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_arg_both_local_second_rewrite_riscv64.s"
+      REQUIRED_SNIPPETS ".globl add_pair|add_pair:|add a0, a0, a1|main:|sw t0, 0(sp)|sw t1, 4(sp)|lw t2, 4(sp)|addi t2, t2, 0|sw t2, 4(sp)|lw t3, 0(sp)|lw t4, 4(sp)|mv a0, t3|mv a1, t4|call add_pair|ret"
+      FORBIDDEN_SNIPPETS "bir.func @add_pair|bir.func @main()|define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_arg_both_local_double_rewrite_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/two_arg_both_local_double_rewrite.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_arg_both_local_double_rewrite_riscv64.s"
+      REQUIRED_SNIPPETS ".globl add_pair|add_pair:|add a0, a0, a1|main:|sw t0, 0(sp)|sw t1, 4(sp)|lw t2, 0(sp)|addi t2, t2, 0|sw t2, 0(sp)|lw t3, 4(sp)|addi t3, t3, 0|sw t3, 4(sp)|lw t4, 0(sp)|lw t5, 4(sp)|mv a0, t4|mv a1, t5|call add_pair|ret"
+      FORBIDDEN_SNIPPETS "bir.func @add_pair|bir.func @main()|define i32 @main()"
     )
 
     c4c_add_backend_codegen_route_test(
@@ -1287,22 +2752,190 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_single_param_u8_select_eq_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/single_param_u8_select_eq.c"
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_add_phi_post_add_sub_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_add_phi_post_add_sub.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/single_param_u8_select_eq_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose_u(i8 %p.x) -> i8 {|bir.select eq i8 %p.x, 7, 11, 4|bir.ret i8 %t11"
-      FORBIDDEN_SNIPPETS "define i8 @choose_u(i8 %p.x)"
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_add_phi_post_add_sub_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_add_post_chain(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t10.phi, i32 %t8|bir.store_local %t10.phi, i32 %t9|%t10 = bir.load_local i32 %t10.phi|%t11 = bir.add i32 %t10, 6|%t12 = bir.sub i32 %t11, 2|bir.ret i32 %t12"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_add_post_chain(i32 %p.x, i32 %p.y)"
     )
 
     c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_single_param_u8_select_ne_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/single_param_u8_select_ne.c"
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_mixed_affine_post_add_sub.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/single_param_u8_select_ne_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose_ne_u(i8 %p.x) -> i8 {|bir.select ne i8 %p.x, 7, 11, 4|bir.ret i8 %t11"
-      FORBIDDEN_SNIPPETS "define i8 @choose_ne_u(i8 %p.x)"
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_mixed_post_chain(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t12.phi, i32 %t9|bir.store_local %t12.phi, i32 %t11|%t12 = bir.load_local i32 %t12.phi|%t13 = bir.add i32 %t12, 6|%t14 = bir.sub i32 %t13, 2|bir.ret i32 %t14"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_mixed_post_chain(i32 %p.x, i32 %p.y)"
     )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_affine_post_add_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_mixed_affine_post_add.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_mixed_affine_post_add_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_mixed_post(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t12.phi, i32 %t9|bir.store_local %t12.phi, i32 %t11|%t12 = bir.load_local i32 %t12.phi|%t13 = bir.add i32 %t12, 6|bir.ret i32 %t13"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_mixed_post(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_mixed_then_deeper_post(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t13.phi, i32 %t9|bir.store_local %t13.phi, i32 %t12|%t13 = bir.load_local i32 %t13.phi|%t14 = bir.add i32 %t13, 6|bir.ret i32 %t14"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_mixed_then_deeper_post(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_deeper_post(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t13.phi, i32 %t10|bir.store_local %t13.phi, i32 %t12|%t13 = bir.load_local i32 %t13.phi|%t14 = bir.add i32 %t13, 6|bir.ret i32 %t14"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_post(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_affine_post_add_sub.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_deeper_both_post_chain(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t14.phi, i32 %t10|bir.store_local %t14.phi, i32 %t13|%t14 = bir.load_local i32 %t14.phi|%t15 = bir.add i32 %t14, 6|%t16 = bir.sub i32 %t15, 2|bir.ret i32 %t16"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_both_post_chain(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_affine_post_add_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_affine_post_add.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_affine_post_add_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_deeper_both_post(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t14.phi, i32 %t10|bir.store_local %t14.phi, i32 %t13|%t14 = bir.load_local i32 %t14.phi|%t15 = bir.add i32 %t14, 6|bir.ret i32 %t15"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_both_post(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_add_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_add.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_add_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_deeper_both_post_chain_tail(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t14.phi, i32 %t10|bir.store_local %t14.phi, i32 %t13|%t14 = bir.load_local i32 %t14.phi|%t15 = bir.add i32 %t14, 6|%t16 = bir.sub i32 %t15, 2|%t17 = bir.add i32 %t16, 9|bir.ret i32 %t17"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_both_post_chain_tail(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_add_phi_post_add_sub_add_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_add_phi_post_add_sub_add.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_add_phi_post_add_sub_add_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_add_post_chain_tail(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t10.phi, i32 %t8|bir.store_local %t10.phi, i32 %t9|%t10 = bir.load_local i32 %t10.phi|%t11 = bir.add i32 %t10, 6|%t12 = bir.sub i32 %t11, 2|%t13 = bir.add i32 %t12, 9|bir.ret i32 %t13"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_add_post_chain_tail(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_add_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_add.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_add_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_mixed_post_chain_tail(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t12.phi, i32 %t9|bir.store_local %t12.phi, i32 %t11|%t12 = bir.load_local i32 %t12.phi|%t13 = bir.add i32 %t12, 6|%t14 = bir.sub i32 %t13, 2|%t15 = bir.add i32 %t14, 9|bir.ret i32 %t15"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_mixed_post_chain_tail(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_deeper_post_chain_tail(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t13.phi, i32 %t10|bir.store_local %t13.phi, i32 %t12|%t13 = bir.load_local i32 %t13.phi|%t14 = bir.add i32 %t13, 6|%t15 = bir.sub i32 %t14, 2|%t16 = bir.add i32 %t15, 9|bir.ret i32 %t16"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_post_chain_tail(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_mixed_then_deeper_post_chain_tail(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t13.phi, i32 %t9|bir.store_local %t13.phi, i32 %t12|%t13 = bir.load_local i32 %t13.phi|%t14 = bir.add i32 %t13, 6|%t15 = bir.sub i32 %t14, 2|%t16 = bir.add i32 %t15, 9|bir.ret i32 %t16"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_mixed_then_deeper_post_chain_tail(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_single_param_select_eq_observes_semantic_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/single_param_select_eq.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/single_param_select_eq_semantic_bir_riscv64.ll"
+      EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+      REQUIRED_SNIPPETS "bir.func @choose(i32 %p.x) -> i32 {|entry:|%t8 = bir.select eq i32 %p.x, 7, i32 11, 4|bir.ret i32 %t8"
+      FORBIDDEN_SNIPPETS "define i32 @choose|semantic_phi"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_phi
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_semantic_phi_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_deeper_post_chain(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t13.phi, i32 %t10|bir.store_local %t13.phi, i32 %t12|%t13 = bir.load_local i32 %t13.phi|%t14 = bir.add i32 %t13, 6|%t15 = bir.sub i32 %t14, 2|bir.ret i32 %t15|semantic_phi %t13 = bir.phi i32 [tern.then.end.4, %t10] [tern.else.end.6, %t12]"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_post_chain(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_semantic_bir_riscv64.ll"
+      EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+      REQUIRED_SNIPPETS "bir.func @choose2_deeper_post_chain(i32 %p.x, i32 %p.y) -> i32 {|tern.end.7:|%t13 = bir.phi i32 [tern.then.end.4, %t10] [tern.else.end.6, %t12]|%t14 = bir.add i32 %t13, 6|%t15 = bir.sub i32 %t14, 2|bir.ret i32 %t15"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_post_chain(i32 %p.x, i32 %p.y)|bir.store_local %t13.phi|semantic_phi"
+    )
+
+    set(riscv64_backend_unsupported_asm_route_stems
+      single_param_u8_select_eq
+      single_param_u8_select_ne
+      two_param_u8_select_eq
+      two_param_u8_select_ne
+      two_param_u8_select_ne_predecessor_add_post_add
+      two_param_u8_select_eq_predecessor_add_post_add
+      two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub
+      two_param_u8_select_ne_split_predecessor_add_phi_post_add_sub
+      two_param_u8_select_ne_split_predecessor_add_phi_post_add_sub_add
+      two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub_add
+      two_param_u8_select_eq_split_predecessor_mixed_affine_post_add
+      two_param_u8_select_ne_split_predecessor_mixed_affine_post_add
+      two_param_u8_select_ne_split_predecessor_mixed_affine_post_add_sub
+      two_param_u8_select_eq_split_predecessor_mixed_affine_post_add_sub
+      two_param_u8_select_eq_split_predecessor_mixed_affine_post_add_sub_add
+      two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add
+      two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub
+      two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add
+      two_param_u8_select_eq_split_predecessor_deeper_affine_post_add
+      two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_sub
+      two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add
+      two_param_u8_select_ne_split_predecessor_mixed_then_deeper_affine_post_add
+      two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub
+      two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add
+      two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_sub_add
+      single_param_select_eq
+      single_param_select_ne
+      two_param_select_eq
+      two_param_select_eq_predecessor_add_post_add
+      two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub
+      two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub
+    )
+    foreach(route_stem IN LISTS riscv64_backend_unsupported_asm_route_stems)
+      c4c_add_backend_cmake_test(
+        "backend_codegen_route_riscv64_${route_stem}_asm_unsupported"
+        run_backend_unsupported_asm_case.cmake
+        -DCOMPILER=$<TARGET_FILE:c4cll>
+        -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/${route_stem}.c
+        -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
+        "-DREQUIRED_STDERR_REGEX=error: --codegen asm requires backend-native assembly output\\."
+        "-DFORBIDDEN_STDERR_SNIPPETS=stdout assembly output is only available when the backend emits native asm.|file output no longer falls back to LLVM-generated asm.|Re-run with --codegen llvm if you need IR output."
+      )
+      c4c_set_backend_test_labels(
+        "backend_codegen_route_riscv64_${route_stem}_asm_unsupported"
+        backend_route
+      )
+    endforeach()
 
     c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_two_param_i8_add_sub_chain_defaults_to_bir
@@ -1368,381 +3001,12 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_u(i8 %p.x, i8 %p.y) -> i8 {|bir.select eq i8 %p.x, %p.y, %p.x, %p.y|bir.ret i8 %t10"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_ne_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_ne.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_ne_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_ne_u(i8 %p.x, i8 %p.y) -> i8 {|bir.select ne i8 %p.x, %p.y, %p.x, %p.y|bir.ret i8 %t10"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_ne_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_ne_predecessor_add_post_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_ne_predecessor_add_post_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_ne_predecessor_add_post_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_add_post_ne_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 5|%t13 = bir.add i8 %p.y, 9|%t14 = bir.select ne i8 %p.x, %p.y, %t11, %t13|%t15 = bir.add i8 %t14, 6|bir.ret i8 %t15"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_add_post_ne_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_predecessor_add_post_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_predecessor_add_post_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_predecessor_add_post_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_add_post_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 5|%t13 = bir.add i8 %p.y, 9|%t14 = bir.select eq i8 %p.x, %p.y, %t11, %t13|%t15 = bir.add i8 %t14, 6|bir.ret i8 %t15"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_add_post_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_add_post_chain_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 5|%t13 = bir.add i8 %p.y, 9|%t14 = bir.select eq i8 %p.x, %p.y, %t11, %t13|%t15 = bir.add i8 %t14, 6|%t16 = bir.sub i8 %t15, 2|bir.ret i8 %t16"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_add_post_chain_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_ne_split_predecessor_add_phi_post_add_sub_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_ne_split_predecessor_add_phi_post_add_sub.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_ne_split_predecessor_add_phi_post_add_sub_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_add_post_chain_ne_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 5|%t13 = bir.add i8 %p.y, 9|%t14 = bir.select ne i8 %p.x, %p.y, %t11, %t13|%t15 = bir.add i8 %t14, 6|%t16 = bir.sub i8 %t15, 2|bir.ret i8 %t16"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_add_post_chain_ne_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_ne_split_predecessor_add_phi_post_add_sub_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_ne_split_predecessor_add_phi_post_add_sub_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_ne_split_predecessor_add_phi_post_add_sub_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_add_post_chain_tail_ne_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 5|%t13 = bir.add i8 %p.y, 9|%t14 = bir.select ne i8 %p.x, %p.y, %t11, %t13|%t15 = bir.add i8 %t14, 6|%t16 = bir.sub i8 %t15, 2|%t17 = bir.add i8 %t16, 9|bir.ret i8 %t17"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_add_post_chain_tail_ne_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_add_post_chain_tail_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 5|%t13 = bir.add i8 %p.y, 9|%t14 = bir.select eq i8 %p.x, %p.y, %t11, %t13|%t15 = bir.add i8 %t14, 6|%t16 = bir.sub i8 %t15, 2|%t17 = bir.add i8 %t16, 9|bir.ret i8 %t17"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_add_post_chain_tail_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_mixed_affine_post_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_mixed_affine_post_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_mixed_affine_post_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_post_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t14 = bir.add i8 %p.y, 11|%t15 = bir.sub i8 %t14, 4|%t16 = bir.select eq i8 %p.x, %p.y, %t12, %t15|%t17 = bir.add i8 %t16, 6|bir.ret i8 %t17"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_mixed_post_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_ne_split_predecessor_mixed_affine_post_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_ne_split_predecessor_mixed_affine_post_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_ne_split_predecessor_mixed_affine_post_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_post_ne_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t14 = bir.add i8 %p.y, 11|%t15 = bir.sub i8 %t14, 4|%t16 = bir.select ne i8 %p.x, %p.y, %t12, %t15|%t17 = bir.add i8 %t16, 6|bir.ret i8 %t17"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_mixed_post_ne_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_ne_split_predecessor_mixed_affine_post_add_sub_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_ne_split_predecessor_mixed_affine_post_add_sub.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_ne_split_predecessor_mixed_affine_post_add_sub_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_post_chain_ne_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t14 = bir.add i8 %p.y, 11|%t15 = bir.sub i8 %t14, 4|%t16 = bir.select ne i8 %p.x, %p.y, %t12, %t15|%t17 = bir.add i8 %t16, 6|%t18 = bir.sub i8 %t17, 2|bir.ret i8 %t18"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_mixed_post_chain_ne_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_mixed_affine_post_add_sub_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_mixed_affine_post_add_sub.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_mixed_affine_post_add_sub_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_post_chain_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t14 = bir.add i8 %p.y, 11|%t15 = bir.sub i8 %t14, 4|%t16 = bir.select eq i8 %p.x, %p.y, %t12, %t15|%t17 = bir.add i8 %t16, 6|%t18 = bir.sub i8 %t17, 2|bir.ret i8 %t18"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_mixed_post_chain_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_mixed_affine_post_add_sub_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_mixed_affine_post_add_sub_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_mixed_affine_post_add_sub_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_post_chain_tail_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t14 = bir.add i8 %p.y, 11|%t15 = bir.sub i8 %t14, 4|%t16 = bir.select eq i8 %p.x, %p.y, %t12, %t15|%t17 = bir.add i8 %t16, 6|%t18 = bir.sub i8 %t17, 2|%t19 = bir.add i8 %t18, 9|bir.ret i8 %t19"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_mixed_post_chain_tail_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_deeper_post_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t13 = bir.add i8 %t12, 5|%t15 = bir.add i8 %p.y, 11|%t16 = bir.sub i8 %t15, 4|%t17 = bir.select eq i8 %p.x, %p.y, %t13, %t16|%t18 = bir.add i8 %t17, 6|bir.ret i8 %t18"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_deeper_post_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_deeper_post_chain_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t13 = bir.add i8 %t12, 5|%t15 = bir.add i8 %p.y, 11|%t16 = bir.sub i8 %t15, 4|%t17 = bir.select eq i8 %p.x, %p.y, %t13, %t16|%t18 = bir.add i8 %t17, 6|%t19 = bir.sub i8 %t18, 2|bir.ret i8 %t19"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_deeper_post_chain_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_deeper_post_chain_tail_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t13 = bir.add i8 %t12, 5|%t15 = bir.add i8 %p.y, 11|%t16 = bir.sub i8 %t15, 4|%t17 = bir.select eq i8 %p.x, %p.y, %t13, %t16|%t18 = bir.add i8 %t17, 6|%t19 = bir.sub i8 %t18, 2|%t20 = bir.add i8 %t19, 9|bir.ret i8 %t20"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_deeper_post_chain_tail_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_deeper_affine_post_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_deeper_both_post_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t13 = bir.add i8 %t12, 5|%t15 = bir.add i8 %p.y, 11|%t16 = bir.sub i8 %t15, 4|%t17 = bir.add i8 %t16, 7|%t18 = bir.select eq i8 %p.x, %p.y, %t13, %t17|%t19 = bir.add i8 %t18, 6|bir.ret i8 %t19"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_deeper_both_post_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_sub_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_sub.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_sub_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_deeper_both_post_chain_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t13 = bir.add i8 %t12, 5|%t15 = bir.add i8 %p.y, 11|%t16 = bir.sub i8 %t15, 4|%t17 = bir.add i8 %t16, 7|%t18 = bir.select eq i8 %p.x, %p.y, %t13, %t17|%t19 = bir.add i8 %t18, 6|%t20 = bir.sub i8 %t19, 2|bir.ret i8 %t20"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_deeper_both_post_chain_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_then_deeper_post_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t14 = bir.add i8 %p.y, 11|%t15 = bir.sub i8 %t14, 4|%t16 = bir.add i8 %t15, 7|%t17 = bir.select eq i8 %p.x, %p.y, %t12, %t16|%t18 = bir.add i8 %t17, 6|bir.ret i8 %t18"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_mixed_then_deeper_post_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_ne_split_predecessor_mixed_then_deeper_affine_post_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_ne_split_predecessor_mixed_then_deeper_affine_post_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_ne_split_predecessor_mixed_then_deeper_affine_post_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_then_deeper_post_ne_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t14 = bir.add i8 %p.y, 11|%t15 = bir.sub i8 %t14, 4|%t16 = bir.add i8 %t15, 7|%t17 = bir.select ne i8 %p.x, %p.y, %t12, %t16|%t18 = bir.add i8 %t17, 6|bir.ret i8 %t18"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_mixed_then_deeper_post_ne_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_then_deeper_post_chain_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t14 = bir.add i8 %p.y, 11|%t15 = bir.sub i8 %t14, 4|%t16 = bir.add i8 %t15, 7|%t17 = bir.select eq i8 %p.x, %p.y, %t12, %t16|%t18 = bir.add i8 %t17, 6|%t19 = bir.sub i8 %t18, 2|bir.ret i8 %t19"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_mixed_then_deeper_post_chain_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_then_deeper_post_chain_tail_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t14 = bir.add i8 %p.y, 11|%t15 = bir.sub i8 %t14, 4|%t16 = bir.add i8 %t15, 7|%t17 = bir.select eq i8 %p.x, %p.y, %t12, %t16|%t18 = bir.add i8 %t17, 6|%t19 = bir.sub i8 %t18, 2|%t20 = bir.add i8 %t19, 9|bir.ret i8 %t20"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_mixed_then_deeper_post_chain_tail_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_sub_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_sub_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_sub_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_deeper_both_post_chain_tail_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t13 = bir.add i8 %t12, 5|%t15 = bir.add i8 %p.y, 11|%t16 = bir.sub i8 %t15, 4|%t17 = bir.add i8 %t16, 7|%t18 = bir.select eq i8 %p.x, %p.y, %t13, %t17|%t19 = bir.add i8 %t18, 6|%t20 = bir.sub i8 %t19, 2|%t21 = bir.add i8 %t20, 9|bir.ret i8 %t21"
-      FORBIDDEN_SNIPPETS "define i8 @choose2_deeper_both_post_chain_tail_u(i8 %p.x, i8 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_single_param_select_eq_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/single_param_select_eq.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/single_param_select_eq_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose(i32 %p.x) -> i32 {|%t8 = bir.select eq i32 %p.x, 7, 11, 4|bir.ret i32 %t8"
-      FORBIDDEN_SNIPPETS "define i32 @choose(i32 %p.x)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_single_param_select_ne_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/single_param_select_ne.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/single_param_select_ne_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose_ne(i32 %p.x) -> i32 {|%t8 = bir.select ne i32 %p.x, 7, 11, 4|bir.ret i32 %t8"
-      FORBIDDEN_SNIPPETS "define i32 @choose_ne(i32 %p.x)"
-    )
-
-    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_two_param_add_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_add.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_add_riscv64.ll"
       REQUIRED_SNIPPETS "bir.func @add_pair(i32 %p.x, i32 %p.y) -> i32 {|%t0 = bir.add i32 %p.x, %p.y|bir.ret i32 %t0"
       FORBIDDEN_SNIPPETS "define i32 @add_pair(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.select eq i32 %p.x, %p.y, %p.x, %p.y|bir.ret i32 %t8"
-      FORBIDDEN_SNIPPETS "define i32 @choose2(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_predecessor_add_post_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_predecessor_add_post_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_predecessor_add_post_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_add_post(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 5|%t9 = bir.add i32 %p.y, 9|%t10 = bir.select eq i32 %p.x, %p.y, %t8, %t9|%t11 = bir.add i32 %t10, 6|bir.ret i32 %t11"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_add_post(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_add_phi_post_add_sub_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_add_phi_post_add_sub.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_add_phi_post_add_sub_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_add_post_chain(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 5|%t9 = bir.add i32 %p.y, 9|%t10 = bir.select eq i32 %p.x, %p.y, %t8, %t9|%t11 = bir.add i32 %t10, 6|%t12 = bir.sub i32 %t11, 2|bir.ret i32 %t12"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_add_post_chain(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_add_phi_post_add_sub_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_add_phi_post_add_sub_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_add_phi_post_add_sub_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_add_post_chain_tail(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 5|%t9 = bir.add i32 %p.y, 9|%t10 = bir.select eq i32 %p.x, %p.y, %t8, %t9|%t11 = bir.add i32 %t10, 6|%t12 = bir.sub i32 %t11, 2|%t13 = bir.add i32 %t12, 9|bir.ret i32 %t13"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_add_post_chain_tail(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_affine_post_add_sub.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_deeper_both_post_chain(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 8|%t9 = bir.sub i32 %t8, 3|%t10 = bir.add i32 %t9, 5|%t11 = bir.add i32 %p.y, 11|%t12 = bir.sub i32 %t11, 4|%t13 = bir.add i32 %t12, 7|%t14 = bir.select eq i32 %p.x, %p.y, %t10, %t13|%t15 = bir.add i32 %t14, 6|%t16 = bir.sub i32 %t15, 2|bir.ret i32 %t16"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_both_post_chain(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_mixed_affine_post_add_sub.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_post_chain(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 8|%t9 = bir.sub i32 %t8, 3|%t10 = bir.add i32 %p.y, 11|%t11 = bir.sub i32 %t10, 4|%t12 = bir.select eq i32 %p.x, %p.y, %t9, %t11|%t13 = bir.add i32 %t12, 6|%t14 = bir.sub i32 %t13, 2|bir.ret i32 %t14"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_mixed_post_chain(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_post_chain_tail(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 8|%t9 = bir.sub i32 %t8, 3|%t10 = bir.add i32 %p.y, 11|%t11 = bir.sub i32 %t10, 4|%t12 = bir.select eq i32 %p.x, %p.y, %t9, %t11|%t13 = bir.add i32 %t12, 6|%t14 = bir.sub i32 %t13, 2|%t15 = bir.add i32 %t14, 9|bir.ret i32 %t15"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_mixed_post_chain_tail(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_affine_post_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_mixed_affine_post_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_mixed_affine_post_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_post(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 8|%t9 = bir.sub i32 %t8, 3|%t10 = bir.add i32 %p.y, 11|%t11 = bir.sub i32 %t10, 4|%t12 = bir.select eq i32 %p.x, %p.y, %t9, %t11|%t13 = bir.add i32 %t12, 6|bir.ret i32 %t13"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_mixed_post(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_deeper_post(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 8|%t9 = bir.sub i32 %t8, 3|%t10 = bir.add i32 %t9, 5|%t11 = bir.add i32 %p.y, 11|%t12 = bir.sub i32 %t11, 4|%t13 = bir.select eq i32 %p.x, %p.y, %t10, %t12|%t14 = bir.add i32 %t13, 6|bir.ret i32 %t14"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_post(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_deeper_post_chain(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 8|%t9 = bir.sub i32 %t8, 3|%t10 = bir.add i32 %t9, 5|%t11 = bir.add i32 %p.y, 11|%t12 = bir.sub i32 %t11, 4|%t13 = bir.select eq i32 %p.x, %p.y, %t10, %t12|%t14 = bir.add i32 %t13, 6|%t15 = bir.sub i32 %t14, 2|bir.ret i32 %t15"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_post_chain(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_deeper_post_chain_tail(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 8|%t9 = bir.sub i32 %t8, 3|%t10 = bir.add i32 %t9, 5|%t11 = bir.add i32 %p.y, 11|%t12 = bir.sub i32 %t11, 4|%t13 = bir.select eq i32 %p.x, %p.y, %t10, %t12|%t14 = bir.add i32 %t13, 6|%t15 = bir.sub i32 %t14, 2|%t16 = bir.add i32 %t15, 9|bir.ret i32 %t16"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_post_chain_tail(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_then_deeper_post(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 8|%t9 = bir.sub i32 %t8, 3|%t10 = bir.add i32 %p.y, 11|%t11 = bir.sub i32 %t10, 4|%t12 = bir.add i32 %t11, 7|%t13 = bir.select eq i32 %p.x, %p.y, %t9, %t12|%t14 = bir.add i32 %t13, 6|bir.ret i32 %t14"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_mixed_then_deeper_post(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_then_deeper_post_chain(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 8|%t9 = bir.sub i32 %t8, 3|%t10 = bir.add i32 %p.y, 11|%t11 = bir.sub i32 %t10, 4|%t12 = bir.add i32 %t11, 7|%t13 = bir.select eq i32 %p.x, %p.y, %t9, %t12|%t14 = bir.add i32 %t13, 6|%t15 = bir.sub i32 %t14, 2|bir.ret i32 %t15"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_mixed_then_deeper_post_chain(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_affine_post_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_affine_post_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_affine_post_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_deeper_both_post(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 8|%t9 = bir.sub i32 %t8, 3|%t10 = bir.add i32 %t9, 5|%t11 = bir.add i32 %p.y, 11|%t12 = bir.sub i32 %t11, 4|%t13 = bir.add i32 %t12, 7|%t14 = bir.select eq i32 %p.x, %p.y, %t10, %t13|%t15 = bir.add i32 %t14, 6|bir.ret i32 %t15"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_both_post(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_deeper_both_post_chain_tail(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 8|%t9 = bir.sub i32 %t8, 3|%t10 = bir.add i32 %t9, 5|%t11 = bir.add i32 %p.y, 11|%t12 = bir.sub i32 %t11, 4|%t13 = bir.add i32 %t12, 7|%t14 = bir.select eq i32 %p.x, %p.y, %t10, %t13|%t15 = bir.add i32 %t14, 6|%t16 = bir.sub i32 %t15, 2|%t17 = bir.add i32 %t16, 9|bir.ret i32 %t17"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_both_post_chain_tail(i32 %p.x, i32 %p.y)"
-    )
-
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add_defaults_to_bir
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @choose2_mixed_then_deeper_post_chain_tail(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 8|%t9 = bir.sub i32 %t8, 3|%t10 = bir.add i32 %p.y, 11|%t11 = bir.sub i32 %t10, 4|%t12 = bir.add i32 %t11, 7|%t13 = bir.select eq i32 %p.x, %p.y, %t9, %t12|%t14 = bir.add i32 %t13, 6|%t15 = bir.sub i32 %t14, 2|%t16 = bir.add i32 %t15, 9|bir.ret i32 %t16"
-      FORBIDDEN_SNIPPETS "define i32 @choose2_mixed_then_deeper_post_chain_tail(i32 %p.x, i32 %p.y)"
     )
 
     c4c_add_backend_codegen_route_test(
@@ -1775,6 +3039,564 @@ if(CLANG_EXECUTABLE)
     c4c_set_backend_test_labels(
       backend_codegen_route_riscv64_global_load_asm_unsupported
       backend_route
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_extern_global_array_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/extern_global_array.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/extern_global_array_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t5 = bir.load_global i32 @ext_arr, offset 12|bir.ret i32 %t5"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_global_array_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_global_array.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_global_array_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t5 = bir.load_global i32 @arr, offset 12|bir.ret i32 %t5"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_global_array_pointer_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_global_array_pointer.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_global_array_pointer_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t8 = bir.load_global i32 @arr, offset 12|bir.ret i32 %t8"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_global_array_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_global_array_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_global_array_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @arr, offset 8, i32 9|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_extern_global_array_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/extern_global_array_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/extern_global_array_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @ext_arr, offset 8, i32 9|bir.load_global i32 @ext_arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_global_array_pointer_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_global_array_pointer_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_global_array_pointer_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @arr, offset 8, i32 9|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_string_global_char_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_string_global_char.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_string_global_char_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t3 = bir.load_global i8 @g_text, offset 1|%t4 = bir.sext i8 %t3 to i32|bir.ret i32 %t4"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_array_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_array.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_array_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gp|%t3 = bir.load_global i32 @arr, offset 4|bir.ret i32 %t3"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_array_offset_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_array_offset.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_array_offset_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gp|%t3 = bir.load_global i32 @arr, offset 8|bir.ret i32 %t3"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_pointer_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_pointer.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_pointer_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gpp|%t3 = bir.load_global i32 @arr, offset 8|bir.ret i32 %t3"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_pointer_offset_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_pointer_offset.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_pointer_offset_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gpp|%t3 = bir.load_global i32 @arr, offset 12|bir.ret i32 %t3"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_pointer_pointer_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_pointer_pointer.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_pointer_pointer_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @ggp|%t1 = bir.load_global ptr @gp|%t4 = bir.load_global i32 @arr, offset 8|bir.ret i32 %t4"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_struct_array_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_struct_array.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_struct_array_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gp|%t1 = bir.load_global i32 @s, offset 8|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_struct_array_object_alias_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_struct_array_object_alias.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_struct_array_object_alias_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gpp|%t1 = bir.load_global ptr @gp|%t4 = bir.load_global i32 @s, offset 8|bir.ret i32 %t4"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_nested_struct_array_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_nested_struct_array.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_nested_struct_array_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gp|%t1 = bir.load_global i32 @s, offset 12|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_nested_struct_array_object_alias_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_nested_struct_array_object_alias.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_nested_struct_array_object_alias_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gpp|%t1 = bir.load_global ptr @gp|%t4 = bir.load_global i32 @s, offset 12|bir.ret i32 %t4"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_root_array_struct_field_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_root_array_struct_field.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_root_array_struct_field_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gp|%t1 = bir.load_global i32 @pairs, offset 12|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_root_array_struct_field_object_alias_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_root_array_struct_field_object_alias.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_root_array_struct_field_object_alias_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gpp|%t1 = bir.load_global ptr @gp|%t4 = bir.load_global i32 @pairs, offset 12|bir.ret i32 %t4"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_array_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_array_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_array_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gp|bir.store_global @arr, offset 4, i32 9|bir.load_global i32 @arr, offset 4|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_pointer_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_pointer_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_pointer_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @ggp|%t1 = bir.load_global ptr @gp|bir.store_global @arr, offset 8, i32 9|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_pointer_value_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_pointer_value_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_pointer_value_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gq|bir.load_global ptr @ggp|bir.store_global @gp, ptr |bir.load_global ptr @gp|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_pointer_pointer_value_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_pointer_pointer_value_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_pointer_pointer_value_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gq|bir.load_global ptr @gggp|bir.load_global ptr @ggp|bir.store_global @gp, ptr |bir.load_global ptr @gp|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_string_pointer_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_string_pointer.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_string_pointer_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @ggp|%t1 = bir.load_global ptr @gp|%t4 = bir.load_global i8 @g_text, offset 1|%t5 = bir.sext i8 %t4 to i32|bir.ret i32 %t5"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_pointer_global_string_pointer_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_pointer_global_string_pointer_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_pointer_global_string_pointer_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @ggp|%t1 = bir.load_global ptr @gp|bir.trunc i32 111 to i8|bir.store_global @g_text, offset 1, i8 |bir.load_global i8 @g_text, offset 1|bir.sext i8 |bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_string_global_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_string_global_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_string_global_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gp|bir.trunc i32 111 to i8|bir.store_global @g_text, offset 1, i8 |bir.load_global i8 @g_text, offset 1|bir.sext i8 |bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_string_literal_char_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/string_literal_char.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/string_literal_char_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t3 = bir.load_global i8 @.str0, offset 1|%t4 = bir.sext i8 %t3 to i32|bir.ret i32 %t4"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_char_pointer_diff_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_char_pointer_diff.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_char_pointer_diff_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t11 = bir.eq i64 1, 1|bir.ret i32 %t11"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_int_pointer_diff_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_int_pointer_diff.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_int_pointer_diff_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t12 = bir.eq i64 1, 1|bir.ret i32 %t12"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_int_pointer_roundtrip_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_int_pointer_roundtrip.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_int_pointer_roundtrip_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @ggp|bir.load_global ptr @gp|bir.load_global i32 @arr, offset 4|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_int_pointer_roundtrip_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_int_pointer_roundtrip_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_int_pointer_roundtrip_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gq|bir.store_global @gp, ptr |bir.load_global ptr @gp|bir.load_global i32 @arr, offset 4|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_int_pointer_pointer_roundtrip_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_int_pointer_pointer_roundtrip_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_int_pointer_pointer_roundtrip_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gq|bir.load_global ptr @ggp|bir.store_global @gp, ptr |bir.load_global ptr @gp|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_defined_global_struct_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/defined_global_struct_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/defined_global_struct_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @v, i32 1|bir.store_global @v, offset 4, i32 2|bir.load_global i32 @v|bir.load_global i32 @v, offset 4|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_struct_array_read_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_struct_array_read.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_struct_array_read_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global i32 @pairs, offset 12|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_struct_array_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_struct_array_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_struct_array_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @pairs, offset 8, i32 9|bir.load_global i32 @pairs, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_struct_pointer_array_read_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_struct_pointer_array_read.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_struct_pointer_array_read_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @pairs, offset 24|bir.load_global i32 @y|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_struct_pointer_array_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_struct_pointer_array_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_struct_pointer_array_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gp|bir.store_global @pairs, offset 24, ptr |bir.load_global ptr @pairs, offset 24|bir.load_global i32 @y|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_struct_pointer_array_alias_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_struct_pointer_array_alias_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_struct_pointer_array_alias_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gp|bir.store_global @pairs, offset 24, ptr |bir.load_global ptr @pairs, offset 24|bir.load_global i32 @y|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_nested_struct_array_read_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_nested_struct_array_read.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_nested_struct_array_read_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global i32 @groups, offset 20|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_nested_struct_array_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_nested_struct_array_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_nested_struct_array_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @groups, offset 16, i32 9|bir.load_global i32 @groups, offset 16|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_nested_struct_array_alias_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_nested_struct_array_alias_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_nested_struct_array_alias_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @groups, offset 20, i32 9|bir.load_global i32 @groups, offset 20|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_nested_struct_pointer_array_read_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_nested_struct_pointer_array_read.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_nested_struct_pointer_array_read_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @groups, offset 40|bir.load_global i32 @y|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_nested_struct_pointer_array_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_nested_struct_pointer_array_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_nested_struct_pointer_array_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gp|bir.store_global @groups, offset 40, ptr |bir.load_global ptr @groups, offset 40|bir.load_global i32 @y|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_nested_struct_pointer_array_alias_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_nested_struct_pointer_array_alias_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_nested_struct_pointer_array_alias_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gp|bir.store_global @groups, offset 40, ptr |bir.load_global ptr @groups, offset 40|bir.load_global i32 @y|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_anonymous_global_struct_fields_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/anonymous_global_struct_fields.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/anonymous_global_struct_fields_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global i32 @s|bir.load_global i32 @s, offset 4|bir.load_global i32 @s, offset 8|bir.ret i32 0"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_named_global_struct_designated_init_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/named_global_struct_designated_init.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/named_global_struct_designated_init_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global i32 @s|bir.load_global i32 @s, offset 4|bir.ret i32 0"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_named_pointer_global_struct_designated_init_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/named_pointer_global_struct_designated_init.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/named_pointer_global_struct_designated_init_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global i32 @s|bir.load_global ptr @s, offset 8|bir.load_global i32 @x|bir.ret i32 0"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_named_pointer_global_struct_pointer_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/named_pointer_global_struct_pointer_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/named_pointer_global_struct_pointer_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gp|bir.store_global @s, offset 8, ptr |bir.load_global ptr @s, offset 8|bir.load_global i32 @y|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_named_pointer_global_struct_pointer_field_alias_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/named_pointer_global_struct_pointer_field_alias_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/named_pointer_global_struct_pointer_field_alias_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gp|bir.store_global @s, offset 8, ptr |bir.load_global ptr @s, offset 8|bir.load_global i32 @y|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_named_pointer_global_struct_pointer_field_rewrite_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/named_pointer_global_struct_pointer_field_rewrite.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/named_pointer_global_struct_pointer_field_rewrite_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gp|bir.store_global @s, offset 8, ptr |bir.load_global ptr @gq|bir.store_global @s, offset 8, ptr |bir.load_global ptr @s, offset 8|bir.load_global i32 @z|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_named_pointer_global_struct_pointer_alias_init_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/named_pointer_global_struct_pointer_alias_init.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/named_pointer_global_struct_pointer_alias_init_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @s, offset 8|bir.load_global i32 @arr, offset 12|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_named_pointer_global_struct_pointer_object_alias_init_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/named_pointer_global_struct_pointer_object_alias_init.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/named_pointer_global_struct_pointer_object_alias_init_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @s|bir.load_global ptr @gpp|bir.load_global ptr @gp|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_nested_global_struct_array_read_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_array_read.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_array_read_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global i32 @s, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_nested_global_struct_array_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_array_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_array_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @s, offset 4, i32 9|bir.load_global i32 @s, offset 4|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_nested_global_struct_array_alias_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_array_alias_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_array_alias_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @s, offset 8, i32 9|bir.load_global i32 @s, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_nested_global_struct_pointer_read_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_pointer_read.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_pointer_read_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @s, offset 8|bir.load_global i32 @x|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_nested_global_struct_pointer_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_pointer_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_pointer_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gp|bir.store_global @s, offset 8, ptr |bir.load_global ptr @s, offset 8|bir.load_global i32 @y|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_nested_global_struct_pointer_alias_store_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_pointer_alias_store.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_pointer_alias_store_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gp|bir.store_global @s, offset 8, ptr |bir.load_global ptr @s, offset 8|bir.load_global i32 @y|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_nested_global_struct_pointer_rewrite_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_pointer_rewrite.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_pointer_rewrite_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @gp|bir.store_global @s, offset 8, ptr |bir.load_global ptr @gq|bir.store_global @s, offset 8, ptr |bir.load_global ptr @s, offset 8|bir.load_global i32 @z|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_nested_global_struct_pointer_alias_init_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_pointer_alias_init.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_pointer_alias_init_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @s, offset 8|bir.load_global i32 @arr, offset 12|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_nested_global_struct_pointer_object_alias_init_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/nested_global_struct_pointer_object_alias_init.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/nested_global_struct_pointer_object_alias_init_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @s, offset 8|bir.load_global ptr @gpp|bir.load_global ptr @gp|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_struct_pointer_array_alias_init_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_struct_pointer_array_alias_init.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_struct_pointer_array_alias_init_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @pairs, offset 24|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_struct_pointer_array_object_alias_init_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_struct_pointer_array_object_alias_init.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_struct_pointer_array_object_alias_init_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_global ptr @pairs, offset 24|bir.load_global ptr @gpp|bir.load_global ptr @gp|bir.load_global i32 @arr, offset 8|bir.ret i32"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
   endif()
 
@@ -1921,6 +3743,50 @@ if(CLANG_EXECUTABLE)
         continue()
       elseif(stem STREQUAL "extern_global_array_def")
         continue()
+      elseif(stem STREQUAL "extern_global_array_store")
+        continue()
+      elseif(stem STREQUAL "defined_global_array")
+        continue()
+      elseif(stem STREQUAL "defined_global_array_store")
+        continue()
+      elseif(stem STREQUAL "defined_global_array_pointer")
+        continue()
+      elseif(stem STREQUAL "defined_global_array_pointer_store")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_array")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_array_offset")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_pointer")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_pointer_offset")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_pointer_pointer")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_struct_array")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_struct_array_object_alias")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_nested_struct_array")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_nested_struct_array_object_alias")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_array_store")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_pointer_store")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_pointer_value_store")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_pointer_pointer_value_store")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_string_pointer")
+        continue()
+      elseif(stem STREQUAL "defined_pointer_global_string_pointer_store")
+        continue()
+      elseif(stem STREQUAL "defined_string_global_char")
+        continue()
+      elseif(stem STREQUAL "defined_string_global_store")
+        continue()
       elseif(stem STREQUAL "global_char_pointer_diff")
         set(expect_exit_code 1)
         set(backend_output_kind "asm")
@@ -1933,6 +3799,44 @@ if(CLANG_EXECUTABLE)
         set(expect_exit_code 9)
         set(backend_output_kind "asm")
         set(backend_asm_source "stdout")
+      elseif(stem STREQUAL "global_int_pointer_roundtrip_store")
+        continue()
+      elseif(stem STREQUAL "global_int_pointer_pointer_roundtrip_store")
+        continue()
+      elseif(stem STREQUAL "global_struct_array_read")
+        continue()
+      elseif(stem STREQUAL "global_struct_array_store")
+        continue()
+      elseif(stem STREQUAL "global_struct_pointer_array_read")
+        continue()
+      elseif(stem STREQUAL "global_struct_pointer_array_store")
+        continue()
+      elseif(stem STREQUAL "global_struct_pointer_array_alias_store")
+        continue()
+      elseif(stem STREQUAL "global_struct_pointer_array_alias_init")
+        continue()
+      elseif(stem STREQUAL "global_nested_struct_pointer_array_read")
+        continue()
+      elseif(stem STREQUAL "global_nested_struct_pointer_array_store")
+        continue()
+      elseif(stem STREQUAL "global_nested_struct_pointer_array_alias_store")
+        continue()
+      elseif(stem STREQUAL "nested_global_struct_pointer_read")
+        continue()
+      elseif(stem STREQUAL "nested_global_struct_pointer_store")
+        continue()
+      elseif(stem STREQUAL "nested_global_struct_pointer_alias_store")
+        continue()
+      elseif(stem STREQUAL "nested_global_struct_pointer_alias_init")
+        continue()
+      elseif(stem STREQUAL "named_pointer_global_struct_pointer_alias_init")
+        continue()
+      elseif(stem STREQUAL "named_pointer_global_struct_pointer_object_alias_init")
+        continue()
+      elseif(stem STREQUAL "nested_global_struct_pointer_object_alias_init")
+        continue()
+      elseif(stem STREQUAL "global_struct_pointer_array_object_alias_init")
+        continue()
       elseif(stem STREQUAL "string_literal_char")
         set(expect_exit_code 105)
         set(backend_output_kind "asm")

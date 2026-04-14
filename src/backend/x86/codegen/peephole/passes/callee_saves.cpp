@@ -1,46 +1,25 @@
 // Mechanical C++-shaped translation of ref/claudes-c-compiler/src/backend/x86/codegen/peephole/passes/callee_saves.rs
 // Unused callee-saved register elimination pass.
 
+#include "../peephole.hpp"
+
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace c4c::backend::x86::codegen::peephole::passes {
 
-struct LineInfo;
-struct LineStore;
+namespace {
 
-enum class LineKind {
-  Nop,
-  Empty,
-  StoreRbp,
-  LoadRbp,
-  SelfMove,
-  Label,
-  Jmp,
-  JmpIndirect,
-  CondJmp,
-  Call,
-  Ret,
-  Push,
-  Pop,
-  SetCC,
-  Cmp,
-  Directive,
-  Other,
-};
-
-using RegId = std::uint8_t;
-
-bool is_callee_saved_reg(RegId reg);
-bool line_references_reg_fast(const LineInfo& info, RegId reg);
-bool is_near_epilogue(const LineInfo* infos, std::size_t pos);
-void mark_nop(LineInfo& info);
+void mark_nop(LineInfo& info) { info.kind = LineKind::Nop; }
 
 static std::string trimmed_line(const LineStore* store, const LineInfo& info, std::size_t index) {
   return std::string(store->get(index).substr(info.trim_start));
 }
+
+}  // namespace
 
 void eliminate_unused_callee_saves(const LineStore* store, LineInfo* infos) {
   const std::size_t len = store->len();
@@ -64,7 +43,8 @@ void eliminate_unused_callee_saves(const LineStore* store, LineInfo* infos) {
     while (j < len && infos[j].kind == LineKind::Nop) {
       ++j;
     }
-    if (j >= len || !trimmed_line(store, infos[j], j).starts_with("subq $")) {
+    const auto subq_line = trimmed_line(store, infos[j], j);
+    if (j >= len || !starts_with(subq_line, "subq $")) {
       ++i;
       continue;
     }
@@ -99,7 +79,7 @@ void eliminate_unused_callee_saves(const LineStore* store, LineInfo* infos) {
       if (infos[k].kind == LineKind::Nop) {
         continue;
       }
-      if (trimmed_line(store, infos[k], k).starts_with(".size ")) {
+      if (starts_with(trimmed_line(store, infos[k], k), ".size ")) {
         func_end = k + 1;
         break;
       }
@@ -122,7 +102,7 @@ void eliminate_unused_callee_saves(const LineStore* store, LineInfo* infos) {
           break;
         }
       }
-      if (!body_has_reference && !restore_indices.empty()) {
+      if (!body_has_reference) {
         mark_nop(infos[save.save_line_idx]);
         for (auto ri : restore_indices) {
           mark_nop(infos[ri]);

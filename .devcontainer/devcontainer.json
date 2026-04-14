@@ -11,6 +11,10 @@
     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached,readonly"
   ],
+  "containerEnv": {
+    "CMAKE_GENERATOR": "Ninja",
+    "CMAKE_BUILD_PARALLEL_LEVEL": "8"
+  },
   "postCreateCommand": "npm i -g @anthropic-ai/claude-code @openai/codex",
   "customizations": {
     "vscode": {

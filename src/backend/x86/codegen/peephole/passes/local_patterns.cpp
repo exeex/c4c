@@ -1,55 +1,11 @@
 // Mechanical C++-shaped translation of ref/claudes-c-compiler/src/backend/x86/codegen/peephole/passes/local_patterns.rs
 // Local peephole pattern matching passes.
 
+#include "../peephole.hpp"
+
 #include <algorithm>
-#include <cstddef>
-#include <string>
-#include <string_view>
-#include <vector>
 
 namespace c4c::backend::x86::codegen::peephole::passes {
-
-struct LineInfo;
-struct LineStore;
-
-enum class LineKind {
-  Nop,
-  Empty,
-  StoreRbp,
-  LoadRbp,
-  SelfMove,
-  Label,
-  Jmp,
-  JmpIndirect,
-  CondJmp,
-  Call,
-  Ret,
-  Push,
-  Pop,
-  SetCC,
-  Cmp,
-  Directive,
-  Other,
-};
-
-using RegId = std::uint8_t;
-constexpr RegId REG_NONE = 255;
-constexpr RegId REG_GP_MAX = 15;
-
-bool is_valid_gp_reg(RegId reg);
-bool is_callee_saved_reg(RegId reg);
-bool line_references_reg_fast(const LineInfo& info, RegId reg);
-bool has_implicit_reg_usage(std::string_view trimmed);
-bool is_shift_or_rotate(std::string_view trimmed);
-std::optional<std::pair<RegId, RegId>> parse_reg_to_reg_movq(const LineInfo& info, std::string_view trimmed);
-RegId get_dest_reg(const LineInfo& info);
-std::optional<std::uint32_t> parse_label_number(std::string_view label_with_colon);
-std::optional<std::uint32_t> parse_dotl_number(std::string_view s);
-std::optional<std::string_view> extract_jump_target(std::string_view s);
-bool is_near_epilogue(const LineInfo* infos, std::size_t pos);
-bool is_read_modify_write(std::string_view trimmed);
-std::string replace_reg_family(std::string_view line, RegId old_id, RegId new_id);
-std::string replace_reg_family_in_source(std::string_view line, RegId old_id, RegId new_id);
 
 static std::string trimmed_line(const LineStore* store, const LineInfo& info, std::size_t index);
 static void mark_nop(LineInfo& info);
@@ -126,7 +82,8 @@ bool combined_local_pass(LineStore* store, LineInfo* infos) {
         }
         if (j < len && infos[j].kind == LineKind::Label) {
           const auto label_line = trimmed_line(store, infos[j], j);
-          if (label_line.ends_with(':') && label_line.substr(0, label_line.size() - 1) == *target) {
+          if (ends_with(label_line, ":") &&
+              label_line.substr(0, label_line.size() - 1) == *target) {
             mark_nop(infos[i]);
             changed = true;
           }
@@ -144,8 +101,8 @@ bool combined_local_pass(LineStore* store, LineInfo* infos) {
         const auto jmp_line = trimmed_line(store, infos[seq[3]], seq[3]);
         if (auto cc = parse_setcc(set_line); cc.has_value() &&
             (test_line == "testq %rax, %rax" || test_line == "testl %eax, %eax") &&
-            (jmp_line.starts_with("jne ") || jmp_line.starts_with("je "))) {
-          const bool is_jne = jmp_line.starts_with("jne ");
+            (starts_with(jmp_line, "jne ") || starts_with(jmp_line, "je "))) {
+          const bool is_jne = starts_with(jmp_line, "jne ");
           const auto target = std::string(jmp_line.substr(4));
           const auto fused = std::string("    j") + (is_jne ? std::string(*cc) : invert_cc(*cc)) + " " + target;
           replace_line(store, infos[seq[3]], seq[3], fused);
@@ -169,7 +126,7 @@ bool fuse_movq_ext_truncation(LineStore* store, LineInfo* infos) {
     }
     const auto a = trimmed_line(store, infos[i], i);
     const auto b = trimmed_line(store, infos[i + 1], i + 1);
-    if (a.starts_with("movq ") && b == "movl %eax, %eax") {
+    if (starts_with(a, "movq ") && b == "movl %eax, %eax") {
       mark_nop(infos[i + 1]);
       changed = true;
     }
@@ -204,11 +161,11 @@ static std::size_t collect_non_nop_indices(const LineInfo* infos, std::size_t st
 }
 
 static bool instruction_writes_to(std::string_view line, std::string_view reg) {
-  return line.contains(reg);
+  return contains(line, reg);
 }
 
 static bool can_redirect_instruction(std::string_view line) {
-  return line.starts_with("mov") || line.starts_with("lea");
+  return starts_with(line, "mov") || starts_with(line, "lea");
 }
 
 static std::optional<std::string> replace_dest_register(std::string_view line, std::string_view old_reg, std::string_view new_reg) {
@@ -226,7 +183,7 @@ static std::optional<std::string> replace_dest_register(std::string_view line, s
 }
 
 static std::optional<std::string> parse_setcc(std::string_view line) {
-  if (!line.starts_with("set") || line.find(' ') == std::string_view::npos) {
+  if (!starts_with(line, "set") || line.find(' ') == std::string_view::npos) {
     return std::nullopt;
   }
   const auto cc = line.substr(3, line.find(' ') - 3);

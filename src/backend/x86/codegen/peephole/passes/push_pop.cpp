@@ -1,38 +1,14 @@
 // Mechanical C++-shaped translation of ref/claudes-c-compiler/src/backend/x86/codegen/peephole/passes/push_pop.rs
 // Push/pop pair elimination passes.
 
+#include "../peephole.hpp"
+
 #include <algorithm>
 #include <cstddef>
 #include <string>
 #include <string_view>
 
 namespace c4c::backend::x86::codegen::peephole::passes {
-
-struct LineInfo;
-struct LineStore;
-
-using RegId = std::uint8_t;
-constexpr RegId REG_NONE = 255;
-
-enum class LineKind {
-  Nop,
-  Empty,
-  StoreRbp,
-  LoadRbp,
-  SelfMove,
-  Label,
-  Jmp,
-  JmpIndirect,
-  CondJmp,
-  Call,
-  Ret,
-  Push,
-  Pop,
-  SetCC,
-  Cmp,
-  Directive,
-  Other,
-};
 
 bool instruction_modifies_reg_id(const LineInfo& info, RegId reg_id);
 bool instruction_modifies_stack(std::string_view line, const LineInfo& info);
@@ -153,10 +129,10 @@ bool instruction_modifies_stack(std::string_view line, const LineInfo& info) {
   if (line.empty()) {
     return false;
   }
-  if (line.starts_with("pushf") || line.starts_with("popf")) {
+  if (starts_with(line, "pushf") || starts_with(line, "popf")) {
     return true;
   }
-  if ((line.starts_with("subq ") || line.starts_with("addq ")) && line.ends_with("%rsp")) {
+  if ((starts_with(line, "subq ") || starts_with(line, "addq ")) && ends_with(line, "%rsp")) {
     return true;
   }
   return info.kind == LineKind::Other && line.find("%rsp") != std::string_view::npos;
@@ -193,7 +169,7 @@ bool instruction_modifies_reg_id(const LineInfo& info, RegId reg_id) {
 }
 
 bool parse_reg_to_reg_move(std::string_view line, std::string_view push_reg) {
-  return line.starts_with("movq ") && line.find(push_reg) != std::string_view::npos;
+  return starts_with(line, "movq ") && line.find(push_reg) != std::string_view::npos;
 }
 
 bool instruction_writes_to(std::string_view line, std::string_view reg) {
@@ -201,7 +177,7 @@ bool instruction_writes_to(std::string_view line, std::string_view reg) {
 }
 
 bool can_redirect_instruction(std::string_view line) {
-  return line.starts_with("mov") || line.starts_with("lea");
+  return starts_with(line, "mov") || starts_with(line, "lea");
 }
 
 std::string replace_dest_register(std::string_view line, std::string_view old_reg, std::string_view new_reg) {

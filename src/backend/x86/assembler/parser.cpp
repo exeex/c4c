@@ -116,6 +116,17 @@ AsmStatement parse_directive(std::string_view line) {
     return statement;
   }
 
+  if (directive == ".type") {
+    const auto operands = split_operands(raw_operands);
+    if (operands.size() == 2 && is_identifier(operands[0]) && operands[1] == "@function") {
+      statement.op = directive;
+      statement.raw_operands = raw_operands;
+      statement.operands.push_back(Operand{operands[0]});
+      statement.operands.push_back(Operand{operands[1]});
+      return statement;
+    }
+  }
+
   throw std::runtime_error("unsupported x86 directive for the Step 2 parser slice: " +
                            std::string(line));
 }
@@ -192,8 +203,10 @@ std::vector<AsmStatement> parse_asm(const std::string& text) {
   bool seen_syntax = false;
   bool seen_text = false;
   bool seen_global = false;
+  bool seen_type = false;
   bool seen_label = false;
   std::string global_symbol;
+  std::vector<std::string> instruction_ops;
 
   while (std::getline(stream, line)) {
     const auto trimmed = trim_asm(strip_comment(line));
@@ -226,8 +239,15 @@ std::vector<AsmStatement> parse_asm(const std::string& text) {
               "Step 2 x86 parser requires .text after .intel_syntax noprefix");
         }
         seen_text = true;
+      } else if (statement.op == ".type") {
+        if (!seen_global || seen_type || seen_label || statement.operands.empty() ||
+            statement.operands.front().text != global_symbol) {
+          throw std::runtime_error(
+              "Step 2 x86 parser only accepts an optional .type for the declared .globl symbol before the label");
+        }
+        seen_type = true;
       } else {
-        if (!seen_text || seen_global || seen_label) {
+        if (!seen_text || seen_global || seen_label || statement.operands.empty()) {
           throw std::runtime_error(
               "Step 2 x86 parser requires exactly one .globl after .text");
         }
@@ -240,6 +260,7 @@ std::vector<AsmStatement> parse_asm(const std::string& text) {
         throw std::runtime_error(
             "Step 2 x86 parser only accepts instructions after the function label");
       }
+      instruction_ops.push_back(statement.op);
     }
 
     statements.push_back(std::move(statement));
@@ -248,9 +269,9 @@ std::vector<AsmStatement> parse_asm(const std::string& text) {
   if (!seen_syntax || !seen_text || !seen_global || !seen_label) {
     throw std::runtime_error("incomplete Step 2 x86 assembly slice");
   }
-  if (statements.size() != 6 ||
-      (statements[4].op != "mov" && statements[4].op != "call") ||
-      statements[5].op != "ret") {
+  if (instruction_ops.size() != 2 ||
+      (instruction_ops.front() != "mov" && instruction_ops.front() != "call") ||
+      instruction_ops.back() != "ret") {
     throw std::runtime_error(
         "Step 2 x86 parser only supports the bounded mov eax, imm32; ret or call symbol; ret function shapes");
   }

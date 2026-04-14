@@ -49,6 +49,7 @@ class ConstInitEmitter {
   std::optional<std::pair<double, double>> try_const_eval_complex_fp(c4c::hir::ExprId id);
   std::string emit_const_int_like(long long value, const TypeSpec& expected_ts);
   std::string emit_const_scalar_expr(c4c::hir::ExprId id, const TypeSpec& expected_ts);
+  std::optional<std::string> try_emit_global_address_expr(c4c::hir::ExprId id);
 
   // ── String/byte helpers ─────────────────────────────────────────────────
   std::string intern_str(const std::string& raw_bytes);

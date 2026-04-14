@@ -1,12 +1,6 @@
-#include "emit.hpp"
+#include "x86_codegen.hpp"
 
 namespace c4c::backend::x86 {
-
-namespace {
-
-constexpr const char* X86_ARG_REGS[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
-
-}  // namespace
 
 CallAbiConfig X86Codegen::call_abi_config_impl() const {
   return CallAbiConfig{
@@ -19,7 +13,9 @@ CallAbiConfig X86Codegen::call_abi_config_impl() const {
       .large_struct_by_ref = false,
       .use_sysv_struct_classification = true,
       .use_riscv_float_struct_classification = false,
-      .allow_struct_split_reg_stack = false,
+      // Match the ref SysV x86_64 ABI contract: no partial GP-register plus
+      // caller-stack aggregate split until the backend policy itself changes.
+      .allow_struct_split_reg_stack = x86_allow_struct_split_reg_stack(),
       .align_struct_pairs = false,
       .sret_uses_dedicated_reg = false,
   };
@@ -60,16 +56,30 @@ std::int64_t X86Codegen::emit_call_stack_args_impl(const std::vector<Operand>& a
 
 void X86Codegen::emit_call_reg_args_impl(const std::vector<Operand>& args,
                                          const std::vector<CallArgClass>& arg_classes,
-                                         const std::vector<IrType>& /*arg_types*/,
+                                         const std::vector<IrType>& arg_types,
                                          std::int64_t /*total_sp_adjust*/,
                                          std::size_t /*f128_temp_space*/,
                                          std::size_t /*stack_arg_space*/,
                                          const std::vector<std::optional<RiscvFloatClass>>& /*classes*/) {
+  std::size_t gp_reg_idx = 0;
+  std::size_t fp_reg_idx = 0;
   for (std::size_t i = 0; i < args.size(); ++i) {
-    if (arg_classes[i].is_register()) {
-      this->operand_to_rax(args[i]);
-      this->state.emit(std::string("    movq %rax, %") + X86_ARG_REGS[i]);
+    if (!arg_classes[i].is_register()) {
+      continue;
     }
+
+    this->operand_to_rax(args[i]);
+    const bool is_float = arg_types[i] == IrType::F32 || arg_types[i] == IrType::F64;
+    if (is_float) {
+      this->state.emit(std::string("    movq %rax, %") + x86_float_arg_reg_name(fp_reg_idx++));
+    } else {
+      this->state.emit(std::string("    movq %rax, %") + x86_arg_reg_name(gp_reg_idx++));
+    }
+  }
+  if (fp_reg_idx > 0) {
+    this->state.out.emit_instr_imm_reg("    movb", static_cast<std::int64_t>(fp_reg_idx), "al");
+  } else {
+    this->state.emit("    xorl %eax, %eax");
   }
   this->state.reg_cache.invalidate_all();
 }
@@ -106,29 +116,29 @@ void X86Codegen::emit_call_store_result_impl(const Value& dest, IrType return_ty
       const auto c0 = this->call_ret_classes[0];
       const auto c1 = this->call_ret_classes[1];
       if (c0 == EightbyteClass::Integer && c1 == EightbyteClass::Sse) {
-        if (const auto slot = this->state.get_slot(dest.0)) {
-          this->state.out.emit_instr_rbp_reg("    movq", slot->0, "rax");
+        if (const auto slot = this->state.get_slot(dest.raw)) {
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw, "rax");
           this->state.emit("    movq %xmm0, %rdx");
-          this->state.out.emit_instr_rbp_reg("    movq", slot->0 + 8, "rdx");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw + 8, "rdx");
         }
         this->state.reg_cache.invalidate_all();
         return;
       }
       if (c0 == EightbyteClass::Sse && c1 == EightbyteClass::Integer) {
-        if (const auto slot = this->state.get_slot(dest.0)) {
+        if (const auto slot = this->state.get_slot(dest.raw)) {
           this->state.emit("    movq %xmm0, %rdx");
-          this->state.out.emit_instr_rbp_reg("    movq", slot->0, "rdx");
-          this->state.out.emit_instr_rbp_reg("    movq", slot->0 + 8, "rax");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw, "rdx");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw + 8, "rax");
         }
         this->state.reg_cache.invalidate_all();
         return;
       }
       if (c0 == EightbyteClass::Sse && c1 == EightbyteClass::Sse) {
-        if (const auto slot = this->state.get_slot(dest.0)) {
+        if (const auto slot = this->state.get_slot(dest.raw)) {
           this->state.emit("    movq %xmm0, %rax");
-          this->state.out.emit_instr_rbp_reg("    movq", slot->0, "rax");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw, "rax");
           this->state.emit("    movq %xmm1, %rax");
-          this->state.out.emit_instr_rbp_reg("    movq", slot->0 + 8, "rax");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw + 8, "rax");
         }
         this->state.reg_cache.invalidate_all();
         return;
@@ -145,14 +155,14 @@ void X86Codegen::emit_call_store_result_impl(const Value& dest, IrType return_ty
     this->emit_call_move_f64_to_acc_impl();
     this->store_rax_to(dest);
   } else if (return_type == IrType::F128) {
-    if (const auto slot = this->state.get_slot(dest.0)) {
-      this->state.out.emit_instr_rbp("    fstpt", slot->0);
-      this->state.out.emit_instr_rbp("    fldt", slot->0);
+    if (const auto slot = this->state.get_slot(dest.raw)) {
+      this->state.out.emit_instr_rbp("    fstpt", slot->raw);
+      this->state.out.emit_instr_rbp("    fldt", slot->raw);
       this->state.emit("    subq $8, %rsp");
       this->state.emit("    fstpl (%rsp)");
       this->state.emit("    popq %rax");
-      this->state.reg_cache.set_acc(dest.0, false);
-      this->state.f128_direct_slots.insert(dest.0);
+      this->state.reg_cache.set_acc(dest.raw, false);
+      this->state.f128_direct_slots.insert(dest.raw);
     } else {
       this->state.emit("    subq $8, %rsp");
       this->state.emit("    fstpl (%rsp)");

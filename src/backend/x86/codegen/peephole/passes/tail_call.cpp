@@ -1,44 +1,39 @@
 // Mechanical C++-shaped translation of ref/claudes-c-compiler/src/backend/x86/codegen/peephole/passes/tail_call.rs
 // Tail call optimization pass.
 
+#include "../peephole.hpp"
+
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 
 namespace c4c::backend::x86::codegen::peephole::passes {
 
-struct LineInfo;
-struct LineStore;
+namespace {
 
-enum class LineKind {
-  Nop,
-  Empty,
-  StoreRbp,
-  LoadRbp,
-  SelfMove,
-  Label,
-  Jmp,
-  JmpIndirect,
-  CondJmp,
-  Call,
-  Ret,
-  Push,
-  Pop,
-  SetCC,
-  Cmp,
-  Directive,
-  Other,
-};
-
-void mark_nop(LineInfo& info);
-void replace_line(LineStore* store, LineInfo& info, std::size_t index, const std::string& text);
-std::optional<std::string_view> extract_jump_target(std::string_view s);
-
-static std::string trimmed_line(const LineStore* store, const LineInfo& info, std::size_t index) {
-  return std::string(store->get(index).substr(info.trim_start));
+void mark_nop(LineInfo& info) {
+  info.kind = LineKind::Nop;
+  info.dest_reg = REG_NONE;
+  info.reg_refs = 0;
+  info.rbp_offset = RBP_OFFSET_NONE;
+  info.has_indirect_mem = false;
 }
 
-static bool is_tail_call_candidate(const LineStore* store, const LineInfo* infos, std::size_t call_idx, std::size_t len, std::size_t* ret_idx) {
+void replace_line(LineStore* store, LineInfo& info, std::size_t index,
+                  const std::string& text) {
+  store->get(index) = text;
+  info = classify_line(store->get(index));
+}
+
+std::string_view trimmed_line(const LineStore* store, const LineInfo& info,
+                              std::size_t index) {
+  return std::string_view(store->get(index)).substr(info.trim_start);
+}
+
+bool is_tail_call_candidate(const LineStore* store, const LineInfo* infos,
+                            std::size_t call_idx, std::size_t len,
+                            std::size_t* ret_idx) {
   const std::size_t limit = std::min(call_idx + 30, len);
   bool found_frame_teardown = false;
   bool found_pop_rbp = false;
@@ -82,23 +77,25 @@ static bool is_tail_call_candidate(const LineStore* store, const LineInfo* infos
   return false;
 }
 
-static std::optional<std::string> convert_call_to_jmp(std::string_view trimmed_call) {
+std::optional<std::string> convert_call_to_jmp(std::string_view trimmed_call) {
   std::string_view rest;
-  if (trimmed_call.starts_with("callq ")) {
+  if (starts_with(trimmed_call, "callq ")) {
     rest = trimmed_call.substr(6);
-  } else if (trimmed_call.starts_with("call ")) {
+  } else if (starts_with(trimmed_call, "call ")) {
     rest = trimmed_call.substr(5);
   } else {
     return std::nullopt;
   }
-  if (rest.starts_with('*')) {
+  if (!rest.empty() && rest.front() == '*') {
     return std::string("jmp ") + std::string(rest);
   }
-  if (rest.starts_with("__x86_indirect_thunk_")) {
+  if (starts_with(rest, "__x86_indirect_thunk_")) {
     return std::nullopt;
   }
   return std::string("jmp ") + std::string(rest);
 }
+
+}  // namespace
 
 bool optimize_tail_calls(LineStore* store, LineInfo* infos) {
   const std::size_t len = store->len();
@@ -113,7 +110,7 @@ bool optimize_tail_calls(LineStore* store, LineInfo* infos) {
 
     if (infos[i].kind == LineKind::Label) {
       const auto trimmed = trimmed_line(store, infos[i], i);
-      if (!trimmed.starts_with(".L")) {
+      if (!starts_with(trimmed, ".L")) {
         func_suppress_tailcall = false;
         in_function = true;
       }
@@ -130,11 +127,11 @@ bool optimize_tail_calls(LineStore* store, LineInfo* infos) {
 
     if (in_function && !func_suppress_tailcall && infos[i].kind == LineKind::Other) {
       const auto trimmed = trimmed_line(store, infos[i], i);
-      if ((trimmed.starts_with("leaq ") || trimmed.starts_with("leal ") || trimmed.starts_with("lea ")) &&
+      if ((starts_with(trimmed, "leaq ") || starts_with(trimmed, "leal ") || starts_with(trimmed, "lea ")) &&
           (trimmed.find("(%rbp)") != std::string_view::npos || trimmed.find("(%rsp)") != std::string_view::npos)) {
         func_suppress_tailcall = true;
       }
-      if (trimmed.starts_with("subq %") && trimmed.ends_with(", %rsp")) {
+      if (starts_with(trimmed, "subq %") && ends_with(trimmed, ", %rsp")) {
         func_suppress_tailcall = true;
       }
     }

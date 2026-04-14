@@ -82,6 +82,7 @@ std::optional<MinimalObjectSlice> parse_minimal_text_slice(
         in_text = true;
         continue;
       }
+      if (statement.op == ".type") continue;
       if ((statement.op == ".globl" || statement.op == ".global") &&
           !statement.raw_operands.empty()) {
         global_symbol = trim_asm(statement.raw_operands);

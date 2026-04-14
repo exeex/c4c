@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(tiny_c2ll LANGUAGES CXX)
 
 if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type" FORCE)
+  set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
 endif()
 
 option(ENABLE_HEAVY_TENTATIVE_SNAPSHOT
@@ -122,13 +122,48 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/bir_validate.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/call_decode.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir/aggregates.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir/calls.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir/cfg.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir/memory.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir/phi.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir/types.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/assembler/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/assembler/parser.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/assembler/encoder/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/assembler/elf_writer.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/shared_call_support.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/emit.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/calls.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/alu.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/cast_ops.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/f128.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/float_ops.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/comparison.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/i128_ops.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/intrinsics.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/inline_asm.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/memory.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/asm_emitter.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/globals.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/returns.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/types.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/passes/helpers.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/passes/local_patterns.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/passes/compare_branch.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/passes/copy_propagation.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/passes/dead_code.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/passes/callee_saves.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/passes/frame_compact.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/passes/loop_trampoline.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/passes/memory_fold.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/passes/push_pop.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/passes/store_forwarding.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/passes/tail_call.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/peephole/passes/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/elf.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/input.cpp"
@@ -173,6 +208,29 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/linker/emit_dynamic.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/linker/emit_shared.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/linker/emit_static.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/assembler/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/assembler/parser.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/assembler/elf_writer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/assembler/compress.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/emit.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/atomics.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/alu.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/calls.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/cast_ops.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/comparison.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/f128.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/float_ops.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/globals.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/i128_ops.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/intrinsics.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/memory.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/returns.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/prologue.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/variadic.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/asm_emitter.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/riscv/codegen/peephole.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/backend.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/llvm_codegen.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter_core.cpp"
@@ -194,6 +252,32 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/lir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/verify.cpp"
 )
+
+set(BACKEND_LOWERING_BOOTSTRAP_SRCS
+    "${PROJECT_SOURCE_DIR}/src/backend/target.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/backend.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir_printer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir_validate.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/call_decode.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_context.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_analysis.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_module.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prepare/prepare.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prepare/legalize.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prepare/stack_layout.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prepare/liveness.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prepare/regalloc.cpp"
+)
+
+# Backend reboot bootstrap:
+# keep only the new top-level backend driver, lir_to_bir skeleton, and prepare
+# skeleton in buildable source sets while the broader backend/codegen tree is
+# being redesigned.
+list(FILTER FRONTEND_CXX_COMMON_SRCS EXCLUDE REGEX "/src/backend/")
+list(APPEND FRONTEND_CXX_COMMON_SRCS
+     ${BACKEND_LOWERING_BOOTSTRAP_SRCS})
 
 set(FRONTEND_CXX_INCLUDE_DIRS
     "${PROJECT_SOURCE_DIR}/src/frontend"
@@ -294,157 +378,6 @@ set_target_properties(frontend_parser_tests PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
-
-set(BACKEND_TEST_COMMON_SRCS
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/encoder/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/encoder/bitfield.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/encoder/compare_branch.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/encoder/data_processing.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/encoder/fp_scalar.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/encoder/load_store.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/encoder/neon.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/encoder/system.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/elf_writer.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/parser.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/alu.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/asm_emitter.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/atomics.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/cast_ops.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/calls.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/comparison.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/f128.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/float_ops.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/globals.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/i128_ops.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/inline_asm.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/intrinsics.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/memory.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/peephole.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/prologue.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/returns.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/variadic.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/emit.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/linker/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/linker/elf.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/linker/types.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/linker/input.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/linker/reloc.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/linker/plt_got.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/linker/link.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/linker/emit_dynamic.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/linker/emit_shared.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/linker/emit_static.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/asm_expr.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/asm_preprocess.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/backend.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/call_abi.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/cast.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/common.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/elf/archive.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/elf/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/elf_writer_common.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/f128_softfloat.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/generation.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/inline_asm.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/bir.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/bir_printer.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/bir_validate.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/archive.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/args.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/check.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/dynamic.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/dynstr.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/eh_frame.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/gc_sections.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/hash.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/merge.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/parse_object.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/parse_shared.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/resolve_lib.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/section_map.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/symbols.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/types.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/write.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/linker_common/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/peephole_common.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/lowering/call_decode.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/liveness.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/regalloc.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/state.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/stack_layout/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/stack_layout/alloca_coalescing.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/stack_layout/analysis.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/stack_layout/regalloc_helpers.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/stack_layout/slot_assignment.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/target.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/traits.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/x86_common.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/x86/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/x86/assembler/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/x86/assembler/parser.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/x86/assembler/encoder/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/x86/assembler/elf_writer.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/emit.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/mod.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/elf.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/input.cpp"
-    "${PROJECT_SOURCE_DIR}/src/codegen/lir/lir_printer.cpp"
-    "${PROJECT_SOURCE_DIR}/src/codegen/lir/verify.cpp"
-)
-
-add_executable(backend_bir_tests
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_tests.cpp"
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_test_support.cpp"
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_lowering_tests.cpp"
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_pipeline_tests.cpp"
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_pipeline_aarch64_tests.cpp"
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_pipeline_x86_64_tests.cpp"
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_pipeline_riscv64_tests.cpp"
-    ${BACKEND_TEST_COMMON_SRCS}
-)
-add_executable(backend_shared_util_tests
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_shared_util_tests.cpp"
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_header_boundary_tests.cpp"
-    ${BACKEND_TEST_COMMON_SRCS}
-)
-
-target_include_directories(backend_bir_tests PRIVATE
-    ${FRONTEND_CXX_INCLUDE_DIRS}
-)
-target_include_directories(backend_shared_util_tests PRIVATE
-    ${FRONTEND_CXX_INCLUDE_DIRS}
-)
-if(CLANG_EXECUTABLE)
-  target_compile_definitions(backend_bir_tests PRIVATE
-      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
-  )
-  target_compile_definitions(backend_shared_util_tests PRIVATE
-      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
-  )
-endif()
-if(OBJDUMP_EXECUTABLE)
-  target_compile_definitions(backend_bir_tests PRIVATE
-      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
-  )
-  target_compile_definitions(backend_shared_util_tests PRIVATE
-      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
-  )
-endif()
-set_target_properties(backend_bir_tests PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
-set_target_properties(backend_shared_util_tests PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
-
 add_custom_command(
   OUTPUT "${EXAMPLE_LL}"
   COMMAND $<TARGET_FILE:c4cll> "${EXAMPLE_C}" -o "${EXAMPLE_LL}"
