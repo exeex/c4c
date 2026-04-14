@@ -12,19 +12,20 @@ Source Plan: plan.md
 - current capability family:
   backlog item 1, generalize CFG merge and `phi`
 - current packet focus:
-  follow-on backlog-item-1 packet after the first explicit semantic
-  `bir.phi` / CFG merge slice landed in
-  `src/backend/lowering/lir_to_bir_module.cpp` and owned BIR files, while
-  `prepare` now owns the temporary phi-slot materialization needed by the
-  current backend-route output surface, using the ref backend as the ordering
-  guide:
-  shared generation owns CFG semantics before later stack/regalloc phases, and
-  later prepare work should consume merge-attributed results rather than
-  reconstructing them inside call lowering
+  the first explicit semantic `bir.phi` / CFG merge packet is now considered
+  exhausted:
+  `src/backend/lowering/lir_to_bir_module.cpp` and owned BIR files gained
+  semantic phi lowering, `prepare` owns the temporary phi-slot materialization
+  needed by the current backend-route output surface, and one minimal
+  semantic-phi observation surface is already in place
 - why now:
-  the post-`b21fdb42` route drifted into backlog-item-2 proving-surface churn
-  without changing lowering code, while the ref backend structure makes clear
-  that `phi` belongs before more signature/call expansion
+  supervisor follow-up confirmed that more of the remaining merge proving
+  surface is stale harness debt rather than a real backlog-item-1 semantic
+  gap:
+  both `two_param_select_eq_predecessor_add_post_add` and
+  `two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub`
+  still sit under `asm_unsupported`, but already emit prepared BIR plus
+  `semantic_phi` trailers
 - proving-surface checkpoint:
   2026-04-14 focused proof and follow-up sampling showed that
   `single_param_select_eq` plus the full split-predecessor
@@ -35,44 +36,54 @@ Source Plan: plan.md
   observes prepared BIR, not semantic pre-prepare BIR:
   the new semantic `bir.phi` nodes are lowered back to the temporary
   local-slot form during `prepare`, so direct semantic-phi observation still
-  needs either a dedicated harness or a different proof surface
+  needs either a dedicated harness or a different proof surface;
+  supervisor re-check then expanded the stale-harness set to include
+  `backend_codegen_route_riscv64_two_param_select_eq_predecessor_add_post_add_asm_unsupported`
+  and
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_asm_unsupported`,
+  both of which now fail because the backend already emits prepared BIR plus
+  semantic-phi observation for those stems
 - packet rule:
   do not accept more `todo` / `InternalTests.cmake` churn as proxy progress;
   stale unsupported-test promotion for the split-predecessor
-  `*_post_add_sub_add` stems is cleanup only, not backlog-item-1 progress;
+  `*_post_add_sub_add` stems plus the newly confirmed
+  `two_param_select_eq_predecessor_add_post_add` and
+  `two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub`
+  stems is harness cleanup only, not backlog-item-1 progress;
   the next accepted packet must change lowering/BIR code and move the shared
   merge contract forward rather than one more testcase-surface promotion
 
 ## Immediate Target
 
 - keep backlog item 2 params/signatures and backlog item 5 call lowering as
-  sentinels only until backlog item 1 has a new code change
-- treat the split-predecessor `*_post_add_sub_add` unsupported stems as stale
-  proving/harness debt, not as the next executor target:
-  current lowering already reaches semantic BIR for that family
-- define the first semantic contract in owned lowering files:
-  which merges still fold to `bir.select`, and which merges stay explicit as
-  shared merge semantics for later prepare work instead of today’s synthetic
-  `bir.store_local` / `bir.load_local` phi-slot materialization
-- start from one ordinary merge shape or explicit representation gap that is
-  still missing after the stale split-predecessor family is discounted:
-  prefer a non-diamond or predecessor-attributed merge where later phases
-  should consume merge meaning directly rather than rediscovering it from
-  synthetic slots
-- keep call lowering out of scope for this packet except as a consumer-side
-  sentinel:
+  sentinels only until backlog item 1 has another real code change
+- treat the split-predecessor `*_post_add_sub_add` stems plus the newly stale
+  `two_param_select_eq_predecessor_add_post_add` and
+  `two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub`
+  stems as harness debt, not as the next executor target
+- choose the next executor packet from a still-missing merge capability in
+  owned lowering/BIR files, not from stale unsupported-test promotion:
+  prefer a merge family where shared semantics must move forward in code rather
+  than one more prepared-BIR observation
+- if the existing test inventory can no longer expose a real remaining merge
+  gap honestly, the next lifecycle repair may authorize one minimal harness
+  packet, but only after the supervisor has first ruled out a code-moving
+  backlog-item-1 target
+- keep call lowering out of scope for the next code packet except as a
+  consumer-side sentinel:
   no new call-specific merge reconstruction is allowed
 - keep helper params, indirect-call provenance, globals, and runtime intrinsics
-  out of scope for this packet
-- if a proof case is needed, choose one merge case plus `branch_if_eq` and one
-  existing call-lane sentinel; do not use `two_arg_*` helper output mode as the
-  primary evidence surface
+  out of scope for this repair
+- if a proof case is needed, choose one honest remaining merge case plus
+  `branch_if_eq` and one existing call-lane sentinel; do not use `two_arg_*`
+  helper output mode as the primary evidence surface
 
-## Done Condition For The Active Packet
+## Done Condition For The Next Accepted Packet
 
-- lowering/BIR files gain the first real non-ternary shared merge capability
-- at least one merge shape broader than the existing diamond-select lane no
-  longer relies on route churn or raw-LIR fallback
+- lowering/BIR files gain another real shared-merge capability beyond the
+  first landed semantic `bir.phi` slice
+- at least one additional merge shape broader than the existing
+  diamond-select lane no longer relies on route churn or raw-LIR fallback
 - `branch_if_eq.c` still lowers cleanly
 - existing call-lane sentinels stay green without new call-specific merge logic
 - no direct route, rendered-text matcher, or tiny named-case special path is
@@ -147,6 +158,14 @@ Source Plan: plan.md
   twelve split-predecessor `defaults_to_bir` route tests covering the existing
   post-add/post-add-sub family plus the newly promoted `*_post_add_sub_add`
   family
+- 2026-04-14 supervisor follow-up also confirmed that the remaining
+  `backend_codegen_route_riscv64_two_param_select_eq_predecessor_add_post_add_asm_unsupported`
+  and
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_asm_unsupported`
+  stems are stale harness debt:
+  both currently fail with `BACKEND_ASM_UNSUPPORTED_EXPECTED_FAIL` because the
+  backend already emits prepared BIR plus `semantic_phi` observation for those
+  cases
 - ref-based route confirmation recorded:
   `ref/claudes-c-compiler/src/backend/generation.rs` handles CFG semantics in
   the shared backend pipeline before later target work, while
