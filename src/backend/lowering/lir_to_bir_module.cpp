@@ -77,6 +77,22 @@ struct LocalArraySlots {
 
 using LocalArraySlotMap = std::unordered_map<std::string, LocalArraySlots>;
 
+struct DynamicLocalPointerArrayAccess {
+  std::string base_array_name;
+  bir::Value index;
+};
+
+using DynamicLocalPointerArrayMap =
+    std::unordered_map<std::string, DynamicLocalPointerArrayAccess>;
+
+struct DynamicGlobalPointerArrayAccess {
+  std::string global_name;
+  bir::Value index;
+};
+
+using DynamicGlobalPointerArrayMap =
+    std::unordered_map<std::string, DynamicGlobalPointerArrayAccess>;
+
 struct LocalAggregateSlots {
   std::string type_text;
   std::unordered_map<std::size_t, std::string> leaf_slots;
@@ -143,6 +159,19 @@ std::optional<bir::Value> lower_global_initializer(std::string_view text,
 AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
                                                   const TypeDeclMap& type_decls);
 std::vector<std::string_view> split_top_level_initializer_items(std::string_view text);
+
+bool is_local_array_element_slot(std::string_view slot_name,
+                                 const LocalArraySlotMap& local_array_slots) {
+  for (const auto& [array_name, array_slots] : local_array_slots) {
+    (void)array_name;
+    if (std::find(array_slots.element_slots.begin(),
+                  array_slots.element_slots.end(),
+                  slot_name) != array_slots.element_slots.end()) {
+      return true;
+    }
+  }
+  return false;
+}
 
 bool is_known_function_symbol(std::string_view symbol_name,
                               const FunctionSymbolSet& function_symbols) {
@@ -1472,6 +1501,120 @@ std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& opera
   }
 }
 
+std::optional<bir::Value> lower_typed_index_value(const ParsedTypedOperand& index_operand,
+                                                  const ValueMap& value_aliases) {
+  const auto index_type = lower_integer_type(index_operand.type_text);
+  if (!index_type.has_value() ||
+      (*index_type != bir::TypeKind::I32 && *index_type != bir::TypeKind::I64)) {
+    return std::nullopt;
+  }
+  return lower_value(index_operand.operand, *index_type, value_aliases);
+}
+
+std::optional<bir::Value> make_index_immediate(bir::TypeKind type, std::size_t value) {
+  switch (type) {
+    case bir::TypeKind::I32:
+      return bir::Value::immediate_i32(static_cast<std::int32_t>(value));
+    case bir::TypeKind::I64:
+      return bir::Value::immediate_i64(static_cast<std::int64_t>(value));
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<bir::Value> synthesize_pointer_array_selects(
+    std::string_view result_name,
+    const std::vector<bir::Value>& element_values,
+    const bir::Value& index_value,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (element_values.empty() ||
+      (index_value.type != bir::TypeKind::I32 && index_value.type != bir::TypeKind::I64)) {
+    return std::nullopt;
+  }
+  if (element_values.size() == 1) {
+    return element_values.front();
+  }
+
+  bir::Value current = element_values.back();
+  for (std::size_t rev_index = element_values.size() - 1; rev_index-- > 0;) {
+    const auto compare_rhs = make_index_immediate(index_value.type, rev_index);
+    if (!compare_rhs.has_value()) {
+      return std::nullopt;
+    }
+
+    const bool is_final = rev_index == 0;
+    const std::string select_name =
+        is_final ? std::string(result_name)
+                 : std::string(result_name) + ".sel" + std::to_string(rev_index);
+    lowered_insts->push_back(bir::SelectInst{
+        .predicate = bir::BinaryOpcode::Eq,
+        .result = bir::Value::named(bir::TypeKind::Ptr, select_name),
+        .compare_type = index_value.type,
+        .lhs = index_value,
+        .rhs = *compare_rhs,
+        .true_value = element_values[rev_index],
+        .false_value = current,
+    });
+    current = bir::Value::named(bir::TypeKind::Ptr, select_name);
+  }
+  return current;
+}
+
+std::optional<std::vector<bir::Value>> collect_local_array_pointer_values(
+    std::string_view base_array_name,
+    const LocalArraySlotMap& local_array_slots,
+    const LocalPointerValueAliasMap& local_pointer_value_aliases) {
+  const auto array_it = local_array_slots.find(std::string(base_array_name));
+  if (array_it == local_array_slots.end() || array_it->second.element_type != bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+
+  std::vector<bir::Value> element_values;
+  element_values.reserve(array_it->second.element_slots.size());
+  for (const auto& slot_name : array_it->second.element_slots) {
+    const auto alias_it = local_pointer_value_aliases.find(slot_name);
+    if (alias_it == local_pointer_value_aliases.end() || alias_it->second.type != bir::TypeKind::Ptr) {
+      return std::nullopt;
+    }
+    element_values.push_back(alias_it->second);
+  }
+  return element_values;
+}
+
+std::optional<std::vector<bir::Value>> collect_global_array_pointer_values(
+    std::string_view global_name,
+    const GlobalTypes& global_types,
+    const TypeDeclMap& type_decls) {
+  const auto global_it = global_types.find(std::string(global_name));
+  if (global_it == global_types.end()) {
+    return std::nullopt;
+  }
+
+  const auto layout = compute_aggregate_type_layout(global_it->second.type_text, type_decls);
+  if (layout.kind != AggregateTypeLayout::Kind::Array) {
+    return std::nullopt;
+  }
+  const auto element_layout = compute_aggregate_type_layout(layout.element_type_text, type_decls);
+  if (element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
+      element_layout.scalar_type != bir::TypeKind::Ptr || element_layout.size_bytes == 0) {
+    return std::nullopt;
+  }
+
+  std::vector<bir::Value> element_values;
+  element_values.reserve(layout.array_count);
+  for (std::size_t index = 0; index < layout.array_count; ++index) {
+    const auto offset = index * element_layout.size_bytes;
+    const auto init_it = global_it->second.pointer_initializer_offsets.find(offset);
+    if (init_it == global_it->second.pointer_initializer_offsets.end() ||
+        init_it->second.value_type != bir::TypeKind::Ptr || init_it->second.byte_offset != 0) {
+      return std::nullopt;
+    }
+    element_values.push_back(
+        bir::Value::named(bir::TypeKind::Ptr, "@" + init_it->second.global_name));
+  }
+  return element_values;
+}
+
 void record_pointer_global_object_alias(std::string_view result_name,
                                         const GlobalInfo& global_info,
                                         const GlobalTypes& global_types,
@@ -1872,7 +2015,7 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
   }
 
   if (const auto integer_array = parse_integer_array_type(global.llvm_type);
-      integer_array.has_value()) {
+      integer_array.has_value() && integer_array->element_type != bir::TypeKind::Ptr) {
     const auto element_size_bytes = type_size_bytes(integer_array->element_type);
     if (element_size_bytes == 0) {
       return std::nullopt;
@@ -2204,6 +2347,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
                                        LocalSlotTypes& local_slot_types,
                                        LocalPointerSlots& local_pointer_slots,
                                        LocalArraySlotMap& local_array_slots,
+                                       DynamicLocalPointerArrayMap& dynamic_local_pointer_arrays,
                                        LocalAggregateSlotMap& local_aggregate_slots,
                                        LocalAggregateFieldSet& local_aggregate_field_slots,
                                        LocalPointerValueAliasMap& local_pointer_value_aliases,
@@ -2211,6 +2355,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
                                        GlobalAddressSlots& global_address_slots,
                                        AddressedGlobalPointerSlots& addressed_global_pointer_slots,
                                        GlobalPointerMap& global_pointer_slots,
+                                       DynamicGlobalPointerArrayMap& dynamic_global_pointer_arrays,
                                        GlobalObjectPointerMap& global_object_pointer_slots,
                                        GlobalAddressIntMap& global_address_ints,
                                        GlobalObjectAddressIntMap& global_object_address_ints,
@@ -2446,10 +2591,29 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       }
       const auto resolved_address = resolve_global_gep_address(
           global_name, global_it->second.type_text, *gep, value_aliases, type_decls);
-      if (!resolved_address.has_value()) {
+      if (resolved_address.has_value()) {
+        global_pointer_slots[gep->result.str()] = *resolved_address;
+        return true;
+      }
+      const auto layout = compute_aggregate_type_layout(global_it->second.type_text, type_decls);
+      if (layout.kind != AggregateTypeLayout::Kind::Array || layout.element_type_text != "ptr" ||
+          gep->indices.size() != 2) {
         return false;
       }
-      global_pointer_slots[gep->result.str()] = *resolved_address;
+      const auto base_index = parse_typed_operand(gep->indices[0]);
+      const auto elem_index = parse_typed_operand(gep->indices[1]);
+      if (!base_index.has_value() || !elem_index.has_value()) {
+        return false;
+      }
+      const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+      const auto elem_value = lower_typed_index_value(*elem_index, value_aliases);
+      if (!base_imm.has_value() || *base_imm != 0 || !elem_value.has_value()) {
+        return false;
+      }
+      dynamic_global_pointer_arrays[gep->result.str()] = DynamicGlobalPointerArrayAccess{
+          .global_name = global_name,
+          .index = *elem_value,
+      };
       return true;
     }
 
@@ -2475,12 +2639,26 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       }
       const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
       const auto elem_imm = resolve_index_operand(elem_index->operand, value_aliases);
-      if (!base_imm.has_value() || !elem_imm.has_value() || *base_imm != 0 ||
-          *elem_imm < 0 ||
-          static_cast<std::size_t>(*elem_imm) >= array_it->second.element_slots.size()) {
+      if (!base_imm.has_value() || *base_imm != 0) {
         return false;
       }
-      resolved_slot = array_it->second.element_slots[static_cast<std::size_t>(*elem_imm)];
+      if (elem_imm.has_value()) {
+        if (*elem_imm < 0 ||
+            static_cast<std::size_t>(*elem_imm) >= array_it->second.element_slots.size()) {
+          return false;
+        }
+        resolved_slot = array_it->second.element_slots[static_cast<std::size_t>(*elem_imm)];
+      } else {
+        const auto elem_value = lower_typed_index_value(*elem_index, value_aliases);
+        if (!elem_value.has_value() || array_it->second.element_type != bir::TypeKind::Ptr) {
+          return false;
+        }
+        dynamic_local_pointer_arrays[gep->result.str()] = DynamicLocalPointerArrayAccess{
+            .base_array_name = gep->ptr.str(),
+            .index = *elem_value,
+        };
+        return true;
+      }
     } else if (const auto global_ptr_it = global_pointer_slots.find(gep->ptr.str());
                global_ptr_it != global_pointer_slots.end()) {
       auto base_address = global_ptr_it->second;
@@ -2490,10 +2668,39 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       }
       const auto resolved_address = resolve_relative_global_gep_address(
           base_address, gep->element_type.str(), *gep, value_aliases, type_decls);
-      if (!resolved_address.has_value()) {
+      if (resolved_address.has_value()) {
+        global_pointer_slots[gep->result.str()] = *resolved_address;
+        return true;
+      }
+      if (gep->indices.size() != 1 ||
+          base_address.value_type != bir::TypeKind::Ptr ||
+          base_address.byte_offset % type_size_bytes(bir::TypeKind::Ptr) != 0) {
         return false;
       }
-      global_pointer_slots[gep->result.str()] = *resolved_address;
+      const auto global_it = global_types.find(base_address.global_name);
+      if (global_it == global_types.end()) {
+        return false;
+      }
+      const auto layout = compute_aggregate_type_layout(global_it->second.type_text, type_decls);
+      if (layout.kind != AggregateTypeLayout::Kind::Array || layout.element_type_text != "ptr") {
+        return false;
+      }
+      const auto parsed_index = parse_typed_operand(gep->indices.front());
+      if (!parsed_index.has_value()) {
+        return false;
+      }
+      const auto index_value = lower_typed_index_value(*parsed_index, value_aliases);
+      if (!index_value.has_value()) {
+        return false;
+      }
+      const auto base_index = base_address.byte_offset / type_size_bytes(bir::TypeKind::Ptr);
+      if (base_index != 0) {
+        return false;
+      }
+      dynamic_global_pointer_arrays[gep->result.str()] = DynamicGlobalPointerArrayAccess{
+          .global_name = base_address.global_name,
+          .index = *index_value,
+      };
       return true;
     } else {
       const auto ptr_it = local_pointer_slots.find(gep->ptr.str());
@@ -2510,13 +2717,10 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
         return false;
       }
       const auto index_imm = resolve_index_operand(parsed_index->operand, value_aliases);
-      if (!index_imm.has_value()) {
-        return false;
-      }
 
       const auto dot = ptr_it->second.rfind('.');
       if (dot == std::string::npos) {
-        if (*index_imm != 0) {
+        if (!index_imm.has_value() || *index_imm != 0) {
           return false;
         }
         resolved_slot = ptr_it->second;
@@ -2530,13 +2734,30 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
         if (!base_offset.has_value()) {
           return false;
         }
-        const auto final_index = *base_offset + *index_imm;
-        if (final_index < 0 ||
-            static_cast<std::size_t>(final_index) >= base_array_it->second.element_slots.size()) {
-          return false;
+        if (index_imm.has_value()) {
+          const auto final_index = *base_offset + *index_imm;
+          if (final_index < 0 ||
+              static_cast<std::size_t>(final_index) >= base_array_it->second.element_slots.size()) {
+            return false;
+          }
+          resolved_slot =
+              base_array_it->second.element_slots[static_cast<std::size_t>(final_index)];
+        } else {
+          const auto parsed_index = parse_typed_operand(gep->indices.front());
+          if (!parsed_index.has_value()) {
+            return false;
+          }
+          const auto index_value = lower_typed_index_value(*parsed_index, value_aliases);
+          if (!index_value.has_value() || *base_offset != 0 ||
+              base_array_it->second.element_type != bir::TypeKind::Ptr) {
+            return false;
+          }
+          dynamic_local_pointer_arrays[gep->result.str()] = DynamicLocalPointerArrayAccess{
+              .base_array_name = base_name,
+              .index = *index_value,
+          };
+          return true;
         }
-        resolved_slot =
-            base_array_it->second.element_slots[static_cast<std::size_t>(final_index)];
       }
     }
 
@@ -2627,9 +2848,10 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       return false;
     }
 
-    const bool tracks_aggregate_field =
-        local_aggregate_field_slots.find(ptr_it->second) != local_aggregate_field_slots.end();
-    if (tracks_aggregate_field) {
+    const bool tracks_pointer_value_slot =
+        local_aggregate_field_slots.find(ptr_it->second) != local_aggregate_field_slots.end() ||
+        is_local_array_element_slot(ptr_it->second, local_array_slots);
+    if (tracks_pointer_value_slot) {
       if (*value_type == bir::TypeKind::Ptr) {
         const auto pointer_alias = resolve_local_aggregate_pointer_value_alias(
             store->val, value_aliases, function_symbols);
@@ -2833,6 +3055,46 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
 
     const auto ptr_it = local_pointer_slots.find(load->ptr.str());
     if (ptr_it == local_pointer_slots.end()) {
+      if (*value_type == bir::TypeKind::Ptr) {
+        if (const auto local_array_it = dynamic_local_pointer_arrays.find(load->ptr.str());
+            local_array_it != dynamic_local_pointer_arrays.end()) {
+          const auto element_values = collect_local_array_pointer_values(
+              local_array_it->second.base_array_name, local_array_slots, local_pointer_value_aliases);
+          if (!element_values.has_value()) {
+            return false;
+          }
+          const auto selected_value = synthesize_pointer_array_selects(
+              load->result.str(), *element_values, local_array_it->second.index, lowered_insts);
+          if (!selected_value.has_value()) {
+            return false;
+          }
+          if (selected_value->kind == bir::Value::Kind::Named &&
+              selected_value->name == load->result.str()) {
+            return true;
+          }
+          value_aliases[load->result.str()] = *selected_value;
+          return true;
+        }
+        if (const auto global_array_it = dynamic_global_pointer_arrays.find(load->ptr.str());
+            global_array_it != dynamic_global_pointer_arrays.end()) {
+          const auto element_values = collect_global_array_pointer_values(
+              global_array_it->second.global_name, global_types, type_decls);
+          if (!element_values.has_value()) {
+            return false;
+          }
+          const auto selected_value = synthesize_pointer_array_selects(
+              load->result.str(), *element_values, global_array_it->second.index, lowered_insts);
+          if (!selected_value.has_value()) {
+            return false;
+          }
+          if (selected_value->kind == bir::Value::Kind::Named &&
+              selected_value->name == load->result.str()) {
+            return true;
+          }
+          value_aliases[load->result.str()] = *selected_value;
+          return true;
+        }
+      }
       return false;
     }
 
@@ -2841,9 +3103,10 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       return false;
     }
 
-    const bool tracks_aggregate_field =
-        local_aggregate_field_slots.find(ptr_it->second) != local_aggregate_field_slots.end();
-    if (*value_type == bir::TypeKind::Ptr && tracks_aggregate_field) {
+    const bool tracks_pointer_value_slot =
+        local_aggregate_field_slots.find(ptr_it->second) != local_aggregate_field_slots.end() ||
+        is_local_array_element_slot(ptr_it->second, local_array_slots);
+    if (*value_type == bir::TypeKind::Ptr && tracks_pointer_value_slot) {
       const auto pointer_alias = local_pointer_value_aliases.find(ptr_it->second);
       if (pointer_alias != local_pointer_value_aliases.end()) {
         value_aliases[load->result.str()] = pointer_alias->second;
@@ -3253,6 +3516,7 @@ std::optional<bir::Function> lower_branch_family_function(
   LocalSlotTypes local_slot_types;
   LocalPointerSlots local_pointer_slots;
   LocalArraySlotMap local_array_slots;
+  DynamicLocalPointerArrayMap dynamic_local_pointer_arrays;
   LocalAggregateSlotMap local_aggregate_slots;
   LocalAggregateFieldSet local_aggregate_field_slots;
   LocalPointerValueAliasMap local_pointer_value_aliases;
@@ -3260,6 +3524,7 @@ std::optional<bir::Function> lower_branch_family_function(
   GlobalAddressSlots global_address_slots;
   AddressedGlobalPointerSlots addressed_global_pointer_slots;
   GlobalPointerMap global_pointer_slots;
+  DynamicGlobalPointerArrayMap dynamic_global_pointer_arrays;
   GlobalObjectPointerMap global_object_pointer_slots;
   GlobalAddressIntMap global_address_ints;
   GlobalObjectAddressIntMap global_object_address_ints;
@@ -3273,6 +3538,7 @@ std::optional<bir::Function> lower_branch_family_function(
             local_slot_types,
             local_pointer_slots,
             local_array_slots,
+            dynamic_local_pointer_arrays,
             local_aggregate_slots,
             local_aggregate_field_slots,
             local_pointer_value_aliases,
@@ -3280,6 +3546,7 @@ std::optional<bir::Function> lower_branch_family_function(
             global_address_slots,
             addressed_global_pointer_slots,
             global_pointer_slots,
+            dynamic_global_pointer_arrays,
             global_object_pointer_slots,
             global_address_ints,
             global_object_address_ints,
@@ -3307,6 +3574,7 @@ std::optional<bir::Function> lower_branch_family_function(
               local_slot_types,
               local_pointer_slots,
               local_array_slots,
+              dynamic_local_pointer_arrays,
               local_aggregate_slots,
               local_aggregate_field_slots,
               local_pointer_value_aliases,
@@ -3314,6 +3582,7 @@ std::optional<bir::Function> lower_branch_family_function(
               global_address_slots,
               addressed_global_pointer_slots,
               global_pointer_slots,
+              dynamic_global_pointer_arrays,
               global_object_pointer_slots,
               global_address_ints,
               global_object_address_ints,

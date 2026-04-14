@@ -86,6 +86,33 @@ Source Plan: plan.md
 ## Latest Packet Progress
 
 - completed:
+  the first addressed function-pointer array callee-provenance family now
+  lowers through semantic BIR instead of falling back to raw LLVM text:
+  dynamically indexed local arrays of function pointers now preserve callee
+  identity by tracking array-element pointer stores as semantic values and
+  collapsing the indexed load into `bir.select`, while pointer-array globals
+  initialized from function symbols now enter the aggregate-backed global lane
+  instead of the old integer-array shortcut so indexed loads also collapse to
+  semantic `bir.select` on known function symbols before `bir.call`
+  new route proofs cover `indirect_local_array_callee_call.c` and
+  `indirect_global_array_callee_call.c` as BIR, while `branch_if_eq.c`,
+  `call_helper.c`, `local_arg_call.c`, the merge-preserved callee route
+  proof, the addressed-global and local-aggregate callee route proofs, and
+  the standing one-arg through twenty-five-arg indirect-call plus `two_arg_*`
+  direct-call sentinels stayed in the owned proof surface
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated build succeeded, the new riscv64 route tests passed as
+  tests `#267` and `#268`, the broad `^backend_` subset still returned
+  non-zero because it remains dominated by standing unrelated failures, and
+  the total backend route surface increased from `407` to `409` while the
+  standing failed-test count held at `225`, so the first addressed
+  function-pointer array callee-provenance slice is now covered on the shared
+  semantic-BIR lane without a broader regression increase
+- completed:
   the first local stack-backed aggregate callee-provenance family now lowers
   through semantic BIR instead of falling back to asm-only local-copy routing:
   local struct-backed function-pointer storage now preserves callee identity
