@@ -8,9 +8,7 @@ using lir_to_bir_detail::CompareExpr;
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::parse_i64;
 
-namespace {
-
-std::optional<unsigned> integer_type_bit_width(bir::TypeKind type) {
+std::optional<unsigned> BirFunctionLowerer::integer_type_bit_width(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
       return 1u;
@@ -25,11 +23,11 @@ std::optional<unsigned> integer_type_bit_width(bir::TypeKind type) {
   }
 }
 
-std::uint64_t integer_bit_mask(unsigned bits) {
+std::uint64_t BirFunctionLowerer::integer_bit_mask(unsigned bits) {
   return bits >= 64u ? ~std::uint64_t{0} : ((std::uint64_t{1} << bits) - 1u);
 }
 
-std::int64_t sign_extend_bits(std::uint64_t value, unsigned bits) {
+std::int64_t BirFunctionLowerer::sign_extend_bits(std::uint64_t value, unsigned bits) {
   if (bits == 0u || bits >= 64u) {
     return static_cast<std::int64_t>(value);
   }
@@ -38,7 +36,8 @@ std::int64_t sign_extend_bits(std::uint64_t value, unsigned bits) {
   return static_cast<std::int64_t>(extended);
 }
 
-std::optional<bir::Value> make_integer_immediate(bir::TypeKind type, std::int64_t value) {
+std::optional<bir::Value> BirFunctionLowerer::make_integer_immediate(bir::TypeKind type,
+                                                                     std::int64_t value) {
   switch (type) {
     case bir::TypeKind::I1:
       return bir::Value::immediate_i1(value != 0);
@@ -53,7 +52,7 @@ std::optional<bir::Value> make_integer_immediate(bir::TypeKind type, std::int64_
   }
 }
 
-bool is_canonical_select_chain_binop(bir::BinaryOpcode opcode) {
+bool BirFunctionLowerer::is_canonical_select_chain_binop(bir::BinaryOpcode opcode) {
   switch (opcode) {
     case bir::BinaryOpcode::Add:
     case bir::BinaryOpcode::Sub:
@@ -66,8 +65,6 @@ bool is_canonical_select_chain_binop(bir::BinaryOpcode opcode) {
       return false;
   }
 }
-
-}  // namespace
 
 std::optional<bir::TypeKind> BirFunctionLowerer::lower_scalar_or_function_pointer_type(
     std::string_view text) {

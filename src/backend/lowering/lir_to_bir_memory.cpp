@@ -13,10 +13,8 @@ namespace c4c::backend {
 
 using namespace lir_to_bir_detail;
 
-namespace {
-
-bool is_local_array_element_slot(std::string_view slot_name,
-                                 const LocalArraySlotMap& local_array_slots) {
+bool BirFunctionLowerer::is_local_array_element_slot(std::string_view slot_name,
+                                                     const LocalArraySlotMap& local_array_slots) {
   for (const auto& [array_name, array_slots] : local_array_slots) {
     (void)array_name;
     if (std::find(array_slots.element_slots.begin(),
@@ -28,7 +26,8 @@ bool is_local_array_element_slot(std::string_view slot_name,
   return false;
 }
 
-std::optional<std::pair<std::size_t, bir::TypeKind>> parse_local_array_type(std::string_view text) {
+std::optional<std::pair<std::size_t, bir::TypeKind>> BirFunctionLowerer::parse_local_array_type(
+    std::string_view text) {
   if (text.size() < 6 || text.front() != '[' || text.back() != ']') {
     return std::nullopt;
   }
@@ -51,7 +50,7 @@ std::optional<std::pair<std::size_t, bir::TypeKind>> parse_local_array_type(std:
   return std::pair<std::size_t, bir::TypeKind>{static_cast<std::size_t>(*count), *element_type};
 }
 
-std::optional<bir::Value> lower_zero_initializer_value(bir::TypeKind type) {
+std::optional<bir::Value> BirFunctionLowerer::lower_zero_initializer_value(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
       return bir::Value::immediate_i1(false);
@@ -73,8 +72,9 @@ std::optional<bir::Value> lower_zero_initializer_value(bir::TypeKind type) {
   }
 }
 
-std::optional<bir::Value> lower_typed_index_value(const ParsedTypedOperand& index_operand,
-                                                  const ValueMap& value_aliases) {
+std::optional<bir::Value> BirFunctionLowerer::lower_typed_index_value(
+    const ParsedTypedOperand& index_operand,
+    const ValueMap& value_aliases) {
   const auto index_type = lower_integer_type(index_operand.type_text);
   if (!index_type.has_value() ||
       (*index_type != bir::TypeKind::I32 && *index_type != bir::TypeKind::I64)) {
@@ -83,7 +83,8 @@ std::optional<bir::Value> lower_typed_index_value(const ParsedTypedOperand& inde
   return BirFunctionLowerer::lower_value(index_operand.operand, *index_type, value_aliases);
 }
 
-std::optional<bir::Value> make_index_immediate(bir::TypeKind type, std::size_t value) {
+std::optional<bir::Value> BirFunctionLowerer::make_index_immediate(bir::TypeKind type,
+                                                                   std::size_t value) {
   switch (type) {
     case bir::TypeKind::I32:
       return bir::Value::immediate_i32(static_cast<std::int32_t>(value));
@@ -94,7 +95,7 @@ std::optional<bir::Value> make_index_immediate(bir::TypeKind type, std::size_t v
   }
 }
 
-std::optional<bir::Value> synthesize_pointer_array_selects(
+std::optional<bir::Value> BirFunctionLowerer::synthesize_pointer_array_selects(
     std::string_view result_name,
     const std::vector<bir::Value>& element_values,
     const bir::Value& index_value,
@@ -132,7 +133,7 @@ std::optional<bir::Value> synthesize_pointer_array_selects(
   return current;
 }
 
-std::optional<std::vector<bir::Value>> collect_local_pointer_values(
+std::optional<std::vector<bir::Value>> BirFunctionLowerer::collect_local_pointer_values(
     const std::vector<std::string>& element_slots,
     const LocalPointerValueAliasMap& local_pointer_value_aliases) {
   if (element_slots.empty()) {
@@ -151,7 +152,7 @@ std::optional<std::vector<bir::Value>> collect_local_pointer_values(
   return element_values;
 }
 
-std::optional<std::vector<bir::Value>> collect_global_array_pointer_values(
+std::optional<std::vector<bir::Value>> BirFunctionLowerer::collect_global_array_pointer_values(
     const DynamicGlobalPointerArrayAccess& access,
     const GlobalTypes& global_types) {
   const auto global_it = global_types.find(access.global_name);
@@ -177,12 +178,8 @@ std::optional<std::vector<bir::Value>> collect_global_array_pointer_values(
   return element_values;
 }
 
-struct AggregateArrayExtent {
-  std::size_t element_count = 0;
-  std::size_t element_stride_bytes = 0;
-};
-
-std::optional<AggregateArrayExtent> find_repeated_aggregate_extent_at_offset(
+std::optional<BirFunctionLowerer::AggregateArrayExtent>
+BirFunctionLowerer::find_repeated_aggregate_extent_at_offset(
     std::string_view type_text,
     std::size_t target_offset,
     std::string_view repeated_type_text,
@@ -236,7 +233,7 @@ std::optional<AggregateArrayExtent> find_repeated_aggregate_extent_at_offset(
   }
 }
 
-std::optional<std::size_t> find_pointer_array_length_at_offset(
+std::optional<std::size_t> BirFunctionLowerer::find_pointer_array_length_at_offset(
     std::string_view type_text,
     std::size_t target_offset,
     const TypeDeclMap& type_decls) {
@@ -284,7 +281,7 @@ std::optional<std::size_t> find_pointer_array_length_at_offset(
   }
 }
 
-std::optional<GlobalAddress> resolve_global_gep_address(
+std::optional<GlobalAddress> BirFunctionLowerer::resolve_global_gep_address(
     std::string_view global_name,
     std::string_view type_text,
     const c4c::codegen::lir::LirGepOp& gep,
@@ -352,7 +349,7 @@ std::optional<GlobalAddress> resolve_global_gep_address(
   };
 }
 
-std::optional<GlobalAddress> resolve_relative_global_gep_address(
+std::optional<GlobalAddress> BirFunctionLowerer::resolve_relative_global_gep_address(
     const GlobalAddress& base_address,
     std::string_view type_text,
     const c4c::codegen::lir::LirGepOp& gep,
@@ -426,7 +423,8 @@ std::optional<GlobalAddress> resolve_relative_global_gep_address(
   };
 }
 
-std::optional<DynamicGlobalPointerArrayAccess> resolve_global_dynamic_pointer_array_access(
+std::optional<DynamicGlobalPointerArrayAccess>
+BirFunctionLowerer::resolve_global_dynamic_pointer_array_access(
     std::string_view global_name,
     std::string_view base_type_text,
     std::size_t initial_byte_offset,
@@ -520,7 +518,8 @@ std::optional<DynamicGlobalPointerArrayAccess> resolve_global_dynamic_pointer_ar
   return std::nullopt;
 }
 
-std::optional<DynamicGlobalAggregateArrayAccess> resolve_global_dynamic_aggregate_array_access(
+std::optional<DynamicGlobalAggregateArrayAccess>
+BirFunctionLowerer::resolve_global_dynamic_aggregate_array_access(
     const GlobalAddress& base_address,
     std::string_view base_type_text,
     const c4c::codegen::lir::LirGepOp& gep,
@@ -571,10 +570,11 @@ std::optional<DynamicGlobalAggregateArrayAccess> resolve_global_dynamic_aggregat
   };
 }
 
-void record_pointer_global_object_alias(std::string_view result_name,
-                                        const GlobalInfo& global_info,
-                                        const GlobalTypes& global_types,
-                                        GlobalObjectPointerMap& global_object_pointer_slots) {
+void BirFunctionLowerer::record_pointer_global_object_alias(
+    std::string_view result_name,
+    const GlobalInfo& global_info,
+    const GlobalTypes& global_types,
+    GlobalObjectPointerMap& global_object_pointer_slots) {
   if (global_info.initializer_symbol_name.empty() ||
       global_info.initializer_offset_type != bir::TypeKind::Void ||
       global_info.initializer_byte_offset != 0) {
@@ -594,7 +594,7 @@ void record_pointer_global_object_alias(std::string_view result_name,
   };
 }
 
-std::optional<GlobalAddress> resolve_pointer_store_address(
+std::optional<GlobalAddress> BirFunctionLowerer::resolve_pointer_store_address(
     const c4c::codegen::lir::LirOperand& operand,
     const GlobalPointerMap& global_pointer_slots,
     const GlobalTypes& global_types,
@@ -633,7 +633,7 @@ std::optional<GlobalAddress> resolve_pointer_store_address(
   return global_ptr_it->second;
 }
 
-std::optional<std::string> resolve_local_aggregate_gep_slot(
+std::optional<std::string> BirFunctionLowerer::resolve_local_aggregate_gep_slot(
     std::string_view base_type_text,
     const c4c::codegen::lir::LirGepOp& gep,
     const ValueMap& value_aliases,
@@ -710,7 +710,8 @@ std::optional<std::string> resolve_local_aggregate_gep_slot(
   return slot_it->second;
 }
 
-std::optional<std::vector<std::string>> resolve_local_aggregate_pointer_array_slots(
+std::optional<std::vector<std::string>>
+BirFunctionLowerer::resolve_local_aggregate_pointer_array_slots(
     std::string_view base_type_text,
     const c4c::codegen::lir::LirGepOp& gep,
     const ValueMap& value_aliases,
@@ -801,7 +802,8 @@ std::optional<std::vector<std::string>> resolve_local_aggregate_pointer_array_sl
   return element_slots;
 }
 
-std::optional<DynamicLocalPointerArrayAccess> resolve_local_aggregate_dynamic_pointer_array_access(
+std::optional<DynamicLocalPointerArrayAccess>
+BirFunctionLowerer::resolve_local_aggregate_dynamic_pointer_array_access(
     std::string_view base_type_text,
     const c4c::codegen::lir::LirGepOp& gep,
     const ValueMap& value_aliases,
@@ -944,12 +946,8 @@ std::optional<DynamicLocalPointerArrayAccess> resolve_local_aggregate_dynamic_po
   return std::nullopt;
 }
 
-struct LocalAggregateGepTarget {
-  std::string type_text;
-  std::size_t byte_offset = 0;
-};
-
-std::optional<LocalAggregateGepTarget> resolve_local_aggregate_gep_target(
+std::optional<BirFunctionLowerer::LocalAggregateGepTarget>
+BirFunctionLowerer::resolve_local_aggregate_gep_target(
     std::string_view base_type_text,
     const c4c::codegen::lir::LirGepOp& gep,
     const ValueMap& value_aliases,
@@ -1023,7 +1021,8 @@ std::optional<LocalAggregateGepTarget> resolve_local_aggregate_gep_target(
   };
 }
 
-std::optional<DynamicLocalAggregateArrayAccess> resolve_local_dynamic_aggregate_array_access(
+std::optional<DynamicLocalAggregateArrayAccess>
+BirFunctionLowerer::resolve_local_dynamic_aggregate_array_access(
     std::string_view base_type_text,
     const c4c::codegen::lir::LirGepOp& gep,
     const ValueMap& value_aliases,
@@ -1063,7 +1062,7 @@ std::optional<DynamicLocalAggregateArrayAccess> resolve_local_dynamic_aggregate_
   };
 }
 
-std::optional<bir::Value> resolve_local_aggregate_pointer_value_alias(
+std::optional<bir::Value> BirFunctionLowerer::resolve_local_aggregate_pointer_value_alias(
     const c4c::codegen::lir::LirOperand& operand,
     const ValueMap& value_aliases,
     const FunctionSymbolSet& function_symbols) {
@@ -1081,7 +1080,7 @@ std::optional<bir::Value> resolve_local_aggregate_pointer_value_alias(
   return bir::Value::named(bir::TypeKind::Ptr, "@" + symbol_name);
 }
 
-std::optional<bir::Value> lower_call_pointer_arg_value(
+std::optional<bir::Value> BirFunctionLowerer::lower_call_pointer_arg_value(
     const c4c::codegen::lir::LirOperand& operand,
     const ValueMap& value_aliases,
     const GlobalTypes& global_types,
@@ -1101,8 +1100,9 @@ std::optional<bir::Value> lower_call_pointer_arg_value(
   return bir::Value::named(bir::TypeKind::Ptr, "@" + symbol_name);
 }
 
-std::optional<GlobalAddress> resolve_honest_pointer_base(const GlobalAddress& address,
-                                                         const GlobalTypes& global_types) {
+std::optional<GlobalAddress> BirFunctionLowerer::resolve_honest_pointer_base(
+    const GlobalAddress& address,
+    const GlobalTypes& global_types) {
   if (address.value_type != bir::TypeKind::Ptr) {
     return std::nullopt;
   }
@@ -1126,7 +1126,7 @@ std::optional<GlobalAddress> resolve_honest_pointer_base(const GlobalAddress& ad
   return resolved;
 }
 
-std::optional<GlobalAddress> resolve_honest_addressed_global_access(
+std::optional<GlobalAddress> BirFunctionLowerer::resolve_honest_addressed_global_access(
     const GlobalAddress& address,
     bir::TypeKind accessed_type,
     const GlobalTypes& global_types) {
@@ -1142,14 +1142,12 @@ std::optional<GlobalAddress> resolve_honest_addressed_global_access(
   return resolved;
 }
 
-GlobalPointerSlotKey make_global_pointer_slot_key(const GlobalAddress& address) {
+GlobalPointerSlotKey BirFunctionLowerer::make_global_pointer_slot_key(const GlobalAddress& address) {
   return GlobalPointerSlotKey{
       .global_name = address.global_name,
       .byte_offset = address.byte_offset,
   };
 }
-
-}  // namespace
 
 bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     const c4c::codegen::lir::LirInst& inst,
@@ -2442,40 +2440,4 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
 
   return false;
 }
-
-bool canonicalize_compare_return_alias(const c4c::codegen::lir::LirOperand& ret_value,
-                                       const bir::Value& lowered_value,
-                                       bir::TypeKind return_type,
-                                       const CompareMap& compare_exprs,
-                                       std::vector<bir::Inst>* lowered_insts,
-                                       bir::ReturnTerminator* lowered_ret) {
-  if (ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
-      lowered_value.kind != bir::Value::Kind::Named ||
-      lowered_value.type != bir::TypeKind::I1 ||
-      return_type != bir::TypeKind::I32) {
-    return false;
-  }
-
-  const auto compare_it = compare_exprs.find(ret_value.str());
-  if (compare_it == compare_exprs.end()) {
-    return false;
-  }
-
-  for (auto inst_it = lowered_insts->rbegin(); inst_it != lowered_insts->rend(); ++inst_it) {
-    auto* binary = std::get_if<bir::BinaryInst>(&*inst_it);
-    if (binary == nullptr) {
-      continue;
-    }
-    if (binary->result.name != lowered_value.name) {
-      continue;
-    }
-
-    binary->result.name = ret_value.str();
-    lowered_ret->value = bir::Value::named(return_type, ret_value.str());
-    return true;
-  }
-
-  return false;
-}
-
 }  // namespace c4c::backend

@@ -237,6 +237,27 @@ Source Plan: plan.md
   the same delegated backend proof command passes after the
   `BirFunctionLowerer` refactor with `12 / 12` `^backend_` tests green, and
   the proof log is `test_after.log`
+- 2026-04-14 temporary executor packet extension:
+  continue the `BirFunctionLowerer` class refactor by migrating the remaining
+  function-scope anonymous-namespace helpers in the scalar/calling/aggregate/
+  memory lowering slices onto `BirFunctionLowerer` as class methods or
+  class-scoped statics, without changing backend behavior or the active proof
+  surface
+- 2026-04-14 temporary executor packet result:
+  `src/backend/lowering/lir_to_bir_scalar.cpp`,
+  `src/backend/lowering/lir_to_bir_calling.cpp`,
+  `src/backend/lowering/lir_to_bir_aggregate.cpp`, and
+  `src/backend/lowering/lir_to_bir_memory.cpp` no longer keep their
+  function-scope lowering helpers in anonymous namespaces; the remaining
+  scalar integer/cast support, void-param sentinel, aggregate param-slot
+  naming, and memory/address/GEP/pointer-array support helpers now live on
+  `BirFunctionLowerer`, and the dead duplicate
+  `canonicalize_compare_return_alias(...)` helper was removed from
+  `lir_to_bir_memory.cpp`
+- 2026-04-14 temporary proof result:
+  the same delegated backend proof command passes after the helper migration
+  with `12 / 12` `^backend_` tests green, and the proof log is
+  `test_after.log`
 
 ## Parked Backlog Item 1 Baseline
 

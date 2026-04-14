@@ -11,9 +11,7 @@ using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::type_size_bytes;
 
-namespace {
-
-std::string aggregate_param_slot_base(std::string_view param_name) {
+std::string BirFunctionLowerer::aggregate_param_slot_base(std::string_view param_name) {
   std::string sanitized(param_name);
   if (!sanitized.empty() && sanitized.front() == '%') {
     sanitized.erase(sanitized.begin());
@@ -23,8 +21,6 @@ std::string aggregate_param_slot_base(std::string_view param_name) {
   }
   return "%lv.param." + sanitized;
 }
-
-}  // namespace
 
 std::optional<BirFunctionLowerer::AggregateTypeLayout> BirFunctionLowerer::lower_byval_aggregate_layout(
     std::string_view text,

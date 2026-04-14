@@ -6,13 +6,9 @@ namespace c4c::backend {
 
 using lir_to_bir_detail::lower_integer_type;
 
-namespace {
-
-bool is_void_param_sentinel(const c4c::TypeSpec& type) {
+bool BirFunctionLowerer::is_void_param_sentinel(const c4c::TypeSpec& type) {
   return type.base == TB_VOID && type.ptr_level == 0 && type.array_rank == 0;
 }
-
-}  // namespace
 
 std::optional<bir::TypeKind> BirFunctionLowerer::lower_param_type(const c4c::TypeSpec& type) {
   if (type.base == TB_BOOL && type.ptr_level == 0 && type.array_rank == 0) {
