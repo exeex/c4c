@@ -1,5 +1,9 @@
 #include "liveness.hpp"
 
+// Execution note: this file is still a scaffold.
+// Follow ref/claudes-c-compiler/src/backend/liveness.rs for the intended
+// liveness/dataflow analysis shape.
+
 namespace c4c::backend::prepare {
 
 void run_liveness(PreparedLirModule& module, const PrepareOptions& options) {

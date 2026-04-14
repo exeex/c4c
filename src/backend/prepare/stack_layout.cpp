@@ -1,5 +1,9 @@
 #include "stack_layout.hpp"
 
+// Execution note: this file is still a scaffold.
+// Follow ref/claudes-c-compiler/src/backend/stack_layout/ for the intended
+// frame, slot-assignment, and related analysis shape.
+
 namespace c4c::backend::prepare {
 
 void run_stack_layout(PreparedLirModule& module, const PrepareOptions& options) {
