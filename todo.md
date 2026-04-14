@@ -29,11 +29,11 @@ Source Plan: plan.md
   semantic call ownership and runtime-facing lowering
 - current packet focus:
   semantic runtime/intrinsic lowering now covers integer `abs`, direct
-  `memcpy` lowering for matching local aggregates and nested GEP-derived local
-  subobjects plus matching local `i32` arrays, and direct zero-fill `memset`
-  calls for the same local aggregate/local array families in `lir_to_bir`;
-  the next packet should stay on adjacent runtime/call families instead of
-  drifting into `prepare`
+  `memcpy` lowering for matching local aggregates, nested local scalar-array
+  subobjects, and matching local `i32` arrays, plus direct zero-fill `memset`
+  calls for the same local aggregate and nested local scalar-array families in
+  `lir_to_bir`; the next packet should stay on adjacent runtime/call families
+  instead of drifting into `prepare`
 - packet rule:
   the first executor packet must change shared semantic lowering, not just add
   new test observers or rename unsupported cases
@@ -42,32 +42,37 @@ Source Plan: plan.md
   exercises one semantic call/runtime family with a fresh build before broader
   validation
 - Just Finished:
-  lowered direct `@memset(ptr, int, i64)` zero-fill calls into semantic BIR
-  for matching local aggregate objects and local array views, reusing the
-  shared local zeroing route already used by semantic `memset` ops, aliasing
-  the pointer result back to the destination, and adding backend-route proof
-  with `builtin_memset_local_pair.c` plus
-  `builtin_memset_local_i32_array.c`
+  generalized nested local scalar-array views so direct `memcpy` and zero-fill
+  `memset` calls on aggregate-contained `i32` arrays stay on semantic BIR
+  without displacing the existing direct dynamic local member-array semantic
+  route, then added backend-route proof with
+  `builtin_memcpy_nested_i32_array_field.c` and
+  `builtin_memset_nested_i32_array_field.c`
 - Watchouts:
-  direct `memcpy` and `memset` calls whose operands arrive as mixed-shape
+  nested aggregate field zero-fill was already semantic; the actual miss was
+  nested local scalar arrays not entering the shared local-array base map, so
+  follow-on GEPs that already have scalar-slot ownership must keep preferring
+  that route even when the same pointer also gains a shared local-array base,
+  and direct `memcpy`/`memset` calls whose operands arrive as mixed-shape
   pointers, non-local bases, unsupported local-array/subobject forms, or
   non-zero fills still fall back today; keep follow-on work in shared
   semantic lowering rather than target- or testcase-shaped handling
 - Proof:
   `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
   passed, including
-  `backend_codegen_route_x86_64_builtin_memset_local_pair_observe_semantic_bir`
+  `backend_codegen_route_x86_64_builtin_memcpy_nested_i32_array_field_observe_semantic_bir`,
+  `backend_codegen_route_x86_64_builtin_memset_nested_i32_array_field_observe_semantic_bir`,
+  `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`,
   and
-  `backend_codegen_route_x86_64_builtin_memset_local_i32_array_observe_semantic_bir`
-  alongside the existing backend semantic-call/runtime route coverage;
+  `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`;
   `test_after.log` preserved
 
 ## Suggested Next
 
 - extend semantic `memcpy` lowering from matching local aggregate objects and
-  local scalar arrays plus direct zero-fill `memset` lowering to the next
-  nearby shared local subobject or mixed-shape pointer family that still
-  stays semantic and planner-honest
+  direct zero-fill `memset` lowering from matching local aggregate objects and
+  nested local scalar-array views to the next nearby shared local subobject or
+  mixed-shape pointer family that still stays semantic and planner-honest
 - if that next runtime-memory shape needs new semantic BIR surface, keep that
   surface shared and planner-honest rather than encoding direct target
   behavior

@@ -863,6 +863,21 @@ BirFunctionLowerer::resolve_local_aggregate_pointer_array_slots(
             static_cast<std::size_t>(*index_value) >= layout.array_count) {
           return std::nullopt;
         }
+        if (element_layout.kind == AggregateTypeLayout::Kind::Scalar &&
+            element_layout.size_bytes != 0 && *index_value == 0 &&
+            &raw_index == &gep.indices.back()) {
+          std::vector<std::string> element_slots;
+          element_slots.reserve(layout.array_count);
+          for (std::size_t index = 0; index < layout.array_count; ++index) {
+            const auto slot_it =
+                aggregate_slots.leaf_slots.find(byte_offset + index * element_layout.size_bytes);
+            if (slot_it == aggregate_slots.leaf_slots.end()) {
+              return std::nullopt;
+            }
+            element_slots.push_back(slot_it->second);
+          }
+          return element_slots;
+        }
         byte_offset += static_cast<std::size_t>(*index_value) * element_layout.size_bytes;
         current_type = c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text);
         break;
@@ -1550,21 +1565,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
 
     if (const auto aggregate_it = local_aggregate_slots.find(gep->ptr.str());
         aggregate_it != local_aggregate_slots.end()) {
-      const auto resolved_slot = resolve_local_aggregate_gep_slot(
-          aggregate_it->second.type_text, *gep, value_aliases, type_decls, aggregate_it->second);
-      if (resolved_slot.has_value()) {
-        local_pointer_slots[gep->result.str()] = *resolved_slot;
-        return true;
-      }
-      const auto pointer_array_slots = resolve_local_aggregate_pointer_array_slots(
-          aggregate_it->second.type_text, *gep, value_aliases, type_decls, aggregate_it->second);
-      if (pointer_array_slots.has_value()) {
-        local_pointer_array_bases[gep->result.str()] = LocalPointerArrayBase{
-            .element_slots = std::move(*pointer_array_slots),
-            .base_index = 0,
-        };
-        return true;
-      }
+      bool established_aggregate_subobject = false;
       const auto resolved_target = resolve_local_aggregate_gep_target(
           aggregate_it->second.type_text, *gep, value_aliases, type_decls, aggregate_it->second);
       if (resolved_target.has_value()) {
@@ -1578,8 +1579,31 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
               .base_byte_offset = resolved_target->byte_offset,
               .leaf_slots = aggregate_it->second.leaf_slots,
           };
-          return true;
+          established_aggregate_subobject = true;
         }
+      }
+      const auto pointer_array_slots = resolve_local_aggregate_pointer_array_slots(
+          aggregate_it->second.type_text, *gep, value_aliases, type_decls, aggregate_it->second);
+      if (pointer_array_slots.has_value()) {
+        const auto resolved_slot = resolve_local_aggregate_gep_slot(
+            aggregate_it->second.type_text, *gep, value_aliases, type_decls, aggregate_it->second);
+        if (resolved_slot.has_value()) {
+          local_pointer_slots[gep->result.str()] = *resolved_slot;
+        }
+        local_pointer_array_bases[gep->result.str()] = LocalPointerArrayBase{
+            .element_slots = std::move(*pointer_array_slots),
+            .base_index = 0,
+        };
+        return true;
+      }
+      const auto resolved_slot = resolve_local_aggregate_gep_slot(
+          aggregate_it->second.type_text, *gep, value_aliases, type_decls, aggregate_it->second);
+      if (resolved_slot.has_value()) {
+        local_pointer_slots[gep->result.str()] = *resolved_slot;
+        return true;
+      }
+      if (established_aggregate_subobject) {
+        return true;
       }
       const auto dynamic_array = resolve_local_aggregate_dynamic_pointer_array_access(
           aggregate_it->second.type_text, *gep, value_aliases, type_decls, aggregate_it->second);
@@ -1663,7 +1687,8 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         return true;
       }
     } else if (const auto array_base_it = local_pointer_array_bases.find(gep->ptr.str());
-               array_base_it != local_pointer_array_bases.end()) {
+               array_base_it != local_pointer_array_bases.end() &&
+               local_pointer_slots.find(gep->ptr.str()) == local_pointer_slots.end()) {
       if (gep->indices.empty() || gep->indices.size() > 2) {
         return false;
       }
@@ -1701,10 +1726,62 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         if (!index_value.has_value() || array_base_it->second.base_index != 0) {
           return false;
         }
-        dynamic_local_pointer_arrays[gep->result.str()] = DynamicLocalPointerArrayAccess{
-            .element_slots = array_base_it->second.element_slots,
-            .index = *index_value,
+        if (array_base_it->second.element_slots.empty()) {
+          return false;
+        }
+        const auto slot_type_it = local_slot_types.find(array_base_it->second.element_slots.front());
+        if (slot_type_it == local_slot_types.end()) {
+          return false;
+        }
+        if (slot_type_it->second == bir::TypeKind::Ptr) {
+          dynamic_local_pointer_arrays[gep->result.str()] = DynamicLocalPointerArrayAccess{
+              .element_slots = array_base_it->second.element_slots,
+              .index = *index_value,
+          };
+          return true;
+        }
+
+        const auto element_size = type_size_bytes(slot_type_it->second);
+        if (element_size == 0) {
+          return false;
+        }
+
+        std::optional<std::string> element_type_text;
+        switch (slot_type_it->second) {
+          case bir::TypeKind::I1:
+            element_type_text = "i1";
+            break;
+          case bir::TypeKind::I8:
+            element_type_text = "i8";
+            break;
+          case bir::TypeKind::I32:
+            element_type_text = "i32";
+            break;
+          case bir::TypeKind::I64:
+            element_type_text = "i64";
+            break;
+          default:
+            return false;
+        }
+
+        DynamicLocalAggregateArrayAccess access{
+            .element_type_text = *element_type_text,
+            .byte_offset = 0,
+            .element_count = array_base_it->second.element_slots.size(),
+            .element_stride_bytes = element_size,
         };
+        for (std::size_t element_index = 0;
+             element_index < array_base_it->second.element_slots.size();
+             ++element_index) {
+          const auto& slot_name = array_base_it->second.element_slots[element_index];
+          const auto element_slot_type_it = local_slot_types.find(slot_name);
+          if (element_slot_type_it == local_slot_types.end() ||
+              element_slot_type_it->second != slot_type_it->second) {
+            return false;
+          }
+          access.leaf_slots.emplace(element_index * element_size, slot_name);
+        }
+        dynamic_local_aggregate_arrays[gep->result.str()] = std::move(access);
         return true;
       }
     } else if (const auto global_ptr_it = global_pointer_slots.find(gep->ptr.str());
