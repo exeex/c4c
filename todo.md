@@ -9,16 +9,25 @@ Source Plan: plan.md
 - 2026-04-14 plan-owner checkpoint:
   this remains the same active source idea and the same active runbook, so no
   `plan.md` or source-idea rewrite is justified yet
+- 2026-04-14 follow-up plan-owner repair:
+  reviewer guidance plus supervisor scouting now agree that the active
+  backlog-item-1 prepared-BIR inventory is exhausted as a truthful source of
+  another code-moving packet; this is still the same runbook, but routine
+  execution must pause rather than forcing another stale-inventory or
+  observation-only packet
 - execution state:
-  blocked for routine executor dispatch until one fresh backlog-item-1
-  code-moving merge seam is identified outside the exhausted scalar
-  select/phi inventory already recorded below
+  blocked for routine executor dispatch from the currently sampled scalar
+  select/phi/callee inventory until either a broader supervisor checkpoint
+  exposes a fresh honest proving seam or a later route repair rewrites the
+  executable next target
 - next lifecycle expectation:
-  supervisor may do broader validation or route scouting, but should not send
-  another executor packet from the stale `asm_unsupported` select/phi stems or
-  from observation-only harness churn; if no honest merge-semantics packet can
-  be named after that checkpoint, return for another lifecycle repair instead
-  of pretending the current inventory is still exposing new capability work
+  supervisor should not send another executor packet from the stale
+  `asm_unsupported` select/phi stems, the nearby prepared-BIR select surfaces,
+  or observation-only harness churn;
+  the next supervisor action is a broader validation / route checkpoint, not a
+  new executor packet;
+  only after that checkpoint identifies one fresh honest merge-semantics code
+  move should execution return to `c4c-executor`
 
 ## Current Active Item
 
@@ -113,6 +122,11 @@ Source Plan: plan.md
 - the active plan remains on backlog item 1, generalize CFG merge and `phi`,
   but the currently sampled `backend_codegen_route` inventory is exhausted as
   a source of honest next packets
+- plan-owner repair outcome:
+  keep `plan.md` unchanged and treat this as a `todo.md`-only lifecycle repair;
+  reviewer output remains `on track`, so no immediate reviewer re-dispatch is
+  needed, but execution should stay paused until the supervisor performs the
+  broader checkpoint already called for by review
 - lifecycle repair outcome:
   do not dispatch another executor packet from the current scalar
   select/phi/callee inventory;
