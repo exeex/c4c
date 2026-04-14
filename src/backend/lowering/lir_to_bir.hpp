@@ -289,6 +289,47 @@ std::optional<GlobalAddress> resolve_known_global_address(
     GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols,
     std::unordered_set<std::string>* active);
+std::optional<bir::TypeKind> lower_scalar_or_function_pointer_type(std::string_view text);
+std::optional<bir::CastOpcode> lower_cast_opcode(c4c::codegen::lir::LirCastKind kind);
+std::optional<bir::BinaryOpcode> lower_scalar_binary_opcode(
+    const c4c::codegen::lir::LirBinaryOpcodeRef& opcode);
+std::optional<bir::Value> fold_i64_binary_immediates(bir::BinaryOpcode opcode,
+                                                     std::int64_t lhs,
+                                                     std::int64_t rhs);
+std::optional<bir::BinaryOpcode> lower_cmp_predicate(
+    const c4c::codegen::lir::LirCmpPredicateRef& predicate);
+std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& operand,
+                                      bir::TypeKind expected_type,
+                                      const ValueMap& value_aliases);
+std::optional<bir::Value> fold_integer_cast(c4c::codegen::lir::LirCastKind kind,
+                                            const bir::Value& operand,
+                                            bir::TypeKind to_type);
+bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
+                               ValueMap& value_aliases,
+                               CompareMap& compare_exprs,
+                               std::vector<bir::Inst>* lowered_insts);
+bool resolve_select_chain_inst(const c4c::codegen::lir::LirInst& inst,
+                               ValueMap& value_aliases,
+                               CompareMap& compare_exprs,
+                               std::vector<bir::Inst>* lowered_insts);
+bool lower_canonical_select_entry_inst(const c4c::codegen::lir::LirInst& inst,
+                                       ValueMap& value_aliases,
+                                       CompareMap& compare_exprs,
+                                       std::vector<bir::Inst>* lowered_insts);
+std::optional<bir::TypeKind> lower_param_type(const c4c::TypeSpec& type);
+std::optional<LoweredReturnInfo> lower_return_info_from_type(std::string_view type_text,
+                                                             const TypeDeclMap& type_decls);
+std::optional<LoweredReturnInfo> infer_function_return_info(
+    const c4c::codegen::lir::LirFunction& function,
+    const TypeDeclMap& type_decls);
+std::optional<LoweredReturnInfo> lower_signature_return_info(std::string_view signature_text,
+                                                             const TypeDeclMap& type_decls);
+std::optional<bir::Function> lower_extern_decl(const c4c::codegen::lir::LirExternDecl& decl);
+bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
+                           const std::optional<LoweredReturnInfo>& return_info,
+                           const TypeDeclMap& type_decls,
+                           bir::Function* lowered);
+std::optional<bir::Function> lower_decl_function(const c4c::codegen::lir::LirFunction& function);
 BlockLookup make_block_lookup(const c4c::codegen::lir::LirFunction& function);
 std::optional<BranchChain> follow_empty_branch_chain(const BlockLookup& blocks,
                                                      const std::string& start_label);

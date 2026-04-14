@@ -179,6 +179,20 @@ Source Plan: plan.md
 - 2026-04-14 temporary proof result:
   the same delegated backend proof command passes after the cfg split, and
   the proof log is `test_after.log`
+- 2026-04-14 temporary executor packet extension:
+  split scalar/value lowering and function-signature lowering out of
+  `src/backend/lowering/lir_to_bir_module.cpp` into dedicated functional
+  slices without changing the active backend capability packet
+- 2026-04-14 temporary executor packet result:
+  `src/backend/lowering/lir_to_bir_scalar.cpp` now owns shared scalar
+  type/cast/binop/compare/select-chain lowering, and
+  `src/backend/lowering/lir_to_bir_calling.cpp` now owns param/return
+  signature lowering plus declaration helpers; `src/backend/lowering/lir_to_bir.hpp`
+  exposes the cross-file API and `src/backend/lowering/lir_to_bir_module.cpp`
+  keeps orchestration plus the still-unsplit aggregate/memory helpers
+- 2026-04-14 temporary proof result:
+  the same delegated backend proof command passes after the scalar/calling
+  split, and the proof log is `test_after.log`
 
 ## Parked Backlog Item 1 Baseline
 
