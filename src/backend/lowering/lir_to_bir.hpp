@@ -130,101 +130,6 @@ struct AggregateTypeLayout {
   std::vector<AggregateField> fields;
 };
 
-struct GlobalPointerSlotKey {
-  std::string global_name;
-  std::size_t byte_offset = 0;
-
-  bool operator==(const GlobalPointerSlotKey& other) const {
-    return global_name == other.global_name && byte_offset == other.byte_offset;
-  }
-};
-
-struct GlobalPointerSlotKeyHash {
-  std::size_t operator()(const GlobalPointerSlotKey& key) const {
-    return std::hash<std::string>{}(key.global_name) ^
-           (std::hash<std::size_t>{}(key.byte_offset) << 1);
-  }
-};
-
-using GlobalPointerMap = std::unordered_map<std::string, GlobalAddress>;
-using GlobalObjectPointerMap = std::unordered_map<std::string, GlobalAddress>;
-using GlobalAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
-using GlobalObjectAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
-using LocalAddressSlots = std::unordered_map<std::string, GlobalAddress>;
-using GlobalAddressSlots = std::unordered_map<std::string, std::optional<GlobalAddress>>;
-using AddressedGlobalPointerSlots =
-    std::unordered_map<GlobalPointerSlotKey,
-                       std::optional<GlobalAddress>,
-                       GlobalPointerSlotKeyHash>;
-
-struct LocalArraySlots {
-  bir::TypeKind element_type = bir::TypeKind::Void;
-  std::vector<std::string> element_slots;
-};
-
-using LocalArraySlotMap = std::unordered_map<std::string, LocalArraySlots>;
-
-struct DynamicLocalPointerArrayAccess {
-  std::vector<std::string> element_slots;
-  bir::Value index;
-};
-
-using DynamicLocalPointerArrayMap =
-    std::unordered_map<std::string, DynamicLocalPointerArrayAccess>;
-
-struct DynamicLocalAggregateArrayAccess {
-  std::string element_type_text;
-  std::size_t byte_offset = 0;
-  std::size_t element_count = 0;
-  std::size_t element_stride_bytes = 0;
-  std::unordered_map<std::size_t, std::string> leaf_slots;
-  bir::Value index;
-};
-
-using DynamicLocalAggregateArrayMap =
-    std::unordered_map<std::string, DynamicLocalAggregateArrayAccess>;
-
-struct LocalPointerArrayBase {
-  std::vector<std::string> element_slots;
-  std::size_t base_index = 0;
-};
-
-using LocalPointerArrayBaseMap = std::unordered_map<std::string, LocalPointerArrayBase>;
-
-struct DynamicGlobalPointerArrayAccess {
-  std::string global_name;
-  std::size_t byte_offset = 0;
-  std::size_t element_count = 0;
-  std::size_t element_stride_bytes = 0;
-  bir::Value index;
-};
-
-using DynamicGlobalPointerArrayMap =
-    std::unordered_map<std::string, DynamicGlobalPointerArrayAccess>;
-
-struct DynamicGlobalAggregateArrayAccess {
-  std::string global_name;
-  std::string element_type_text;
-  std::size_t byte_offset = 0;
-  std::size_t element_count = 0;
-  std::size_t element_stride_bytes = 0;
-  bir::Value index;
-};
-
-using DynamicGlobalAggregateArrayMap =
-    std::unordered_map<std::string, DynamicGlobalAggregateArrayAccess>;
-
-struct LocalAggregateSlots {
-  std::string storage_type_text;
-  std::string type_text;
-  std::size_t base_byte_offset = 0;
-  std::unordered_map<std::size_t, std::string> leaf_slots;
-};
-
-using LocalAggregateSlotMap = std::unordered_map<std::string, LocalAggregateSlots>;
-using LocalAggregateFieldSet = std::unordered_set<std::string>;
-using LocalPointerValueAliasMap = std::unordered_map<std::string, bir::Value>;
-
 TypeDeclMap build_type_decl_map(const std::vector<std::string>& type_decls);
 std::optional<std::int64_t> parse_i64(std::string_view text);
 std::optional<bir::TypeKind> lower_integer_type(std::string_view text);
@@ -259,36 +164,108 @@ class BirFunctionLowerer {
  public:
   using ValueMap = lir_to_bir_detail::ValueMap;
   using AggregateTypeLayout = lir_to_bir_detail::AggregateTypeLayout;
-  using AddressedGlobalPointerSlots = lir_to_bir_detail::AddressedGlobalPointerSlots;
-  using DynamicGlobalAggregateArrayMap = lir_to_bir_detail::DynamicGlobalAggregateArrayMap;
-  using DynamicGlobalAggregateArrayAccess =
-      lir_to_bir_detail::DynamicGlobalAggregateArrayAccess;
-  using DynamicGlobalPointerArrayMap = lir_to_bir_detail::DynamicGlobalPointerArrayMap;
-  using DynamicGlobalPointerArrayAccess = lir_to_bir_detail::DynamicGlobalPointerArrayAccess;
-  using DynamicLocalAggregateArrayMap = lir_to_bir_detail::DynamicLocalAggregateArrayMap;
-  using DynamicLocalAggregateArrayAccess = lir_to_bir_detail::DynamicLocalAggregateArrayAccess;
-  using DynamicLocalPointerArrayMap = lir_to_bir_detail::DynamicLocalPointerArrayMap;
-  using DynamicLocalPointerArrayAccess = lir_to_bir_detail::DynamicLocalPointerArrayAccess;
   using FunctionSymbolSet = lir_to_bir_detail::FunctionSymbolSet;
   using GlobalAddress = lir_to_bir_detail::GlobalAddress;
-  using GlobalAddressIntMap = lir_to_bir_detail::GlobalAddressIntMap;
-  using GlobalAddressSlots = lir_to_bir_detail::GlobalAddressSlots;
-  using GlobalObjectAddressIntMap = lir_to_bir_detail::GlobalObjectAddressIntMap;
-  using GlobalObjectPointerMap = lir_to_bir_detail::GlobalObjectPointerMap;
-  using GlobalPointerMap = lir_to_bir_detail::GlobalPointerMap;
-  using GlobalPointerSlotKey = lir_to_bir_detail::GlobalPointerSlotKey;
   using GlobalTypes = lir_to_bir_detail::GlobalTypes;
-  using LocalAddressSlots = lir_to_bir_detail::LocalAddressSlots;
-  using LocalAggregateFieldSet = lir_to_bir_detail::LocalAggregateFieldSet;
-  using LocalAggregateSlotMap = lir_to_bir_detail::LocalAggregateSlotMap;
-  using LocalAggregateSlots = lir_to_bir_detail::LocalAggregateSlots;
-  using LocalArraySlotMap = lir_to_bir_detail::LocalArraySlotMap;
-  using LocalPointerArrayBaseMap = lir_to_bir_detail::LocalPointerArrayBaseMap;
   using LocalPointerSlots = lir_to_bir_detail::LocalPointerSlots;
-  using LocalPointerValueAliasMap = lir_to_bir_detail::LocalPointerValueAliasMap;
   using LocalSlotTypes = lir_to_bir_detail::LocalSlotTypes;
   using ParsedTypedOperand = lir_to_bir_detail::ParsedTypedOperand;
   using TypeDeclMap = lir_to_bir_detail::TypeDeclMap;
+
+  struct GlobalPointerSlotKey {
+    std::string global_name;
+    std::size_t byte_offset = 0;
+
+    bool operator==(const GlobalPointerSlotKey& other) const {
+      return global_name == other.global_name && byte_offset == other.byte_offset;
+    }
+  };
+
+  struct GlobalPointerSlotKeyHash {
+    std::size_t operator()(const GlobalPointerSlotKey& key) const {
+      return std::hash<std::string>{}(key.global_name) ^
+             (std::hash<std::size_t>{}(key.byte_offset) << 1);
+    }
+  };
+
+  using GlobalPointerMap = std::unordered_map<std::string, GlobalAddress>;
+  using GlobalObjectPointerMap = std::unordered_map<std::string, GlobalAddress>;
+  using GlobalAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
+  using GlobalObjectAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
+  using LocalAddressSlots = std::unordered_map<std::string, GlobalAddress>;
+  using GlobalAddressSlots = std::unordered_map<std::string, std::optional<GlobalAddress>>;
+  using AddressedGlobalPointerSlots =
+      std::unordered_map<GlobalPointerSlotKey,
+                         std::optional<GlobalAddress>,
+                         GlobalPointerSlotKeyHash>;
+
+  struct LocalArraySlots {
+    bir::TypeKind element_type = bir::TypeKind::Void;
+    std::vector<std::string> element_slots;
+  };
+
+  using LocalArraySlotMap = std::unordered_map<std::string, LocalArraySlots>;
+
+  struct DynamicLocalPointerArrayAccess {
+    std::vector<std::string> element_slots;
+    bir::Value index;
+  };
+
+  using DynamicLocalPointerArrayMap =
+      std::unordered_map<std::string, DynamicLocalPointerArrayAccess>;
+
+  struct DynamicLocalAggregateArrayAccess {
+    std::string element_type_text;
+    std::size_t byte_offset = 0;
+    std::size_t element_count = 0;
+    std::size_t element_stride_bytes = 0;
+    std::unordered_map<std::size_t, std::string> leaf_slots;
+    bir::Value index;
+  };
+
+  using DynamicLocalAggregateArrayMap =
+      std::unordered_map<std::string, DynamicLocalAggregateArrayAccess>;
+
+  struct LocalPointerArrayBase {
+    std::vector<std::string> element_slots;
+    std::size_t base_index = 0;
+  };
+
+  using LocalPointerArrayBaseMap = std::unordered_map<std::string, LocalPointerArrayBase>;
+
+  struct DynamicGlobalPointerArrayAccess {
+    std::string global_name;
+    std::size_t byte_offset = 0;
+    std::size_t element_count = 0;
+    std::size_t element_stride_bytes = 0;
+    bir::Value index;
+  };
+
+  using DynamicGlobalPointerArrayMap =
+      std::unordered_map<std::string, DynamicGlobalPointerArrayAccess>;
+
+  struct DynamicGlobalAggregateArrayAccess {
+    std::string global_name;
+    std::string element_type_text;
+    std::size_t byte_offset = 0;
+    std::size_t element_count = 0;
+    std::size_t element_stride_bytes = 0;
+    bir::Value index;
+  };
+
+  using DynamicGlobalAggregateArrayMap =
+      std::unordered_map<std::string, DynamicGlobalAggregateArrayAccess>;
+
+  struct LocalAggregateSlots {
+    std::string storage_type_text;
+    std::string type_text;
+    std::size_t base_byte_offset = 0;
+    std::unordered_map<std::size_t, std::string> leaf_slots;
+  };
+
+  using LocalAggregateSlotMap = std::unordered_map<std::string, LocalAggregateSlots>;
+  using LocalAggregateFieldSet = std::unordered_set<std::string>;
+  using LocalPointerValueAliasMap = std::unordered_map<std::string, bir::Value>;
 
   struct CompareExpr {
     bir::BinaryOpcode opcode = bir::BinaryOpcode::Eq;

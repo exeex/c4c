@@ -278,6 +278,24 @@ Source Plan: plan.md
   the same delegated backend proof command passes after the type-ownership
   migration with `12 / 12` `^backend_` tests green, and the proof log is
   `test_after.log`
+- 2026-04-14 temporary executor packet extension:
+  continue shrinking `lir_to_bir_detail` by moving the function-body
+  memory-lane ownership types and maps that now only serve
+  `BirFunctionLowerer` onto the class, without changing backend behavior or
+  the active proof surface
+- 2026-04-14 temporary executor packet result:
+  `src/backend/lowering/lir_to_bir.hpp` no longer keeps the
+  function-body-only memory/address ownership types under `lir_to_bir_detail`;
+  `BirFunctionLowerer` now directly owns `GlobalPointerSlotKey`, the
+  local/global pointer-array and aggregate-array access structs and maps, the
+  local aggregate/local array storage structs and maps, and the related
+  global/local address and pointer map aliases, while
+  `src/backend/lowering/lir_to_bir_memory.cpp` now references the class-owned
+  types directly
+- 2026-04-14 temporary proof result:
+  the same delegated backend proof command passes after the memory-lane
+  type-ownership migration with `12 / 12` `^backend_` tests green, and the
+  proof log is `test_after.log`
 
 ## Parked Backlog Item 1 Baseline
 
