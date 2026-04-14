@@ -39,36 +39,39 @@ Source Plan: plan.md
 - current capability family:
   backlog item 2, harden params and function signatures
 - current packet focus:
-  `src/backend/lowering/lir_to_bir_module.cpp` on by-value aggregate params,
-  direct-call aggregate argument materialization, and local aggregate
-  zero-init / entry-copy lowering through the existing leaf-slot model
+  `src/backend/lowering/lir_to_bir_module.cpp` on simple by-value aggregate
+  returns, hidden sret-style call/result materialization, and aggregate-result
+  copies through the existing local leaf-slot model
 - 2026-04-14 executor packet result:
-  `src/backend/lowering/lir_to_bir_module.cpp` now lowers by-value aggregate
-  params and direct-call aggregate args as explicit `ptr byval(size, align)`
-  BIR contracts, materializes aggregate param-entry copies through the
-  existing local aggregate leaf slots, allows scalar GEP stepping within local
-  aggregate leaf-slot bases, and lowers local zero-init `LirMemsetOp` into
-  zero stores over the same leaf-slot model
+  `src/backend/lowering/lir_to_bir_module.cpp` now lowers simple aggregate
+  returns through semantic BIR as explicit hidden `ptr sret(size, align)`
+  contracts, materializes aggregate call results in caller-owned local
+  leaf-slot aggregates, and copies aggregate return values between local
+  aggregate aliases and the sret pointer without falling back to raw LLVM IR
 - 2026-04-14 direct x86 observation result:
-  `tests/backend/case/param_member_array.c` and
-  `tests/backend/case/nested_param_member_array.c` now reach semantic /
-  prepared BIR output on the truthful x86 backend route instead of stopping at
-  the earlier frontend rejection before BIR
+  `tests/backend/case/aggregate_return_pair.c` now reaches semantic BIR on the
+  truthful x86 backend route with `bir.func @make_pair(ptr sret(...)) -> void`
+  plus a matching `bir.call void make_pair(ptr sret(...))`, instead of
+  falling back to raw LLVM struct-return IR
 - proving surface:
-  use `tests/backend/case/param_slot.c`,
+  keep `tests/backend/case/param_slot.c`,
   `tests/backend/case/param_member_array.c`, and
-  `tests/backend/case/nested_param_member_array.c` as the honest packet anchor
-  because they prove signature behavior without forcing supported prepared-BIR
-  emission to print BIR
+  `tests/backend/case/nested_param_member_array.c` as the params baseline, and
+  add `tests/backend/case/aggregate_return_pair.c` as the first honest
+  behavior-shaped aggregate-return observation surface
 - remaining blocker:
   the truthful runtime x86 path still stops at prepared-BIR/toolchain output
-  rather than native asm, and broader aggregate memory-copy semantics beyond
-  the landed byval-entry / zero-init slice remain outside this packet
+  rather than native asm, and broader aggregate memory-copy / ABI legalization
+  beyond the landed byval-entry plus aggregate-return sret slice remains
+  outside this packet
 - supporting proof surface:
   `backend_codegen_route_x86_64_byval_member_array_params_observe_semantic_bir`
-  now serves as the authorized one-off harness proof for the aggregate slice,
-  while `backend_codegen_route_x86_64_param_slot_observes_prepared_bir`
-  remains the earlier scalar signature sentinel
+  and
+  `backend_codegen_route_x86_64_aggregate_return_pair_observe_semantic_bir`
+  now serve as the authorized narrow harness proofs for the aggregate
+  signature slice, while
+  `backend_codegen_route_x86_64_param_slot_observes_prepared_bir` remains the
+  earlier scalar signature sentinel
 - regression sentinels:
   keep the `two_arg_*` helper family as runtime and route sentinels, not as
   the primary proof source for this lane
@@ -99,16 +102,17 @@ Source Plan: plan.md
 - next executor packet should make a real code move in the backlog-item-2
   signature lane, not extend parked phi coverage
 - preferred first proof surface remains
-  `param_slot`, `param_member_array`, and `nested_param_member_array`
+  `param_slot`, `param_member_array`, `nested_param_member_array`, and
+  `aggregate_return_pair`
 - default proving command for the next backend packet remains:
   `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
 - 2026-04-14 proof result:
-  the exact backend proof command above now passes `4 / 4` backend tests,
+  the exact backend proof command above now passes `5 / 5` backend tests,
   including the new
-  `backend_codegen_route_x86_64_byval_member_array_params_observe_semantic_bir`
-  harness; direct x86 backend invocations for `param_member_array` and
-  `nested_param_member_array` now print semantic / prepared BIR instead of
-  failing before BIR, and the proof log is `test_after.log`
+  `backend_codegen_route_x86_64_aggregate_return_pair_observe_semantic_bir`
+  harness; direct x86 semantic-BIR output for `aggregate_return_pair.c` now
+  shows the hidden sret contract instead of LLVM struct-return fallback, and
+  the proof log is `test_after.log`
 - if runtime behavior alone cannot expose the signature change cleanly,
   authorize at most one narrow harness packet that supports the same code move
   without regressing supported prepared-BIR emission

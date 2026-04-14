@@ -113,3 +113,13 @@ c4c_set_backend_test_labels(
   "backend_codegen_route_x86_64_byval_member_array_params_observe_semantic_bir"
   backend_route
 )
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_aggregate_return_pair_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/aggregate_return_pair.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/aggregate_return_pair_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @make_pair(ptr sret(size=8, align=4) %ret.sret) -> void {|bir.store_local %lv.p.0, i32 3|bir.store_local %lv.p.0, i32 make_pair.ret.sret.copy.0, addr %ret.sret|bir.call void make_pair(ptr sret(size=8, align=4) %t0)|bir.ret i32 %t2"
+  FORBIDDEN_SNIPPETS "define %struct.Pair @make_pair()|call %struct.Pair () @make_pair()"
+)

@@ -50,6 +50,25 @@ void render_byval_suffix(std::ostringstream& out, std::size_t size_bytes, std::s
   }
 }
 
+void render_sret_suffix(std::ostringstream& out, std::size_t size_bytes, std::size_t align_bytes) {
+  out << " sret";
+  if (size_bytes != 0 || align_bytes != 0) {
+    out << "(";
+    bool wrote_field = false;
+    if (size_bytes != 0) {
+      out << "size=" << size_bytes;
+      wrote_field = true;
+    }
+    if (align_bytes != 0) {
+      if (wrote_field) {
+        out << ", ";
+      }
+      out << "align=" << align_bytes;
+    }
+    out << ")";
+  }
+}
+
 void render_memory_address(std::ostringstream& out, const MemoryAddress& address) {
   out << ", addr ";
   switch (address.base_kind) {
@@ -87,7 +106,10 @@ void render_function(std::ostringstream& out, const Function& function) {
       out << ", ";
     }
     out << render_type(function.params[index].type);
-    if (function.params[index].is_byval) {
+    if (function.params[index].is_sret) {
+      render_sret_suffix(
+          out, function.params[index].size_bytes, function.params[index].align_bytes);
+    } else if (function.params[index].is_byval) {
       render_byval_suffix(
           out, function.params[index].size_bytes, function.params[index].align_bytes);
     }
@@ -146,11 +168,18 @@ void render_function(std::ostringstream& out, const Function& function) {
                   out << ", ";
                 }
                 out << render_type(lowered.args[arg_index].type);
-                if (arg_index < lowered.arg_abi.size() && lowered.arg_abi[arg_index].byval_copy) {
-                  render_byval_suffix(
-                      out,
-                      lowered.arg_abi[arg_index].size_bytes,
-                      lowered.arg_abi[arg_index].align_bytes);
+                if (arg_index < lowered.arg_abi.size()) {
+                  if (lowered.arg_abi[arg_index].sret_pointer) {
+                    render_sret_suffix(
+                        out,
+                        lowered.arg_abi[arg_index].size_bytes,
+                        lowered.arg_abi[arg_index].align_bytes);
+                  } else if (lowered.arg_abi[arg_index].byval_copy) {
+                    render_byval_suffix(
+                        out,
+                        lowered.arg_abi[arg_index].size_bytes,
+                        lowered.arg_abi[arg_index].align_bytes);
+                  }
                 }
                 out << " " << render_value(lowered.args[arg_index]);
               }

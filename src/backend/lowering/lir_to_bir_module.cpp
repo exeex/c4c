@@ -192,6 +192,13 @@ struct AggregateTypeLayout {
 
 using AggregateParamMap = std::unordered_map<std::string, AggregateTypeLayout>;
 
+struct LoweredReturnInfo {
+  bir::TypeKind type = bir::TypeKind::Void;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
+  bool returned_via_sret = false;
+};
+
 std::optional<std::int64_t> parse_i64(std::string_view text);
 std::optional<bir::TypeKind> lower_integer_type(std::string_view text);
 std::optional<std::pair<std::size_t, std::string_view>> parse_integer_array_layer(
@@ -212,6 +219,8 @@ std::vector<std::pair<std::size_t, std::string>> collect_sorted_leaf_slots(
     const LocalAggregateSlots& aggregate_slots);
 AggregateParamMap collect_aggregate_params(const c4c::codegen::lir::LirFunction& function,
                                           const TypeDeclMap& type_decls);
+std::optional<LoweredReturnInfo> lower_return_info_from_type(std::string_view type_text,
+                                                             const TypeDeclMap& type_decls);
 bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
                                ValueMap& value_aliases,
                                CompareMap& compare_exprs,
@@ -958,6 +967,29 @@ AggregateParamMap collect_aggregate_params(const c4c::codegen::lir::LirFunction&
     aggregate_params.emplace(std::move(name), *layout);
   }
   return aggregate_params;
+}
+
+std::optional<LoweredReturnInfo> lower_return_info_from_type(std::string_view type_text,
+                                                             const TypeDeclMap& type_decls) {
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type_text);
+  if (trimmed == "void") {
+    return LoweredReturnInfo{};
+  }
+  if (const auto scalar_type = lower_integer_type(trimmed); scalar_type.has_value()) {
+    return LoweredReturnInfo{
+        .type = *scalar_type,
+    };
+  }
+  if (const auto aggregate_layout = lower_byval_aggregate_layout(trimmed, type_decls);
+      aggregate_layout.has_value()) {
+    return LoweredReturnInfo{
+        .type = bir::TypeKind::Void,
+        .size_bytes = aggregate_layout->size_bytes,
+        .align_bytes = aggregate_layout->align_bytes,
+        .returned_via_sret = true,
+    };
+  }
+  return std::nullopt;
 }
 
 bool is_zero_integer_array_initializer(std::string_view init_text, std::string_view type_text) {
@@ -2338,6 +2370,109 @@ bool append_local_aggregate_scalar_slots(std::string_view type_text,
   }
 }
 
+bool declare_local_aggregate_slots(std::string_view type_text,
+                                   std::string_view slot_name,
+                                   std::size_t align_bytes,
+                                   const TypeDeclMap& type_decls,
+                                   LocalSlotTypes& local_slot_types,
+                                   LocalPointerSlots& local_pointer_slots,
+                                   LocalAggregateFieldSet& local_aggregate_field_slots,
+                                   bir::Function* lowered_function,
+                                   LocalAggregateSlotMap& local_aggregate_slots) {
+  const auto aggregate_layout = compute_aggregate_type_layout(type_text, type_decls);
+  if (aggregate_layout.kind != AggregateTypeLayout::Kind::Struct &&
+      aggregate_layout.kind != AggregateTypeLayout::Kind::Array) {
+    return false;
+  }
+
+  LocalAggregateSlots aggregate_slots{
+      .storage_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(type_text)),
+      .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(type_text)),
+      .base_byte_offset = 0,
+  };
+  if (!append_local_aggregate_scalar_slots(type_text,
+                                           slot_name,
+                                           0,
+                                           align_bytes,
+                                           type_decls,
+                                           local_slot_types,
+                                           local_pointer_slots,
+                                           local_aggregate_field_slots,
+                                           lowered_function,
+                                           &aggregate_slots)) {
+    return false;
+  }
+  local_aggregate_slots.emplace(std::string(slot_name), std::move(aggregate_slots));
+  return true;
+}
+
+bool append_local_aggregate_copy_from_slots(
+    const LocalAggregateSlots& source_slots,
+    const LocalAggregateSlots& target_slots,
+    const LocalSlotTypes& local_slot_types,
+    std::string_view temp_prefix,
+    std::vector<bir::Inst>* lowered_insts) {
+  const auto target_leaves = collect_sorted_leaf_slots(target_slots);
+  for (const auto& [byte_offset, target_slot_name] : target_leaves) {
+    const auto source_slot_it = source_slots.leaf_slots.find(byte_offset);
+    if (source_slot_it == source_slots.leaf_slots.end()) {
+      return false;
+    }
+    const auto slot_type_it = local_slot_types.find(target_slot_name);
+    if (slot_type_it == local_slot_types.end()) {
+      return false;
+    }
+    const std::string temp_name =
+        std::string(temp_prefix) + "." + std::to_string(byte_offset);
+    lowered_insts->push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(slot_type_it->second, temp_name),
+        .slot_name = source_slot_it->second,
+    });
+    lowered_insts->push_back(bir::StoreLocalInst{
+        .slot_name = target_slot_name,
+        .value = bir::Value::named(slot_type_it->second, temp_name),
+    });
+  }
+  return true;
+}
+
+bool append_local_aggregate_copy_to_pointer(const LocalAggregateSlots& source_slots,
+                                            const LocalSlotTypes& local_slot_types,
+                                            const bir::Value& target_pointer,
+                                            std::size_t target_align_bytes,
+                                            std::string_view temp_prefix,
+                                            std::vector<bir::Inst>* lowered_insts) {
+  const auto source_leaves = collect_sorted_leaf_slots(source_slots);
+  for (const auto& [byte_offset, source_slot_name] : source_leaves) {
+    const auto slot_type_it = local_slot_types.find(source_slot_name);
+    if (slot_type_it == local_slot_types.end()) {
+      return false;
+    }
+    const auto slot_size = type_size_bytes(slot_type_it->second);
+    if (slot_size == 0) {
+      return false;
+    }
+    const std::string temp_name =
+        std::string(temp_prefix) + "." + std::to_string(byte_offset);
+    lowered_insts->push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(slot_type_it->second, temp_name),
+        .slot_name = source_slot_name,
+    });
+    lowered_insts->push_back(bir::StoreLocalInst{
+        .slot_name = source_slot_name,
+        .value = bir::Value::named(slot_type_it->second, temp_name),
+        .address = bir::MemoryAddress{
+            .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+            .base_value = target_pointer,
+            .byte_offset = static_cast<std::int64_t>(byte_offset),
+            .size_bytes = slot_size,
+            .align_bytes = std::max(slot_size, target_align_bytes),
+        },
+    });
+  }
+  return true;
+}
+
 std::optional<std::string> resolve_local_aggregate_gep_slot(
     std::string_view base_type_text,
     const c4c::codegen::lir::LirGepOp& gep,
@@ -3058,34 +3193,40 @@ bool is_void_param_sentinel(const c4c::TypeSpec& type) {
   return type.base == TB_VOID && type.ptr_level == 0 && type.array_rank == 0;
 }
 
-std::optional<bir::TypeKind> infer_function_return_type(
-    const c4c::codegen::lir::LirFunction& function) {
-  std::optional<bir::TypeKind> return_type;
+std::optional<LoweredReturnInfo> infer_function_return_info(
+    const c4c::codegen::lir::LirFunction& function,
+    const TypeDeclMap& type_decls) {
+  std::optional<LoweredReturnInfo> return_info;
   for (const auto& block : function.blocks) {
     const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&block.terminator);
     if (ret == nullptr) {
       continue;
     }
-    const auto lowered_type = lower_integer_type(ret->type_str);
+    const auto lowered_type = lower_return_info_from_type(ret->type_str, type_decls);
     if (!lowered_type.has_value()) {
       return std::nullopt;
     }
-    if (!return_type.has_value()) {
-      return_type = lowered_type;
+    if (!return_info.has_value()) {
+      return_info = lowered_type;
       continue;
     }
-    if (*return_type != *lowered_type) {
+    if (return_info->type != lowered_type->type ||
+        return_info->size_bytes != lowered_type->size_bytes ||
+        return_info->align_bytes != lowered_type->align_bytes ||
+        return_info->returned_via_sret != lowered_type->returned_via_sret) {
       return std::nullopt;
     }
   }
-  return return_type;
+  return return_info;
 }
 
 bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
+                           const std::optional<LoweredReturnInfo>& return_info,
                            const TypeDeclMap& type_decls,
                            bir::Function* lowered);
 
-std::optional<bir::TypeKind> lower_signature_return_type(std::string_view signature_text) {
+std::optional<LoweredReturnInfo> lower_signature_return_info(std::string_view signature_text,
+                                                             const TypeDeclMap& type_decls) {
   const auto line = c4c::codegen::lir::trim_lir_arg_text(signature_text);
   const auto first_space = line.find(' ');
   const auto at_pos = line.find('@');
@@ -3095,10 +3236,7 @@ std::optional<bir::TypeKind> lower_signature_return_type(std::string_view signat
   }
   const auto return_type_text =
       c4c::codegen::lir::trim_lir_arg_text(line.substr(first_space + 1, at_pos - first_space - 1));
-  if (return_type_text == "void") {
-    return bir::TypeKind::Void;
-  }
-  return lower_integer_type(return_type_text);
+  return lower_return_info_from_type(return_type_text, type_decls);
 }
 
 std::optional<bir::Function> lower_extern_decl(const c4c::codegen::lir::LirExternDecl& decl) {
@@ -3125,16 +3263,15 @@ std::optional<bir::Function> lower_extern_decl(const c4c::codegen::lir::LirExter
 std::optional<bir::Function> lower_decl_function(const c4c::codegen::lir::LirFunction& function) {
   bir::Function lowered;
   lowered.name = function.name;
-  lowered.return_type = lower_param_type(function.return_type)
-                            .value_or(bir::TypeKind::Void);
-  if (lowered.return_type == bir::TypeKind::Void) {
-    const auto signature_return_type = lower_signature_return_type(function.signature_text);
-    if (!signature_return_type.has_value()) {
-      return std::nullopt;
-    }
-    lowered.return_type = *signature_return_type;
+  auto return_info = lower_signature_return_info(function.signature_text, TypeDeclMap{});
+  if (!return_info.has_value()) {
+    lowered.return_type = lower_param_type(function.return_type).value_or(bir::TypeKind::Void);
+  } else {
+    lowered.return_type = return_info->type;
+    lowered.return_size_bytes = return_info->size_bytes;
+    lowered.return_align_bytes = return_info->align_bytes;
   }
-  if (!lower_function_params(function, TypeDeclMap{}, &lowered)) {
+  if (!lower_function_params(function, return_info, TypeDeclMap{}, &lowered)) {
     return std::nullopt;
   }
   lowered.is_declaration = true;
@@ -3142,8 +3279,19 @@ std::optional<bir::Function> lower_decl_function(const c4c::codegen::lir::LirFun
 }
 
 bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
+                           const std::optional<LoweredReturnInfo>& return_info,
                            const TypeDeclMap& type_decls,
                            bir::Function* lowered) {
+  if (return_info.has_value() && return_info->returned_via_sret) {
+    lowered->params.push_back(bir::Param{
+        .type = bir::TypeKind::Ptr,
+        .name = "%ret.sret",
+        .size_bytes = return_info->size_bytes,
+        .align_bytes = return_info->align_bytes,
+        .is_sret = true,
+    });
+  }
+
   if (function.params.size() == 1 && is_void_param_sentinel(function.params.front().second)) {
     return true;
   }
@@ -3537,34 +3685,16 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       return true;
     }
 
-    const auto aggregate_layout = compute_aggregate_type_layout(alloca->type_str.str(), type_decls);
-    if (aggregate_layout.kind != AggregateTypeLayout::Kind::Struct &&
-        aggregate_layout.kind != AggregateTypeLayout::Kind::Array) {
-      return false;
-    }
-
-    LocalAggregateSlots aggregate_slots{
-        .storage_type_text =
-            std::string(c4c::codegen::lir::trim_lir_arg_text(alloca->type_str.str())),
-        .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(alloca->type_str.str())),
-        .base_byte_offset = 0,
-    };
-    if (!append_local_aggregate_scalar_slots(alloca->type_str.str(),
-                                             slot_name,
-                                             0,
-                                             alloca->align > 0
-                                                 ? static_cast<std::size_t>(alloca->align)
-                                                 : 0,
-                                             type_decls,
-                                             local_slot_types,
-                                             local_pointer_slots,
-                                             local_aggregate_field_slots,
-                                             lowered_function,
-                                             &aggregate_slots)) {
-      return false;
-    }
-    local_aggregate_slots.emplace(slot_name, std::move(aggregate_slots));
-    return true;
+    return declare_local_aggregate_slots(alloca->type_str.str(),
+                                         slot_name,
+                                         alloca->align > 0 ? static_cast<std::size_t>(alloca->align)
+                                                           : 0,
+                                         type_decls,
+                                         local_slot_types,
+                                         local_pointer_slots,
+                                         local_aggregate_field_slots,
+                                         lowered_function,
+                                         local_aggregate_slots);
   }
 
   if (const auto* gep = std::get_if<c4c::codegen::lir::LirGepOp>(&inst)) {
@@ -3925,43 +4055,58 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       }
 
       const auto target_aggregate_it = local_aggregate_slots.find(store->ptr.str());
-      const auto source_param_it = aggregate_params.find(store->val.str());
-      if (target_aggregate_it == local_aggregate_slots.end() ||
-          source_param_it == aggregate_params.end()) {
+      if (target_aggregate_it == local_aggregate_slots.end()) {
         return false;
       }
 
-      const auto leaf_slots = collect_sorted_leaf_slots(target_aggregate_it->second);
-      for (const auto& [byte_offset, slot_name] : leaf_slots) {
-        const auto slot_type_it = local_slot_types.find(slot_name);
-        if (slot_type_it == local_slot_types.end()) {
-          return false;
-        }
-        const auto slot_size = type_size_bytes(slot_type_it->second);
-        if (slot_size == 0) {
-          return false;
-        }
+      if (const auto source_param_it = aggregate_params.find(store->val.str());
+          source_param_it != aggregate_params.end()) {
+        const auto leaf_slots = collect_sorted_leaf_slots(target_aggregate_it->second);
+        for (const auto& [byte_offset, slot_name] : leaf_slots) {
+          const auto slot_type_it = local_slot_types.find(slot_name);
+          if (slot_type_it == local_slot_types.end()) {
+            return false;
+          }
+          const auto slot_size = type_size_bytes(slot_type_it->second);
+          if (slot_size == 0) {
+            return false;
+          }
 
-        const std::string temp_name =
-            store->ptr.str() + ".byval.copy." + std::to_string(byte_offset);
-        lowered_insts->push_back(bir::LoadLocalInst{
-            .result = bir::Value::named(slot_type_it->second, temp_name),
-            .slot_name = slot_name,
-            .address =
-                bir::MemoryAddress{
-                    .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
-                    .base_value = bir::Value::named(bir::TypeKind::Ptr, store->val.str()),
-                    .byte_offset = static_cast<std::int64_t>(byte_offset),
-                    .size_bytes = slot_size,
-                    .align_bytes = std::max(slot_size, source_param_it->second.align_bytes),
-                },
-        });
-        lowered_insts->push_back(bir::StoreLocalInst{
-            .slot_name = slot_name,
-            .value = bir::Value::named(slot_type_it->second, temp_name),
-        });
+          const std::string temp_name =
+              store->ptr.str() + ".byval.copy." + std::to_string(byte_offset);
+          lowered_insts->push_back(bir::LoadLocalInst{
+              .result = bir::Value::named(slot_type_it->second, temp_name),
+              .slot_name = slot_name,
+              .address =
+                  bir::MemoryAddress{
+                      .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                      .base_value = bir::Value::named(bir::TypeKind::Ptr, store->val.str()),
+                      .byte_offset = static_cast<std::int64_t>(byte_offset),
+                      .size_bytes = slot_size,
+                      .align_bytes = std::max(slot_size, source_param_it->second.align_bytes),
+                  },
+          });
+          lowered_insts->push_back(bir::StoreLocalInst{
+              .slot_name = slot_name,
+              .value = bir::Value::named(slot_type_it->second, temp_name),
+          });
+        }
+        return true;
       }
-      return true;
+
+      const auto source_alias_it = aggregate_value_aliases.find(store->val.str());
+      if (source_alias_it == aggregate_value_aliases.end()) {
+        return false;
+      }
+      const auto source_aggregate_it = local_aggregate_slots.find(source_alias_it->second);
+      if (source_aggregate_it == local_aggregate_slots.end()) {
+        return false;
+      }
+      return append_local_aggregate_copy_from_slots(source_aggregate_it->second,
+                                                    target_aggregate_it->second,
+                                                    local_slot_types,
+                                                    store->ptr.str() + ".aggregate.copy",
+                                                    lowered_insts);
     }
 
     const auto value = lower_value(store->val, *value_type, value_aliases);
@@ -4401,12 +4546,8 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
 
   if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst)) {
 
-    auto return_type = lower_integer_type(call->return_type.str());
-    if (!return_type.has_value() &&
-        c4c::codegen::lir::trim_lir_arg_text(call->return_type.str()) == "void") {
-      return_type = bir::TypeKind::Void;
-    }
-    if (!return_type.has_value()) {
+    const auto return_info = lower_return_info_from_type(call->return_type.str(), type_decls);
+    if (!return_info.has_value()) {
       return false;
     }
 
@@ -4416,6 +4557,35 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
     std::optional<std::string> callee_name;
     std::optional<bir::Value> callee_value;
     bool is_indirect_call = false;
+    std::optional<std::string> sret_slot_name;
+
+    if (return_info->returned_via_sret) {
+      if (call->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+        return false;
+      }
+      sret_slot_name = call->result.str();
+      if (!declare_local_aggregate_slots(call->return_type.str(),
+                                         *sret_slot_name,
+                                         return_info->align_bytes,
+                                         type_decls,
+                                         local_slot_types,
+                                         local_pointer_slots,
+                                         local_aggregate_field_slots,
+                                         lowered_function,
+                                         local_aggregate_slots)) {
+        return false;
+      }
+      aggregate_value_aliases[*sret_slot_name] = *sret_slot_name;
+      lowered_arg_types.push_back(bir::TypeKind::Ptr);
+      lowered_args.push_back(bir::Value::named(bir::TypeKind::Ptr, *sret_slot_name));
+      lowered_arg_abi.push_back(bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = return_info->size_bytes,
+          .align_bytes = return_info->align_bytes,
+          .primary_class = bir::AbiValueClass::Memory,
+          .sret_pointer = true,
+      });
+    }
 
     if (const auto parsed_call = parse_backend_direct_global_typed_call(*call);
         parsed_call.has_value()) {
@@ -4517,13 +4687,15 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
     }
 
     bir::CallInst lowered_call;
-    if (*return_type != bir::TypeKind::Void) {
+    if (!return_info->returned_via_sret && return_info->type != bir::TypeKind::Void) {
       if (call->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
         return false;
       }
-      lowered_call.result = bir::Value::named(*return_type, call->result.str());
+      lowered_call.result = bir::Value::named(return_info->type, call->result.str());
     } else if (call->result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
-      return false;
+      if (!return_info->returned_via_sret) {
+        return false;
+      }
     }
     if (is_indirect_call) {
       lowered_call.callee_value = std::move(*callee_value);
@@ -4533,8 +4705,9 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
     lowered_call.args = std::move(lowered_args);
     lowered_call.arg_types = std::move(lowered_arg_types);
     lowered_call.arg_abi = std::move(lowered_arg_abi);
-    lowered_call.return_type_name = std::string(call->return_type.str());
-    lowered_call.return_type = *return_type;
+    lowered_call.return_type_name =
+        return_info->returned_via_sret ? "void" : std::string(call->return_type.str());
+    lowered_call.return_type = return_info->type;
     lowered_call.is_indirect = is_indirect_call;
     lowered_insts->push_back(std::move(lowered_call));
     return true;
@@ -4765,8 +4938,8 @@ std::optional<bir::Function> lower_canonical_select_function(
     return std::nullopt;
   }
 
-  const auto return_type = infer_function_return_type(function);
-  if (!return_type.has_value()) {
+  const auto return_info = infer_function_return_info(function, type_decls);
+  if (!return_info.has_value() || return_info->returned_via_sret) {
     return std::nullopt;
   }
 
@@ -4861,8 +5034,8 @@ std::optional<bir::Function> lower_canonical_select_function(
 
   bir::Function lowered;
   lowered.name = function.name;
-  lowered.return_type = *return_type;
-  if (!lower_function_params(function, type_decls, &lowered)) {
+  lowered.return_type = return_info->type;
+  if (!lower_function_params(function, return_info, type_decls, &lowered)) {
     return std::nullopt;
   }
   if (!collect_phi_lowering_plans(function).has_value()) {
@@ -4892,7 +5065,7 @@ std::optional<bir::Function> lower_canonical_select_function(
   }
 
   bir::ReturnTerminator lowered_ret;
-  const auto lowered_ret_value = lower_value(ret_value, *return_type, join_aliases);
+  const auto lowered_ret_value = lower_value(ret_value, return_info->type, join_aliases);
   if (!lowered_ret_value.has_value()) {
     return std::nullopt;
   }
@@ -4918,15 +5091,17 @@ std::optional<bir::Function> lower_branch_family_function(
     return lowered;
   }
 
-  const auto return_type = infer_function_return_type(function);
-  if (!return_type.has_value()) {
+  const auto return_info = infer_function_return_info(function, type_decls);
+  if (!return_info.has_value()) {
     return std::nullopt;
   }
 
   bir::Function lowered;
   lowered.name = function.name;
-  lowered.return_type = *return_type;
-  if (!lower_function_params(function, type_decls, &lowered)) {
+  lowered.return_type = return_info->type;
+  lowered.return_size_bytes = return_info->size_bytes;
+  lowered.return_align_bytes = return_info->align_bytes;
+  if (!lower_function_params(function, return_info, type_decls, &lowered)) {
     return std::nullopt;
   }
   const auto phi_plans = collect_phi_lowering_plans(function);
@@ -5065,13 +5240,40 @@ std::optional<bir::Function> lower_branch_family_function(
       bir::ReturnTerminator lowered_ret;
       if (ret->value_str.has_value()) {
         const c4c::codegen::lir::LirOperand ret_value(*ret->value_str);
-        const auto value = lower_value(ret_value, *return_type, value_aliases);
-        if (!value.has_value()) {
-          return std::nullopt;
-        }
-        if (!canonicalize_compare_return_alias(
-                ret_value, *value, *return_type, compare_exprs, &lowered_block.insts, &lowered_ret)) {
-          lowered_ret.value = *value;
+        if (return_info->returned_via_sret) {
+          if (ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+            return std::nullopt;
+          }
+          const auto aggregate_alias_it = aggregate_value_aliases.find(ret_value.str());
+          if (aggregate_alias_it == aggregate_value_aliases.end()) {
+            return std::nullopt;
+          }
+          const auto source_aggregate_it = local_aggregate_slots.find(aggregate_alias_it->second);
+          if (source_aggregate_it == local_aggregate_slots.end()) {
+            return std::nullopt;
+          }
+          if (!append_local_aggregate_copy_to_pointer(source_aggregate_it->second,
+                                                      local_slot_types,
+                                                      bir::Value::named(bir::TypeKind::Ptr,
+                                                                        "%ret.sret"),
+                                                      return_info->align_bytes,
+                                                      function.name + ".ret.sret.copy",
+                                                      &lowered_block.insts)) {
+            return std::nullopt;
+          }
+        } else {
+          const auto value = lower_value(ret_value, return_info->type, value_aliases);
+          if (!value.has_value()) {
+            return std::nullopt;
+          }
+          if (!canonicalize_compare_return_alias(ret_value,
+                                                 *value,
+                                                 return_info->type,
+                                                 compare_exprs,
+                                                 &lowered_block.insts,
+                                                 &lowered_ret)) {
+            lowered_ret.value = *value;
+          }
         }
       }
       lowered_block.terminator = lowered_ret;
