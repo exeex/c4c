@@ -1588,6 +1588,37 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       if (!dynamic_aggregate.has_value()) {
         return false;
       }
+      const auto element_layout =
+          compute_aggregate_type_layout(dynamic_aggregate->element_type_text, type_decls);
+      if (element_layout.kind == AggregateTypeLayout::Kind::Struct ||
+          element_layout.kind == AggregateTypeLayout::Kind::Array) {
+        std::vector<bir::Value> element_values;
+        element_values.reserve(dynamic_aggregate->element_count);
+        for (std::size_t element_index = 0;
+             element_index < dynamic_aggregate->element_count;
+             ++element_index) {
+          const std::string element_name =
+              gep->result.str() + ".elt" + std::to_string(element_index);
+          local_aggregate_slots[element_name] = LocalAggregateSlots{
+              .storage_type_text = aggregate_it->second.storage_type_text,
+              .type_text = dynamic_aggregate->element_type_text,
+              .base_byte_offset =
+                  dynamic_aggregate->byte_offset +
+                  element_index * dynamic_aggregate->element_stride_bytes,
+              .leaf_slots = aggregate_it->second.leaf_slots,
+          };
+          element_values.push_back(bir::Value::named(bir::TypeKind::Ptr, element_name));
+        }
+        const auto selected_value = synthesize_pointer_array_selects(
+            gep->result.str(), element_values, dynamic_aggregate->index, lowered_insts);
+        if (!selected_value.has_value()) {
+          return false;
+        }
+        if (selected_value->kind != bir::Value::Kind::Named ||
+            selected_value->name != gep->result.str()) {
+          value_aliases[gep->result.str()] = *selected_value;
+        }
+      }
       dynamic_local_aggregate_arrays[gep->result.str()] = std::move(*dynamic_aggregate);
       return true;
     }

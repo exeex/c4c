@@ -222,6 +222,28 @@ Source Plan: plan.md
   BIR for both addressed pointer-value roots and direct local
   aggregate-slot roots, but broader non-scalar local object/address flows and
   later ABI-legalized address work remain outside the current packet
+- 2026-04-14 executor packet extension:
+  dynamic direct-local aggregate-element addresses now stay on semantic BIR
+  too when a bounded local array index selects a non-scalar element whose
+  address flows into a pointer call edge; lowering materializes aggregate
+  element aliases plus a bounded pointer `bir.select` instead of leaving the
+  selected local address as an undefined SSA name
+- 2026-04-14 executor packet result:
+  `tests/backend/case/local_direct_dynamic_struct_array_call.c` now reaches
+  semantic BIR on x86_64 with `%t19 = bir.select ... ptr %t19.elt0, %t19.elt1`
+  before `bir.call i32 get_y(ptr %t19)`, so dynamic direct-local array-of-struct
+  element addresses stay on the shared local object/address route instead of
+  dropping a broken pointer through the call edge
+- 2026-04-14 proof extension:
+  add
+  `backend_codegen_route_x86_64_local_direct_dynamic_struct_array_call_observe_semantic_bir`
+  as the non-scalar dynamic direct-local address sentinel alongside the
+  existing local-address backend route coverage
+- next adjacent local-address gap:
+  dynamic direct-local scalar and non-scalar aggregate-element reads, stores,
+  and pointer-call edges now stay on semantic BIR, but deeper non-scalar
+  local address consumers beyond this bounded call-through shape and later
+  ABI-legalized address work remain outside the current packet
 - previous backlog-item-2 history below is accepted baseline only; do not mine
   it for the next packet unless a fresh non-ABI signature seam is named
 - current capability family:

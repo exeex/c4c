@@ -307,3 +307,13 @@ c4c_set_backend_test_labels(
   "backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir"
   backend_route
 )
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_local_direct_dynamic_struct_array_call_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/local_direct_dynamic_struct_array_call.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/local_direct_dynamic_struct_array_call_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.pairs.0, i32 1|bir.store_local %lv.pairs.12, i32 4|%t17 = bir.load_local i32 %lv.i|%t18 = bir.sext i32 %t17 to i64|%t19 = bir.select eq i64 %t18, 0, ptr %t19.elt0, %t19.elt1|bir.call i32 get_y(ptr %t19)|bir.ret i32 %t20"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (ptr) @get_y|getelementptr [2 x %struct.Pair], ptr"
+)
