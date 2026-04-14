@@ -289,6 +289,10 @@ std::optional<GlobalAddress> resolve_known_global_address(
     GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols,
     std::unordered_set<std::string>* active);
+std::vector<std::pair<std::size_t, std::string>> collect_sorted_leaf_slots(
+    const LocalAggregateSlots& aggregate_slots);
+AggregateParamMap collect_aggregate_params(const c4c::codegen::lir::LirFunction& function,
+                                           const TypeDeclMap& type_decls);
 std::optional<bir::TypeKind> lower_scalar_or_function_pointer_type(std::string_view text);
 std::optional<bir::CastOpcode> lower_cast_opcode(c4c::codegen::lir::LirCastKind kind);
 std::optional<bir::BinaryOpcode> lower_scalar_binary_opcode(
@@ -330,6 +334,46 @@ bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
                            const TypeDeclMap& type_decls,
                            bir::Function* lowered);
 std::optional<bir::Function> lower_decl_function(const c4c::codegen::lir::LirFunction& function);
+bool append_local_aggregate_scalar_slots(std::string_view type_text,
+                                         std::string_view slot_prefix,
+                                         std::size_t byte_offset,
+                                         std::size_t align_bytes,
+                                         const TypeDeclMap& type_decls,
+                                         LocalSlotTypes& local_slot_types,
+                                         LocalPointerSlots& local_pointer_slots,
+                                         LocalAggregateFieldSet& local_aggregate_field_slots,
+                                         bir::Function* lowered_function,
+                                         LocalAggregateSlots* aggregate_slots);
+bool declare_local_aggregate_slots(std::string_view type_text,
+                                   std::string_view slot_name,
+                                   std::size_t align_bytes,
+                                   const TypeDeclMap& type_decls,
+                                   LocalSlotTypes& local_slot_types,
+                                   LocalPointerSlots& local_pointer_slots,
+                                   LocalAggregateFieldSet& local_aggregate_field_slots,
+                                   bir::Function* lowered_function,
+                                   LocalAggregateSlotMap& local_aggregate_slots);
+bool append_local_aggregate_copy_from_slots(
+    const LocalAggregateSlots& source_slots,
+    const LocalAggregateSlots& target_slots,
+    const LocalSlotTypes& local_slot_types,
+    std::string_view temp_prefix,
+    std::vector<bir::Inst>* lowered_insts);
+bool append_local_aggregate_copy_to_pointer(const LocalAggregateSlots& source_slots,
+                                            const LocalSlotTypes& local_slot_types,
+                                            const bir::Value& target_pointer,
+                                            std::size_t target_align_bytes,
+                                            std::string_view temp_prefix,
+                                            std::vector<bir::Inst>* lowered_insts);
+bool materialize_aggregate_param_aliases(const AggregateParamMap& aggregate_params,
+                                         const TypeDeclMap& type_decls,
+                                         LocalSlotTypes& local_slot_types,
+                                         LocalPointerSlots& local_pointer_slots,
+                                         LocalAggregateFieldSet& local_aggregate_field_slots,
+                                         AggregateValueAliasMap& aggregate_value_aliases,
+                                         bir::Function* lowered_function,
+                                         LocalAggregateSlotMap& local_aggregate_slots,
+                                         std::vector<bir::Inst>* lowered_insts);
 BlockLookup make_block_lookup(const c4c::codegen::lir::LirFunction& function);
 std::optional<BranchChain> follow_empty_branch_chain(const BlockLookup& blocks,
                                                      const std::string& start_label);

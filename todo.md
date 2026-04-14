@@ -193,6 +193,20 @@ Source Plan: plan.md
 - 2026-04-14 temporary proof result:
   the same delegated backend proof command passes after the scalar/calling
   split, and the proof log is `test_after.log`
+- 2026-04-14 temporary executor packet extension:
+  split aggregate layout/slot/materialization helpers out of
+  `src/backend/lowering/lir_to_bir_module.cpp` into a dedicated aggregate
+  slice without changing the active backend capability packet
+- 2026-04-14 temporary executor packet result:
+  `src/backend/lowering/lir_to_bir_aggregate.cpp` now owns byval aggregate
+  layout discovery, aggregate-param collection, local aggregate leaf-slot
+  declaration, aggregate slot-to-slot copying, aggregate slot-to-pointer
+  copying, and aggregate param alias materialization; `lir_to_bir.hpp`
+  exposes the cross-file aggregate API and `lir_to_bir_module.cpp` keeps the
+  remaining module flow plus the still-unsplit memory helpers
+- 2026-04-14 temporary proof result:
+  the same delegated backend proof command passes after the aggregate split,
+  and the proof log is `test_after.log`
 
 ## Parked Backlog Item 1 Baseline
 
