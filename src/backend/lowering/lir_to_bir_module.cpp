@@ -203,6 +203,10 @@ std::optional<bir::Value> lower_global_initializer(std::string_view text,
 AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
                                                   const TypeDeclMap& type_decls);
 std::vector<std::string_view> split_top_level_initializer_items(std::string_view text);
+bool lower_scalar_compare_inst(const c4c::codegen::lir::LirInst& inst,
+                               ValueMap& value_aliases,
+                               CompareMap& compare_exprs,
+                               std::vector<bir::Inst>* lowered_insts);
 
 bool is_local_array_element_slot(std::string_view slot_name,
                                  const LocalArraySlotMap& local_array_slots) {
@@ -1543,6 +1547,229 @@ std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& opera
     default:
       return std::nullopt;
   }
+}
+
+std::optional<unsigned> integer_type_bit_width(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+      return 1u;
+    case bir::TypeKind::I8:
+      return 8u;
+    case bir::TypeKind::I32:
+      return 32u;
+    case bir::TypeKind::I64:
+      return 64u;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::uint64_t integer_bit_mask(unsigned bits) {
+  return bits >= 64u ? ~std::uint64_t{0} : ((std::uint64_t{1} << bits) - 1u);
+}
+
+std::int64_t sign_extend_bits(std::uint64_t value, unsigned bits) {
+  if (bits == 0u || bits >= 64u) {
+    return static_cast<std::int64_t>(value);
+  }
+  const auto sign_bit = std::uint64_t{1} << (bits - 1u);
+  const auto extended = (value ^ sign_bit) - sign_bit;
+  return static_cast<std::int64_t>(extended);
+}
+
+std::optional<bir::Value> make_integer_immediate(bir::TypeKind type, std::int64_t value) {
+  switch (type) {
+    case bir::TypeKind::I1:
+      return bir::Value::immediate_i1(value != 0);
+    case bir::TypeKind::I8:
+      return bir::Value::immediate_i8(static_cast<std::int8_t>(value));
+    case bir::TypeKind::I32:
+      return bir::Value::immediate_i32(static_cast<std::int32_t>(value));
+    case bir::TypeKind::I64:
+      return bir::Value::immediate_i64(value);
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<bir::Value> fold_integer_cast(c4c::codegen::lir::LirCastKind kind,
+                                            const bir::Value& operand,
+                                            bir::TypeKind to_type) {
+  const auto from_bits = integer_type_bit_width(operand.type);
+  const auto to_bits = integer_type_bit_width(to_type);
+  if (!from_bits.has_value() || !to_bits.has_value()) {
+    return std::nullopt;
+  }
+  if (operand.kind != bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+
+  const auto masked_input =
+      static_cast<std::uint64_t>(operand.immediate) & integer_bit_mask(*from_bits);
+  std::int64_t cast_value = 0;
+  switch (kind) {
+    case c4c::codegen::lir::LirCastKind::Trunc:
+      cast_value = sign_extend_bits(masked_input & integer_bit_mask(*to_bits), *to_bits);
+      break;
+    case c4c::codegen::lir::LirCastKind::ZExt:
+      cast_value = static_cast<std::int64_t>(masked_input);
+      break;
+    case c4c::codegen::lir::LirCastKind::SExt:
+      cast_value = sign_extend_bits(masked_input, *from_bits);
+      break;
+    default:
+      return std::nullopt;
+  }
+
+  return make_integer_immediate(to_type, cast_value);
+}
+
+bool is_canonical_select_chain_binop(bir::BinaryOpcode opcode) {
+  // Canonical-select lowering may need to speculate computations that were in
+  // branch arms. Keep the allowed set conservative to avoid introducing
+  // unexpected trap/UB surfaces.
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool resolve_select_chain_inst(const c4c::codegen::lir::LirInst& inst,
+                               ValueMap& value_aliases,
+                               CompareMap& compare_exprs,
+                               std::vector<bir::Inst>* lowered_insts) {
+  if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, lowered_insts)) {
+    return true;
+  }
+
+  if (const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&inst)) {
+    if (cast->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    const auto from_type = lower_integer_type(cast->from_type.str());
+    const auto to_type = lower_integer_type(cast->to_type.str());
+    if (!from_type.has_value() || !to_type.has_value()) {
+      return false;
+    }
+
+    const auto operand = lower_value(cast->operand, *from_type, value_aliases);
+    if (!operand.has_value()) {
+      return false;
+    }
+
+    if (operand->kind == bir::Value::Kind::Named && operand->type == *to_type &&
+        cast->kind == c4c::codegen::lir::LirCastKind::Bitcast) {
+      value_aliases[cast->result.str()] = *operand;
+      return true;
+    }
+
+    if (const auto folded = fold_integer_cast(cast->kind, *operand, *to_type);
+        folded.has_value()) {
+      value_aliases[cast->result.str()] = *folded;
+      return true;
+    }
+
+    const auto opcode = lower_cast_opcode(cast->kind);
+    if (!opcode.has_value() || lowered_insts == nullptr) {
+      return false;
+    }
+    lowered_insts->push_back(bir::CastInst{
+        .opcode = *opcode,
+        .result = bir::Value::named(*to_type, cast->result.str()),
+        .operand = *operand,
+    });
+    value_aliases[cast->result.str()] = bir::Value::named(*to_type, cast->result.str());
+    return true;
+  }
+
+  if (const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst)) {
+    if (bin->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    const auto opcode = lower_scalar_binary_opcode(bin->opcode);
+    const auto value_type = lower_integer_type(bin->type_str.str());
+    if (!opcode.has_value() || !value_type.has_value() ||
+        !is_canonical_select_chain_binop(*opcode)) {
+      return false;
+    }
+
+    const auto lhs = lower_value(bin->lhs, *value_type, value_aliases);
+    const auto rhs = lower_value(bin->rhs, *value_type, value_aliases);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return false;
+    }
+
+    if (*value_type == bir::TypeKind::I64 && lhs->kind == bir::Value::Kind::Immediate &&
+        rhs->kind == bir::Value::Kind::Immediate) {
+      const auto folded = fold_i64_binary_immediates(*opcode, lhs->immediate, rhs->immediate);
+      if (folded.has_value()) {
+        value_aliases[bin->result.str()] = *folded;
+        return true;
+      }
+    }
+
+    if (lowered_insts == nullptr) {
+      return false;
+    }
+    lowered_insts->push_back(bir::BinaryInst{
+        .opcode = *opcode,
+        .result = bir::Value::named(*value_type, bin->result.str()),
+        .operand_type = *value_type,
+        .lhs = *lhs,
+        .rhs = *rhs,
+    });
+    value_aliases[bin->result.str()] = bir::Value::named(*value_type, bin->result.str());
+    return true;
+  }
+
+  return false;
+}
+
+bool lower_canonical_select_entry_inst(const c4c::codegen::lir::LirInst& inst,
+                                       ValueMap& value_aliases,
+                                       CompareMap& compare_exprs,
+                                       std::vector<bir::Inst>* lowered_insts) {
+  if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, nullptr)) {
+    return true;
+  }
+
+  const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&inst);
+  if (cast == nullptr || cast->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+    return false;
+  }
+
+  const auto opcode = lower_cast_opcode(cast->kind);
+  const auto from_type = lower_integer_type(cast->from_type.str());
+  const auto to_type = lower_integer_type(cast->to_type.str());
+  if (!opcode.has_value() || !from_type.has_value() || !to_type.has_value()) {
+    return false;
+  }
+
+  const auto operand = lower_value(cast->operand, *from_type, value_aliases);
+  if (!operand.has_value()) {
+    return false;
+  }
+
+  if (const auto folded = fold_integer_cast(cast->kind, *operand, *to_type); folded.has_value()) {
+    value_aliases[cast->result.str()] = *folded;
+    return true;
+  }
+
+  lowered_insts->push_back(bir::CastInst{
+      .opcode = *opcode,
+      .result = bir::Value::named(*to_type, cast->result.str()),
+      .operand = *operand,
+  });
+  return true;
 }
 
 std::optional<bir::Value> lower_typed_index_value(const ParsedTypedOperand& index_operand,
@@ -4099,6 +4326,91 @@ std::optional<BranchChain> follow_empty_branch_chain(const BlockLookup& blocks,
   return std::nullopt;
 }
 
+std::optional<BranchChain> follow_canonical_select_chain(const BlockLookup& blocks,
+                                                         const std::string& start_label) {
+  std::unordered_set<std::string> seen;
+  const auto* current = [&]() -> const c4c::codegen::lir::LirBlock* {
+    const auto it = blocks.find(start_label);
+    return it == blocks.end() ? nullptr : it->second;
+  }();
+  if (current == nullptr) {
+    return std::nullopt;
+  }
+
+  BranchChain chain;
+  bool saw_non_empty = false;
+  while (current != nullptr) {
+    if (!seen.emplace(current->label).second) {
+      return std::nullopt;
+    }
+    if (!current->insts.empty()) {
+      if (saw_non_empty) {
+        return std::nullopt;
+      }
+      saw_non_empty = true;
+    }
+
+    const auto* br = std::get_if<c4c::codegen::lir::LirBr>(&current->terminator);
+    if (br == nullptr) {
+      return std::nullopt;
+    }
+
+    chain.labels.push_back(current->label);
+    const auto next_it = blocks.find(br->target_label);
+    if (next_it == blocks.end()) {
+      return std::nullopt;
+    }
+
+    const auto* next = next_it->second;
+    const bool next_continues_chain = std::holds_alternative<c4c::codegen::lir::LirBr>(
+                                          next->terminator) &&
+                                      (next->insts.empty() || !saw_non_empty);
+    if (!next_continues_chain) {
+      chain.leaf_label = current->label;
+      chain.join_label = br->target_label;
+      return chain;
+    }
+
+    current = next;
+  }
+
+  return std::nullopt;
+}
+
+std::optional<bir::Value> lower_select_chain_value(const BlockLookup& blocks,
+                                                   const BranchChain& chain,
+                                                   const c4c::codegen::lir::LirOperand& incoming,
+                                                   bir::TypeKind expected_type,
+                                                   const ValueMap& value_aliases,
+                                                   std::vector<bir::Inst>* lowered_insts) {
+  if (incoming.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+    return lower_value(incoming, expected_type, value_aliases);
+  }
+  if (const auto alias = value_aliases.find(incoming.str()); alias != value_aliases.end()) {
+    return alias->second;
+  }
+  if (auto lowered = lower_value(incoming, expected_type, value_aliases);
+      lowered.has_value() && lowered->kind == bir::Value::Kind::Immediate) {
+    return lowered;
+  }
+
+  ValueMap chain_aliases = value_aliases;
+  CompareMap chain_compare_exprs;
+  for (const auto& label : chain.labels) {
+    const auto block_it = blocks.find(label);
+    if (block_it == blocks.end()) {
+      return std::nullopt;
+    }
+    for (const auto& inst : block_it->second->insts) {
+      if (!resolve_select_chain_inst(inst, chain_aliases, chain_compare_exprs, lowered_insts)) {
+        return std::nullopt;
+      }
+    }
+  }
+
+  return lower_value(incoming, expected_type, chain_aliases);
+}
+
 std::optional<PhiBlockPlanMap> collect_phi_lowering_plans(
     const c4c::codegen::lir::LirFunction& function) {
   PhiBlockPlanMap plans;
@@ -4163,8 +4475,9 @@ std::optional<bir::Function> lower_canonical_select_function(
 
   ValueMap value_aliases;
   CompareMap compare_exprs;
+  std::vector<bir::Inst> prelude_insts;
   for (const auto& inst : entry.insts) {
-    if (!lower_scalar_compare_inst(inst, value_aliases, compare_exprs, nullptr)) {
+    if (!lower_canonical_select_entry_inst(inst, value_aliases, compare_exprs, &prelude_insts)) {
       return std::nullopt;
     }
   }
@@ -4175,8 +4488,8 @@ std::optional<bir::Function> lower_canonical_select_function(
   }
 
   const auto blocks = make_block_lookup(function);
-  const auto true_chain = follow_empty_branch_chain(blocks, cond_br->true_label);
-  const auto false_chain = follow_empty_branch_chain(blocks, cond_br->false_label);
+  const auto true_chain = follow_canonical_select_chain(blocks, cond_br->true_label);
+  const auto false_chain = follow_canonical_select_chain(blocks, cond_br->false_label);
   if (!true_chain.has_value() || !false_chain.has_value() ||
       true_chain->join_label != false_chain->join_label) {
     return std::nullopt;
@@ -4188,12 +4501,17 @@ std::optional<bir::Function> lower_canonical_select_function(
   }
   const auto& join_block = *join_it->second;
 
-  if (join_block.insts.empty() || join_block.insts.size() > 2) {
+  if (join_block.insts.empty()) {
     return std::nullopt;
   }
   const auto* phi = std::get_if<c4c::codegen::lir::LirPhiOp>(&join_block.insts.front());
   if (phi == nullptr || phi->incoming.size() != 2) {
     return std::nullopt;
+  }
+  for (std::size_t index = 1; index < join_block.insts.size(); ++index) {
+    if (std::holds_alternative<c4c::codegen::lir::LirPhiOp>(join_block.insts[index])) {
+      return std::nullopt;
+    }
   }
   const auto phi_type = lower_integer_type(phi->type_str.str());
   if (!phi_type.has_value()) {
@@ -4228,8 +4546,12 @@ std::optional<bir::Function> lower_canonical_select_function(
     return std::nullopt;
   }
 
-  const auto true_value = lower_value(*true_incoming, *phi_type, value_aliases);
-  const auto false_value = lower_value(*false_incoming, *phi_type, value_aliases);
+  const auto true_value =
+      lower_select_chain_value(
+          blocks, *true_chain, *true_incoming, *phi_type, value_aliases, &prelude_insts);
+  const auto false_value =
+      lower_select_chain_value(
+          blocks, *false_chain, *false_incoming, *phi_type, value_aliases, &prelude_insts);
   if (!true_value.has_value() || !false_value.has_value()) {
     return std::nullopt;
   }
@@ -4246,6 +4568,7 @@ std::optional<bir::Function> lower_canonical_select_function(
 
   bir::Block lowered_block;
   lowered_block.label = entry.label;
+  lowered_block.insts = std::move(prelude_insts);
   lowered_block.insts.push_back(bir::SelectInst{
       .predicate = compare_it->second.opcode,
       .result = bir::Value::named(*phi_type, phi->result.str()),
@@ -4256,62 +4579,22 @@ std::optional<bir::Function> lower_canonical_select_function(
       .false_value = *false_value,
   });
 
-  if (join_block.insts.size() == 1) {
-    if (ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
-        ret_value.str() != phi->result.str()) {
+  ValueMap join_aliases = value_aliases;
+  CompareMap join_compare_exprs = compare_exprs;
+  for (std::size_t index = 1; index < join_block.insts.size(); ++index) {
+    if (!resolve_select_chain_inst(
+            join_block.insts[index], join_aliases, join_compare_exprs, &lowered_block.insts)) {
       return std::nullopt;
     }
-    lowered_block.terminator = bir::ReturnTerminator{
-        .value = bir::Value::named(*phi_type, phi->result.str()),
-    };
-    lowered.blocks.push_back(std::move(lowered_block));
-    return lowered;
   }
 
-  const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&join_block.insts[1]);
-  if (call == nullptr || *phi_type != bir::TypeKind::Ptr ||
-      call->callee.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
-      call->callee.str() != phi->result.str()) {
+  bir::ReturnTerminator lowered_ret;
+  const auto lowered_ret_value = lower_value(ret_value, *return_type, join_aliases);
+  if (!lowered_ret_value.has_value()) {
     return std::nullopt;
   }
-
-  const auto parsed_call = parse_backend_typed_call(*call);
-  const auto call_return_type = lower_integer_type(call->return_type.str());
-  if (!parsed_call.has_value() || !call_return_type.has_value() || *call_return_type != *return_type ||
-      parsed_call->args.size() != parsed_call->param_types.size() ||
-      call->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
-      ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
-      ret_value.str() != call->result.str()) {
-    return std::nullopt;
-  }
-
-  bir::CallInst lowered_call;
-  lowered_call.result = bir::Value::named(*call_return_type, call->result.str());
-  lowered_call.callee_value = bir::Value::named(*phi_type, phi->result.str());
-  lowered_call.return_type_name = std::string(call->return_type.str());
-  lowered_call.return_type = *call_return_type;
-  lowered_call.is_indirect = true;
-  lowered_call.args.reserve(parsed_call->args.size());
-  lowered_call.arg_types.reserve(parsed_call->param_types.size());
-  for (std::size_t index = 0; index < parsed_call->args.size(); ++index) {
-    const auto arg_type = lower_integer_type(parsed_call->param_types[index]);
-    if (!arg_type.has_value()) {
-      return std::nullopt;
-    }
-    const auto arg =
-        lower_value(c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand)),
-                    *arg_type,
-                    value_aliases);
-    if (!arg.has_value()) {
-      return std::nullopt;
-    }
-    lowered_call.arg_types.push_back(*arg_type);
-    lowered_call.args.push_back(*arg);
-  }
-  lowered_block.insts.push_back(std::move(lowered_call));
-  lowered_block.terminator = bir::ReturnTerminator{
-      .value = bir::Value::named(*call_return_type, call->result.str()),
-  };
+  lowered_ret.value = *lowered_ret_value;
+  lowered_block.terminator = lowered_ret;
   lowered.blocks.push_back(std::move(lowered_block));
   return lowered;
 }
@@ -4400,13 +4683,17 @@ std::optional<bir::Function> lower_branch_family_function(
       return std::nullopt;
     }
   }
-  if (!hoisted_alloca_scratch.empty()) {
-    return std::nullopt;
-  }
+
+  bool emitted_hoisted_alloca_scratch = false;
 
   for (const auto& block : function.blocks) {
     bir::Block lowered_block;
     lowered_block.label = block.label;
+    if (!emitted_hoisted_alloca_scratch && block.label == function.blocks.front().label &&
+        !hoisted_alloca_scratch.empty()) {
+      lowered_block.insts = std::move(hoisted_alloca_scratch);
+      emitted_hoisted_alloca_scratch = true;
+    }
 
     if (const auto phi_it = phi_plans->find(block.label); phi_it != phi_plans->end()) {
       for (const auto& phi_plan : phi_it->second) {
