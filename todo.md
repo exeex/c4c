@@ -14,10 +14,9 @@ Source Plan: plan.md
   executor packets can be chosen from a durable semantic queue rather than
   rediscovering the next testcase family from chat
 - review checkpoint:
-  `review/route_alignment_after_indirect_call_proof_run.md` judged the active
-  plan still aligned to the source idea but called for a route reset before
-  more execution because the riscv64 indirect-call work had drifted into
-  proof-only arg-count churn
+  a reviewer judged the active plan still aligned to the source idea but
+  called for a route reset before more execution because the riscv64
+  indirect-call work had drifted into proof-only arg-count churn
 - current capability family:
   backlog item 5 is now reset onto semantic callee-provenance work instead of
   further riscv64 arg-count widening:
@@ -81,10 +80,9 @@ Source Plan: plan.md
 ## Latest Packet Progress
 
 - completed:
-  reviewer scrutiny in
-  `review/route_alignment_after_indirect_call_proof_run.md`
-  judged the active runbook still faithful to the source idea but rejected
-  further riscv64 width-only indirect-call packets as route drift:
+  reviewer scrutiny judged the active runbook still faithful to the source
+  idea but rejected further riscv64 width-only indirect-call packets as route
+  drift:
   the accepted proving surface now stops at the twenty-five-arg integer-class
   family, the reverted twenty-six-arg proof-only slice must not be
   reintroduced, and the active route is reset onto semantic callee-provenance
