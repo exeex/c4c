@@ -23,22 +23,23 @@ Source Plan: plan.md
   the accepted route already proves the shared indirect-call lane through the
   first mixed `ptr` families, the first ptr-capable result families, and the
   first honest seventeen-stack-slot integer-class surface at twenty-five args,
-  which is enough width evidence for now
+  and the first merge-preserved callee-value family now lowers through
+  semantic BIR as well, which is enough width evidence for now
 - current packet shape:
   stop packeting backlog item 5 as "next wider indirect-call signature"
   work; the next executor slice should target a semantic family that still
   requires real lowering/backend changes, specifically indirect callee
-  provenance through memory-carried or merge-preserved function-pointer values
-  instead of more width-only wrapper proofs
+  provenance through memory-carried function-pointer values instead of more
+  width-only wrapper proofs
 - candidate proving surface:
-  the next honest proving surface should force semantic handling of callee
-  identity rather than one more width proof: prefer internal backend-route
-  cases where the indirect callee is loaded from shared memory/state
-  structures or preserved across CFG merge/select-style value flow, while
-  keeping `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the
-  standing one-arg through twenty-five-arg indirect-call plus `two_arg_*`
-  direct-call route tests only as sentinels, not as the packet-selection
-  mechanism
+  the next honest proving surface should keep forcing semantic handling of
+  callee identity rather than one more width proof: prefer internal
+  backend-route cases where the indirect callee is loaded from shared
+  memory/state structures or from addressed global function-pointer storage,
+  while keeping `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, the
+  new merge-preserved callee route test, and the standing one-arg through
+  twenty-five-arg indirect-call plus `two_arg_*` direct-call route tests only
+  as sentinels, not as the packet-selection mechanism
 
 ## Immediate Target
 
@@ -79,6 +80,31 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  the first merge-preserved indirect-callee family now lowers through
+  semantic BIR instead of falling back to raw LLVM text:
+  `lower_select_family_function` now recognizes a two-way `phi ptr`
+  merge whose result immediately feeds an indirect call and return, preserves
+  that callee provenance as `bir.select ... ptr` plus `bir.call` on the
+  selected pointer value, and proves it with
+  `indirect_select_callee_call.c` on the riscv64 backend-route surface
+  without extending exact rendered-asm snippet ladders
+  new route proof covers `indirect_select_callee_call.c` as BIR, while
+  `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the standing
+  one-arg through twenty-five-arg indirect-call plus `two_arg_*` direct-call
+  sentinels stayed in the owned proof surface
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated build succeeded, the new riscv64 route test passed as
+  test `#263`, the broad `^backend_` subset still returned non-zero because
+  it remains dominated by standing unrelated failures, and the total backend
+  route surface increased from `403` to `404` while the standing failed-test
+  count held at `225`, so the first merge-preserved callee-provenance slice
+  is now covered on the shared semantic-BIR lane without a broader
+  regression increase
 - completed:
   reviewer scrutiny judged the active runbook still faithful to the source
   idea but rejected further riscv64 width-only indirect-call packets as route
