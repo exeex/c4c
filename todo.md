@@ -167,154 +167,18 @@ Source Plan: plan.md
 - 2026-04-14 temporary proof result:
   the delegated proof command passes `12 / 12` `^backend_` tests after the
   refactor, and the proof log is `test_after.log`
-- 2026-04-14 temporary executor packet extension:
-  split the `phi/select/cfg` lowering lane out of
-  `src/backend/lowering/lir_to_bir_module.cpp` as its own functional slice
-  without changing the active backend capability packet
-- 2026-04-14 temporary executor packet result:
-  `src/backend/lowering/lir_to_bir_cfg.cpp` now owns block-lookup,
-  canonical-select-chain, phi-plan collection, and canonical-select lowering;
-  `src/backend/lowering/lir_to_bir_module.cpp` keeps the branch-family/module
-  flow and non-cfg lowering helpers
-- 2026-04-14 temporary proof result:
-  the same delegated backend proof command passes after the cfg split, and
-  the proof log is `test_after.log`
-- 2026-04-14 temporary executor packet extension:
-  split scalar/value lowering and function-signature lowering out of
-  `src/backend/lowering/lir_to_bir_module.cpp` into dedicated functional
-  slices without changing the active backend capability packet
-- 2026-04-14 temporary executor packet result:
-  `src/backend/lowering/lir_to_bir_scalar.cpp` now owns shared scalar
-  type/cast/binop/compare/select-chain lowering, and
-  `src/backend/lowering/lir_to_bir_calling.cpp` now owns param/return
-  signature lowering plus declaration helpers; `src/backend/lowering/lir_to_bir.hpp`
-  exposes the cross-file API and `src/backend/lowering/lir_to_bir_module.cpp`
-  keeps orchestration plus the still-unsplit aggregate/memory helpers
-- 2026-04-14 temporary proof result:
-  the same delegated backend proof command passes after the scalar/calling
-  split, and the proof log is `test_after.log`
-- 2026-04-14 temporary executor packet extension:
-  split aggregate layout/slot/materialization helpers out of
-  `src/backend/lowering/lir_to_bir_module.cpp` into a dedicated aggregate
-  slice without changing the active backend capability packet
-- 2026-04-14 temporary executor packet result:
-  `src/backend/lowering/lir_to_bir_aggregate.cpp` now owns byval aggregate
-  layout discovery, aggregate-param collection, local aggregate leaf-slot
-  declaration, aggregate slot-to-slot copying, aggregate slot-to-pointer
-  copying, and aggregate param alias materialization; `lir_to_bir.hpp`
-  exposes the cross-file aggregate API and `lir_to_bir_module.cpp` keeps the
-  remaining module flow plus the still-unsplit memory helpers
-- 2026-04-14 temporary proof result:
-  the same delegated backend proof command passes after the aggregate split,
-  and the proof log is `test_after.log`
-- 2026-04-14 temporary executor packet extension:
-  split the remaining local/global memory, address, pointer, and call-memory
-  lowering lane out of `src/backend/lowering/lir_to_bir_module.cpp` into a
-  dedicated memory slice without changing the active backend capability packet
-- 2026-04-14 temporary executor packet result:
-  `src/backend/lowering/lir_to_bir_memory.cpp` now owns
-  `lower_scalar_or_local_memory_inst(...)` plus the global-address, local-slot,
-  GEP, pointer-array, load/store, memset, and call-memory helper cluster;
-  `src/backend/lowering/lir_to_bir_module.cpp` now keeps branch-family/module
-  orchestration, `lir_to_bir_aggregate.cpp` owns the shared
-  `lower_byval_aggregate_layout(...)` helper, and `lir_to_bir.hpp` exposes the
-  final cross-file memory API used by the split
-- 2026-04-14 temporary proof result:
-  the same delegated backend proof command passes after the memory split with
-  `12 / 12` `^backend_` tests green, and the proof log is `test_after.log`
-- 2026-04-14 temporary executor packet extension:
-  refactor function-scope `lir_to_bir` lowering around a `BirFunctionLowerer`
-  class so the function body path no longer routes through
-  `lir_to_bir_detail::...` helpers
-- 2026-04-14 temporary executor packet result:
-  `src/backend/lowering/lir_to_bir.hpp` now declares `BirFunctionLowerer`,
-  `src/backend/lowering/lir_to_bir_module.cpp` reduces function lowering to
-  class orchestration, and the split scalar/calling/aggregate/cfg/memory
-  implementation files now define function-scope lowering as
-  `BirFunctionLowerer::...` methods, including the former
-  `lower_scalar_or_local_memory_inst(...)` dispatcher
-- 2026-04-14 temporary proof result:
-  the same delegated backend proof command passes after the
-  `BirFunctionLowerer` refactor with `12 / 12` `^backend_` tests green, and
-  the proof log is `test_after.log`
-- 2026-04-14 temporary executor packet extension:
-  continue the `BirFunctionLowerer` class refactor by migrating the remaining
-  function-scope anonymous-namespace helpers in the scalar/calling/aggregate/
-  memory lowering slices onto `BirFunctionLowerer` as class methods or
-  class-scoped statics, without changing backend behavior or the active proof
-  surface
-- 2026-04-14 temporary executor packet result:
-  `src/backend/lowering/lir_to_bir_scalar.cpp`,
-  `src/backend/lowering/lir_to_bir_calling.cpp`,
-  `src/backend/lowering/lir_to_bir_aggregate.cpp`, and
-  `src/backend/lowering/lir_to_bir_memory.cpp` no longer keep their
-  function-scope lowering helpers in anonymous namespaces; the remaining
-  scalar integer/cast support, void-param sentinel, aggregate param-slot
-  naming, and memory/address/GEP/pointer-array support helpers now live on
-  `BirFunctionLowerer`, and the dead duplicate
-  `canonicalize_compare_return_alias(...)` helper was removed from
-  `lir_to_bir_memory.cpp`
-- 2026-04-14 temporary proof result:
-  the same delegated backend proof command passes after the helper migration
-  with `12 / 12` `^backend_` tests green, and the proof log is
-  `test_after.log`
-- 2026-04-14 temporary executor packet extension:
-  continue the `BirFunctionLowerer` ownership cleanup by moving the
-  function-only helper types and maps that are now used exclusively by the
-  function-body lowering path out of `lir_to_bir_detail` and onto
-  `BirFunctionLowerer`, without changing backend behavior or the active proof
-  surface
-- 2026-04-14 temporary executor packet result:
-  `src/backend/lowering/lir_to_bir.hpp` no longer keeps
-  `CompareExpr`/`CompareMap`, `BlockLookup`, `BranchChain`,
-  `PhiLoweringPlan`/`PhiBlockPlanMap`, `AggregateParamInfo`/
-  `AggregateParamMap`, `LoweredReturnInfo`, or
-  `AggregateValueAliasMap` under `lir_to_bir_detail`; those function-scope
-  ownership types now live on `BirFunctionLowerer`, and the split
-  scalar/calling/aggregate/cfg/memory implementation files were updated to
-  use the class-owned types directly while leaving truly shared utility types
-  in `lir_to_bir_detail`
-- 2026-04-14 temporary proof result:
-  the same delegated backend proof command passes after the type-ownership
-  migration with `12 / 12` `^backend_` tests green, and the proof log is
-  `test_after.log`
-- 2026-04-14 temporary executor packet extension:
-  continue shrinking `lir_to_bir_detail` by moving the function-body
-  memory-lane ownership types and maps that now only serve
-  `BirFunctionLowerer` onto the class, without changing backend behavior or
-  the active proof surface
-- 2026-04-14 temporary executor packet result:
-  `src/backend/lowering/lir_to_bir.hpp` no longer keeps the
-  function-body-only memory/address ownership types under `lir_to_bir_detail`;
-  `BirFunctionLowerer` now directly owns `GlobalPointerSlotKey`, the
-  local/global pointer-array and aggregate-array access structs and maps, the
-  local aggregate/local array storage structs and maps, and the related
-  global/local address and pointer map aliases, while
-  `src/backend/lowering/lir_to_bir_memory.cpp` now references the class-owned
-  types directly
-- 2026-04-14 temporary proof result:
-  the same delegated backend proof command passes after the memory-lane
-  type-ownership migration with `12 / 12` `^backend_` tests green, and the
-  proof log is `test_after.log`
-- 2026-04-14 temporary executor packet extension:
-  move the call/signature parsing helpers that are genuinely owned by the
-  `lir_to_bir` lowering path off the legacy `call_decode.*` dependency and
-  onto `BirFunctionLowerer`, while leaving non-`lir_to_bir` matcher users on
-  the legacy wrapper layer
-- 2026-04-14 temporary executor packet result:
-  `src/backend/lowering/lir_to_bir_calling.cpp` now defines
-  `BirFunctionLowerer::lower_minimal_scalar_type(...)`,
-  `parse_typed_call(...)`, `parse_direct_global_typed_call(...)`, and
-  `parse_function_signature_params(...)`; the
-  `lir_to_bir_calling/aggregate/memory` lowering slices now use those class
-  methods directly, `lir_to_bir_globals.cpp` carries its own nonminimal-global
-  screen instead of depending on `call_decode.*`, and `call_decode.cpp`
-  remains as a legacy API wrapper that forwards its typed-call/signature parse
-  entry points to the moved `BirFunctionLowerer` implementation
-- 2026-04-14 temporary proof result:
-  the same delegated backend proof command passes after the `call_decode`
-  ownership split with `12 / 12` `^backend_` tests green, and the proof log
-  is `test_after.log`
+- 2026-04-14 temporary refactor baseline:
+  the `src/backend/lowering/lir_to_bir*` split is now complete and accepted:
+  cfg/scalar/calling/aggregate/memory lowering each live in their own slices,
+  `BirFunctionLowerer` owns the function-body lowering path and its
+  function-only helper methods/types, the memory-lane ownership structs/maps
+  also live on `BirFunctionLowerer`, and the `lir_to_bir`-specific
+  call/signature parsing helpers have been absorbed out of the legacy
+  `call_decode.*` dependency into the `lir_to_bir` calling lane
+- 2026-04-14 temporary refactor proof:
+  every packet above was validated with the same delegated backend command and
+  the accepted refactor baseline remains `12 / 12` passing `^backend_` tests
+  with proof logged through `test_after.log`
 
 ## Parked Backlog Item 1 Baseline
 
@@ -336,20 +200,17 @@ Source Plan: plan.md
 
 ## Immediate Target
 
-- next executor packet should make a real code move in the backlog-item-2
-  signature lane, not extend parked phi coverage
-- preferred first proof surface remains
-  `param_slot`, `param_member_array`, `nested_param_member_array`, and
-  `aggregate_return_pair`
+- next executor packet is a structural follow-up on the same lowering lane:
+  reduce `BirFunctionLowerer` header surface and regroup its methods into
+  clearer internal buckets without changing backend behavior
+- target the current pain point directly:
+  split `BirFunctionLowerer` private API into more coherent method families
+  such as calling/cfg/scalar/aggregate/memory helpers, and move declaration
+  detail out of `src/backend/lowering/lir_to_bir.hpp` where that can be done
+  without reopening the shared utility boundary
+- keep this packet scoped to class shape only:
+  do not restart capability scouting, do not broaden proof scope, and do not
+  re-open the legacy `call_decode.*` layer unless the header regrouping
+  strictly requires it
 - default proving command for the next backend packet remains:
   `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
-- 2026-04-14 proof result:
-  the exact backend proof command above now passes `5 / 5` backend tests,
-  including the new
-  `backend_codegen_route_x86_64_aggregate_return_pair_observe_semantic_bir`
-  harness; direct x86 semantic-BIR output for `aggregate_return_pair.c` now
-  shows the hidden sret contract instead of LLVM struct-return fallback, and
-  the proof log is `test_after.log`
-- if runtime behavior alone cannot expose the signature change cleanly,
-  authorize at most one narrow harness packet that supports the same code move
-  without regressing supported prepared-BIR emission
