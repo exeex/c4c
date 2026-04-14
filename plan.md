@@ -60,6 +60,15 @@ rendered-text case matchers, or equivalent workaround seams under new names.
   itself
 - if the supervisor cannot name one proof source tied to that seam in the same
   packet, stop for another lifecycle checkpoint instead of forcing execution
+- 2026-04-14 lifecycle checkpoint decision:
+  keep this runbook active on the same source idea, but treat executor
+  dispatch as explicitly blocked until one truthful proving surface can expose
+  the prepare-side explicit-phi seam without falling back to stale
+  `*_asm_unsupported` inventory, nearby already-green prepared-BIR routes, or
+  observation-only harness churn
+- until that proving surface exists, supervisor should commit only lifecycle
+  state for this checkpoint and stop rather than inventing another bounded
+  executor packet from exhausted backlog-item-1 evidence
 
 ## Non-Goals
 

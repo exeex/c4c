@@ -15,6 +15,11 @@ Source Plan: plan.md
   `plan.md` is now refreshed onto the remaining honest seam:
   explicit phi materialization in `src/backend/prepare/legalize.cpp` beyond
   the currently proven reducible / two-incoming path
+- 2026-04-14 lifecycle checkpoint decision:
+  keep the active plan and source idea unchanged, but mark executor dispatch
+  blocked after this checkpoint because supervisor scouting still cannot tie
+  that prepare-side seam to one honest proving surface without stale
+  inventory, already-green prepared-BIR routes, or observation-only churn
 - execution state:
   blocked for routine executor dispatch from the currently sampled scalar
   select/phi/callee inventory until the supervisor can tie one honest proving
@@ -31,6 +36,9 @@ Source Plan: plan.md
   backlog-item-1 packet centered on the prepare-side explicit-phi seam, or
   else trigger another lifecycle checkpoint instead of forcing stale-inventory
   progress
+- supervisor action from this checkpoint:
+  commit the lifecycle slice and stop; do not dispatch another executor packet
+  immediately from the current active runbook
 
 ## Current Active Item
 
