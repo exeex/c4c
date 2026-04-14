@@ -1,5 +1,7 @@
 #include "lir_to_bir.hpp"
 
+#include <algorithm>
+
 namespace c4c::backend {
 
 namespace {
@@ -150,12 +152,23 @@ BirFunctionLowerer::parse_direct_global_typed_call(const c4c::codegen::lir::LirC
     return std::nullopt;
   }
 
+  bool signature_is_variadic = false;
+  if (const auto param_types =
+          c4c::codegen::lir::parse_lir_call_param_types(call.callee_type_suffix);
+      param_types.has_value()) {
+    signature_is_variadic =
+        std::any_of(param_types->begin(), param_types->end(), [](std::string_view type) {
+          return c4c::codegen::lir::trim_lir_arg_text(type) == "...";
+        });
+  }
+
   if (const auto parsed = c4c::codegen::lir::parse_lir_direct_global_typed_call(call);
       parsed.has_value()) {
     ParsedDirectGlobalTypedCall lowered;
     lowered.symbol_name = *symbol_name;
     lowered.typed_call.param_types = parsed->typed_call.param_types;
     lowered.typed_call.args = parsed->typed_call.args;
+    lowered.is_variadic = signature_is_variadic;
     return lowered;
   }
 
@@ -191,10 +204,11 @@ BirFunctionLowerer::parse_direct_global_typed_call(const c4c::codegen::lir::LirC
 
   ParsedDirectGlobalTypedCall parsed;
   parsed.symbol_name = *symbol_name;
-  parsed.typed_call.owned_param_types.reserve(fixed_param_count);
-  parsed.typed_call.param_types.reserve(fixed_param_count);
-  parsed.typed_call.args.reserve(fixed_param_count);
-  for (std::size_t index = 0; index < fixed_param_count; ++index) {
+  parsed.is_variadic = true;
+  parsed.typed_call.owned_param_types.reserve(args->size());
+  parsed.typed_call.param_types.reserve(args->size());
+  parsed.typed_call.args.reserve(args->size());
+  for (std::size_t index = 0; index < args->size(); ++index) {
     parsed.typed_call.owned_param_types.push_back(
         std::string(c4c::codegen::lir::trim_lir_arg_text((*args)[index].type)));
     parsed.typed_call.param_types.push_back(parsed.typed_call.owned_param_types.back());
@@ -343,6 +357,24 @@ bool BirFunctionLowerer::lower_function_params(
   }
 
   const auto parsed_params = parse_function_signature_params(function.signature_text);
+  const auto parsed_fixed_param_count = [&]() -> std::size_t {
+    if (!parsed_params.has_value()) {
+      return 0;
+    }
+    std::size_t count = 0;
+    for (const auto& param : *parsed_params) {
+      if (param.is_varargs) {
+        break;
+      }
+      ++count;
+    }
+    return count;
+  }();
+  const bool parsed_is_variadic =
+      parsed_params.has_value() &&
+      std::any_of(parsed_params->begin(),
+                  parsed_params->end(),
+                  [](const ParsedFunctionSignatureParam& param) { return param.is_varargs; });
   const bool has_void_param_sentinel =
       function.params.size() == 1 && is_void_param_sentinel(function.params.front().second);
   if (has_void_param_sentinel &&
@@ -353,7 +385,7 @@ bool BirFunctionLowerer::lower_function_params(
   }
 
   if (parsed_params.has_value() && !function.params.empty() && !has_void_param_sentinel &&
-      parsed_params->size() != function.params.size()) {
+      parsed_fixed_param_count != function.params.size()) {
     return false;
   }
 
@@ -388,6 +420,7 @@ bool BirFunctionLowerer::lower_function_params(
                                                       return_info->returned_via_sret
                                                   ? 1u
                                                   : 0u)) {
+    lowered->is_variadic = parsed_is_variadic;
     return true;
   }
 
@@ -406,7 +439,8 @@ bool BirFunctionLowerer::lower_function_params(
 
   for (const auto& param : *parsed_params) {
     if (param.is_varargs) {
-      return false;
+      lowered->is_variadic = true;
+      return true;
     }
     const auto lowered_type = lower_integer_type(param.type);
     if (lowered_type.has_value()) {
@@ -431,12 +465,75 @@ bool BirFunctionLowerer::lower_function_params(
         .is_byval = true,
     });
   }
+  lowered->is_variadic = parsed_is_variadic;
   return true;
 }
 
 bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     const c4c::codegen::lir::LirInst& inst,
     std::vector<bir::Inst>* lowered_insts) const {
+  const auto lower_va_result_type = [](std::string_view type_text) -> std::optional<bir::TypeKind> {
+    if (const auto lowered = lower_scalar_or_function_pointer_type(type_text); lowered.has_value()) {
+      return lowered;
+    }
+    const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type_text);
+    if (trimmed == "float") {
+      return bir::TypeKind::F32;
+    }
+    if (trimmed == "double") {
+      return bir::TypeKind::F64;
+    }
+    return std::nullopt;
+  };
+  const auto lower_va_list_call =
+      [&](std::string_view callee_name,
+          const c4c::codegen::lir::LirOperand& ap_ptr) -> bool {
+    const auto lowered_ap = lower_value(ap_ptr, bir::TypeKind::Ptr);
+    if (!lowered_ap.has_value()) {
+      return false;
+    }
+    lowered_insts->push_back(bir::CallInst{
+        .callee = std::string(callee_name),
+        .args = {*lowered_ap},
+        .arg_types = {bir::TypeKind::Ptr},
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    return true;
+  };
+  const auto lower_va_arg_call =
+      [&](const c4c::codegen::lir::LirVaArgOp& va_arg) -> bool {
+    if (va_arg.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+    const auto lowered_ap = lower_value(va_arg.ap_ptr, bir::TypeKind::Ptr);
+    const auto lowered_type = lower_va_result_type(va_arg.type_str.str());
+    if (!lowered_ap.has_value() || !lowered_type.has_value()) {
+      return false;
+    }
+    lowered_insts->push_back(bir::CallInst{
+        .result = bir::Value::named(*lowered_type, va_arg.result.str()),
+        .callee =
+            "llvm.va_arg." + std::string(c4c::codegen::lir::trim_lir_arg_text(va_arg.type_str.str())),
+        .args = {*lowered_ap},
+        .arg_types = {bir::TypeKind::Ptr},
+        .return_type = *lowered_type,
+    });
+    return true;
+  };
+
+  if (const auto* va_start = std::get_if<c4c::codegen::lir::LirVaStartOp>(&inst)) {
+    return lower_va_list_call("llvm.va_start.p0", va_start->ap_ptr);
+  }
+
+  if (const auto* va_end = std::get_if<c4c::codegen::lir::LirVaEndOp>(&inst)) {
+    return lower_va_list_call("llvm.va_end.p0", va_end->ap_ptr);
+  }
+
+  if (const auto* va_arg = std::get_if<c4c::codegen::lir::LirVaArgOp>(&inst)) {
+    return lower_va_arg_call(*va_arg);
+  }
+
   if (const auto* abs = std::get_if<c4c::codegen::lir::LirAbsOp>(&inst)) {
     if (abs->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
       return false;

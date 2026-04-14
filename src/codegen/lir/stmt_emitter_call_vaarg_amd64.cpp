@@ -50,6 +50,12 @@ std::string StmtEmitter::emit_amd64_va_arg_from_overflow(
 std::string StmtEmitter::emit_amd64_va_arg(FnCtx& ctx, const TypeSpec& res_ts,
                                            const std::string& res_ty,
                                            const std::string& ap_ptr) {
+  if (module_ != nullptr && module_->prefer_semantic_va_ops) {
+    const std::string out = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirVaArgOp{out, ap_ptr, res_ty});
+    return out;
+  }
+
   const auto layout = llvm_cc::classify_amd64_vararg(res_ts, mod_);
   if (layout.size_bytes <= 0) return "zeroinitializer";
   const auto access = load_amd64_va_list_ptrs(ctx, ap_ptr);

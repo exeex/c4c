@@ -377,7 +377,6 @@ bool BirFunctionLowerer::lower_block(const c4c::codegen::lir::LirBlock& block,
 }
 
 std::optional<bir::Function> BirFunctionLowerer::lower() {
-  (void)context_;
   if (function_.is_declaration || function_.blocks.empty()) {
     return std::nullopt;
   }

@@ -570,6 +570,7 @@ struct LirModule {
   bool need_stackrestore = false;
   bool need_abs = false;
   bool need_ptrmask = false;
+  bool prefer_semantic_va_ops = false;
 
   // Specialization metadata for cross-TU serialization.
   std::vector<LirSpecEntry> spec_entries;

@@ -3069,6 +3069,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     std::optional<std::string> callee_name;
     std::optional<bir::Value> callee_value;
     bool is_indirect_call = false;
+    bool is_variadic_call = false;
     std::optional<std::string> sret_slot_name;
 
     const auto try_lower_direct_memcpy_call =
@@ -3435,6 +3436,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         return *lowered_memcpy;
       }
       callee_name = std::string(parsed_call->symbol_name);
+      is_variadic_call = parsed_call->is_variadic;
       lowered_args.reserve(parsed_call->typed_call.args.size());
       lowered_arg_types.reserve(parsed_call->typed_call.param_types.size());
       lowered_arg_abi.reserve(parsed_call->typed_call.param_types.size());
@@ -3588,6 +3590,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         return_info->returned_via_sret ? "void" : std::string(call->return_type.str());
     lowered_call.return_type = return_info->type;
     lowered_call.is_indirect = is_indirect_call;
+    lowered_call.is_variadic = is_variadic_call;
     lowered_insts->push_back(std::move(lowered_call));
     return true;
   }

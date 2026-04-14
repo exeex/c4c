@@ -823,7 +823,7 @@ static void eliminate_dead_internals(LirModule& mod) {
 
 // ── Main lowering entry point ────────────────────────────────────────────────
 
-LirModule lower(const c4c::hir::Module& hir_mod) {
+LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
   using namespace c4c::codegen::llvm_helpers;
 
   // Module-level orchestration: owned by hir_to_lir, not StmtEmitter.
@@ -835,6 +835,7 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
       ? hir_mod.data_layout
       : llvm_default_datalayout(hir_mod.target_triple);
   module.type_decls = build_type_decls(hir_mod);
+  module.prefer_semantic_va_ops = options.preserve_semantic_va_ops;
 
   auto global_indices = dedup_globals(hir_mod);
   auto fn_indices = dedup_functions(hir_mod);

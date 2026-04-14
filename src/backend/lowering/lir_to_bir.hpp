@@ -178,6 +178,7 @@ class BirFunctionLowerer {
   struct ParsedDirectGlobalTypedCall {
     std::string_view symbol_name;
     ParsedTypedCall typed_call;
+    bool is_variadic = false;
   };
 
   BirFunctionLowerer(BirLoweringContext& context,

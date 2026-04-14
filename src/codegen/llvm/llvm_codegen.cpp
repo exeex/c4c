@@ -33,7 +33,9 @@ std::string emit_module_native(const Module& mod,
                                std::string_view target_triple,
                                CodegenPath path,
                                bool emit_semantic_bir) {
-  auto lir_mod = lir::lower(mod);
+  auto lir_mod = lir::lower(mod, lir::LowerOptions{
+                                   .preserve_semantic_va_ops = emit_semantic_bir,
+                               });
   if (path == CodegenPath::Llvm) {
     return emit_legacy(lir_mod);
   }

@@ -21,8 +21,12 @@ struct Function;
 
 namespace c4c::codegen::lir {
 
+struct LowerOptions {
+  bool preserve_semantic_va_ops = false;
+};
+
 /// Lower a HIR module to a LIR module.
-LirModule lower(const c4c::hir::Module& hir_mod);
+LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options = {});
 
 // ── Module-level orchestration helpers (usable by both lir path and legacy) ──
 
