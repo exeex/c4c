@@ -2023,6 +2023,9 @@ set_tests_properties(cpp_std_vector_parse_debug_progress_file PROPERTIES
   TIMEOUT 15
 )
 
+set(_perf_guard "${PROJECT_SOURCE_DIR}/tests/cpp/internal/run_perf_guard.cmake")
+set(_perf_gen  "${PROJECT_SOURCE_DIR}/tests/cpp/internal/perf_gen.py")
+
 add_test(
   NAME cpp_typedef_owned_functional_cast_perf
   COMMAND "${CMAKE_COMMAND}"
@@ -2030,7 +2033,9 @@ add_test(
           -DBINARY_DIR=${PROJECT_BINARY_DIR}
           -DREPEAT_COUNT=5000
           -DEXPECT_TIMEOUT_SEC=5
-          -P "${PROJECT_SOURCE_DIR}/tests/cpp/internal/run_typedef_owned_functional_cast_perf.cmake"
+          -DTEST_NAME=typedef_owned_functional_cast
+          -DGENERATOR=${_perf_gen}
+          -P "${_perf_guard}"
 )
 set_tests_properties(cpp_typedef_owned_functional_cast_perf PROPERTIES
   LABELS "internal;positive_case;cpp;workflow;parser_perf"
@@ -2044,7 +2049,9 @@ add_test(
           -DBINARY_DIR=${PROJECT_BINARY_DIR}
           -DREPEAT_COUNT=5000
           -DEXPECT_TIMEOUT_SEC=5
-          -P "${PROJECT_SOURCE_DIR}/tests/cpp/internal/run_qualified_known_type_arg_perf.cmake"
+          -DTEST_NAME=qualified_known_type_arg
+          -DGENERATOR=${_perf_gen}
+          -P "${_perf_guard}"
 )
 set_tests_properties(cpp_qualified_known_type_arg_perf PROPERTIES
   LABELS "internal;positive_case;cpp;workflow;parser_perf"
@@ -2058,7 +2065,9 @@ add_test(
           -DBINARY_DIR=${PROJECT_BINARY_DIR}
           -DREPEAT_COUNT=5000
           -DEXPECT_TIMEOUT_SEC=5
-          -P "${PROJECT_SOURCE_DIR}/tests/cpp/internal/run_qualified_template_call_template_arg_perf.cmake"
+          -DTEST_NAME=qualified_template_call_template_arg
+          -DGENERATOR=${_perf_gen}
+          -P "${_perf_guard}"
 )
 set_tests_properties(cpp_qualified_template_call_template_arg_perf PROPERTIES
   LABELS "internal;positive_case;cpp;workflow;parser_perf"
