@@ -26,11 +26,12 @@ Source Plan: plan.md
   and the first merge-preserved callee-value family now lowers through
   semantic BIR as well, which is enough width evidence for now
 - current packet shape:
-  stop packeting backlog item 5 as "next wider indirect-call signature"
-  work; the next executor slice should target a semantic family that still
-  requires real lowering/backend changes, specifically indirect callee
-  provenance through memory-carried function-pointer values instead of more
-  width-only wrapper proofs
+  the first memory-carried callee-provenance slice is now landed:
+  indirect callees loaded from pointer globals and addressed global struct
+  fields lower through semantic BIR on the riscv64 backend-route surface
+  without reopening width-only packet churn; follow-on backlog item 5 work
+  should continue broadening callee provenance or signature semantics rather
+  than returning to "next wider indirect-call signature" proofs
 - candidate proving surface:
   the next honest proving surface should keep forcing semantic handling of
   callee identity rather than one more width proof: prefer internal
@@ -80,6 +81,33 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  the first honest memory-carried indirect-callee family now lowers through
+  semantic BIR instead of stopping at param/local-copy/select provenance:
+  pointer globals initialized from function symbols and aggregate-backed
+  global pointer fields initialized from function symbols now preserve
+  indirect callee identity through lowering, so riscv64 backend-route proofs
+  cover both `indirect_global_callee_call.c` and
+  `indirect_global_struct_callee_call.c` as BIR with `bir.load_global ptr`
+  feeding `bir.call` on the loaded pointer value rather than reopening raw
+  LLVM-text fallback or adding width-only wrapper proofs
+  new route proofs cover pointer-global storage and addressed shared-state
+  struct-field storage while `branch_if_eq.c`, `call_helper.c`,
+  `local_arg_call.c`, the merge-preserved callee route proof, and the
+  standing one-arg through twenty-five-arg indirect-call plus `two_arg_*`
+  direct-call sentinels stayed in the owned proof surface
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated build succeeded, the two new riscv64 route tests passed as
+  tests `#264` and `#265`, the broad `^backend_` subset still returned
+  non-zero because it remains dominated by standing unrelated failures, and
+  the total backend route surface increased from `404` to `406` while the
+  standing failed-test count held at `225`, so the first memory-carried
+  function-pointer callee-provenance slice is now covered on the shared
+  semantic-BIR route without a broader regression increase
 - completed:
   the first merge-preserved indirect-callee family now lowers through
   semantic BIR instead of falling back to raw LLVM text:

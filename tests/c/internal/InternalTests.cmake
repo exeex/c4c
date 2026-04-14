@@ -1685,6 +1685,24 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_global_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_global_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_global_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_global(i32 %p.x) -> i32 {|%t0 = bir.load_global ptr @gp|%t1 = bir.call i32 %t0(i32 %p.x)|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @call_global"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_global_struct_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_global_struct_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_global_struct_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_holder(i32 %p.x) -> i32 {|%t1 = bir.load_global ptr @holder, offset 8|%t2 = bir.call i32 %t1(i32 %p.x)|bir.ret i32 %t2"
+      FORBIDDEN_SNIPPETS "define i32 @call_holder"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_indirect_i32_ptr_arg_param_call_defaults_to_asm
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_i32_ptr_arg_param_call.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
