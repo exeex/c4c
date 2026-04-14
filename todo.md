@@ -19,12 +19,25 @@ Source Plan: plan.md
   lower to semantic BIR today, while `branch_if_eq` remains green, so more
   one-stem promotions here would be route-surface churn rather than semantic
   CFG/`phi` work
+- signature proof checkpoint:
+  the first backlog-item-2 arithmetic route candidates are not a trustworthy
+  lowering-owned proving surface:
+  `two_param_add_sub_chain`, `two_param_i64_add_sub_chain`, and
+  `two_param_staged_affine` already pass as semantic-BIR route coverage;
+  `two_param_add` emits native riscv64 asm rather than printed BIR, which does
+  not by itself prove a missing semantic-lowering capability in the owned
+  files; and the current `i8`/`u8` route expectations demand narrower
+  pre-promotion arithmetic than the frontend's current integer-promotion
+  semantics
 - current capability family:
   backlog item 2, harden params and function signatures
 - current packet shape:
-  a code-changing semantic-signature packet against
+  the next code-changing semantic-signature packet should still target
   `src/backend/lowering/lir_to_bir_module.cpp` and
-  `src/backend/lowering/call_decode.cpp`
+  `src/backend/lowering/call_decode.cpp`, but it must start from a proving
+  surface that demonstrates a real signature-lowering gap in those owned files
+  rather than from arithmetic route cases that are already covered,
+  emitter-routed, or semantically mismatched
 - packet rule:
   do not accept a packet whose main effect is promoting one more named
   riscv64 route stem from `asm_unsupported` to `defaults_to_bir`; the next
@@ -37,17 +50,25 @@ Source Plan: plan.md
 - broaden parsed parameter and return handling in semantic BIR
 - support wider multi-parameter and mixed simple-signature lowering without
   drifting into target ABI legalization
+- do not treat native asm output on an arithmetic route case as proof that
+  semantic BIR lowering failed
+- do not "fix" the current `i8`/`u8` route mismatches by suppressing the
+  frontend's promoted `sext`/`zext` + `i32` + `trunc` semantics
 - keep merge and call-lane behavior as sentinels only; do not reopen route
   promotion or broader call provenance work in this packet
-- choose proof from backend cases that expose signature-lowering limits, not
-  from mislabeled merge-route stems that already lower to BIR
+- choose proof from backend cases that expose signature parsing or return/param
+  lowering limits in semantic BIR itself, not from mislabeled merge-route
+  stems, emitter-routed arithmetic cases, or tests whose expectation conflicts
+  with current frontend integer-promotion meaning
 
 ## Done Condition For The Active Packet
 
-- semantic-lowering code changes land in the backlog-item-2 targets named by
-  `plan.md`
+- the next executor packet for backlog item 2 is chosen from a proving surface
+  that is owned by semantic signature lowering in the backlog-item-2 targets
+  named by `plan.md`
 - at least one broader multi-parameter or mixed simple-signature function
-  lowers through semantic BIR because of that capability change
+  lowers through semantic BIR because of that capability change, not merely
+  because a route test was retargeted or because native asm happened to print
 - `branch_if_eq.c` still lowers cleanly and the already-proven merge route
   surface does not regress
 - existing call-lane sentinels stay green
@@ -75,6 +96,27 @@ Source Plan: plan.md
   backlog item 1 therefore should not claim more progress via named route-stem
   promotion; the active packet now advances to backlog item 2 so the next work
   must be real signature-lowering capability growth
+- signature proving-surface repair recorded:
+  focused proof on the first backlog-item-2 arithmetic route candidates showed
+  that they do not currently justify a code packet in the owned files:
+  `ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_two_param_add_sub_chain_defaults_to_bir$'`
+  passed
+  `ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_two_param_i64_add_sub_chain_defaults_to_bir$'`
+  passed
+  `ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_two_param_staged_affine_defaults_to_bir$'`
+  passed
+  `ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_two_param_add_defaults_to_bir$'`
+  failed by emitting native riscv64 asm (`add a0, a0, a1`) instead of printed
+  BIR, which does not by itself prove a semantic-lowering gap in
+  `lir_to_bir_module.cpp`
+  `ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_two_param_i8_add_sub_chain_defaults_to_bir$|^backend_codegen_route_riscv64_two_param_u8_add_defaults_to_bir$'`
+  failed because the emitted BIR already reflects current frontend
+  integer-promotion semantics through `sext`/`zext`, `i32` arithmetic, and
+  `trunc`, so forcing those tests green here would amount to semantics-shaped
+  overfit rather than honest signature-lowering progress
+  backlog item 2 stays active, but the next executor packet must start from a
+  different proving surface that demonstrates a real signature-lowering gap in
+  the owned files
 - route reset recorded:
   the reviewer found that commits `3edfbf03..69b77578` changed only
   `tests/c/internal/InternalTests.cmake` plus `todo.md`, while backlog item 1
