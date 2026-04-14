@@ -78,6 +78,43 @@ bool validate_cast(const Function& function,
   return true;
 }
 
+bool validate_phi(const Function& function,
+                  const std::vector<std::string>& block_labels,
+                  const PhiInst& inst,
+                  std::vector<std::string>* defined_names,
+                  std::string* error) {
+  if (inst.result.kind != Value::Kind::Named || inst.result.name.empty()) {
+    return fail(error, "bir phi result in @" + function.name +
+                           " must use a non-empty named value");
+  }
+  if (inst.incomings.empty()) {
+    return fail(error, "bir phi in @" + function.name + " must have at least one incoming");
+  }
+  std::vector<std::string_view> incoming_labels;
+  incoming_labels.reserve(inst.incomings.size());
+  for (const auto& incoming : inst.incomings) {
+    if (incoming.label.empty()) {
+      return fail(error, "bir phi in @" + function.name +
+                             " must not use an empty incoming label");
+    }
+    if (std::find(block_labels.begin(), block_labels.end(), incoming.label) == block_labels.end()) {
+      return fail(error, "bir phi in @" + function.name +
+                             " must reference blocks in the same function");
+    }
+    if (std::find(incoming_labels.begin(), incoming_labels.end(), incoming.label) !=
+        incoming_labels.end()) {
+      return fail(error, "bir phi in @" + function.name +
+                             " must not repeat an incoming label");
+    }
+    if (!validate_named_value(incoming.value, "bir phi incoming value in @" + function.name, error)) {
+      return false;
+    }
+    incoming_labels.push_back(incoming.label);
+  }
+  defined_names->push_back(inst.result.name);
+  return true;
+}
+
 bool validate_call(const Function& function,
                    const CallInst& inst,
                    std::vector<std::string>* defined_names,
@@ -409,6 +446,8 @@ bool validate(const Module& module, std::string* error) {
                 return validate_select(function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, CastInst>) {
                 return validate_cast(function, lowered, &defined_names, error);
+              } else if constexpr (std::is_same_v<T, PhiInst>) {
+                return validate_phi(function, block_labels, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, CallInst>) {
                 return validate_call(function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, LoadLocalInst>) {

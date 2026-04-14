@@ -73,6 +73,13 @@ void render_function(std::ostringstream& out, const Function& function) {
                   << render_type(lowered.operand.type) << " "
                   << render_value(lowered.operand) << " to "
                   << render_type(lowered.result.type) << "\n";
+            } else if constexpr (std::is_same_v<T, PhiInst>) {
+              out << "  " << lowered.result.name << " = bir.phi "
+                  << render_type(lowered.result.type);
+              for (const auto& incoming : lowered.incomings) {
+                out << " [" << incoming.label << ", " << render_value(incoming.value) << "]";
+              }
+              out << "\n";
             } else if constexpr (std::is_same_v<T, CallInst>) {
               if (lowered.result.has_value()) {
                 out << "  " << lowered.result->name << " = ";

@@ -206,6 +206,16 @@ struct CastInst {
   Value operand;
 };
 
+struct PhiIncoming {
+  std::string label;
+  Value value;
+};
+
+struct PhiInst {
+  Value result;
+  std::vector<PhiIncoming> incomings;
+};
+
 struct CallInst {
   std::optional<Value> result;
   std::string callee;
@@ -257,6 +267,7 @@ struct StoreLocalInst {
 using Inst = std::variant<BinaryInst,
                           SelectInst,
                           CastInst,
+                          PhiInst,
                           CallInst,
                           LoadLocalInst,
                           LoadGlobalInst,

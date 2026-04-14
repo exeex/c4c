@@ -1,6 +1,10 @@
 #include "legalize.hpp"
 
+#include <string_view>
 #include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 namespace c4c::backend::prepare {
 
@@ -34,6 +38,104 @@ void legalize_value(Target target, bir::Value& value) {
   }
 }
 
+std::size_t type_size_bytes(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return 1;
+    case bir::TypeKind::I32:
+      return 4;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return 8;
+    default:
+      return 0;
+  }
+}
+
+std::string make_phi_slot_name(std::string_view result_name) {
+  return std::string(result_name) + ".phi";
+}
+
+void lower_phi_nodes(bir::Function* function) {
+  struct PhiLoweringPlan {
+    std::string slot_name;
+    std::vector<bir::PhiIncoming> incomings;
+  };
+
+  std::unordered_map<std::string, std::vector<PhiLoweringPlan>> phis_by_block;
+  std::unordered_set<std::string> used_slot_names;
+  for (const auto& slot : function->local_slots) {
+    used_slot_names.insert(slot.name);
+  }
+
+  for (auto& block : function->blocks) {
+    std::vector<bir::Inst> rewritten;
+    rewritten.reserve(block.insts.size());
+
+    bool saw_non_phi = false;
+    for (auto& inst : block.insts) {
+      if (const auto* phi = std::get_if<bir::PhiInst>(&inst)) {
+        if (saw_non_phi) {
+          rewritten.push_back(inst);
+          continue;
+        }
+
+        auto slot_name = make_phi_slot_name(phi->result.name);
+        if (used_slot_names.emplace(slot_name).second) {
+          const auto slot_size = type_size_bytes(phi->result.type);
+          function->local_slots.push_back(bir::LocalSlot{
+              .name = slot_name,
+              .type = phi->result.type,
+              .size_bytes = slot_size,
+              .align_bytes = slot_size,
+          });
+        }
+
+        phis_by_block[block.label].push_back(PhiLoweringPlan{
+            .slot_name = slot_name,
+            .incomings = phi->incomings,
+        });
+        rewritten.push_back(bir::LoadLocalInst{
+            .result = phi->result,
+            .slot_name = std::move(slot_name),
+        });
+        continue;
+      }
+
+      saw_non_phi = true;
+      rewritten.push_back(std::move(inst));
+    }
+
+    block.insts = std::move(rewritten);
+  }
+
+  if (phis_by_block.empty()) {
+    return;
+  }
+
+  std::unordered_map<std::string, bir::Block*> blocks_by_label;
+  for (auto& block : function->blocks) {
+    blocks_by_label.emplace(block.label, &block);
+  }
+
+  for (const auto& [block_label, plans] : phis_by_block) {
+    (void)block_label;
+    for (const auto& plan : plans) {
+      for (const auto& incoming : plan.incomings) {
+        const auto pred_it = blocks_by_label.find(incoming.label);
+        if (pred_it == blocks_by_label.end()) {
+          continue;
+        }
+        pred_it->second->insts.push_back(bir::StoreLocalInst{
+            .slot_name = plan.slot_name,
+            .value = incoming.value,
+        });
+      }
+    }
+  }
+}
+
 void legalize_module(Target target, bir::Module& module) {
   for (auto& global : module.globals) {
     global.type = legalize_type(target, global.type);
@@ -46,6 +148,7 @@ void legalize_module(Target target, bir::Module& module) {
   }
 
   for (auto& function : module.functions) {
+    lower_phi_nodes(&function);
     function.return_type = legalize_type(target, function.return_type);
     for (auto& param : function.params) {
       param.type = legalize_type(target, param.type);
@@ -73,6 +176,11 @@ void legalize_module(Target target, bir::Module& module) {
               } else if constexpr (std::is_same_v<T, bir::CastInst>) {
                 lowered.result.type = legalize_type(target, lowered.result.type);
                 legalize_value(target, lowered.operand);
+              } else if constexpr (std::is_same_v<T, bir::PhiInst>) {
+                lowered.result.type = legalize_type(target, lowered.result.type);
+                for (auto& incoming : lowered.incomings) {
+                  legalize_value(target, incoming.value);
+                }
               } else if constexpr (std::is_same_v<T, bir::CallInst>) {
                 lowered.return_type = legalize_type(target, lowered.return_type);
                 if (lowered.result.has_value()) {

@@ -12,10 +12,12 @@ Source Plan: plan.md
 - current capability family:
   backlog item 1, generalize CFG merge and `phi`
 - current packet focus:
-  first real shared `phi` / CFG merge semantics slice beyond the current
-  synthetic local-slot materialization in
-  `src/backend/lowering/lir_to_bir_module.cpp` and owned BIR files, using the
-  ref backend as the ordering guide:
+  follow-on backlog-item-1 packet after the first explicit semantic
+  `bir.phi` / CFG merge slice landed in
+  `src/backend/lowering/lir_to_bir_module.cpp` and owned BIR files, while
+  `prepare` now owns the temporary phi-slot materialization needed by the
+  current backend-route output surface, using the ref backend as the ordering
+  guide:
   shared generation owns CFG semantics before later stack/regalloc phases, and
   later prepare work should consume merge-attributed results rather than
   reconstructing them inside call lowering
@@ -29,6 +31,11 @@ Source Plan: plan.md
   `*_post_add_sub_add` family are not honest next packets by themselves:
   they already lower through the current route, so more named-stem promotion
   there would be route churn rather than new merge semantics
+  the 2026-04-14 executor slice then confirmed the current route-test harness
+  observes prepared BIR, not semantic pre-prepare BIR:
+  the new semantic `bir.phi` nodes are lowered back to the temporary
+  local-slot form during `prepare`, so direct semantic-phi observation still
+  needs either a dedicated harness or a different proof surface
 - packet rule:
   do not accept more `todo` / `InternalTests.cmake` churn as proxy progress;
   stale unsupported-test promotion for the split-predecessor
@@ -85,6 +92,11 @@ Source Plan: plan.md
 - stale unsupported split-predecessor tests may be cleaned up later, but that
   cleanup must follow a code-moving packet or be explicitly treated as harness
   debt rather than accepted capability progress
+- because current `backend_codegen_route` tests observe prepared BIR, the next
+  packet should either add one minimal semantic-BIR observation surface for
+  explicit merge semantics or extend `bir.phi` lowering to a still-missing
+  merge family that cannot already be explained by the current split-predecessor
+  prepared-BIR surface
 
 ## Latest Packet Progress
 
@@ -99,6 +111,23 @@ Source Plan: plan.md
   because the backend already emits semantic BIR for them, including
   `add_phi`, `mixed_affine`, `deeper_then_mixed`, `deeper_affine`, and
   `mixed_then_deeper`
+- 2026-04-14 executor packet completed the first explicit semantic merge move
+  in owned code:
+  general branch-family lowering now emits `bir.phi` for top-of-block LIR
+  `phi`, and `src/backend/prepare/legalize.cpp` lowers those semantic phi nodes
+  back into today’s local-slot load/store form so existing prepared-BIR
+  backend routes remain stable
+- 2026-04-14 executor cleanup promoted the stale split-predecessor
+  `*_post_add_sub_add` proving family from `asm_unsupported` to
+  `defaults_to_bir`, because the current backend already lowers that family
+  through prepared BIR; exact proof ran via
+  `cmake --build --preset default` plus
+  `ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir|backend_codegen_route_riscv64_indirect_select_callee_call_defaults_to_bir|backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_add_(asm_unsupported|defaults_to_bir))$'`
+  and wrote the passing result to `test_after.log`
+- 2026-04-14 broader supervisor-side follow-up validation also passed for the
+  twelve split-predecessor `defaults_to_bir` route tests covering the existing
+  post-add/post-add-sub family plus the newly promoted `*_post_add_sub_add`
+  family
 - ref-based route confirmation recorded:
   `ref/claudes-c-compiler/src/backend/generation.rs` handles CFG semantics in
   the shared backend pipeline before later target work, while
@@ -106,6 +135,8 @@ Source Plan: plan.md
   `stack_layout/slot_assignment.rs` treat multi-definition values as a
   downstream consequence of phi elimination rather than as a call-lane concern
 - next packet therefore returns to backlog item 1:
-  first real shared `phi` / CFG merge semantics move in owned lowering/BIR
-  files beyond the already-broader slotized merge family, with params/calls
-  kept as sentinels only until merge semantics move forward in code
+  either expose the landed semantic `bir.phi` contract through one minimal
+  observation surface, or extend explicit merge semantics to a still-missing
+  non-diamond/predecessor-attributed family beyond the already-broader
+  split-predecessor prepared-BIR surface, with params/calls kept as sentinels
+  only until merge semantics move forward again in code
