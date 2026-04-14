@@ -181,12 +181,21 @@ Concrete actions:
 
 - support richer direct-call signatures
 - support indirect calls and callee pointer forms
+- treat callee provenance as a semantic family:
+  globals, loaded/stored function pointers, and merge-preserved callee values
+  should be lowered by meaning rather than rediscovered by wider arg-count
+  wrappers
 - carry the minimal shared metadata needed for later ABI shaping
+- do not treat "next wider signature" or longer rendered-asm snippet ladders as
+  executor packet selection; backlog item 5 progress must come from real
+  lowering/backend capability growth or from an explicit route checkpoint
 
 Completion check:
 
 - semantic BIR can represent the common direct and indirect call forms present
   in LIR without dropping back to raw LIR text
+- call-lane progress is explained by new semantic callee/signature families,
+  not by extending testcase-shaped arg-count probes
 
 ### 6. Add intrinsic and runtime operation lowering
 

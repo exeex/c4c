@@ -14,62 +14,58 @@ Source Plan: plan.md
   executor packets can be chosen from a durable semantic queue rather than
   rediscovering the next testcase family from chat
 - review checkpoint:
-  a route audit judged the code path still aligned to the source idea but
-  called for a `todo.md` packet reset before more execution because the first
-  indirect-call slice was already complete
+  `review/route_alignment_after_indirect_call_proof_run.md` judged the active
+  plan still aligned to the source idea but called for a route reset before
+  more execution because the riscv64 indirect-call work had drifted into
+  proof-only arg-count churn
 - current capability family:
-  backlog item 5 call-lane widening on the riscv64 backend-route surface:
-  indirect calls now carry the first mixed integer-class arg family, the
-  first ptr-capable result family, and the first combined ptr-arg plus
-  ptr-result family through semantic BIR and native asm; the first adjacent
-  non-leading single-ptr arg family and the first adjacent two-ptr arg family
-  are now also green, and the first two adjacent mixed three-arg
-  multi-`ptr` families, `i32, ptr, ptr` and `ptr, i32, ptr`, are now green
-  as well; the final adjacent `ptr, ptr, i32` family is now green too, and
-  the first nine-arg, ten-arg, eleven-arg, twelve-arg, thirteen-arg, and
-  fourteen-arg, fifteen-arg, sixteen-arg, seventeen-arg, eighteen-arg, and
-  nineteen-arg, twenty-arg, twenty-one-arg, twenty-two-arg, twenty-three-arg,
-  twenty-four-arg, and twenty-five-arg integer-class indirect-call families
-  are now green as well, so the route now covers the first seventeen honest
-  stack-passed
-  callee-arg surfaces
-  without reopening
-  wider stack-call ABI work
+  backlog item 5 is now reset onto semantic callee-provenance work instead of
+  further riscv64 arg-count widening:
+  the accepted route already proves the shared indirect-call lane through the
+  first mixed `ptr` families, the first ptr-capable result families, and the
+  first honest seventeen-stack-slot integer-class surface at twenty-five args,
+  which is enough width evidence for now
 - current packet shape:
-  keep backlog item 5 moving outward from the repaired entry boundary:
-  record the completion of the first honest seventeen-stack-slot
-  indirect-call family on the riscv64 route, then leave any follow-up
-  widening beyond that first twenty-five-arg integer-class surface to
-  supervisor packet selection instead of silently expanding into wider
-  stack-call ABI work
+  stop packeting backlog item 5 as "next wider indirect-call signature"
+  work; the next executor slice should target a semantic family that still
+  requires real lowering/backend changes, specifically indirect callee
+  provenance through memory-carried or merge-preserved function-pointer values
+  instead of more width-only wrapper proofs
 - candidate proving surface:
-  if backlog item 5 keeps widening straight outward, the next adjacent
-  riscv64 proof surface is the paired param/local twenty-six-arg
-  integer-class indirect-call signature, `i32 x26 -> i32`, where the final
-  eighteen callee args are stack-passed on the current route surface
-  keep `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the current
-  one-arg through twenty-five-arg indirect-call plus `two_arg_*` direct-call
-  route tests as standing sentinels while backlog item 5 widens through
-  adjacent honest integer-class indirect-call signatures
+  the next honest proving surface should force semantic handling of callee
+  identity rather than one more width proof: prefer internal backend-route
+  cases where the indirect callee is loaded from shared memory/state
+  structures or preserved across CFG merge/select-style value flow, while
+  keeping `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the
+  standing one-arg through twenty-five-arg indirect-call plus `two_arg_*`
+  direct-call route tests only as sentinels, not as the packet-selection
+  mechanism
 
 ## Immediate Target
 
 - keep packet selection attached to the ordered semantic backlog in `plan.md`
 - carry the now-green addressed-global work forward by moving to the next
   semantic family instead of stretching backlog item 4 past its proving surface
-- carry the now-green one-arg through six-arg indirect-call surface forward
-  by widening adjacent ptr-capable integer-class call signatures and results,
-  now including the first non-leading single-ptr arg family, instead of
-  reopening richer direct-call metadata or jumping ahead to ABI-shaped call
-  work
+- freeze further indirect-call width-only proofs beyond the accepted
+  twenty-five-arg family unless a future packet also repairs a real shared
+  lowering/backend limitation
+- keep backlog item 5 on call lowering, but shift from width counting to
+  semantic callee-provenance coverage:
+  globals, loaded/stored function pointers, and merge-preserved callee values
+  should lower through BIR without reopening fallback routes
 - avoid reintroducing testcase-shaped routing while broadening the shared
   entry-signature and call lanes
+- do not add new exact rendered-asm snippet ladders whose main effect is to
+  prove one more named arg-count case
 
 ## Done Condition For The Active Packet
 
 - `branch_if_eq.c` still lowers to clean BIR
 - the existing direct-call sentinels, one-arg indirect-call tests, and
   rewrite-only two-arg route tests stay green on riscv64
+- the next accepted call-lane slice must include real lowering/backend work for
+  callee provenance or signature semantics; proof-only width growth is not a
+  done condition
 - simple param-carried and local-slot indirect helper wrappers whose callee
   signature includes at least one `ptr` arg or returns `ptr` still lower
   through the same riscv64 backend-route surface instead of reopening
@@ -84,6 +80,15 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  reviewer scrutiny in
+  `review/route_alignment_after_indirect_call_proof_run.md`
+  judged the active runbook still faithful to the source idea but rejected
+  further riscv64 width-only indirect-call packets as route drift:
+  the accepted proving surface now stops at the twenty-five-arg integer-class
+  family, the reverted twenty-six-arg proof-only slice must not be
+  reintroduced, and the active route is reset onto semantic callee-provenance
+  work before more execution
 - completed:
   the first honest twenty-five-arg integer-class indirect-call family now
   stays on the same shared semantic-BIR/prepared-BIR riscv64 route surface as
