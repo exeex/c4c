@@ -1624,41 +1624,114 @@ std::optional<bir::Value> fold_integer_cast(c4c::codegen::lir::LirCastKind kind,
   return make_integer_immediate(to_type, cast_value);
 }
 
+bool is_canonical_select_chain_binop(bir::BinaryOpcode opcode) {
+  // Canonical-select lowering may need to speculate computations that were in
+  // branch arms. Keep the allowed set conservative to avoid introducing
+  // unexpected trap/UB surfaces.
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool resolve_select_chain_inst(const c4c::codegen::lir::LirInst& inst,
                                ValueMap& value_aliases,
-                               CompareMap& compare_exprs) {
-  if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, nullptr)) {
+                               CompareMap& compare_exprs,
+                               std::vector<bir::Inst>* lowered_insts) {
+  if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, lowered_insts)) {
     return true;
   }
 
-  const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&inst);
-  if (cast == nullptr || cast->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-    return false;
-  }
+  if (const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&inst)) {
+    if (cast->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
 
-  const auto from_type = lower_integer_type(cast->from_type.str());
-  const auto to_type = lower_integer_type(cast->to_type.str());
-  if (!from_type.has_value() || !to_type.has_value()) {
-    return false;
-  }
+    const auto from_type = lower_integer_type(cast->from_type.str());
+    const auto to_type = lower_integer_type(cast->to_type.str());
+    if (!from_type.has_value() || !to_type.has_value()) {
+      return false;
+    }
 
-  const auto operand = lower_value(cast->operand, *from_type, value_aliases);
-  if (!operand.has_value()) {
-    return false;
-  }
+    const auto operand = lower_value(cast->operand, *from_type, value_aliases);
+    if (!operand.has_value()) {
+      return false;
+    }
 
-  if (operand->kind == bir::Value::Kind::Named && operand->type == *to_type &&
-      cast->kind == c4c::codegen::lir::LirCastKind::Bitcast) {
-    value_aliases[cast->result.str()] = *operand;
+    if (operand->kind == bir::Value::Kind::Named && operand->type == *to_type &&
+        cast->kind == c4c::codegen::lir::LirCastKind::Bitcast) {
+      value_aliases[cast->result.str()] = *operand;
+      return true;
+    }
+
+    if (const auto folded = fold_integer_cast(cast->kind, *operand, *to_type);
+        folded.has_value()) {
+      value_aliases[cast->result.str()] = *folded;
+      return true;
+    }
+
+    const auto opcode = lower_cast_opcode(cast->kind);
+    if (!opcode.has_value() || lowered_insts == nullptr) {
+      return false;
+    }
+    lowered_insts->push_back(bir::CastInst{
+        .opcode = *opcode,
+        .result = bir::Value::named(*to_type, cast->result.str()),
+        .operand = *operand,
+    });
+    value_aliases[cast->result.str()] = bir::Value::named(*to_type, cast->result.str());
     return true;
   }
 
-  const auto folded = fold_integer_cast(cast->kind, *operand, *to_type);
-  if (!folded.has_value()) {
-    return false;
+  if (const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst)) {
+    if (bin->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    const auto opcode = lower_scalar_binary_opcode(bin->opcode);
+    const auto value_type = lower_integer_type(bin->type_str.str());
+    if (!opcode.has_value() || !value_type.has_value() ||
+        !is_canonical_select_chain_binop(*opcode)) {
+      return false;
+    }
+
+    const auto lhs = lower_value(bin->lhs, *value_type, value_aliases);
+    const auto rhs = lower_value(bin->rhs, *value_type, value_aliases);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return false;
+    }
+
+    if (*value_type == bir::TypeKind::I64 && lhs->kind == bir::Value::Kind::Immediate &&
+        rhs->kind == bir::Value::Kind::Immediate) {
+      const auto folded = fold_i64_binary_immediates(*opcode, lhs->immediate, rhs->immediate);
+      if (folded.has_value()) {
+        value_aliases[bin->result.str()] = *folded;
+        return true;
+      }
+    }
+
+    if (lowered_insts == nullptr) {
+      return false;
+    }
+    lowered_insts->push_back(bir::BinaryInst{
+        .opcode = *opcode,
+        .result = bir::Value::named(*value_type, bin->result.str()),
+        .operand_type = *value_type,
+        .lhs = *lhs,
+        .rhs = *rhs,
+    });
+    value_aliases[bin->result.str()] = bir::Value::named(*value_type, bin->result.str());
+    return true;
   }
-  value_aliases[cast->result.str()] = *folded;
-  return true;
+
+  return false;
 }
 
 bool lower_canonical_select_entry_inst(const c4c::codegen::lir::LirInst& inst,
@@ -4308,7 +4381,8 @@ std::optional<bir::Value> lower_select_chain_value(const BlockLookup& blocks,
                                                    const BranchChain& chain,
                                                    const c4c::codegen::lir::LirOperand& incoming,
                                                    bir::TypeKind expected_type,
-                                                   const ValueMap& value_aliases) {
+                                                   const ValueMap& value_aliases,
+                                                   std::vector<bir::Inst>* lowered_insts) {
   if (incoming.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
     return lower_value(incoming, expected_type, value_aliases);
   }
@@ -4328,7 +4402,7 @@ std::optional<bir::Value> lower_select_chain_value(const BlockLookup& blocks,
       return std::nullopt;
     }
     for (const auto& inst : block_it->second->insts) {
-      if (!resolve_select_chain_inst(inst, chain_aliases, chain_compare_exprs)) {
+      if (!resolve_select_chain_inst(inst, chain_aliases, chain_compare_exprs, lowered_insts)) {
         return std::nullopt;
       }
     }
@@ -4427,12 +4501,17 @@ std::optional<bir::Function> lower_canonical_select_function(
   }
   const auto& join_block = *join_it->second;
 
-  if (join_block.insts.size() != 1) {
+  if (join_block.insts.empty()) {
     return std::nullopt;
   }
   const auto* phi = std::get_if<c4c::codegen::lir::LirPhiOp>(&join_block.insts.front());
   if (phi == nullptr || phi->incoming.size() != 2) {
     return std::nullopt;
+  }
+  for (std::size_t index = 1; index < join_block.insts.size(); ++index) {
+    if (std::holds_alternative<c4c::codegen::lir::LirPhiOp>(join_block.insts[index])) {
+      return std::nullopt;
+    }
   }
   const auto phi_type = lower_integer_type(phi->type_str.str());
   if (!phi_type.has_value()) {
@@ -4468,9 +4547,11 @@ std::optional<bir::Function> lower_canonical_select_function(
   }
 
   const auto true_value =
-      lower_select_chain_value(blocks, *true_chain, *true_incoming, *phi_type, value_aliases);
+      lower_select_chain_value(
+          blocks, *true_chain, *true_incoming, *phi_type, value_aliases, &prelude_insts);
   const auto false_value =
-      lower_select_chain_value(blocks, *false_chain, *false_incoming, *phi_type, value_aliases);
+      lower_select_chain_value(
+          blocks, *false_chain, *false_incoming, *phi_type, value_aliases, &prelude_insts);
   if (!true_value.has_value() || !false_value.has_value()) {
     return std::nullopt;
   }
@@ -4498,13 +4579,22 @@ std::optional<bir::Function> lower_canonical_select_function(
       .false_value = *false_value,
   });
 
-  if (ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
-      ret_value.str() != phi->result.str()) {
+  ValueMap join_aliases = value_aliases;
+  CompareMap join_compare_exprs = compare_exprs;
+  for (std::size_t index = 1; index < join_block.insts.size(); ++index) {
+    if (!resolve_select_chain_inst(
+            join_block.insts[index], join_aliases, join_compare_exprs, &lowered_block.insts)) {
+      return std::nullopt;
+    }
+  }
+
+  bir::ReturnTerminator lowered_ret;
+  const auto lowered_ret_value = lower_value(ret_value, *return_type, join_aliases);
+  if (!lowered_ret_value.has_value()) {
     return std::nullopt;
   }
-  lowered_block.terminator = bir::ReturnTerminator{
-      .value = bir::Value::named(*phi_type, phi->result.str()),
-  };
+  lowered_ret.value = *lowered_ret_value;
+  lowered_block.terminator = lowered_ret;
   lowered.blocks.push_back(std::move(lowered_block));
   return lowered;
 }

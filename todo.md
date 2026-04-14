@@ -287,3 +287,32 @@ Source Plan: plan.md
   stale `asm_unsupported` route entries remain harness debt only, while the
   next accepted packet still needs another real merge-semantics code move
   rather than unsupported-test promotion
+- 2026-04-14 executor extended canonical-diamond select lowering to cover a
+  short post-merge scalar use chain on the join block (for example, `add` and
+  `trunc` before `ret`) while also allowing the select-arm chains to compute
+  their incoming values via simple scalar ops instead of forcing the
+  temporary phi-slot materialization path; this moved
+  `two_param_select_eq_predecessor_add_post_add.c` and
+  `two_param_u8_select_eq_predecessor_add_post_add.c` onto `bir.select` plus
+  the post-merge `add` (and `trunc` for the `u8` case)
+- 2026-04-14 exact delegated proof for that post-merge canonical-select packet
+  ran as
+  `cmake --build --preset default && rm -f build/internal_backend_route/two_param_select_eq_predecessor_add_post_add_probe_riscv64.ll build/internal_backend_route/two_param_u8_select_eq_predecessor_add_post_add_probe_riscv64.ll && ./build/c4cll --codegen asm --target riscv64-unknown-linux-gnu tests/c/internal/backend_route_case/two_param_select_eq_predecessor_add_post_add.c -o build/internal_backend_route/two_param_select_eq_predecessor_add_post_add_probe_riscv64.ll && rg -F "%t10 = bir.select eq i32 %p.x, %p.y, i32 %t8, %t9" build/internal_backend_route/two_param_select_eq_predecessor_add_post_add_probe_riscv64.ll && rg -F "%t11 = bir.add i32 %t10, 6" build/internal_backend_route/two_param_select_eq_predecessor_add_post_add_probe_riscv64.ll && ! rg -F "bir.store_local %t10.phi" build/internal_backend_route/two_param_select_eq_predecessor_add_post_add_probe_riscv64.ll && ./build/c4cll --codegen asm --target riscv64-unknown-linux-gnu tests/c/internal/backend_route_case/two_param_u8_select_eq_predecessor_add_post_add.c -o build/internal_backend_route/two_param_u8_select_eq_predecessor_add_post_add_probe_riscv64.ll && rg -F "%t14 = bir.select eq i32 %t0, %t1, i32 %t11, %t13" build/internal_backend_route/two_param_u8_select_eq_predecessor_add_post_add_probe_riscv64.ll && rg -F "%t15 = bir.add i32 %t14, 6" build/internal_backend_route/two_param_u8_select_eq_predecessor_add_post_add_probe_riscv64.ll && ! rg -F "bir.store_local %t14.phi" build/internal_backend_route/two_param_u8_select_eq_predecessor_add_post_add_probe_riscv64.ll && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_(branch_if_eq_defaults_to_bir|indirect_select_local_override_callee_call_defaults_to_bir))$' > test_after.log 2>&1`
+  and wrote the result to `test_after.log`; route harness coverage for this
+  capability was captured by adding explicit `defaults_to_bir` route tests for
+  the two predecessor-add stems and removing them from the stale
+  `*_asm_unsupported` inventory
+- 2026-04-14 executor harness repair for the canonical-diamond post-merge
+  generalization:
+  several split-predecessor `defaults_to_bir` route tests were still asserting
+  the old phi-slot materialization (`bir.store_local *.phi`), but the new
+  canonical lowering legitimately emits single-block `bir.select` plus the
+  post-merge arithmetic chain; those route tests were updated to assert the
+  `bir.select` shape and forbid `bir.store_local` instead
+  the existing semantic-observation test names were also repointed onto one
+  minimal three-way merge case so they continue to prove a real explicit-merge
+  `bir.phi` surface (semantic stage) and its prepared `semantic_phi` trailer
+  rather than observing a now-canonical diamond
+- 2026-04-14 exact delegated proof for that harness-repair packet ran as
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_(branch_if_eq_defaults_to_bir|indirect_select_local_override_callee_call_defaults_to_bir|two_param_select_eq_split_predecessor_add_phi_post_add_sub_defaults_to_bir|two_param_select_eq_split_predecessor_add_phi_post_add_sub_add_defaults_to_bir|two_param_select_eq_split_predecessor_deeper_affine_post_add_defaults_to_bir|two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_defaults_to_bir|two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_add_defaults_to_bir|two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_defaults_to_bir|two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add_defaults_to_bir|two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_bir|two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_phi|two_param_select_eq_split_predecessor_mixed_affine_post_add_defaults_to_bir|two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_defaults_to_bir|two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_add_defaults_to_bir|two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_defaults_to_bir|two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add_defaults_to_bir))$' > test_after.log 2>&1`
+  and wrote the result to `test_after.log`
