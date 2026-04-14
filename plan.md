@@ -168,7 +168,8 @@ Goal: stop treating `phi` as a ternary-only special lane.
 
 Primary target:
 
-- `src/backend/lowering/lir_to_bir_module.cpp`
+- `src/backend/lowering/lir_to_bir_cfg.cpp`
+- `src/backend/lowering/lir_to_bir.hpp`
 - `src/backend/bir.hpp`
 
 Concrete actions:
@@ -231,8 +232,9 @@ ABI shaping.
 
 Primary target:
 
-- `src/backend/lowering/lir_to_bir_module.cpp`
-- `src/backend/lowering/call_decode.cpp`
+- `src/backend/lowering/lir_to_bir_calling.cpp`
+- `src/backend/lowering/lir_to_bir_aggregate.cpp`
+- `src/backend/lowering/lir_to_bir.hpp`
 
 Concrete actions:
 
@@ -242,8 +244,9 @@ Concrete actions:
   and emits target asm for those helpers
 - treat helper entry lowering, direct-call argument materialization, and return
   propagation as one semantic signature lane in
-  `src/backend/lowering/lir_to_bir_module.cpp` /
-  `src/backend/lowering/call_decode.cpp`, but keep the `two_arg_*` helper
+  `src/backend/lowering/lir_to_bir_calling.cpp` plus the
+  `BirFunctionLowerer` signature helpers declared in
+  `src/backend/lowering/lir_to_bir.hpp`, but keep the `two_arg_*` helper
   family as runtime/regression sentinels rather than the primary proof anchor
 - use `param_slot`, `param_member_array`, and
   `nested_param_member_array` as the first honest backlog-item-2 proving
@@ -338,7 +341,8 @@ Goal: make module-level state real beyond scalar globals.
 
 Primary target:
 
-- `src/backend/lowering/lir_to_bir_module.cpp`
+- `src/backend/lowering/lir_to_bir_globals.cpp`
+- `src/backend/lowering/lir_to_bir_types.cpp`
 - `src/backend/bir.hpp`
 
 Design contract:
@@ -391,8 +395,8 @@ Goal: make calls a shared semantic lane instead of a tiny direct-call subset.
 
 Primary target:
 
-- `src/backend/lowering/lir_to_bir_module.cpp`
-- `src/backend/lowering/call_decode.cpp`
+- `src/backend/lowering/lir_to_bir_calling.cpp`
+- `src/backend/lowering/lir_to_bir_memory.cpp`
 - `src/backend/bir.hpp`
 
 Design contract:
@@ -424,10 +428,10 @@ Concrete actions:
   scalar values, pointer values, aggregate byval aliases, and indirect result
   storage should use one common pipeline so direct and indirect calls differ
   only in callee form, not in separate per-family emission logic
-- keep `call_decode.cpp` focused on semantic call decoding and canonicalization:
-  if parsing or inference grows, it should converge toward normalized semantic
-  call contracts rather than accumulating one-off string-shape recognizers for
-  specific helper families
+- keep `call_decode.cpp` out of the active lowering route:
+  it is now a legacy compatibility wrapper, so new semantic call parsing or
+  inference should land in `src/backend/lowering/lir_to_bir_calling.cpp` /
+  `BirFunctionLowerer` instead of extending the old wrapper layer
 - support richer direct-call signatures
 - support indirect calls and callee pointer forms
 - treat general `phi`/CFG merge handling as an input contract to this family:
@@ -475,7 +479,8 @@ Goal: stop treating runtime-facing LIR operations as a reason to bypass BIR.
 
 Primary target:
 
-- `src/backend/lowering/lir_to_bir_module.cpp`
+- `src/backend/lowering/lir_to_bir_memory.cpp`
+- `src/backend/lowering/lir_to_bir_calling.cpp`
 - `src/backend/bir.hpp`
 
 Concrete actions:
@@ -500,7 +505,7 @@ Primary target:
 
 - `src/backend/bir.hpp`
 - `src/backend/lowering/lir_to_bir.hpp`
-- `src/backend/lowering/lir_to_bir_module.cpp`
+- `src/backend/lowering/lir_to_bir_memory.cpp`
 
 Concrete actions:
 
