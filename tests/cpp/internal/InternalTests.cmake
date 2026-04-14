@@ -13,6 +13,28 @@ file(GLOB_RECURSE INTERNAL_CPP_GENERATED_COMPILE_POSITIVE_TEST_SRCS CONFIGURE_DE
 list(APPEND INTERNAL_CPP_POSITIVE_TEST_SRCS ${INTERNAL_CPP_GENERATED_PARSE_ONLY_TEST_SRCS})
 list(APPEND INTERNAL_CPP_POSITIVE_TEST_SRCS ${INTERNAL_CPP_GENERATED_COMPILE_POSITIVE_TEST_SRCS})
 
+add_executable(backend_prepare_phi_materialize_test
+    "${INTERNAL_CPP_TEST_ROOT}/backend_prepare_phi_materialize_test.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prepare/legalize.cpp"
+)
+target_include_directories(backend_prepare_phi_materialize_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+    ${FRONTEND_CXX_INCLUDE_DIRS}
+)
+set_target_properties(backend_prepare_phi_materialize_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_prepare_phi_materialize
+  COMMAND $<TARGET_FILE:backend_prepare_phi_materialize_test>
+)
+set_tests_properties(backend_prepare_phi_materialize PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
 set(CPP_POSITIVE_FRONTEND_STEMS
     if_constexpr_template_chain
     template_type_traits_builtin

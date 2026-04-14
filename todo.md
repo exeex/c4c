@@ -176,6 +176,18 @@ Source Plan: plan.md
   should be direct prepare/BIR-facing instead of another
   `tests/c/internal/backend_route_case/*` search unless a new code move first
   creates that surface
+- 2026-04-14 executor packet result:
+  `src/backend/prepare/legalize.cpp` now materializes reducible explicit-phi
+  merge trees by walking the cond-branch funnel instead of stopping at
+  `phi.incomings.size() == 2`, and the new direct prepare/BIR proof surface
+  lives in `tests/cpp/internal/backend_prepare_phi_materialize_test.cpp`
+  plus `backend_prepare_phi_materialize` in
+  `tests/cpp/internal/InternalTests.cmake`;
+  exact proof command
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  completed with the expected backend-subset baseline delta shape and one new
+  passing test at `420 total / 209 passed / 211 failed`; proof log:
+  `test_after.log`
 - if the executor needs a new proving source to expose that code-moving target,
   it may add one minimal merge-semantic source in the same packet, but source
   or harness expansion alone is not accepted progress

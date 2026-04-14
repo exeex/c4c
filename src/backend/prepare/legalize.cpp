@@ -116,7 +116,7 @@ BlockAnalysis analyze_function(bir::Function* function) {
   return analysis;
 }
 
-std::optional<std::string> funnel_leaf_label(
+std::optional<std::vector<std::string>> collect_funnel_leaf_labels(
     const std::unordered_map<std::string, bir::Block*>& blocks_by_label,
     std::string_view start_label,
     std::string_view join_label,
@@ -131,23 +131,25 @@ std::optional<std::string> funnel_leaf_label(
   if (block->terminator.kind == bir::TerminatorKind::Branch) {
     if (block->terminator.target_label == join_label) {
       clear_visit();
-      return block->label;
+      return std::vector<std::string>{block->label};
     }
-    const auto next = funnel_leaf_label(
+    auto next = collect_funnel_leaf_labels(
         blocks_by_label, block->terminator.target_label, join_label, visiting);
     clear_visit();
     return next;
   }
   if (block->terminator.kind == bir::TerminatorKind::CondBranch) {
-    const auto true_leaf = funnel_leaf_label(
+    auto true_leaves = collect_funnel_leaf_labels(
         blocks_by_label, block->terminator.true_label, join_label, visiting);
-    const auto false_leaf = funnel_leaf_label(
+    auto false_leaves = collect_funnel_leaf_labels(
         blocks_by_label, block->terminator.false_label, join_label, visiting);
     clear_visit();
-    if (true_leaf.has_value() && false_leaf.has_value() && *true_leaf == *false_leaf) {
-      return true_leaf;
+    if (!true_leaves.has_value() || !false_leaves.has_value()) {
+      return std::nullopt;
     }
-    return std::nullopt;
+    true_leaves->insert(
+        true_leaves->end(), false_leaves->begin(), false_leaves->end());
+    return true_leaves;
   }
 
   clear_visit();
@@ -177,21 +179,121 @@ struct PhiMaterializeContext {
   std::vector<bir::Inst> emitted_insts;
   std::unordered_set<std::string> removed_names;
   std::unordered_set<std::string> materialized_names;
+  std::size_t next_temp_index = 0;
 };
 
 std::optional<bir::Value> materialize_value(const bir::Value& value, PhiMaterializeContext* context);
 
-std::optional<bir::Value> materialize_phi(const bir::PhiInst& phi,
-                                          const bir::Block& phi_block,
+std::string make_materialized_select_name(std::string_view result_name,
                                           PhiMaterializeContext* context) {
-  if (phi.incomings.size() != 2) {
+  while (true) {
+    auto candidate = std::string(result_name) + ".phi.sel" +
+                     std::to_string(context->next_temp_index++);
+    if (context->analysis->defs_by_name.find(candidate) == context->analysis->defs_by_name.end() &&
+        context->materialized_names.find(candidate) == context->materialized_names.end()) {
+      return candidate;
+    }
+  }
+}
+
+std::optional<bir::Value> materialize_funnel_subtree(
+    const bir::PhiInst& phi,
+    std::string_view start_label,
+    std::string_view join_label,
+    const std::unordered_map<std::string, bir::Value>& incoming_values,
+    const std::optional<bir::Value>& desired_result,
+    std::unordered_set<std::string>* visiting,
+    PhiMaterializeContext* context) {
+  const auto block_it = context->analysis->blocks_by_label.find(std::string(start_label));
+  if (block_it == context->analysis->blocks_by_label.end() ||
+      !visiting->emplace(std::string(start_label)).second) {
     return std::nullopt;
   }
 
-  const bir::Block* compare_block = nullptr;
-  const bir::BinaryInst* compare = nullptr;
-  std::optional<bir::Value> true_value;
-  std::optional<bir::Value> false_value;
+  const auto clear_visit = [&] { visiting->erase(std::string(start_label)); };
+  const auto* block = block_it->second;
+  if (block->terminator.kind == bir::TerminatorKind::Branch) {
+    if (block->terminator.target_label == join_label) {
+      const auto incoming_it = incoming_values.find(block->label);
+      clear_visit();
+      if (incoming_it == incoming_values.end()) {
+        return std::nullopt;
+      }
+      return materialize_value(incoming_it->second, context);
+    }
+    const auto forwarded = materialize_funnel_subtree(
+        phi,
+        block->terminator.target_label,
+        join_label,
+        incoming_values,
+        desired_result,
+        visiting,
+        context);
+    clear_visit();
+    return forwarded;
+  }
+
+  if (block->terminator.kind != bir::TerminatorKind::CondBranch) {
+    clear_visit();
+    return std::nullopt;
+  }
+
+  const auto* compare = find_compare_for_condition(*block, block->terminator.condition);
+  if (compare == nullptr) {
+    clear_visit();
+    return std::nullopt;
+  }
+
+  const auto lowered_true = materialize_funnel_subtree(
+      phi,
+      block->terminator.true_label,
+      join_label,
+      incoming_values,
+      std::nullopt,
+      visiting,
+      context);
+  const auto lowered_false = materialize_funnel_subtree(
+      phi,
+      block->terminator.false_label,
+      join_label,
+      incoming_values,
+      std::nullopt,
+      visiting,
+      context);
+  clear_visit();
+  if (!lowered_true.has_value() || !lowered_false.has_value()) {
+    return std::nullopt;
+  }
+
+  bir::Value result = desired_result.value_or(
+      bir::Value::named(phi.result.type, make_materialized_select_name(phi.result.name, context)));
+  context->emitted_insts.push_back(bir::SelectInst{
+      .predicate = compare->opcode,
+      .result = result,
+      .compare_type = compare->operand_type,
+      .lhs = compare->lhs,
+      .rhs = compare->rhs,
+      .true_value = *lowered_true,
+      .false_value = *lowered_false,
+  });
+  context->materialized_names.insert(result.name);
+  return result;
+}
+
+std::optional<bir::Value> materialize_phi(const bir::PhiInst& phi,
+                                          const bir::Block& phi_block,
+                                          PhiMaterializeContext* context) {
+  if (phi.incomings.size() < 2) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, bir::Value> incoming_values;
+  incoming_values.reserve(phi.incomings.size());
+  for (const auto& incoming : phi.incomings) {
+    if (!incoming_values.emplace(incoming.label, incoming.value).second) {
+      return std::nullopt;
+    }
+  }
 
   for (const auto& [_, block] : context->analysis->blocks_by_label) {
     if (block->terminator.kind != bir::TerminatorKind::CondBranch) {
@@ -199,61 +301,46 @@ std::optional<bir::Value> materialize_phi(const bir::PhiInst& phi,
     }
 
     std::unordered_set<std::string> visiting;
-    const auto true_leaf = funnel_leaf_label(
-        context->analysis->blocks_by_label, block->terminator.true_label, phi_block.label, &visiting);
-    visiting.clear();
-    const auto false_leaf = funnel_leaf_label(
-        context->analysis->blocks_by_label, block->terminator.false_label, phi_block.label, &visiting);
-    if (!true_leaf.has_value() || !false_leaf.has_value()) {
+    const auto leaves = collect_funnel_leaf_labels(
+        context->analysis->blocks_by_label, block->label, phi_block.label, &visiting);
+    if (!leaves.has_value()) {
       continue;
     }
 
-    for (const auto& incoming : phi.incomings) {
-      if (incoming.label == *true_leaf) {
-        true_value = incoming.value;
-      } else if (incoming.label == *false_leaf) {
-        false_value = incoming.value;
+    std::unordered_set<std::string> leaf_labels;
+    leaf_labels.insert(leaves->begin(), leaves->end());
+    if (leaf_labels.size() != incoming_values.size()) {
+      continue;
+    }
+
+    bool covers_all_incomings = true;
+    for (const auto& [label, _] : incoming_values) {
+      if (leaf_labels.find(label) == leaf_labels.end()) {
+        covers_all_incomings = false;
+        break;
       }
     }
-    if (!true_value.has_value() || !false_value.has_value()) {
-      true_value.reset();
-      false_value.reset();
+    if (!covers_all_incomings || find_compare_for_condition(*block, block->terminator.condition) == nullptr) {
       continue;
     }
 
-    compare_block = block;
-    compare = find_compare_for_condition(*block, block->terminator.condition);
-    if (compare != nullptr) {
-      break;
+    visiting.clear();
+    const auto materialized = materialize_funnel_subtree(
+        phi,
+        block->label,
+        phi_block.label,
+        incoming_values,
+        phi.result,
+        &visiting,
+        context);
+    if (materialized.has_value()) {
+      context->removed_names.insert(phi.result.name);
+      context->materialized_names.insert(phi.result.name);
+      return materialized;
     }
-    compare_block = nullptr;
-    true_value.reset();
-    false_value.reset();
   }
 
-  if (compare_block == nullptr || compare == nullptr || !true_value.has_value() ||
-      !false_value.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto lowered_true = materialize_value(*true_value, context);
-  const auto lowered_false = materialize_value(*false_value, context);
-  if (!lowered_true.has_value() || !lowered_false.has_value()) {
-    return std::nullopt;
-  }
-
-  context->emitted_insts.push_back(bir::SelectInst{
-      .predicate = compare->opcode,
-      .result = phi.result,
-      .compare_type = compare->operand_type,
-      .lhs = compare->lhs,
-      .rhs = compare->rhs,
-      .true_value = *lowered_true,
-      .false_value = *lowered_false,
-  });
-  context->removed_names.insert(phi.result.name);
-  context->materialized_names.insert(phi.result.name);
-  return phi.result;
+  return std::nullopt;
 }
 
 std::optional<bir::Value> materialize_value(const bir::Value& value, PhiMaterializeContext* context) {
