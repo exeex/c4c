@@ -149,6 +149,25 @@ Source Plan: plan.md
 
 - 2026-04-14 executor landed one backlog-item-1 route-unification code move
   in `src/backend/lowering/lir_to_bir_module.cpp`:
+  `lower_canonical_select_function` no longer reconstructs the
+  `indirect_select_callee_call` merge/call lane privately;
+  canonical-select fast-path lowering is now restricted back to direct-return
+  diamonds, so the indirect-callee sentinel falls through to the shared
+  branch/phi lowering path and the prepared-BIR route now observes the same
+  temporary phi-slot materialization contract as other merge consumers
+- 2026-04-14 exact delegated proof for that indirect-callee merge packet
+  passed as
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_riscv64_(indirect_select_callee_call_defaults_to_bir|indirect_select_local_override_callee_call_defaults_to_bir|branch_if_eq_defaults_to_bir))$'`
+  and wrote the result to `test_after.log`
+- 2026-04-14 route coverage for that packet now keeps
+  `backend_codegen_route_riscv64_indirect_select_callee_call_defaults_to_bir`
+  on the truthful shared-merge prepared-BIR surface:
+  the route no longer proves progress with `bir.select` plus a private call
+  fast path, and instead observes the existing phi-slot prepare contract while
+  `backend_codegen_route_riscv64_indirect_select_local_override_callee_call_defaults_to_bir`
+  and `backend_codegen_route_riscv64_branch_if_eq_defaults_to_bir` stay green
+- 2026-04-14 executor landed one backlog-item-1 route-unification code move
+  in `src/backend/lowering/lir_to_bir_module.cpp`:
   `lower_module` now dispatches active backend functions directly through
   `lower_branch_family_function`, and that shared branch/phi lane now owns
   the canonical diamond-select lowering helper instead of relying on a

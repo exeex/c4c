@@ -4188,7 +4188,7 @@ std::optional<bir::Function> lower_canonical_select_function(
   }
   const auto& join_block = *join_it->second;
 
-  if (join_block.insts.empty() || join_block.insts.size() > 2) {
+  if (join_block.insts.size() != 1) {
     return std::nullopt;
   }
   const auto* phi = std::get_if<c4c::codegen::lir::LirPhiOp>(&join_block.insts.front());
@@ -4256,61 +4256,12 @@ std::optional<bir::Function> lower_canonical_select_function(
       .false_value = *false_value,
   });
 
-  if (join_block.insts.size() == 1) {
-    if (ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
-        ret_value.str() != phi->result.str()) {
-      return std::nullopt;
-    }
-    lowered_block.terminator = bir::ReturnTerminator{
-        .value = bir::Value::named(*phi_type, phi->result.str()),
-    };
-    lowered.blocks.push_back(std::move(lowered_block));
-    return lowered;
-  }
-
-  const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&join_block.insts[1]);
-  if (call == nullptr || *phi_type != bir::TypeKind::Ptr ||
-      call->callee.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
-      call->callee.str() != phi->result.str()) {
+  if (ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+      ret_value.str() != phi->result.str()) {
     return std::nullopt;
   }
-
-  const auto parsed_call = parse_backend_typed_call(*call);
-  const auto call_return_type = lower_integer_type(call->return_type.str());
-  if (!parsed_call.has_value() || !call_return_type.has_value() || *call_return_type != *return_type ||
-      parsed_call->args.size() != parsed_call->param_types.size() ||
-      call->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
-      ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
-      ret_value.str() != call->result.str()) {
-    return std::nullopt;
-  }
-
-  bir::CallInst lowered_call;
-  lowered_call.result = bir::Value::named(*call_return_type, call->result.str());
-  lowered_call.callee_value = bir::Value::named(*phi_type, phi->result.str());
-  lowered_call.return_type_name = std::string(call->return_type.str());
-  lowered_call.return_type = *call_return_type;
-  lowered_call.is_indirect = true;
-  lowered_call.args.reserve(parsed_call->args.size());
-  lowered_call.arg_types.reserve(parsed_call->param_types.size());
-  for (std::size_t index = 0; index < parsed_call->args.size(); ++index) {
-    const auto arg_type = lower_integer_type(parsed_call->param_types[index]);
-    if (!arg_type.has_value()) {
-      return std::nullopt;
-    }
-    const auto arg =
-        lower_value(c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand)),
-                    *arg_type,
-                    value_aliases);
-    if (!arg.has_value()) {
-      return std::nullopt;
-    }
-    lowered_call.arg_types.push_back(*arg_type);
-    lowered_call.args.push_back(*arg);
-  }
-  lowered_block.insts.push_back(std::move(lowered_call));
   lowered_block.terminator = bir::ReturnTerminator{
-      .value = bir::Value::named(*call_return_type, call->result.str()),
+      .value = bir::Value::named(*phi_type, phi->result.str()),
   };
   lowered.blocks.push_back(std::move(lowered_block));
   return lowered;

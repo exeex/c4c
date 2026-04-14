@@ -1680,7 +1680,7 @@ if(CLANG_EXECUTABLE)
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_select_callee_call.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
       OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_select_callee_call_riscv64.ll"
-      REQUIRED_SNIPPETS "bir.func @call_select(i32 %p.flag, ptr %p.f, ptr %p.g, i32 %p.x) -> i32 {|%t6 = bir.select ne i32 %p.flag, 0, ptr %p.f, %p.g|%t7 = bir.call i32 %t6(i32 %p.x)|bir.ret i32 %t7"
+      REQUIRED_SNIPPETS "bir.func @call_select(i32 %p.flag, ptr %p.f, ptr %p.g, i32 %p.x) -> i32 {|bir.store_local %t6.phi, ptr %p.f|bir.store_local %t6.phi, ptr %p.g|%t6 = bir.load_local ptr %t6.phi|%t7 = bir.call i32 %t6(i32 %p.x)|bir.ret i32 %t7"
       FORBIDDEN_SNIPPETS "define i32 @call_select"
     )
 
