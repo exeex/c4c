@@ -251,17 +251,54 @@ Primary target:
 - `src/backend/lowering/lir_to_bir_module.cpp`
 - `src/backend/bir.hpp`
 
+Design contract:
+
+- local memory lowering must use one shared object/address model:
+  scalar locals, arrays, structs, nested aggregates, and pointer-bearing local
+  objects should differ by layout and access path, not by entering separate
+  lowering families
+- testcase families are proving surfaces only:
+  `struct` field reads, nested-field paths, array-of-struct cases,
+  struct-containing-array cases, address-taken locals, and local pointer
+  round-trip helpers must not become the semantic classification used by
+  lowering
+- address formation should be represented by meaning:
+  local base object plus element/field/byte offset path, so later load/store,
+  call-byval, and pointer-passing work can consume the same semantic address
+  rather than re-deriving local object shape ad hoc
+
 Concrete actions:
 
+- define or tighten one local object/address representation that can describe
+  scalar, array, and struct-backed locals with the same base-plus-offset/path
+  semantics
 - extend `alloca` / local-slot lowering beyond scalar and fixed tiny array
   shapes
 - lower broader `gep` and address forms for locals
+- handle struct and nested-aggregate local addressing through shared layout and
+  offset computation instead of field-shape-specific branches
 - support pointer-valued locals and round-tripped local addresses where the
   semantics are still target-neutral
+- keep layout computation centralized:
+  size/align/field-offset reasoning for local aggregates should not be copied
+  into multiple lowering branches keyed off named cases
+- make later lanes consume the same local-address semantics:
+  loads, stores, aggregate copies, and call argument materialization should all
+  use the shared local object/address model rather than inventing their own
+  struct/array recovery paths
+- reject these route drifts for this lane:
+  per-struct-shape lowering branches, separate local-array vs local-struct
+  address families, testcase-specific `gep` recognition, or field-name-pattern
+  routing that bypasses shared layout semantics
 
 Completion check:
 
 - local memory lowering no longer stops at constant-index toy arrays
+- struct, nested-aggregate, and pointer-addressed locals are explained by one
+  shared local object/address strategy rather than by separate testcase
+  recoveries
+- local address formation is reusable by later call/memory lanes without
+  re-inferring aggregate layout from testcase shape
 
 ### 4. Broaden global data and addressed globals
 
@@ -272,17 +309,49 @@ Primary target:
 - `src/backend/lowering/lir_to_bir_module.cpp`
 - `src/backend/bir.hpp`
 
+Design contract:
+
+- global data lowering should reuse the same semantic address principles as
+  local objects wherever possible:
+  a global base object plus offset/path should be the primary model for arrays,
+  structs, strings, extern objects, and addressed global reads
+- testcase families are proving surfaces only:
+  string-backed globals, global arrays, extern globals, addressed struct
+  globals, and pointer-valued globals must not each grow their own hardcoded
+  lowering family
+- addressed global semantics should stay distinct from target relocation or ABI
+  concerns:
+  this lane owns semantic global object/value meaning, not final target address
+  materialization policy
+
 Concrete actions:
 
+- define global object/address lowering in terms of shared base-plus-offset/path
+  semantics so global arrays, structs, strings, and addressed reads can reuse
+  one representation
 - lower global arrays and string-backed globals
 - support extern global declarations and addressed global reads
 - support pointer-valued globals and basic global-address arithmetic only where
   the semantics are still honest BIR
+- handle struct-backed globals and nested aggregate global addresses through the
+  same centralized layout/offset machinery used for other aggregate addressing,
+  not through testcase-specific global field paths
+- keep global object semantics aligned with local object semantics where honest:
+  later load/store/call lanes should consume addressed globals through the same
+  conceptual model instead of branching on storage class
+- reject these route drifts for this lane:
+  separate lowering families for string globals vs array globals vs struct
+  globals, helper-name-based global-address shortcuts, or special-case global
+  field materialization that does not generalize beyond one aggregate shape
 
 Completion check:
 
 - addressed global data no longer forces LLVM-text fallback for simple array or
   string-backed reads
+- global struct/array/string addressing is explained by one semantic
+  object-address model rather than by storage-class-shaped patches
+- later consumers can use addressed global values without rediscovering layout
+  or inventing global-only aggregate rules
 
 ### 5. Expand call lowering beyond minimal direct calls
 
@@ -294,8 +363,39 @@ Primary target:
 - `src/backend/lowering/call_decode.cpp`
 - `src/backend/bir.hpp`
 
+Design contract:
+
+- semantic call lowering must stay target-neutral:
+  this lane owns callee meaning, signature meaning, argument/result
+  materialization, and the minimum metadata that later ABI shaping needs, but
+  it does not choose register assignments, stack slots, target widening, or
+  target-specific aggregate breakup
+- the output of this lane should be a stable semantic `bir.call` family that a
+  later `prepare/legalize` step can lower into prepared-BIR call contracts for
+  target machine IR
+- testcase families are proving surfaces only:
+  `two_arg_*`, function-pointer helpers, aggregate-param helpers, object-address
+  helpers, and future call-shape probes must not become the semantic
+  classification used by lowering
+
 Concrete actions:
 
+- normalize callees before materializing calls:
+  direct globals, loaded/stored function pointers, local function-pointer
+  values, and merge-preserved callee values should first become one semantic
+  callee representation instead of branching into separate ad hoc lowering
+  ladders
+- normalize signatures before target ABI shaping:
+  support scalar, pointer, by-value aggregate, hidden `sret`, and future common
+  semantic return/argument families by meaning, not by arg-count expansion
+- materialize call arguments and results through shared value classes:
+  scalar values, pointer values, aggregate byval aliases, and indirect result
+  storage should use one common pipeline so direct and indirect calls differ
+  only in callee form, not in separate per-family emission logic
+- keep `call_decode.cpp` focused on semantic call decoding and canonicalization:
+  if parsing or inference grows, it should converge toward normalized semantic
+  call contracts rather than accumulating one-off string-shape recognizers for
+  specific helper families
 - support richer direct-call signatures
 - support indirect calls and callee pointer forms
 - treat general `phi`/CFG merge handling as an input contract to this family:
@@ -307,9 +407,22 @@ Concrete actions:
   should be lowered by meaning rather than rediscovered by wider arg-count
   wrappers
 - carry the minimal shared metadata needed for later ABI shaping
+- stage ownership explicitly:
+  semantic lowering may record call-shape metadata such as return/arg semantic
+  class, `byval`, `sret`, or indirectness, but `prepare/legalize` must remain
+  the future owner of calling-convention and target legality decisions
+- add proving surfaces that stress semantic families rather than width ladders:
+  use cases that vary callee provenance, pointer/object-address arguments,
+  aggregate pass/return routes, and merge-preserved callee values instead of
+  treating `1 arg`, `2 arg`, `3 arg`, and longer printed snippets as the work
+  queue
 - do not treat "next wider signature" or longer rendered-asm snippet ladders as
   executor packet selection; backlog item 5 progress must come from real
   lowering/backend capability growth or from an explicit route checkpoint
+- reject these route drifts for this lane:
+  arg-count-specialized lowering branches, direct-vs-indirect duplicated
+  emission ladders that diverge semantically, helper-name-based call routing,
+  or target/ABI decisions being smuggled into `lir_to_bir`
 
 Completion check:
 
@@ -317,6 +430,12 @@ Completion check:
   in LIR without dropping back to raw LIR text
 - call-lane progress is explained by new semantic callee/signature families,
   not by extending testcase-shaped arg-count probes
+- direct and indirect calls share the same semantic materialization pipeline
+  apart from callee representation
+- aggregate pass/return forms and pointer-based call sites no longer require
+  helper-family-specific recovery logic
+- `prepare/legalize` can later consume the semantic call contract without
+  needing to rediscover callee provenance or re-infer aggregate call meaning
 
 ### 6. Add intrinsic and runtime operation lowering
 
