@@ -58,6 +58,36 @@ Source Plan: plan.md
 ## Latest Packet Progress
 
 - completed:
+  one richer non-diamond split-predecessor CFG merge route case is now
+  explicitly proved on the riscv64 semantic-BIR route instead of living only
+  under generic asm-unsupported coverage:
+  `two_param_select_eq_split_predecessor_add_phi_post_add_sub.c` now has a
+  dedicated defaults-to-BIR backend-route assertion that checks the truthful
+  join-shape snippets where predecessor-specific adds store into `%t10.phi`,
+  the merge reloads through `%t10 = bir.load_local i32 %t10.phi`, and the
+  post-merge add/sub chain stays on semantic BIR before return
+  the matching generic riscv64 `asm_unsupported` registration for that same
+  stem was removed so the route surface now records this case as explicit BIR
+  coverage rather than fallback-only inventory
+  what remains next:
+  promote the next materially distinct richer merge shape from the remaining
+  split-predecessor families without widening into testcase-shaped route logic
+  or adjacent implementation work outside the current packet
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated build succeeded, the new riscv64 route test passed as
+  test `#381`, and the standing `^backend_` subset remained monotonic while
+  replacing the old failing generic `asm_unsupported` registration:
+  the subset still exited nonzero because of pre-existing backend failures,
+  but the backend subset improved monotonically from `191` passed / `225`
+  failed in `test_before.log` to `192` passed / `224` failed in
+  `test_after.log` out of `416` with no new failures, so this
+  split-predecessor merge case is now explicitly covered on the semantic-BIR
+  route without adding regression
+- completed:
   the first nested merge-preserved callee family with a post-select local
   override now lowers through semantic BIR instead of falling back to raw
   LLVM:
