@@ -2126,6 +2126,24 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_nineteen_arg_param_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_nineteen_arg_param_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_nineteen_arg_param_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_param|call_param:|mv t0, a0|addi sp, sp, -96|lw t1, 120(sp)|sw t1, 0(sp)|lw t1, 128(sp)|sw t1, 8(sp)|lw t1, 136(sp)|sw t1, 16(sp)|lw t1, 144(sp)|sw t1, 24(sp)|lw t1, 152(sp)|sw t1, 32(sp)|lw t1, 160(sp)|sw t1, 40(sp)|lw t1, 168(sp)|sw t1, 48(sp)|lw t1, 176(sp)|sw t1, 56(sp)|lw t1, 184(sp)|sw t1, 64(sp)|lw t1, 192(sp)|sw t1, 72(sp)|li t1, 19|sw t1, 80(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 112(sp)|jalr ra, t0, 0|addi sp, sp, 96|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_param|define i32 @call_param"
+    )
+
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_nineteen_arg_local_call_defaults_to_asm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_nineteen_arg_local_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_nineteen_arg_local_call_riscv64.s"
+      REQUIRED_SNIPPETS ".globl call_local|call_local:|sd a0, 0(sp)|ld t0, 0(sp)|addi sp, sp, -96|lw t1, 120(sp)|sw t1, 0(sp)|lw t1, 128(sp)|sw t1, 8(sp)|lw t1, 136(sp)|sw t1, 16(sp)|lw t1, 144(sp)|sw t1, 24(sp)|lw t1, 152(sp)|sw t1, 32(sp)|lw t1, 160(sp)|sw t1, 40(sp)|lw t1, 168(sp)|sw t1, 48(sp)|lw t1, 176(sp)|sw t1, 56(sp)|lw t1, 184(sp)|sw t1, 64(sp)|lw t1, 192(sp)|sw t1, 72(sp)|li t1, 19|sw t1, 80(sp)|mv a0, a1|mv a1, a2|mv a2, a3|mv a3, a4|mv a4, a5|mv a5, a6|mv a6, a7|lw a7, 112(sp)|jalr ra, t0, 0|addi sp, sp, 96|ret"
+      FORBIDDEN_SNIPPETS "bir.func @call_local|define i32 @call_local"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_two_arg_helper_defaults_to_asm
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/two_arg_helper.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
