@@ -200,17 +200,20 @@ Source Plan: plan.md
 
 ## Immediate Target
 
-- next executor packet is a structural follow-up on the same lowering lane:
-  reduce `BirFunctionLowerer` header surface and regroup its methods into
-  clearer internal buckets without changing backend behavior
-- target the current pain point directly:
-  split `BirFunctionLowerer` private API into more coherent method families
-  such as calling/cfg/scalar/aggregate/memory helpers, and move declaration
-  detail out of `src/backend/lowering/lir_to_bir.hpp` where that can be done
-  without reopening the shared utility boundary
-- keep this packet scoped to class shape only:
-  do not restart capability scouting, do not broaden proof scope, and do not
-  re-open the legacy `call_decode.*` layer unless the header regrouping
-  strictly requires it
-- default proving command for the next backend packet remains:
+- 2026-04-14 executor packet result:
+  `src/backend/lowering/lir_to_bir.hpp` now leads with the actual
+  `BirFunctionLowerer` construction/lowering and legacy parse interface, keeps
+  the split-TU helper type buckets grouped together as shared declaration
+  support, moves `lower_value` and `lower_minimal_scalar_type` behind the
+  private boundary, and regroups the remaining private methods into explicit
+  scalar/calling/aggregate/cfg/memory/function-flow buckets without changing
+  backend behavior or reopening `call_decode.*`
+- 2026-04-14 proof result:
+  the delegated proof command still passes `12 / 12` `^backend_` tests after
+  the header regrouping, and `test_after.log` is the proof log path
+- next adjacent follow-up:
+  this class-shape packet is complete; resume backlog-item-2 semantic
+  signature capability work next unless a fresh compileability pain point
+  justifies another structural-only packet
+- delegated proof command:
   `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`

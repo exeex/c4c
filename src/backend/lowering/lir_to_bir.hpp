@@ -163,6 +163,43 @@ bool is_known_function_symbol(std::string_view symbol_name,
 
 class BirFunctionLowerer {
  public:
+  struct ParsedFunctionSignatureParam {
+    std::string type;
+    std::string operand;
+    bool is_varargs = false;
+  };
+
+  struct ParsedTypedCall {
+    std::vector<std::string> owned_param_types;
+    std::vector<std::string_view> param_types;
+    std::vector<c4c::codegen::lir::LirTypedCallArgView> args;
+  };
+
+  struct ParsedDirectGlobalTypedCall {
+    std::string_view symbol_name;
+    ParsedTypedCall typed_call;
+  };
+
+  BirFunctionLowerer(BirLoweringContext& context,
+                     const c4c::codegen::lir::LirFunction& function,
+                     const lir_to_bir_detail::GlobalTypes& global_types,
+                     const lir_to_bir_detail::FunctionSymbolSet& function_symbols,
+                     const lir_to_bir_detail::TypeDeclMap& type_decls);
+
+  std::optional<bir::Function> lower();
+
+  static std::optional<ParsedTypedCall> parse_typed_call(
+      const c4c::codegen::lir::LirCallOp& call);
+  static std::optional<ParsedDirectGlobalTypedCall> parse_direct_global_typed_call(
+      const c4c::codegen::lir::LirCallOp& call);
+  static std::optional<std::vector<ParsedFunctionSignatureParam>> parse_function_signature_params(
+      std::string_view signature_text);
+  static std::optional<bir::Function> lower_extern_decl(
+      const c4c::codegen::lir::LirExternDecl& decl);
+  static std::optional<bir::Function> lower_decl_function(
+      const c4c::codegen::lir::LirFunction& function);
+
+  // Shared type buckets used by the split lowering translation units.
   using ValueMap = lir_to_bir_detail::ValueMap;
   using AggregateTypeLayout = lir_to_bir_detail::AggregateTypeLayout;
   using FunctionSymbolSet = lir_to_bir_detail::FunctionSymbolSet;
@@ -307,53 +344,28 @@ class BirFunctionLowerer {
     bool returned_via_sret = false;
   };
 
-  struct ParsedFunctionSignatureParam {
-    std::string type;
-    std::string operand;
-    bool is_varargs = false;
+  struct AggregateArrayExtent {
+    std::size_t element_count = 0;
+    std::size_t element_stride_bytes = 0;
   };
 
-  struct ParsedTypedCall {
-    std::vector<std::string> owned_param_types;
-    std::vector<std::string_view> param_types;
-    std::vector<c4c::codegen::lir::LirTypedCallArgView> args;
+  struct LocalAggregateGepTarget {
+    std::string type_text;
+    std::size_t byte_offset = 0;
   };
-
-  struct ParsedDirectGlobalTypedCall {
-    std::string_view symbol_name;
-    ParsedTypedCall typed_call;
-  };
-
-  BirFunctionLowerer(BirLoweringContext& context,
-                     const c4c::codegen::lir::LirFunction& function,
-                     const GlobalTypes& global_types,
-                     const FunctionSymbolSet& function_symbols,
-                     const TypeDeclMap& type_decls);
-
-  std::optional<bir::Function> lower();
-
-  static std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& operand,
-                                               bir::TypeKind expected_type,
-                                               const ValueMap& value_aliases);
-  static std::optional<bir::TypeKind> lower_minimal_scalar_type(const c4c::TypeSpec& type);
-  static std::optional<ParsedTypedCall> parse_typed_call(
-      const c4c::codegen::lir::LirCallOp& call);
-  static std::optional<ParsedDirectGlobalTypedCall> parse_direct_global_typed_call(
-      const c4c::codegen::lir::LirCallOp& call);
-  static std::optional<std::vector<ParsedFunctionSignatureParam>> parse_function_signature_params(
-      std::string_view signature_text);
-  static std::optional<bir::Function> lower_extern_decl(
-      const c4c::codegen::lir::LirExternDecl& decl);
-  static std::optional<bir::Function> lower_decl_function(
-      const c4c::codegen::lir::LirFunction& function);
 
  private:
+  // Scalar lowering helpers.
   static std::optional<AggregateTypeLayout> lower_byval_aggregate_layout(
       std::string_view text,
       const TypeDeclMap& type_decls);
   static std::string aggregate_param_slot_base(std::string_view param_name);
+  static std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& operand,
+                                               bir::TypeKind expected_type,
+                                               const ValueMap& value_aliases);
   static std::optional<bir::TypeKind> lower_scalar_or_function_pointer_type(
       std::string_view text);
+  static std::optional<bir::TypeKind> lower_minimal_scalar_type(const c4c::TypeSpec& type);
   static std::optional<unsigned> integer_type_bit_width(bir::TypeKind type);
   static std::uint64_t integer_bit_mask(unsigned bits);
   static std::int64_t sign_extend_bits(std::uint64_t value, unsigned bits);
@@ -387,6 +399,7 @@ class BirFunctionLowerer {
                                          CompareMap& compare_exprs,
                                          std::vector<bir::Inst>* lowered_insts) const;
 
+  // Calling and signature helpers.
   static bool is_void_param_sentinel(const c4c::TypeSpec& type);
   static std::optional<bir::TypeKind> lower_param_type(const c4c::TypeSpec& type);
   static std::optional<LoweredReturnInfo> lower_return_info_from_type(
@@ -401,6 +414,7 @@ class BirFunctionLowerer {
                                     const TypeDeclMap& type_decls,
                                     bir::Function* lowered);
 
+  // Aggregate lowering helpers.
   std::vector<std::pair<std::size_t, std::string>> collect_sorted_leaf_slots(
       const LocalAggregateSlots& aggregate_slots) const;
   AggregateParamMap collect_aggregate_params() const;
@@ -423,6 +437,7 @@ class BirFunctionLowerer {
                                               std::vector<bir::Inst>* lowered_insts) const;
   bool materialize_aggregate_param_aliases(std::vector<bir::Inst>* lowered_insts);
 
+  // CFG and phi helpers.
   BlockLookup make_block_lookup() const;
   static std::optional<BranchChain> follow_empty_branch_chain(const BlockLookup& blocks,
                                                               const std::string& start_label);
@@ -431,16 +446,7 @@ class BirFunctionLowerer {
       const std::string& start_label);
   std::optional<PhiBlockPlanMap> collect_phi_lowering_plans() const;
 
-  struct AggregateArrayExtent {
-    std::size_t element_count = 0;
-    std::size_t element_stride_bytes = 0;
-  };
-
-  struct LocalAggregateGepTarget {
-    std::string type_text;
-    std::size_t byte_offset = 0;
-  };
-
+  // Local/global memory helpers.
   static bool is_local_array_element_slot(std::string_view slot_name,
                                           const LocalArraySlotMap& local_array_slots);
   static std::optional<std::pair<std::size_t, bir::TypeKind>> parse_local_array_type(
@@ -556,6 +562,7 @@ class BirFunctionLowerer {
       const GlobalTypes& global_types);
   static GlobalPointerSlotKey make_global_pointer_slot_key(const GlobalAddress& address);
 
+  // Function assembly flow.
   bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
                                          std::vector<bir::Inst>* lowered_insts);
 
@@ -581,6 +588,7 @@ class BirFunctionLowerer {
   bool lower_block_terminator(const c4c::codegen::lir::LirBlock& block,
                               bir::Block* lowered_block);
 
+  // Lowering state.
   BirLoweringContext& context_;
   const c4c::codegen::lir::LirFunction& function_;
   const GlobalTypes& global_types_;
