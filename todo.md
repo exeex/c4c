@@ -22,19 +22,19 @@ Source Plan: plan.md
   indirect calls now carry the first mixed integer-class arg family, the
   first ptr-capable result family, and the first combined ptr-arg plus
   ptr-result family through semantic BIR and native asm; the first adjacent
-  non-leading single-ptr arg family is now also green, and the next packet
-  should widen beyond single-ptr signatures without reopening stack-call ABI
-  work
+  non-leading single-ptr arg family and the first adjacent two-ptr arg family
+  are now also green, and the next packet should widen beyond leading-two-ptr
+  signatures without reopening stack-call ABI work
 - current packet shape:
   keep backlog item 5 moving outward from the repaired entry boundary:
-  widen the standing riscv64 indirect-call lane from the now-green leading
-  and trailing single-ptr signatures to the next adjacent multi-ptr-capable
-  integer-class family while keeping the existing eight-register arg lane
-  fixed and avoiding ABI-shaped stack-call work
+  widen the standing riscv64 indirect-call lane from the now-green leading,
+  trailing, and paired-leading ptr signatures to the next adjacent
+  multi-ptr-capable integer-class family while keeping the existing
+  eight-register arg lane fixed and avoiding ABI-shaped stack-call work
 - candidate proving surface:
   add the next paired param/local riscv64 route tests for a multi-`ptr`
-  integer-class indirect-call signature that still fits inside the current
-  eight-register lane
+  integer-class indirect-call signature with at least one non-leading `ptr`
+  that still fits inside the current eight-register lane
   keep `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the current
   one-arg through eight-arg indirect-call plus `two_arg_*` direct-call route
   tests as standing sentinels while backlog item 5 widens through adjacent
@@ -72,6 +72,34 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  the first honest two-ptr indirect-call family now stays on the same shared
+  semantic-BIR/prepared-BIR riscv64 route surface as the earlier single-ptr
+  arg and ptr-result work: no backend route rewrite was needed because the
+  existing integer-class riscv64 arg lane already treats multiple `ptr`
+  values like adjacent integer-class args, so helper wrappers with an
+  `int *, int * -> i32` callee signature lower through the standing
+  eight-register indirect-call lane without reopening fallback routes or
+  ABI-shaped stack-call work
+  new route proofs cover `indirect_two_ptr_arg_param_call.c` and
+  `indirect_two_ptr_arg_local_call.c` as native asm with the expected callee
+  preserve into `t0`, paired `ptr` arg moves into `a0` and `a1`, and final
+  `jalr ra, t0, 0`, while `branch_if_eq.c`, `call_helper.c`,
+  `local_arg_call.c`, and the earlier one-arg through eight-arg indirect-call
+  plus `ptr`-shaped and `two_arg_*` direct-call sentinels stayed green beside
+  them
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the two new riscv64 route tests passed, the broad `^backend_` subset stayed
+  flat at `225` failing tests before and after, the total backend test surface
+  increased from `361` to `363`, and supervisor-side regression guard passed
+  with `passed=136 -> 138`, `failed=225 -> 225`, and `0` new failing tests
+  this keeps backlog item 5 moving on an honest shared integer-class
+  indirect-call lane by proving adjacent multi-`ptr` arg support without
+  introducing route-specific shortcuts
 - completed:
   the first honest non-leading ptr-arg indirect-call family now stays on the
   same shared semantic-BIR/prepared-BIR riscv64 route surface as the earlier
