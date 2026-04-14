@@ -49,7 +49,7 @@ Source Plan: plan.md
   falling back to target-shaped handling
 - Proof:
   `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-  passed; proof log at `test_after.log`
+  passed; accepted baseline now rolled forward to `test_before.log`
 
 ## Suggested Next
 
