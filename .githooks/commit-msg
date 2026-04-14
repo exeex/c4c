@@ -16,23 +16,57 @@ case "$subject" in
     ;;
 esac
 
-required_tags="$("$tag_script")"
-if [[ -z "$required_tags" ]]; then
+required_tag="$("$tag_script")"
+if [[ -z "$required_tag" ]]; then
   exit 0
 fi
 
-missing=()
-for tag in $required_tags; do
-  if [[ "$subject" != *"$tag"* ]]; then
-    missing+=("$tag")
+if [[ "$subject" == *"$required_tag"* ]]; then
+  exit 0
+fi
+
+compact_components="${required_tag#[}"
+compact_components="${compact_components%]}"
+IFS='+' read -r -a components <<< "$compact_components"
+
+missing_legacy=()
+for component in "${components[@]}"; do
+  case "$component" in
+    plan)
+      legacy_tag="[plan_change]"
+      ;;
+    todo|todo_only)
+      legacy_tag="[todo_change]"
+      ;;
+    idea)
+      legacy_tag="[idea_open_change]"
+      ;;
+    *)
+      legacy_tag="[$component]"
+      ;;
+  esac
+
+  if [[ "$subject" != *"$legacy_tag"* ]]; then
+    missing_legacy+=("$legacy_tag")
   fi
 done
 
-if [[ "${#missing[@]}" -eq 0 ]]; then
+if [[ "${#missing_legacy[@]}" -eq 0 ]]; then
   exit 0
 fi
 
-printf 'commit message subject is missing required lifecycle tags: %s\n' "${missing[*]}" >&2
+legacy_compact_tags=()
+if [[ "$required_tag" == *"todo_only"* ]]; then
+  legacy_compact_tags+=("${required_tag/todo_only/todo}")
+fi
+for legacy_compact_tag in "${legacy_compact_tags[@]}"; do
+  if [[ -n "$legacy_compact_tag" && "$subject" == *"$legacy_compact_tag"* ]]; then
+    exit 0
+  fi
+done
+
+printf 'commit message subject is missing required lifecycle tag: %s\n' "$required_tag" >&2
+printf 'legacy compatibility tags also accepted: %s\n' "${missing_legacy[*]}" >&2
 printf 'staged lifecycle files require subject tags produced by %s\n' "$tag_script" >&2
 printf 'current subject: %s\n' "$subject" >&2
 exit 1
