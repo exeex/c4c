@@ -553,6 +553,17 @@ Primary target:
 
 Concrete actions:
 
+- treat all three current prepare lanes as skeletons/scaffolds, not settled
+  local designs
+- shape `src/backend/prepare/stack_layout.cpp` against
+  `ref/claudes-c-compiler/src/backend/stack_layout/`, especially
+  `mod.rs`, `analysis.rs`, `slot_assignment.rs`, and `README.md`
+- shape `src/backend/prepare/liveness.cpp` against
+  `ref/claudes-c-compiler/src/backend/liveness.rs`
+- shape `src/backend/prepare/regalloc.cpp` against
+  `ref/claudes-c-compiler/src/backend/regalloc.rs`, using
+  `ref/claudes-c-compiler/src/backend/stack_layout/regalloc_helpers.rs` as the
+  nearby reference for shared stack-layout/regalloc interaction points
 - define stack objects and frame layout inputs
 - add liveness data collection
 - add initial register-allocation plumbing over prepared BIR
