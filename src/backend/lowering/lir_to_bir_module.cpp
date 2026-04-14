@@ -35,143 +35,47 @@ using lir_to_bir_detail::split_top_level_initializer_items;
 using lir_to_bir_detail::type_size_bytes;
 using lir_to_bir_detail::TypeDeclMap;
 using lir_to_bir_detail::ValueMap;
-
-using LocalSlotTypes = std::unordered_map<std::string, bir::TypeKind>;
-using LocalPointerSlots = std::unordered_map<std::string, std::string>;
-
-struct GlobalPointerSlotKey {
-  std::string global_name;
-  std::size_t byte_offset = 0;
-
-  bool operator==(const GlobalPointerSlotKey& other) const {
-    return global_name == other.global_name && byte_offset == other.byte_offset;
-  }
-};
-
-struct GlobalPointerSlotKeyHash {
-  std::size_t operator()(const GlobalPointerSlotKey& key) const {
-    return std::hash<std::string>{}(key.global_name) ^
-           (std::hash<std::size_t>{}(key.byte_offset) << 1);
-  }
-};
-
-using GlobalPointerMap = std::unordered_map<std::string, GlobalAddress>;
-using GlobalObjectPointerMap = std::unordered_map<std::string, GlobalAddress>;
-using GlobalAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
-using GlobalObjectAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
-using LocalAddressSlots = std::unordered_map<std::string, GlobalAddress>;
-using GlobalAddressSlots = std::unordered_map<std::string, std::optional<GlobalAddress>>;
-using AddressedGlobalPointerSlots =
-    std::unordered_map<GlobalPointerSlotKey,
-                       std::optional<GlobalAddress>,
-                       GlobalPointerSlotKeyHash>;
-
-struct LocalArraySlots {
-  bir::TypeKind element_type = bir::TypeKind::Void;
-  std::vector<std::string> element_slots;
-};
-
-using LocalArraySlotMap = std::unordered_map<std::string, LocalArraySlots>;
-
-struct DynamicLocalPointerArrayAccess {
-  std::vector<std::string> element_slots;
-  bir::Value index;
-};
-
-using DynamicLocalPointerArrayMap =
-    std::unordered_map<std::string, DynamicLocalPointerArrayAccess>;
-
-struct DynamicLocalAggregateArrayAccess {
-  std::string element_type_text;
-  std::size_t byte_offset = 0;
-  std::size_t element_count = 0;
-  std::size_t element_stride_bytes = 0;
-  std::unordered_map<std::size_t, std::string> leaf_slots;
-  bir::Value index;
-};
-
-using DynamicLocalAggregateArrayMap =
-    std::unordered_map<std::string, DynamicLocalAggregateArrayAccess>;
-
-struct LocalPointerArrayBase {
-  std::vector<std::string> element_slots;
-  std::size_t base_index = 0;
-};
-
-using LocalPointerArrayBaseMap = std::unordered_map<std::string, LocalPointerArrayBase>;
-
-struct DynamicGlobalPointerArrayAccess {
-  std::string global_name;
-  std::size_t byte_offset = 0;
-  std::size_t element_count = 0;
-  std::size_t element_stride_bytes = 0;
-  bir::Value index;
-};
-
-using DynamicGlobalPointerArrayMap =
-    std::unordered_map<std::string, DynamicGlobalPointerArrayAccess>;
-
-struct DynamicGlobalAggregateArrayAccess {
-  std::string global_name;
-  std::string element_type_text;
-  std::size_t byte_offset = 0;
-  std::size_t element_count = 0;
-  std::size_t element_stride_bytes = 0;
-  bir::Value index;
-};
-
-using DynamicGlobalAggregateArrayMap =
-    std::unordered_map<std::string, DynamicGlobalAggregateArrayAccess>;
-
-struct LocalAggregateSlots {
-  std::string storage_type_text;
-  std::string type_text;
-  std::size_t base_byte_offset = 0;
-  std::unordered_map<std::size_t, std::string> leaf_slots;
-};
-
-using LocalAggregateSlotMap = std::unordered_map<std::string, LocalAggregateSlots>;
-using LocalAggregateFieldSet = std::unordered_set<std::string>;
-using LocalPointerValueAliasMap = std::unordered_map<std::string, bir::Value>;
-
-struct CompareExpr {
-  bir::BinaryOpcode opcode = bir::BinaryOpcode::Eq;
-  bir::TypeKind operand_type = bir::TypeKind::Void;
-  bir::Value lhs;
-  bir::Value rhs;
-};
-
-using CompareMap = std::unordered_map<std::string, CompareExpr>;
-using BlockLookup = std::unordered_map<std::string, const c4c::codegen::lir::LirBlock*>;
-using AggregateValueAliasMap = std::unordered_map<std::string, std::string>;
-
-struct BranchChain {
-  std::vector<std::string> labels;
-  std::string leaf_label;
-  std::string join_label;
-};
-
-struct PhiLoweringPlan {
-  std::string result_name;
-  bir::TypeKind type = bir::TypeKind::Void;
-  std::vector<std::pair<std::string, c4c::codegen::lir::LirOperand>> incomings;
-};
-
-using PhiBlockPlanMap = std::unordered_map<std::string, std::vector<PhiLoweringPlan>>;
-
-struct AggregateParamInfo {
-  std::string type_text;
-  AggregateTypeLayout layout;
-};
-
-using AggregateParamMap = std::unordered_map<std::string, AggregateParamInfo>;
-
-struct LoweredReturnInfo {
-  bir::TypeKind type = bir::TypeKind::Void;
-  std::size_t size_bytes = 0;
-  std::size_t align_bytes = 0;
-  bool returned_via_sret = false;
-};
+using lir_to_bir_detail::AddressedGlobalPointerSlots;
+using lir_to_bir_detail::AggregateParamInfo;
+using lir_to_bir_detail::AggregateParamMap;
+using lir_to_bir_detail::AggregateValueAliasMap;
+using lir_to_bir_detail::BlockLookup;
+using lir_to_bir_detail::BranchChain;
+using lir_to_bir_detail::collect_phi_lowering_plans;
+using lir_to_bir_detail::CompareExpr;
+using lir_to_bir_detail::CompareMap;
+using lir_to_bir_detail::DynamicGlobalAggregateArrayAccess;
+using lir_to_bir_detail::DynamicGlobalAggregateArrayMap;
+using lir_to_bir_detail::DynamicGlobalPointerArrayAccess;
+using lir_to_bir_detail::DynamicGlobalPointerArrayMap;
+using lir_to_bir_detail::DynamicLocalAggregateArrayAccess;
+using lir_to_bir_detail::DynamicLocalAggregateArrayMap;
+using lir_to_bir_detail::DynamicLocalPointerArrayAccess;
+using lir_to_bir_detail::DynamicLocalPointerArrayMap;
+using lir_to_bir_detail::follow_canonical_select_chain;
+using lir_to_bir_detail::follow_empty_branch_chain;
+using lir_to_bir_detail::GlobalAddressIntMap;
+using lir_to_bir_detail::GlobalAddressSlots;
+using lir_to_bir_detail::GlobalObjectAddressIntMap;
+using lir_to_bir_detail::GlobalObjectPointerMap;
+using lir_to_bir_detail::GlobalPointerMap;
+using lir_to_bir_detail::GlobalPointerSlotKey;
+using lir_to_bir_detail::GlobalPointerSlotKeyHash;
+using lir_to_bir_detail::LocalAddressSlots;
+using lir_to_bir_detail::LocalAggregateFieldSet;
+using lir_to_bir_detail::LocalAggregateSlotMap;
+using lir_to_bir_detail::LocalAggregateSlots;
+using lir_to_bir_detail::LocalArraySlotMap;
+using lir_to_bir_detail::LocalArraySlots;
+using lir_to_bir_detail::LocalPointerArrayBase;
+using lir_to_bir_detail::LocalPointerArrayBaseMap;
+using lir_to_bir_detail::LocalPointerSlots;
+using lir_to_bir_detail::LocalPointerValueAliasMap;
+using lir_to_bir_detail::LocalSlotTypes;
+using lir_to_bir_detail::LoweredReturnInfo;
+using lir_to_bir_detail::make_block_lookup;
+using lir_to_bir_detail::PhiBlockPlanMap;
+using lir_to_bir_detail::PhiLoweringPlan;
 
 std::optional<AggregateTypeLayout> lower_byval_aggregate_layout(std::string_view text,
                                                                 const TypeDeclMap& type_decls);
@@ -614,9 +518,10 @@ std::optional<bir::BinaryOpcode> lower_cmp_predicate(
   }
 }
 
-std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& operand,
-                                      bir::TypeKind expected_type,
-                                      const ValueMap& value_aliases) {
+std::optional<bir::Value> lower_value(
+    const c4c::codegen::lir::LirOperand& operand,
+    bir::TypeKind expected_type,
+    const ValueMap& value_aliases) {
   if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
     const auto alias = value_aliases.find(operand.str());
     if (alias != value_aliases.end()) {
@@ -3702,107 +3607,6 @@ bool canonicalize_compare_return_alias(const c4c::codegen::lir::LirOperand& ret_
   return false;
 }
 
-BlockLookup make_block_lookup(const c4c::codegen::lir::LirFunction& function) {
-  BlockLookup blocks;
-  for (const auto& block : function.blocks) {
-    blocks.emplace(block.label, &block);
-  }
-  return blocks;
-}
-
-std::optional<BranchChain> follow_empty_branch_chain(const BlockLookup& blocks,
-                                                     const std::string& start_label) {
-  std::unordered_set<std::string> seen;
-  const auto* current = [&]() -> const c4c::codegen::lir::LirBlock* {
-    const auto it = blocks.find(start_label);
-    return it == blocks.end() ? nullptr : it->second;
-  }();
-  if (current == nullptr) {
-    return std::nullopt;
-  }
-
-  BranchChain chain;
-  while (current != nullptr) {
-    if (!seen.emplace(current->label).second || !current->insts.empty()) {
-      return std::nullopt;
-    }
-
-    const auto* br = std::get_if<c4c::codegen::lir::LirBr>(&current->terminator);
-    if (br == nullptr) {
-      return std::nullopt;
-    }
-
-    chain.labels.push_back(current->label);
-    const auto next_it = blocks.find(br->target_label);
-    if (next_it == blocks.end()) {
-      return std::nullopt;
-    }
-
-    const auto* next = next_it->second;
-    if (!next->insts.empty() ||
-        !std::holds_alternative<c4c::codegen::lir::LirBr>(next->terminator)) {
-      chain.leaf_label = current->label;
-      chain.join_label = br->target_label;
-      return chain;
-    }
-
-    current = next;
-  }
-
-  return std::nullopt;
-}
-
-std::optional<BranchChain> follow_canonical_select_chain(const BlockLookup& blocks,
-                                                         const std::string& start_label) {
-  std::unordered_set<std::string> seen;
-  const auto* current = [&]() -> const c4c::codegen::lir::LirBlock* {
-    const auto it = blocks.find(start_label);
-    return it == blocks.end() ? nullptr : it->second;
-  }();
-  if (current == nullptr) {
-    return std::nullopt;
-  }
-
-  BranchChain chain;
-  bool saw_non_empty = false;
-  while (current != nullptr) {
-    if (!seen.emplace(current->label).second) {
-      return std::nullopt;
-    }
-    if (!current->insts.empty()) {
-      if (saw_non_empty) {
-        return std::nullopt;
-      }
-      saw_non_empty = true;
-    }
-
-    const auto* br = std::get_if<c4c::codegen::lir::LirBr>(&current->terminator);
-    if (br == nullptr) {
-      return std::nullopt;
-    }
-
-    chain.labels.push_back(current->label);
-    const auto next_it = blocks.find(br->target_label);
-    if (next_it == blocks.end()) {
-      return std::nullopt;
-    }
-
-    const auto* next = next_it->second;
-    const bool next_continues_chain = std::holds_alternative<c4c::codegen::lir::LirBr>(
-                                          next->terminator) &&
-                                      (next->insts.empty() || !saw_non_empty);
-    if (!next_continues_chain) {
-      chain.leaf_label = current->label;
-      chain.join_label = br->target_label;
-      return chain;
-    }
-
-    current = next;
-  }
-
-  return std::nullopt;
-}
-
 std::optional<bir::Value> lower_select_chain_value(const BlockLookup& blocks,
                                                    const BranchChain& chain,
                                                    const c4c::codegen::lir::LirOperand& incoming,
@@ -3835,49 +3639,6 @@ std::optional<bir::Value> lower_select_chain_value(const BlockLookup& blocks,
   }
 
   return lower_value(incoming, expected_type, chain_aliases);
-}
-
-std::optional<PhiBlockPlanMap> collect_phi_lowering_plans(
-    const c4c::codegen::lir::LirFunction& function) {
-  PhiBlockPlanMap plans;
-
-  for (const auto& block : function.blocks) {
-    std::vector<PhiLoweringPlan> block_plans;
-    bool saw_non_phi = false;
-    for (const auto& inst : block.insts) {
-      const auto* phi = std::get_if<c4c::codegen::lir::LirPhiOp>(&inst);
-      if (phi == nullptr) {
-        saw_non_phi = true;
-        continue;
-      }
-      if (saw_non_phi || phi->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-        return std::nullopt;
-      }
-
-      const auto phi_type = lower_integer_type(phi->type_str.str());
-      if (!phi_type.has_value()) {
-        return std::nullopt;
-      }
-
-      PhiLoweringPlan plan{
-          .result_name = phi->result.str(),
-          .type = *phi_type,
-      };
-      for (const auto& [value, label] : phi->incoming) {
-        plan.incomings.push_back({label, c4c::codegen::lir::LirOperand(value)});
-      }
-      if (plan.incomings.empty()) {
-        return std::nullopt;
-      }
-      block_plans.push_back(std::move(plan));
-    }
-
-    if (!block_plans.empty()) {
-      plans.emplace(block.label, std::move(block_plans));
-    }
-  }
-
-  return plans;
 }
 
 std::optional<bir::Function> lower_canonical_select_function(

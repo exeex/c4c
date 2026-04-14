@@ -167,6 +167,18 @@ Source Plan: plan.md
 - 2026-04-14 temporary proof result:
   the delegated proof command passes `12 / 12` `^backend_` tests after the
   refactor, and the proof log is `test_after.log`
+- 2026-04-14 temporary executor packet extension:
+  split the `phi/select/cfg` lowering lane out of
+  `src/backend/lowering/lir_to_bir_module.cpp` as its own functional slice
+  without changing the active backend capability packet
+- 2026-04-14 temporary executor packet result:
+  `src/backend/lowering/lir_to_bir_cfg.cpp` now owns block-lookup,
+  canonical-select-chain, phi-plan collection, and canonical-select lowering;
+  `src/backend/lowering/lir_to_bir_module.cpp` keeps the branch-family/module
+  flow and non-cfg lowering helpers
+- 2026-04-14 temporary proof result:
+  the same delegated backend proof command passes after the cfg split, and
+  the proof log is `test_after.log`
 
 ## Parked Backlog Item 1 Baseline
 
