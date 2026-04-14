@@ -2992,7 +2992,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       const std::string src_operand(typed_call.args[1].operand);
       struct LocalMemcpyArrayView {
         bir::TypeKind element_type = bir::TypeKind::Void;
-        const std::vector<std::string>* element_slots = nullptr;
+        std::vector<std::string> element_slots;
         std::size_t base_index = 0;
       };
       struct LocalMemcpyLeaf {
@@ -3020,24 +3020,87 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
             array_it != local_array_slots.end()) {
           return LocalMemcpyArrayView{
               .element_type = array_it->second.element_type,
-              .element_slots = &array_it->second.element_slots,
+              .element_slots = array_it->second.element_slots,
               .base_index = 0,
           };
         }
         const auto array_base_it = local_pointer_array_bases.find(std::string(operand));
-        if (array_base_it == local_pointer_array_bases.end() ||
-            array_base_it->second.base_index >= array_base_it->second.element_slots.size()) {
+        if (array_base_it != local_pointer_array_bases.end() &&
+            array_base_it->second.base_index < array_base_it->second.element_slots.size()) {
+          const auto slot_type_it =
+              local_slot_types.find(array_base_it->second.element_slots[array_base_it->second.base_index]);
+          if (slot_type_it != local_slot_types.end()) {
+            return LocalMemcpyArrayView{
+                .element_type = slot_type_it->second,
+                .element_slots = array_base_it->second.element_slots,
+                .base_index = array_base_it->second.base_index,
+            };
+          }
+        }
+
+        const auto ptr_slot_it = local_pointer_slots.find(std::string(operand));
+        if (ptr_slot_it == local_pointer_slots.end()) {
           return std::nullopt;
         }
-        const auto slot_type_it =
-            local_slot_types.find(array_base_it->second.element_slots[array_base_it->second.base_index]);
+        const auto dot = ptr_slot_it->second.rfind('.');
+        if (dot == std::string::npos) {
+          return std::nullopt;
+        }
+
+        const auto slot_type_it = local_slot_types.find(ptr_slot_it->second);
         if (slot_type_it == local_slot_types.end()) {
           return std::nullopt;
         }
+
+        const std::string base_name = ptr_slot_it->second.substr(0, dot);
+        const auto base_offset = parse_i64(std::string_view(ptr_slot_it->second).substr(dot + 1));
+        if (!base_offset.has_value() || *base_offset < 0) {
+          return std::nullopt;
+        }
+
+        if (const auto base_array_it = local_array_slots.find(base_name);
+            base_array_it != local_array_slots.end()) {
+          const auto base_index = static_cast<std::size_t>(*base_offset);
+          if (base_index >= base_array_it->second.element_slots.size() ||
+              base_array_it->second.element_type != slot_type_it->second) {
+            return std::nullopt;
+          }
+          return LocalMemcpyArrayView{
+              .element_type = slot_type_it->second,
+              .element_slots = base_array_it->second.element_slots,
+              .base_index = base_index,
+          };
+        }
+
+        const auto base_aggregate_it = local_aggregate_slots.find(base_name);
+        if (base_aggregate_it == local_aggregate_slots.end()) {
+          return std::nullopt;
+        }
+
+        const auto extent = find_repeated_aggregate_extent_at_offset(
+            base_aggregate_it->second.storage_type_text,
+            static_cast<std::size_t>(*base_offset),
+            render_type(slot_type_it->second),
+            type_decls);
+        if (!extent.has_value()) {
+          return std::nullopt;
+        }
+
+        std::vector<std::string> element_slots;
+        element_slots.reserve(extent->element_count);
+        for (std::size_t element_index = 0; element_index < extent->element_count; ++element_index) {
+          const auto leaf_it = base_aggregate_it->second.leaf_slots.find(
+              static_cast<std::size_t>(*base_offset) + element_index * extent->element_stride_bytes);
+          if (leaf_it == base_aggregate_it->second.leaf_slots.end()) {
+            return std::nullopt;
+          }
+          element_slots.push_back(leaf_it->second);
+        }
+
         return LocalMemcpyArrayView{
             .element_type = slot_type_it->second,
-            .element_slots = &array_base_it->second.element_slots,
-            .base_index = array_base_it->second.base_index,
+            .element_slots = std::move(element_slots),
+            .base_index = 0,
         };
       };
       const auto resolve_local_memcpy_leaf_view =
@@ -3069,8 +3132,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         }
 
         const auto array_view = resolve_local_memcpy_array_view(operand);
-        if (!array_view.has_value() || array_view->element_slots == nullptr ||
-            array_view->base_index > array_view->element_slots->size()) {
+        if (!array_view.has_value() || array_view->base_index > array_view->element_slots.size()) {
           return std::nullopt;
         }
 
@@ -3079,13 +3141,13 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           return std::nullopt;
         }
 
-        const auto count = array_view->element_slots->size() - array_view->base_index;
+        const auto count = array_view->element_slots.size() - array_view->base_index;
         LocalMemcpyLeafView view{
             .size_bytes = count * element_size,
         };
         view.leaves.reserve(count);
         for (std::size_t index = 0; index < count; ++index) {
-          const auto& slot_name = (*array_view->element_slots)[array_view->base_index + index];
+          const auto& slot_name = array_view->element_slots[array_view->base_index + index];
           const auto slot_type_it = local_slot_types.find(slot_name);
           if (slot_type_it == local_slot_types.end() || slot_type_it->second != array_view->element_type) {
             return std::nullopt;
