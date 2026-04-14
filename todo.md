@@ -39,9 +39,15 @@ Source Plan: plan.md
 - current capability family:
   backlog item 2, harden params and function signatures
 - current packet focus:
-  `src/backend/lowering/lir_to_bir_module.cpp` on simple by-value aggregate
-  returns, hidden sret-style call/result materialization, and aggregate-result
-  copies through the existing local leaf-slot model
+  `src/backend/lowering/lir_to_bir_module.cpp` on combined simple by-value
+  aggregate params plus hidden sret-style aggregate returns, including direct
+  param-to-return and call-through materialization through the existing local
+  leaf-slot model
+- 2026-04-14 executor packet extension:
+  combined aggregate signature lowering now materializes byval aggregate
+  params into entry local aggregate aliases so direct param-to-return and
+  call-through aggregate routes lower through semantic BIR instead of falling
+  back to raw LLVM aggregate signatures
 - 2026-04-14 executor packet result:
   `src/backend/lowering/lir_to_bir_module.cpp` now lowers simple aggregate
   returns through semantic BIR as explicit hidden `ptr sret(size, align)`
@@ -72,6 +78,16 @@ Source Plan: plan.md
   signature slice, while
   `backend_codegen_route_x86_64_param_slot_observes_prepared_bir` remains the
   earlier scalar signature sentinel
+- active proof extension:
+  add `backend_codegen_route_x86_64_aggregate_param_return_pair_observe_semantic_bir`
+  as the first combined byval-param plus sret-return sentinel so the active
+  packet proves more than separate one-sided aggregate signature moves
+- 2026-04-14 proof result:
+  the exact backend proof command now passes `6 / 6` backend tests, including
+  the new combined aggregate signature sentinel; semantic BIR for
+  `aggregate_param_return_pair.c` shows `id_pair` lowering as
+  `ptr sret(...)` plus `ptr byval(...)` instead of a raw `%struct.Pair`
+  signature and call
 - regression sentinels:
   keep the `two_arg_*` helper family as runtime and route sentinels, not as
   the primary proof source for this lane

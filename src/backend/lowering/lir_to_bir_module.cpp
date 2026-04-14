@@ -190,7 +190,12 @@ struct AggregateTypeLayout {
   std::vector<AggregateField> fields;
 };
 
-using AggregateParamMap = std::unordered_map<std::string, AggregateTypeLayout>;
+struct AggregateParamInfo {
+  std::string type_text;
+  AggregateTypeLayout layout;
+};
+
+using AggregateParamMap = std::unordered_map<std::string, AggregateParamInfo>;
 
 struct LoweredReturnInfo {
   bir::TypeKind type = bir::TypeKind::Void;
@@ -932,6 +937,17 @@ std::vector<std::pair<std::size_t, std::string>> collect_sorted_leaf_slots(
   return leaves;
 }
 
+std::string aggregate_param_slot_base(std::string_view param_name) {
+  std::string sanitized(param_name);
+  if (!sanitized.empty() && sanitized.front() == '%') {
+    sanitized.erase(sanitized.begin());
+  }
+  if (sanitized.empty()) {
+    sanitized = "arg";
+  }
+  return "%lv.param." + sanitized;
+}
+
 AggregateParamMap collect_aggregate_params(const c4c::codegen::lir::LirFunction& function,
                                            const TypeDeclMap& type_decls) {
   AggregateParamMap aggregate_params;
@@ -964,7 +980,13 @@ AggregateParamMap collect_aggregate_params(const c4c::codegen::lir::LirFunction&
     if (name.empty()) {
       return {};
     }
-    aggregate_params.emplace(std::move(name), *layout);
+    aggregate_params.emplace(std::move(name),
+                             AggregateParamInfo{
+                                 .type_text =
+                                     std::string(c4c::codegen::lir::trim_lir_arg_text(
+                                         parsed_param.type)),
+                                 .layout = *layout,
+                             });
   }
   return aggregate_params;
 }
@@ -2473,6 +2495,69 @@ bool append_local_aggregate_copy_to_pointer(const LocalAggregateSlots& source_sl
   return true;
 }
 
+bool materialize_aggregate_param_aliases(const AggregateParamMap& aggregate_params,
+                                         const TypeDeclMap& type_decls,
+                                         LocalSlotTypes& local_slot_types,
+                                         LocalPointerSlots& local_pointer_slots,
+                                         LocalAggregateFieldSet& local_aggregate_field_slots,
+                                         AggregateValueAliasMap& aggregate_value_aliases,
+                                         bir::Function* lowered_function,
+                                         LocalAggregateSlotMap& local_aggregate_slots,
+                                         std::vector<bir::Inst>* lowered_insts) {
+  for (const auto& [param_name, info] : aggregate_params) {
+    const auto slot_base = aggregate_param_slot_base(param_name);
+    if (!declare_local_aggregate_slots(info.type_text,
+                                       slot_base,
+                                       info.layout.align_bytes,
+                                       type_decls,
+                                       local_slot_types,
+                                       local_pointer_slots,
+                                       local_aggregate_field_slots,
+                                       lowered_function,
+                                       local_aggregate_slots)) {
+      return false;
+    }
+
+    const auto aggregate_it = local_aggregate_slots.find(slot_base);
+    if (aggregate_it == local_aggregate_slots.end()) {
+      return false;
+    }
+
+    aggregate_value_aliases[param_name] = slot_base;
+
+    const auto leaves = collect_sorted_leaf_slots(aggregate_it->second);
+    for (const auto& [byte_offset, slot_name] : leaves) {
+      const auto slot_type_it = local_slot_types.find(slot_name);
+      if (slot_type_it == local_slot_types.end()) {
+        return false;
+      }
+      const auto slot_size = type_size_bytes(slot_type_it->second);
+      if (slot_size == 0) {
+        return false;
+      }
+      const std::string temp_name =
+          slot_base + ".aggregate.param.copy." + std::to_string(byte_offset);
+      lowered_insts->push_back(bir::LoadLocalInst{
+          .result = bir::Value::named(slot_type_it->second, temp_name),
+          .slot_name = slot_name,
+          .address =
+              bir::MemoryAddress{
+                  .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                  .base_value = bir::Value::named(bir::TypeKind::Ptr, param_name),
+                  .byte_offset = static_cast<std::int64_t>(byte_offset),
+                  .size_bytes = slot_size,
+                  .align_bytes = std::max(slot_size, info.layout.align_bytes),
+              },
+      });
+      lowered_insts->push_back(bir::StoreLocalInst{
+          .slot_name = slot_name,
+          .value = bir::Value::named(slot_type_it->second, temp_name),
+      });
+    }
+  }
+  return true;
+}
+
 std::optional<std::string> resolve_local_aggregate_gep_slot(
     std::string_view base_type_text,
     const c4c::codegen::lir::LirGepOp& gep,
@@ -3282,6 +3367,7 @@ bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
                            const std::optional<LoweredReturnInfo>& return_info,
                            const TypeDeclMap& type_decls,
                            bir::Function* lowered) {
+  const auto initial_param_count = lowered->params.size();
   if (return_info.has_value() && return_info->returned_via_sret) {
     lowered->params.push_back(bir::Param{
         .type = bir::TypeKind::Ptr,
@@ -3289,20 +3375,26 @@ bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
         .size_bytes = return_info->size_bytes,
         .align_bytes = return_info->align_bytes,
         .is_sret = true,
-    });
-  }
-
-  if (function.params.size() == 1 && is_void_param_sentinel(function.params.front().second)) {
-    return true;
+      });
   }
 
   const auto parsed_params = parse_backend_function_signature_params(function.signature_text);
-  if (parsed_params.has_value() && !function.params.empty() &&
+  const bool has_void_param_sentinel =
+      function.params.size() == 1 && is_void_param_sentinel(function.params.front().second);
+  if (has_void_param_sentinel &&
+      (!parsed_params.has_value() ||
+       (parsed_params->size() == 1 && !parsed_params->front().is_varargs &&
+        c4c::codegen::lir::trim_lir_arg_text(parsed_params->front().type) == "void"))) {
+    return true;
+  }
+
+  if (parsed_params.has_value() && !function.params.empty() && !has_void_param_sentinel &&
       parsed_params->size() != function.params.size()) {
     return false;
   }
 
-  for (std::size_t index = 0; index < function.params.size(); ++index) {
+  for (std::size_t index = 0; index < function.params.size() && !has_void_param_sentinel;
+       ++index) {
     const auto& param = function.params[index];
     const auto lowered_type = lower_param_type(param.second);
     if (!lowered_type.has_value()) {
@@ -3328,7 +3420,14 @@ bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
     });
   }
 
-  if (!lowered->params.empty()) {
+  if (lowered->params.size() > initial_param_count + (return_info.has_value() &&
+                                                      return_info->returned_via_sret
+                                                  ? 1u
+                                                  : 0u)) {
+    return true;
+  }
+
+  if (!has_void_param_sentinel && !function.params.empty()) {
     return true;
   }
 
@@ -4083,7 +4182,7 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
                       .base_value = bir::Value::named(bir::TypeKind::Ptr, store->val.str()),
                       .byte_offset = static_cast<std::int64_t>(byte_offset),
                       .size_bytes = slot_size,
-                      .align_bytes = std::max(slot_size, source_param_it->second.align_bytes),
+                      .align_bytes = std::max(slot_size, source_param_it->second.layout.align_bytes),
                   },
           });
           lowered_insts->push_back(bir::StoreLocalInst{
@@ -5132,6 +5231,18 @@ std::optional<bir::Function> lower_branch_family_function(
   GlobalAddressIntMap global_address_ints;
   GlobalObjectAddressIntMap global_object_address_ints;
   std::vector<bir::Inst> hoisted_alloca_scratch;
+
+  if (!materialize_aggregate_param_aliases(aggregate_params,
+                                           type_decls,
+                                           local_slot_types,
+                                           local_pointer_slots,
+                                           local_aggregate_field_slots,
+                                           aggregate_value_aliases,
+                                           &lowered,
+                                           local_aggregate_slots,
+                                           &hoisted_alloca_scratch)) {
+    return std::nullopt;
+  }
 
   for (const auto& inst : function.alloca_insts) {
     if (!lower_scalar_or_local_memory_inst(
