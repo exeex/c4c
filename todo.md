@@ -36,7 +36,9 @@ Source Plan: plan.md
   well; addressed global struct-owned function-pointer arrays now join that
   same aggregate-backed route too, so follow-on backlog item 5 work should
   continue broadening callee provenance or signature semantics rather than
-  returning to "next wider indirect-call signature" proofs
+  returning to "next wider indirect-call signature" proofs; the addressed
+  global array-of-struct field ptr-return variant now joins that same shared
+  route as an explicit proof surface too
 - candidate proving surface:
   the next honest proving surface should keep forcing semantic handling of
   callee identity rather than one more width proof: prefer internal
@@ -88,6 +90,37 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  the addressed-global aggregate-backed ptr-return callee family is now
+  explicitly proved on the same semantic BIR lane as the earlier addressed
+  global unary and local aggregate-backed ptr-return routes:
+  a global array of structs whose function-pointer field has the already
+  landed `ptr, i32 -> ptr` signature now lowers
+  `holders[which].slot(p, x)` as semantic BIR on the riscv64 backend-route
+  surface with `bir.select` over the known function symbols before
+  `bir.call`
+  new route proof covers
+  `indirect_global_array_struct_field_ptr_return_callee_call.c` as BIR, while
+  `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, the
+  merge-preserved callee route proof, the addressed-global and
+  local-aggregate callee route proofs, and the standing one-arg through
+  twenty-five-arg indirect-call plus `two_arg_*` direct-call sentinels stayed
+  in the owned proof surface
+  what remains next:
+  move to the next semantically new callee-provenance or signature family
+  beyond this addressed-global ptr-return proof surface; do not treat adjacent
+  proof-only variants as the packet-selection mechanism
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated build succeeded, the new riscv64 route test passed as
+  test `#274`, and regression guard over the standing `^backend_` subset
+  remained monotonic with the backend route surface increasing from `414` to
+  `415` while the standing failed-test count held at `225`, so this
+  addressed-global ptr-return callee family is now explicitly covered on the
+  shared semantic-BIR lane without a broader regression increase
 - completed:
   the first local aggregate-backed ptr-return callee-provenance family is now
   explicitly proved on the same semantic BIR lane as the earlier integer-only
