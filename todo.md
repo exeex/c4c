@@ -8,16 +8,15 @@ Current Plan Focus: ordered step 3, runtime and intrinsic families through seman
 # Current Packet
 
 ## Just Finished
-- generalized direct local `memcpy` lowering around shared ordered leaf views so matching local aggregate slots and local scalar-array views can copy through the same semantic route
-- proved the widened route with `builtin_memcpy_local_i32_array_to_pair.c` without falling back to raw `memcpy`
+- added backend route coverage for the reverse mixed local `memcpy` shape `struct Pair -> int[2]` and confirmed the existing ordered leaf-view lowering already handles the same-offset reverse direction without falling back to raw `memcpy`
 
 ## Suggested Next
-- stay on plan item 3 and extend the adjacent runtime-memory lane to the next honest mixed local `memcpy` shape, preferably reverse or nested mixed aggregate/array copies that should share the same ordered leaf-view route
+- stay on plan item 3 and extend the adjacent runtime-memory lane to the next honest mixed local `memcpy` shape with differing base offsets, preferably a nested aggregate/array copy such as `&src.inner -> dst[2]` or `src[2] -> &dst.inner`
 
 ## Watchouts
 - keep follow-on work inside shared semantic lowering under `BirFunctionLowerer`; do not reopen `call_decode.cpp`, `prepare`, or target-shaped handling
-- the current mixed local `memcpy` route still assumes matching ordered leaf offsets, scalar types, and exact byte size; padded mismatches and non-local bases remain outside the supported lane
+- the newly covered reverse mixed shape only proves the existing same-offset ordered leaf route; the remaining gap is still offset-mismatched nested copies, plus padded mismatches and non-local bases
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-- latest accepted comparison passed with `before: passed=28 failed=0 total=28` and `after: passed=29 failed=0 total=29`
+- passed with `test_after.log`; backend subset result is `passed=30 failed=0 total=30`
