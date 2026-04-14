@@ -1,8 +1,75 @@
 #include "lir_to_bir.hpp"
 
-#include "call_decode.hpp"
-
 namespace c4c::backend {
+
+namespace {
+
+std::optional<std::string> parse_byval_pointee_type(std::string_view type_text) {
+  constexpr std::string_view kPrefix = "ptr byval(";
+
+  auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type_text);
+  if (trimmed.size() <= kPrefix.size() || trimmed.substr(0, kPrefix.size()) != kPrefix) {
+    return std::nullopt;
+  }
+
+  const auto body = trimmed.substr(kPrefix.size());
+  int paren_depth = 1;
+  int bracket_depth = 0;
+  int brace_depth = 0;
+  int angle_depth = 0;
+  for (std::size_t index = 0; index < body.size(); ++index) {
+    switch (body[index]) {
+      case '(':
+        if (bracket_depth == 0 && brace_depth == 0 && angle_depth == 0) {
+          ++paren_depth;
+        }
+        break;
+      case ')':
+        if (bracket_depth == 0 && brace_depth == 0 && angle_depth == 0) {
+          --paren_depth;
+          if (paren_depth == 0) {
+            const auto pointee =
+                c4c::codegen::lir::trim_lir_arg_text(body.substr(0, index));
+            if (pointee.empty()) {
+              return std::nullopt;
+            }
+            return std::string(pointee);
+          }
+        }
+        break;
+      case '[':
+        ++bracket_depth;
+        break;
+      case ']':
+        if (bracket_depth > 0) {
+          --bracket_depth;
+        }
+        break;
+      case '{':
+        ++brace_depth;
+        break;
+      case '}':
+        if (brace_depth > 0) {
+          --brace_depth;
+        }
+        break;
+      case '<':
+        ++angle_depth;
+        break;
+      case '>':
+        if (angle_depth > 0) {
+          --angle_depth;
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  return std::nullopt;
+}
+
+}  // namespace
 
 using lir_to_bir_detail::lower_integer_type;
 
@@ -14,7 +81,162 @@ std::optional<bir::TypeKind> BirFunctionLowerer::lower_param_type(const c4c::Typ
   if (type.base == TB_BOOL && type.ptr_level == 0 && type.array_rank == 0) {
     return bir::TypeKind::I1;
   }
-  return backend_lir_lower_minimal_scalar_type(type);
+  return lower_minimal_scalar_type(type);
+}
+
+std::optional<bir::TypeKind> BirFunctionLowerer::lower_minimal_scalar_type(const c4c::TypeSpec& type) {
+  if (type.ptr_level != 0 || type.array_rank != 0) {
+    return std::nullopt;
+  }
+  if (type.base == TB_CHAR || type.base == TB_SCHAR || type.base == TB_UCHAR) {
+    return bir::TypeKind::I8;
+  }
+  if (type.base == TB_INT) {
+    return bir::TypeKind::I32;
+  }
+  if (type.base == TB_LONG || type.base == TB_ULONG || type.base == TB_LONGLONG ||
+      type.base == TB_ULONGLONG) {
+    return bir::TypeKind::I64;
+  }
+  return std::nullopt;
+}
+
+std::optional<BirFunctionLowerer::ParsedTypedCall> BirFunctionLowerer::parse_typed_call(
+    const c4c::codegen::lir::LirCallOp& call) {
+  if (const auto parsed = c4c::codegen::lir::parse_lir_typed_call_or_infer_params(call);
+      parsed.has_value()) {
+    ParsedTypedCall view;
+    view.param_types = parsed->param_types;
+    view.args = parsed->args;
+    return view;
+  }
+
+  const auto param_types = c4c::codegen::lir::parse_lir_call_param_types(call.callee_type_suffix);
+  const auto args = c4c::codegen::lir::parse_lir_typed_call_args(call.args_str);
+  if (!param_types.has_value() || !args.has_value() || param_types->size() != args->size()) {
+    return std::nullopt;
+  }
+
+  ParsedTypedCall parsed;
+  parsed.owned_param_types.reserve(param_types->size());
+  parsed.param_types.reserve(param_types->size());
+  parsed.args = *args;
+  for (std::size_t index = 0; index < param_types->size(); ++index) {
+    const auto expected_type = c4c::codegen::lir::trim_lir_arg_text((*param_types)[index]);
+    const auto arg_type = c4c::codegen::lir::trim_lir_arg_text((*args)[index].type);
+    if (expected_type == arg_type) {
+      parsed.owned_param_types.push_back(std::string(expected_type));
+      parsed.param_types.push_back(parsed.owned_param_types.back());
+      continue;
+    }
+    if (expected_type == "ptr") {
+      const auto byval_type = parse_byval_pointee_type(arg_type);
+      if (byval_type.has_value()) {
+        parsed.owned_param_types.push_back(*byval_type);
+        parsed.param_types.push_back(parsed.owned_param_types.back());
+        continue;
+      }
+    }
+    return std::nullopt;
+  }
+
+  return parsed;
+}
+
+std::optional<BirFunctionLowerer::ParsedDirectGlobalTypedCall>
+BirFunctionLowerer::parse_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call) {
+  const auto symbol_name = c4c::codegen::lir::parse_lir_direct_global_callee(call.callee);
+  if (!symbol_name.has_value()) {
+    return std::nullopt;
+  }
+
+  if (const auto parsed = c4c::codegen::lir::parse_lir_direct_global_typed_call(call);
+      parsed.has_value()) {
+    ParsedDirectGlobalTypedCall lowered;
+    lowered.symbol_name = *symbol_name;
+    lowered.typed_call.param_types = parsed->typed_call.param_types;
+    lowered.typed_call.args = parsed->typed_call.args;
+    return lowered;
+  }
+
+  const auto callee_type_suffix = c4c::codegen::lir::trim_lir_arg_text(call.callee_type_suffix);
+  if (callee_type_suffix.empty()) {
+    return std::nullopt;
+  }
+
+  const auto param_types = c4c::codegen::lir::parse_lir_call_param_types(callee_type_suffix);
+  if (!param_types.has_value()) {
+    return std::nullopt;
+  }
+
+  bool saw_varargs = false;
+  std::size_t fixed_param_count = 0;
+  for (auto type : *param_types) {
+    const auto trimmed_type = c4c::codegen::lir::trim_lir_arg_text(type);
+    if (trimmed_type == "...") {
+      saw_varargs = true;
+      break;
+    }
+    ++fixed_param_count;
+  }
+
+  if (!saw_varargs) {
+    return std::nullopt;
+  }
+
+  const auto args = c4c::codegen::lir::parse_lir_typed_call_args(call.args_str);
+  if (!args.has_value() || args->size() < fixed_param_count) {
+    return std::nullopt;
+  }
+
+  ParsedDirectGlobalTypedCall parsed;
+  parsed.symbol_name = *symbol_name;
+  parsed.typed_call.owned_param_types.reserve(fixed_param_count);
+  parsed.typed_call.param_types.reserve(fixed_param_count);
+  parsed.typed_call.args.reserve(fixed_param_count);
+  for (std::size_t index = 0; index < fixed_param_count; ++index) {
+    parsed.typed_call.owned_param_types.push_back(
+        std::string(c4c::codegen::lir::trim_lir_arg_text((*args)[index].type)));
+    parsed.typed_call.param_types.push_back(parsed.typed_call.owned_param_types.back());
+    parsed.typed_call.args.push_back((*args)[index]);
+  }
+  return parsed;
+}
+
+std::optional<std::vector<BirFunctionLowerer::ParsedFunctionSignatureParam>>
+BirFunctionLowerer::parse_function_signature_params(std::string_view signature_text) {
+  const auto paren_open = signature_text.find('(');
+  const auto paren_close = signature_text.rfind(')');
+  if (paren_open == std::string_view::npos || paren_close == std::string_view::npos ||
+      paren_close < paren_open) {
+    return std::nullopt;
+  }
+
+  const auto params_text = signature_text.substr(paren_open + 1, paren_close - paren_open - 1);
+  std::vector<ParsedFunctionSignatureParam> params;
+  bool parse_failed = false;
+  c4c::codegen::lir::for_each_lir_top_level_segment(
+      params_text, ',', [&](std::string_view raw_param) {
+        const auto param = c4c::codegen::lir::trim_lir_arg_text(raw_param);
+        if (param.empty()) {
+          return;
+        }
+        if (param == "...") {
+          params.push_back({"", "...", true});
+          return;
+        }
+
+        const auto parsed = c4c::codegen::lir::parse_lir_typed_call_arg(param);
+        if (!parsed.has_value()) {
+          parse_failed = true;
+          return;
+        }
+        params.push_back({std::string(parsed->type), std::string(parsed->operand), false});
+      });
+  if (parse_failed) {
+    return std::nullopt;
+  }
+  return params;
 }
 
 std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_return_info_from_type(
@@ -120,7 +342,7 @@ bool BirFunctionLowerer::lower_function_params(
     });
   }
 
-  const auto parsed_params = parse_backend_function_signature_params(function.signature_text);
+  const auto parsed_params = parse_function_signature_params(function.signature_text);
   const bool has_void_param_sentinel =
       function.params.size() == 1 && is_void_param_sentinel(function.params.front().second);
   if (has_void_param_sentinel &&

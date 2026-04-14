@@ -1,4 +1,5 @@
 #include "call_decode.hpp"
+#include "lir_to_bir.hpp"
 
 #include <charconv>
 #include <limits>
@@ -47,110 +48,51 @@ bool parse_backend_signature_head(std::string_view signature_text,
   return true;
 }
 
-std::optional<std::string> parse_backend_byval_pointee_type(std::string_view type_text) {
-  constexpr std::string_view kPrefix = "ptr byval(";
-
-  auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type_text);
-  if (trimmed.size() <= kPrefix.size() || trimmed.substr(0, kPrefix.size()) != kPrefix) {
-    return std::nullopt;
+ParsedBackendTypedCallView to_legacy_typed_call(const BirFunctionLowerer::ParsedTypedCall& parsed) {
+  ParsedBackendTypedCallView legacy;
+  legacy.owned_param_types = parsed.owned_param_types;
+  legacy.param_types.reserve(legacy.owned_param_types.size());
+  for (const auto& type : legacy.owned_param_types) {
+    legacy.param_types.push_back(type);
   }
-
-  const auto body = trimmed.substr(kPrefix.size());
-  int paren_depth = 1;
-  int bracket_depth = 0;
-  int brace_depth = 0;
-  int angle_depth = 0;
-  for (std::size_t index = 0; index < body.size(); ++index) {
-    switch (body[index]) {
-      case '(':
-        if (bracket_depth == 0 && brace_depth == 0 && angle_depth == 0) {
-          ++paren_depth;
-        }
-        break;
-      case ')':
-        if (bracket_depth == 0 && brace_depth == 0 && angle_depth == 0) {
-          --paren_depth;
-          if (paren_depth == 0) {
-            const auto pointee =
-                c4c::codegen::lir::trim_lir_arg_text(body.substr(0, index));
-            if (pointee.empty()) {
-              return std::nullopt;
-            }
-            return std::string(pointee);
-          }
-        }
-        break;
-      case '[':
-        ++bracket_depth;
-        break;
-      case ']':
-        if (bracket_depth > 0) {
-          --bracket_depth;
-        }
-        break;
-      case '{':
-        ++brace_depth;
-        break;
-      case '}':
-        if (brace_depth > 0) {
-          --brace_depth;
-        }
-        break;
-      case '<':
-        ++angle_depth;
-        break;
-      case '>':
-        if (angle_depth > 0) {
-          --angle_depth;
-        }
-        break;
-      default:
-        break;
-    }
+  if (legacy.param_types.empty()) {
+    legacy.param_types = parsed.param_types;
   }
+  legacy.args = parsed.args;
+  return legacy;
+}
 
-  return std::nullopt;
+ParsedBackendDirectGlobalTypedCallView to_legacy_direct_global_typed_call(
+    const BirFunctionLowerer::ParsedDirectGlobalTypedCall& parsed) {
+  return ParsedBackendDirectGlobalTypedCallView{
+      .symbol_name = parsed.symbol_name,
+      .typed_call = to_legacy_typed_call(parsed.typed_call),
+  };
+}
+
+std::vector<ParsedBackendFunctionSignatureParam> to_legacy_signature_params(
+    const std::vector<BirFunctionLowerer::ParsedFunctionSignatureParam>& parsed) {
+  std::vector<ParsedBackendFunctionSignatureParam> legacy;
+  legacy.reserve(parsed.size());
+  for (const auto& param : parsed) {
+    legacy.push_back(ParsedBackendFunctionSignatureParam{
+        .type = param.type,
+        .operand = param.operand,
+        .is_varargs = param.is_varargs,
+    });
+  }
+  return legacy;
 }
 
 }  // namespace
 
 std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
     const c4c::codegen::lir::LirCallOp& call) {
-  if (const auto parsed = c4c::codegen::lir::parse_lir_typed_call_or_infer_params(call);
-      parsed.has_value()) {
-    return make_backend_typed_call_view(*parsed);
-  }
-
-  const auto param_types = c4c::codegen::lir::parse_lir_call_param_types(call.callee_type_suffix);
-  const auto args = c4c::codegen::lir::parse_lir_typed_call_args(call.args_str);
-  if (!param_types.has_value() || !args.has_value() || param_types->size() != args->size()) {
+  const auto parsed = BirFunctionLowerer::parse_typed_call(call);
+  if (!parsed.has_value()) {
     return std::nullopt;
   }
-
-  ParsedBackendTypedCallView parsed;
-  parsed.owned_param_types.reserve(param_types->size());
-  parsed.param_types.reserve(param_types->size());
-  parsed.args = *args;
-  for (std::size_t index = 0; index < param_types->size(); ++index) {
-    const auto expected_type = c4c::codegen::lir::trim_lir_arg_text((*param_types)[index]);
-    const auto arg_type = c4c::codegen::lir::trim_lir_arg_text((*args)[index].type);
-    if (expected_type == arg_type) {
-      parsed.owned_param_types.push_back(std::string(expected_type));
-      parsed.param_types.push_back(parsed.owned_param_types.back());
-      continue;
-    }
-    if (expected_type == "ptr") {
-      const auto byval_type = parse_backend_byval_pointee_type(arg_type);
-      if (byval_type.has_value()) {
-        parsed.owned_param_types.push_back(*byval_type);
-        parsed.param_types.push_back(parsed.owned_param_types.back());
-        continue;
-      }
-    }
-    return std::nullopt;
-  }
-
-  return parsed;
+  return to_legacy_typed_call(*parsed);
 }
 
 bool backend_lir_type_uses_nonminimal_types(std::string_view type_text) {
@@ -270,63 +212,11 @@ bool backend_lir_is_zero_arg_i32_definition(std::string_view signature_text) {
 
 std::optional<ParsedBackendDirectGlobalTypedCallView>
 parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call) {
-  using namespace c4c::codegen::lir;
-
-  const auto symbol_name = parse_lir_direct_global_callee(call.callee);
-  if (!symbol_name.has_value()) {
+  const auto parsed = BirFunctionLowerer::parse_direct_global_typed_call(call);
+  if (!parsed.has_value()) {
     return std::nullopt;
   }
-
-  if (const auto parsed = parse_lir_direct_global_typed_call(call);
-      parsed.has_value()) {
-    return ParsedBackendDirectGlobalTypedCallView{
-        *symbol_name,
-        make_backend_typed_call_view(parsed->typed_call),
-    };
-  }
-
-  const auto callee_type_suffix = trim_lir_arg_text(call.callee_type_suffix);
-  if (callee_type_suffix.empty()) {
-    return std::nullopt;
-  }
-
-  const auto param_types = parse_lir_call_param_types(callee_type_suffix);
-  if (!param_types.has_value()) {
-    return std::nullopt;
-  }
-
-  bool saw_varargs = false;
-  std::size_t fixed_param_count = 0;
-  for (auto type : *param_types) {
-    const auto trimmed_type = trim_lir_arg_text(type);
-    if (trimmed_type == "...") {
-      saw_varargs = true;
-      break;
-    }
-    ++fixed_param_count;
-  }
-
-  if (!saw_varargs) {
-    return std::nullopt;
-  }
-
-  const auto args = parse_lir_typed_call_args(call.args_str);
-  if (!args.has_value() || args->size() < fixed_param_count) {
-    return std::nullopt;
-  }
-
-  ParsedBackendDirectGlobalTypedCallView parsed;
-  parsed.symbol_name = *symbol_name;
-  parsed.typed_call.owned_param_types.reserve(fixed_param_count);
-  parsed.typed_call.param_types.reserve(fixed_param_count);
-  parsed.typed_call.args.reserve(fixed_param_count);
-  for (std::size_t index = 0; index < fixed_param_count; ++index) {
-    parsed.typed_call.owned_param_types.push_back(
-        std::string(trim_lir_arg_text((*args)[index].type)));
-    parsed.typed_call.param_types.push_back(parsed.typed_call.owned_param_types.back());
-    parsed.typed_call.args.push_back((*args)[index]);
-  }
-  return parsed;
+  return to_legacy_direct_global_typed_call(*parsed);
 }
 
 std::optional<ParsedBackendExternCallArg> parse_backend_extern_call_arg(
@@ -429,38 +319,11 @@ parse_backend_owned_typed_call_args(
 
 std::optional<std::vector<ParsedBackendFunctionSignatureParam>>
 parse_backend_function_signature_params(std::string_view signature_text) {
-  const auto paren_open = signature_text.find('(');
-  const auto paren_close = signature_text.rfind(')');
-  if (paren_open == std::string_view::npos || paren_close == std::string_view::npos ||
-      paren_close < paren_open) {
+  const auto parsed = BirFunctionLowerer::parse_function_signature_params(signature_text);
+  if (!parsed.has_value()) {
     return std::nullopt;
   }
-
-  const auto params_text = signature_text.substr(paren_open + 1, paren_close - paren_open - 1);
-  std::vector<ParsedBackendFunctionSignatureParam> params;
-  bool parse_failed = false;
-  c4c::codegen::lir::for_each_lir_top_level_segment(
-      params_text, ',', [&](std::string_view raw_param) {
-        const auto param = c4c::codegen::lir::trim_lir_arg_text(raw_param);
-        if (param.empty()) {
-          return;
-        }
-        if (param == "...") {
-          params.push_back({"", "...", true});
-          return;
-        }
-
-        const auto parsed = c4c::codegen::lir::parse_lir_typed_call_arg(param);
-        if (!parsed.has_value()) {
-          parse_failed = true;
-          return;
-        }
-        params.push_back({std::string(parsed->type), std::string(parsed->operand), false});
-      });
-  if (parse_failed) {
-    return std::nullopt;
-  }
-  return params;
+  return to_legacy_signature_params(*parsed);
 }
 
 void collect_backend_call_value_names(const c4c::codegen::lir::LirCallOp& call,

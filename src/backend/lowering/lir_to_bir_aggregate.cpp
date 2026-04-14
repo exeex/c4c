@@ -1,7 +1,5 @@
 #include "lir_to_bir.hpp"
 
-#include "call_decode.hpp"
-
 #include <algorithm>
 
 namespace c4c::backend {
@@ -48,7 +46,7 @@ std::vector<std::pair<std::size_t, std::string>> BirFunctionLowerer::collect_sor
 
 BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_params() const {
   AggregateParamMap aggregate_params;
-  const auto parsed_params = parse_backend_function_signature_params(function_.signature_text);
+  const auto parsed_params = parse_function_signature_params(function_.signature_text);
   if (!parsed_params.has_value()) {
     return aggregate_params;
   }

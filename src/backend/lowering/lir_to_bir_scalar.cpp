@@ -1,7 +1,5 @@
 #include "lir_to_bir.hpp"
 
-#include "call_decode.hpp"
-
 namespace c4c::backend {
 
 using lir_to_bir_detail::lower_integer_type;

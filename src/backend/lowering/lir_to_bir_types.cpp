@@ -1,7 +1,5 @@
 #include "lir_to_bir.hpp"
 
-#include "call_decode.hpp"
-
 #include <algorithm>
 #include <charconv>
 

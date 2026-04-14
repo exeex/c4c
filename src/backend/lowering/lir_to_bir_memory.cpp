@@ -1,7 +1,5 @@
 #include "lir_to_bir.hpp"
 
-#include "call_decode.hpp"
-
 #include <algorithm>
 #include <optional>
 #include <string>
@@ -2295,7 +2293,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       });
     }
 
-    if (const auto parsed_call = parse_backend_direct_global_typed_call(*call);
+    if (const auto parsed_call = parse_direct_global_typed_call(*call);
         parsed_call.has_value()) {
       callee_name = std::string(parsed_call->symbol_name);
       lowered_args.reserve(parsed_call->typed_call.args.size());
@@ -2354,7 +2352,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         lowered_args.push_back(*arg);
         lowered_arg_abi.push_back(bir::CallArgAbiInfo{.type = *arg_type});
       }
-    } else if (const auto parsed_call = parse_backend_typed_call(*call);
+    } else if (const auto parsed_call = parse_typed_call(*call);
                parsed_call.has_value() &&
                call->callee.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
       callee_value = lower_value(call->callee, bir::TypeKind::Ptr, value_aliases);

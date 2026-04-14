@@ -1,10 +1,22 @@
 #include "lir_to_bir.hpp"
 
-#include "call_decode.hpp"
-
 namespace c4c::backend::lir_to_bir_detail {
 
 namespace {
+
+bool global_text_uses_nonminimal_types(std::string_view text) {
+  return text.find("float") != std::string_view::npos ||
+         text.find("double") != std::string_view::npos ||
+         text.find("fp128") != std::string_view::npos ||
+         text.find("i64") != std::string_view::npos ||
+         text.find("i128") != std::string_view::npos;
+}
+
+bool global_uses_nonminimal_types(const c4c::codegen::lir::LirGlobal& global) {
+  return global_text_uses_nonminimal_types(global.llvm_type) ||
+         global.init_text.find("double") != std::string::npos ||
+         global.init_text.find("float") != std::string::npos;
+}
 
 struct IntegerArrayType {
   std::vector<std::size_t> extents;
@@ -632,7 +644,7 @@ std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
 
 std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGlobal& global,
                                                const TypeDeclMap& type_decls) {
-  if (backend_lir_global_uses_nonminimal_types(global)) {
+  if (global_uses_nonminimal_types(global)) {
     return std::nullopt;
   }
 

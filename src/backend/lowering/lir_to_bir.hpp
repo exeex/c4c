@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../bir.hpp"
+#include "../../codegen/lir/call_args_ops.hpp"
 #include "../../codegen/lir/ir.hpp"
 
 #include <cstdint>
@@ -306,6 +307,23 @@ class BirFunctionLowerer {
     bool returned_via_sret = false;
   };
 
+  struct ParsedFunctionSignatureParam {
+    std::string type;
+    std::string operand;
+    bool is_varargs = false;
+  };
+
+  struct ParsedTypedCall {
+    std::vector<std::string> owned_param_types;
+    std::vector<std::string_view> param_types;
+    std::vector<c4c::codegen::lir::LirTypedCallArgView> args;
+  };
+
+  struct ParsedDirectGlobalTypedCall {
+    std::string_view symbol_name;
+    ParsedTypedCall typed_call;
+  };
+
   BirFunctionLowerer(BirLoweringContext& context,
                      const c4c::codegen::lir::LirFunction& function,
                      const GlobalTypes& global_types,
@@ -317,6 +335,13 @@ class BirFunctionLowerer {
   static std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& operand,
                                                bir::TypeKind expected_type,
                                                const ValueMap& value_aliases);
+  static std::optional<bir::TypeKind> lower_minimal_scalar_type(const c4c::TypeSpec& type);
+  static std::optional<ParsedTypedCall> parse_typed_call(
+      const c4c::codegen::lir::LirCallOp& call);
+  static std::optional<ParsedDirectGlobalTypedCall> parse_direct_global_typed_call(
+      const c4c::codegen::lir::LirCallOp& call);
+  static std::optional<std::vector<ParsedFunctionSignatureParam>> parse_function_signature_params(
+      std::string_view signature_text);
   static std::optional<bir::Function> lower_extern_decl(
       const c4c::codegen::lir::LirExternDecl& decl);
   static std::optional<bir::Function> lower_decl_function(

@@ -296,6 +296,25 @@ Source Plan: plan.md
   the same delegated backend proof command passes after the memory-lane
   type-ownership migration with `12 / 12` `^backend_` tests green, and the
   proof log is `test_after.log`
+- 2026-04-14 temporary executor packet extension:
+  move the call/signature parsing helpers that are genuinely owned by the
+  `lir_to_bir` lowering path off the legacy `call_decode.*` dependency and
+  onto `BirFunctionLowerer`, while leaving non-`lir_to_bir` matcher users on
+  the legacy wrapper layer
+- 2026-04-14 temporary executor packet result:
+  `src/backend/lowering/lir_to_bir_calling.cpp` now defines
+  `BirFunctionLowerer::lower_minimal_scalar_type(...)`,
+  `parse_typed_call(...)`, `parse_direct_global_typed_call(...)`, and
+  `parse_function_signature_params(...)`; the
+  `lir_to_bir_calling/aggregate/memory` lowering slices now use those class
+  methods directly, `lir_to_bir_globals.cpp` carries its own nonminimal-global
+  screen instead of depending on `call_decode.*`, and `call_decode.cpp`
+  remains as a legacy API wrapper that forwards its typed-call/signature parse
+  entry points to the moved `BirFunctionLowerer` implementation
+- 2026-04-14 temporary proof result:
+  the same delegated backend proof command passes after the `call_decode`
+  ownership split with `12 / 12` `^backend_` tests green, and the proof log
+  is `test_after.log`
 
 ## Parked Backlog Item 1 Baseline
 
