@@ -4,6 +4,22 @@ Status: Active
 Source Idea: ideas/open/46_backend_reboot_bir_spine.md
 Source Plan: plan.md
 
+## Lifecycle Repair Decision
+
+- 2026-04-14 plan-owner checkpoint:
+  this remains the same active source idea and the same active runbook, so no
+  `plan.md` or source-idea rewrite is justified yet
+- execution state:
+  blocked for routine executor dispatch until one fresh backlog-item-1
+  code-moving merge seam is identified outside the exhausted scalar
+  select/phi inventory already recorded below
+- next lifecycle expectation:
+  supervisor may do broader validation or route scouting, but should not send
+  another executor packet from the stale `asm_unsupported` select/phi stems or
+  from observation-only harness churn; if no honest merge-semantics packet can
+  be named after that checkpoint, return for another lifecycle repair instead
+  of pretending the current inventory is still exposing new capability work
+
 ## Current Active Item
 
 - active route:
