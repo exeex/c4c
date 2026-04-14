@@ -2180,9 +2180,17 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
             is_known_function_symbol(addr_it->second.global_name, function_symbols)) {
           value_aliases[load->result.str()] =
               bir::Value::named(bir::TypeKind::Ptr, "@" + addr_it->second.global_name);
+          global_pointer_slots[load->result.str()] = addr_it->second;
+          return true;
+        }
+        if (const auto honest_base = resolve_honest_pointer_base(addr_it->second, global_types);
+            honest_base.has_value() && honest_base->byte_offset == 0) {
+          value_aliases[load->result.str()] =
+              bir::Value::named(bir::TypeKind::Ptr, "@" + honest_base->global_name);
+          global_pointer_slots[load->result.str()] = *honest_base;
+          return true;
         }
         global_pointer_slots[load->result.str()] = addr_it->second;
-        return true;
       }
     }
 

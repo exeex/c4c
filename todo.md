@@ -142,10 +142,32 @@ Source Plan: plan.md
   the delegated proof command now passes `12 / 12` backend tests with the new
   `backend_codegen_route_x86_64_pointer_param_direct_global_arg_observe_semantic_bir`
   sentinel included, and `test_after.log` is the proof log path
+- 2026-04-14 executor packet extension:
+  pointer-valued global loads now stay on the semantic signature lane too when
+  they flow through a local pointer slot into a direct call arg or pointer
+  return, instead of leaving an undefined SSA name at the call edge
+- 2026-04-14 executor packet result:
+  `src/backend/lowering/lir_to_bir_memory.cpp` now keeps tracked local pointer
+  loads honest: function symbols still fold to direct aliases when possible,
+  but other tracked pointer values now emit a real `bir.load_local ptr`
+  alongside preserved address provenance so `gp`-sourced locals lower as
+  `load_global @gp -> load_local %lv.p -> bir.call ... %t1` instead of
+  `bir.call ... %t1` with no defining instruction
+- 2026-04-14 proof extension:
+  add
+  `backend_codegen_route_x86_64_pointer_param_global_pointer_value_arg_observe_semantic_bir`
+  and
+  `backend_codegen_route_x86_64_pointer_return_global_pointer_value_observe_semantic_bir`
+  as signature-lane sentinels for pointer values loaded from global pointer
+  objects before the call edge
+- 2026-04-14 proof result:
+  the delegated proof command now passes `14 / 14` backend tests with the two
+  new loaded-global-pointer sentinels included, and `test_after.log` is the
+  proof log path
 - next adjacent signature-lane gap:
-  this slice closes the direct `@g`-style object-address pointer-arg hole, but
-  broader pointer-source coverage and downstream ABI/legalization work remain
-  outside the current packet
+  this slice fixes loaded global pointer values that were previously emitting
+  broken semantic BIR, but broader pointer-source coverage and downstream
+  ABI/legalization work remain outside the current packet
 - regression sentinels:
   keep the `two_arg_*` helper family as runtime and route sentinels, not as
   the primary proof source for this lane

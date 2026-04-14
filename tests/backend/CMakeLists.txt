@@ -175,6 +175,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_pointer_param_global_pointer_value_arg_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/pointer_param_global_pointer_value_arg.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/pointer_param_global_pointer_value_arg_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @consume(ptr %p.p) -> i32 {|%t0 = bir.load_global ptr @gp|%t1 = bir.load_local ptr %lv.p|bir.call i32 consume(ptr %t1)|bir.ret i32 %t2"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (ptr) @consume("
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_pointer_return_fn_param_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/pointer_return_fn_param.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu
@@ -182,6 +192,16 @@ c4c_add_backend_codegen_route_test(
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
   REQUIRED_SNIPPETS "bir.func @id_ptr(ptr %p.p) -> ptr {|bir.func @use(ptr %p.fn, ptr %p.p) -> ptr {|%t0 = bir.call ptr %p.fn(ptr %p.p)|bir.ret ptr %t0"
   FORBIDDEN_SNIPPETS "define ptr @use(ptr %p.fn, ptr %p.p)|call ptr (ptr) %p.fn(ptr %p.p)"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_pointer_return_global_pointer_value_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/pointer_return_global_pointer_value.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/pointer_return_global_pointer_value_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @id_ptr(ptr %p.p) -> ptr {|bir.func @use() -> ptr {|%t0 = bir.load_global ptr @gp|%t1 = bir.load_local ptr %lv.p|bir.call ptr id_ptr(ptr %t1)|bir.ret ptr %t2"
+  FORBIDDEN_SNIPPETS "define ptr @use()|call ptr (ptr) @id_ptr("
 )
 
 c4c_add_backend_codegen_route_test(
