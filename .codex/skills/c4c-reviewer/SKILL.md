@@ -21,14 +21,28 @@ Reviewer payload should be written into repo-local transient files under
 
 1. Confirm the first delegated line is `to_subagent: c4c-reviewer`.
 2. Read [`AGENTS.md`](/workspaces/c4c/AGENTS.md).
-3. Read the current [`plan.md`](/workspaces/c4c/plan.md) and
+3. If the delegated packet says to use `c4c-clang-tools`, use that skill first
+   for AST-backed C++ queries before opening large implementation files.
+4. Read the current [`plan.md`](/workspaces/c4c/plan.md) and
    [`todo.md`](/workspaces/c4c/todo.md) so you know the active goal,
    guardrails, and current slice.
-4. Read the source idea linked from [`plan.md`](/workspaces/c4c/plan.md).
-5. Run [`scripts/plan_change_gap.sh`](/workspaces/c4c/scripts/plan_change_gap.sh)
+5. Read the source idea linked from [`plan.md`](/workspaces/c4c/plan.md).
+6. Run [`scripts/plan_change_gap.sh`](/workspaces/c4c/scripts/plan_change_gap.sh)
    as the quick checkpoint probe.
-6. Determine the review base from git history on `plan.md`, not from metadata
+7. Determine the review base from git history on `plan.md`, not from metadata
    written inside `plan.md`.
+
+Assume delegated packets may include:
+
+```text
+to_subagent: c4c-reviewer
+Objective: <one-sentence review goal>
+Focus: <scope or file families>
+Tooling: <optional; `use c4c-clang-tools` or `no clang-tools needed`, with a short reason>
+Review Question: <what to judge>
+Report Path: review/<name>.md
+If Blocked: stop and report the exact history ambiguity
+```
 
 ## Review Base Rule
 

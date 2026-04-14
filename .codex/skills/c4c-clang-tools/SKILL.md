@@ -17,11 +17,15 @@ Prefer installed binaries on `PATH`:
 - `c4c-clang-tool`
 - `c4c-clang-tool-ccdb`
 
-If they are not installed yet, build and install them with:
+If either binary is missing from `PATH`, first build and install both tools with:
 
 ```bash
 scripts/build_install_c4c_clang_tools.sh
 ```
+
+Do not silently skip this install step just because build-local fallback
+binaries already exist. The normal repair path for a missing-`PATH` tool is to
+run the install script first, then retry the command from `PATH`.
 
 Build-local fallback paths:
 
@@ -96,12 +100,15 @@ c4c-clang-tool-ccdb type-refs /workspaces/c4c/src/backend/lowering/lir_to_bir_mo
 
 ## Practical Workflow
 
-1. Start with `function-signatures` or `list-symbols` to get structure.
-2. Use `function-callees` and `function-callers` to find dependency clusters.
-3. Use `find-definition` / `find-declaration` to confirm move targets.
-4. Use `type-refs` before splitting shared structs, aliases, or aggregate
+1. Check `c4c-clang-tool` and `c4c-clang-tool-ccdb` on `PATH`.
+2. If either is missing, run `scripts/build_install_c4c_clang_tools.sh`, then
+   retry from `PATH`.
+3. Start with `function-signatures` or `list-symbols` to get structure.
+4. Use `function-callees` and `function-callers` to find dependency clusters.
+5. Use `find-definition` / `find-declaration` to confirm move targets.
+6. Use `type-refs` before splitting shared structs, aliases, or aggregate
    helpers.
-5. Only fall back to reading long files when the AST query result is
+7. Only fall back to reading long files when the AST query result is
    insufficient.
 
 ## Current Limits

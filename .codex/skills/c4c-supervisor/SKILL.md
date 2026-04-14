@@ -44,6 +44,9 @@ state, and creates the final commit. It does not own lifecycle rewrites or imple
 - run supervisor-side validation when slice risk justifies it
 - decide commit boundaries and create the final commit
 - reject testcase-overfit slices even when their narrow proof passes
+- decide whether `c4c-reviewer` is needed and whether delegated `c4c-executor`
+  or `c4c-reviewer` packets should explicitly use `c4c-clang-tools` to save
+  token on C++ exploration
 
 ## Hard Boundaries
 
@@ -86,6 +89,7 @@ to_subagent: c4c-executor
 Objective: <one-sentence goal>
 Owned Files: <comma-separated paths, normally including todo.md>
 Do Not Touch: <comma-separated paths>
+Tooling: <`use c4c-clang-tools` or `no clang-tools needed`, with a short reason>
 Proof: <build command plus narrow proving test command>
 Done When: <observable completion condition>
 If Blocked: stop and report the exact blocker
@@ -99,10 +103,14 @@ Reviewer packet shape:
 to_subagent: c4c-reviewer
 Objective: <one-sentence review goal>
 Focus: <scope or file families>
+Tooling: <`use c4c-clang-tools` or `no clang-tools needed`, with a short reason>
 Review Question: <what to judge>
 Report Path: review/<name>.md
 If Blocked: stop and report the exact history ambiguity
 ```
+
+Include `Tooling` only to steer delegated exploration. Keep this guidance in
+the delegated prompt, not in [`todo.md`](/workspaces/c4c/todo.md).
 
 ## Regression Log State
 
@@ -142,6 +150,9 @@ Choose the next specialist with these rules:
   call `c4c-executor`
 - for executor packets with proving tests:
   the supervisor chooses the proving subset and delegates that exact command
+- when a packet will inspect large or cross-linked C++ code:
+  decide whether to add a `Tooling` line telling the subagent to use
+  `c4c-clang-tools` first for AST-backed queries
 - call `c4c-reviewer` only for real route risk:
   repeated lifecycle repairs, multiple direction-changing plan commits, packet boundary drift, or explicit drift suspicion
 - do not call `c4c-reviewer` only because commit count is high

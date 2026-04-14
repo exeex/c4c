@@ -97,12 +97,16 @@ to_subagent: c4c-executor
 Objective: <one-sentence goal>
 Owned Files: <comma-separated paths, normally including todo.md>
 Do Not Touch: <comma-separated paths>
+Tooling: <optional; `use c4c-clang-tools` or `no clang-tools needed`, with a short reason>
 Proof: <build command plus matching subset test command>
 Done When: <observable completion condition>
 If Blocked: stop and report the exact blocker
 ```
 
 If the packet also names a transient file such as `todoA.md`, treat that file as the worker packet only. Canonical progress still belongs in [`todo.md`](/workspaces/c4c/todo.md) when the packet allows it.
+
+If `Tooling` says to use `c4c-clang-tools`, use that skill first for AST-backed
+C++ queries before reading large files by raw text.
 
 ## Hard Boundaries
 
