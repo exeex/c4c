@@ -155,6 +155,26 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_pointer_return_direct_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/pointer_return_direct.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/pointer_return_direct_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @id_ptr(ptr %p.p) -> ptr {|bir.func @forward(ptr %p.p) -> ptr {|%t0 = bir.call ptr id_ptr(ptr %p.p)|bir.ret ptr %t0"
+  FORBIDDEN_SNIPPETS "define ptr @forward(ptr %p.p)|call ptr (ptr) @id_ptr(ptr %p.p)"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_pointer_return_fn_param_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/pointer_return_fn_param.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/pointer_return_fn_param_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @id_ptr(ptr %p.p) -> ptr {|bir.func @use(ptr %p.fn, ptr %p.p) -> ptr {|%t0 = bir.call ptr %p.fn(ptr %p.p)|bir.ret ptr %t0"
+  FORBIDDEN_SNIPPETS "define ptr @use(ptr %p.fn, ptr %p.p)|call ptr (ptr) %p.fn(ptr %p.p)"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_aggregate_param_return_pair_fn_param_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/aggregate_param_return_pair_fn_param.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu

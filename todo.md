@@ -113,6 +113,26 @@ Source Plan: plan.md
   `bir.call void %p.fn(ptr sret(...), ptr byval(...))`, and a matching direct
   caller `bir.call i32 use(ptr @id_pair, ptr byval(...))`
 - 2026-04-14 proof extension:
+  add `backend_codegen_route_x86_64_pointer_return_direct_observe_semantic_bir`
+  and
+  `backend_codegen_route_x86_64_pointer_return_fn_param_observe_semantic_bir`
+  as plain-pointer signature-lane sentinels so x86_64 keeps both direct and
+  indirect pointer-return calls on semantic BIR instead of dropping back to
+  raw LLVM call text
+- 2026-04-14 executor packet result:
+  `tests/backend/case/pointer_return_direct.c` and
+  `tests/backend/case/pointer_return_fn_param.c` now lock the pointer-return
+  signature lane on param-routed shapes the backend already lowers: semantic
+  BIR shows `bir.call ptr id_ptr(ptr %p.p)` for the direct helper and
+  `bir.call ptr %p.fn(ptr %p.p)` for the function-parameter helper instead of
+  LLVM `call ptr (...)` fallback text
+- 2026-04-14 proof result:
+  the delegated proof command passes with the two new pointer-return backend
+  route sentinels included, and `test_after.log` is the proof log path
+- next adjacent signature-lane gap:
+  plain `ptr` call arguments sourced from object addresses such as `@g` still
+  fall off the semantic lane on x86_64, so pointer-return routes currently
+  need param-routed operands rather than direct object-address actuals
   add
   `backend_codegen_route_x86_64_function_pointer_param_direct_arg_observe_semantic_bir`
   as the minimal pointer-arg sentinel and
