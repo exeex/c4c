@@ -25,18 +25,20 @@ Source Plan: plan.md
   non-leading single-ptr arg family and the first adjacent two-ptr arg family
   are now also green, and the first two adjacent mixed three-arg
   multi-`ptr` families, `i32, ptr, ptr` and `ptr, i32, ptr`, are now green
-  as well; the next packet should widen to the remaining adjacent
-  `ptr, ptr, i32` family without reopening stack-call ABI work
+  as well; the final adjacent `ptr, ptr, i32` family is now green too, so the
+  standing eight-register integer-class indirect-call lane is covered across
+  the adjacent three-arg multi-`ptr` families without reopening stack-call ABI
+  work
 - current packet shape:
   keep backlog item 5 moving outward from the repaired entry boundary:
-  widen the standing riscv64 indirect-call lane from the now-green leading,
-  trailing, paired-leading, and first two adjacent mixed three-arg ptr
-  signatures to the last remaining adjacent multi-ptr-capable integer-class
-  family while keeping the existing eight-register arg lane fixed and
-  avoiding ABI-shaped stack-call work
+  record the completion of the last remaining adjacent multi-`ptr`
+  integer-class indirect-call family on the existing riscv64 eight-register
+  lane, then leave any follow-up widening beyond that fixed register-only
+  surface to supervisor packet selection instead of silently expanding into
+  stack-call ABI work
 - candidate proving surface:
-  add the next paired param/local riscv64 route tests for a multi-`ptr`
-  integer-class indirect-call signature with at least one non-leading `ptr`
+  add the paired param/local riscv64 route tests for the last adjacent
+  multi-`ptr` integer-class indirect-call signature, `ptr, ptr, i32 -> i32`,
   that still fits inside the current eight-register lane
   keep `branch_if_eq.c`, `call_helper.c`, `local_arg_call.c`, and the current
   one-arg through eight-arg indirect-call plus `two_arg_*` direct-call route
@@ -75,6 +77,34 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  the last remaining adjacent mixed three-arg multi-`ptr` family now stays on
+  the same shared semantic-BIR/prepared-BIR riscv64 route surface as the
+  earlier single-ptr, two-ptr, and first two mixed three-arg families: no
+  backend route rewrite was needed because the existing integer-class riscv64
+  arg lane already treats adjacent `ptr` values like neighboring `i32` args
+  regardless of position, so helper wrappers with a `int *, int *, int -> i32`
+  callee signature lower through the standing eight-register indirect-call
+  lane without reopening fallback routes or ABI-shaped stack-call work
+  new route proofs cover `indirect_two_ptr_i32_arg_param_call.c` and
+  `indirect_two_ptr_i32_arg_local_call.c` as native asm with the expected
+  callee preserve into `t0`, leading `ptr` arg move into `a0`, second `ptr`
+  arg move into `a1`, trailing `i32` arg move into `a2`, and final
+  `jalr ra, t0, 0`, while `branch_if_eq.c`, `call_helper.c`,
+  `local_arg_call.c`, and the earlier one-arg through eight-arg indirect-call
+  plus `ptr`-shaped and `two_arg_*` direct-call sentinels stayed in the owned
+  proof surface
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated build succeeded and the two new riscv64 route tests passed as
+  tests `#271` and `#272`; the broad `^backend_` subset still returned
+  non-zero because it remains at `225` standing failures out of `369`, so the
+  blocker is outside the owned files even though the last adjacent
+  `ptr, ptr, i32 -> i32` family is now covered on the shared eight-register
+  lane
 - completed:
   the next honest adjacent mixed three-arg multi-`ptr` family now stays on
   the same shared semantic-BIR/prepared-BIR riscv64 route surface as the
