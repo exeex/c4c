@@ -175,25 +175,34 @@ bool block_uses_named_value(const bir::Block& block, const std::unordered_set<st
   return terminator_uses_named_value(block.terminator, names);
 }
 
-bool linear_branch_chain_uses_named_value(
+bool successor_tree_uses_named_value(
     const std::unordered_map<std::string, bir::Block*>& blocks_by_label,
     std::string_view start_label,
     const std::unordered_set<std::string>& names) {
   std::unordered_set<std::string> visited;
-  auto current_label = std::string(start_label);
-  while (visited.emplace(current_label).second) {
+  std::vector<std::string> pending{std::string(start_label)};
+  while (!pending.empty()) {
+    auto current_label = std::move(pending.back());
+    pending.pop_back();
+    if (!visited.emplace(current_label).second) {
+      continue;
+    }
     const auto it = blocks_by_label.find(current_label);
     if (it == blocks_by_label.end()) {
-      return false;
+      continue;
     }
     const auto& block = *it->second;
     if (block_uses_named_value(block, names)) {
       return true;
     }
-    if (block.terminator.kind != bir::TerminatorKind::Branch) {
-      return false;
+    if (block.terminator.kind == bir::TerminatorKind::Branch) {
+      pending.push_back(block.terminator.target_label);
+      continue;
     }
-    current_label = block.terminator.target_label;
+    if (block.terminator.kind == bir::TerminatorKind::CondBranch) {
+      pending.push_back(block.terminator.true_label);
+      pending.push_back(block.terminator.false_label);
+    }
   }
   return false;
 }
@@ -517,13 +526,20 @@ bool try_materialize_root_phi_block(bir::Function* function, const BlockAnalysis
     break;
   }
   const bool terminator_uses_phi = terminator_uses_named_value(block->terminator, phi_names);
-  bool branch_forwarding_chain_uses_phi = false;
-  if (!has_non_phi_after_top && !terminator_uses_phi &&
-      block->terminator.kind == bir::TerminatorKind::Branch) {
-    branch_forwarding_chain_uses_phi = linear_branch_chain_uses_named_value(
-        analysis.blocks_by_label, block->terminator.target_label, phi_names);
+  bool successor_tree_uses_phi = false;
+  if (!has_non_phi_after_top && !terminator_uses_phi) {
+    if (block->terminator.kind == bir::TerminatorKind::Branch) {
+      successor_tree_uses_phi = successor_tree_uses_named_value(
+          analysis.blocks_by_label, block->terminator.target_label, phi_names);
+    } else if (block->terminator.kind == bir::TerminatorKind::CondBranch) {
+      successor_tree_uses_phi =
+          successor_tree_uses_named_value(
+              analysis.blocks_by_label, block->terminator.true_label, phi_names) ||
+          successor_tree_uses_named_value(
+              analysis.blocks_by_label, block->terminator.false_label, phi_names);
+    }
   }
-  if (!saw_phi || (!has_non_phi_after_top && !terminator_uses_phi && !branch_forwarding_chain_uses_phi)) {
+  if (!saw_phi || (!has_non_phi_after_top && !terminator_uses_phi && !successor_tree_uses_phi)) {
     return false;
   }
 

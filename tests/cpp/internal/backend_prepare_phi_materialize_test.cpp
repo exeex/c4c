@@ -301,6 +301,113 @@ prepare::PreparedBirModule legalize_merge3_forwarded_successor_use_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule legalize_merge3_conditional_successor_use_module() {
+  bir::Module module;
+  bir::Function function;
+  function.name = "merge3_conditional_successor_use";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I1, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(0),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond0"),
+      .true_label = "left",
+      .false_label = "split",
+  };
+
+  bir::Block left;
+  left.label = "left";
+  left.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block split;
+  split.label = "split";
+  split.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I1, "cond1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  split.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond1"),
+      .true_label = "middle",
+      .false_label = "right",
+  };
+
+  bir::Block middle;
+  middle.label = "middle";
+  middle.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block right;
+  right.label = "right";
+  right.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .incomings = {
+          bir::PhiIncoming{.label = "left", .value = bir::Value::immediate_i32(11)},
+          bir::PhiIncoming{.label = "middle", .value = bir::Value::immediate_i32(22)},
+          bir::PhiIncoming{.label = "right", .value = bir::Value::immediate_i32(33)},
+      },
+  });
+  join.terminator = bir::BranchTerminator{.target_label = "gate"};
+
+  bir::Block gate;
+  gate.label = "gate";
+  gate.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I1, "cond2"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(2),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  gate.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond2"),
+      .true_label = "after_true",
+      .false_label = "after_false",
+  };
+
+  bir::Block after_true;
+  after_true.label = "after_true";
+  after_true.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .rhs = bir::Value::immediate_i32(5),
+  });
+  after_true.terminator = bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "sum")};
+
+  bir::Block after_false;
+  after_false.label = "after_false";
+  after_false.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks = {std::move(entry),  std::move(left),  std::move(split), std::move(middle),
+                     std::move(right),  std::move(join),  std::move(gate),  std::move(after_true),
+                     std::move(after_false)};
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+  prepare::run_legalize(prepared, options);
+  return prepared;
+}
+
 int check_materialized_join(const bir::Function& legalized, bool add_trailing_use) {
   if (!legalized.local_slots.empty()) {
     return fail("expected reducible phi tree to materialize without local slots");
@@ -464,6 +571,63 @@ int check_materialized_forwarded_successor_join(const bir::Function& legalized) 
   return 0;
 }
 
+int check_materialized_conditional_successor_join(const bir::Function& legalized) {
+  if (!legalized.local_slots.empty()) {
+    return fail("expected conditional-successor reducible phi tree to materialize without local slots");
+  }
+
+  const auto* join_block = find_block(legalized, "join");
+  if (join_block == nullptr) {
+    return fail("missing join block after legalize for conditional successor use case");
+  }
+  if (join_block->insts.size() != 2) {
+    return fail("expected conditional successor join to keep only nested selects");
+  }
+  const auto* nested_select = std::get_if<bir::SelectInst>(&join_block->insts[0]);
+  const auto* root_select = std::get_if<bir::SelectInst>(&join_block->insts[1]);
+  if (nested_select == nullptr || root_select == nullptr) {
+    return fail("expected conditional successor join block to begin with nested select materialization");
+  }
+  if (root_select->result.name != "merge") {
+    return fail("expected conditional successor root select to define the original phi result");
+  }
+
+  const auto* gate_block = find_block(legalized, "gate");
+  if (gate_block == nullptr) {
+    return fail("missing conditional successor gate block after legalize");
+  }
+  if (gate_block->insts.size() != 1 ||
+      !std::holds_alternative<bir::BinaryInst>(gate_block->insts[0]) ||
+      gate_block->terminator.kind != bir::TerminatorKind::CondBranch ||
+      gate_block->terminator.true_label != "after_true" ||
+      gate_block->terminator.false_label != "after_false") {
+    return fail("expected conditional successor gate block to preserve its compare and branch");
+  }
+
+  const auto* after_true_block = find_block(legalized, "after_true");
+  if (after_true_block == nullptr) {
+    return fail("missing conditional successor consumer block after legalize");
+  }
+  if (after_true_block->insts.size() != 1) {
+    return fail("expected conditional successor consumer block to keep exactly one add");
+  }
+  const auto* add = std::get_if<bir::BinaryInst>(&after_true_block->insts[0]);
+  if (add == nullptr || add->lhs.kind != bir::Value::Kind::Named || add->lhs.name != "merge") {
+    return fail("expected conditional successor consumer block to use the materialized phi result");
+  }
+
+  for (const auto& block : legalized.blocks) {
+    for (const auto& inst : block.insts) {
+      if (std::holds_alternative<bir::PhiInst>(inst) || std::holds_alternative<bir::LoadLocalInst>(inst) ||
+          std::holds_alternative<bir::StoreLocalInst>(inst)) {
+        return fail("unexpected fallback phi lowering remained in conditional successor case");
+      }
+    }
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -496,5 +660,16 @@ int main() {
   if (prepared_forwarded_successor_use.module.functions.size() != 1) {
     return fail("expected exactly one function after legalize for forwarded successor-use case");
   }
-  return check_materialized_forwarded_successor_join(prepared_forwarded_successor_use.module.functions.front());
+  if (const int status =
+          check_materialized_forwarded_successor_join(prepared_forwarded_successor_use.module.functions.front());
+      status != 0) {
+    return status;
+  }
+
+  const auto prepared_conditional_successor_use = legalize_merge3_conditional_successor_use_module();
+  if (prepared_conditional_successor_use.module.functions.size() != 1) {
+    return fail("expected exactly one function after legalize for conditional successor-use case");
+  }
+  return check_materialized_conditional_successor_join(
+      prepared_conditional_successor_use.module.functions.front());
 }

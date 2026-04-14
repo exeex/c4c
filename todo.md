@@ -218,6 +218,17 @@ Source Plan: plan.md
   `tests/cpp/internal/backend_prepare_phi_materialize_test.cpp` now proves the
   forwarded-successor case on the same direct prepare/BIR surface without
   returning to route-test churn
+- 2026-04-14 executor packet result:
+  reducible explicit-phi materialization now also handles a phi-only join
+  whose first live consumer is reached through a conditional successor tree
+  beyond the immediate branch-forwarding path, so `prepare` no longer falls
+  back to `.phi` local-slot lowering just because the post-join consumer sits
+  behind a gated successor split;
+  `src/backend/prepare/legalize.cpp` now treats that conditional successor
+  tree as part of the same materializable root-phi path, and
+  `tests/cpp/internal/backend_prepare_phi_materialize_test.cpp` now proves the
+  conditional-successor case on the same direct prepare/BIR surface without
+  returning to route-test churn
 - proof result:
   the exact backend proof command
   `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
@@ -239,6 +250,14 @@ Source Plan: plan.md
   211 failed`, and `backend_prepare_phi_materialize` stayed passing while the
   new forwarded-successor join coverage ran inside that owned test binary;
   proof log: `test_after.log`
+- proof result:
+  the exact backend proof command
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  preserved the current backend subset envelope at `420 total / 209 passed /
+  211 failed`, and focused re-run
+  `ctest --test-dir build --output-on-failure -R '^backend_prepare_phi_materialize$'`
+  passed with the new conditional-successor join coverage; proof log:
+  `test_after.log`
 - if the executor needs a new proving source to expose that code-moving target,
   it may add one minimal merge-semantic source in the same packet, but source
   or harness expansion alone is not accepted progress
