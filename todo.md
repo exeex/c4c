@@ -28,10 +28,9 @@ Source Plan: plan.md
 - current capability family:
   semantic call ownership and runtime-facing lowering
 - current packet focus:
-  inspect `src/backend/lowering/lir_to_bir_calling.cpp`,
-  `src/backend/lowering/lir_to_bir_memory.cpp`, and
-  `src/backend/lowering/lir_to_bir.hpp` to name the first honest semantic miss
-  after the accepted non-variadic call baseline
+  semantic runtime/intrinsic lowering now starts with integer `abs` in
+  `src/backend/lowering/lir_to_bir_calling.cpp`; the next packet should stay
+  on adjacent runtime/call families instead of drifting into `prepare`
 - packet rule:
   the first executor packet must change shared semantic lowering, not just add
   new test observers or rename unsupported cases
@@ -39,16 +38,24 @@ Source Plan: plan.md
   choose a proving subset from backend-route or internal backend cases that
   exercises one semantic call/runtime family with a fresh build before broader
   validation
+- Just Finished:
+  lowered `LirAbsOp` into semantic BIR as `bir.sub` plus `bir.select` for
+  supported integer widths, and added dual backend-route proof for `abs(int)`
+  and `labs(long)`
+- Watchouts:
+  runtime/intrinsic follow-ons still missing from semantic BIR include the
+  dedicated LIR intrinsic families (`memcpy`, `va_*`, `stacksave`,
+  `stackrestore`); keep them owned by shared semantic lowering instead of
+  falling back to target-shaped handling
+- Proof:
+  `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
+  passed; proof log at `test_after.log`
 
 ## Suggested Next
 
-- scout the first bounded packet around one real semantic family:
-  either broaden callee provenance / call-shape normalization in
-  `lir_to_bir_calling.cpp` or add one runtime/intrinsic family that currently
-  escapes semantic BIR
-- when selecting proof, prefer a narrow backend subset that can demonstrate
-  capability growth across more than one nearby shape instead of one named
-  testcase
-- if exploration shows the missing work is actually `prepare` legality or
-  target-ingestion-only behavior, stop and checkpoint rather than expanding
-  this runbook
+- extend semantic runtime lowering with one next intrinsic family that already
+  has shared LIR shape and nearby coverage, with `memcpy` the most natural
+  follow-on if it can be represented without introducing target-specific
+  contracts
+- if the next runtime family needs new semantic BIR surface, keep that surface
+  shared and planner-honest rather than encoding direct target behavior

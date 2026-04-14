@@ -434,6 +434,50 @@ bool BirFunctionLowerer::lower_function_params(
   return true;
 }
 
+bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
+    const c4c::codegen::lir::LirInst& inst,
+    std::vector<bir::Inst>* lowered_insts) const {
+  if (const auto* abs = std::get_if<c4c::codegen::lir::LirAbsOp>(&inst)) {
+    if (abs->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    const auto value_type = lower_integer_type(abs->int_type.str());
+    if (!value_type.has_value() ||
+        (*value_type != bir::TypeKind::I32 && *value_type != bir::TypeKind::I64)) {
+      return false;
+    }
+
+    const auto operand = lower_value(abs->arg, *value_type);
+    const auto zero = make_integer_immediate(*value_type, 0);
+    if (!operand.has_value() || !zero.has_value()) {
+      return false;
+    }
+
+    const std::string result_name = abs->result.str();
+    const auto negated_value = bir::Value::named(*value_type, result_name + ".neg");
+    lowered_insts->push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Sub,
+        .result = negated_value,
+        .operand_type = *value_type,
+        .lhs = *zero,
+        .rhs = *operand,
+    });
+    lowered_insts->push_back(bir::SelectInst{
+        .predicate = bir::BinaryOpcode::Slt,
+        .result = bir::Value::named(*value_type, result_name),
+        .compare_type = *value_type,
+        .lhs = *operand,
+        .rhs = *zero,
+        .true_value = negated_value,
+        .false_value = *operand,
+    });
+    return true;
+  }
+
+  return false;
+}
+
 std::optional<bir::Function> BirFunctionLowerer::lower_decl_function(
     const c4c::codegen::lir::LirFunction& function) {
   bir::Function lowered;

@@ -1466,6 +1466,10 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     return true;
   }
 
+  if (lower_runtime_intrinsic_inst(inst, lowered_insts)) {
+    return true;
+  }
+
   if (const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&inst)) {
     if (alloca->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
         !alloca->count.str().empty()) {

@@ -164,6 +164,26 @@ c4c_add_backend_codegen_route_test(
   FORBIDDEN_SNIPPETS "define ptr @forward(ptr %p.p)|call ptr (ptr) @id_ptr(ptr %p.p)"
 )
 
+add_test(
+  NAME backend_codegen_route_x86_64_builtin_abs_observe_semantic_bir
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DSRC_A=${BACKEND_CASE_ROOT}/builtin_abs_i32.c
+          -DOUT_A=${CMAKE_BINARY_DIR}/backend_route/builtin_abs_i32_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_A=bir.func @take_abs_int(i32 %p.x) -> i32 {|%t0.neg = bir.sub i32 0, %p.x|%t0 = bir.select slt i32 %p.x, 0, i32 %t0.neg, %p.x|bir.ret i32 %t0"
+          "-DFORBIDDEN_SNIPPETS_A=@llvm.abs.i32|bir.call i32 @llvm.abs.i32"
+          -DSRC_B=${BACKEND_CASE_ROOT}/builtin_abs_i64.c
+          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/builtin_abs_i64_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_B=bir.func @take_abs_long(i64 %p.x) -> i64 {|%t0.neg = bir.sub i64 0, %p.x|%t0 = bir.select slt i64 %p.x, 0, i64 %t0.neg, %p.x|bir.ret i64 %t0"
+          "-DFORBIDDEN_SNIPPETS_B=@llvm.abs.i64|bir.call i64 @llvm.abs.i64"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
+)
+c4c_set_backend_test_labels(
+  "backend_codegen_route_x86_64_builtin_abs_observe_semantic_bir"
+  backend_route
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_pointer_param_direct_global_arg_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/pointer_param_direct_global_arg.c"
