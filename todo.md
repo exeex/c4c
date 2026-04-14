@@ -154,6 +154,36 @@ Source Plan: plan.md
   addressed pointer-value roots, but the same store semantics are still not
   generalized to direct local aggregate-slot roots or broader non-scalar /
   later ABI-legalized local address flows
+- 2026-04-14 executor packet extension:
+  bounded dynamic scalar member-array stores now stay on semantic BIR for
+  direct local aggregate-slot roots too when the local array base is already
+  represented as a leaf-slot pointer; lowering recognizes the canonical
+  local-root zero-leading GEP shape, records bounded direct-local aggregate
+  access, and materializes per-element load/select/store ladders back into the
+  real `%lv.p.+offset` slots instead of falling back to LLVM `getelementptr` /
+  `store` text
+- 2026-04-14 executor packet result:
+  `tests/backend/case/local_direct_dynamic_member_array_store.c` now reaches
+  semantic BIR on x86_64 with three direct local-slot loads from `%lv.p.0`,
+  `%lv.p.4`, and `%lv.p.8`, per-element `bir.select` updates against the
+  lowered dynamic index, and matching `bir.store_local %lv.p.+offset` writes
+  in `main`; nearby `local_dynamic_member_array_store.c`,
+  `local_dynamic_member_array.c`, and `nested_member_pointer_array.c` stay on
+  their accepted local-address routes
+- 2026-04-14 proof extension:
+  add
+  `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`
+  as the direct-local bounded dynamic-store sentinel while keeping the earlier
+  addressed-root and read-oriented local-address sentinels in the same proof
+  subset
+- 2026-04-14 proof result:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_codegen_route_x86_64_(nested_member_pointer_array|local_dynamic_member_array|local_dynamic_member_array_store|local_direct_dynamic_member_array_store).*semantic_bir'`
+  now passes `4 / 4`, and `test_after.log` is the proof log path
+- next adjacent local-address gap:
+  bounded dynamic scalar member-array stores now stay on semantic BIR for
+  both addressed pointer-value roots and direct local aggregate-slot roots,
+  but direct-local dynamic loads plus broader non-scalar / later
+  ABI-legalized local address flows remain outside the current packet
 - previous backlog-item-2 history below is accepted baseline only; do not mine
   it for the next packet unless a fresh non-ABI signature seam is named
 - current capability family:

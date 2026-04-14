@@ -1129,11 +1129,22 @@ BirFunctionLowerer::resolve_local_dynamic_aggregate_array_access(
     const ValueMap& value_aliases,
     const TypeDeclMap& type_decls,
     const LocalAggregateSlots& aggregate_slots) {
-  if (gep.indices.size() != 1) {
+  std::size_t index_pos = 0;
+  if (gep.indices.size() == 2) {
+    const auto base_index = parse_typed_operand(gep.indices.front());
+    if (!base_index.has_value()) {
+      return std::nullopt;
+    }
+    const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+    if (!base_imm.has_value() || *base_imm != 0) {
+      return std::nullopt;
+    }
+    index_pos = 1;
+  } else if (gep.indices.size() != 1) {
     return std::nullopt;
   }
 
-  const auto parsed_index = parse_typed_operand(gep.indices.front());
+  const auto parsed_index = parse_typed_operand(gep.indices[index_pos]);
   if (!parsed_index.has_value() ||
       resolve_index_operand(parsed_index->operand, value_aliases).has_value()) {
     return std::nullopt;
@@ -1884,8 +1895,33 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         } else if (const auto base_aggregate_it = local_aggregate_slots.find(base_name);
                    base_aggregate_it != local_aggregate_slots.end()) {
           const auto slot_size = type_size_bytes(slot_it->second);
-          if (slot_size == 0 || !index_imm.has_value()) {
+          if (slot_size == 0) {
             return false;
+          }
+          if (!index_imm.has_value()) {
+            const auto index_value = lower_typed_index_value(*parsed_index, value_aliases);
+            if (!index_value.has_value() || *base_offset < 0) {
+              return false;
+            }
+
+            const auto extent = find_repeated_aggregate_extent_at_offset(
+                base_aggregate_it->second.storage_type_text,
+                static_cast<std::size_t>(*base_offset),
+                render_type(slot_it->second),
+                type_decls);
+            if (!extent.has_value()) {
+              return false;
+            }
+
+            dynamic_local_aggregate_arrays[gep->result.str()] = DynamicLocalAggregateArrayAccess{
+                .element_type_text = render_type(slot_it->second),
+                .byte_offset = static_cast<std::size_t>(*base_offset),
+                .element_count = extent->element_count,
+                .element_stride_bytes = extent->element_stride_bytes,
+                .leaf_slots = base_aggregate_it->second.leaf_slots,
+                .index = *index_value,
+            };
+            return true;
           }
           const auto final_byte_offset =
               *base_offset + *index_imm * static_cast<std::int64_t>(slot_size);
@@ -2097,6 +2133,66 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return true;
     };
 
+    const auto append_dynamic_local_aggregate_store =
+        [&](std::string_view scratch_prefix,
+            const DynamicLocalAggregateArrayAccess& access) -> bool {
+      if (access.element_count == 0) {
+        return false;
+      }
+
+      const auto element_layout = compute_aggregate_type_layout(access.element_type_text, type_decls);
+      if (element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
+          element_layout.scalar_type != *value_type) {
+        return false;
+      }
+
+      for (std::size_t element_index = 0; element_index < access.element_count; ++element_index) {
+        const auto leaf_offset = access.byte_offset + element_index * access.element_stride_bytes;
+        const auto leaf_slot_it = access.leaf_slots.find(leaf_offset);
+        if (leaf_slot_it == access.leaf_slots.end()) {
+          return false;
+        }
+
+        const auto slot_it = local_slot_types.find(leaf_slot_it->second);
+        if (slot_it == local_slot_types.end() || slot_it->second != *value_type) {
+          return false;
+        }
+
+        const std::string element_name =
+            std::string(scratch_prefix) + ".elt" + std::to_string(element_index);
+        lowered_insts->push_back(bir::LoadLocalInst{
+            .result = bir::Value::named(*value_type, element_name),
+            .slot_name = leaf_slot_it->second,
+        });
+
+        bir::Value stored_value = *value;
+        if (access.element_count > 1) {
+          const auto compare_rhs = make_index_immediate(access.index.type, element_index);
+          if (!compare_rhs.has_value()) {
+            return false;
+          }
+          const std::string select_name =
+              std::string(scratch_prefix) + ".store" + std::to_string(element_index);
+          lowered_insts->push_back(bir::SelectInst{
+              .predicate = bir::BinaryOpcode::Eq,
+              .result = bir::Value::named(*value_type, select_name),
+              .compare_type = access.index.type,
+              .lhs = access.index,
+              .rhs = *compare_rhs,
+              .true_value = *value,
+              .false_value = bir::Value::named(*value_type, element_name),
+          });
+          stored_value = bir::Value::named(*value_type, select_name);
+        }
+
+        lowered_insts->push_back(bir::StoreLocalInst{
+            .slot_name = leaf_slot_it->second,
+            .value = stored_value,
+        });
+      }
+      return true;
+    };
+
     if (const auto addressed_ptr_it = pointer_value_addresses.find(store->ptr.str());
         addressed_ptr_it != pointer_value_addresses.end()) {
       if (addressed_ptr_it->second.value_type != *value_type) {
@@ -2116,6 +2212,11 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     if (const auto dynamic_ptr_it = dynamic_pointer_value_arrays.find(store->ptr.str());
         dynamic_ptr_it != dynamic_pointer_value_arrays.end()) {
       return append_dynamic_pointer_array_store(store->ptr.str(), dynamic_ptr_it->second);
+    }
+
+    if (const auto dynamic_local_aggregate_it = dynamic_local_aggregate_arrays.find(store->ptr.str());
+        dynamic_local_aggregate_it != dynamic_local_aggregate_arrays.end()) {
+      return append_dynamic_local_aggregate_store(store->ptr.str(), dynamic_local_aggregate_it->second);
     }
 
     if (store->ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
