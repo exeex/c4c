@@ -462,10 +462,8 @@ bool lower_riscv_binary_inst(const BinaryInst& inst,
 bool lower_riscv_call_inst(const CallInst& inst,
                            RiscvEmitState& state,
                            std::ostringstream& out) {
-  constexpr std::size_t kMaxSupportedRiscvCallArgs = kRiscvArgRegs.size() + 2;
-
   if (inst.is_variadic || inst.calling_convention != c4c::backend::bir::CallingConv::C ||
-      inst.args.size() > kMaxSupportedRiscvCallArgs || inst.arg_types.size() != inst.args.size()) {
+      inst.arg_types.size() != inst.args.size()) {
     return false;
   }
   if (inst.return_type != TypeKind::Void && inst.return_type != TypeKind::I32 &&
