@@ -3017,6 +3017,24 @@ std::optional<bir::Value> resolve_local_aggregate_pointer_value_alias(
   return bir::Value::named(bir::TypeKind::Ptr, "@" + symbol_name);
 }
 
+std::optional<bir::Value> lower_call_pointer_arg_value(
+    const c4c::codegen::lir::LirOperand& operand,
+    const ValueMap& value_aliases,
+    const FunctionSymbolSet& function_symbols) {
+  if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+    return lower_value(operand, bir::TypeKind::Ptr, value_aliases);
+  }
+  if (operand.kind() != c4c::codegen::lir::LirOperandKind::Global) {
+    return std::nullopt;
+  }
+
+  const std::string symbol_name = operand.str().substr(1);
+  if (!is_known_function_symbol(symbol_name, function_symbols)) {
+    return std::nullopt;
+  }
+  return bir::Value::named(bir::TypeKind::Ptr, "@" + symbol_name);
+}
+
 std::optional<GlobalAddress> resolve_honest_pointer_base(const GlobalAddress& address,
                                                          const GlobalTypes& global_types) {
   if (address.value_type != bir::TypeKind::Ptr) {
@@ -4733,6 +4751,21 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       lowered_arg_types.reserve(parsed_call->typed_call.param_types.size());
       lowered_arg_abi.reserve(parsed_call->typed_call.param_types.size());
       for (std::size_t index = 0; index < parsed_call->typed_call.args.size(); ++index) {
+        const auto trimmed_param_type =
+            c4c::codegen::lir::trim_lir_arg_text(parsed_call->typed_call.param_types[index]);
+        if (trimmed_param_type == "ptr") {
+          const auto arg = lower_call_pointer_arg_value(
+              c4c::codegen::lir::LirOperand(std::string(parsed_call->typed_call.args[index].operand)),
+              value_aliases,
+              function_symbols);
+          if (!arg.has_value()) {
+            return false;
+          }
+          lowered_arg_types.push_back(bir::TypeKind::Ptr);
+          lowered_args.push_back(*arg);
+          lowered_arg_abi.push_back(bir::CallArgAbiInfo{.type = bir::TypeKind::Ptr});
+          continue;
+        }
         const auto arg_type = lower_integer_type(parsed_call->typed_call.param_types[index]);
         if (!arg_type.has_value()) {
           const auto aggregate_layout =
@@ -4780,6 +4813,21 @@ bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
       lowered_arg_types.reserve(parsed_call->param_types.size());
       lowered_arg_abi.reserve(parsed_call->param_types.size());
       for (std::size_t index = 0; index < parsed_call->args.size(); ++index) {
+        const auto trimmed_param_type =
+            c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[index]);
+        if (trimmed_param_type == "ptr") {
+          const auto arg = lower_call_pointer_arg_value(
+              c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand)),
+              value_aliases,
+              function_symbols);
+          if (!arg.has_value()) {
+            return false;
+          }
+          lowered_arg_types.push_back(bir::TypeKind::Ptr);
+          lowered_args.push_back(*arg);
+          lowered_arg_abi.push_back(bir::CallArgAbiInfo{.type = bir::TypeKind::Ptr});
+          continue;
+        }
         const auto arg_type = lower_integer_type(parsed_call->param_types[index]);
         if (!arg_type.has_value()) {
           const auto aggregate_layout =

@@ -100,6 +100,25 @@ Source Plan: plan.md
   `indirect_aggregate_param_return_pair.c` shows `id_pair` lowering as
   `ptr sret(...)` plus `ptr byval(...)` instead of raw `%struct.Pair`
   signatures/calls, and the proof log is `test_after.log`
+- 2026-04-14 executor packet extension:
+  direct global-call lowering now carries plain `ptr` args too, including
+  function-symbol operands passed into signature-lane helper params, instead
+  of rejecting non-integer, non-byval direct-call args and forcing whole
+  modules back to raw LLVM
+- 2026-04-14 executor packet result:
+  the minimal `apply(inc, 4)` function-pointer-param route now reaches
+  semantic BIR as `bir.call i32 apply(ptr @inc, i32 4)`, and the aggregate
+  parameterized function-pointer case now lowers end to end with
+  `bir.func @use(ptr %p.fn, ptr byval(...)) -> i32`, an indirect
+  `bir.call void %p.fn(ptr sret(...), ptr byval(...))`, and a matching direct
+  caller `bir.call i32 use(ptr @id_pair, ptr byval(...))`
+- 2026-04-14 proof extension:
+  add
+  `backend_codegen_route_x86_64_function_pointer_param_direct_arg_observe_semantic_bir`
+  as the minimal pointer-arg sentinel and
+  `backend_codegen_route_x86_64_aggregate_param_return_pair_fn_param_observe_semantic_bir`
+  as the honest aggregate function-pointer-param route sentinel for this
+  signature slice
 - regression sentinels:
   keep the `two_arg_*` helper family as runtime and route sentinels, not as
   the primary proof source for this lane
