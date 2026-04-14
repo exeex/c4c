@@ -1685,6 +1685,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_indirect_select_local_override_callee_call_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_select_local_override_callee_call.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/indirect_select_local_override_callee_call_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @call_select_local_override(i32 %p.a, i32 %p.b, ptr %p.f, ptr %p.g, ptr %p.h, i32 %p.x) -> i32 {|bir.store_local %t6.phi, ptr %p.f|bir.store_local %t6.phi, ptr %p.g|%t6 = bir.load_local ptr %t6.phi|bir.store_local %lv.callee, ptr %t6|bir.store_local %lv.callee, ptr %p.h|%t8 = bir.load_local ptr %lv.callee|%t9 = bir.call i32 %t8(i32 %p.x)|bir.ret i32 %t9"
+      FORBIDDEN_SNIPPETS "define i32 @call_select_local_override"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_indirect_global_callee_call_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/indirect_global_callee_call.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu

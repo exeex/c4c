@@ -154,6 +154,15 @@ struct BranchChain {
   std::string join_label;
 };
 
+struct PhiLoweringPlan {
+  std::string result_name;
+  std::string slot_name;
+  bir::TypeKind type = bir::TypeKind::Void;
+  std::unordered_map<std::string, c4c::codegen::lir::LirOperand> incoming_by_label;
+};
+
+using PhiBlockPlanMap = std::unordered_map<std::string, std::vector<PhiLoweringPlan>>;
+
 struct ParsedTypedOperand {
   std::string type_text;
   c4c::codegen::lir::LirOperand operand;
@@ -4091,6 +4100,69 @@ std::optional<BranchChain> follow_empty_branch_chain(const BlockLookup& blocks,
   return std::nullopt;
 }
 
+std::string make_phi_slot_name(std::string_view result_name) {
+  return std::string(result_name) + ".phi";
+}
+
+std::optional<PhiBlockPlanMap> collect_phi_lowering_plans(
+    const c4c::codegen::lir::LirFunction& function,
+    bir::Function* lowered_function) {
+  PhiBlockPlanMap plans;
+  std::unordered_set<std::string> used_slot_names;
+  for (const auto& slot : lowered_function->local_slots) {
+    used_slot_names.insert(slot.name);
+  }
+
+  for (const auto& block : function.blocks) {
+    std::vector<PhiLoweringPlan> block_plans;
+    bool saw_non_phi = false;
+    for (const auto& inst : block.insts) {
+      const auto* phi = std::get_if<c4c::codegen::lir::LirPhiOp>(&inst);
+      if (phi == nullptr) {
+        saw_non_phi = true;
+        continue;
+      }
+      if (saw_non_phi || phi->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+        return std::nullopt;
+      }
+
+      const auto phi_type = lower_integer_type(phi->type_str.str());
+      if (!phi_type.has_value()) {
+        return std::nullopt;
+      }
+
+      auto slot_name = make_phi_slot_name(phi->result.str());
+      if (!used_slot_names.emplace(slot_name).second) {
+        return std::nullopt;
+      }
+
+      PhiLoweringPlan plan{
+          .result_name = phi->result.str(),
+          .slot_name = std::move(slot_name),
+          .type = *phi_type,
+      };
+      for (const auto& [value, label] : phi->incoming) {
+        plan.incoming_by_label.emplace(label, c4c::codegen::lir::LirOperand(value));
+      }
+      if (plan.incoming_by_label.empty()) {
+        return std::nullopt;
+      }
+
+      lowered_function->local_slots.push_back(bir::LocalSlot{
+          .name = plan.slot_name,
+          .type = plan.type,
+      });
+      block_plans.push_back(std::move(plan));
+    }
+
+    if (!block_plans.empty()) {
+      plans.emplace(block.label, std::move(block_plans));
+    }
+  }
+
+  return plans;
+}
+
 std::optional<bir::Function> lower_select_family_function(
     BirLoweringContext& context,
     const c4c::codegen::lir::LirFunction& function) {
@@ -4189,6 +4261,10 @@ std::optional<bir::Function> lower_select_family_function(
   if (!lower_function_params(function, &lowered)) {
     return std::nullopt;
   }
+  const auto phi_plans = collect_phi_lowering_plans(function, &lowered);
+  if (!phi_plans.has_value()) {
+    return std::nullopt;
+  }
 
   bir::Block lowered_block;
   lowered_block.label = entry.label;
@@ -4284,6 +4360,10 @@ std::optional<bir::Function> lower_branch_family_function(
   if (!lower_function_params(function, &lowered)) {
     return std::nullopt;
   }
+  const auto phi_plans = collect_phi_lowering_plans(function, &lowered);
+  if (!phi_plans.has_value()) {
+    return std::nullopt;
+  }
 
   ValueMap value_aliases;
   CompareMap compare_exprs;
@@ -4346,7 +4426,19 @@ std::optional<bir::Function> lower_branch_family_function(
     bir::Block lowered_block;
     lowered_block.label = block.label;
 
+    if (const auto phi_it = phi_plans->find(block.label); phi_it != phi_plans->end()) {
+      for (const auto& phi_plan : phi_it->second) {
+        lowered_block.insts.push_back(bir::LoadLocalInst{
+            .result = bir::Value::named(phi_plan.type, phi_plan.result_name),
+            .slot_name = phi_plan.slot_name,
+        });
+      }
+    }
+
     for (const auto& inst : block.insts) {
+      if (std::holds_alternative<c4c::codegen::lir::LirPhiOp>(inst)) {
+        continue;
+      }
       if (!lower_scalar_or_local_memory_inst(
               inst,
               value_aliases,
@@ -4378,6 +4470,29 @@ std::optional<bir::Function> lower_branch_family_function(
       }
     }
 
+    auto emit_phi_stores_for_successor = [&](const std::string& successor_label) -> bool {
+      const auto phi_it = phi_plans->find(successor_label);
+      if (phi_it == phi_plans->end()) {
+        return true;
+      }
+      for (const auto& phi_plan : phi_it->second) {
+        const auto incoming_it = phi_plan.incoming_by_label.find(block.label);
+        if (incoming_it == phi_plan.incoming_by_label.end()) {
+          return false;
+        }
+        const auto incoming_value =
+            lower_value(incoming_it->second, phi_plan.type, value_aliases);
+        if (!incoming_value.has_value()) {
+          return false;
+        }
+        lowered_block.insts.push_back(bir::StoreLocalInst{
+            .slot_name = phi_plan.slot_name,
+            .value = *incoming_value,
+        });
+      }
+      return true;
+    };
+
     if (const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&block.terminator)) {
       bir::ReturnTerminator lowered_ret;
       if (ret->value_str.has_value()) {
@@ -4393,9 +4508,19 @@ std::optional<bir::Function> lower_branch_family_function(
       }
       lowered_block.terminator = lowered_ret;
     } else if (const auto* br = std::get_if<c4c::codegen::lir::LirBr>(&block.terminator)) {
+      if (!emit_phi_stores_for_successor(br->target_label)) {
+        return std::nullopt;
+      }
       lowered_block.terminator = bir::BranchTerminator{.target_label = br->target_label};
     } else if (const auto* cond_br =
                    std::get_if<c4c::codegen::lir::LirCondBr>(&block.terminator)) {
+      if (!emit_phi_stores_for_successor(cond_br->true_label)) {
+        return std::nullopt;
+      }
+      if (cond_br->false_label != cond_br->true_label &&
+          !emit_phi_stores_for_successor(cond_br->false_label)) {
+        return std::nullopt;
+      }
       const auto condition = lower_value(cond_br->cond_name, bir::TypeKind::I1, value_aliases);
       if (!condition.has_value()) {
         return std::nullopt;
