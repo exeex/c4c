@@ -2747,6 +2747,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_mixed_affine_post_add_sub.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_mixed_post_chain(i32 %p.x, i32 %p.y) -> i32 {|bir.store_local %t12.phi, i32 %t9|bir.store_local %t12.phi, i32 %t11|%t12 = bir.load_local i32 %t12.phi|%t13 = bir.add i32 %t12, 6|%t14 = bir.sub i32 %t13, 2|bir.ret i32 %t14"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_mixed_post_chain(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
@@ -2804,7 +2813,6 @@ if(CLANG_EXECUTABLE)
       two_param_select_eq
       two_param_select_eq_predecessor_add_post_add
       two_param_select_eq_split_predecessor_add_phi_post_add_sub_add
-      two_param_select_eq_split_predecessor_mixed_affine_post_add_sub
       two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_add
       two_param_select_eq_split_predecessor_mixed_affine_post_add
       two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub
