@@ -38,6 +38,14 @@ Source Plan: plan.md
   surface that demonstrates a real signature-lowering gap in those owned files
   rather than from arithmetic route cases that are already covered,
   emitter-routed, or semantically mismatched
+- route checkpoint needed:
+  the current route suite no longer provides an honest backlog-item-2
+  executor packet:
+  the remaining visible failures in existing signature-adjacent route cases
+  are either route-selection artifacts (`two_param_add` emitting native
+  riscv64 asm for a trivial helper), frontend-promotion expectation mismatches
+  (`i8`/`u8` arithmetic widening and truncation), or later-lane call/runtime
+  behavior outside the current lowering-owned proving surface
 - packet rule:
   do not accept a packet whose main effect is promoting one more named
   riscv64 route stem from `asm_unsupported` to `defaults_to_bir`; the next
@@ -117,6 +125,23 @@ Source Plan: plan.md
   backlog item 2 stays active, but the next executor packet must start from a
   different proving surface that demonstrates a real signature-lowering gap in
   the owned files
+- signature route-suite exhaustion recorded:
+  a follow-up scan of the current signature-adjacent route suite did not find
+  another trustworthy backlog-item-2 packet in the existing tests:
+  `ctest --test-dir build --output-on-failure -R '^backend_codegen_route_riscv64_two_param_add_defaults_to_bir$'`
+  still failed only because the trivial two-parameter helper emitted native
+  riscv64 asm (`add a0, a0, a1`) instead of printed BIR
+  `ctest --test-dir build --output-on-failure -R '^backend_codegen_route_riscv64_two_param_add_sub_chain_defaults_to_bir$'`
+  passed, confirming the non-trivial two-parameter `i32` signature route is
+  already covered
+  `ctest --test-dir build --output-on-failure -R '^backend_codegen_route_riscv64_two_param_i8_add_sub_chain_defaults_to_bir$|^backend_codegen_route_riscv64_two_param_u8_add_defaults_to_bir$'`
+  failed only on frontend-promotion-shaped expectations:
+  the emitted BIR widens to `i32`, performs the arithmetic there, and truncates
+  back to `i8` as expected from current signed/unsigned promotion semantics
+  no remaining existing route test now isolates a real parsed-param or
+  return-lowering defect in `lir_to_bir_module.cpp` / `call_decode.cpp`, so
+  the next autonomous step should be a lifecycle route checkpoint rather than a
+  code packet guessed from weak evidence
 - route reset recorded:
   the reviewer found that commits `3edfbf03..69b77578` changed only
   `tests/c/internal/InternalTests.cmake` plus `todo.md`, while backlog item 1
