@@ -80,6 +80,43 @@ Source Plan: plan.md
 ## Latest Packet Progress
 
 - completed:
+  the first honest eighteen-arg integer-class indirect-call family now stays
+  on the same shared semantic-BIR/prepared-BIR riscv64 route surface as the
+  earlier one-arg through seventeen-arg work without reopening the backend
+  route: the existing spill-as-you-go stack-arg materialization path already
+  scaled to a tenth stack-passed callee arg, so the caller continues to
+  preserve the standing register-lane shuffle for the first eight
+  integer-class args, loads the next nine wrapper stack args one by one
+  through `t1`, spills them into the aligned 80-byte temporary call area at
+  `0(sp)` through `64(sp)`, materializes the eighteenth immediate callee arg
+  into that same scratch lane, stores it at `72(sp)`, and then restores `sp`
+  after `jalr` without reintroducing fallback routes or widening into
+  ABI-shaped call work
+  new route proofs cover `indirect_eighteen_arg_param_call.c` and
+  `indirect_eighteen_arg_local_call.c` as native asm with the expected callee
+  preserve into `t0`, the aligned `addi sp, sp, -80`, the nine stack-backed
+  wrapper args reloaded one by one through `t1` with matching stores at
+  `0(sp)`, `8(sp)`, `16(sp)`, `24(sp)`, `32(sp)`, `40(sp)`, `48(sp)`,
+  `56(sp)`, and `64(sp)`, the eighteenth callee arg materialized into that
+  same scratch lane and stored at `72(sp)`, the leading register arg moves
+  through `a0`..`a6`, the incoming stack-passed eighth wrapper arg loaded into
+  `a7`, `jalr ra, t0, 0`, and final `addi sp, sp, 80`, while `branch_if_eq.c`,
+  `call_helper.c`, `local_arg_call.c`, and the earlier one-arg through
+  seventeen-arg indirect-call plus `ptr`-shaped and `two_arg_*` direct-call
+  sentinels stayed in the owned proof surface
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated build succeeded, the two new riscv64 route tests passed as
+  tests `#311` and `#312`, the broad `^backend_` subset still returned
+  non-zero because it remains at `225` standing failures, the total backend
+  route surface increased from `387` to `389`, and supervisor-side regression
+  guard passed with `passed=162 -> 164`, `failed=225 -> 225`, and `0` new
+  failing tests, so the first ten-stack-slot indirect-call family is now
+  covered on the shared riscv64 lane
+- completed:
   the first honest seventeen-arg integer-class indirect-call family now stays
   on the same shared semantic-BIR/prepared-BIR riscv64 route surface as the
   earlier one-arg through sixteen-arg work without reopening the backend
