@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 
 // Parser entry/index surface.
 //
@@ -32,19 +33,113 @@
 #include <functional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "arena.hpp"
 #include "ast.hpp"
 #include "source_profile.hpp"
 #include "token.hpp"
+#include "../string_id_table.hpp"
 
 namespace c4c {
 
 class Parser {
  public:
   // ── parser-side model types ───────────────────────────────────────────────
+  using SymbolId = uint32_t;
+
+  static constexpr SymbolId kInvalidSymbol = 0;
+
+  // Identifier-atom identity layer. Symbols reuse TextTable storage rather
+  // than maintaining a second owning copy of the spelling.
+  struct SymbolTable {
+    explicit SymbolTable(TextTable* texts = nullptr) : texts_(texts) {}
+
+    void attach_text_table(TextTable* texts) { texts_ = texts; }
+
+    SymbolId find_identifier(TextId text_id) const {
+      if (!texts_ || text_id == kInvalidText) return kInvalidSymbol;
+      const auto it = symbol_ids_.id_by_key_.find(text_id);
+      return it == symbol_ids_.id_by_key_.end() ? kInvalidSymbol : it->second;
+    }
+
+    SymbolId find_identifier(std::string_view text) const {
+      if (!texts_ || text.empty()) return kInvalidSymbol;
+      const auto text_it = texts_->id_by_key_.find(std::string(text));
+      if (text_it == texts_->id_by_key_.end()) return kInvalidSymbol;
+      return find_identifier(text_it->second);
+    }
+
+    SymbolId intern_identifier(TextId text_id) {
+      if (!texts_ || text_id == kInvalidText) return kInvalidSymbol;
+      return symbol_ids_.intern(text_id);
+    }
+
+    SymbolId intern_identifier(std::string_view text) {
+      if (!texts_) return kInvalidSymbol;
+      return intern_identifier(texts_->intern(text));
+    }
+
+    TextId text_id(SymbolId id) const {
+      const TextId* stored = symbol_ids_.lookup(id);
+      return stored ? *stored : kInvalidText;
+    }
+
+    std::string_view spelling(SymbolId id) const {
+      if (!texts_) return {};
+      return texts_->lookup(text_id(id));
+    }
+
+    size_t size() const { return symbol_ids_.size(); }
+
+    TextTable* texts_ = nullptr;
+    KeyIdTable<SymbolId, kInvalidSymbol, TextId> symbol_ids_;
+  };
+
+  // Parser-local semantic tables keyed by identifier atoms. Scope and binding
+  // stay outside this struct; this only centralizes atom-keyed parser facts.
+  struct ParserNameTables {
+    SymbolId find_identifier(TextId text_id) const {
+      return symbols ? symbols->find_identifier(text_id) : kInvalidSymbol;
+    }
+
+    SymbolId find_identifier(std::string_view text) const {
+      return symbols ? symbols->find_identifier(text) : kInvalidSymbol;
+    }
+
+    SymbolId intern_identifier(TextId text_id) {
+      return symbols ? symbols->intern_identifier(text_id) : kInvalidSymbol;
+    }
+
+    SymbolId intern_identifier(std::string_view text) {
+      return symbols ? symbols->intern_identifier(text) : kInvalidSymbol;
+    }
+
+    bool is_typedef(SymbolId id) const {
+      return id != kInvalidSymbol && typedefs.count(id) != 0;
+    }
+
+    bool has_typedef_type(SymbolId id) const {
+      return id != kInvalidSymbol && typedef_types.count(id) != 0;
+    }
+
+    const TypeSpec* lookup_typedef_type(SymbolId id) const {
+      const auto it = typedef_types.find(id);
+      return it == typedef_types.end() ? nullptr : &it->second;
+    }
+
+    SymbolTable* symbols = nullptr;
+    std::unordered_set<SymbolId> typedefs;
+    std::unordered_set<SymbolId> user_typedefs;
+    std::unordered_map<SymbolId, TypeSpec> typedef_types;
+    std::unordered_map<SymbolId, TypeSpec> var_types;
+  };
+
+  using ParserSymbolTables = ParserNameTables;
+
   // Namespace tree node used by C++ qualified-name lookup and using-directive
   // visibility tracking.
   struct NamespaceContext {
@@ -59,7 +154,25 @@ class Parser {
   struct QualifiedNameRef {
     bool is_global_qualified = false;
     std::vector<std::string> qualifier_segments;
+    std::vector<SymbolId> qualifier_symbol_ids;
     std::string base_name;
+    SymbolId base_symbol_id = kInvalidSymbol;
+
+    bool is_unqualified_atom() const {
+      return !is_global_qualified && qualifier_segments.empty();
+    }
+
+    std::string spelled(bool include_global_prefix = false) const {
+      std::string name;
+      if (include_global_prefix && is_global_qualified) name = "::";
+      for (size_t i = 0; i < qualifier_segments.size(); ++i) {
+        if (!name.empty() && name != "::") name += "::";
+        name += qualifier_segments[i];
+      }
+      if (!name.empty() && name != "::") name += "::";
+      name += base_name;
+      return name;
+    }
   };
 
   // Result container for one parsed template argument after type-vs-value
@@ -168,18 +281,13 @@ class Parser {
     size_t token_mutation_count = 0;
   };
 
-  // Snapshot of all speculative parser state fields. Used by the heavy guard
-  // to automatically roll back semantic environment mutations when needed.
-  struct ParserSymbolTables {
-    std::set<std::string> typedefs;
-    std::set<std::string> user_typedefs;
-    std::unordered_map<std::string, TypeSpec> typedef_types;
-    std::unordered_map<std::string, TypeSpec> var_types;
-  };
-
   struct ParserSnapshot {
     ParserLiteSnapshot lite;
     ParserSymbolTables symbol_tables;
+    std::set<std::string> non_atom_typedefs;
+    std::set<std::string> non_atom_user_typedefs;
+    std::unordered_map<std::string, TypeSpec> non_atom_typedef_types;
+    std::unordered_map<std::string, TypeSpec> non_atom_var_types;
   };
 
   struct TentativeParseStats {
@@ -333,9 +441,12 @@ class Parser {
   Arena& arena_;
   SourceProfile source_profile_;
   std::string source_file_;  // source path used by diagnostics
+  mutable TextTable parser_texts_;
+  mutable std::unordered_map<TextId, TextId> parser_text_ids_;
+  SymbolTable parser_symbols_{&parser_texts_};
+  ParserNameTables parser_name_tables_{&parser_symbols_};
 
   // ── name / type knowledge accumulated during parsing ─────────────────────
-  ParserSymbolTables symbol_tables_;
   // Declared concept names visible to the parser. Kept separate from typedef
   // tracking so concept-ids do not get mistaken for type names.
   std::set<std::string> concept_names_;
@@ -361,6 +472,12 @@ class Parser {
   // Qualified function names (populated as functions are declared/defined).
   // Used by lookup_value_in_context for namespace-aware function lookup.
   std::set<std::string> known_fn_names_;
+  // String-keyed fallback storage for composed or synthesized names that are
+  // not eligible for source-atom SymbolId identity.
+  std::set<std::string> non_atom_typedefs_;
+  std::set<std::string> non_atom_user_typedefs_;
+  std::unordered_map<std::string, TypeSpec> non_atom_typedef_types_;
+  std::unordered_map<std::string, TypeSpec> non_atom_var_types_;
   // Struct member typedef scoped names: "StructTag::TypeName" → TypeSpec.
   // Populated when parsing typedef inside struct bodies.
   std::unordered_map<std::string, TypeSpec> struct_typedefs_;
@@ -522,11 +639,37 @@ class Parser {
   bool is_type_start() const;            // can current token start a type?
   bool can_start_parameter_type() const;
   bool looks_like_unresolved_identifier_type_head(int pos) const;
-  bool has_typedef_name(const std::string& name) const;
-  bool has_typedef_type(const std::string& name) const;
-  const TypeSpec* find_typedef_type(const std::string& name) const;
-  bool has_visible_typedef_type(const std::string& name) const;
-  const TypeSpec* find_visible_typedef_type(const std::string& name) const;
+  TextId parser_text_id_for_token(TextId token_text_id,
+                                  std::string_view fallback = {}) const {
+    if (token_text_id != kInvalidText) {
+      const auto it = parser_text_ids_.find(token_text_id);
+      if (it != parser_text_ids_.end()) return it->second;
+    }
+    if (fallback.empty()) return kInvalidText;
+    const TextId parser_text_id = parser_texts_.intern(fallback);
+    if (token_text_id != kInvalidText) {
+      parser_text_ids_.emplace(token_text_id, parser_text_id);
+    }
+    return parser_text_id;
+  }
+  std::string_view token_spelling(const Token& token) const;
+  Token make_injected_token(const Token& seed, TokenKind kind,
+                            std::string_view spelling);
+  SymbolId symbol_id_for_token_text(TextId token_text_id,
+                                    std::string_view fallback = {}) {
+    return parser_name_tables_.intern_identifier(
+        parser_text_id_for_token(token_text_id, fallback));
+  }
+  SymbolId symbol_id_for_token(const Token& token);
+  void populate_qualified_name_symbol_ids(QualifiedNameRef* name);
+  std::string_view symbol_spelling(SymbolId id) const {
+    return parser_symbols_.spelling(id);
+  }
+  bool has_typedef_name(std::string_view name) const;
+  bool has_typedef_type(std::string_view name) const;
+  const TypeSpec* find_typedef_type(std::string_view name) const;
+  bool has_visible_typedef_type(std::string_view name) const;
+  const TypeSpec* find_visible_typedef_type(std::string_view name) const;
   TypeSpec resolve_typedef_type_chain(TypeSpec ts) const;
   TypeSpec resolve_struct_like_typedef_type(TypeSpec ts) const;
   bool are_types_compatible(const TypeSpec& lhs, const TypeSpec& rhs) const;
@@ -551,7 +694,7 @@ class Parser {
   void register_var_type_binding(const std::string& name, const TypeSpec& type);
   bool has_known_fn_name(const std::string& name) const;
   void register_known_fn_name(const std::string& name);
-  bool is_typedef_name(const std::string& s) const;
+  bool is_typedef_name(std::string_view s) const;
   bool is_cpp_mode() const {
     return source_profile_ == SourceProfile::CppSubset ||
            source_profile_ == SourceProfile::C4;
@@ -576,7 +719,7 @@ class Parser {
   std::string qualify_name(const std::string& name) const;
   const char* qualify_name_arena(const char* name);
   std::string resolve_visible_value_name(const std::string& name) const;
-  std::string resolve_visible_type_name(const std::string& name) const;
+  std::string resolve_visible_type_name(std::string_view name) const;
   std::string resolve_visible_concept_name(const std::string& name) const;
   bool is_concept_name(const std::string& name) const;
   bool peek_qualified_name(QualifiedNameRef* out, bool allow_global = true) const;
@@ -653,7 +796,7 @@ class Parser {
   void pop_template_scope();
   // Check if a name is a type parameter in any active template scope frame.
   // Walks the stack from innermost to outermost.
-  bool is_template_scope_type_param(const std::string& name) const;
+  bool is_template_scope_type_param(std::string_view name) const;
 
   // ── type spelling / type-specifier parsing ────────────────────────────────
   bool consume_qualified_type_spelling_with_typename(

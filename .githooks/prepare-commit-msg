@@ -18,25 +18,18 @@ case "$subject" in
     ;;
 esac
 
-required_tags="$("$tag_script")"
-if [[ -z "$required_tags" ]]; then
+required_tag="$("$tag_script")"
+if [[ -z "$required_tag" ]]; then
   exit 0
 fi
 
-new_prefix=""
-for tag in $required_tags; do
-  if [[ "$subject" != *"$tag"* ]]; then
-    new_prefix+="$tag"
-  fi
-done
-
-if [[ -z "$new_prefix" ]]; then
+if [[ "$subject" == *"$required_tag"* ]]; then
   exit 0
 fi
 
 tmp_file="$(mktemp)"
 {
-  printf '%s %s\n' "$new_prefix" "$subject"
+  printf '%s %s\n' "$required_tag" "$subject"
   sed -n '2,$p' "$msg_file"
 } > "$tmp_file"
 mv "$tmp_file" "$msg_file"

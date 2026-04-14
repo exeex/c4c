@@ -8,11 +8,11 @@ namespace c4c {
 // ── ParserSnapshot save / restore ────────────────────────────────────────────
 
 Parser::ParserSymbolTables& Parser::parser_symbol_tables() {
-    return symbol_tables_;
+    return parser_name_tables_;
 }
 
 const Parser::ParserSymbolTables& Parser::parser_symbol_tables() const {
-    return symbol_tables_;
+    return parser_name_tables_;
 }
 
 Parser::ParserLiteSnapshot Parser::save_lite_state() const {
@@ -39,7 +39,11 @@ Parser::ParserSnapshot Parser::save_state() const {
     ParserSnapshot snap;
     snap.lite = save_lite_state();
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
-    snap.symbol_tables        = parser_symbol_tables();
+    snap.symbol_tables = parser_symbol_tables();
+    snap.non_atom_typedefs = non_atom_typedefs_;
+    snap.non_atom_user_typedefs = non_atom_user_typedefs_;
+    snap.non_atom_typedef_types = non_atom_typedef_types_;
+    snap.non_atom_var_types = non_atom_var_types_;
 #endif
     return snap;
 }
@@ -47,7 +51,12 @@ Parser::ParserSnapshot Parser::save_state() const {
 void Parser::restore_state(const ParserSnapshot& snap) {
     restore_lite_state(snap.lite);
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
-    parser_symbol_tables()  = snap.symbol_tables;
+    parser_symbol_tables() = snap.symbol_tables;
+    parser_name_tables_.symbols = &parser_symbols_;
+    non_atom_typedefs_ = snap.non_atom_typedefs;
+    non_atom_user_typedefs_ = snap.non_atom_user_typedefs;
+    non_atom_typedef_types_ = snap.non_atom_typedef_types;
+    non_atom_var_types_ = snap.non_atom_var_types;
 #endif
 }
 

@@ -1,10 +1,21 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #include "source_profile.hpp"
+#include "../string_id_table.hpp"
 
 namespace c4c {
+
+using TextId = uint32_t;
+using FileId = uint32_t;
+
+constexpr TextId kInvalidText = 0;
+constexpr FileId kInvalidFile = 0;
+
+using TextTable = StringIdTable<TextId, kInvalidText>;
+using FileTable = PathIdTable<FileId, kInvalidFile>;
 
 // Token kinds mirroring ref/claudes-c-compiler/src/frontend/lexer/token.rs
 // Pure-C backport note: map to a plain enum + tagged union when porting.
@@ -181,10 +192,15 @@ enum class TokenKind {
 
 struct Token {
   TokenKind kind;
+  [[deprecated("use text_id instead")]]
   std::string lexeme;  // raw source text
+  [[deprecated("use file_id instead")]]
   std::string file;    // logical source file after #line / include markers
-  int line;
-  int column;
+  int line = 0;
+  int column = 0;
+  TextId text_id = kInvalidText;
+  FileId file_id = kInvalidFile;
+  bool has_parser_owned_spelling = false;
 };
 
 // Returns a short debug name for the kind (used in --lex-only output).

@@ -337,6 +337,47 @@ set_target_properties(frontend_hir_tests PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
+add_executable(frontend_lexer_tests
+    "${PROJECT_SOURCE_DIR}/tests/frontend/frontend_lexer_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/lexer/token.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/lexer/lexer.cpp"
+)
+target_include_directories(frontend_lexer_tests PRIVATE
+    "${PROJECT_SOURCE_DIR}/src/frontend"
+    "${PROJECT_SOURCE_DIR}/src/frontend/lexer"
+)
+set_target_properties(frontend_lexer_tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_executable(frontend_parser_tests
+    "${PROJECT_SOURCE_DIR}/tests/frontend/frontend_parser_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/arena.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/lexer/token.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/lexer/lexer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_core.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_types_template.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_types_declarator.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_types_base.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_types_struct.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_expressions.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_statements.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_declarations.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_support.cpp"
+)
+target_include_directories(frontend_parser_tests PRIVATE
+    "${PROJECT_SOURCE_DIR}/src/frontend"
+    "${PROJECT_SOURCE_DIR}/src/frontend/lexer"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser"
+)
+target_compile_definitions(frontend_parser_tests PRIVATE
+    ENABLE_HEAVY_TENTATIVE_SNAPSHOT=$<IF:$<BOOL:${ENABLE_HEAVY_TENTATIVE_SNAPSHOT}>,1,0>
+)
+set_target_properties(frontend_parser_tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
 add_custom_command(
   OUTPUT "${EXAMPLE_LL}"
   COMMAND $<TARGET_FILE:c4cll> "${EXAMPLE_C}" -o "${EXAMPLE_LL}"

@@ -21,7 +21,7 @@ bool skip_cpp20_constraint_atom(Parser& parser);
 
 using ParsedTemplateArg = Parser::TemplateArgParseResult;
 
-bool match_floatn_keyword_base(const std::string& name, TypeBase* out_base) {
+bool match_floatn_keyword_base(std::string_view name, TypeBase* out_base) {
     TypeBase base = TB_INT;
     if (name == "_Float16" || name == "_Float32") {
         base = TB_FLOAT;
@@ -104,36 +104,35 @@ bool token_can_follow_value_like_template_arg(TokenKind kind) {
     }
 }
 
-void append_qualified_name_tokens(std::vector<Token>* out,
+void append_qualified_name_tokens(Parser& parser,
+                                  std::vector<Token>* out,
                                   const Token& seed,
                                   const std::string& name) {
     if (!out || name.empty()) return;
     size_t start = 0;
     while (start < name.size()) {
         size_t sep = name.find("::", start);
-        Token name_tok = seed;
-        name_tok.kind = TokenKind::Identifier;
-        name_tok.lexeme = sep == std::string::npos
+        const std::string segment = sep == std::string::npos
             ? name.substr(start)
             : name.substr(start, sep - start);
+        Token name_tok =
+            parser.make_injected_token(seed, TokenKind::Identifier, segment);
         out->push_back(name_tok);
         if (sep == std::string::npos) break;
-        Token cc_tok = seed;
-        cc_tok.kind = TokenKind::ColonColon;
-        cc_tok.lexeme = "::";
+        Token cc_tok =
+            parser.make_injected_token(seed, TokenKind::ColonColon, "::");
         out->push_back(cc_tok);
         start = sep + 2;
     }
 }
 
-void append_typespec_reparse_tokens(std::vector<Token>* out,
+void append_typespec_reparse_tokens(Parser& parser,
+                                    std::vector<Token>* out,
                                     const Token& seed,
                                     const TypeSpec& ts) {
     if (!out) return;
     auto emit = [&](TokenKind kind, const char* lexeme) {
-        Token tok = seed;
-        tok.kind = kind;
-        tok.lexeme = lexeme;
+        Token tok = parser.make_injected_token(seed, kind, lexeme);
         out->push_back(tok);
     };
 
@@ -142,7 +141,7 @@ void append_typespec_reparse_tokens(std::vector<Token>* out,
 
     bool emitted_head = false;
     if (ts.tag && ts.tag[0]) {
-        append_qualified_name_tokens(out, seed, ts.tag);
+        append_qualified_name_tokens(parser, out, seed, ts.tag);
         emitted_head = true;
     } else {
         switch (ts.base) {
@@ -196,10 +195,8 @@ void append_typespec_reparse_tokens(std::vector<Token>* out,
     }
 
     if (!emitted_head) {
-        Token tok = seed;
-        tok.kind = TokenKind::Identifier;
-        tok.lexeme = "int";
-        out->push_back(tok);
+        out->push_back(
+            parser.make_injected_token(seed, TokenKind::Identifier, "int"));
         return;
     }
 
@@ -219,38 +216,31 @@ bool instantiate_template_struct_via_injected_parse(
     Token t{};
     t.line = line;
     t.column = 0;
-    append_qualified_name_tokens(&inject_toks, t, template_name);
-    t.kind = TokenKind::Less;
-    t.lexeme = "<";
-    inject_toks.push_back(t);
+    append_qualified_name_tokens(parser, &inject_toks, t, template_name);
+    inject_toks.push_back(parser.make_injected_token(t, TokenKind::Less, "<"));
     for (int ai = 0; ai < static_cast<int>(args.size()); ++ai) {
         if (ai > 0) {
-            t.kind = TokenKind::Comma;
-            t.lexeme = ",";
-            inject_toks.push_back(t);
+            inject_toks.push_back(
+                parser.make_injected_token(t, TokenKind::Comma, ","));
         }
         if (args[ai].is_value) {
             if (args[ai].value == 0) {
-                t.kind = TokenKind::KwFalse;
-                t.lexeme = "false";
+                inject_toks.push_back(
+                    parser.make_injected_token(t, TokenKind::KwFalse, "false"));
             } else if (args[ai].value == 1) {
-                t.kind = TokenKind::KwTrue;
-                t.lexeme = "true";
+                inject_toks.push_back(
+                    parser.make_injected_token(t, TokenKind::KwTrue, "true"));
             } else {
-                t.kind = TokenKind::IntLit;
-                t.lexeme = std::to_string(args[ai].value);
+                inject_toks.push_back(parser.make_injected_token(
+                    t, TokenKind::IntLit, std::to_string(args[ai].value)));
             }
-            inject_toks.push_back(t);
         } else {
-            append_typespec_reparse_tokens(&inject_toks, t, args[ai].type);
+            append_typespec_reparse_tokens(parser, &inject_toks, t,
+                                           args[ai].type);
         }
     }
-    t.kind = TokenKind::Greater;
-    t.lexeme = ">";
-    inject_toks.push_back(t);
-    t.kind = TokenKind::Semi;
-    t.lexeme = ";";
-    inject_toks.push_back(t);
+    inject_toks.push_back(parser.make_injected_token(t, TokenKind::Greater, ">"));
+    inject_toks.push_back(parser.make_injected_token(t, TokenKind::Semi, ";"));
 
     const int saved_pos = parser.pos_;
     const std::string injected_detail =
@@ -310,10 +300,12 @@ bool starts_with_value_like_template_expr(const Parser& parser,
 
     bool saw_scope = tokens[start_pos].kind == TokenKind::ColonColon;
     const bool first_identifier_is_known_type =
-        is_known_simple_type_head(parser, tokens[pos].lexeme);
+        is_known_simple_type_head(parser,
+                                  std::string(parser.token_spelling(tokens[pos])));
 
     while (pos < static_cast<int>(tokens.size())) {
-        const std::string current_name = tokens[pos].lexeme;
+        const std::string current_name =
+            std::string(parser.token_spelling(tokens[pos]));
         ++pos;  // identifier
         bool saw_template_args = false;
         if (pos < static_cast<int>(tokens.size()) &&
@@ -361,7 +353,7 @@ bool starts_with_value_like_template_expr(const Parser& parser,
             return false;
         }
 
-        if (tokens[pos].lexeme == "value") {
+        if (parser.token_spelling(tokens[pos]) == "value") {
             ++pos;
             if (pos >= static_cast<int>(tokens.size())) return true;
             return token_can_follow_value_like_template_arg(tokens[pos].kind);
@@ -380,14 +372,7 @@ struct QualifiedTypeProbe {
 };
 
 std::string spell_qualified_name_for_lookup(const Parser::QualifiedNameRef& qn) {
-    std::string name;
-    for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-        if (i) name += "::";
-        name += qn.qualifier_segments[i];
-    }
-    if (!name.empty()) name += "::";
-    name += qn.base_name;
-    return name;
+    return qn.spelled();
 }
 
 std::string resolve_qualified_typedef_name(const Parser& parser,
@@ -1303,7 +1288,7 @@ void parse_optional_cpp20_requires_clause(Parser& parser) {
 
 static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts);
 static std::string capture_template_arg_expr_text(
-    const std::vector<Token>& toks, int start, int end);
+    const Parser& parser, const std::vector<Token>& toks, int start, int end);
 static bool parse_builtin_typespec_text(const std::string& text, TypeSpec* out);
 static int find_template_arg_expr_end(const std::vector<Token>& tokens, int start_pos);
 
@@ -1444,10 +1429,11 @@ static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts) {
 }
 
 static std::string capture_template_arg_expr_text(
-    const std::vector<Token>& tokens, int start_pos, int end_pos) {
+    const Parser& parser, const std::vector<Token>& tokens, int start_pos,
+    int end_pos) {
     std::string text;
     for (int i = start_pos; i < end_pos && i < static_cast<int>(tokens.size()); ++i)
-        text += tokens[i].lexeme;
+        text += parser.token_spelling(tokens[i]);
     return text;
 }
 

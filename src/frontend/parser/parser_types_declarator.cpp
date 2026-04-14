@@ -13,7 +13,7 @@
 
 namespace c4c {
 
-bool Parser::is_typedef_name(const std::string& s) const {
+bool Parser::is_typedef_name(std::string_view s) const {
     return has_typedef_name(s);
 }
 
@@ -27,7 +27,7 @@ void Parser::pop_template_scope() {
         template_scope_stack_.pop_back();
 }
 
-bool Parser::is_template_scope_type_param(const std::string& name) const {
+bool Parser::is_template_scope_type_param(std::string_view name) const {
     // Walk from innermost scope to outermost.
     for (int i = static_cast<int>(template_scope_stack_.size()) - 1; i >= 0; --i) {
         for (const auto& p : template_scope_stack_[i].params) {
@@ -101,9 +101,10 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
             }
         }
         if (!check(TokenKind::Identifier)) return false;
-        return is_typedef_name(cur().lexeme) ||
-               is_template_scope_type_param(cur().lexeme) ||
-               has_visible_typedef_type(cur().lexeme);
+        const std::string_view name = token_spelling(cur());
+        return is_typedef_name(name) ||
+               is_template_scope_type_param(name) ||
+               has_visible_typedef_type(name);
     };
 
     if (is_simple_known_template_type_head() &&
@@ -140,10 +141,12 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
         // a declarator name. This happens for forwarded NTTP names like <N>
         // where N is not a type. Reject so non-type parsing can handle it.
         if (is_cpp_mode() && pos_ == start_pos + 1 &&
-            tokens_[start_pos].kind == TokenKind::Identifier &&
-            !is_typedef_name(tokens_[start_pos].lexeme) &&
-            !is_template_scope_type_param(tokens_[start_pos].lexeme)) {
+            tokens_[start_pos].kind == TokenKind::Identifier) {
+            const std::string_view start_name = token_spelling(tokens_[start_pos]);
+            if (!is_typedef_name(start_name) &&
+                !is_template_scope_type_param(start_name)) {
             return false;
+            }
         }
         out_arg->is_value = false;
         out_arg->type = ts;
@@ -161,7 +164,7 @@ bool Parser::capture_template_arg_expr(int expr_start, TemplateArgParseResult* o
     if (!out_arg) return false;
     const int expr_end = find_template_arg_expr_end(tokens_, expr_start);
     const std::string expr_text =
-        capture_template_arg_expr_text(tokens_, expr_start, expr_end);
+        capture_template_arg_expr_text(*this, tokens_, expr_start, expr_end);
     if (expr_text.empty()) return false;
     out_arg->is_value = true;
     out_arg->value = 0;
@@ -182,7 +185,7 @@ bool Parser::try_parse_template_non_type_expr(int expr_start,
         --template_arg_expr_depth_;
         if (pos_ > expr_start && (check(TokenKind::Comma) || check_template_close())) {
             const std::string expr_text =
-                capture_template_arg_expr_text(tokens_, expr_start, pos_);
+                capture_template_arg_expr_text(*this, tokens_, expr_start, pos_);
             if (!expr_text.empty()) {
                 out_arg->is_value = true;
                 out_arg->value = 0;
@@ -277,8 +280,9 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
             primary_tpl->template_param_is_nttp[arg_idx];
     }
     if (check(TokenKind::Identifier)) {
-        const std::string resolved = resolve_visible_type_name(cur().lexeme);
-        if (alias_template_info_.count(cur().lexeme) > 0 ||
+        const std::string name(token_spelling(cur()));
+        const std::string resolved = resolve_visible_type_name(name);
+        if (alias_template_info_.count(name) > 0 ||
             alias_template_info_.count(resolved) > 0) {
             return false;
         }
@@ -400,16 +404,9 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
     }
 
     if (out_name) {
-        std::string spelled;
-        if (qn.is_global_qualified) spelled = "::";
-        for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-            if (!spelled.empty() && spelled != "::") spelled += "::";
-            spelled += qn.qualifier_segments[i];
-        }
-        if (!spelled.empty() && spelled != "::") spelled += "::";
-        spelled += qn.base_name;
-        *out_name = std::move(spelled);
+        *out_name = qn.spelled(/*include_global_prefix=*/true);
     }
+    populate_qualified_name_symbol_ids(&qn);
     if (out_qn) *out_qn = std::move(qn);
     guard.commit();
     return true;
@@ -545,7 +542,9 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     if (out_name) {
         auto join_token_lexemes = [&](int start, int end) -> std::string {
             std::string out;
-            for (int i = start; i < end; ++i) out += tokens_[i].lexeme;
+            for (int i = start; i < end; ++i) {
+                out += token_spelling(tokens_[i]);
+            }
             return out;
         };
         const int owner_start =
@@ -574,9 +573,12 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                     for (int i = owner_start; i < final_scope_pos; ++i) {
                         inject_toks.push_back(tokens_[i]);
                     }
-                    Token sentinel{};
-                    sentinel.kind = TokenKind::Semi;
-                    sentinel.lexeme = ";";
+                    Token sentinel_seed{};
+                    if (owner_start < final_scope_pos) {
+                        sentinel_seed = tokens_[owner_start];
+                    }
+                    Token sentinel =
+                        make_injected_token(sentinel_seed, TokenKind::Semi, ";");
                     inject_toks.push_back(sentinel);
 
                     int saved_pos = pos_;
@@ -594,7 +596,9 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                          owner_ts.tpl_struct_origin[0]) ||
                         (owner_ts.tag && owner_ts.tag[0])) {
                         owner_ts.deferred_member_type_name =
-                            arena_.strdup(tokens_[final_scope_pos + 1].lexeme.c_str());
+                            arena_.strdup(std::string(token_spelling(
+                                              tokens_[final_scope_pos + 1]))
+                                              .c_str());
                         cache_typedef_type(spelled_name, owner_ts);
                         resolved = spelled_name;
                         preserved_template_owner_member = true;
@@ -935,7 +939,7 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name) {
     if (check(TokenKind::KwOperator)) {
         parsed_qualified = parse_operator_declarator_name(&qualified_name);
     } else if (check(TokenKind::Identifier)) {
-        qualified_name += cur().lexeme;
+        qualified_name += token_spelling(cur());
         consume();
         parsed_qualified = true;
         consume_template_args_before_scope();
@@ -944,7 +948,7 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name) {
     while (parsed_qualified && match(TokenKind::ColonColon)) {
         append_scope_sep();
         if (check(TokenKind::Identifier)) {
-            qualified_name += cur().lexeme;
+            qualified_name += token_spelling(cur());
             consume();
             consume_template_args_before_scope();
             continue;
@@ -1054,7 +1058,7 @@ void Parser::parse_pointer_ref_qualifiers(TypeSpec& ts, TokenKind pointer_tok,
 
 void Parser::consume_declarator_post_pointer_qualifiers() {
     while (check(TokenKind::Identifier)) {
-        const std::string& lex = cur().lexeme;
+        const std::string_view lex = token_spelling(cur());
         if (lex == "_Nullable" || lex == "_Nonnull" ||
             lex == "_Null_unspecified" || lex == "__nullable" ||
             lex == "__nonnull" || lex == "__restrict" ||
@@ -1516,7 +1520,7 @@ Parser::TypenameTemplateParamKind Parser::classify_typename_template_parameter()
         case TokenKind::KwTypename:
             return TypenameTemplateParamKind::TypeParameter;
         case TokenKind::Identifier:
-            if (tokens_[probe].lexeme == "typename")
+            if (token_spelling(tokens_[probe]) == "typename")
                 return TypenameTemplateParamKind::TypeParameter;
             break;
         default:

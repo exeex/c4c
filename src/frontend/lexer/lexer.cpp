@@ -100,8 +100,11 @@ char Lexer::advance() {
   return c;
 }
 
-Token Lexer::make_token(TokenKind kind, std::string lexeme, int line, int col) const {
-  return Token{kind, std::move(lexeme), current_file_, line, col};
+Token Lexer::make_token(TokenKind kind, std::string lexeme, int line, int col) {
+  const TextId text_id = text_table_.intern(lexeme);
+  const FileId file_id = file_table_.intern(current_file_);
+  return Token{kind, std::move(lexeme), current_file_, line, col, text_id,
+               file_id};
 }
 
 // ── whitespace / comment / GCC line-marker skipping ─────────────────────────
@@ -329,13 +332,8 @@ Token Lexer::scan_identifier_or_keyword() {
   if (kind == TokenKind::Identifier &&
       (text == "L" || text == "u" || text == "U" || text == "u8") &&
       !at_end() && (peek() == '"' || peek() == '\'')) {
-    std::string prefix = text;
-    Token inner = (peek() == '"') ? scan_string() : scan_char();
-    // Prepend prefix to the inner token's lexeme
-    inner.lexeme = prefix + inner.lexeme;
-    inner.line = tok_line;
-    inner.column = tok_col;
-    return inner;
+    return (peek() == '"') ? scan_string(std::move(text))
+                           : scan_char(std::move(text));
   }
 
   return make_token(kind, std::move(text), tok_line, tok_col);
@@ -594,10 +592,10 @@ void Lexer::scan_int_suffix(std::string &text) {
 
 // ── string literal ───────────────────────────────────────────────────────────
 
-Token Lexer::scan_string() {
+Token Lexer::scan_string(std::string prefix) {
   int tok_line = line_;
   int tok_col  = column_;
-  std::string text;
+  std::string text = std::move(prefix);
   text.push_back(advance());  // consume opening '"'
   while (!at_end()) {
     char c = advance();
@@ -615,10 +613,10 @@ Token Lexer::scan_string() {
 
 // ── char literal ─────────────────────────────────────────────────────────────
 
-Token Lexer::scan_char() {
+Token Lexer::scan_char(std::string prefix) {
   int tok_line = line_;
   int tok_col  = column_;
-  std::string text;
+  std::string text = std::move(prefix);
   text.push_back(advance());  // consume opening '\''
   while (!at_end()) {
     char c = advance();
