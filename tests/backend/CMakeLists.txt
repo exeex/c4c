@@ -223,7 +223,7 @@ add_test(
           -DOUT_A=${CMAKE_BINARY_DIR}/backend_route/nested_member_pointer_array_semantic_bir_x86_64.ll
           "-DREQUIRED_SNIPPETS_A=bir.func @get_second(ptr %p.o) -> i32 {|%t1 = bir.load_local ptr %t1.addr, addr %p.o|%t6 = bir.load_local i32 %t6.addr, addr %t1+4|bir.store_local %lv.outer.0, ptr %lv.inner|bir.call i32 get_second(ptr %lv.outer)|bir.ret i32 %t9"
           -DSRC_B=${BACKEND_CASE_ROOT}/local_array.c
-          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/local_array_semantic_bir_x86_64.ll
+          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/nested_member_pointer_array_local_array_semantic_bir_x86_64.ll
           "-DREQUIRED_SNIPPETS_B=bir.func @main() -> i32 {|bir.store_local %lv.xs.0, i32 4|bir.store_local %lv.xs.1, i32 3|%t14 = bir.add i32 %t9, %t13|bir.ret i32 %t14"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
 )
@@ -242,7 +242,7 @@ add_test(
           "-DREQUIRED_SNIPPETS_A=bir.func @get_at(ptr %p.p, i32 %p.i) -> i32 {|%t4.elt0 = bir.load_local i32 %t4.elt0.addr, addr %p.p|%t4.elt1 = bir.load_local i32 %t4.elt1.addr, addr %p.p+4|%t4.elt2 = bir.load_local i32 %t4.elt2.addr, addr %p.p+8|%t4 = bir.select eq i64 %t2, 0, i32 %t4.elt0, %t4.sel1|bir.call i32 get_at(ptr %lv.p, i32 2)|bir.ret i32 %t12"
           "-DFORBIDDEN_SNIPPETS_A=define i32 @get_at|getelementptr [3 x i32], ptr"
           -DSRC_B=${BACKEND_CASE_ROOT}/local_array.c
-          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/local_array_semantic_bir_x86_64.ll
+          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/local_dynamic_member_array_local_array_semantic_bir_x86_64.ll
           "-DREQUIRED_SNIPPETS_B=bir.func @main() -> i32 {|bir.store_local %lv.xs.0, i32 4|bir.store_local %lv.xs.1, i32 3|%t14 = bir.add i32 %t9, %t13|bir.ret i32 %t14"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
 )
@@ -261,7 +261,7 @@ add_test(
           "-DREQUIRED_SNIPPETS_A=bir.func @set_at(ptr %p.p, i32 %p.i, i32 %p.v) -> void {|%t2 = bir.sext i32 %p.i to i64|%t3.elt0 = bir.load_local i32 %t3.elt0.load.addr, addr %p.p|%t3.store0 = bir.select eq i64 %t2, 0, i32 %p.v, %t3.elt0|bir.store_local %t3.elt0.store.addr, i32 %t3.store0, addr %p.p|%t3.elt1 = bir.load_local i32 %t3.elt1.load.addr, addr %p.p+4|%t3.store1 = bir.select eq i64 %t2, 1, i32 %p.v, %t3.elt1|bir.store_local %t3.elt1.store.addr, i32 %t3.store1, addr %p.p+4|%t3.elt2 = bir.load_local i32 %t3.elt2.load.addr, addr %p.p+8|%t3.store2 = bir.select eq i64 %t2, 2, i32 %p.v, %t3.elt2|bir.store_local %t3.elt2.store.addr, i32 %t3.store2, addr %p.p+8|bir.ret"
           "-DFORBIDDEN_SNIPPETS_A=define void @set_at|store i32 %p.v, ptr|getelementptr [3 x i32], ptr"
           -DSRC_B=${BACKEND_CASE_ROOT}/local_dynamic_member_array.c
-          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/local_dynamic_member_array_semantic_bir_x86_64.ll
+          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/local_dynamic_member_array_store_neighbor_semantic_bir_x86_64.ll
           "-DREQUIRED_SNIPPETS_B=bir.func @get_at(ptr %p.p, i32 %p.i) -> i32 {|%t4.elt0 = bir.load_local i32 %t4.elt0.addr, addr %p.p|%t4.elt1 = bir.load_local i32 %t4.elt1.addr, addr %p.p+4|%t4.elt2 = bir.load_local i32 %t4.elt2.addr, addr %p.p+8|%t4 = bir.select eq i64 %t2, 0, i32 %t4.elt0, %t4.sel1|bir.call i32 get_at(ptr %lv.p, i32 2)|bir.ret i32 %t12"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
 )
@@ -280,7 +280,7 @@ add_test(
           "-DREQUIRED_SNIPPETS_A=bir.func @main() -> i32 {|bir.store_local %lv.p.0, i32 4|bir.store_local %lv.p.4, i32 8|bir.store_local %lv.p.8, i32 11|bir.store_local %lv.i, i32 1|%t16.elt0 = bir.load_local i32 %lv.p.0|%t16.store1 = bir.select eq i64 %t15, 1, i32 13, %t16.elt1|bir.store_local %lv.p.8, i32 %t16.store2|%t21 = bir.load_local i32 %lv.p.4|bir.ret i32 %t21"
           "-DFORBIDDEN_SNIPPETS_A=define i32 @main()|store i32 13, ptr|getelementptr [3 x i32], ptr"
           -DSRC_B=${BACKEND_CASE_ROOT}/local_array.c
-          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/local_array_semantic_bir_x86_64.ll
+          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/local_direct_dynamic_member_array_store_local_array_semantic_bir_x86_64.ll
           "-DREQUIRED_SNIPPETS_B=bir.func @main() -> i32 {|bir.store_local %lv.xs.0, i32 4|bir.store_local %lv.xs.1, i32 3|%t14 = bir.add i32 %t9, %t13|bir.ret i32 %t14"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
 )

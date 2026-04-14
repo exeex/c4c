@@ -179,6 +179,14 @@ Source Plan: plan.md
 - 2026-04-14 proof result:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_codegen_route_x86_64_(nested_member_pointer_array|local_dynamic_member_array|local_dynamic_member_array_store|local_direct_dynamic_member_array_store).*semantic_bir'`
   now passes `4 / 4`, and `test_after.log` is the proof log path
+- 2026-04-14 executor harness follow-up:
+  the local-address backend-route dual tests now write unique neighbor output
+  files under `build/backend_route/` instead of sharing `local_array` /
+  `local_dynamic_member_array` artifact paths across parallel `ctest` jobs
+- 2026-04-14 proof confirmation:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_codegen_route_x86_64_(nested_member_pointer_array|local_dynamic_member_array|local_dynamic_member_array_store|local_direct_dynamic_member_array_store).*semantic_bir' && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+  now passes in parallel as `4 / 4` then `18 / 18`, and `test_after.log` is
+  the proof log path
 - next adjacent local-address gap:
   bounded dynamic scalar member-array stores now stay on semantic BIR for
   both addressed pointer-value roots and direct local aggregate-slot roots,
