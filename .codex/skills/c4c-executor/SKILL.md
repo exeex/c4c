@@ -68,19 +68,21 @@ Executor packets should normally include [`todo.md`](/workspaces/c4c/todo.md) in
 When updating [`todo.md`](/workspaces/c4c/todo.md):
 
 - edit only the relevant section for the active packet
-- record `Just Finished`: what this packet actually completed
+- use Markdown headings for the packet body: `# Current Packet`, then
+  `## Just Finished`, `## Suggested Next`, `## Watchouts`, and `## Proof`
+- record `## Just Finished`: what this packet actually completed
 - keep `Just Finished` as a short overwrite-style summary for the latest packet,
   not an accumulating history list
-- record `Suggested Next`: the next coherent packet the executor recommends
+- record `## Suggested Next`: the next coherent packet the executor recommends
 - keep `Suggested Next` limited to the next packet only; do not build a queued
   backlog there
 - treat `Suggested Next` as advisory only; the supervisor still owns packet
   selection and may override it
-- record `Watchouts`: extra findings, risks, or route notes that the next
+- record `## Watchouts`: extra findings, risks, or route notes that the next
   packet should not miss
 - keep `Watchouts` focused on live notes for the next handoff, not a growing
   archive
-- record `Proof`: the proof command or test subset used, whether the
+- record `## Proof`: the proof command or test subset used, whether the
   supervisor-selected proof was sufficient or blocked, and `test_after.log` as
   the proof log path
 - record blockers only when they are real and current

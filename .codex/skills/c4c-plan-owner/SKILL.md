@@ -71,8 +71,9 @@ When activation or repair requires writing `plan.md`:
 4. Do not create the final commit.
 5. Do not take over routine executor progress tracking in `todo.md`.
 6. Do not create a second `todo.md` protocol. When `todo.md` must be created or
-   reset, use the same section shape the executor updates:
-   `Just Finished`, `Suggested Next`, `Watchouts`, and `Proof`.
+   reset, use the same Markdown section shape the executor updates:
+   `# Current Packet`, then `## Just Finished`, `## Suggested Next`,
+   `## Watchouts`, and `## Proof`.
 
 ## Lifecycle Rules
 

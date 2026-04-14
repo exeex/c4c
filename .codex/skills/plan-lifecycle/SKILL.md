@@ -100,10 +100,11 @@ When lifecycle work creates or resets [`todo.md`](/workspaces/c4c/todo.md), use
 an executor-compatible skeleton instead of a custom format. The mutable packet
 body should be framed with:
 
-- `Just Finished`
-- `Suggested Next`
-- `Watchouts`
-- `Proof`
+- `# Current Packet`
+- `## Just Finished`
+- `## Suggested Next`
+- `## Watchouts`
+- `## Proof`
 
 ### `ideas/open/*.md` and `ideas/closed/*.md`
 
