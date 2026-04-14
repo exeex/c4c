@@ -23,17 +23,17 @@ Source Plan: plan.md
   first ptr-capable result family, and the first combined ptr-arg plus
   ptr-result family through semantic BIR and native asm; the first adjacent
   non-leading single-ptr arg family and the first adjacent two-ptr arg family
-  are now also green, and the first adjacent non-leading mixed three-arg
-  `i32, ptr, ptr` family is now green as well; the next packet should widen
-  further across adjacent mixed multi-`ptr` signatures without reopening
-  stack-call ABI work
+  are now also green, and the first two adjacent mixed three-arg
+  multi-`ptr` families, `i32, ptr, ptr` and `ptr, i32, ptr`, are now green
+  as well; the next packet should widen to the remaining adjacent
+  `ptr, ptr, i32` family without reopening stack-call ABI work
 - current packet shape:
   keep backlog item 5 moving outward from the repaired entry boundary:
   widen the standing riscv64 indirect-call lane from the now-green leading,
-  trailing, paired-leading, and first non-leading mixed three-arg ptr
-  signatures to the next adjacent multi-ptr-capable integer-class family
-  while keeping the existing eight-register arg lane fixed and avoiding
-  ABI-shaped stack-call work
+  trailing, paired-leading, and first two adjacent mixed three-arg ptr
+  signatures to the last remaining adjacent multi-ptr-capable integer-class
+  family while keeping the existing eight-register arg lane fixed and
+  avoiding ABI-shaped stack-call work
 - candidate proving surface:
   add the next paired param/local riscv64 route tests for a multi-`ptr`
   integer-class indirect-call signature with at least one non-leading `ptr`
@@ -75,6 +75,36 @@ Source Plan: plan.md
 
 ## Latest Packet Progress
 
+- completed:
+  the next honest adjacent mixed three-arg multi-`ptr` family now stays on
+  the same shared semantic-BIR/prepared-BIR riscv64 route surface as the
+  earlier single-ptr, two-ptr, and first mixed three-arg work: no backend
+  route rewrite was needed because the existing integer-class riscv64 arg
+  lane already treats `ptr` values like neighboring `i32` args regardless of
+  position, so helper wrappers with a `int *, int, int * -> i32` callee
+  signature lower through the standing eight-register indirect-call lane
+  without reopening fallback routes or ABI-shaped stack-call work
+  new route proofs cover `indirect_ptr_i32_ptr_arg_param_call.c` and
+  `indirect_ptr_i32_ptr_arg_local_call.c` as native asm with the expected
+  callee preserve into `t0`, leading `ptr` arg move into `a0`, middle `i32`
+  arg move into `a1`, trailing `ptr` arg move into `a2`, and final
+  `jalr ra, t0, 0`, while `branch_if_eq.c`, `call_helper.c`,
+  `local_arg_call.c`, and the earlier one-arg through eight-arg indirect-call
+  plus `ptr`-shaped and `two_arg_*` direct-call sentinels stayed green beside
+  them
+  proof command attempted:
+  `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+  proof log:
+  `test_after.log`
+  proof status:
+  the delegated build succeeded and the new riscv64 route tests passed under
+  the shared backend surface, increasing the backend subset from `365` to
+  `367` tests while the new pair completed as tests `#269` and `#270`; the
+  exact delegated proof command still returned non-zero because the broad
+  `^backend_` subset remains at `225` standing failures out of `367`, so the
+  blocker is outside the owned files even though the new adjacent
+  `ptr, i32, ptr -> i32` family is now covered and the next remaining
+  adjacent family is `ptr, ptr, i32 -> i32`
 - completed:
   the first honest non-leading mixed three-arg ptr family now stays on the
   same shared semantic-BIR/prepared-BIR riscv64 route surface as the earlier
