@@ -2995,6 +2995,15 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         const std::vector<std::string>* element_slots = nullptr;
         std::size_t base_index = 0;
       };
+      struct LocalMemcpyLeaf {
+        std::size_t byte_offset = 0;
+        bir::TypeKind type = bir::TypeKind::Void;
+        std::string slot_name;
+      };
+      struct LocalMemcpyLeafView {
+        std::size_t size_bytes = 0;
+        std::vector<LocalMemcpyLeaf> leaves;
+      };
       const auto alias_memcpy_result = [&]() -> bool {
         if (call->result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
           if (return_info->returned_via_sret || return_info->type != bir::TypeKind::Ptr) {
@@ -3031,65 +3040,94 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
             .base_index = array_base_it->second.base_index,
         };
       };
-      const auto append_local_array_copy = [&](const LocalMemcpyArrayView& source_array,
-                                               const LocalMemcpyArrayView& target_array) -> bool {
-        if (source_array.element_type != target_array.element_type ||
-            source_array.element_slots == nullptr || target_array.element_slots == nullptr ||
-            source_array.base_index > source_array.element_slots->size() ||
-            target_array.base_index > target_array.element_slots->size()) {
+      const auto resolve_local_memcpy_leaf_view =
+          [&](std::string_view operand) -> std::optional<LocalMemcpyLeafView> {
+        if (const auto aggregate_it = local_aggregate_slots.find(std::string(operand));
+            aggregate_it != local_aggregate_slots.end()) {
+          const auto aggregate_layout =
+              lower_byval_aggregate_layout(aggregate_it->second.type_text, type_decls);
+          if (!aggregate_layout.has_value()) {
+            return std::nullopt;
+          }
+          LocalMemcpyLeafView view{
+              .size_bytes = aggregate_layout->size_bytes,
+          };
+          const auto leaf_slots = collect_sorted_leaf_slots(aggregate_it->second);
+          view.leaves.reserve(leaf_slots.size());
+          for (const auto& [byte_offset, slot_name] : leaf_slots) {
+            const auto slot_type_it = local_slot_types.find(slot_name);
+            if (slot_type_it == local_slot_types.end()) {
+              return std::nullopt;
+            }
+            view.leaves.push_back(LocalMemcpyLeaf{
+                .byte_offset = byte_offset,
+                .type = slot_type_it->second,
+                .slot_name = slot_name,
+            });
+          }
+          return view;
+        }
+
+        const auto array_view = resolve_local_memcpy_array_view(operand);
+        if (!array_view.has_value() || array_view->element_slots == nullptr ||
+            array_view->base_index > array_view->element_slots->size()) {
+          return std::nullopt;
+        }
+
+        const auto element_size = type_size_bytes(array_view->element_type);
+        if (element_size == 0) {
+          return std::nullopt;
+        }
+
+        const auto count = array_view->element_slots->size() - array_view->base_index;
+        LocalMemcpyLeafView view{
+            .size_bytes = count * element_size,
+        };
+        view.leaves.reserve(count);
+        for (std::size_t index = 0; index < count; ++index) {
+          const auto& slot_name = (*array_view->element_slots)[array_view->base_index + index];
+          const auto slot_type_it = local_slot_types.find(slot_name);
+          if (slot_type_it == local_slot_types.end() || slot_type_it->second != array_view->element_type) {
+            return std::nullopt;
+          }
+          view.leaves.push_back(LocalMemcpyLeaf{
+              .byte_offset = index * element_size,
+              .type = slot_type_it->second,
+              .slot_name = slot_name,
+          });
+        }
+        return view;
+      };
+      const auto append_local_leaf_copy = [&](const LocalMemcpyLeafView& source_view,
+                                              const LocalMemcpyLeafView& target_view) -> bool {
+        if (source_view.size_bytes != target_view.size_bytes ||
+            requested_size != target_view.size_bytes ||
+            source_view.leaves.size() != target_view.leaves.size()) {
           return false;
         }
-        const auto source_count = source_array.element_slots->size() - source_array.base_index;
-        const auto target_count = target_array.element_slots->size() - target_array.base_index;
-        if (source_count != target_count) {
-          return false;
-        }
-        const auto element_size = type_size_bytes(target_array.element_type);
-        if (element_size == 0 || requested_size != target_count * element_size) {
-          return false;
-        }
-        for (std::size_t index = 0; index < target_count; ++index) {
+        for (std::size_t index = 0; index < target_view.leaves.size(); ++index) {
+          const auto& source_leaf = source_view.leaves[index];
+          const auto& target_leaf = target_view.leaves[index];
+          if (source_leaf.byte_offset != target_leaf.byte_offset || source_leaf.type != target_leaf.type) {
+            return false;
+          }
           const std::string copy_name =
-              dst_operand + ".memcpy.copy." + std::to_string(index * element_size);
+              dst_operand + ".memcpy.copy." + std::to_string(target_leaf.byte_offset);
           lowered_insts->push_back(bir::LoadLocalInst{
-              .result = bir::Value::named(target_array.element_type, copy_name),
-              .slot_name = (*source_array.element_slots)[source_array.base_index + index],
+              .result = bir::Value::named(target_leaf.type, copy_name),
+              .slot_name = source_leaf.slot_name,
           });
           lowered_insts->push_back(bir::StoreLocalInst{
-              .slot_name = (*target_array.element_slots)[target_array.base_index + index],
-              .value = bir::Value::named(target_array.element_type, copy_name),
+              .slot_name = target_leaf.slot_name,
+              .value = bir::Value::named(target_leaf.type, copy_name),
           });
         }
         return true;
       };
-
-      if (const auto target_aggregate_it = local_aggregate_slots.find(dst_operand);
-          target_aggregate_it != local_aggregate_slots.end()) {
-        const auto source_aggregate_it = local_aggregate_slots.find(src_operand);
-        if (source_aggregate_it == local_aggregate_slots.end() ||
-            target_aggregate_it->second.type_text != source_aggregate_it->second.type_text) {
-          return false;
-        }
-
-        const auto aggregate_layout =
-            lower_byval_aggregate_layout(target_aggregate_it->second.type_text, type_decls);
-        if (!aggregate_layout.has_value() || requested_size != aggregate_layout->size_bytes) {
-          return false;
-        }
-
-        if (!append_local_aggregate_copy_from_slots(source_aggregate_it->second,
-                                                    target_aggregate_it->second,
-                                                    dst_operand + ".memcpy.copy",
-                                                    lowered_insts)) {
-          return false;
-        }
-        return alias_memcpy_result();
-      }
-
-      const auto target_array = resolve_local_memcpy_array_view(dst_operand);
-      if (target_array.has_value()) {
-        const auto source_array = resolve_local_memcpy_array_view(src_operand);
-        if (!source_array.has_value() || !append_local_array_copy(*source_array, *target_array)) {
+      const auto target_view = resolve_local_memcpy_leaf_view(dst_operand);
+      if (target_view.has_value()) {
+        const auto source_view = resolve_local_memcpy_leaf_view(src_operand);
+        if (!source_view.has_value() || !append_local_leaf_copy(*source_view, *target_view)) {
           return false;
         }
         return alias_memcpy_result();

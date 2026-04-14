@@ -30,10 +30,10 @@ Source Plan: plan.md
 - current packet focus:
   semantic runtime/intrinsic lowering now covers integer `abs`, direct
   `memcpy` lowering for matching local aggregates, nested local scalar-array
-  subobjects, and matching local `i32` arrays, plus direct zero-fill `memset`
-  calls for the same local aggregate and nested local scalar-array families in
-  `lir_to_bir`; the next packet should stay on adjacent runtime/call families
-  instead of drifting into `prepare`
+  subobjects, matching local `i32` arrays, and mixed local aggregate/array
+  leaf views, plus direct zero-fill `memset` calls for the local aggregate and
+  nested local scalar-array families in `lir_to_bir`; the next packet should
+  stay on adjacent runtime/call families instead of drifting into `prepare`
 - packet rule:
   the first executor packet must change shared semantic lowering, not just add
   new test observers or rename unsupported cases
@@ -42,37 +42,36 @@ Source Plan: plan.md
   exercises one semantic call/runtime family with a fresh build before broader
   validation
 - Just Finished:
-  generalized nested local scalar-array views so direct `memcpy` and zero-fill
-  `memset` calls on aggregate-contained `i32` arrays stay on semantic BIR
-  without displacing the existing direct dynamic local member-array semantic
-  route, then added backend-route proof with
-  `builtin_memcpy_nested_i32_array_field.c` and
-  `builtin_memset_nested_i32_array_field.c`
+  generalized direct local `memcpy` lowering around shared ordered leaf views
+  so matching local aggregate slots and local scalar-array views can copy
+  across the same semantic route, then added backend-route proof with
+  `builtin_memcpy_local_i32_array_to_pair.c` for local `i32` array to local
+  pair copies without falling back to `memcpy`
 - Watchouts:
-  nested aggregate field zero-fill was already semantic; the actual miss was
-  nested local scalar arrays not entering the shared local-array base map, so
-  follow-on GEPs that already have scalar-slot ownership must keep preferring
-  that route even when the same pointer also gains a shared local-array base,
-  and direct `memcpy`/`memset` calls whose operands arrive as mixed-shape
-  pointers, non-local bases, unsupported local-array/subobject forms, or
-  non-zero fills still fall back today; keep follow-on work in shared
+  the new mixed local `memcpy` route still requires matching ordered leaf
+  offsets, scalar types, and exact byte size, so padded shape mismatches,
+  non-local bases, unsupported local-array/subobject forms, and non-zero
+  `memset` calls still fall back today; keep follow-on work in shared
   semantic lowering rather than target- or testcase-shaped handling
 - Proof:
   `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
   passed, including
+  `backend_codegen_route_x86_64_builtin_memcpy_local_i32_array_to_pair_observe_semantic_bir`,
   `backend_codegen_route_x86_64_builtin_memcpy_nested_i32_array_field_observe_semantic_bir`,
   `backend_codegen_route_x86_64_builtin_memset_nested_i32_array_field_observe_semantic_bir`,
   `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`,
   and
   `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`;
-  `test_after.log` preserved
+  the canonical regression comparison against `test_before.log` also passed
+  with `before: passed=28 failed=0 total=28` and
+  `after: passed=29 failed=0 total=29`; `test_after.log` preserved
 
 ## Suggested Next
 
-- extend semantic `memcpy` lowering from matching local aggregate objects and
-  direct zero-fill `memset` lowering from matching local aggregate objects and
-  nested local scalar-array views to the next nearby shared local subobject or
-  mixed-shape pointer family that still stays semantic and planner-honest
+- extend adjacent semantic runtime-memory proof to the reverse or nested
+  mixed-shape local `memcpy` family, such as local aggregate-to-array or
+  aggregate-contained mixed local subobjects that now share the ordered
+  leaf-view route, before moving on to a different runtime family
 - if that next runtime-memory shape needs new semantic BIR surface, keep that
   surface shared and planner-honest rather than encoding direct target
   behavior
