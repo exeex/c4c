@@ -1041,6 +1041,9 @@ int main() {
   }
   if (carry_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch" ||
       carry_slot_regalloc->binding_order_index != 0 ||
+      carry_slot_regalloc->stable_binding_pass_order_index != 0 ||
+      carry_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
+      carry_slot_regalloc->stable_binding_pass_last_binding_order_index != 2 ||
       carry_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
       carry_slot_regalloc->binding_access_window_prerequisite_category !=
           "overlapping_call_boundary_windows" ||
@@ -1054,7 +1057,7 @@ int main() {
           "mixed_sync_coordination" ||
       carry_slot_regalloc->binding_sync_handoff_state != "prepare_sync_handoff_ready") {
     return fail(
-        "semantic-BIR regalloc should project call-boundary binding batch prerequisites back onto each ready prepared object");
+        "semantic-BIR regalloc should project call-boundary stable-binding pass and prerequisite cues back onto each ready prepared object");
   }
   const auto* window_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "window.slot");
   if (window_slot_regalloc == nullptr || window_slot_regalloc->contract_kind != "value_storage" ||
@@ -1131,6 +1134,9 @@ int main() {
   }
   if (window_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch" ||
       window_slot_regalloc->binding_order_index != 0 ||
+      window_slot_regalloc->stable_binding_pass_order_index != 1 ||
+      window_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
+      window_slot_regalloc->stable_binding_pass_last_binding_order_index != 2 ||
       window_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
       window_slot_regalloc->binding_access_window_prerequisite_category !=
           "adjacent_local_windows" ||
@@ -1144,7 +1150,7 @@ int main() {
           "mixed_sync_coordination" ||
       window_slot_regalloc->binding_sync_handoff_state != "prepare_sync_handoff_ready") {
     return fail(
-        "semantic-BIR regalloc should project local-reuse binding batch prerequisites back onto each ready prepared object");
+        "semantic-BIR regalloc should project local-reuse stable-binding pass and prerequisite cues back onto each ready prepared object");
   }
   const auto* readonly_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "readonly.slot");

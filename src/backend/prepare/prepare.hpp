@@ -76,6 +76,9 @@ struct PreparedRegallocObject {
   std::string binding_frontier_reason;
   std::string binding_batch_kind;
   std::size_t binding_order_index = 0;
+  std::size_t stable_binding_pass_order_index = 0;
+  std::size_t stable_binding_pass_first_binding_order_index = 0;
+  std::size_t stable_binding_pass_last_binding_order_index = 0;
   std::string binding_ordering_policy;
   std::string binding_access_window_prerequisite_category;
   std::string binding_access_window_prerequisite_state;

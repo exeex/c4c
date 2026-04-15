@@ -1601,6 +1601,24 @@ void populate_stable_binding_passes(PreparedRegallocFunction& function) {
 }
 
 void project_stable_binding_pass_contract(PreparedRegallocFunction& function) {
+  for (auto& object : function.objects) {
+    if (object.binding_frontier_kind != "binding_ready") {
+      continue;
+    }
+    const auto it = std::find_if(
+        function.stable_binding_passes.begin(),
+        function.stable_binding_passes.end(),
+        [&](const PreparedRegallocStableBindingPass& pass) {
+          return pass.binding_batch_kind == object.binding_batch_kind;
+        });
+    if (it == function.stable_binding_passes.end()) {
+      continue;
+    }
+    object.stable_binding_pass_order_index = it->pass_order_index;
+    object.stable_binding_pass_first_binding_order_index = it->first_binding_order_index;
+    object.stable_binding_pass_last_binding_order_index = it->last_binding_order_index;
+  }
+
   for (auto& binding : function.binding_sequence) {
     const auto it = std::find_if(
         function.stable_binding_passes.begin(),
