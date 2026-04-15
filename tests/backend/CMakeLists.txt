@@ -249,6 +249,26 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_local_arg_call_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/local_arg_call.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/local_arg_call_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @add_one(i32 %p.x) -> i32 {|%t0 = bir.add i32 %p.x, 1|bir.func @main() -> i32 {|bir.store_local %lv.x, i32 5|%t0 = bir.load_local i32 %lv.x|%t1 = bir.call i32 add_one(i32 %t0)|bir.ret i32 %t1"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (i32) @add_one(i32 %t0)"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_call_helper_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/call_helper.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/call_helper_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @helper() -> i32|bir.func @main() -> i32 {|%t0 = bir.call i32 helper()|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 @helper()"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_pointer_return_direct_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/pointer_return_direct.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu

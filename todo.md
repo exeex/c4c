@@ -3,24 +3,24 @@
 Status: Active
 Source Idea: ideas/open/47_semantic_call_runtime_boundary.md
 Source Plan: plan.md
-Current Plan Focus: ordered step 4, tighten the semantic unsupported boundary
+Current Plan Focus: ordered step 2, broaden semantic call lowering beyond the current baseline
 
 # Current Packet
 
 ## Just Finished
-- kept the refreshed step-4 module capability-bucket summary wording unchanged and extended `backend_lir_to_bir_notes` so it now also proves the adjacent indirect-call, call-return, memcpy runtime, and memset runtime family failures
-- locked the explicit semantic-call and runtime/intrinsic family examples already named by the module summary without changing lowering behavior
-- kept the slice on planner-facing unsupported-boundary wording only; no call/runtime lowering, ABI legality, or note-ranking behavior changed
+- shifted execution focus back to step 2 and wired the uncovered `local_arg_call.c` plus `call_helper.c` cases into backend semantic-BIR route tests
+- proved two common direct-call shapes already admitted by the semantic route: a local direct call with a loaded scalar argument and a direct call through an extern declaration
+- kept the slice on semantic call proof only; no lowering behavior, ABI legality, or unsupported-boundary wording changed
 
 ## Suggested Next
-- if step 4 stays active, check whether one final adjacent notes regression is still worth adding for the remaining scalar/local-memory leaf examples already named by the summary, such as scalar-binop or gep/load/store local-memory failures
-- otherwise shift the next packet away from summary-note cleanup and back to a concrete semantic capability gap rather than another generic audit
+- keep step 2 on direct-call proof/capability work and check whether another nearby direct-call shape still lacks semantic-BIR route coverage, especially one involving extern or aggregate-bearing arguments
+- if step 2 proof is dense enough, switch the next packet to a real uncovered call/runtime lowering gap instead of adding more adjacent route tests
 
 ## Watchouts
-- this packet only extends planner-facing notes coverage; it does not change what semantic families lower successfully
-- the module summary now has focused regression coverage for direct/indirect/call-return and memcpy/memset/inline-asm examples, so any further note cleanup should be justified by a concrete remaining boundary gap rather than another broad wording pass
+- this packet only adds route proof for already-supported direct-call shapes; it does not widen semantic call lowering behavior on its own
+- `tests/backend/CMakeLists.txt` is test-harness surface, so acceptance should keep at least one broader backend check in mind once a few more call-proof slices accumulate
 
 ## Proof
-- `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_lir_to_bir_notes$" > test_after.log 2>&1'`
-- passed; `backend_lir_to_bir_notes` now locks the refreshed module capability-bucket summary alongside latest-function-failure notes for inline-asm, direct-call, indirect-call, call-return, memcpy, memset, scalar-cast, and alloca failure cases
+- `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_codegen_route_x86_64_local_arg_call_observe_semantic_bir|backend_codegen_route_x86_64_call_helper_observe_semantic_bir)$" > test_after.log 2>&1'`
+- passed; the targeted backend route tests now lock semantic-BIR output for both uncovered direct-call cases
 - proof log preserved at `test_after.log`
