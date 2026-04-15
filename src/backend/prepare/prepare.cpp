@@ -74,6 +74,9 @@ PreparedBirModule prepare_semantic_bir_module_with_options(
   if (options.run_legalize) {
     run_legalize(prepared, options);
   }
+  if (options.run_stack_layout) {
+    run_stack_layout(prepared, options);
+  }
   return prepared;
 }
 

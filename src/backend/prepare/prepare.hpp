@@ -22,6 +22,19 @@ struct PrepareNote {
   std::string message;
 };
 
+struct PreparedStackObject {
+  std::string function_name;
+  std::string source_name;
+  std::string source_kind;
+  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
+};
+
+struct PreparedStackLayout {
+  std::vector<PreparedStackObject> objects;
+};
+
 enum class PrepareRoute {
   SemanticBirShared,
   BootstrapLirFallback,
@@ -65,6 +78,7 @@ struct PreparedBirModule {
   Target target = Target::X86_64;
   PrepareRoute route = PrepareRoute::SemanticBirShared;
   std::vector<PreparedBirInvariant> invariants;
+  PreparedStackLayout stack_layout;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
 };

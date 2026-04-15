@@ -3,50 +3,38 @@
 Status: Active
 Source Idea: ideas/open/48_prepare_pipeline_rebuild.md
 Source Plan: plan.md
-Current Plan Focus: step-2 first legality invariant activation
+Current Plan Focus: step-3 first stack-layout artifact activation
 
 # Current Packet
 
 ## Just Finished
-- taught prepare-owned semantic-BIR legalize to repair promoted-type
-  bookkeeping for function signatures, local/global storage metadata, and call
-  return type text alongside the earlier `i1` value/type and call ABI
-  promotion, so the active legality contract no longer leaves those
-  target-facing metadata surfaces stale at `i1`/1-byte state
-- extended the same `NoTargetFacingI1` legality transform to repair
-  load/store alignment plus memory-address size/alignment bookkeeping for
-  local and global accesses, so prepared semantic BIR no longer keeps those
-  access metadata surfaces at pre-legalized `i1`/1-byte state after scalar
-  promotion
-- tightened prepare tests so they structurally prove local/global
-  load/store-access bookkeeping promotes with the legalized scalar type and
-  keep the prepare entry note honest about the expanded prepare-owned memory
-  legality contract
-- tightened backend prepare tests so they prove the legalized signature and
-  storage bookkeeping, require call return type text to move to `i32`, and
-  keep the legalize note honest about the prepare-owned contract expansion
+- added explicit semantic-BIR stack-layout artifacts to the prepare contract
+  and taught the shared semantic route to run `stack_layout` after
+  legalize
+- made `stack_layout` emit concrete prepared stack objects from legalized
+  local-slot data so the phase now leaves real target-neutral artifacts
+  instead of only a note
+- tightened the prepare entry-contract test around one legalized local slot so
+  it proves phase order plus stack-object provenance, type, and
+  size/alignment metadata
 
 ## Suggested Next
-- inspect the remaining prepare-owned legality surfaces that still only change
-  partially under `NoTargetFacingI1`, especially call result ABI/storage
-  bookkeeping beyond plain scalar promotion and any remaining prepared-BIR
-  metadata that still derives legality implicitly instead of publishing a
-  concrete prepare-owned invariant
-- keep the next packet on prepared-BIR legality ownership and explicit
-  prepared-route contract, not target ingestion work or testcase-shaped
-  shortcuts
+- extend the semantic-BIR stack-layout artifact beyond local slots so it also
+  captures the prepared frame objects created by byval and sret memory routes
+  without inventing target-specific offsets yet
+- keep the next packet on stack-layout contract construction that later
+  liveness/regalloc can consume, not target ingestion or note-only scaffolding
 
 ## Watchouts
-- do not let the current legality packet drift into target ingestion work that
+- do not let the current stack-layout packet drift into target ingestion work that
   belongs to `ideas/open/49_prepared_bir_target_ingestion.md`
-- do not push legality or prepared-phase ownership back into semantic lowering
-- keep legality invariants prepare-owned and target-neutral where possible;
-  avoid replacing them with target-side assumptions or note-only prose
-- signature/storage bookkeeping and call return type text now move with the
-  existing `NoTargetFacingI1` promotion, and local/global load-store access
-  metadata now moves with it too; any follow-up invariant expansion should
-  still be tied to a concrete prepare-owned transform rather than a
-  metadata-only promise
+- do not push stack-layout ownership back into semantic lowering or target
+  codegen
+- the first semantic-BIR stack-layout slice only publishes legalized local-slot
+  objects; follow-up work should add nearby prepared frame-object families
+  rather than jumping straight to target-specific offsets
+- keep the phase artifact inspectable and target-neutral; avoid replacing
+  concrete data with broader notes
 - prefer `build -> ^backend_` proof unless a narrower honest backend subset is
   clearly available
 

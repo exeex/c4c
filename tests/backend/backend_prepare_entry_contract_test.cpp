@@ -40,6 +40,12 @@ bir::Module make_minimal_bir_module() {
   bir::Function function;
   function.name = "main";
   function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "flag.slot",
+      .type = bir::TypeKind::I1,
+      .size_bytes = 1,
+      .align_bytes = 1,
+  });
 
   bir::Block entry;
   entry.label = "entry";
@@ -110,8 +116,29 @@ int main() {
   if (!contains_note(prepared_bir.notes, "legalize", "call return type text")) {
     return fail("semantic-BIR prepare legalize note should mention call return type text");
   }
-  if (prepared_bir.completed_phases.size() != 1 || prepared_bir.completed_phases[0] != "legalize") {
-    return fail("semantic-BIR prepare entry should only complete legalize in the current slice");
+  if (!contains_note(prepared_bir.notes, "stack_layout", "local-slot stack objects")) {
+    return fail("semantic-BIR prepare stack-layout note should mention local-slot stack objects");
+  }
+  constexpr std::string_view kExpectedBirPhases[] = {
+      "legalize",
+      "stack_layout",
+  };
+  if (prepared_bir.completed_phases.size() != std::size(kExpectedBirPhases)) {
+    return fail("semantic-BIR prepare entry should complete legalize and stack_layout in this slice");
+  }
+  for (std::size_t index = 0; index < std::size(kExpectedBirPhases); ++index) {
+    if (prepared_bir.completed_phases[index] != kExpectedBirPhases[index]) {
+      return fail("unexpected semantic-BIR prepare phase order");
+    }
+  }
+  if (prepared_bir.stack_layout.objects.size() != 1) {
+    return fail("semantic-BIR stack layout should publish exactly one local-slot stack object");
+  }
+  const auto& stack_object = prepared_bir.stack_layout.objects.front();
+  if (stack_object.function_name != "main" || stack_object.source_name != "flag.slot" ||
+      stack_object.source_kind != "local_slot" || stack_object.type != bir::TypeKind::I32 ||
+      stack_object.size_bytes != 4 || stack_object.align_bytes != 4) {
+    return fail("semantic-BIR stack-layout artifact drifted from the legalized local-slot contract");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(
