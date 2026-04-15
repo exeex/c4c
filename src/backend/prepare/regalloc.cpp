@@ -1017,17 +1017,6 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
         .allocation_stage = decision.allocation_stage,
         .binding_batch_kind = binding_batch_kind,
         .binding_order_index = batch_summary->candidate_count,
-        .ordering_policy = batch_summary->ordering_policy,
-        .reservation_kind = decision.reservation_kind,
-        .reservation_scope = decision.reservation_scope,
-        .home_slot_mode = decision.home_slot_mode,
-        .sync_policy = decision.sync_policy,
-        .follow_up_category = contention->follow_up_category,
-        .home_slot_prerequisite_category = contention->home_slot_category,
-        .home_slot_prerequisite_state =
-            std::string(regalloc_binding_home_slot_prerequisite_state(*contention)),
-        .sync_handoff_prerequisite_category = contention->sync_coordination_category,
-        .sync_handoff_state = std::string(regalloc_binding_sync_handoff_state(*contention)),
     });
     ++batch_summary->candidate_count;
   }

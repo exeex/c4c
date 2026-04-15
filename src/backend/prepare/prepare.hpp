@@ -146,16 +146,6 @@ struct PreparedRegallocBindingDecision {
   std::string allocation_stage;
   std::string binding_batch_kind;
   std::size_t binding_order_index = 0;
-  std::string ordering_policy;
-  std::string reservation_kind;
-  std::string reservation_scope;
-  std::string home_slot_mode;
-  std::string sync_policy;
-  std::string follow_up_category;
-  std::string home_slot_prerequisite_category;
-  std::string home_slot_prerequisite_state;
-  std::string sync_handoff_prerequisite_category;
-  std::string sync_handoff_state;
 };
 
 struct PreparedRegallocBindingBatchSummary {

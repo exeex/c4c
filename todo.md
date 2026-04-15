@@ -33,10 +33,15 @@ Current Plan Focus: step-5 regalloc consumer shrink
   detail
 - rebuilt binding handoff summaries from batch-owned data instead of reading
   object-local mirrored prerequisite and handoff fields
-- proved the slice with `backend_prepare_entry_contract` and then a broader
-  `^backend_` checkpoint
+- shrank `PreparedRegallocBindingDecision` so binding-sequence entries now keep
+  only source identity, stage, batch membership, and binding order while batch
+  and handoff summaries remain the owners of ordering policy, follow-up, and
+  prerequisite detail
+- updated `backend_prepare_entry_contract` to assert the slimmer per-binding
+  contract and keep policy/prerequisite ownership checks on batch and handoff
+  summaries
 
-## Next
+## Suggested Next
 - continue shrinking `src/backend/prepare/regalloc.cpp` by removing any
   remaining helper or sequence surface that duplicates batch or handoff
   summary facts without adding new allocation facts
@@ -60,5 +65,6 @@ Current Plan Focus: step-5 regalloc consumer shrink
   object-local projection
 
 ## Proof
-- `cmake --build --preset default`
-- `ctest --test-dir build -j --output-on-failure -R '^backend_prepare_entry_contract$' 2>&1 | tee test_after.log`
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepare_entry_contract$' 2>&1 | tee test_after.log`
+- passed; the delegated build plus focused `backend_prepare_entry_contract`
+  proof completed successfully and preserved output at `test_after.log`
