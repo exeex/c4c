@@ -17,18 +17,20 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed deferred-batch `ordering_policy` because it only translated
-  surviving `deferred_reason` values instead of owning new frontier state
+- removed deferred-batch `binding_batch_kind` because deferred family identity
+  now rejoins from `attachments -> first object -> allocation decision /
+  contention` plus the surviving batch-owned `deferred_reason`
 - kept deferred frontier grouping explicit on
-  `PreparedRegallocDeferredBindingBatchSummary` with `binding_batch_kind`,
-  `deferred_reason`, and attachment-owned membership
-- refreshed the prepare-entry contract test so deferred waiting policy rejoins
-  directly from `deferred_reason` instead of a second summary mirror
+  `PreparedRegallocDeferredBindingBatchSummary` with `deferred_reason` and
+  attachment-owned membership only
+- refreshed the prepare-entry contract test so deferred batch-family checks
+  derive their identity from surviving owners instead of a second summary
+  mirror
 
 ## Suggested Next
-- inspect whether deferred `binding_batch_kind` still needs separate summary
-  ownership or whether deferred family identity can rejoin from surviving
-  owners without weakening explicit frontier grouping
+- inspect whether the deferred batch lookup helper still needs summary-level
+  search indirection or whether the remaining deferred frontier joins can
+  collapse onto one explicit attachment-owned lookup path
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -92,6 +94,10 @@ while keeping the public shared contract named `prepare`
   `binding_batch_kind` while the specific deferred blocker rides on
   `deferred_reason`; do not restore a second deferred summary mirror unless a
   real consumer cannot rejoin those surviving owners
+- deferred batch family identity now rejoins through
+  `attachments -> first object -> allocation decision / contention` plus
+  `deferred_reason`; do not restore a stored summary `binding_batch_kind`
+  unless a real consumer proves the join is no longer stable enough
 - ready batch family identity now rides on `binding_batch_kind` while ready
   member sequencing stays in `binding_sequence`; do not restore a ready batch
   summary layer for prerequisite, handoff, stage, ordering, or membership

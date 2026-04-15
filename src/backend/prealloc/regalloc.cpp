@@ -667,13 +667,39 @@ const PreparedRegallocContentionSummary* BirPreAlloc::find_contention_summary(
   return nullptr;
 }
 
+const PreparedRegallocContentionSummary* BirPreAlloc::find_contention_summary_for_object(
+    const PreparedRegallocObject& object) const {
+  const auto* decision = find_allocation_decision(object.source_kind, object.source_name);
+  if (decision == nullptr) {
+    return nullptr;
+  }
+  return find_contention_summary(decision->allocation_stage);
+}
+
+std::string_view BirPreAlloc::deferred_binding_batch_kind(
+    const PreparedRegallocDeferredBindingBatchSummary& summary) const {
+  if (current_regalloc_function_ == nullptr || summary.attachments.empty()) {
+    return {};
+  }
+  const auto object_index = summary.attachments.front().object_index;
+  if (object_index >= current_regalloc_function_->objects.size()) {
+    return {};
+  }
+  const auto& object = current_regalloc_function_->objects[object_index];
+  const auto* contention = find_contention_summary_for_object(object);
+  if (contention == nullptr) {
+    return {};
+  }
+  return regalloc_deferred_binding_batch_kind(object, *contention);
+}
+
 PreparedRegallocDeferredBindingBatchSummary* BirPreAlloc::find_deferred_binding_batch_summary(
     std::string_view binding_batch_kind) {
   if (current_regalloc_function_ == nullptr) {
     return nullptr;
   }
   for (auto& summary : current_regalloc_function_->deferred_binding_batches) {
-    if (summary.binding_batch_kind == binding_batch_kind) {
+    if (deferred_binding_batch_kind(summary) == binding_batch_kind) {
       return &summary;
     }
   }
@@ -824,7 +850,6 @@ void BirPreAlloc::populate_binding_sequence() {
       if (batch_summary == nullptr) {
         current_regalloc_function_->deferred_binding_batches.push_back(
             PreparedRegallocDeferredBindingBatchSummary{
-                .binding_batch_kind = binding_batch_kind,
                 .deferred_reason =
                     object->deferred_reason != "not_deferred" ? object->deferred_reason
                                                               : contention->follow_up_category,

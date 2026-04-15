@@ -166,6 +166,18 @@ find_regalloc_deferred_binding_attachment_batch(
   return nullptr;
 }
 
+const prepare::PreparedRegallocObject* regalloc_deferred_batch_first_object(
+    const prepare::PreparedRegallocFunction& function,
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary);
+
+const prepare::PreparedRegallocContentionSummary* regalloc_deferred_batch_contention_summary(
+    const prepare::PreparedRegallocFunction& function,
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary);
+
+std::string_view regalloc_deferred_binding_batch_kind(
+    const prepare::PreparedRegallocFunction& function,
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary);
+
 std::string_view regalloc_deferred_batch_allocation_stage(
     const prepare::PreparedRegallocFunction& function,
     const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
@@ -192,9 +204,11 @@ const std::string* find_regalloc_binding_batch_kind(const prepare::PreparedRegal
           find_regalloc_binding_decision(function, source_kind, source_name)) {
     return &decision->binding_batch_kind;
   }
+  static thread_local std::string derived_kind;
   if (const auto* deferred_batch =
           find_regalloc_deferred_binding_attachment_batch(function, source_kind, source_name)) {
-    return &deferred_batch->binding_batch_kind;
+    derived_kind = std::string(regalloc_deferred_binding_batch_kind(function, *deferred_batch));
+    return &derived_kind;
   }
   return nullptr;
 }
@@ -203,7 +217,7 @@ const prepare::PreparedRegallocDeferredBindingBatchSummary* find_regalloc_deferr
     const prepare::PreparedRegallocFunction& function,
     std::string_view binding_batch_kind) {
   for (const auto& summary : function.deferred_binding_batches) {
-    if (summary.binding_batch_kind == binding_batch_kind) {
+    if (regalloc_deferred_binding_batch_kind(function, summary) == binding_batch_kind) {
       return &summary;
     }
   }
@@ -280,6 +294,26 @@ const prepare::PreparedRegallocContentionSummary* regalloc_deferred_batch_conten
     return nullptr;
   }
   return find_regalloc_contention_summary(function, decision->allocation_stage);
+}
+
+std::string_view regalloc_deferred_binding_batch_kind(
+    const prepare::PreparedRegallocFunction& function,
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
+  const auto* object = regalloc_deferred_batch_first_object(function, summary);
+  if (object == nullptr) {
+    return {};
+  }
+  if (summary.deferred_reason == "awaiting_access_window_observation") {
+    return "deferred_access_window_binding_batch";
+  }
+  const auto* contention = regalloc_deferred_batch_contention_summary(function, summary);
+  if (contention == nullptr) {
+    return {};
+  }
+  if (contention->follow_up_category == "batched_single_point_coordination") {
+    return "deferred_coordination_binding_batch";
+  }
+  return "binding_deferred_batch_needs_future_analysis";
 }
 
 std::string_view regalloc_deferred_batch_home_slot_prerequisite_state(
@@ -1032,7 +1066,8 @@ int main() {
     return fail("semantic-BIR regalloc should defer stable binding when prepared access-window facts are still missing");
   }
   if (scratch_slot_deferred_binding_batch == nullptr ||
-      scratch_slot_deferred_binding_batch->binding_batch_kind !=
+      regalloc_deferred_binding_batch_kind(*regalloc_function,
+                                           *scratch_slot_deferred_binding_batch) !=
           "deferred_access_window_binding_batch") {
     return fail(
         "semantic-BIR regalloc should keep deferred objects attached to their deferred binding batch through the deferred batch summary instead of mirroring the batch kind onto each object");
@@ -1084,7 +1119,8 @@ int main() {
     return fail("semantic-BIR regalloc should keep observed single-point candidates deferred when coordination remains batched");
   }
   if (local_slot_deferred_binding_batch == nullptr ||
-      local_slot_deferred_binding_batch->binding_batch_kind !=
+      regalloc_deferred_binding_batch_kind(*regalloc_function,
+                                           *local_slot_deferred_binding_batch) !=
           "deferred_coordination_binding_batch") {
     return fail(
         "semantic-BIR regalloc should keep coordination-deferred objects attached to their deferred binding batch through the deferred batch summary instead of mirroring the batch kind onto each object");
