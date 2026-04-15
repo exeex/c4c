@@ -3039,6 +3039,10 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       std::vector<std::string> element_slots;
       std::size_t base_index = 0;
     };
+    struct LocalMemsetScalarSlot {
+      std::string slot_name;
+      std::size_t size_bytes = 0;
+    };
 
     const auto fill_leaf_slots =
         [&](const auto& leaf_slots, std::size_t total_size_bytes) -> bool {
@@ -3167,6 +3171,28 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           .base_index = 0,
       };
     };
+    const auto resolve_local_memset_scalar_slot =
+        [&](std::string_view operand) -> std::optional<LocalMemsetScalarSlot> {
+      const auto ptr_it = local_pointer_slots.find(std::string(operand));
+      if (ptr_it == local_pointer_slots.end()) {
+        return std::nullopt;
+      }
+
+      const auto slot_type_it = local_slot_types.find(ptr_it->second);
+      if (slot_type_it == local_slot_types.end()) {
+        return std::nullopt;
+      }
+
+      const auto slot_size = type_size_bytes(slot_type_it->second);
+      if (slot_size == 0) {
+        return std::nullopt;
+      }
+
+      return LocalMemsetScalarSlot{
+          .slot_name = ptr_it->second,
+          .size_bytes = slot_size,
+      };
+    };
 
     if (const auto aggregate_it = local_aggregate_slots.find(std::string(dst_operand));
         aggregate_it != local_aggregate_slots.end()) {
@@ -3180,23 +3206,34 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     }
 
     const auto array_view = resolve_local_memset_array_view(dst_operand);
-    if (!array_view.has_value() || array_view->base_index > array_view->element_slots.size()) {
+    if (array_view.has_value()) {
+      if (array_view->base_index > array_view->element_slots.size()) {
+        return false;
+      }
+
+      const auto element_size = type_size_bytes(array_view->element_type);
+      if (element_size == 0) {
+        return false;
+      }
+
+      const auto target_count = array_view->element_slots.size() - array_view->base_index;
+      std::vector<std::pair<std::size_t, std::string>> leaf_slots;
+      leaf_slots.reserve(target_count);
+      for (std::size_t index = 0; index < target_count; ++index) {
+        leaf_slots.emplace_back(index * element_size,
+                                array_view->element_slots[array_view->base_index + index]);
+      }
+      return fill_leaf_slots(leaf_slots, target_count * element_size);
+    }
+
+    const auto scalar_slot = resolve_local_memset_scalar_slot(dst_operand);
+    if (!scalar_slot.has_value()) {
       return false;
     }
 
-    const auto element_size = type_size_bytes(array_view->element_type);
-    if (element_size == 0) {
-      return false;
-    }
-
-    const auto target_count = array_view->element_slots.size() - array_view->base_index;
     std::vector<std::pair<std::size_t, std::string>> leaf_slots;
-    leaf_slots.reserve(target_count);
-    for (std::size_t index = 0; index < target_count; ++index) {
-      leaf_slots.emplace_back(index * element_size,
-                              array_view->element_slots[array_view->base_index + index]);
-    }
-    return fill_leaf_slots(leaf_slots, target_count * element_size);
+    leaf_slots.emplace_back(0, scalar_slot->slot_name);
+    return fill_leaf_slots(leaf_slots, scalar_slot->size_bytes);
   };
 
   if (const auto* memcpy = std::get_if<c4c::codegen::lir::LirMemcpyOp>(&inst)) {

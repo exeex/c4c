@@ -425,6 +425,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memset_nonzero_local_i32_scalar_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memset_nonzero_local_i32_scalar.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nonzero_local_i32_scalar_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst, i32 7|bir.store_local %lv.dst, i32 -1|bir.load_local i32 %lv.dst|bir.ret i32"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_builtin_memset_nested_i32_array_field_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/builtin_memset_nested_i32_array_field.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu
