@@ -8,16 +8,16 @@ Current Plan Focus: ordered step 3, runtime and intrinsic families through seman
 # Current Packet
 
 ## Just Finished
-- widened the runtime-family boundary to inline asm by lowering `LirInlineAsmOp` into an explicit semantic `llvm.inline_asm` BIR placeholder with preserved template, constraint, and side-effect metadata, so semantic observation no longer falls back to raw LLVM IR for a simple `asm volatile("nop")` route
+- proved the next inline-asm semantic slice with `backend_codegen_route_x86_64_inline_asm_input_i32_observe_semantic_bir`, showing an operand-carrying `asm volatile("" : : "r"(x))` lowers to `bir.call void llvm.inline_asm(i32 ...)` and clears the raw-args fallback for this typed scalar-input route
 
 ## Suggested Next
-- stay on plan item 3 and either broaden the inline-asm placeholder to preserve typed operand lists beyond the current raw-args fallback path, or move to the next nearby runtime family that still escapes semantic BIR such as a preserved `va_list` forwarding shape
+- stay on plan item 3 and widen inline-asm semantic coverage from this scalar-register input proof to a nearby multi-input or pointer-input asm shape that still risks falling back to `raw_args`, before moving on to a different runtime family
 
 ## Watchouts
 - keep follow-on work inside shared semantic lowering; do not route inline asm back through target-specific emitters, ABI shortcuts, or `call_decode.cpp`
-- the new `llvm.inline_asm` BIR placeholder is intentionally semantic-only metadata today: it preserves template, constraints, side-effect state, and parsed scalar arguments when possible, while falling back to raw argument text when operand typing is not yet modeled
+- the current proof only ratchets the typed scalar-input route for inline asm; mixed constraints, pointer operands, and multi-input forms still need explicit semantic coverage before the inline-asm family can be considered broadly defended
 - nearby packets should preserve the existing runtime-family grouping for `memcpy`, `memset`, `va_*`, `stacksave`, `stackrestore`, and `abs` rather than mixing inline-asm follow-up with target legality or testcase-specific backend text matching
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-- passed with `test_after.log`; backend subset result is `passed=42 failed=0 total=42`, including `backend_codegen_route_x86_64_inline_asm_nop_observe_semantic_bir`
+- passed with `test_after.log`; backend subset result is `passed=43 failed=0 total=43`, including `backend_codegen_route_x86_64_inline_asm_nop_observe_semantic_bir` and `backend_codegen_route_x86_64_inline_asm_input_i32_observe_semantic_bir`

@@ -245,6 +245,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_inline_asm_input_i32_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/inline_asm_input_i32.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/inline_asm_input_i32_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.x, i32 7|%t0 = bir.load_local i32 %lv.x|bir.call void llvm.inline_asm(i32 %t0) [asm=\"\", constraints=\"r\", sideeffect]|%t1 = bir.load_local i32 %lv.x|bir.ret i32 %t1"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call void asm sideeffect \"\", \"r\"(i32 %t0)|raw_args="
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_builtin_memcpy_local_pair_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_local_pair.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu
