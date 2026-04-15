@@ -111,6 +111,56 @@ std::optional<bir::TypeKind> BirFunctionLowerer::lower_minimal_scalar_type(const
 
 std::optional<BirFunctionLowerer::ParsedTypedCall> BirFunctionLowerer::parse_typed_call(
     const c4c::codegen::lir::LirCallOp& call) {
+  if (const auto param_types =
+          c4c::codegen::lir::parse_lir_call_param_types(call.callee_type_suffix);
+      param_types.has_value()) {
+    bool saw_varargs = false;
+    std::size_t fixed_param_count = 0;
+    for (auto type : *param_types) {
+      const auto trimmed_type = c4c::codegen::lir::trim_lir_arg_text(type);
+      if (trimmed_type == "...") {
+        saw_varargs = true;
+        break;
+      }
+      ++fixed_param_count;
+    }
+
+    if (saw_varargs) {
+      const auto args = c4c::codegen::lir::parse_lir_typed_call_args(call.args_str);
+      if (!args.has_value() || args->size() < fixed_param_count) {
+        return std::nullopt;
+      }
+
+      ParsedTypedCall parsed;
+      parsed.is_variadic = true;
+      parsed.owned_param_types.reserve(args->size());
+      parsed.param_types.reserve(args->size());
+      parsed.args.reserve(args->size());
+      for (std::size_t index = 0; index < args->size(); ++index) {
+        const auto arg_type = c4c::codegen::lir::trim_lir_arg_text((*args)[index].type);
+        if (index < fixed_param_count) {
+          const auto expected_type = c4c::codegen::lir::trim_lir_arg_text((*param_types)[index]);
+          if (expected_type == arg_type) {
+            parsed.owned_param_types.push_back(std::string(expected_type));
+          } else if (expected_type == "ptr") {
+            const auto byval_type = parse_byval_pointee_type(arg_type);
+            if (!byval_type.has_value()) {
+              return std::nullopt;
+            }
+            parsed.owned_param_types.push_back(*byval_type);
+          } else {
+            return std::nullopt;
+          }
+        } else {
+          parsed.owned_param_types.push_back(std::string(arg_type));
+        }
+        parsed.param_types.push_back(parsed.owned_param_types.back());
+        parsed.args.push_back((*args)[index]);
+      }
+      return parsed;
+    }
+  }
+
   if (const auto parsed = c4c::codegen::lir::parse_lir_typed_call_or_infer_params(call);
       parsed.has_value()) {
     ParsedTypedCall view;

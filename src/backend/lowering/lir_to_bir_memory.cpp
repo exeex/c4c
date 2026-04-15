@@ -4292,6 +4292,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       if (!parsed_call.has_value()) {
         return fail_call_family(call_family);
       }
+      is_variadic_call = parsed_call->is_variadic;
       callee_value = lower_value(call->callee, bir::TypeKind::Ptr, value_aliases);
       if (!callee_value.has_value()) {
         return fail_call_family(call_family);

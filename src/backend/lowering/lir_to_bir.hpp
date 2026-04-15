@@ -175,6 +175,7 @@ class BirFunctionLowerer {
     std::vector<std::string> owned_param_types;
     std::vector<std::string_view> param_types;
     std::vector<c4c::codegen::lir::LirTypedCallArgView> args;
+    bool is_variadic = false;
   };
 
   struct ParsedDirectGlobalTypedCall {

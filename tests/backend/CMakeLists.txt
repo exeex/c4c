@@ -379,6 +379,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_indirect_variadic_sum2_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/indirect_variadic_sum2.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/indirect_variadic_sum2_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @sum2(i32 %p.first) -> i32 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|%t0 = bir.call i32 llvm.va_arg.i32(ptr %lv.ap)|bir.call void llvm.va_end.p0(ptr %lv.ap)|bir.ret i32 %t2|bir.func @apply(ptr %p.fn) -> i32 {|%t0 = bir.call i32 %p.fn(i32 10, i32 32)|bir.ret i32 %t0|bir.func @main() -> i32 {|bir.call i32 apply(ptr @sum2)|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "define i32 @sum2|define i32 @apply|define i32 @main()|call void @llvm.va_start.p0|call void @llvm.va_end.p0|va_arg ptr %lv.ap, i32|call i32 (i32, ...) %p.fn(i32 10, i32 32)"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_vla_goto_stackrestore_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/vla_goto_stackrestore.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu
