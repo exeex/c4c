@@ -10,6 +10,14 @@ namespace c4c::backend::prepare {
 
 namespace {
 
+enum class RegallocAccessKind {
+  None,
+  DirectRead,
+  DirectWrite,
+  AddressedAccess,
+  CallArgumentExposure,
+};
+
 struct RegallocObjectAccessSummary {
   std::size_t direct_read_count = 0;
   std::size_t direct_write_count = 0;
@@ -18,15 +26,19 @@ struct RegallocObjectAccessSummary {
   bool has_access_window = false;
   std::size_t first_access_instruction_index = 0;
   std::size_t last_access_instruction_index = 0;
+  RegallocAccessKind last_access_kind = RegallocAccessKind::None;
   std::vector<std::size_t> call_instruction_indices;
 };
 
-void record_access(RegallocObjectAccessSummary& summary, std::size_t instruction_index) {
+void record_access(RegallocObjectAccessSummary& summary,
+                   std::size_t instruction_index,
+                   RegallocAccessKind access_kind) {
   if (!summary.has_access_window) {
     summary.has_access_window = true;
     summary.first_access_instruction_index = instruction_index;
   }
   summary.last_access_instruction_index = instruction_index;
+  summary.last_access_kind = access_kind;
 }
 
 std::string_view regalloc_allocation_kind(std::string_view contract_kind) {
@@ -46,6 +58,22 @@ bool named_value_targets_object(const bir::Value& value, std::string_view source
   return value.kind == bir::Value::Kind::Named && value.name == source_name;
 }
 
+std::string_view regalloc_access_kind_name(RegallocAccessKind access_kind) {
+  switch (access_kind) {
+    case RegallocAccessKind::None:
+      return "none";
+    case RegallocAccessKind::DirectRead:
+      return "direct_read";
+    case RegallocAccessKind::DirectWrite:
+      return "direct_write";
+    case RegallocAccessKind::AddressedAccess:
+      return "addressed_access";
+    case RegallocAccessKind::CallArgumentExposure:
+      return "call_argument_exposure";
+  }
+  return "unknown";
+}
+
 RegallocObjectAccessSummary summarize_object_accesses(const bir::Function& function,
                                                       std::string_view source_name) {
   RegallocObjectAccessSummary summary;
@@ -56,11 +84,11 @@ RegallocObjectAccessSummary summarize_object_accesses(const bir::Function& funct
       if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst); load != nullptr) {
         if (load->slot_name == source_name) {
           ++summary.direct_read_count;
-          record_access(summary, instruction_index);
+          record_access(summary, instruction_index, RegallocAccessKind::DirectRead);
         }
         if (memory_address_targets_object(load->address, source_name)) {
           ++summary.addressed_access_count;
-          record_access(summary, instruction_index);
+          record_access(summary, instruction_index, RegallocAccessKind::AddressedAccess);
         }
         ++instruction_index;
         continue;
@@ -69,11 +97,11 @@ RegallocObjectAccessSummary summarize_object_accesses(const bir::Function& funct
       if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr) {
         if (store->slot_name == source_name) {
           ++summary.direct_write_count;
-          record_access(summary, instruction_index);
+          record_access(summary, instruction_index, RegallocAccessKind::DirectWrite);
         }
         if (memory_address_targets_object(store->address, source_name)) {
           ++summary.addressed_access_count;
-          record_access(summary, instruction_index);
+          record_access(summary, instruction_index, RegallocAccessKind::AddressedAccess);
         }
         ++instruction_index;
         continue;
@@ -88,7 +116,7 @@ RegallocObjectAccessSummary summarize_object_accesses(const bir::Function& funct
       for (const auto& arg : call->args) {
         if (named_value_targets_object(arg, source_name)) {
           ++summary.call_arg_exposure_count;
-          record_access(summary, instruction_index);
+          record_access(summary, instruction_index, RegallocAccessKind::CallArgumentExposure);
         }
       }
       ++instruction_index;
@@ -161,6 +189,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .contract_kind = object.contract_kind,
           .allocation_kind = allocation_kind,
           .priority_bucket = priority_bucket,
+          .last_access_kind = std::string(regalloc_access_kind_name(summary.last_access_kind)),
           .direct_read_count = summary.direct_read_count,
           .direct_write_count = summary.direct_write_count,
           .addressed_access_count = summary.addressed_access_count,
@@ -186,7 +215,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
       .message =
           "regalloc now groups prepared liveness objects per function and classifies them as "
           "register_candidate or fixed_stack_storage contracts, plus target-neutral priority "
-          "buckets for single-point, multi-point, and call-spanning value-storage objects, "
+          "buckets for single-point, multi-point, and call-spanning value-storage objects, last "
+          "access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "
           "instruction-order access windows and call-crossing cues for downstream prepared-BIR "
           "consumers; physical register assignment remains future work",

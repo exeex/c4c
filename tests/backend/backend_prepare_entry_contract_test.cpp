@@ -131,6 +131,12 @@ bir::Module make_prepare_contract_bir_module() {
       .storage_kind = bir::LocalSlotStorageKind::LoweringScratch,
   });
   function.local_slots.push_back(bir::LocalSlot{
+      .name = "writeonly.slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
       .name = "phi.slot",
       .type = bir::TypeKind::I32,
       .size_bytes = 4,
@@ -234,6 +240,11 @@ bir::Module make_prepare_contract_bir_module() {
       .slot_name = "carry.slot",
       .align_bytes = 4,
   });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "writeonly.slot",
+      .value = bir::Value::immediate_i32(11),
+      .align_bytes = 4,
+  });
   entry.terminator = bir::ReturnTerminator{};
 
   function.blocks.push_back(std::move(entry));
@@ -331,6 +342,9 @@ int main() {
                      "target-neutral priority buckets for single-point, multi-point, and call-spanning value-storage objects")) {
     return fail("semantic-BIR prepare regalloc note should mention the target-neutral priority buckets");
   }
+  if (!contains_note(prepared_bir.notes, "regalloc", "last access-kind cues")) {
+    return fail("semantic-BIR prepare regalloc note should mention last access-kind cues");
+  }
   if (!contains_note(prepared_bir.notes,
                      "regalloc",
                      "instruction-order access windows and call-crossing cues")) {
@@ -350,7 +364,7 @@ int main() {
       return fail("unexpected semantic-BIR prepare phase order");
     }
   }
-  if (prepared_bir.stack_layout.objects.size() != 14) {
+  if (prepared_bir.stack_layout.objects.size() != 15) {
     return fail(
         "semantic-BIR stack layout should publish local-slot, lowering scratch, address-taken local-slot, phi-materialize, byval/sret, call-result, and va_arg frame objects");
   }
@@ -468,7 +482,7 @@ int main() {
   if (regalloc_function->objects.size() != prepared_bir.liveness.objects.size()) {
     return fail("semantic-BIR regalloc should classify every prepared liveness object");
   }
-  if (regalloc_function->register_candidate_count != 9 ||
+  if (regalloc_function->register_candidate_count != 10 ||
       regalloc_function->fixed_stack_storage_count != 5) {
     return fail("semantic-BIR regalloc should summarize register-candidate vs fixed-stack prepared objects");
   }
@@ -484,6 +498,9 @@ int main() {
       local_slot_regalloc->addressed_access_count != 0 ||
       local_slot_regalloc->call_arg_exposure_count != 0) {
     return fail("semantic-BIR regalloc should publish direct-access counts for local value-storage objects");
+  }
+  if (local_slot_regalloc->last_access_kind != "direct_read") {
+    return fail("semantic-BIR regalloc should publish direct-read last-access cues");
   }
   if (!local_slot_regalloc->has_access_window || local_slot_regalloc->first_access_instruction_index != 3 ||
       local_slot_regalloc->last_access_instruction_index != 3 ||
@@ -503,10 +520,21 @@ int main() {
       carry_slot_regalloc->call_arg_exposure_count != 0) {
     return fail("semantic-BIR regalloc should publish direct read/write counts for call-crossing local slots");
   }
+  if (carry_slot_regalloc->last_access_kind != "direct_read") {
+    return fail("semantic-BIR regalloc should publish the latest direct access kind for call-crossing local slots");
+  }
   if (!carry_slot_regalloc->has_access_window || carry_slot_regalloc->first_access_instruction_index != 0 ||
       carry_slot_regalloc->last_access_instruction_index != 4 ||
       !carry_slot_regalloc->crosses_call_boundary) {
     return fail("semantic-BIR regalloc should publish call-crossing instruction-order cues for value-storage objects");
+  }
+  const auto* writeonly_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "writeonly.slot");
+  if (writeonly_regalloc == nullptr || writeonly_regalloc->contract_kind != "value_storage" ||
+      writeonly_regalloc->allocation_kind != "register_candidate") {
+    return fail("semantic-BIR regalloc should keep write-only local slots in the value-storage register-candidate contract");
+  }
+  if (writeonly_regalloc->last_access_kind != "direct_write") {
+    return fail("semantic-BIR regalloc should publish direct-write last-access cues");
   }
   const auto* address_taken_regalloc =
       find_regalloc_object(*regalloc_function, "address_taken_local_slot", "addressed.slot");
@@ -523,6 +551,9 @@ int main() {
       address_taken_regalloc->call_arg_exposure_count != 0) {
     return fail("semantic-BIR regalloc should publish addressed-access counts for address-exposed storage");
   }
+  if (address_taken_regalloc->last_access_kind != "addressed_access") {
+    return fail("semantic-BIR regalloc should publish addressed-access last-access cues");
+  }
   const auto* call_result_regalloc =
       find_regalloc_object(*regalloc_function, "call_result_sret", "%call.result");
   if (call_result_regalloc == nullptr ||
@@ -534,6 +565,9 @@ int main() {
       call_result_regalloc->addressed_access_count != 0 ||
       call_result_regalloc->call_arg_exposure_count != 1) {
     return fail("semantic-BIR regalloc should publish call-argument exposure counts for call-result storage");
+  }
+  if (call_result_regalloc->last_access_kind != "call_argument_exposure") {
+    return fail("semantic-BIR regalloc should publish call-exposure last-access cues");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(
