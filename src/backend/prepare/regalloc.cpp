@@ -392,6 +392,45 @@ PreparedRegallocBindingHandoffSummary* find_binding_handoff_summary(
 std::string_view regalloc_binding_access_window_prerequisite_state(
     const PreparedRegallocContentionSummary& contention);
 
+bool regalloc_binding_frontier_is_incomplete(const PreparedRegallocObject& object) {
+  return object.allocation_kind == "register_candidate" &&
+         object.allocation_state_kind == "allocation_state_incomplete";
+}
+
+bool regalloc_binding_frontier_is_deferred(const PreparedRegallocObject& object) {
+  if (object.allocation_kind != "register_candidate" ||
+      regalloc_binding_frontier_is_incomplete(object)) {
+    return false;
+  }
+  if (object.reservation_scope == "unobserved_instruction_window" ||
+      object.home_slot_mode == "home_slot_needs_future_analysis" ||
+      object.sync_policy == "sync_policy_needs_future_analysis") {
+    return true;
+  }
+  return object.allocation_state_kind == "deferred_single_point_candidate" ||
+         object.allocation_state_kind == "opportunistic_single_point_candidate";
+}
+
+bool regalloc_binding_frontier_is_ready(const PreparedRegallocObject& object) {
+  return object.allocation_kind == "register_candidate" &&
+         !regalloc_binding_frontier_is_incomplete(object) &&
+         !regalloc_binding_frontier_is_deferred(object);
+}
+
+std::string_view regalloc_binding_frontier_kind_view(
+    const PreparedRegallocObject& object) {
+  if (object.allocation_kind != "register_candidate") {
+    return "fixed_stack_authoritative";
+  }
+  if (regalloc_binding_frontier_is_incomplete(object)) {
+    return "binding_frontier_incomplete";
+  }
+  if (regalloc_binding_frontier_is_deferred(object)) {
+    return "binding_deferred";
+  }
+  return "binding_ready";
+}
+
 struct BindingBatchContractView {
   std::string_view binding_frontier_kind;
   std::string_view binding_frontier_reason;
@@ -409,28 +448,29 @@ struct BindingBatchContractView {
 
 std::string_view regalloc_binding_frontier_reason_view(
     const PreparedRegallocObject& object) {
-  if (object.binding_frontier_kind == "binding_deferred" &&
+  if (regalloc_binding_frontier_is_deferred(object) &&
       object.deferred_reason == "awaiting_access_window_observation") {
     return object.deferred_reason;
   }
-  if (object.binding_frontier_kind == "binding_ready" ||
-      object.binding_frontier_kind == "binding_deferred") {
+  if (regalloc_binding_frontier_is_ready(object) ||
+      regalloc_binding_frontier_is_deferred(object)) {
     return object.follow_up_category;
   }
-  return object.binding_frontier_reason;
+  return regalloc_binding_frontier_kind_view(object);
 }
 
 std::optional<BindingBatchContractView> binding_batch_contract_view(
     PreparedRegallocFunction& function,
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary* contention) {
-  if (object.binding_frontier_kind == "binding_ready") {
+  const auto binding_frontier_kind = regalloc_binding_frontier_kind_view(object);
+  if (binding_frontier_kind == "binding_ready") {
     auto* batch_summary = find_binding_batch_summary(function, object.binding_batch_kind);
     if (batch_summary == nullptr || contention == nullptr) {
       return std::nullopt;
     }
     return BindingBatchContractView{
-        .binding_frontier_kind = object.binding_frontier_kind,
+        .binding_frontier_kind = binding_frontier_kind,
         .binding_frontier_reason = regalloc_binding_frontier_reason_view(object),
         .binding_batch_kind = object.binding_batch_kind,
         .allocation_stage = batch_summary->allocation_stage,
@@ -451,7 +491,7 @@ std::optional<BindingBatchContractView> binding_batch_contract_view(
     return std::nullopt;
   }
   return BindingBatchContractView{
-      .binding_frontier_kind = object.binding_frontier_kind,
+      .binding_frontier_kind = binding_frontier_kind,
       .binding_frontier_reason = regalloc_binding_frontier_reason_view(object),
       .binding_batch_kind = object.binding_batch_kind,
       .allocation_stage = batch_summary->allocation_stage,
@@ -1034,7 +1074,7 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
       continue;
     }
 
-    if (object->binding_frontier_kind == "binding_deferred") {
+    if (regalloc_binding_frontier_is_deferred(*object)) {
       const std::string binding_batch_kind(
           regalloc_deferred_binding_batch_kind(*object, *contention));
       auto* batch_summary = find_deferred_binding_batch_summary(function, binding_batch_kind);
@@ -1042,7 +1082,7 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
         function.deferred_binding_batches.push_back(PreparedRegallocDeferredBindingBatchSummary{
             .binding_batch_kind = binding_batch_kind,
             .allocation_stage = decision.allocation_stage,
-            .deferred_reason = object->binding_frontier_reason,
+            .deferred_reason = std::string(regalloc_binding_frontier_reason_view(*object)),
             .follow_up_category = contention->follow_up_category,
             .ordering_policy =
                 std::string(regalloc_deferred_binding_ordering_policy(*object, *contention)),
@@ -1071,7 +1111,7 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
       continue;
     }
 
-    if (object->binding_frontier_kind != "binding_ready") {
+    if (!regalloc_binding_frontier_is_ready(*object)) {
       continue;
     }
 
@@ -1115,8 +1155,9 @@ void populate_binding_handoff_summary(PreparedRegallocFunction& function) {
     if (object == nullptr) {
       continue;
     }
-    if (object->binding_frontier_kind != "binding_ready" &&
-        object->binding_frontier_kind != "binding_deferred") {
+    const auto binding_frontier_kind = regalloc_binding_frontier_kind_view(*object);
+    if (binding_frontier_kind != "binding_ready" &&
+        binding_frontier_kind != "binding_deferred") {
       continue;
     }
     if (object->binding_batch_kind.empty()) {
@@ -1124,7 +1165,7 @@ void populate_binding_handoff_summary(PreparedRegallocFunction& function) {
     }
 
     auto* summary = find_binding_handoff_summary(function,
-                                                 object->binding_frontier_kind,
+                                                 binding_frontier_kind,
                                                  object->binding_batch_kind);
     if (summary == nullptr) {
       const auto contract = binding_batch_contract_view(function, *object, contention);

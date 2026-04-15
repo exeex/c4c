@@ -22,12 +22,20 @@ Current Plan Focus: step-5 regalloc consumer shrink
 - kept object-level `binding_frontier_*` output as downstream-facing state
   while shrinking internal summary ownership back toward
   `binding_batches`/`deferred_binding_batches`/`binding_handoff_summary`
+- stopped `populate_binding_sequence` and
+  `populate_binding_handoff_summary` from routing register-candidate objects
+  through mirrored `binding_frontier_kind`, deriving ready vs deferred
+  participation from allocation-state, reservation-scope, and deferred-state
+  fields instead
+- kept opportunistic single-point candidates on the deferred frontier in the
+  derived route so ready-only binding batches still match the current prepare
+  contract while object-local frontier publication remains available
 
 ## Suggested Next
 - continue shrinking `src/backend/prepare/regalloc.cpp` by checking whether
-  `binding_frontier_kind` itself can stop driving batch/handoff assembly for
-  register-candidate objects, with publication preserved only where downstream
-  consumers still need the object-local state
+  `binding_frontier_reason` can stop acting as a mirrored fallback for
+  downstream handoff publication when the same fact already lives in
+  `deferred_reason`, `follow_up_category`, or derived frontier state
 - keep the next packet focused on ownership cleanup inside step 5; do not turn
   it into new allocation policy or target-ingestion work
 
@@ -52,3 +60,7 @@ Current Plan Focus: step-5 regalloc consumer shrink
   completed successfully
 - `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 - passed under `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
+- passed after restoring opportunistic single-point candidates to the deferred
+  frontier in the derived batch/handoff route; `backend_prepare_entry_contract`
+  and the full `^backend_` subset both completed successfully
