@@ -751,6 +751,17 @@ PreparedRegallocBindingBatchSummary* find_binding_batch_summary(
   return nullptr;
 }
 
+PreparedRegallocDeferredBindingBatchSummary* find_deferred_binding_batch_summary(
+    PreparedRegallocFunction& function,
+    std::string_view binding_batch_kind) {
+  for (auto& summary : function.deferred_binding_batches) {
+    if (summary.binding_batch_kind == binding_batch_kind) {
+      return &summary;
+    }
+  }
+  return nullptr;
+}
+
 bool access_windows_overlap(const PreparedRegallocObject& lhs, const PreparedRegallocObject& rhs) {
   if (!lhs.has_access_window || !rhs.has_access_window) {
     return false;
@@ -1092,11 +1103,33 @@ std::string_view regalloc_binding_batch_kind(
   return "binding_batch_needs_future_analysis";
 }
 
+std::string_view regalloc_deferred_binding_batch_kind(const PreparedRegallocObject& object,
+                                                      const PreparedRegallocContentionSummary& contention) {
+  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+    return "deferred_access_window_binding_batch";
+  }
+  if (contention.follow_up_category == "batched_single_point_coordination") {
+    return "deferred_coordination_binding_batch";
+  }
+  return "binding_deferred_batch_needs_future_analysis";
+}
+
 std::string_view regalloc_binding_ordering_policy(
     const PreparedRegallocContentionSummary& contention) {
   if (contention.follow_up_category == "call_boundary_preservation" ||
       contention.follow_up_category == "sequenced_local_reuse_coordination") {
     return "preserve_allocation_sequence";
+  }
+  if (contention.follow_up_category == "batched_single_point_coordination") {
+    return "defer_until_frontier_ready";
+  }
+  return "binding_policy_needs_future_analysis";
+}
+
+std::string_view regalloc_deferred_binding_ordering_policy(const PreparedRegallocObject& object,
+                                                           const PreparedRegallocContentionSummary& contention) {
+  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+    return "defer_until_access_window_observed";
   }
   if (contention.follow_up_category == "batched_single_point_coordination") {
     return "defer_until_frontier_ready";
@@ -1117,6 +1150,41 @@ std::string_view regalloc_binding_home_slot_prerequisite_state(
   return "prepare_home_slot_prerequisite_deferred";
 }
 
+std::string_view regalloc_deferred_binding_access_window_prerequisite_category(
+    const PreparedRegallocObject& object,
+    const PreparedRegallocContentionSummary& contention) {
+  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+    return "unobserved_instruction_window";
+  }
+  return contention.window_coordination_category;
+}
+
+std::string_view regalloc_deferred_binding_access_window_prerequisite_state(
+    const PreparedRegallocObject& object) {
+  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+    return "prepare_access_window_prerequisite_deferred";
+  }
+  return "prepare_access_window_prerequisite_satisfied";
+}
+
+std::string_view regalloc_deferred_binding_home_slot_prerequisite_category(
+    const PreparedRegallocObject& object,
+    const PreparedRegallocContentionSummary& contention) {
+  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+    return object.home_slot_mode;
+  }
+  return contention.home_slot_category;
+}
+
+std::string_view regalloc_deferred_binding_home_slot_prerequisite_state(
+    const PreparedRegallocObject& object,
+    const PreparedRegallocContentionSummary& contention) {
+  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+    return "prepare_home_slot_prerequisite_deferred";
+  }
+  return regalloc_binding_home_slot_prerequisite_state(contention);
+}
+
 std::string_view regalloc_binding_sync_handoff_state(
     const PreparedRegallocContentionSummary& contention) {
   if (contention.sync_coordination_category == "restore_only_coordination" ||
@@ -1130,6 +1198,24 @@ std::string_view regalloc_binding_sync_handoff_state(
     return "no_sync_handoff_required";
   }
   return "prepare_sync_handoff_deferred";
+}
+
+std::string_view regalloc_deferred_binding_sync_handoff_prerequisite_category(
+    const PreparedRegallocObject& object,
+    const PreparedRegallocContentionSummary& contention) {
+  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+    return object.sync_policy;
+  }
+  return contention.sync_coordination_category;
+}
+
+std::string_view regalloc_deferred_binding_sync_handoff_state(
+    const PreparedRegallocObject& object,
+    const PreparedRegallocContentionSummary& contention) {
+  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+    return "prepare_sync_handoff_deferred";
+  }
+  return regalloc_binding_sync_handoff_state(contention);
 }
 
 void populate_object_allocation_state(PreparedRegallocFunction& function) {
@@ -1214,12 +1300,54 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
 void populate_binding_sequence(PreparedRegallocFunction& function) {
   function.binding_sequence.clear();
   function.binding_batches.clear();
+  function.deferred_binding_batches.clear();
   function.binding_ready_batch_count = 0;
+  function.binding_deferred_batch_count = 0;
 
   for (const auto& decision : function.allocation_sequence) {
     const auto* object = find_regalloc_object(function, decision.source_kind, decision.source_name);
     const auto* contention = find_contention_summary(function, decision.allocation_stage);
-    if (object == nullptr || contention == nullptr || object->binding_frontier_kind != "binding_ready") {
+    if (object == nullptr || contention == nullptr) {
+      continue;
+    }
+
+    if (object->binding_frontier_kind == "binding_deferred") {
+      const std::string binding_batch_kind(
+          regalloc_deferred_binding_batch_kind(*object, *contention));
+      auto* batch_summary = find_deferred_binding_batch_summary(function, binding_batch_kind);
+      if (batch_summary == nullptr) {
+        function.deferred_binding_batches.push_back(PreparedRegallocDeferredBindingBatchSummary{
+            .binding_batch_kind = binding_batch_kind,
+            .allocation_stage = decision.allocation_stage,
+            .deferred_reason = object->binding_frontier_reason,
+            .follow_up_category = contention->follow_up_category,
+            .ordering_policy =
+                std::string(regalloc_deferred_binding_ordering_policy(*object, *contention)),
+            .access_window_prerequisite_category =
+                std::string(regalloc_deferred_binding_access_window_prerequisite_category(
+                    *object, *contention)),
+            .access_window_prerequisite_state =
+                std::string(regalloc_deferred_binding_access_window_prerequisite_state(*object)),
+            .home_slot_prerequisite_category =
+                std::string(regalloc_deferred_binding_home_slot_prerequisite_category(
+                    *object, *contention)),
+            .home_slot_prerequisite_state =
+                std::string(regalloc_deferred_binding_home_slot_prerequisite_state(
+                    *object, *contention)),
+            .sync_handoff_prerequisite_category =
+                std::string(regalloc_deferred_binding_sync_handoff_prerequisite_category(
+                    *object, *contention)),
+            .sync_handoff_state =
+                std::string(regalloc_deferred_binding_sync_handoff_state(*object, *contention)),
+        });
+        batch_summary = &function.deferred_binding_batches.back();
+        ++function.binding_deferred_batch_count;
+      }
+      ++batch_summary->candidate_count;
+      continue;
+    }
+
+    if (object->binding_frontier_kind != "binding_ready") {
       continue;
     }
 
@@ -1449,6 +1577,9 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "ready-vs-deferred binding frontier that flags which prepared register "
           "candidates are ready for stable home-slot/register binding and which "
           "still wait on access-window observation or coordination buckets, "
+          "plus explicit deferred binding batch artifacts that separate "
+          "unobserved access-window blockers from coordination-blocked "
+          "single-point batches without naming physical registers, "
           "plus a ready-only binding batch/order artifact that keeps current "
           "stable-binding work grouped by prepare-owned call-boundary versus "
           "local-reuse batches without naming physical registers, plus per-binding "

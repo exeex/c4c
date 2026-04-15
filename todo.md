@@ -8,30 +8,25 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- projected the existing ready-only batch prerequisite and handoff state down
-  into each `binding_ready` regalloc binding decision, so downstream prepared
-  consumers can read per-binding stable-home-slot and sync-ready guarantees
-  without reconstructing them from batch summaries alone
-- kept the new per-binding fields derived directly from the current
-  reservation/contention frontier: call-boundary bindings inherit satisfied
-  `stable_home_slot_required` plus ready mixed sync coordination, and
-  local-reuse bindings inherit satisfied `stable_home_slot_preferred` plus
-  ready mixed sync coordination, without naming target registers or widening
-  into target-ingestion work
-- projected the existing ready-only batch ordering policy down into each
-  `binding_ready` regalloc binding decision, so downstream prepared consumers
-  can read the per-binding sequencing contract without consulting batch
-  summaries alone or backfilling deferred single-point cases
-- extended the prepare entry backend fixture to assert the new per-binding
-  prerequisite, handoff, and sequencing contract for the current
-  binding-ready frontier
+- classified the current `binding_deferred` opportunistic-single-point
+  frontier into explicit deferred binding batch artifacts, so prepared
+  regalloc now groups access-window blockers separately from coordination
+  blockers instead of leaving that frontier as counts plus per-object reasons
+- kept the deferred batch metadata derived from existing object allocation
+  state and contention facts: unobserved single-point candidates now land in a
+  dedicated access-window batch with deferred access/home-slot/sync
+  prerequisites, while observed single-point candidates remain in a separate
+  coordination batch with satisfied access windows but deferred stable
+  home-slot analysis
+- extended the prepare entry backend fixture and regalloc note text to assert
+  the new deferred batch contract without reopening target-ingestion work or
+  naming physical registers
 
 ## Suggested Next
-- keep step-4 work inside prepare by classifying the current
-  `binding_deferred` opportunistic-single-point frontier into explicit
-  deferred batch metadata, so downstream prepared consumers can distinguish
-  access-window blockers from coordination blockers without reopening target
-  ingestion work
+- keep step-4 work inside prepare by projecting deferred batch membership down
+  into explicit per-object deferred binding decisions, so downstream prepared
+  consumers can read batch membership and prerequisite state without
+  reconstructing it from object-level frontier reasons plus batch summaries
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -52,10 +47,10 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 - keep future ready/deferred frontier work derived from explicit prepared
   access-window, sync, home-slot, and contention facts rather than from target
   register names, synthetic intervals, or placeholder interference graphs
-- keep any follow-on binding prerequisite or handoff work scoped to the
-  current `binding_ready` batches and derived from the existing reservation
-  plus contention summaries; do not backdoor single-point deferred cases into
-  a fake stable-binding path just to flatten the frontier counts
+- keep any follow-on deferred-batch or per-binding work scoped to the current
+  opportunistic-single-point frontier and derived from existing reservation,
+  contention, and object-access facts; do not backdoor deferred single-point
+  cases into a fake stable-binding path just to flatten the frontier counts
 - preserve the current split between register-candidate reservation decisions
   and fixed-stack authoritative objects; do not backdoor fixed-stack storage
   into the reservation sequence just to make a narrow testcase pass

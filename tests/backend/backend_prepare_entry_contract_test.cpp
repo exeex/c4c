@@ -148,6 +148,17 @@ const prepare::PreparedRegallocBindingBatchSummary* find_regalloc_binding_batch(
   return nullptr;
 }
 
+const prepare::PreparedRegallocDeferredBindingBatchSummary* find_regalloc_deferred_binding_batch(
+    const prepare::PreparedRegallocFunction& function,
+    std::string_view binding_batch_kind) {
+  for (const auto& summary : function.deferred_binding_batches) {
+    if (summary.binding_batch_kind == binding_batch_kind) {
+      return &summary;
+    }
+  }
+  return nullptr;
+}
+
 bir::Module make_prepare_contract_bir_module() {
   bir::Module module;
   bir::Function function;
@@ -524,6 +535,9 @@ int main() {
   if (!contains_note(prepared_bir.notes, "regalloc", "binding batch/order artifact")) {
     return fail("semantic-BIR prepare regalloc note should mention the ready-only binding batch/order artifact");
   }
+  if (!contains_note(prepared_bir.notes, "regalloc", "deferred binding batch artifacts")) {
+    return fail("semantic-BIR prepare regalloc note should mention deferred binding batch artifacts");
+  }
   if (!contains_note(prepared_bir.notes, "regalloc", "compact access-shape summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention compact access-shape summaries");
   }
@@ -743,6 +757,11 @@ int main() {
       regalloc_function->binding_ready_batch_count != 2 ||
       regalloc_function->binding_batches.size() != regalloc_function->binding_ready_batch_count) {
     return fail("semantic-BIR regalloc should publish ready-only binding batches and one binding order entry per ready candidate");
+  }
+  if (regalloc_function->binding_deferred_batch_count != 2 ||
+      regalloc_function->deferred_binding_batches.size() !=
+          regalloc_function->binding_deferred_batch_count) {
+    return fail("semantic-BIR regalloc should publish explicit deferred binding batches for the current binding-deferred frontier");
   }
   if (regalloc_function->allocation_sequence.size() != regalloc_function->register_candidate_count) {
     return fail("semantic-BIR regalloc should publish one allocation-sequence decision per register candidate");
@@ -1441,6 +1460,12 @@ int main() {
       find_regalloc_binding_batch(*regalloc_function, "call_boundary_binding_batch");
   const auto* local_reuse_binding_batch =
       find_regalloc_binding_batch(*regalloc_function, "local_reuse_binding_batch");
+  const auto* deferred_access_window_binding_batch =
+      find_regalloc_deferred_binding_batch(*regalloc_function,
+                                           "deferred_access_window_binding_batch");
+  const auto* deferred_coordination_binding_batch =
+      find_regalloc_deferred_binding_batch(*regalloc_function,
+                                           "deferred_coordination_binding_batch");
   if (carry_sequence == nullptr || callread_sequence == nullptr || callwrite_sequence == nullptr ||
       window_sequence == nullptr || readonly_sequence == nullptr || multiwrite_sequence == nullptr ||
       local_slot_sequence == nullptr || writeonly_sequence == nullptr) {
@@ -1456,7 +1481,9 @@ int main() {
   }
   if (carry_binding == nullptr || callread_binding == nullptr || callwrite_binding == nullptr ||
       window_binding == nullptr || readonly_binding == nullptr || multiwrite_binding == nullptr ||
-      call_boundary_binding_batch == nullptr || local_reuse_binding_batch == nullptr) {
+      call_boundary_binding_batch == nullptr || local_reuse_binding_batch == nullptr ||
+      deferred_access_window_binding_batch == nullptr ||
+      deferred_coordination_binding_batch == nullptr) {
     return fail("semantic-BIR regalloc should publish binding decisions and batch summaries for the current binding-ready frontier");
   }
   if (find_regalloc_binding_decision(*regalloc_function, "local_slot", "flag.slot") != nullptr ||
@@ -1692,6 +1719,51 @@ int main() {
       local_reuse_binding_batch->candidate_count != 3) {
     return fail(
         "semantic-BIR regalloc should summarize local-reuse batch prerequisites and ready sync/home-slot handoff from the existing reservation/contention frontier");
+  }
+  if (deferred_access_window_binding_batch->allocation_stage != "opportunistic_single_point" ||
+      deferred_access_window_binding_batch->deferred_reason !=
+          "awaiting_access_window_observation" ||
+      deferred_access_window_binding_batch->follow_up_category !=
+          "batched_single_point_coordination" ||
+      deferred_access_window_binding_batch->ordering_policy !=
+          "defer_until_access_window_observed" ||
+      deferred_access_window_binding_batch->access_window_prerequisite_category !=
+          "unobserved_instruction_window" ||
+      deferred_access_window_binding_batch->access_window_prerequisite_state !=
+          "prepare_access_window_prerequisite_deferred" ||
+      deferred_access_window_binding_batch->home_slot_prerequisite_category !=
+          "home_slot_needs_future_analysis" ||
+      deferred_access_window_binding_batch->home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_deferred" ||
+      deferred_access_window_binding_batch->sync_handoff_prerequisite_category !=
+          "sync_policy_needs_future_analysis" ||
+      deferred_access_window_binding_batch->sync_handoff_state !=
+          "prepare_sync_handoff_deferred" ||
+      deferred_access_window_binding_batch->candidate_count != 7) {
+    return fail(
+        "semantic-BIR regalloc should group deferred single-point candidates waiting on access-window observation into an explicit deferred binding batch");
+  }
+  if (deferred_coordination_binding_batch->allocation_stage != "opportunistic_single_point" ||
+      deferred_coordination_binding_batch->deferred_reason !=
+          "batched_single_point_coordination" ||
+      deferred_coordination_binding_batch->follow_up_category !=
+          "batched_single_point_coordination" ||
+      deferred_coordination_binding_batch->ordering_policy != "defer_until_frontier_ready" ||
+      deferred_coordination_binding_batch->access_window_prerequisite_category !=
+          "mixed_sparse_windows" ||
+      deferred_coordination_binding_batch->access_window_prerequisite_state !=
+          "prepare_access_window_prerequisite_satisfied" ||
+      deferred_coordination_binding_batch->home_slot_prerequisite_category !=
+          "mixed_home_slot_modes" ||
+      deferred_coordination_binding_batch->home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_deferred" ||
+      deferred_coordination_binding_batch->sync_handoff_prerequisite_category !=
+          "read_write_coordination" ||
+      deferred_coordination_binding_batch->sync_handoff_state !=
+          "prepare_sync_handoff_ready" ||
+      deferred_coordination_binding_batch->candidate_count != 2) {
+    return fail(
+        "semantic-BIR regalloc should group deferred single-point candidates waiting on coordination into an explicit deferred binding batch");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(
