@@ -8,16 +8,16 @@ Current Plan Focus: ordered step 4, tighten the semantic unsupported boundary
 # Current Packet
 
 ## Just Finished
-- threaded stable instruction-level failure notes through the front half of `lower_scalar_or_local_memory_inst`, so cast, scalar-binop, `alloca`, and `gep` misses now record exact semantic-family notes before the wrapper-level mixed buckets take over
+- threaded stable instruction-level failure notes through the remaining `load` and `store` exits in `lower_scalar_or_local_memory_inst`, so those local-memory misses now record exact semantic-family notes before the wrapper-level buckets take over
 - kept the slice inside `src/backend/lowering/lir_to_bir_memory.cpp`, without widening admitted semantic capability or adding testcase-shaped fallback handling
 
 ## Suggested Next
-- continue step 4 by threading the same instruction-level semantic-family note discipline into the remaining `load` and `store` exits inside `lower_scalar_or_local_memory_inst`, so local-memory failures stop falling back to the broader wrapper buckets
+- continue step 4 by checking whether any non-call, non-runtime misses remain outside the now-annotated function-signature, control-flow, cast/binop/alloca/`gep`, and `load`/`store` buckets, and only add more note plumbing if a real generic fallback path is still left
 - keep unsupported-boundary work diagnostic-only unless a later packet explicitly widens semantic capability under the current runbook
 
 ## Watchouts
-- this packet only tightens diagnostic bucketing for existing cast/binop/alloca/`gep` misses; it does not widen admitted semantic capability and must not be treated as prepare/legalize or target-backend progress
-- the remaining local-memory surface is mostly `load` and `store`, and a follow-on packet should keep the note taxonomy semantic and stable instead of mirroring individual helper names or testcase shapes
+- this packet only tightens diagnostic bucketing for existing `load`/`store` misses; it does not widen admitted semantic capability and must not be treated as prepare/legalize or target-backend progress
+- if another follow-on note packet is needed, it should confirm a real remaining generic fallback path first instead of over-segmenting the taxonomy into helper-shaped labels
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
