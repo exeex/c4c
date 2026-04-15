@@ -8,33 +8,33 @@ Current Plan Focus: step-3 first stack-layout artifact activation
 # Current Packet
 
 ## Just Finished
-- extended semantic-BIR `stack_layout` so it now publishes prepared frame
-  objects for explicit byval and sret parameter memory routes in addition to
-  legalized local-slot artifacts
-- split byval-copy local slots into their own prepared stack-object family so
-  the stack-layout contract distinguishes copied aggregate storage from generic
-  local-slot bookkeeping without inventing target offsets
+- extended semantic-BIR `stack_layout` so it now publishes aggregate call-result
+  sret storage as a prepared frame object when the route is carried by explicit
+  semantic call ABI metadata instead of local-slot naming heuristics
+- added explicit semantic BIR call metadata for sret-backed local result
+  storage so prepare-owned stack-layout work can distinguish local aggregate
+  call-result storage from forwarded sret parameters
 - tightened the prepare entry-contract test around one semantic function that
-  exercises legalized local slots, byval-copy storage, and byval/sret
-  parameter routes in the shared prepare pipeline
+  now exercises legalized local slots, byval-copy storage, byval/sret
+  parameter routes, and aggregate call-result storage in the shared prepare
+  pipeline
 
 ## Suggested Next
-- extend stack-layout artifact construction from parameter and byval-copy
-  families into other explicit prepared frame-storage producers that are
-  already modeled semantically, especially aggregate call-result storage, but
-  only if the route can be derived from ABI metadata rather than slot-name
-  heuristics
+- extend stack-layout artifact construction from aggregate call-result storage
+  into the next explicit prepared frame-storage producers that are already
+  modeled semantically, but keep the route grounded in explicit ABI or prepare
+  metadata instead of local-slot-name inference
 - keep the packet focused on stack-layout contract construction for later
-  liveness/regalloc consumers; do not slide into target ingestion or offset
-  assignment
+  liveness/regalloc consumers; do not slide into target ingestion, offset
+  assignment, or target-specific stack rebuilding
 
 ## Watchouts
 - do not let the current stack-layout packet drift into target ingestion work that
   belongs to `ideas/open/49_prepared_bir_target_ingestion.md`
 - do not push stack-layout ownership back into semantic lowering or target
   codegen
-- aggregate call-result storage exists nearby, but the next slice should only
-  claim it if prepare can identify the route from explicit semantic ABI facts
+- additional prepared frame-storage producers should only land when prepare can
+  identify them from explicit semantic ABI facts or dedicated lowering metadata
   instead of prefix/name matching on lowered local slots
 - keep the phase artifact inspectable and target-neutral; avoid replacing
   concrete data with broader notes

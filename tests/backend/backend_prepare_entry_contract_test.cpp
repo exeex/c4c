@@ -78,9 +78,36 @@ bir::Module make_prepare_contract_bir_module() {
       .align_bytes = 4,
       .is_byval_copy = true,
   });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%call.result.0",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%call.result.4",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
 
   bir::Block entry;
   entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "make_pair",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "%call.result")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .sret_pointer = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+      .sret_storage_name = "%call.result",
+  });
   entry.terminator = bir::ReturnTerminator{};
 
   function.blocks.push_back(std::move(entry));
@@ -154,6 +181,9 @@ int main() {
   if (!contains_note(prepared_bir.notes, "stack_layout", "byval/sret memory-route")) {
     return fail("semantic-BIR prepare stack-layout note should mention byval/sret memory-route objects");
   }
+  if (!contains_note(prepared_bir.notes, "stack_layout", "aggregate call-result sret storage")) {
+    return fail("semantic-BIR prepare stack-layout note should mention aggregate call-result storage");
+  }
   constexpr std::string_view kExpectedBirPhases[] = {
       "legalize",
       "stack_layout",
@@ -166,8 +196,8 @@ int main() {
       return fail("unexpected semantic-BIR prepare phase order");
     }
   }
-  if (prepared_bir.stack_layout.objects.size() != 4) {
-    return fail("semantic-BIR stack layout should publish local-slot plus byval/sret frame objects");
+  if (prepared_bir.stack_layout.objects.size() != 7) {
+    return fail("semantic-BIR stack layout should publish local-slot, byval/sret, and call-result frame objects");
   }
   const auto* local_slot = find_stack_object(prepared_bir, "local_slot", "flag.slot");
   if (local_slot == nullptr || local_slot->function_name != "id_pair" ||
@@ -192,6 +222,12 @@ int main() {
       byval_param->type != bir::TypeKind::Ptr || byval_param->size_bytes != 8 ||
       byval_param->align_bytes != 4) {
     return fail("semantic-BIR stack layout should publish the byval memory route as a prepared frame object");
+  }
+  const auto* call_result = find_stack_object(prepared_bir, "call_result_sret", "%call.result");
+  if (call_result == nullptr || call_result->function_name != "id_pair" ||
+      call_result->type != bir::TypeKind::Ptr || call_result->size_bytes != 8 ||
+      call_result->align_bytes != 4) {
+    return fail("semantic-BIR stack layout should publish aggregate call-result sret storage as a prepared frame object");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(

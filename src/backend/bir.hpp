@@ -247,6 +247,7 @@ struct CallInst {
   bool is_variadic = false;
   bool is_noreturn = false;
   std::optional<InlineAsmMetadata> inline_asm;
+  std::optional<std::string> sret_storage_name;
 };
 
 struct LoadLocalInst {

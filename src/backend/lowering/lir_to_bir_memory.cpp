@@ -4384,6 +4384,9 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     lowered_call.return_type = return_info->type;
     lowered_call.is_indirect = is_indirect_call;
     lowered_call.is_variadic = is_variadic_call;
+    if (sret_slot_name.has_value()) {
+      lowered_call.sret_storage_name = *sret_slot_name;
+    }
     lowered_insts->push_back(std::move(lowered_call));
     return true;
   }
