@@ -17,22 +17,23 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed the deferred batch `access_window_prerequisite_category` mirror
-  because deferred access-window state already rejoins from surviving owner
-  `deferred_reason`
+- removed deferred-batch `home_slot_prerequisite_category` and
+  `sync_handoff_prerequisite_category` mirrors because deferred prerequisite
+  state can rejoin explicitly from surviving owners:
+  `attachments -> object.home_slot_mode|sync_policy` for access-window waits
+  and `attachments -> allocation decision -> contention_summary` for
+  coordination waits
 - kept deferred frontier grouping explicit on
   `PreparedRegallocDeferredBindingBatchSummary` with `binding_batch_kind`,
-  `ordering_policy`, surviving prerequisite categories, and
-  attachment-owned membership
-- refreshed the prepare-entry contract test so deferred access-window
-  prerequisite state is derived from `deferred_reason` instead of a second
-  batch-summary mirror
+  `deferred_reason`, `ordering_policy`, and attachment-owned membership
+- refreshed the prepare-entry contract test so deferred home-slot and
+  sync-handoff prerequisite state are derived through the surviving owner
+  joins instead of second summary mirrors
 
 ## Suggested Next
-- inspect whether deferred `home_slot_prerequisite_category` or
-  `sync_handoff_prerequisite_category` still need batch-summary ownership or
-  whether either can rejoin through surviving deferred owners without
-  collapsing explicit deferred frontier grouping
+- inspect whether deferred `ordering_policy` is still a real frontier-level
+  owner or whether it now duplicates `deferred_reason` plus surviving
+  contention/object joins after the prerequisite mirrors were removed
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -73,6 +74,11 @@ while keeping the public shared contract named `prepare`
   `PreparedRegallocDeferredBindingBatchSummary::deferred_reason`; do not add
   back a separate access-window category mirror unless a real downstream
   consumer proves `deferred_reason` is no longer enough
+- deferred home-slot and sync-handoff prerequisite state now rejoins through
+  `attachments -> object` for access-window waits and
+  `attachments -> allocation decision -> contention_summary` for coordination
+  waits; do not recreate summary mirrors unless a real consumer cannot make
+  those joins explicit
 - the handoff lookup path now keys tests by `binding_batch_kind`; if a later
   packet trims more binding mirrors, keep batch kind as the consumer join key
   instead of rebuilding ready/deferred ownership mirrors in a new handoff
