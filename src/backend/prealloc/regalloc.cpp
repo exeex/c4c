@@ -959,7 +959,6 @@ void BirPreAlloc::populate_binding_sequence() {
           .object_index = static_cast<std::size_t>(
               object - current_regalloc_function_->objects.data()),
       });
-      ++batch_summary->candidate_count;
       continue;
     }
 

@@ -211,6 +211,11 @@ std::size_t regalloc_candidate_count_sum(const std::vector<Summary>& summaries) 
   return total;
 }
 
+std::size_t regalloc_deferred_batch_candidate_count(
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
+  return summary.attachments.size();
+}
+
 std::size_t regalloc_deferred_attachment_count_sum(
     const std::vector<prepare::PreparedRegallocDeferredBindingBatchSummary>& summaries) {
   std::size_t total = 0;
@@ -858,7 +863,7 @@ int main() {
           regalloc_function->register_candidate_count -
               regalloc_function->binding_sequence.size() ||
       regalloc_function->binding_batches.size() != 2 ||
-      regalloc_candidate_count_sum(regalloc_function->deferred_binding_batches) !=
+      regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches) !=
           regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches) ||
       regalloc_candidate_count_sum(regalloc_function->binding_batches) !=
           regalloc_function->binding_sequence.size()) {
@@ -866,7 +871,7 @@ int main() {
         "semantic-BIR regalloc should publish ready batch identity through binding_sequence while keeping deferred frontier attachment membership owned by deferred batch summaries");
   }
   if (regalloc_function->deferred_binding_batches.size() != 2 ||
-      regalloc_candidate_count_sum(regalloc_function->deferred_binding_batches) != 9 ||
+      regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches) != 9 ||
       find_regalloc_deferred_binding_batch(*regalloc_function,
                                            "deferred_access_window_binding_batch") == nullptr ||
       find_regalloc_deferred_binding_batch(*regalloc_function,
@@ -1640,7 +1645,7 @@ int main() {
           "sync_policy_needs_future_analysis" ||
       deferred_access_window_binding_batch->sync_handoff_state !=
           "prealloc_sync_handoff_deferred" ||
-      deferred_access_window_binding_batch->candidate_count != 7) {
+      regalloc_deferred_batch_candidate_count(*deferred_access_window_binding_batch) != 7) {
     return fail(
         "semantic-BIR regalloc should group deferred single-point candidates waiting on access-window observation into an explicit deferred binding batch");
   }
@@ -1662,7 +1667,7 @@ int main() {
           "read_write_coordination" ||
       deferred_coordination_binding_batch->sync_handoff_state !=
           "prealloc_sync_handoff_ready" ||
-      deferred_coordination_binding_batch->candidate_count != 2) {
+      regalloc_deferred_batch_candidate_count(*deferred_coordination_binding_batch) != 2) {
     return fail(
         "semantic-BIR regalloc should group deferred single-point candidates waiting on coordination into an explicit deferred binding batch");
   }

@@ -17,6 +17,11 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
+- removed redundant deferred batch `candidate_count` storage now that
+  attachment membership already counts deferred frontier entries directly
+- kept ready batch `candidate_count` as the ordering owner for
+  `binding_sequence` while switching deferred count checks to batch-owned
+  attachment membership
 - narrowed deferred batch membership attachments from duplicated
   `source_kind/source_name` pairs to an object-index join back into
   `PreparedRegallocFunction::objects`
@@ -28,9 +33,9 @@ while keeping the public shared contract named `prepare`
   objects
 
 ## Suggested Next
-- inspect whether deferred batch `candidate_count` still needs to be stored
-  separately now that deferred membership lives on attachment indices owned by
-  the batch summary
+- inspect whether deferred batch `allocation_stage` still needs to be repeated
+  on every deferred batch summary or whether the batch kind plus deferred
+  reason/follow-up ownership already names the same frontier grouping
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -90,6 +95,9 @@ while keeping the public shared contract named `prepare`
   `PreparedRegallocFunction::objects` by stable object index; if later cleanup
   reshapes regalloc object ordering, keep one clear stable join for deferred
   frontier identity instead of restoring duplicated source-name mirrors
+- deferred batch membership count now comes from `attachments.size()`; do not
+  reintroduce a separate deferred `candidate_count` field unless a real
+  consumer needs a count that differs from attachment membership
 - the current priority is structural clarity; if a cleanup only renames symbols
   but does not reduce architectural ambiguity, prefer the cleanup that removes
   an actual ownership seam or mirror first
