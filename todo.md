@@ -18,14 +18,16 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
   contract and binding batch kind instead of inventing deferred pass order or
   a second sequencing model
 - extended the backend prepare entry fixture to assert the new object-level
-  stable-pass surface on representative call-boundary and local-reuse ready
-  objects alongside the existing binding-level contract
+  stable-pass surface across the remaining representative call-boundary and
+  local-reuse ready objects, so the ready frontier is covered at object level
+  instead of only through one per-batch example plus binding-level checks
 
 ## Suggested Next
-- keep step-4 work inside prepare by extending the object-first stable-binding
-  pass surface across the remaining representative ready regalloc objects so
-  downstream consumers can rely on ready-object traversal without consulting
-  binding batches
+- keep step-4 work inside prepare by lifting the same object-first stable
+  prepared contract from stable-binding ordering into the remaining ready
+  object follow-up summaries, so downstream consumers can recover the full
+  per-object ready handoff without consulting binding batches or pass
+  summaries
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that

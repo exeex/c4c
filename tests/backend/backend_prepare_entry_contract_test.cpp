@@ -1212,6 +1212,31 @@ int main() {
       readonly_slot_regalloc->crosses_call_boundary) {
     return fail("semantic-BIR regalloc should publish non-call-spanning instruction-order cues for multi-point read-only value storage");
   }
+  if (readonly_slot_regalloc->binding_frontier_kind != "binding_ready" ||
+      readonly_slot_regalloc->binding_frontier_reason != "sequenced_local_reuse_coordination") {
+    return fail("semantic-BIR regalloc should mark non-call-spanning multi-read candidates as ready for stable prepared binding");
+  }
+  if (readonly_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch" ||
+      readonly_slot_regalloc->binding_order_index != 1 ||
+      readonly_slot_regalloc->stable_binding_pass_order_index != 1 ||
+      readonly_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
+      readonly_slot_regalloc->stable_binding_pass_last_binding_order_index != 2 ||
+      readonly_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
+      readonly_slot_regalloc->binding_access_window_prerequisite_category !=
+          "adjacent_local_windows" ||
+      readonly_slot_regalloc->binding_access_window_prerequisite_state !=
+          "prepare_access_window_prerequisite_satisfied" ||
+      readonly_slot_regalloc->binding_home_slot_prerequisite_category !=
+          "stable_home_slot_preferred" ||
+      readonly_slot_regalloc->binding_home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      readonly_slot_regalloc->binding_sync_handoff_prerequisite_category !=
+          "mixed_sync_coordination" ||
+      readonly_slot_regalloc->binding_sync_handoff_state !=
+          "prepare_sync_handoff_ready") {
+    return fail(
+        "semantic-BIR regalloc should project local-reuse stable-binding pass and prerequisite cues onto non-call-spanning multi-read ready objects");
+  }
   const auto* callread_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "callread.slot");
   if (callread_slot_regalloc == nullptr || callread_slot_regalloc->contract_kind != "value_storage" ||
@@ -1268,6 +1293,31 @@ int main() {
       callread_slot_regalloc->last_access_instruction_index != 14 ||
       !callread_slot_regalloc->crosses_call_boundary) {
     return fail("semantic-BIR regalloc should publish call-crossing instruction-order cues for read-only value storage");
+  }
+  if (callread_slot_regalloc->binding_frontier_kind != "binding_ready" ||
+      callread_slot_regalloc->binding_frontier_reason != "call_boundary_preservation") {
+    return fail("semantic-BIR regalloc should mark call-spanning read-only candidates as ready for stable prepared binding");
+  }
+  if (callread_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch" ||
+      callread_slot_regalloc->binding_order_index != 1 ||
+      callread_slot_regalloc->stable_binding_pass_order_index != 0 ||
+      callread_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
+      callread_slot_regalloc->stable_binding_pass_last_binding_order_index != 2 ||
+      callread_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
+      callread_slot_regalloc->binding_access_window_prerequisite_category !=
+          "overlapping_call_boundary_windows" ||
+      callread_slot_regalloc->binding_access_window_prerequisite_state !=
+          "prepare_access_window_prerequisite_satisfied" ||
+      callread_slot_regalloc->binding_home_slot_prerequisite_category !=
+          "stable_home_slot_required" ||
+      callread_slot_regalloc->binding_home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      callread_slot_regalloc->binding_sync_handoff_prerequisite_category !=
+          "mixed_sync_coordination" ||
+      callread_slot_regalloc->binding_sync_handoff_state !=
+          "prepare_sync_handoff_ready") {
+    return fail(
+        "semantic-BIR regalloc should project call-boundary stable-binding pass and prerequisite cues onto call-spanning read-only ready objects");
   }
   const auto* callwrite_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "callwrite.slot");
@@ -1329,6 +1379,31 @@ int main() {
       !callwrite_slot_regalloc->crosses_call_boundary) {
     return fail("semantic-BIR regalloc should publish call-crossing instruction-order cues for write-only value storage");
   }
+  if (callwrite_slot_regalloc->binding_frontier_kind != "binding_ready" ||
+      callwrite_slot_regalloc->binding_frontier_reason != "call_boundary_preservation") {
+    return fail("semantic-BIR regalloc should mark call-spanning write-only candidates as ready for stable prepared binding");
+  }
+  if (callwrite_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch" ||
+      callwrite_slot_regalloc->binding_order_index != 2 ||
+      callwrite_slot_regalloc->stable_binding_pass_order_index != 0 ||
+      callwrite_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
+      callwrite_slot_regalloc->stable_binding_pass_last_binding_order_index != 2 ||
+      callwrite_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
+      callwrite_slot_regalloc->binding_access_window_prerequisite_category !=
+          "overlapping_call_boundary_windows" ||
+      callwrite_slot_regalloc->binding_access_window_prerequisite_state !=
+          "prepare_access_window_prerequisite_satisfied" ||
+      callwrite_slot_regalloc->binding_home_slot_prerequisite_category !=
+          "stable_home_slot_required" ||
+      callwrite_slot_regalloc->binding_home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      callwrite_slot_regalloc->binding_sync_handoff_prerequisite_category !=
+          "mixed_sync_coordination" ||
+      callwrite_slot_regalloc->binding_sync_handoff_state !=
+          "prepare_sync_handoff_ready") {
+    return fail(
+        "semantic-BIR regalloc should project call-boundary stable-binding pass and prerequisite cues onto call-spanning write-only ready objects");
+  }
   const auto* multiwrite_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "multiwrite.slot");
   if (multiwrite_slot_regalloc == nullptr || multiwrite_slot_regalloc->contract_kind != "value_storage" ||
@@ -1388,6 +1463,31 @@ int main() {
       multiwrite_slot_regalloc->last_access_instruction_index != 13 ||
       multiwrite_slot_regalloc->crosses_call_boundary) {
     return fail("semantic-BIR regalloc should publish non-call-spanning instruction-order cues for multi-point write-only value storage");
+  }
+  if (multiwrite_slot_regalloc->binding_frontier_kind != "binding_ready" ||
+      multiwrite_slot_regalloc->binding_frontier_reason != "sequenced_local_reuse_coordination") {
+    return fail("semantic-BIR regalloc should mark non-call-spanning multi-write candidates as ready for stable prepared binding");
+  }
+  if (multiwrite_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch" ||
+      multiwrite_slot_regalloc->binding_order_index != 2 ||
+      multiwrite_slot_regalloc->stable_binding_pass_order_index != 1 ||
+      multiwrite_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
+      multiwrite_slot_regalloc->stable_binding_pass_last_binding_order_index != 2 ||
+      multiwrite_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
+      multiwrite_slot_regalloc->binding_access_window_prerequisite_category !=
+          "adjacent_local_windows" ||
+      multiwrite_slot_regalloc->binding_access_window_prerequisite_state !=
+          "prepare_access_window_prerequisite_satisfied" ||
+      multiwrite_slot_regalloc->binding_home_slot_prerequisite_category !=
+          "stable_home_slot_preferred" ||
+      multiwrite_slot_regalloc->binding_home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      multiwrite_slot_regalloc->binding_sync_handoff_prerequisite_category !=
+          "mixed_sync_coordination" ||
+      multiwrite_slot_regalloc->binding_sync_handoff_state !=
+          "prepare_sync_handoff_ready") {
+    return fail(
+        "semantic-BIR regalloc should project local-reuse stable-binding pass and prerequisite cues onto non-call-spanning multi-write ready objects");
   }
   const auto* writeonly_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "writeonly.slot");
   if (writeonly_regalloc == nullptr || writeonly_regalloc->contract_kind != "value_storage" ||
