@@ -257,6 +257,33 @@ std::string_view regalloc_spill_pressure_hint(std::string_view allocation_kind,
   return "single_use_spill_friendly";
 }
 
+std::string_view regalloc_reload_cost_hint(std::string_view allocation_kind,
+                                           std::string_view priority_bucket,
+                                           const RegallocObjectAccessSummary& summary) {
+  if (allocation_kind != "register_candidate") {
+    if (summary.addressed_access_count != 0) {
+      return "stack_address_exposed";
+    }
+    if (summary.call_arg_exposure_count != 0) {
+      return "stack_call_exposed";
+    }
+    return "fixed_stack_only";
+  }
+  if (summary.direct_read_count == 0) {
+    return "reload_not_needed";
+  }
+  if (priority_bucket == "single_point_value") {
+    return "single_use_reload_light";
+  }
+  if (priority_bucket == "call_spanning_value") {
+    return "call_spanning_reload_heavy";
+  }
+  if (summary.direct_read_count > 1 || summary.direct_write_count > 1) {
+    return "reuse_window_reload_amortized";
+  }
+  return "multi_point_reload_moderate";
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -289,6 +316,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           regalloc_preferred_register_pool(allocation_kind, priority_bucket));
       const std::string spill_pressure_hint(
           regalloc_spill_pressure_hint(allocation_kind, priority_bucket, summary));
+      const std::string reload_cost_hint(
+          regalloc_reload_cost_hint(allocation_kind, priority_bucket, summary));
       const std::string assignment_readiness(
           regalloc_assignment_readiness(allocation_kind, priority_bucket, summary));
       prepared_function.objects.push_back(PreparedRegallocObject{
@@ -300,6 +329,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .priority_bucket = priority_bucket,
           .preferred_register_pool = preferred_register_pool,
           .spill_pressure_hint = spill_pressure_hint,
+          .reload_cost_hint = reload_cost_hint,
           .assignment_readiness = assignment_readiness,
           .access_shape = std::string(regalloc_access_shape_name(summary)),
           .first_access_kind = std::string(regalloc_access_kind_name(summary.first_access_kind)),
@@ -334,6 +364,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "pressure and other register candidates toward caller-saved pressure, "
           "spill-pressure hints that distinguish single-use, repeat-use, call-surviving, "
           "write-only, and fixed-stack cases from current prepared facts, "
+          "reload-cost hints that distinguish single-use, reuse-window, call-spanning, "
+          "reload-free, and fixed-stack exposure cases from those same prepared facts, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "

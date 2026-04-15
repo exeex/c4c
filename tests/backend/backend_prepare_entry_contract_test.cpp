@@ -425,6 +425,9 @@ int main() {
   if (!contains_note(prepared_bir.notes, "regalloc", "preferred register pools")) {
     return fail("semantic-BIR prepare regalloc note should mention target-neutral preferred register pools");
   }
+  if (!contains_note(prepared_bir.notes, "regalloc", "reload-cost hints")) {
+    return fail("semantic-BIR prepare regalloc note should mention reload-cost hints");
+  }
   if (!contains_note(prepared_bir.notes, "regalloc", "compact access-shape summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention compact access-shape summaries");
   }
@@ -648,6 +651,9 @@ int main() {
   if (local_slot_regalloc->spill_pressure_hint != "single_use_spill_friendly") {
     return fail("semantic-BIR regalloc should expose a single-use spill-pressure hint for single-read value storage");
   }
+  if (local_slot_regalloc->reload_cost_hint != "single_use_reload_light") {
+    return fail("semantic-BIR regalloc should expose a light single-use reload-cost hint for single-read value storage");
+  }
   if (local_slot_regalloc->assignment_readiness != "single_point_read_candidate") {
     return fail("semantic-BIR regalloc should expose a single-point read readiness cue for single-read value storage");
   }
@@ -683,6 +689,9 @@ int main() {
   }
   if (carry_slot_regalloc->spill_pressure_hint != "call_surviving_spill_costly") {
     return fail("semantic-BIR regalloc should expose a call-surviving spill-pressure hint for call-crossing read/write value storage");
+  }
+  if (carry_slot_regalloc->reload_cost_hint != "call_spanning_reload_heavy") {
+    return fail("semantic-BIR regalloc should expose a heavy call-spanning reload-cost hint for call-crossing read/write value storage");
   }
   if (carry_slot_regalloc->assignment_readiness != "call_spanning_read_write_candidate") {
     return fail("semantic-BIR regalloc should expose a call-spanning read/write readiness cue for call-crossing value storage");
@@ -720,6 +729,9 @@ int main() {
   if (window_slot_regalloc->spill_pressure_hint != "repeat_use_spill_costly") {
     return fail("semantic-BIR regalloc should expose a repeat-use spill-pressure hint for non-call-spanning multi-point value storage");
   }
+  if (window_slot_regalloc->reload_cost_hint != "multi_point_reload_moderate") {
+    return fail("semantic-BIR regalloc should expose a moderate multi-point reload-cost hint for non-call-spanning read/write value storage");
+  }
   if (window_slot_regalloc->assignment_readiness != "multi_point_read_write_candidate") {
     return fail("semantic-BIR regalloc should expose a multi-point read/write readiness cue for non-call-spanning value storage");
   }
@@ -756,6 +768,9 @@ int main() {
   }
   if (readonly_slot_regalloc->spill_pressure_hint != "repeat_use_spill_costly") {
     return fail("semantic-BIR regalloc should expose a repeat-use spill-pressure hint for non-call-spanning multi-read value storage");
+  }
+  if (readonly_slot_regalloc->reload_cost_hint != "reuse_window_reload_amortized") {
+    return fail("semantic-BIR regalloc should expose an amortized reuse-window reload-cost hint for non-call-spanning multi-read value storage");
   }
   if (readonly_slot_regalloc->assignment_readiness != "multi_point_read_candidate") {
     return fail("semantic-BIR regalloc should expose a multi-point read readiness cue for non-call-spanning read-only value storage");
@@ -796,6 +811,9 @@ int main() {
   if (callread_slot_regalloc->spill_pressure_hint != "call_surviving_spill_costly") {
     return fail("semantic-BIR regalloc should expose a call-surviving spill-pressure hint for call-spanning read-only value storage");
   }
+  if (callread_slot_regalloc->reload_cost_hint != "call_spanning_reload_heavy") {
+    return fail("semantic-BIR regalloc should expose a heavy call-spanning reload-cost hint for call-spanning read-only value storage");
+  }
   if (callread_slot_regalloc->assignment_readiness != "call_spanning_read_candidate") {
     return fail("semantic-BIR regalloc should expose a call-spanning read readiness cue for call-crossing read-only value storage");
   }
@@ -834,6 +852,9 @@ int main() {
   }
   if (callwrite_slot_regalloc->spill_pressure_hint != "write_only_spill_friendly") {
     return fail("semantic-BIR regalloc should expose a write-only spill-pressure hint for call-spanning write-only value storage");
+  }
+  if (callwrite_slot_regalloc->reload_cost_hint != "reload_not_needed") {
+    return fail("semantic-BIR regalloc should expose a reload-free hint for call-spanning write-only value storage");
   }
   if (callwrite_slot_regalloc->assignment_readiness != "call_spanning_write_candidate") {
     return fail("semantic-BIR regalloc should expose a call-spanning write readiness cue for call-crossing write-only value storage");
@@ -874,6 +895,9 @@ int main() {
   if (multiwrite_slot_regalloc->spill_pressure_hint != "write_only_spill_friendly") {
     return fail("semantic-BIR regalloc should expose a write-only spill-pressure hint for non-call-spanning multi-write value storage");
   }
+  if (multiwrite_slot_regalloc->reload_cost_hint != "reload_not_needed") {
+    return fail("semantic-BIR regalloc should expose a reload-free hint for non-call-spanning multi-write value storage");
+  }
   if (multiwrite_slot_regalloc->assignment_readiness != "multi_point_write_candidate") {
     return fail("semantic-BIR regalloc should expose a multi-point write readiness cue for non-call-spanning write-only value storage");
   }
@@ -909,6 +933,9 @@ int main() {
   if (writeonly_regalloc->spill_pressure_hint != "write_only_spill_friendly") {
     return fail("semantic-BIR regalloc should expose a write-only spill-pressure hint for single-point write-only local slots");
   }
+  if (writeonly_regalloc->reload_cost_hint != "reload_not_needed") {
+    return fail("semantic-BIR regalloc should expose a reload-free hint for single-point write-only local slots");
+  }
   if (writeonly_regalloc->last_access_kind != "direct_write") {
     return fail("semantic-BIR regalloc should publish direct-write last-access cues");
   }
@@ -936,6 +963,9 @@ int main() {
   }
   if (address_taken_regalloc->spill_pressure_hint != "fixed_stack_only") {
     return fail("semantic-BIR regalloc should keep address-exposed storage out of spill-pressure register-candidate hints");
+  }
+  if (address_taken_regalloc->reload_cost_hint != "stack_address_exposed") {
+    return fail("semantic-BIR regalloc should expose an address-exposed fixed-stack reload-cost hint");
   }
   if (address_taken_regalloc->assignment_readiness != "fixed_stack_only") {
     return fail("semantic-BIR regalloc should keep address-exposed storage in the fixed-stack readiness contract");
@@ -971,6 +1001,9 @@ int main() {
   }
   if (call_result_regalloc->spill_pressure_hint != "fixed_stack_only") {
     return fail("semantic-BIR regalloc should keep call-result storage out of spill-pressure register-candidate hints");
+  }
+  if (call_result_regalloc->reload_cost_hint != "stack_call_exposed") {
+    return fail("semantic-BIR regalloc should expose a call-exposed fixed-stack reload-cost hint");
   }
   if (call_result_regalloc->assignment_readiness != "fixed_stack_only") {
     return fail("semantic-BIR regalloc should keep call-result storage in the fixed-stack readiness contract");
