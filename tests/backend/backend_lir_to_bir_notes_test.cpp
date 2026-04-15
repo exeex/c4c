@@ -172,7 +172,7 @@ LirModule make_bad_alloca_module() {
 
 int main() {
   constexpr std::string_view kModuleSummary =
-      "currently admitted capability buckets covering function-signature, scalar-control-flow, scalar/local-memory, and local/global memory semantics, plus semantic call lowering and explicit runtime or intrinsic families";
+      "currently admitted capability buckets covering function-signature, scalar-control-flow, scalar/local-memory (including scalar-cast/scalar-binop and alloca/gep/load/store local-memory), and local/global memory semantics, plus semantic call families (direct-call, indirect-call, and call-return) and explicit runtime or intrinsic families such as memcpy, memset, and inline-asm placeholders";
   if (const int inline_asm_status = expect_failure_notes(
           make_unsupported_inline_asm_module(),
           kModuleSummary,

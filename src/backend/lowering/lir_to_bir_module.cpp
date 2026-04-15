@@ -18,6 +18,14 @@ using lir_to_bir_detail::resolve_known_global_address;
 using lir_to_bir_detail::resolve_pointer_initializer_offsets;
 using lir_to_bir_detail::TypeDeclMap;
 
+constexpr std::string_view kModuleCapabilityBucketSummary =
+    "currently admitted capability buckets covering function-signature, "
+    "scalar-control-flow, scalar/local-memory (including scalar-cast/"
+    "scalar-binop and alloca/gep/load/store local-memory), and local/global "
+    "memory semantics, plus semantic call families (direct-call, "
+    "indirect-call, and call-return) and explicit runtime or intrinsic "
+    "families such as memcpy, memset, and inline-asm placeholders";
+
 int semantic_failure_note_rank(std::string_view message) {
   if (message.find("failed in runtime/intrinsic family") != std::string::npos ||
       message.find("failed in semantic call family") != std::string::npos) {
@@ -590,8 +598,8 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
         context, function, global_types, function_symbols, type_decls);
     auto lowered_function = function_lowerer.lower();
     if (!lowered_function.has_value()) {
-      std::string message =
-          "semantic lir_to_bir failed outside the currently admitted capability buckets covering function-signature, scalar-control-flow, scalar/local-memory, and local/global memory semantics, plus semantic call lowering and explicit runtime or intrinsic families";
+      std::string message = "semantic lir_to_bir failed outside the ";
+      message += kModuleCapabilityBucketSummary;
       if (const auto function_failure = latest_function_failure_note(context);
           function_failure.has_value()) {
         message += "; latest function failure: ";
@@ -605,7 +613,8 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
 
   context.note(
       "module",
-      "lowered semantic-BIR module within the currently admitted capability buckets covering function-signature, scalar-control-flow, scalar/local-memory, and local/global memory semantics, plus semantic call lowering and explicit runtime or intrinsic families");
+      std::string("lowered semantic-BIR module within the ") +
+          std::string(kModuleCapabilityBucketSummary));
   return module;
 }
 
