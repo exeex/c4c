@@ -538,6 +538,9 @@ int main() {
   if (!contains_note(prepared_bir.notes, "regalloc", "deferred binding batch artifacts")) {
     return fail("semantic-BIR prepare regalloc note should mention deferred binding batch artifacts");
   }
+  if (!contains_note(prepared_bir.notes, "regalloc", "per-object deferred-binding batch/order")) {
+    return fail("semantic-BIR prepare regalloc note should mention per-object deferred-binding cues");
+  }
   if (!contains_note(prepared_bir.notes, "regalloc", "compact access-shape summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention compact access-shape summaries");
   }
@@ -789,6 +792,24 @@ int main() {
       scratch_slot_regalloc->binding_frontier_reason != "awaiting_access_window_observation") {
     return fail("semantic-BIR regalloc should defer stable binding when prepared access-window facts are still missing");
   }
+  if (scratch_slot_regalloc->deferred_binding_batch_kind != "deferred_access_window_binding_batch" ||
+      scratch_slot_regalloc->deferred_binding_ordering_policy !=
+          "defer_until_access_window_observed" ||
+      scratch_slot_regalloc->deferred_access_window_prerequisite_category !=
+          "unobserved_instruction_window" ||
+      scratch_slot_regalloc->deferred_access_window_prerequisite_state !=
+          "prepare_access_window_prerequisite_deferred" ||
+      scratch_slot_regalloc->deferred_home_slot_prerequisite_category !=
+          "home_slot_needs_future_analysis" ||
+      scratch_slot_regalloc->deferred_home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_deferred" ||
+      scratch_slot_regalloc->deferred_sync_handoff_prerequisite_category !=
+          "sync_policy_needs_future_analysis" ||
+      scratch_slot_regalloc->deferred_sync_handoff_state !=
+          "prepare_sync_handoff_deferred") {
+    return fail(
+        "semantic-BIR regalloc should project access-window-deferred binding batch prerequisites back onto each deferred prepared object");
+  }
   if (local_slot_regalloc == nullptr || local_slot_regalloc->contract_kind != "value_storage" ||
       local_slot_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should treat value-storage objects as register candidates");
@@ -860,6 +881,22 @@ int main() {
   if (local_slot_regalloc->binding_frontier_kind != "binding_deferred" ||
       local_slot_regalloc->binding_frontier_reason != "batched_single_point_coordination") {
     return fail("semantic-BIR regalloc should keep observed single-point candidates deferred when coordination remains batched");
+  }
+  if (local_slot_regalloc->deferred_binding_batch_kind != "deferred_coordination_binding_batch" ||
+      local_slot_regalloc->deferred_binding_ordering_policy != "defer_until_frontier_ready" ||
+      local_slot_regalloc->deferred_access_window_prerequisite_category !=
+          "mixed_sparse_windows" ||
+      local_slot_regalloc->deferred_access_window_prerequisite_state !=
+          "prepare_access_window_prerequisite_satisfied" ||
+      local_slot_regalloc->deferred_home_slot_prerequisite_category !=
+          "mixed_home_slot_modes" ||
+      local_slot_regalloc->deferred_home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_deferred" ||
+      local_slot_regalloc->deferred_sync_handoff_prerequisite_category !=
+          "read_write_coordination" ||
+      local_slot_regalloc->deferred_sync_handoff_state != "prepare_sync_handoff_ready") {
+    return fail(
+        "semantic-BIR regalloc should project coordination-deferred binding batch prerequisites back onto each deferred prepared object");
   }
   const auto* carry_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "carry.slot");
   if (carry_slot_regalloc == nullptr || carry_slot_regalloc->contract_kind != "value_storage" ||

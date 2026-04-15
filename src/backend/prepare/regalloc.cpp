@@ -1233,6 +1233,14 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
         std::string(regalloc_allocation_state_kind(object, decision));
     object.deferred_reason =
         std::string(regalloc_allocation_state_deferred_reason(object, decision));
+    object.deferred_binding_batch_kind.clear();
+    object.deferred_binding_ordering_policy.clear();
+    object.deferred_access_window_prerequisite_category.clear();
+    object.deferred_access_window_prerequisite_state.clear();
+    object.deferred_home_slot_prerequisite_category.clear();
+    object.deferred_home_slot_prerequisite_state.clear();
+    object.deferred_sync_handoff_prerequisite_category.clear();
+    object.deferred_sync_handoff_state.clear();
 
     if (object.allocation_kind != "register_candidate") {
       object.reservation_kind = "fixed_stack_storage";
@@ -1287,6 +1295,28 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
     if (object.binding_frontier_kind == "binding_ready") {
       ++function.binding_ready_count;
     } else if (object.binding_frontier_kind == "binding_deferred") {
+      if (contention != nullptr) {
+        object.deferred_binding_batch_kind =
+            std::string(regalloc_deferred_binding_batch_kind(object, *contention));
+        object.deferred_binding_ordering_policy =
+            std::string(regalloc_deferred_binding_ordering_policy(object, *contention));
+        object.deferred_access_window_prerequisite_category =
+            std::string(regalloc_deferred_binding_access_window_prerequisite_category(
+                object, *contention));
+        object.deferred_access_window_prerequisite_state =
+            std::string(regalloc_deferred_binding_access_window_prerequisite_state(object));
+        object.deferred_home_slot_prerequisite_category =
+            std::string(regalloc_deferred_binding_home_slot_prerequisite_category(
+                object, *contention));
+        object.deferred_home_slot_prerequisite_state =
+            std::string(regalloc_deferred_binding_home_slot_prerequisite_state(
+                object, *contention));
+        object.deferred_sync_handoff_prerequisite_category =
+            std::string(regalloc_deferred_binding_sync_handoff_prerequisite_category(
+                object, *contention));
+        object.deferred_sync_handoff_state =
+            std::string(regalloc_deferred_binding_sync_handoff_state(object, *contention));
+      }
       ++function.binding_deferred_count;
       if (object.binding_frontier_reason == "awaiting_access_window_observation") {
         ++function.binding_deferred_access_window_count;
@@ -1579,7 +1609,11 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "still wait on access-window observation or coordination buckets, "
           "plus explicit deferred binding batch artifacts that separate "
           "unobserved access-window blockers from coordination-blocked "
-          "single-point batches without naming physical registers, "
+          "single-point batches without naming physical registers, plus "
+          "per-object deferred-binding batch/order and prerequisite cues "
+          "projected from those deferred batches so downstream prepared "
+          "consumers can read the deferred binding contract without consulting "
+          "batch summaries alone, "
           "plus a ready-only binding batch/order artifact that keeps current "
           "stable-binding work grouped by prepare-owned call-boundary versus "
           "local-reuse batches without naming physical registers, plus per-binding "

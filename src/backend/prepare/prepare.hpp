@@ -74,6 +74,14 @@ struct PreparedRegallocObject {
   std::string window_coordination_category;
   std::string binding_frontier_kind;
   std::string binding_frontier_reason;
+  std::string deferred_binding_batch_kind;
+  std::string deferred_binding_ordering_policy;
+  std::string deferred_access_window_prerequisite_category;
+  std::string deferred_access_window_prerequisite_state;
+  std::string deferred_home_slot_prerequisite_category;
+  std::string deferred_home_slot_prerequisite_state;
+  std::string deferred_sync_handoff_prerequisite_category;
+  std::string deferred_sync_handoff_state;
   std::string deferred_reason;
   std::string access_shape;
   std::string first_access_kind;
