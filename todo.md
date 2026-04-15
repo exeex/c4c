@@ -3,34 +3,33 @@
 Status: Active
 Source Idea: ideas/open/48_prepare_pipeline_rebuild.md
 Source Plan: plan.md
-Current Plan Focus: step-1 prepare route ownership activation
+Current Plan Focus: step-2 first legality invariant activation
 
 # Current Packet
 
 ## Just Finished
-- made the prepare entry contract explicit on prepared-module surfaces with a
-  concrete `PrepareRoute`, then funneled `backend.cpp` through named semantic
-  BIR and bootstrap LIR prepare helpers instead of leaving that route split as
-  ad hoc calls
-- tightened `backend_prepare_entry_contract` so the current slice proves the
-  route contract through explicit prepare-owned route identifiers as well as
-  the existing route notes and phase-order expectations
+- made the first semantic-BIR legality invariant explicit with
+  `PreparedBirInvariant::NoTargetFacingI1`, and taught `run_legalize` to
+  publish that invariant when prepare-owned `i1` promotion is part of the
+  current target contract
+- tightened backend prepare tests so they prove both the explicit invariant
+  metadata and the concrete post-legalize effect that target-facing `i1`
+  values are removed from prepared semantic BIR in this slice
 
 ## Suggested Next
-- start step 2 by inventorying which target-facing semantic-BIR forms still
-  rely on target-side assumptions today, then sketch the first prepare-owned
-  legality invariant in `legalize.cpp` and `prepare.cpp` without reopening raw
-  route growth
-- keep the next packet on general legality ownership, not target-ingestion
-  work or testcase-shaped target shortcuts
+- extend prepare-owned legality invariants beyond `i1` promotion by
+  inventorying which target-facing value and call forms still rely on implicit
+  target assumptions, then encode the next invariant where legalize already
+  owns the transformation
+- keep the next packet on general prepared-BIR legality ownership, not target
+  ingestion work or testcase-shaped backend shortcuts
 
 ## Watchouts
-- do not let the first packet drift into target ingestion work that belongs to
-  `ideas/open/49_prepared_bir_target_ingestion.md`
+- do not let the current legality packet drift into target ingestion work that
+  belongs to `ideas/open/49_prepared_bir_target_ingestion.md`
 - do not push legality or prepared-phase ownership back into semantic lowering
-- the new entry contract is intentionally honest about the current bootstrap
-  LIR fallback; do not “solve” that by reopening raw-route growth instead of
-  continuing the prepare-owned semantic-BIR route
+- keep legality invariants prepare-owned and target-neutral where possible;
+  avoid replacing them with target-side assumptions or note-only prose
 - prefer `build -> ^backend_` proof unless a narrower honest backend subset is
   clearly available
 

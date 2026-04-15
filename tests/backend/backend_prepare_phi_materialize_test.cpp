@@ -4,6 +4,8 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <optional>
+#include <type_traits>
 #include <variant>
 
 namespace {
@@ -15,6 +17,16 @@ namespace prepare = c4c::backend::prepare;
 int fail(const char* message) {
   std::cerr << message << "\n";
   return 1;
+}
+
+bool contains_invariant(const prepare::PreparedBirModule& module,
+                        prepare::PreparedBirInvariant invariant) {
+  for (const auto& entry : module.invariants) {
+    if (entry == invariant) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const bir::Block* find_block(const bir::Function& function, const char* label) {
@@ -29,6 +41,115 @@ const bir::Block* find_block(const bir::Function& function, const char* label) {
 bool is_immediate_i32(const bir::Value& value, std::int64_t expected) {
   return value.kind == bir::Value::Kind::Immediate && value.type == bir::TypeKind::I32 &&
          value.immediate == expected;
+}
+
+bool function_contains_i1(const bir::Function& function) {
+  const auto value_is_i1 = [](const bir::Value& value) { return value.type == bir::TypeKind::I1; };
+  const auto address_is_i1 = [&](const std::optional<bir::MemoryAddress>& address) {
+    return address.has_value() && value_is_i1(address->base_value);
+  };
+
+  if (function.return_type == bir::TypeKind::I1) {
+    return true;
+  }
+  for (const auto& param : function.params) {
+    if (param.type == bir::TypeKind::I1) {
+      return true;
+    }
+  }
+  for (const auto& slot : function.local_slots) {
+    if (slot.type == bir::TypeKind::I1) {
+      return true;
+    }
+  }
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const bool has_i1 = std::visit(
+          [&](const auto& lowered) {
+            using T = std::decay_t<decltype(lowered)>;
+            if constexpr (std::is_same_v<T, bir::BinaryInst>) {
+              return lowered.result.type == bir::TypeKind::I1 ||
+                     lowered.operand_type == bir::TypeKind::I1 ||
+                     value_is_i1(lowered.lhs) || value_is_i1(lowered.rhs);
+            } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
+              return lowered.result.type == bir::TypeKind::I1 ||
+                     lowered.compare_type == bir::TypeKind::I1 ||
+                     value_is_i1(lowered.lhs) || value_is_i1(lowered.rhs) ||
+                     value_is_i1(lowered.true_value) || value_is_i1(lowered.false_value);
+            } else if constexpr (std::is_same_v<T, bir::CastInst>) {
+              return lowered.result.type == bir::TypeKind::I1 ||
+                     value_is_i1(lowered.operand);
+            } else if constexpr (std::is_same_v<T, bir::PhiInst>) {
+              if (lowered.result.type == bir::TypeKind::I1) {
+                return true;
+              }
+              for (const auto& incoming : lowered.incomings) {
+                if (value_is_i1(incoming.value)) {
+                  return true;
+                }
+              }
+              return false;
+            } else if constexpr (std::is_same_v<T, bir::CallInst>) {
+              if (lowered.return_type == bir::TypeKind::I1) {
+                return true;
+              }
+              if (lowered.result.has_value() && lowered.result->type == bir::TypeKind::I1) {
+                return true;
+              }
+              if (lowered.callee_value.has_value() && value_is_i1(*lowered.callee_value)) {
+                return true;
+              }
+              for (const auto& arg : lowered.args) {
+                if (value_is_i1(arg)) {
+                  return true;
+                }
+              }
+              for (const auto& arg_type : lowered.arg_types) {
+                if (arg_type == bir::TypeKind::I1) {
+                  return true;
+                }
+              }
+              return lowered.result_abi.has_value() && lowered.result_abi->type == bir::TypeKind::I1;
+            } else if constexpr (std::is_same_v<T, bir::LoadLocalInst> ||
+                                 std::is_same_v<T, bir::LoadGlobalInst>) {
+              return lowered.result.type == bir::TypeKind::I1 || address_is_i1(lowered.address);
+            } else if constexpr (std::is_same_v<T, bir::StoreLocalInst> ||
+                                 std::is_same_v<T, bir::StoreGlobalInst>) {
+              return value_is_i1(lowered.value) || address_is_i1(lowered.address);
+            } else {
+              return false;
+            }
+          },
+          inst);
+      if (has_i1) {
+        return true;
+      }
+    }
+    if (block.terminator.value.has_value() && value_is_i1(*block.terminator.value)) {
+      return true;
+    }
+    if (value_is_i1(block.terminator.condition)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+int check_prepare_i1_invariant(const prepare::PreparedBirModule& prepared) {
+  if (!contains_invariant(prepared, prepare::PreparedBirInvariant::NoTargetFacingI1)) {
+    return fail("expected prepare legalize to publish the no-target-facing-i1 invariant");
+  }
+  if (prepared.invariants.empty() ||
+      prepare::prepared_bir_invariant_name(prepared.invariants.front()) != "no_target_facing_i1") {
+    return fail("expected stable name for the no-target-facing-i1 invariant");
+  }
+  if (prepared.module.functions.size() != 1) {
+    return fail("expected exactly one function when checking the i1 legality invariant");
+  }
+  if (function_contains_i1(prepared.module.functions.front())) {
+    return fail("expected legalize to remove target-facing i1 values from prepared semantic BIR");
+  }
+  return 0;
 }
 
 prepare::PreparedBirModule legalize_merge3_module(bool add_trailing_use) {
@@ -632,24 +753,24 @@ int check_materialized_conditional_successor_join(const bir::Function& legalized
 
 int main() {
   const auto prepared_with_add = legalize_merge3_module(true);
-  if (prepared_with_add.module.functions.size() != 1) {
-    return fail("expected exactly one function after legalize for add-using case");
+  if (const int status = check_prepare_i1_invariant(prepared_with_add); status != 0) {
+    return status;
   }
   if (const int status = check_materialized_join(prepared_with_add.module.functions.front(), true); status != 0) {
     return status;
   }
 
   const auto prepared_return_only = legalize_merge3_module(false);
-  if (prepared_return_only.module.functions.size() != 1) {
-    return fail("expected exactly one function after legalize for return-only case");
+  if (const int status = check_prepare_i1_invariant(prepared_return_only); status != 0) {
+    return status;
   }
   if (const int status = check_materialized_join(prepared_return_only.module.functions.front(), false); status != 0) {
     return status;
   }
 
   const auto prepared_successor_use = legalize_merge3_successor_use_module();
-  if (prepared_successor_use.module.functions.size() != 1) {
-    return fail("expected exactly one function after legalize for successor-use case");
+  if (const int status = check_prepare_i1_invariant(prepared_successor_use); status != 0) {
+    return status;
   }
   if (const int status = check_materialized_successor_join(prepared_successor_use.module.functions.front());
       status != 0) {
@@ -657,8 +778,8 @@ int main() {
   }
 
   const auto prepared_forwarded_successor_use = legalize_merge3_forwarded_successor_use_module();
-  if (prepared_forwarded_successor_use.module.functions.size() != 1) {
-    return fail("expected exactly one function after legalize for forwarded successor-use case");
+  if (const int status = check_prepare_i1_invariant(prepared_forwarded_successor_use); status != 0) {
+    return status;
   }
   if (const int status =
           check_materialized_forwarded_successor_join(prepared_forwarded_successor_use.module.functions.front());
@@ -667,8 +788,8 @@ int main() {
   }
 
   const auto prepared_conditional_successor_use = legalize_merge3_conditional_successor_use_module();
-  if (prepared_conditional_successor_use.module.functions.size() != 1) {
-    return fail("expected exactly one function after legalize for conditional successor-use case");
+  if (const int status = check_prepare_i1_invariant(prepared_conditional_successor_use); status != 0) {
+    return status;
   }
   return check_materialized_conditional_successor_join(
       prepared_conditional_successor_use.module.functions.front());

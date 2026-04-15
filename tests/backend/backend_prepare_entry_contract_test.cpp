@@ -25,6 +25,16 @@ bool contains_note(const std::vector<prepare::PrepareNote>& notes,
   return false;
 }
 
+bool contains_invariant(const prepare::PreparedBirModule& module,
+                        prepare::PreparedBirInvariant invariant) {
+  for (const auto& entry : module.invariants) {
+    if (entry == invariant) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bir::Module make_minimal_bir_module() {
   bir::Module module;
   bir::Function function;
@@ -70,6 +80,12 @@ int main() {
   }
   if (prepare::prepare_route_name(prepared_bir.route) != "semantic_bir_shared") {
     return fail("semantic-BIR prepare route name drifted");
+  }
+  if (!contains_invariant(prepared_bir, prepare::PreparedBirInvariant::NoTargetFacingI1)) {
+    return fail("semantic-BIR prepare entry should advertise the no-target-facing-i1 invariant");
+  }
+  if (prepare::prepared_bir_invariant_name(prepared_bir.invariants.front()) != "no_target_facing_i1") {
+    return fail("semantic-BIR prepare legality invariant name drifted");
   }
   if (!contains_note(prepared_bir.notes,
                      "prepare",

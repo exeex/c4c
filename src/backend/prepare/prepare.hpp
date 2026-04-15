@@ -37,6 +37,18 @@ enum class PrepareRoute {
   return "unknown";
 }
 
+enum class PreparedBirInvariant {
+  NoTargetFacingI1,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_bir_invariant_name(PreparedBirInvariant invariant) {
+  switch (invariant) {
+    case PreparedBirInvariant::NoTargetFacingI1:
+      return "no_target_facing_i1";
+  }
+  return "unknown";
+}
+
 struct PreparedLirModule {
   c4c::codegen::lir::LirModule module;
   Target target = Target::X86_64;
@@ -49,6 +61,7 @@ struct PreparedBirModule {
   c4c::backend::bir::Module module;
   Target target = Target::X86_64;
   PrepareRoute route = PrepareRoute::SemanticBirShared;
+  std::vector<PreparedBirInvariant> invariants;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
 };

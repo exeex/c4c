@@ -791,6 +791,9 @@ void run_legalize(PreparedBirModule& module, const PrepareOptions& options) {
   (void)options;
   module.completed_phases.push_back("legalize");
   legalize_module(module.target, module.module);
+  if (should_promote_i1(module.target)) {
+    module.invariants.push_back(PreparedBirInvariant::NoTargetFacingI1);
+  }
 
   module.notes.push_back(PrepareNote{
       .phase = "legalize",
