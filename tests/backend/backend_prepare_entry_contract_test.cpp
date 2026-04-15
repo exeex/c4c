@@ -103,6 +103,17 @@ std::size_t regalloc_allocation_index(const prepare::PreparedRegallocFunction& f
   return function.allocation_sequence.size();
 }
 
+const prepare::PreparedRegallocReservationSummary* find_regalloc_reservation_summary(
+    const prepare::PreparedRegallocFunction& function,
+    std::string_view allocation_stage) {
+  for (const auto& summary : function.reservation_summary) {
+    if (summary.allocation_stage == allocation_stage) {
+      return &summary;
+    }
+  }
+  return nullptr;
+}
+
 bir::Module make_prepare_contract_bir_module() {
   bir::Module module;
   bir::Function function;
@@ -466,6 +477,9 @@ int main() {
   }
   if (!contains_note(prepared_bir.notes, "regalloc", "first-pass reservation decisions")) {
     return fail("semantic-BIR prepare regalloc note should mention first-pass reservation decisions");
+  }
+  if (!contains_note(prepared_bir.notes, "regalloc", "reservation pressure/collision summaries")) {
+    return fail("semantic-BIR prepare regalloc note should mention reservation pressure/collision summaries");
   }
   if (!contains_note(prepared_bir.notes, "regalloc", "compact access-shape summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention compact access-shape summaries");
@@ -1259,10 +1273,20 @@ int main() {
       find_regalloc_allocation_decision(*regalloc_function, "local_slot", "flag.slot");
   const auto* writeonly_sequence =
       find_regalloc_allocation_decision(*regalloc_function, "local_slot", "writeonly.slot");
+  const auto* across_calls_summary =
+      find_regalloc_reservation_summary(*regalloc_function, "stabilize_across_calls");
+  const auto* local_reuse_summary =
+      find_regalloc_reservation_summary(*regalloc_function, "stabilize_local_reuse");
+  const auto* opportunistic_summary =
+      find_regalloc_reservation_summary(*regalloc_function, "opportunistic_single_point");
   if (carry_sequence == nullptr || callread_sequence == nullptr || callwrite_sequence == nullptr ||
       window_sequence == nullptr || readonly_sequence == nullptr || multiwrite_sequence == nullptr ||
       local_slot_sequence == nullptr || writeonly_sequence == nullptr) {
     return fail("semantic-BIR regalloc allocation sequence should cover nearby register-candidate shapes");
+  }
+  if (across_calls_summary == nullptr || local_reuse_summary == nullptr ||
+      opportunistic_summary == nullptr) {
+    return fail("semantic-BIR regalloc should publish per-function reservation summaries for the active allocation stages");
   }
   if (carry_sequence->allocation_stage != "stabilize_across_calls" ||
       callread_sequence->allocation_stage != "stabilize_across_calls" ||
@@ -1351,6 +1375,39 @@ int main() {
         local_slot_sequence_index < writeonly_sequence_index)) {
     return fail(
         "semantic-BIR regalloc should order register candidates from call-stable reuse through local reuse to opportunistic single-point cases");
+  }
+  if (across_calls_summary->candidate_count != 3 ||
+      across_calls_summary->overlapping_window_count != 3 ||
+      across_calls_summary->call_boundary_window_count != 3 ||
+      across_calls_summary->stable_home_slot_required_count != 3 ||
+      across_calls_summary->restore_before_read_count != 1 ||
+      across_calls_summary->writeback_after_write_count != 1 ||
+      across_calls_summary->sync_on_read_write_boundaries_count != 1 ||
+      across_calls_summary->pressure_signal != "call_boundary_stable_home_pressure" ||
+      across_calls_summary->collision_signal != "mixed_sync_window_collision_signal") {
+    return fail("semantic-BIR regalloc should summarize call-spanning reservation pressure and mixed sync-policy collisions");
+  }
+  if (local_reuse_summary->candidate_count != 3 ||
+      local_reuse_summary->overlapping_window_count != 0 ||
+      local_reuse_summary->adjacent_instruction_window_count != 3 ||
+      local_reuse_summary->stable_home_slot_preferred_count != 3 ||
+      local_reuse_summary->restore_before_read_count != 1 ||
+      local_reuse_summary->writeback_after_write_count != 1 ||
+      local_reuse_summary->sync_on_read_write_boundaries_count != 1 ||
+      local_reuse_summary->pressure_signal != "sequenced_local_reuse_pressure" ||
+      local_reuse_summary->collision_signal != "sequenced_local_reuse_no_collision") {
+    return fail("semantic-BIR regalloc should summarize nearby local-reuse pressure without inventing collisions for disjoint windows");
+  }
+  if (opportunistic_summary->candidate_count != 9 ||
+      opportunistic_summary->overlapping_window_count != 0 ||
+      opportunistic_summary->unobserved_window_count != 7 ||
+      opportunistic_summary->single_instruction_window_count != 2 ||
+      opportunistic_summary->single_use_home_slot_ok_count != 2 ||
+      opportunistic_summary->restore_before_read_count != 1 ||
+      opportunistic_summary->writeback_after_write_count != 1 ||
+      opportunistic_summary->pressure_signal != "batched_single_point_pressure" ||
+      opportunistic_summary->collision_signal != "single_instruction_collision_watch") {
+    return fail("semantic-BIR regalloc should summarize opportunistic single-point pressure and same-shape collision watch signals");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(

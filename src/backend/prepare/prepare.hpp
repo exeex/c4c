@@ -86,10 +86,30 @@ struct PreparedRegallocAllocationDecision {
   std::string sync_policy;
 };
 
+struct PreparedRegallocReservationSummary {
+  std::string allocation_stage;
+  std::size_t candidate_count = 0;
+  std::size_t overlapping_window_count = 0;
+  std::size_t unobserved_window_count = 0;
+  std::size_t call_boundary_window_count = 0;
+  std::size_t single_instruction_window_count = 0;
+  std::size_t adjacent_instruction_window_count = 0;
+  std::size_t wide_instruction_window_count = 0;
+  std::size_t stable_home_slot_required_count = 0;
+  std::size_t stable_home_slot_preferred_count = 0;
+  std::size_t single_use_home_slot_ok_count = 0;
+  std::size_t restore_before_read_count = 0;
+  std::size_t writeback_after_write_count = 0;
+  std::size_t sync_on_read_write_boundaries_count = 0;
+  std::string pressure_signal;
+  std::string collision_signal;
+};
+
 struct PreparedRegallocFunction {
   std::string function_name;
   std::vector<PreparedRegallocObject> objects;
   std::vector<PreparedRegallocAllocationDecision> allocation_sequence;
+  std::vector<PreparedRegallocReservationSummary> reservation_summary;
   std::size_t register_candidate_count = 0;
   std::size_t fixed_stack_storage_count = 0;
 };

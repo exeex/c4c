@@ -706,6 +706,143 @@ std::string_view regalloc_sync_policy(std::string_view spill_sync_hint) {
   return "sync_policy_needs_future_analysis";
 }
 
+const PreparedRegallocObject* find_regalloc_object(const PreparedRegallocFunction& function,
+                                                   std::string_view source_kind,
+                                                   std::string_view source_name) {
+  for (const auto& object : function.objects) {
+    if (object.source_kind == source_kind && object.source_name == source_name) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
+bool access_windows_overlap(const PreparedRegallocObject& lhs, const PreparedRegallocObject& rhs) {
+  if (!lhs.has_access_window || !rhs.has_access_window) {
+    return false;
+  }
+  return lhs.first_access_instruction_index <= rhs.last_access_instruction_index &&
+         rhs.first_access_instruction_index <= lhs.last_access_instruction_index;
+}
+
+std::string regalloc_pressure_signal(const PreparedRegallocReservationSummary& summary) {
+  if (summary.candidate_count == 0) {
+    return "idle_bucket";
+  }
+  if (summary.allocation_stage == "stabilize_across_calls") {
+    if (summary.overlapping_window_count != 0 &&
+        summary.stable_home_slot_required_count == summary.candidate_count) {
+      return "call_boundary_stable_home_pressure";
+    }
+    return "call_boundary_pressure";
+  }
+  if (summary.allocation_stage == "stabilize_local_reuse") {
+    if (summary.overlapping_window_count != 0) {
+      return "overlapping_local_reuse_pressure";
+    }
+    return "sequenced_local_reuse_pressure";
+  }
+  if (summary.single_instruction_window_count >= 2) {
+    return "batched_single_point_pressure";
+  }
+  if (summary.unobserved_window_count >= 2) {
+    return "broad_opportunistic_pressure";
+  }
+  return "isolated_single_point_pressure";
+}
+
+std::string regalloc_collision_signal(const PreparedRegallocReservationSummary& summary) {
+  if (summary.overlapping_window_count == 0) {
+    if (summary.allocation_stage == "stabilize_local_reuse" && summary.candidate_count > 1) {
+      return "sequenced_local_reuse_no_collision";
+    }
+    if (summary.allocation_stage == "opportunistic_single_point" &&
+        summary.single_instruction_window_count >= 2) {
+      return "single_instruction_collision_watch";
+    }
+    return "no_collision_signal";
+  }
+  if (summary.restore_before_read_count != 0 && summary.writeback_after_write_count != 0 &&
+      summary.sync_on_read_write_boundaries_count != 0) {
+    return "mixed_sync_window_collision_signal";
+  }
+  if (summary.restore_before_read_count != 0 && summary.writeback_after_write_count != 0) {
+    return "read_write_window_collision_signal";
+  }
+  if (summary.sync_on_read_write_boundaries_count != 0) {
+    return "bidirectional_window_collision_signal";
+  }
+  return "window_overlap_collision_signal";
+}
+
+PreparedRegallocReservationSummary summarize_reservation_stage(
+    const PreparedRegallocFunction& function,
+    std::string_view allocation_stage) {
+  PreparedRegallocReservationSummary summary{
+      .allocation_stage = std::string(allocation_stage),
+  };
+  std::vector<const PreparedRegallocObject*> stage_objects;
+  for (const auto& decision : function.allocation_sequence) {
+    if (decision.allocation_stage != allocation_stage) {
+      continue;
+    }
+    const auto* object = find_regalloc_object(function, decision.source_kind, decision.source_name);
+    if (object == nullptr) {
+      continue;
+    }
+    stage_objects.push_back(object);
+    ++summary.candidate_count;
+
+    if (!object->has_access_window) {
+      ++summary.unobserved_window_count;
+    } else if (object->crosses_call_boundary) {
+      ++summary.call_boundary_window_count;
+    } else {
+      const auto access_window_width =
+          object->last_access_instruction_index - object->first_access_instruction_index;
+      if (access_window_width == 0) {
+        ++summary.single_instruction_window_count;
+      } else if (access_window_width == 1) {
+        ++summary.adjacent_instruction_window_count;
+      } else {
+        ++summary.wide_instruction_window_count;
+      }
+    }
+
+    if (decision.home_slot_mode == "stable_home_slot_required") {
+      ++summary.stable_home_slot_required_count;
+    } else if (decision.home_slot_mode == "stable_home_slot_preferred") {
+      ++summary.stable_home_slot_preferred_count;
+    } else if (decision.home_slot_mode == "single_use_home_slot_ok") {
+      ++summary.single_use_home_slot_ok_count;
+    }
+
+    if (decision.sync_policy == "restore_before_read") {
+      ++summary.restore_before_read_count;
+    } else if (decision.sync_policy == "writeback_after_write") {
+      ++summary.writeback_after_write_count;
+    } else if (decision.sync_policy == "sync_on_read_write_boundaries") {
+      ++summary.sync_on_read_write_boundaries_count;
+    }
+  }
+
+  std::vector<bool> overlaps(stage_objects.size(), false);
+  for (std::size_t lhs_index = 0; lhs_index < stage_objects.size(); ++lhs_index) {
+    for (std::size_t rhs_index = lhs_index + 1; rhs_index < stage_objects.size(); ++rhs_index) {
+      if (!access_windows_overlap(*stage_objects[lhs_index], *stage_objects[rhs_index])) {
+        continue;
+      }
+      overlaps[lhs_index] = true;
+      overlaps[rhs_index] = true;
+    }
+  }
+  summary.overlapping_window_count =
+      static_cast<std::size_t>(std::count(overlaps.begin(), overlaps.end(), true));
+  summary.pressure_signal = regalloc_pressure_signal(summary);
+  summary.collision_signal = regalloc_collision_signal(summary);
+  return summary;
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -835,6 +972,18 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .sync_policy = std::string(regalloc_sync_policy(object->spill_sync_hint)),
       });
     }
+    constexpr std::string_view kReservationStages[] = {
+        "stabilize_across_calls",
+        "stabilize_local_reuse",
+        "opportunistic_single_point",
+    };
+    prepared_function.reservation_summary.reserve(std::size(kReservationStages));
+    for (const auto stage : kReservationStages) {
+      auto summary = summarize_reservation_stage(prepared_function, stage);
+      if (summary.candidate_count != 0) {
+        prepared_function.reservation_summary.push_back(std::move(summary));
+      }
+    }
     if (!prepared_function.objects.empty()) {
       module.regalloc.functions.push_back(std::move(prepared_function));
     }
@@ -865,6 +1014,10 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "staging for register candidates, plus first-pass reservation decisions that "
           "turn those stages into target-neutral call-preserved, local-reuse, or "
           "single-point register attempts with scope, home-slot, and sync policies, "
+          "per-function reservation pressure/collision summaries derived from that "
+          "allocation sequence plus the current prepared access-window, sync-policy, "
+          "and home-slot facts without naming physical registers or inventing "
+          "interference graphs, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "

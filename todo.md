@@ -8,24 +8,27 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- consumed the existing semantic-BIR regalloc `allocation_sequence` into a
-  first-pass prepare-owned reservation decision per register candidate by
-  publishing target-neutral `reservation_kind`, `reservation_scope`,
-  `home_slot_mode`, and `sync_policy` fields that translate the staged
-  call-spanning, local-reuse, and single-point buckets into inspectable
-  allocator actions without naming physical registers or inventing
-  interference graphs
+- extended prepare-owned semantic-BIR regalloc with a per-function
+  `reservation_summary` artifact that folds the existing
+  `allocation_sequence` together with current prepared access-window,
+  home-slot, and sync-policy facts into inspectable bucket summaries for
+  `stabilize_across_calls`, `stabilize_local_reuse`, and
+  `opportunistic_single_point`
+- published target-neutral pressure/collision signals plus bucket counts for
+  overlapping windows, unobserved windows, reservation scopes, home-slot
+  requirements, and restore/writeback/bidirectional sync mixes without naming
+  physical registers or inventing interference graphs
 - broadened the prepare entry-contract fixture so nearby call-spanning,
-  local-reuse, single-point, and fixed-stack shapes prove the new first-pass
-  reservation decision alongside the existing stage labels, ordering, and
-  fixed-stack exclusion from the register-candidate sequence
+  local-reuse, opportunistic single-point, and fixed-stack shapes prove the
+  new per-function summary alongside the existing per-object reservation
+  decisions and register-candidate ordering
 
 ## Suggested Next
-- if execution stays inside this bucket, consume the new first-pass
-  reservation decisions into a prepare-owned per-function reservation pressure
-  or collision summary so regalloc starts exposing where the current prepared
-  route would need contention handling next, still without naming target
-  registers, synthetic live intervals, or placeholder interference graphs
+- if execution stays inside this bucket, decide whether downstream prepared-BIR
+  consumers should read `reservation_summary` directly or whether prepare
+  should add one more target-neutral reduction that groups the current bucket
+  signals into explicit contention-handling follow-up categories for later
+  target ingestion
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -47,6 +50,9 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 - keep the new first-pass reservation fields semantically distinct from the
   existing priority bucket, preferred pool, spill-pressure, and readiness
   hints: they should express allocator action, not just restate earlier cues
+- keep `reservation_summary` aligned with the existing ordered
+  `allocation_sequence`; do not fork a separate ordering model or sneak in
+  pairwise pseudo-interference state
 - preserve the current split between register-candidate reservation decisions
   and fixed-stack objects; do not backdoor fixed-stack storage into the
   reservation sequence just to make a narrow testcase pass
