@@ -202,12 +202,6 @@ struct PreparedRegallocFunction {
   std::vector<PreparedRegallocBindingHandoffSummary> binding_handoff_summary;
   std::size_t register_candidate_count = 0;
   std::size_t fixed_stack_storage_count = 0;
-  std::size_t binding_ready_count = 0;
-  std::size_t binding_deferred_count = 0;
-  std::size_t binding_deferred_access_window_count = 0;
-  std::size_t binding_deferred_coordination_count = 0;
-  std::size_t binding_ready_batch_count = 0;
-  std::size_t binding_deferred_batch_count = 0;
 };
 
 struct PreparedRegalloc {

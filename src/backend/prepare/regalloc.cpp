@@ -940,11 +940,6 @@ std::string_view regalloc_deferred_binding_sync_handoff_state(
 }
 
 void populate_object_allocation_state(PreparedRegallocFunction& function) {
-  function.binding_ready_count = 0;
-  function.binding_deferred_count = 0;
-  function.binding_deferred_access_window_count = 0;
-  function.binding_deferred_coordination_count = 0;
-
   for (auto& object : function.objects) {
     const auto* decision = find_allocation_decision(function, object.source_kind, object.source_name);
     const auto* contention =
@@ -1011,16 +1006,6 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
         std::string(regalloc_binding_frontier_reason(object, decision, contention));
     object.binding_batch_kind.clear();
     object.binding_order_index = 0;
-    if (object.binding_frontier_kind == "binding_ready") {
-      ++function.binding_ready_count;
-    } else if (object.binding_frontier_kind == "binding_deferred") {
-      ++function.binding_deferred_count;
-      if (object.binding_frontier_reason == "awaiting_access_window_observation") {
-        ++function.binding_deferred_access_window_count;
-      } else {
-        ++function.binding_deferred_coordination_count;
-      }
-    }
   }
 }
 
@@ -1028,8 +1013,6 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
   function.binding_sequence.clear();
   function.binding_batches.clear();
   function.deferred_binding_batches.clear();
-  function.binding_ready_batch_count = 0;
-  function.binding_deferred_batch_count = 0;
 
   for (const auto& decision : function.allocation_sequence) {
     auto* object = find_mutable_regalloc_object(function, decision.source_kind, decision.source_name);
@@ -1068,7 +1051,6 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
                 std::string(regalloc_deferred_binding_sync_handoff_state(*object, *contention)),
         });
         batch_summary = &function.deferred_binding_batches.back();
-        ++function.binding_deferred_batch_count;
       }
       object->binding_batch_kind = binding_batch_kind;
       object->binding_order_index = batch_summary->candidate_count;
@@ -1095,7 +1077,6 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
           .sync_handoff_state = std::string(regalloc_binding_sync_handoff_state(*contention)),
       });
       batch_summary = &function.binding_batches.back();
-      ++function.binding_ready_batch_count;
     }
     object->binding_batch_kind = binding_batch_kind;
     object->binding_order_index = batch_summary->candidate_count;
@@ -1112,8 +1093,8 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
 
 void populate_binding_handoff_summary(PreparedRegallocFunction& function) {
   function.binding_handoff_summary.clear();
-  function.binding_handoff_summary.reserve(function.binding_ready_batch_count +
-                                           function.binding_deferred_batch_count);
+  function.binding_handoff_summary.reserve(function.binding_batches.size() +
+                                           function.deferred_binding_batches.size());
 
   for (const auto& decision : function.allocation_sequence) {
     const auto* object = find_regalloc_object(function, decision.source_kind, decision.source_name);

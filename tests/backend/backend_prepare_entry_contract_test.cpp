@@ -183,6 +183,15 @@ const prepare::PreparedRegallocBindingHandoffSummary* find_regalloc_binding_hand
   return nullptr;
 }
 
+template <typename Summary>
+std::size_t regalloc_candidate_count_sum(const std::vector<Summary>& summaries) {
+  std::size_t total = 0;
+  for (const auto& summary : summaries) {
+    total += summary.candidate_count;
+  }
+  return total;
+}
+
 bir::Module make_prepare_contract_bir_module() {
   bir::Module module;
   bir::Function function;
@@ -836,20 +845,18 @@ int main() {
       regalloc_function->fixed_stack_storage_count != 5) {
     return fail("semantic-BIR regalloc should summarize register-candidate vs fixed-stack prepared objects");
   }
-  if (regalloc_function->binding_ready_count != 6 ||
-      regalloc_function->binding_deferred_count != 9 ||
-      regalloc_function->binding_deferred_access_window_count != 7 ||
-      regalloc_function->binding_deferred_coordination_count != 2) {
-    return fail("semantic-BIR regalloc should summarize the per-function ready-vs-deferred binding frontier");
-  }
-  if (regalloc_function->binding_sequence.size() != regalloc_function->binding_ready_count ||
-      regalloc_function->binding_ready_batch_count != 2 ||
-      regalloc_function->binding_batches.size() != regalloc_function->binding_ready_batch_count) {
+  if (regalloc_function->binding_sequence.size() != 6 ||
+      regalloc_function->binding_batches.size() != 2 ||
+      regalloc_candidate_count_sum(regalloc_function->binding_batches) !=
+          regalloc_function->binding_sequence.size()) {
     return fail("semantic-BIR regalloc should publish ready-only binding batches and one binding order entry per ready candidate");
   }
-  if (regalloc_function->binding_deferred_batch_count != 2 ||
-      regalloc_function->deferred_binding_batches.size() !=
-          regalloc_function->binding_deferred_batch_count) {
+  if (regalloc_function->deferred_binding_batches.size() != 2 ||
+      regalloc_candidate_count_sum(regalloc_function->deferred_binding_batches) != 9 ||
+      find_regalloc_deferred_binding_batch(*regalloc_function,
+                                           "deferred_access_window_binding_batch") == nullptr ||
+      find_regalloc_deferred_binding_batch(*regalloc_function,
+                                           "deferred_coordination_binding_batch") == nullptr) {
     return fail("semantic-BIR regalloc should publish explicit deferred binding batches for the current binding-deferred frontier");
   }
   if (regalloc_function->allocation_sequence.size() != regalloc_function->register_candidate_count) {
@@ -1436,8 +1443,8 @@ int main() {
     return fail("semantic-BIR regalloc should publish binding decisions and batch summaries for the current binding-ready frontier");
   }
   if (regalloc_function->binding_handoff_summary.size() !=
-          regalloc_function->binding_ready_batch_count +
-              regalloc_function->binding_deferred_batch_count ||
+          regalloc_function->binding_batches.size() +
+              regalloc_function->deferred_binding_batches.size() ||
       call_boundary_handoff_summary == nullptr || local_reuse_handoff_summary == nullptr ||
       deferred_access_window_handoff_summary == nullptr ||
       deferred_coordination_handoff_summary == nullptr) {
