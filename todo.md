@@ -9,20 +9,21 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 
 ## Just Finished
 - extended the semantic-BIR regalloc artifact with a target-neutral
-  `reload_cost_hint` field sourced from current prepared facts: single-use
-  reads stay light, call-spanning reads stay expensive, repeated read windows
-  advertise amortized reload reuse, write-only values stay reload-free, and
-  fixed-stack exposure splits into address-exposed versus call-exposed cases
+  `materialization_timing_hint` field sourced from current prepared facts:
+  read-first values materialize at first read, write-first values defer until
+  the write path, write-then-read windows advertise the handoff point between
+  production and later consumption, and fixed-stack storage splits into
+  address-exposed versus call-exposed timing
 - broadened the prepare entry-contract fixture so nearby single-point,
   multi-point, call-spanning, write-only, address-exposed, and call-exposed
-  shapes all prove the new reload-cost cue alongside the existing
-  pool/pressure/readiness/access summaries
+  shapes all prove the new materialization-timing cue alongside the existing
+  pool/pressure/reload/readiness/access summaries
 
 ## Suggested Next
 - if execution stays inside this bucket, publish one more allocator-facing
   regalloc cue that still comes directly from prepared facts, such as a
-  register-eligibility or materialization-timing hint keyed by exposure kind
-  and first/last access order rather than target names or synthetic intervals
+  register-eligibility or spill-restore-locality hint keyed by access-window
+  width and exposure kind rather than target names or synthetic intervals
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that

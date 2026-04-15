@@ -284,6 +284,40 @@ std::string_view regalloc_reload_cost_hint(std::string_view allocation_kind,
   return "multi_point_reload_moderate";
 }
 
+std::string_view regalloc_materialization_timing_hint(std::string_view allocation_kind,
+                                                      const RegallocObjectAccessSummary& summary) {
+  if (allocation_kind != "register_candidate") {
+    if (summary.addressed_access_count != 0) {
+      return "materialize_via_address_exposure";
+    }
+    if (summary.call_arg_exposure_count != 0) {
+      return "materialize_for_call_exposure";
+    }
+    return "fixed_stack_only";
+  }
+
+  switch (summary.first_access_kind) {
+    case RegallocAccessKind::DirectWrite:
+      if (summary.last_access_kind == RegallocAccessKind::DirectRead) {
+        return "materialize_after_write_before_read";
+      }
+      return "materialize_on_write_path";
+    case RegallocAccessKind::DirectRead:
+      if (summary.last_access_kind == RegallocAccessKind::DirectWrite) {
+        return "materialize_at_first_read_then_update";
+      }
+      return "materialize_at_first_read";
+    case RegallocAccessKind::AddressedAccess:
+      return "materialize_via_address_exposure";
+    case RegallocAccessKind::CallArgumentExposure:
+      return "materialize_for_call_exposure";
+    case RegallocAccessKind::None:
+      break;
+  }
+
+  return "materialize_at_first_access";
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -318,6 +352,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           regalloc_spill_pressure_hint(allocation_kind, priority_bucket, summary));
       const std::string reload_cost_hint(
           regalloc_reload_cost_hint(allocation_kind, priority_bucket, summary));
+      const std::string materialization_timing_hint(
+          regalloc_materialization_timing_hint(allocation_kind, summary));
       const std::string assignment_readiness(
           regalloc_assignment_readiness(allocation_kind, priority_bucket, summary));
       prepared_function.objects.push_back(PreparedRegallocObject{
@@ -330,6 +366,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .preferred_register_pool = preferred_register_pool,
           .spill_pressure_hint = spill_pressure_hint,
           .reload_cost_hint = reload_cost_hint,
+          .materialization_timing_hint = materialization_timing_hint,
           .assignment_readiness = assignment_readiness,
           .access_shape = std::string(regalloc_access_shape_name(summary)),
           .first_access_kind = std::string(regalloc_access_kind_name(summary.first_access_kind)),
@@ -366,6 +403,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "write-only, and fixed-stack cases from current prepared facts, "
           "reload-cost hints that distinguish single-use, reuse-window, call-spanning, "
           "reload-free, and fixed-stack exposure cases from those same prepared facts, "
+          "materialization-timing hints keyed by first/last access order plus fixed-stack "
+          "exposure kind, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "
