@@ -367,18 +367,17 @@ struct BindingBatchContractView {
 };
 
 std::optional<BindingBatchContractView> binding_batch_contract_view(
-    PreparedRegallocBindingBatchSummary* batch_summary,
-    PreparedRegallocDeferredBindingBatchSummary* deferred_batch_summary,
-    const PreparedRegallocObject& object,
+    std::string_view binding_frontier_kind,
+    const PreparedRegallocBindingBatchSummary* batch_summary,
+    const PreparedRegallocDeferredBindingBatchSummary* deferred_batch_summary,
     const PreparedRegallocContentionSummary* contention) {
-  const auto binding_frontier_kind = regalloc_binding_frontier_kind_view(object);
   if (binding_frontier_kind == "binding_ready") {
     if (batch_summary == nullptr || contention == nullptr) {
       return std::nullopt;
     }
     return BindingBatchContractView{
         .binding_frontier_kind = binding_frontier_kind,
-        .binding_batch_kind = object.binding_batch_kind,
+        .binding_batch_kind = batch_summary->binding_batch_kind,
         .allocation_stage = batch_summary->allocation_stage,
         .deferred_reason = "not_deferred",
         .follow_up_category = batch_summary->follow_up_category,
@@ -398,7 +397,7 @@ std::optional<BindingBatchContractView> binding_batch_contract_view(
   }
   return BindingBatchContractView{
       .binding_frontier_kind = binding_frontier_kind,
-      .binding_batch_kind = object.binding_batch_kind,
+      .binding_batch_kind = deferred_batch_summary->binding_batch_kind,
       .allocation_stage = deferred_batch_summary->allocation_stage,
       .deferred_reason = deferred_batch_summary->deferred_reason,
       .follow_up_category = deferred_batch_summary->follow_up_category,
@@ -897,21 +896,6 @@ PreparedRegallocDeferredBindingBatchSummary* BirPreAlloc::find_deferred_binding_
   return nullptr;
 }
 
-PreparedRegallocBindingHandoffSummary* BirPreAlloc::find_binding_handoff_summary(
-    std::string_view binding_frontier_kind,
-    std::string_view binding_batch_kind) {
-  if (current_regalloc_function_ == nullptr) {
-    return nullptr;
-  }
-  for (auto& summary : current_regalloc_function_->binding_handoff_summary) {
-    if (summary.binding_frontier_kind == binding_frontier_kind &&
-        summary.binding_batch_kind == binding_batch_kind) {
-      return &summary;
-    }
-  }
-  return nullptr;
-}
-
 PreparedRegallocReservationSummary BirPreAlloc::summarize_reservation_stage(
     std::string_view allocation_stage) const {
   PreparedRegallocReservationSummary summary{
@@ -984,14 +968,13 @@ PreparedRegallocReservationSummary BirPreAlloc::summarize_reservation_stage(
 }
 
 std::optional<PreparedRegallocBindingHandoffSummary> BirPreAlloc::binding_handoff_summary_contract(
-    const PreparedRegallocObject& object,
+    std::string_view binding_frontier_kind,
+    const PreparedRegallocBindingBatchSummary* batch_summary,
+    const PreparedRegallocDeferredBindingBatchSummary* deferred_batch_summary,
     const PreparedRegallocContentionSummary* contention) const {
-  auto* batch_summary = const_cast<BirPreAlloc*>(this)->find_binding_batch_summary(
-      object.binding_batch_kind);
-  auto* deferred_batch_summary =
-      const_cast<BirPreAlloc*>(this)->find_deferred_binding_batch_summary(object.binding_batch_kind);
   const auto contract =
-      binding_batch_contract_view(batch_summary, deferred_batch_summary, object, contention);
+      binding_batch_contract_view(binding_frontier_kind, batch_summary, deferred_batch_summary,
+                                  contention);
   if (!contract.has_value()) {
     return std::nullopt;
   }
@@ -1143,32 +1126,28 @@ void BirPreAlloc::populate_binding_handoff_summary() {
       current_regalloc_function_->binding_batches.size() +
       current_regalloc_function_->deferred_binding_batches.size());
 
-  for (const auto& decision : current_regalloc_function_->allocation_sequence) {
-    const auto* object = find_regalloc_object(decision.source_kind, decision.source_name);
-    const auto* contention = find_contention_summary(decision.allocation_stage);
-    if (object == nullptr) {
+  for (const auto& batch_summary : current_regalloc_function_->binding_batches) {
+    const auto* contention = find_contention_summary(batch_summary.allocation_stage);
+    const auto contract = binding_handoff_summary_contract(
+        "binding_ready", &batch_summary, nullptr, contention);
+    if (!contract.has_value()) {
       continue;
     }
-    const auto binding_frontier_kind = regalloc_binding_frontier_kind_view(*object);
-    if (binding_frontier_kind != "binding_ready" &&
-        binding_frontier_kind != "binding_deferred") {
-      continue;
-    }
-    if (object->binding_batch_kind.empty()) {
-      continue;
-    }
+    auto summary = *contract;
+    summary.candidate_count = batch_summary.candidate_count;
+    current_regalloc_function_->binding_handoff_summary.push_back(std::move(summary));
+  }
 
-    auto* summary =
-        find_binding_handoff_summary(binding_frontier_kind, object->binding_batch_kind);
-    if (summary == nullptr) {
-      const auto contract = binding_handoff_summary_contract(*object, contention);
-      if (!contract.has_value()) {
-        continue;
-      }
-      current_regalloc_function_->binding_handoff_summary.push_back(*contract);
-      summary = &current_regalloc_function_->binding_handoff_summary.back();
+  for (const auto& deferred_batch_summary :
+       current_regalloc_function_->deferred_binding_batches) {
+    const auto contract = binding_handoff_summary_contract(
+        "binding_deferred", nullptr, &deferred_batch_summary, nullptr);
+    if (!contract.has_value()) {
+      continue;
     }
-    ++summary->candidate_count;
+    auto summary = *contract;
+    summary.candidate_count = deferred_batch_summary.candidate_count;
+    current_regalloc_function_->binding_handoff_summary.push_back(std::move(summary));
   }
 }
 

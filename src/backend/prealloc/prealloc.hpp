@@ -283,16 +283,15 @@ class BirPreAlloc {
       std::string_view binding_batch_kind);
   PreparedRegallocDeferredBindingBatchSummary* find_deferred_binding_batch_summary(
       std::string_view binding_batch_kind);
-  PreparedRegallocBindingHandoffSummary* find_binding_handoff_summary(
-      std::string_view binding_frontier_kind,
-      std::string_view binding_batch_kind);
   PreparedRegallocReservationSummary summarize_reservation_stage(
       std::string_view allocation_stage) const;
   void populate_object_allocation_state();
   void populate_binding_sequence();
   void populate_binding_handoff_summary();
   std::optional<PreparedRegallocBindingHandoffSummary> binding_handoff_summary_contract(
-      const PreparedRegallocObject& object,
+      std::string_view binding_frontier_kind,
+      const PreparedRegallocBindingBatchSummary* batch_summary,
+      const PreparedRegallocDeferredBindingBatchSummary* deferred_batch_summary,
       const PreparedRegallocContentionSummary* contention) const;
   void note(std::string_view message);
 

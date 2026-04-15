@@ -17,24 +17,25 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- reviewer report `review/prepare_prealloc_route_review.md` concluded the code
-  still matches the source idea, but `todo.md` and `plan.md` had drifted toward
-  an unsupported public `prealloc` rename and needed lifecycle repair
-- `plan.md` now points at the real implementation files under
-  `src/backend/prealloc/` while explicitly preserving `prepare` as the public
-  shared-route contract for this idea
+- changed regalloc handoff publication to consume
+  `binding_batches`/`deferred_binding_batches` directly, so
+  `populate_binding_handoff_summary()` no longer rescans per-object
+  `binding_batch_kind` mirrors to rebuild a batch-owned contract
+- kept the object-local `binding_batch_kind` / `binding_order_index` attachment
+  path intact for downstream mapping and reporting, so this packet shrank the
+  handoff ownership seam without deleting the last stable object-to-batch link
 
 ## Suggested Next
 - inspect whether object-local `binding_batch_kind` and
   `binding_order_index` are still the minimal per-object attachment contract or
-  whether more summary-owned publication can shrink without removing the last
-  stable object-to-batch attachment path
+  whether one of them can shrink further now that handoff publication is fully
+  batch-owned, without removing the last stable object-to-batch attachment path
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
   work
-- choose a build plus narrow backend proof for the packet, and expect a broader
-  backend checkpoint before accepting another route-shaping slice
+- keep using build plus a narrow backend proof for packet work, but expect a
+  broader backend checkpoint before accepting another route-shaping slice
 
 ## Watchouts
 - do not add more liveness-like fact gathering to
@@ -71,6 +72,7 @@ while keeping the public shared contract named `prepare`
   an actual ownership seam or mirror first
 
 ## Proof
-- next executor packet should choose `build -> narrow backend subset`
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepare_entry_contract$'`
+- passed; proof output recorded in `test_after.log`
 - before accepting another route-shaping slice, require a broader backend
-  checkpoint than the narrow three-test subset used during the rename wave
+  checkpoint than this narrow single-test subset
