@@ -35,6 +35,16 @@ struct PreparedBirModule {
   std::vector<PrepareNote> notes;
 };
 
+PreparedLirModule prepare_bootstrap_lir_module_with_options(
+    const c4c::codegen::lir::LirModule& module,
+    Target target,
+    const PrepareOptions& options = {});
+
+PreparedBirModule prepare_semantic_bir_module_with_options(
+    const c4c::backend::bir::Module& module,
+    Target target,
+    const PrepareOptions& options = {});
+
 PreparedLirModule prepare_lir_module_with_options(
     const c4c::codegen::lir::LirModule& module,
     Target target,

@@ -76,6 +76,34 @@ set_tests_properties(backend_prepare_phi_materialize PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_prepare_entry_contract_test
+    "${BACKEND_TEST_ROOT}/backend_prepare_entry_contract_test.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prepare/legalize.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prepare/prepare.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prepare/stack_layout.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prepare/liveness.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prepare/regalloc.cpp"
+)
+target_include_directories(backend_prepare_entry_contract_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_prepare_entry_contract_test PRIVATE
+    c4c_codegen
+)
+set_target_properties(backend_prepare_entry_contract_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_prepare_entry_contract
+  COMMAND $<TARGET_FILE:backend_prepare_entry_contract_test>
+)
+set_tests_properties(backend_prepare_entry_contract PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
 add_executable(backend_lir_to_bir_notes_test
     "${BACKEND_TEST_ROOT}/backend_lir_to_bir_notes_test.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir.cpp"

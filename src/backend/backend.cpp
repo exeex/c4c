@@ -797,19 +797,19 @@ BackendModuleInput::BackendModuleInput(const c4c::codegen::lir::LirModule& lir_m
 c4c::codegen::lir::LirModule prepare_lir_module_for_target(
     const c4c::codegen::lir::LirModule& module,
     Target target) {
-  return c4c::backend::prepare::prepare_lir_module_with_options(module, target).module;
+  return c4c::backend::prepare::prepare_bootstrap_lir_module_with_options(module, target).module;
 }
 
 c4c::backend::bir::Module prepare_bir_module_for_target(
     const c4c::backend::bir::Module& module,
     Target target) {
-  return c4c::backend::prepare::prepare_bir_module_with_options(module, target).module;
+  return c4c::backend::prepare::prepare_semantic_bir_module_with_options(module, target).module;
 }
 
 std::string emit_target_bir_module(const bir::Module& module, Target public_target) {
   (void)public_target;
   const auto prepared =
-      c4c::backend::prepare::prepare_bir_module_with_options(module, public_target);
+      c4c::backend::prepare::prepare_semantic_bir_module_with_options(module, public_target);
   return emit_prepared_bir_or_fallback(prepared.module, public_target);
 }
 
@@ -847,17 +847,17 @@ std::string emit_module(const BackendModuleInput& input,
   c4c::backend::BirLoweringOptions lowering_options{};
   lowering_options.preserve_dynamic_alloca = options.emit_semantic_bir;
   auto lowering = c4c::backend::try_lower_to_bir_with_options(lir_module, lowering_options);
-  auto prepared = c4c::backend::prepare::prepare_lir_module_with_options(
-      lir_module, target, c4c::backend::prepare::PrepareOptions{});
 
   if (lowering.module.has_value()) {
     if (options.emit_semantic_bir) {
       return c4c::backend::bir::print(*lowering.module);
     }
-    const auto prepared_bir = c4c::backend::prepare::prepare_bir_module_with_options(
+    const auto prepared_bir = c4c::backend::prepare::prepare_semantic_bir_module_with_options(
         *lowering.module, target, c4c::backend::prepare::PrepareOptions{});
     return emit_prepared_bir_or_fallback(prepared_bir.module, target);
   }
+  const auto prepared = c4c::backend::prepare::prepare_bootstrap_lir_module_with_options(
+      lir_module, target, c4c::backend::prepare::PrepareOptions{});
   return emit_bootstrap_lir_module(prepared.module, target);
 }
 
