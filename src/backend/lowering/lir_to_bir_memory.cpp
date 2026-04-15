@@ -3653,11 +3653,15 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       if (symbol_name != "memcpy") {
         return std::nullopt;
       }
+      const auto fail_memcpy_family = [&]() -> std::optional<bool> {
+        note_runtime_intrinsic_family_failure("memcpy runtime family");
+        return false;
+      };
       if (typed_call.args.size() != 3 || typed_call.param_types.size() != 3 ||
           c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[0]) != "ptr" ||
           c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[1]) != "ptr" ||
           c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[2]) != "i64") {
-        return false;
+        return fail_memcpy_family();
       }
 
       const auto copy_size =
@@ -3666,7 +3670,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
                       value_aliases);
       if (!copy_size.has_value() || copy_size->kind != bir::Value::Kind::Immediate ||
           copy_size->immediate < 0) {
-        return false;
+        return fail_memcpy_family();
       }
       const auto requested_size = static_cast<std::size_t>(copy_size->immediate);
 
@@ -3695,12 +3699,17 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       const auto alias_memcpy_result = [&]() -> bool {
         if (call->result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
           if (return_info->returned_via_sret || return_info->type != bir::TypeKind::Ptr) {
+            note_runtime_intrinsic_family_failure("memcpy runtime family");
             return false;
           }
           value_aliases[call->result.str()] = bir::Value::named(bir::TypeKind::Ptr, dst_operand);
           return true;
         }
-        return return_info->type == bir::TypeKind::Void;
+        if (return_info->type != bir::TypeKind::Void) {
+          note_runtime_intrinsic_family_failure("memcpy runtime family");
+          return false;
+        }
+        return true;
       };
       const auto resolve_local_memcpy_array_view =
           [&](std::string_view operand) -> std::optional<LocalMemcpyArrayView> {
@@ -4031,7 +4040,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         const auto source_scalar_slot = resolve_local_memcpy_scalar_slot(src_operand);
         if (!source_scalar_slot.has_value() ||
             !append_scalar_slot_to_leaf_view(*source_scalar_slot, *target_view)) {
-          return false;
+          return fail_memcpy_family();
         }
         return alias_memcpy_result();
       }
@@ -4041,12 +4050,12 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         const auto source_view = resolve_local_memcpy_leaf_view(src_operand);
         if (!source_view.has_value() ||
             !append_leaf_view_to_scalar_slot(*source_view, *target_scalar_slot)) {
-          return false;
+          return fail_memcpy_family();
         }
         return alias_memcpy_result();
       }
 
-      return false;
+      return fail_memcpy_family();
     };
     const auto try_lower_direct_memset_call =
         [&](std::string_view symbol_name,
@@ -4054,16 +4063,20 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       if (symbol_name != "memset") {
         return std::nullopt;
       }
+      const auto fail_memset_family = [&]() -> std::optional<bool> {
+        note_runtime_intrinsic_family_failure("memset runtime family");
+        return false;
+      };
       if (typed_call.args.size() != 3 || typed_call.param_types.size() != 3 ||
           c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[0]) != "ptr" ||
           c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[2]) != "i64") {
-        return false;
+        return fail_memset_family();
       }
 
       const auto fill_type =
           lower_integer_type(c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[1]));
       if (!fill_type.has_value()) {
-        return false;
+        return fail_memset_family();
       }
 
       const auto fill_value =
@@ -4077,7 +4090,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       if (!fill_value.has_value() || fill_value->kind != bir::Value::Kind::Immediate ||
           !fill_size.has_value() ||
           fill_size->kind != bir::Value::Kind::Immediate || fill_size->immediate < 0) {
-        return false;
+        return fail_memset_family();
       }
 
       const std::string dst_operand(typed_call.args[0].operand);
@@ -4085,16 +4098,19 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
               dst_operand,
               static_cast<std::uint8_t>(fill_value->immediate & 0xff),
               static_cast<std::size_t>(fill_size->immediate))) {
-        return false;
+        return fail_memset_family();
       }
       if (call->result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
         if (return_info->returned_via_sret || return_info->type != bir::TypeKind::Ptr) {
-          return false;
+          return fail_memset_family();
         }
         value_aliases[call->result.str()] = bir::Value::named(bir::TypeKind::Ptr, dst_operand);
         return true;
       }
-      return return_info->type == bir::TypeKind::Void;
+      if (return_info->type != bir::TypeKind::Void) {
+        return fail_memset_family();
+      }
+      return true;
     };
 
     if (return_info->returned_via_sret) {

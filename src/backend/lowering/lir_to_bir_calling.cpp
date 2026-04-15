@@ -479,6 +479,10 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     const c4c::codegen::lir::LirInst& inst,
     const ValueMap& value_aliases,
     std::vector<bir::Inst>* lowered_insts) {
+  const auto fail_runtime_family = [&](std::string_view family) -> bool {
+    note_runtime_intrinsic_family_failure(family);
+    return false;
+  };
   const auto lower_va_result_type = [](std::string_view type_text) -> std::optional<bir::TypeKind> {
     if (const auto lowered = lower_scalar_or_function_pointer_type(type_text); lowered.has_value()) {
       return lowered;
@@ -497,7 +501,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
           const c4c::codegen::lir::LirOperand& ap_ptr) -> bool {
     const auto lowered_ap = lower_value(ap_ptr, bir::TypeKind::Ptr);
     if (!lowered_ap.has_value()) {
-      return false;
+      return fail_runtime_family("variadic runtime family");
     }
     lowered_insts->push_back(bir::CallInst{
         .callee = std::string(callee_name),
@@ -511,21 +515,21 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
   const auto lower_va_arg_call =
       [&](const c4c::codegen::lir::LirVaArgOp& va_arg) -> bool {
     if (va_arg.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-      return false;
+      return fail_runtime_family("variadic runtime family");
     }
     const auto lowered_ap = lower_value(va_arg.ap_ptr, bir::TypeKind::Ptr);
     const auto lowered_type = lower_va_result_type(va_arg.type_str.str());
     if (!lowered_ap.has_value()) {
-      return false;
+      return fail_runtime_family("variadic runtime family");
     }
     if (!lowered_type.has_value()) {
       const auto aggregate_layout = lower_byval_aggregate_layout(va_arg.type_str.str(), type_decls_);
       if (!aggregate_layout.has_value()) {
-        return false;
+        return fail_runtime_family("variadic runtime family");
       }
       if (!declare_local_aggregate_slots(
               va_arg.type_str.str(), va_arg.result.str(), aggregate_layout->align_bytes)) {
-        return false;
+        return fail_runtime_family("variadic runtime family");
       }
       aggregate_value_aliases_[va_arg.result.str()] = va_arg.result.str();
       lowered_insts->push_back(bir::CallInst{
@@ -576,16 +580,16 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
 
     if (return_type_text != "void") {
       if (inline_asm.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-        return false;
+        return fail_runtime_family("inline-asm placeholder family");
       }
       const auto lowered_type = lower_scalar_or_function_pointer_type(return_type_text);
       if (!lowered_type.has_value()) {
-        return false;
+        return fail_runtime_family("inline-asm placeholder family");
       }
       lowered_call.result = bir::Value::named(*lowered_type, inline_asm.result.str());
       lowered_call.return_type = *lowered_type;
     } else if (!inline_asm.result.empty()) {
-      return false;
+      return fail_runtime_family("inline-asm placeholder family");
     }
 
     if (!inline_asm.args_str.empty()) {
@@ -630,17 +634,24 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     return true;
   };
   const auto lower_fabs_intrinsic_call =
-      [&](const c4c::codegen::lir::LirCallOp& call) -> bool {
+      [&](const c4c::codegen::lir::LirCallOp& call) -> std::optional<bool> {
     const auto parsed_callee = c4c::codegen::lir::parse_lir_call_callee(call.callee.str());
     if (!parsed_callee.has_value() ||
         parsed_callee->kind != c4c::codegen::lir::LirCallCalleeKind::DirectIntrinsic) {
-      return false;
+      return std::nullopt;
+    }
+    const bool is_fabs_family = parsed_callee->symbol_name == "llvm.fabs.float" ||
+                                parsed_callee->symbol_name == "llvm.fabs.double" ||
+                                parsed_callee->symbol_name == "llvm.fabs.x86_fp80" ||
+                                parsed_callee->symbol_name == "llvm.fabs.f128";
+    if (!is_fabs_family) {
+      return std::nullopt;
     }
 
     const auto parsed_call = parse_typed_call(call);
     if (!parsed_call.has_value() || parsed_call->args.size() != 1 ||
         parsed_call->param_types.size() != 1) {
-      return false;
+      return fail_runtime_family("absolute-value intrinsic family");
     }
 
     bir::TypeKind value_type = bir::TypeKind::Void;
@@ -658,11 +669,11 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
                (return_type == "x86_fp80" || return_type == "f128")) {
       value_type = bir::TypeKind::F128;
     } else {
-      return false;
+      return fail_runtime_family("absolute-value intrinsic family");
     }
 
     if (call.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-      return false;
+      return fail_runtime_family("absolute-value intrinsic family");
     }
 
     const auto lowered_arg = lower_value(
@@ -670,7 +681,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         value_type,
         value_aliases);
     if (!lowered_arg.has_value()) {
-      return false;
+      return fail_runtime_family("absolute-value intrinsic family");
     }
 
     lowered_insts->push_back(bir::CallInst{
@@ -684,8 +695,8 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
   };
 
   if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst)) {
-    if (lower_fabs_intrinsic_call(*call)) {
-      return true;
+    if (const auto lowered_fabs = lower_fabs_intrinsic_call(*call); lowered_fabs.has_value()) {
+      return *lowered_fabs;
     }
   }
 
@@ -701,7 +712,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     const auto lowered_dst = lower_value(va_copy->dst_ptr, bir::TypeKind::Ptr);
     const auto lowered_src = lower_value(va_copy->src_ptr, bir::TypeKind::Ptr);
     if (!lowered_dst.has_value() || !lowered_src.has_value()) {
-      return false;
+      return fail_runtime_family("variadic runtime family");
     }
     lowered_insts->push_back(bir::CallInst{
         .callee = "llvm.va_copy.p0.p0",
@@ -723,7 +734,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
 
   if (const auto* stacksave = std::get_if<c4c::codegen::lir::LirStackSaveOp>(&inst)) {
     if (stacksave->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-      return false;
+      return fail_runtime_family("stack-state runtime family");
     }
     lowered_insts->push_back(bir::CallInst{
         .result = bir::Value::named(bir::TypeKind::Ptr, stacksave->result.str()),
@@ -736,7 +747,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
   if (const auto* stackrestore = std::get_if<c4c::codegen::lir::LirStackRestoreOp>(&inst)) {
     const auto lowered_saved_ptr = lower_value(stackrestore->saved_ptr, bir::TypeKind::Ptr);
     if (!lowered_saved_ptr.has_value()) {
-      return false;
+      return fail_runtime_family("stack-state runtime family");
     }
     lowered_insts->push_back(bir::CallInst{
         .callee = "llvm.stackrestore",
@@ -750,19 +761,19 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
 
   if (const auto* abs = std::get_if<c4c::codegen::lir::LirAbsOp>(&inst)) {
     if (abs->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-      return false;
+      return fail_runtime_family("absolute-value intrinsic family");
     }
 
     const auto value_type = lower_integer_type(abs->int_type.str());
     if (!value_type.has_value() ||
         (*value_type != bir::TypeKind::I32 && *value_type != bir::TypeKind::I64)) {
-      return false;
+      return fail_runtime_family("absolute-value intrinsic family");
     }
 
     const auto operand = lower_value(abs->arg, *value_type);
     const auto zero = make_integer_immediate(*value_type, 0);
     if (!operand.has_value() || !zero.has_value()) {
-      return false;
+      return fail_runtime_family("absolute-value intrinsic family");
     }
 
     const std::string result_name = abs->result.str();
@@ -787,6 +798,12 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
   }
 
   return false;
+}
+
+void BirFunctionLowerer::note_runtime_intrinsic_family_failure(std::string_view family) {
+  context_.note("function",
+                "semantic lir_to_bir function '" + function_.name +
+                    "' failed in runtime/intrinsic family '" + std::string(family) + "'");
 }
 
 std::optional<bir::Function> BirFunctionLowerer::lower_decl_function(

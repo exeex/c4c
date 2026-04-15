@@ -445,6 +445,7 @@ class BirFunctionLowerer {
                                     const std::optional<LoweredReturnInfo>& return_info,
                                     const TypeDeclMap& type_decls,
                                     bir::Function* lowered);
+  void note_runtime_intrinsic_family_failure(std::string_view family);
   bool lower_runtime_intrinsic_inst(const c4c::codegen::lir::LirInst& inst,
                                     const ValueMap& value_aliases,
                                     std::vector<bir::Inst>* lowered_insts);
