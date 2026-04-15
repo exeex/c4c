@@ -389,6 +389,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_indirect_variadic_pair_second_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/indirect_variadic_pair_second.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/indirect_variadic_pair_second_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @variadic_pair_second(i32 %p.seed) -> i32 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|bir.call void llvm.va_arg.aggregate(ptr sret(size=8, align=4) %t0, ptr %lv.ap)|%lv.second.aggregate.copy.0 = bir.load_local i32 %t0.0|bir.store_local %lv.second.0, i32 %lv.second.aggregate.copy.0|%lv.second.aggregate.copy.4 = bir.load_local i32 %t0.4|bir.store_local %lv.second.4, i32 %lv.second.aggregate.copy.4|bir.call void llvm.va_end.p0(ptr %lv.ap)|bir.ret i32 %t3|bir.func @apply(ptr %p.fn, ptr byval(size=8, align=4) %p.pair) -> i32 {|%t0 = bir.call i32 %p.fn(i32 1, ptr byval(size=8, align=4) %lv.param.p.pair)|bir.ret i32 %t0|bir.func @main() -> i32 {|%t3 = bir.call i32 apply(ptr @variadic_pair_second, ptr byval(size=8, align=4) %lv.pair)|bir.ret i32 %t3"
+  FORBIDDEN_SNIPPETS "define i32 @variadic_pair_second|define i32 @apply|define i32 @main()|call void @llvm.va_start.p0|call void @llvm.va_end.p0|va_arg ptr %lv.ap, %struct.Pair|call i32 (i32, ...) %p.fn(i32 1, i64 %t3)"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_vla_goto_stackrestore_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/vla_goto_stackrestore.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu
