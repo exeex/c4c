@@ -407,6 +407,19 @@ struct BindingBatchContractView {
   std::string_view sync_handoff_state;
 };
 
+std::string_view regalloc_binding_frontier_reason_view(
+    const PreparedRegallocObject& object) {
+  if (object.binding_frontier_kind == "binding_deferred" &&
+      object.deferred_reason == "awaiting_access_window_observation") {
+    return object.deferred_reason;
+  }
+  if (object.binding_frontier_kind == "binding_ready" ||
+      object.binding_frontier_kind == "binding_deferred") {
+    return object.follow_up_category;
+  }
+  return object.binding_frontier_reason;
+}
+
 std::optional<BindingBatchContractView> binding_batch_contract_view(
     PreparedRegallocFunction& function,
     const PreparedRegallocObject& object,
@@ -418,7 +431,7 @@ std::optional<BindingBatchContractView> binding_batch_contract_view(
     }
     return BindingBatchContractView{
         .binding_frontier_kind = object.binding_frontier_kind,
-        .binding_frontier_reason = object.binding_frontier_reason,
+        .binding_frontier_reason = regalloc_binding_frontier_reason_view(object),
         .binding_batch_kind = object.binding_batch_kind,
         .allocation_stage = batch_summary->allocation_stage,
         .follow_up_category = batch_summary->follow_up_category,
@@ -439,7 +452,7 @@ std::optional<BindingBatchContractView> binding_batch_contract_view(
   }
   return BindingBatchContractView{
       .binding_frontier_kind = object.binding_frontier_kind,
-      .binding_frontier_reason = object.binding_frontier_reason,
+      .binding_frontier_reason = regalloc_binding_frontier_reason_view(object),
       .binding_batch_kind = object.binding_batch_kind,
       .allocation_stage = batch_summary->allocation_stage,
       .follow_up_category = batch_summary->follow_up_category,
@@ -820,7 +833,7 @@ std::string_view regalloc_binding_batch_kind(
 
 std::string_view regalloc_deferred_binding_batch_kind(const PreparedRegallocObject& object,
                                                       const PreparedRegallocContentionSummary& contention) {
-  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+  if (object.deferred_reason == "awaiting_access_window_observation") {
     return "deferred_access_window_binding_batch";
   }
   if (contention.follow_up_category == "batched_single_point_coordination") {
@@ -843,7 +856,7 @@ std::string_view regalloc_binding_ordering_policy(
 
 std::string_view regalloc_deferred_binding_ordering_policy(const PreparedRegallocObject& object,
                                                            const PreparedRegallocContentionSummary& contention) {
-  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+  if (object.deferred_reason == "awaiting_access_window_observation") {
     return "defer_until_access_window_observed";
   }
   if (contention.follow_up_category == "batched_single_point_coordination") {
@@ -874,7 +887,7 @@ std::string_view regalloc_binding_access_window_prerequisite_state(
 std::string_view regalloc_deferred_binding_access_window_prerequisite_category(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
-  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+  if (object.deferred_reason == "awaiting_access_window_observation") {
     return "unobserved_instruction_window";
   }
   return contention.window_coordination_category;
@@ -882,7 +895,7 @@ std::string_view regalloc_deferred_binding_access_window_prerequisite_category(
 
 std::string_view regalloc_deferred_binding_access_window_prerequisite_state(
     const PreparedRegallocObject& object) {
-  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+  if (object.deferred_reason == "awaiting_access_window_observation") {
     return "prepare_access_window_prerequisite_deferred";
   }
   return "prepare_access_window_prerequisite_satisfied";
@@ -891,7 +904,7 @@ std::string_view regalloc_deferred_binding_access_window_prerequisite_state(
 std::string_view regalloc_deferred_binding_home_slot_prerequisite_category(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
-  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+  if (object.deferred_reason == "awaiting_access_window_observation") {
     return object.home_slot_mode;
   }
   return contention.home_slot_category;
@@ -900,7 +913,7 @@ std::string_view regalloc_deferred_binding_home_slot_prerequisite_category(
 std::string_view regalloc_deferred_binding_home_slot_prerequisite_state(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
-  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+  if (object.deferred_reason == "awaiting_access_window_observation") {
     return "prepare_home_slot_prerequisite_deferred";
   }
   return regalloc_binding_home_slot_prerequisite_state(contention);
@@ -924,7 +937,7 @@ std::string_view regalloc_binding_sync_handoff_state(
 std::string_view regalloc_deferred_binding_sync_handoff_prerequisite_category(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
-  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+  if (object.deferred_reason == "awaiting_access_window_observation") {
     return object.sync_policy;
   }
   return contention.sync_coordination_category;
@@ -933,7 +946,7 @@ std::string_view regalloc_deferred_binding_sync_handoff_prerequisite_category(
 std::string_view regalloc_deferred_binding_sync_handoff_state(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
-  if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+  if (object.deferred_reason == "awaiting_access_window_observation") {
     return "prepare_sync_handoff_deferred";
   }
   return regalloc_binding_sync_handoff_state(contention);

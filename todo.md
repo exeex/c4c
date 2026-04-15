@@ -13,21 +13,21 @@ Current Plan Focus: step-5 regalloc consumer shrink
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed the remaining mirrored ready/deferred frontier counters from
-  `PreparedRegallocFunction` now that binding totals are owned by
-  `binding_sequence`, `binding_batches`, `deferred_binding_batches`, and
-  `binding_handoff_summary`
-- switched regalloc handoff reservation to the surviving batch vectors instead
-  of batch-count mirrors and kept object-local frontier classification intact
-- restated the focused `backend_prepare_entry_contract` checks against batch-
-  and handoff-owned candidate counts rather than function-level duplicate
-  counters
+- stopped regalloc batch/handoff construction from reading per-object
+  `binding_frontier_reason` mirrors when the same information already lives in
+  object allocation-state fields and function-level batch summaries
+- switched deferred batch prerequisite selection to `deferred_reason` for the
+  access-window path and to contention-owned follow-up categories for the
+  coordination-deferred path, keeping object-local frontier publication intact
+- kept object-level `binding_frontier_*` output as downstream-facing state
+  while shrinking internal summary ownership back toward
+  `binding_batches`/`deferred_binding_batches`/`binding_handoff_summary`
 
 ## Suggested Next
 - continue shrinking `src/backend/prepare/regalloc.cpp` by checking whether
-  any remaining per-object `binding_frontier_*` projections are still only
-  re-expressing batch-owned prerequisites rather than adding allocation-state
-  facts a downstream allocator would need
+  `binding_frontier_kind` itself can stop driving batch/handoff assembly for
+  register-candidate objects, with publication preserved only where downstream
+  consumers still need the object-local state
 - keep the next packet focused on ownership cleanup inside step 5; do not turn
   it into new allocation policy or target-ingestion work
 
@@ -49,4 +49,6 @@ Current Plan Focus: step-5 regalloc consumer shrink
 ## Proof
 - `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepare_entry_contract$' 2>&1 | tee test_after.log`
 - passed; the build plus focused `backend_prepare_entry_contract` proof
-  completed successfully and preserved output at `test_after.log`
+  completed successfully
+- `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+- passed under `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
