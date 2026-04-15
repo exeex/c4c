@@ -176,11 +176,6 @@ struct PreparedRegallocDeferredBindingBatchSummary {
   std::size_t candidate_count = 0;
 };
 
-struct PreparedRegallocBindingHandoffSummary {
-  std::string binding_frontier_reason;
-  std::string binding_batch_kind;
-};
-
 struct PreparedRegallocFunction {
   std::string function_name;
   std::vector<PreparedRegallocObject> objects;
@@ -191,7 +186,6 @@ struct PreparedRegallocFunction {
   std::vector<PreparedRegallocBindingAttachment> binding_attachments;
   std::vector<PreparedRegallocBindingBatchSummary> binding_batches;
   std::vector<PreparedRegallocDeferredBindingBatchSummary> deferred_binding_batches;
-  std::vector<PreparedRegallocBindingHandoffSummary> binding_handoff_summary;
   std::size_t register_candidate_count = 0;
   std::size_t fixed_stack_storage_count = 0;
 };
@@ -283,10 +277,6 @@ class BirPreAlloc {
       std::string_view allocation_stage) const;
   void populate_object_allocation_state();
   void populate_binding_sequence();
-  void populate_binding_handoff_summary();
-  std::optional<PreparedRegallocBindingHandoffSummary> binding_handoff_summary_contract(
-      const PreparedRegallocBindingBatchSummary* batch_summary,
-      const PreparedRegallocDeferredBindingBatchSummary* deferred_batch_summary) const;
   void note(std::string_view message);
 
   PrepareOptions options_;

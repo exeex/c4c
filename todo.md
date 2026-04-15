@@ -17,21 +17,20 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed `binding_frontier_kind` from
-  `PreparedRegallocBindingHandoffSummary`; ready versus deferred handoff
-  identity now stays derivable from the owning ready/deferred batch family
-  joined by `binding_batch_kind`
-- simplified the handoff-summary contract helper so it derives summaries
-  directly from ready or deferred batch owners without threading an extra
-  frontier-kind selector through regalloc
-- updated the prepare-entry contract test to assert handoff reason plus
-  batch-identity joins instead of treating handoff summaries as the owner of a
-  second ready/deferred frontier tag
+- removed `PreparedRegallocBindingHandoffSummary` and the published
+  `binding_handoff_summary` vector; ready and deferred handoff reason
+  ownership now stays on `binding_batches.follow_up_category` and
+  `deferred_binding_batches.deferred_reason`
+- deleted the regalloc helper/population path that rebuilt a duplicate
+  handoff view from batch-owned summaries after `populate_binding_sequence()`
+- updated the prepare-entry contract test to assert handoff reason directly
+  from ready and deferred batch owners instead of joining through a second
+  published handoff surface
 
 ## Suggested Next
-- inspect whether `binding_handoff_summary` itself still needs to exist as a
-  separate published view or whether downstream consumers can join ready and
-  deferred batch owners directly once handoff reason publication stays clear
+- inspect whether `PreparedRegallocBindingAttachment` still needs to mirror
+  deferred batch identity per object or whether one explicit function-level
+  deferred attachment owner can replace that duplicate join path
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -63,13 +62,12 @@ while keeping the public shared contract named `prepare`
   cleanup trims more handoff mirrors, keep one clear answer for whether
   downstream joins or frontier-level aggregate views own each remaining fact
 - the handoff lookup path now keys tests by `binding_batch_kind`; if a later
-  packet removes more handoff publication, keep batch kind as the consumer join
-  key instead of rebuilding ready/deferred ownership mirrors in the handoff
+  packet trims more binding mirrors, keep batch kind as the consumer join key
+  instead of rebuilding ready/deferred ownership mirrors in a new handoff
   layer
-- handoff summaries now publish only `binding_frontier_reason` plus
-  `binding_batch_kind`; if a downstream consumer still needs ready versus
-  deferred identity, derive it from the owning batch family instead of
-  reintroducing a duplicated frontier tag on the handoff view
+- handoff reason ownership now lives directly on ready/deferred batch
+  summaries; do not recreate a separate aggregate handoff publication unless a
+  real downstream consumer proves batch-owned fields are insufficient
 - deferred binding batch construction now takes `deferred_reason` directly from
   the object; if later cleanup removes or reshapes that object field, confirm
   deferred-batch ownership still stays clear instead of recreating a view

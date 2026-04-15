@@ -337,40 +337,6 @@ bool regalloc_binding_frontier_is_ready(const PreparedRegallocObject& object) {
          !regalloc_binding_frontier_is_deferred(object);
 }
 
-std::string_view regalloc_binding_frontier_kind_view(
-    const PreparedRegallocObject& object) {
-  if (object.allocation_kind != "register_candidate") {
-    return "fixed_stack_authoritative";
-  }
-  if (regalloc_binding_frontier_is_incomplete(object)) {
-    return "binding_frontier_incomplete";
-  }
-  if (regalloc_binding_frontier_is_deferred(object)) {
-    return "binding_deferred";
-  }
-  return "binding_ready";
-}
-
-PreparedRegallocBindingHandoffSummary make_binding_handoff_summary(
-    const PreparedRegallocBindingBatchSummary& batch_summary) {
-  return PreparedRegallocBindingHandoffSummary{
-      .binding_frontier_reason = batch_summary.follow_up_category,
-      .binding_batch_kind = batch_summary.binding_batch_kind,
-  };
-}
-
-PreparedRegallocBindingHandoffSummary make_binding_handoff_summary(
-    const PreparedRegallocDeferredBindingBatchSummary& deferred_batch_summary) {
-  const auto binding_frontier_reason =
-      deferred_batch_summary.deferred_reason != "not_deferred"
-          ? deferred_batch_summary.deferred_reason
-          : deferred_batch_summary.follow_up_category;
-  return PreparedRegallocBindingHandoffSummary{
-      .binding_frontier_reason = std::string(binding_frontier_reason),
-      .binding_batch_kind = deferred_batch_summary.binding_batch_kind,
-  };
-}
-
 bool access_windows_overlap(const PreparedRegallocObject& lhs, const PreparedRegallocObject& rhs) {
   if (!lhs.has_access_window || !rhs.has_access_window) {
     return false;
@@ -898,18 +864,6 @@ PreparedRegallocReservationSummary BirPreAlloc::summarize_reservation_stage(
   return summary;
 }
 
-std::optional<PreparedRegallocBindingHandoffSummary> BirPreAlloc::binding_handoff_summary_contract(
-    const PreparedRegallocBindingBatchSummary* batch_summary,
-    const PreparedRegallocDeferredBindingBatchSummary* deferred_batch_summary) const {
-  if (batch_summary != nullptr) {
-    return make_binding_handoff_summary(*batch_summary);
-  }
-  if (deferred_batch_summary == nullptr) {
-    return std::nullopt;
-  }
-  return make_binding_handoff_summary(*deferred_batch_summary);
-}
-
 void BirPreAlloc::populate_object_allocation_state() {
   if (current_regalloc_function_ == nullptr) {
     return;
@@ -1045,33 +999,6 @@ void BirPreAlloc::populate_binding_sequence() {
   }
 }
 
-void BirPreAlloc::populate_binding_handoff_summary() {
-  if (current_regalloc_function_ == nullptr) {
-    return;
-  }
-  current_regalloc_function_->binding_handoff_summary.clear();
-  current_regalloc_function_->binding_handoff_summary.reserve(
-      current_regalloc_function_->binding_batches.size() +
-      current_regalloc_function_->deferred_binding_batches.size());
-
-  for (const auto& batch_summary : current_regalloc_function_->binding_batches) {
-    const auto contract = binding_handoff_summary_contract(&batch_summary, nullptr);
-    if (!contract.has_value()) {
-      continue;
-    }
-    current_regalloc_function_->binding_handoff_summary.push_back(*contract);
-  }
-
-  for (const auto& deferred_batch_summary :
-       current_regalloc_function_->deferred_binding_batches) {
-    const auto contract = binding_handoff_summary_contract(nullptr, &deferred_batch_summary);
-    if (!contract.has_value()) {
-      continue;
-    }
-    current_regalloc_function_->binding_handoff_summary.push_back(*contract);
-  }
-}
-
 void BirPreAlloc::run_regalloc() {
   prepared_.completed_phases.push_back("regalloc");
   prepared_.regalloc.functions.clear();
@@ -1187,7 +1114,6 @@ void BirPreAlloc::run_regalloc() {
     }
     populate_object_allocation_state();
     populate_binding_sequence();
-    populate_binding_handoff_summary();
     if (!prepared_function.objects.empty()) {
       prepared_.regalloc.functions.push_back(std::move(prepared_function));
     }

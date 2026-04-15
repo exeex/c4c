@@ -195,17 +195,6 @@ const prepare::PreparedRegallocDeferredBindingBatchSummary* find_regalloc_deferr
   return nullptr;
 }
 
-const prepare::PreparedRegallocBindingHandoffSummary* find_regalloc_binding_handoff_summary(
-    const prepare::PreparedRegallocFunction& function,
-    std::string_view binding_batch_kind) {
-  for (const auto& summary : function.binding_handoff_summary) {
-    if (summary.binding_batch_kind == binding_batch_kind) {
-      return &summary;
-    }
-  }
-  return nullptr;
-}
-
 template <typename Summary>
 std::size_t regalloc_candidate_count_sum(const std::vector<Summary>& summaries) {
   std::size_t total = 0;
@@ -1399,18 +1388,6 @@ int main() {
   const auto* deferred_coordination_binding_batch =
       find_regalloc_deferred_binding_batch(*regalloc_function,
                                            "deferred_coordination_binding_batch");
-  const auto* call_boundary_handoff_summary =
-      find_regalloc_binding_handoff_summary(*regalloc_function,
-                                            "call_boundary_binding_batch");
-  const auto* local_reuse_handoff_summary =
-      find_regalloc_binding_handoff_summary(*regalloc_function,
-                                            "local_reuse_binding_batch");
-  const auto* deferred_access_window_handoff_summary =
-      find_regalloc_binding_handoff_summary(*regalloc_function,
-                                            "deferred_access_window_binding_batch");
-  const auto* deferred_coordination_handoff_summary =
-      find_regalloc_binding_handoff_summary(*regalloc_function,
-                                            "deferred_coordination_binding_batch");
   if (carry_sequence == nullptr || callread_sequence == nullptr || callwrite_sequence == nullptr ||
       window_sequence == nullptr || readonly_sequence == nullptr || multiwrite_sequence == nullptr ||
       local_slot_sequence == nullptr || writeonly_sequence == nullptr) {
@@ -1430,15 +1407,6 @@ int main() {
       deferred_access_window_binding_batch == nullptr ||
       deferred_coordination_binding_batch == nullptr) {
     return fail("semantic-BIR regalloc should publish binding decisions and batch summaries for the current binding-ready frontier");
-  }
-  if (regalloc_function->binding_handoff_summary.size() !=
-          regalloc_function->binding_batches.size() +
-              regalloc_function->deferred_binding_batches.size() ||
-      call_boundary_handoff_summary == nullptr || local_reuse_handoff_summary == nullptr ||
-      deferred_access_window_handoff_summary == nullptr ||
-      deferred_coordination_handoff_summary == nullptr) {
-    return fail(
-        "semantic-BIR regalloc should publish unified downstream handoff summaries across ready and deferred binding frontiers");
   }
   if (find_regalloc_binding_decision(*regalloc_function, "local_slot", "flag.slot") != nullptr ||
       find_regalloc_binding_decision(*regalloc_function, "local_slot", "writeonly.slot") != nullptr) {
@@ -1681,32 +1649,24 @@ int main() {
     return fail(
         "semantic-BIR regalloc should group deferred single-point candidates waiting on coordination into an explicit deferred binding batch");
   }
-  if (call_boundary_handoff_summary->binding_frontier_reason != "call_boundary_preservation" ||
-      call_boundary_handoff_summary->binding_batch_kind !=
-          call_boundary_binding_batch->binding_batch_kind) {
+  if (call_boundary_binding_batch->follow_up_category != "call_boundary_preservation") {
     return fail(
-        "semantic-BIR regalloc should keep ready handoff summaries focused on downstream handoff reason and batch identity while batch summaries remain the sole owners of candidate counts");
+        "semantic-BIR regalloc should keep ready handoff reason ownership on binding batch summaries instead of publishing a duplicate handoff view");
   }
-  if (local_reuse_handoff_summary->binding_frontier_reason !=
-          "sequenced_local_reuse_coordination" ||
-      local_reuse_handoff_summary->binding_batch_kind !=
-          local_reuse_binding_batch->binding_batch_kind) {
+  if (local_reuse_binding_batch->follow_up_category !=
+      "sequenced_local_reuse_coordination") {
     return fail(
-        "semantic-BIR regalloc should keep ready local-reuse handoff summaries focused on downstream handoff reason and batch identity while batch summaries remain the sole owners of candidate counts");
+        "semantic-BIR regalloc should keep ready local-reuse handoff reason ownership on binding batch summaries instead of publishing a duplicate handoff view");
   }
-  if (deferred_access_window_handoff_summary->binding_frontier_reason !=
-          "awaiting_access_window_observation" ||
-      deferred_access_window_handoff_summary->binding_batch_kind !=
-          deferred_access_window_binding_batch->binding_batch_kind) {
+  if (deferred_access_window_binding_batch->deferred_reason !=
+      "awaiting_access_window_observation") {
     return fail(
-        "semantic-BIR regalloc should keep deferred handoff summaries focused on handoff reason and batch identity while leaving batch metadata ownership in deferred binding batches");
+        "semantic-BIR regalloc should keep deferred handoff reason ownership on deferred binding batches instead of publishing a duplicate handoff view");
   }
-  if (deferred_coordination_handoff_summary->binding_frontier_reason !=
-          "batched_single_point_coordination" ||
-      deferred_coordination_handoff_summary->binding_batch_kind !=
-          deferred_coordination_binding_batch->binding_batch_kind) {
+  if (deferred_coordination_binding_batch->deferred_reason !=
+      "batched_single_point_coordination") {
     return fail(
-        "semantic-BIR regalloc should keep deferred coordination handoff summaries focused on handoff reason and batch identity while leaving batch metadata ownership in deferred binding batches");
+        "semantic-BIR regalloc should keep deferred coordination handoff reason ownership on deferred binding batches instead of publishing a duplicate handoff view");
   }
 
   return 0;
