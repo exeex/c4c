@@ -8,20 +8,21 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- added one representative non-call-spanning `multiwrite.slot`
-  value-storage case to the prepare entry-contract fixture with two later
-  direct stores after the existing calls, so the regalloc contract now proves
-  a genuine `multi_point_write_candidate` path from actual BIR instruction
-  order
+- added one representative call-spanning `callread.slot` value-storage case to
+  the prepare entry-contract fixture with one direct read between the existing
+  calls and another later direct read after them, so the regalloc contract now
+  proves a genuine `call_spanning_read_candidate` path from actual BIR
+  instruction order
 - extended the same fixture’s stack-layout, liveness, register-candidate
   count, and regalloc assertions so the new slot is checked end-to-end as
   prepared value storage rather than a synthetic interval or target-shaped
   heuristic
 
 ## Suggested Next
-- review the prepare entry-contract fixture for the next honest regalloc gap,
-  or move up a level to broader step-4 validation if the local-slot readiness
-  coverage is now sufficient for this bucket
+- extend the prepare entry-contract fixture with one representative
+  call-spanning write-only value-storage case so the remaining
+  call-crossing readiness shape is still proved from actual BIR access order
+  instead of synthetic intervals or target register policy
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
