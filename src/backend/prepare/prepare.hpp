@@ -58,6 +58,7 @@ struct PreparedRegallocObject {
   std::string reload_cost_hint;
   std::string materialization_timing_hint;
   std::string spill_restore_locality_hint;
+  std::string register_eligibility_hint;
   std::string assignment_readiness;
   std::string access_shape;
   std::string first_access_kind;

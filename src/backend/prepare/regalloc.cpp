@@ -349,6 +349,53 @@ std::string_view regalloc_spill_restore_locality_hint(
   return "wide_reuse_window";
 }
 
+std::string_view regalloc_register_eligibility_hint(
+    std::string_view allocation_kind,
+    const RegallocObjectAccessSummary& summary) {
+  if (allocation_kind != "register_candidate") {
+    if (summary.addressed_access_count != 0) {
+      return "register_ineligible_address_exposed";
+    }
+    if (summary.call_arg_exposure_count != 0) {
+      return "register_ineligible_call_exposed";
+    }
+    return "register_ineligible_fixed_stack";
+  }
+
+  if (!summary.has_access_window) {
+    return "register_eligibility_unobserved";
+  }
+  if (crosses_call_boundary(summary)) {
+    if (summary.direct_write_count != 0 && summary.direct_read_count == 0) {
+      return "register_eligible_call_writeback_window";
+    }
+    return "register_eligible_call_preserved_window";
+  }
+
+  const auto access_shape = regalloc_access_shape_name(summary);
+  const auto access_window_width =
+      summary.last_access_instruction_index - summary.first_access_instruction_index;
+  if (access_shape == "direct_write_only") {
+    if (access_window_width == 0) {
+      return "register_eligible_single_write_buffer";
+    }
+    return "register_eligible_local_write_buffer";
+  }
+  if (access_shape == "direct_read_only") {
+    if (access_window_width == 0) {
+      return "register_eligible_single_read_cache";
+    }
+    return "register_eligible_local_read_cache";
+  }
+  if (access_shape == "direct_read_write") {
+    if (access_window_width <= 1) {
+      return "register_eligible_tight_reuse_window";
+    }
+    return "register_eligible_wide_reuse_window";
+  }
+  return "register_eligibility_requires_future_analysis";
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -387,6 +434,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           regalloc_materialization_timing_hint(allocation_kind, summary));
       const std::string spill_restore_locality_hint(
           regalloc_spill_restore_locality_hint(allocation_kind, summary));
+      const std::string register_eligibility_hint(
+          regalloc_register_eligibility_hint(allocation_kind, summary));
       const std::string assignment_readiness(
           regalloc_assignment_readiness(allocation_kind, priority_bucket, summary));
       prepared_function.objects.push_back(PreparedRegallocObject{
@@ -401,6 +450,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .reload_cost_hint = reload_cost_hint,
           .materialization_timing_hint = materialization_timing_hint,
           .spill_restore_locality_hint = spill_restore_locality_hint,
+          .register_eligibility_hint = register_eligibility_hint,
           .assignment_readiness = assignment_readiness,
           .access_shape = std::string(regalloc_access_shape_name(summary)),
           .first_access_kind = std::string(regalloc_access_kind_name(summary.first_access_kind)),
@@ -439,7 +489,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "reload-free, and fixed-stack exposure cases from those same prepared facts, "
           "materialization-timing hints keyed by first/last access order plus fixed-stack "
           "exposure kind, spill/restore-locality hints keyed by access-window width plus "
-          "fixed-stack exposure kind, "
+          "fixed-stack exposure kind, register-eligibility hints keyed by contract kind, "
+          "access shape, and call-crossing or local-window reuse facts, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "
