@@ -1,7 +1,8 @@
 # Semantic Call And Runtime Boundary From BIR
 
-Status: Open
+Status: Closed
 Created: 2026-04-14
+Closed: 2026-04-15
 Derived from: `plan.md` backlog split from `ideas/open/46_backend_reboot_bir_spine.md`
 
 ## Why This Idea Exists
@@ -54,3 +55,21 @@ This idea is complete when:
   escape
 - remaining unsupported coverage is explicit by semantic family from the
   planning layer and backend failure mode
+
+## Completion Summary
+
+- semantic call lowering stayed under `BirFunctionLowerer` and the split
+  `lir_to_bir_*` owners while broadening the shared direct and indirect call
+  route beyond the old minimal baseline
+- runtime and intrinsic families on this route now enter semantic BIR through
+  semantic lowering decisions or fail through explicit runtime/intrinsic family
+  buckets instead of testcase-shaped fallback handling
+- the remaining unsupported boundary is now explicit by semantic family in
+  both planner-facing wording and backend failure notes, with focused backend
+  notes coverage for the narrow and umbrella family buckets emitted by lowering
+
+## Durable Follow-On
+
+- later backend route work continues under the already-open prepare rebuild and
+  prepared-BIR target-ingestion ideas rather than by keeping this runbook
+  active
