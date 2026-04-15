@@ -179,6 +179,11 @@ struct RegallocDeferredBatchResolution {
   std::string_view allocation_stage;
 };
 
+struct RegallocDeferredBatchMatch {
+  const prepare::PreparedRegallocDeferredBindingBatchSummary* summary = nullptr;
+  RegallocDeferredBatchResolution resolution;
+};
+
 RegallocDeferredBatchJoin join_regalloc_deferred_binding_batch(
     const prepare::PreparedRegallocFunction& function,
     const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
@@ -267,12 +272,27 @@ const prepare::PreparedRegallocDeferredBindingBatchSummary* find_regalloc_deferr
     const prepare::PreparedRegallocFunction& function,
     std::string_view deferred_reason) {
   for (const auto& summary : function.deferred_binding_batches) {
-    const auto join = join_regalloc_deferred_binding_batch(function, summary);
-    if (regalloc_deferred_batch_identity(join, summary) == deferred_reason) {
+    const auto resolution = resolve_regalloc_deferred_binding_batch(function, summary);
+    if (regalloc_deferred_batch_identity(resolution.join, summary) == deferred_reason) {
       return &summary;
     }
   }
   return nullptr;
+}
+
+RegallocDeferredBatchMatch find_regalloc_deferred_binding_batch_match(
+    const prepare::PreparedRegallocFunction& function,
+    std::string_view deferred_reason) {
+  for (const auto& summary : function.deferred_binding_batches) {
+    auto resolution = resolve_regalloc_deferred_binding_batch(function, summary);
+    if (regalloc_deferred_batch_identity(resolution.join, summary) == deferred_reason) {
+      return {
+          .summary = &summary,
+          .resolution = std::move(resolution),
+      };
+    }
+  }
+  return {};
 }
 
 std::size_t regalloc_ready_batch_candidate_count(const prepare::PreparedRegallocFunction& function,
@@ -1039,10 +1059,10 @@ int main() {
     return fail("semantic-BIR regalloc should summarize register-candidate vs fixed-stack prepared objects");
   }
   if (regalloc_function->binding_sequence.size() != 6 ||
-      regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches) !=
-          regalloc_function->register_candidate_count - regalloc_function->binding_sequence.size() ||
-      regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches) !=
-          regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches)) {
+      regalloc_function->binding_sequence.size() +
+              regalloc_deferred_attachment_count_sum(
+                  regalloc_function->deferred_binding_batches) !=
+          regalloc_function->register_candidate_count) {
     return fail(
         "semantic-BIR regalloc should publish ready batch identity through binding_sequence while keeping deferred frontier attachment membership owned by deferred batch summaries");
   }
@@ -1579,12 +1599,12 @@ int main() {
       find_regalloc_binding_decision(*regalloc_function, "local_slot", "readonly.slot");
   const auto* multiwrite_binding =
       find_regalloc_binding_decision(*regalloc_function, "local_slot", "multiwrite.slot");
-  const auto* deferred_access_window_binding_batch =
-      find_regalloc_deferred_binding_batch(*regalloc_function,
-                                           "awaiting_access_window_observation");
-  const auto* deferred_coordination_binding_batch =
-      find_regalloc_deferred_binding_batch(*regalloc_function,
-                                           "batched_single_point_coordination");
+  const auto deferred_access_window_binding_batch =
+      find_regalloc_deferred_binding_batch_match(*regalloc_function,
+                                                 "awaiting_access_window_observation");
+  const auto deferred_coordination_binding_batch =
+      find_regalloc_deferred_binding_batch_match(*regalloc_function,
+                                                 "batched_single_point_coordination");
   if (carry_sequence == nullptr || callread_sequence == nullptr || callwrite_sequence == nullptr ||
       window_sequence == nullptr || readonly_sequence == nullptr || multiwrite_sequence == nullptr ||
       local_slot_sequence == nullptr || writeonly_sequence == nullptr) {
@@ -1600,8 +1620,8 @@ int main() {
   }
   if (carry_binding == nullptr || callread_binding == nullptr || callwrite_binding == nullptr ||
       window_binding == nullptr || readonly_binding == nullptr || multiwrite_binding == nullptr ||
-      deferred_access_window_binding_batch == nullptr ||
-      deferred_coordination_binding_batch == nullptr) {
+      deferred_access_window_binding_batch.summary == nullptr ||
+      deferred_coordination_binding_batch.summary == nullptr) {
     return fail("semantic-BIR regalloc should publish binding decisions and deferred batch summaries for the current binding frontier");
   }
   if (find_regalloc_binding_decision(*regalloc_function, "local_slot", "flag.slot") != nullptr ||
@@ -1764,43 +1784,47 @@ int main() {
     return fail(
         "semantic-BIR regalloc should keep binding-ready local-reuse entries focused on sequencing identity and order");
   }
-  const auto deferred_access_window_batch =
-      resolve_regalloc_deferred_binding_batch(*regalloc_function,
-                                              *deferred_access_window_binding_batch);
-  const auto deferred_coordination_batch =
-      resolve_regalloc_deferred_binding_batch(*regalloc_function,
-                                              *deferred_coordination_binding_batch);
-  if (regalloc_deferred_batch_allocation_stage(deferred_access_window_batch) !=
+  if (regalloc_deferred_batch_allocation_stage(
+          deferred_access_window_binding_batch.resolution) !=
           "opportunistic_single_point" ||
-      regalloc_deferred_batch_identity(deferred_access_window_batch.join,
-                                       *deferred_access_window_binding_batch) !=
+      regalloc_deferred_batch_identity(deferred_access_window_binding_batch.resolution.join,
+                                       *deferred_access_window_binding_batch.summary) !=
           "awaiting_access_window_observation" ||
-      regalloc_deferred_batch_ordering_policy(deferred_access_window_batch) !=
+      regalloc_deferred_batch_ordering_policy(
+          deferred_access_window_binding_batch.resolution) !=
           "defer_until_access_window_observed" ||
-      regalloc_deferred_batch_access_window_prerequisite_state(deferred_access_window_batch) !=
+      regalloc_deferred_batch_access_window_prerequisite_state(
+          deferred_access_window_binding_batch.resolution) !=
           "prealloc_access_window_prerequisite_deferred" ||
-      regalloc_deferred_batch_home_slot_prerequisite_state(deferred_access_window_batch) !=
+      regalloc_deferred_batch_home_slot_prerequisite_state(
+          deferred_access_window_binding_batch.resolution) !=
           "prealloc_home_slot_prerequisite_deferred" ||
-      regalloc_deferred_batch_sync_handoff_state(deferred_access_window_batch) !=
+      regalloc_deferred_batch_sync_handoff_state(
+          deferred_access_window_binding_batch.resolution) !=
           "prealloc_sync_handoff_deferred" ||
-      regalloc_deferred_batch_candidate_count(*deferred_access_window_binding_batch) != 7) {
+      regalloc_deferred_batch_candidate_count(*deferred_access_window_binding_batch.summary) != 7) {
     return fail(
         "semantic-BIR regalloc should group deferred single-point candidates waiting on access-window observation into an explicit deferred binding batch with prerequisite state rejoined from the attached object");
   }
-  if (regalloc_deferred_batch_allocation_stage(deferred_coordination_batch) !=
+  if (regalloc_deferred_batch_allocation_stage(
+          deferred_coordination_binding_batch.resolution) !=
           "opportunistic_single_point" ||
-      regalloc_deferred_batch_identity(deferred_coordination_batch.join,
-                                       *deferred_coordination_binding_batch) !=
+      regalloc_deferred_batch_identity(deferred_coordination_binding_batch.resolution.join,
+                                       *deferred_coordination_binding_batch.summary) !=
           "batched_single_point_coordination" ||
-      regalloc_deferred_batch_ordering_policy(deferred_coordination_batch) !=
+      regalloc_deferred_batch_ordering_policy(
+          deferred_coordination_binding_batch.resolution) !=
           "defer_until_frontier_ready" ||
-      regalloc_deferred_batch_access_window_prerequisite_state(deferred_coordination_batch) !=
+      regalloc_deferred_batch_access_window_prerequisite_state(
+          deferred_coordination_binding_batch.resolution) !=
           "prealloc_access_window_prerequisite_satisfied" ||
-      regalloc_deferred_batch_home_slot_prerequisite_state(deferred_coordination_batch) !=
+      regalloc_deferred_batch_home_slot_prerequisite_state(
+          deferred_coordination_binding_batch.resolution) !=
           "prealloc_home_slot_prerequisite_deferred" ||
-      regalloc_deferred_batch_sync_handoff_state(deferred_coordination_batch) !=
+      regalloc_deferred_batch_sync_handoff_state(
+          deferred_coordination_binding_batch.resolution) !=
           "prealloc_sync_handoff_ready" ||
-      regalloc_deferred_batch_candidate_count(*deferred_coordination_binding_batch) != 2) {
+      regalloc_deferred_batch_candidate_count(*deferred_coordination_binding_batch.summary) != 2) {
     return fail(
         "semantic-BIR regalloc should group deferred single-point candidates waiting on coordination into an explicit deferred binding batch with prerequisite state rejoined from contention ownership");
   }
@@ -1816,14 +1840,16 @@ int main() {
         "semantic-BIR regalloc should keep ready frontier membership counts owned by binding_sequence instead of publishing a duplicate ready summary mirror");
   }
   if (regalloc_deferred_batch_identity(
-          deferred_access_window_batch.join,
-          *deferred_access_window_binding_batch) != "awaiting_access_window_observation") {
+          deferred_access_window_binding_batch.resolution.join,
+          *deferred_access_window_binding_batch.summary) !=
+      "awaiting_access_window_observation") {
     return fail(
         "semantic-BIR regalloc should keep deferred handoff reason ownership on deferred binding batches instead of publishing a duplicate handoff view");
   }
   if (regalloc_deferred_batch_identity(
-          deferred_coordination_batch.join,
-          *deferred_coordination_binding_batch) != "batched_single_point_coordination") {
+          deferred_coordination_binding_batch.resolution.join,
+          *deferred_coordination_binding_batch.summary) !=
+      "batched_single_point_coordination") {
     return fail(
         "semantic-BIR regalloc should keep deferred coordination handoff reason ownership on deferred binding batches instead of publishing a duplicate handoff view");
   }
