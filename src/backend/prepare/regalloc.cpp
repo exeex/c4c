@@ -1023,7 +1023,54 @@ std::string_view regalloc_allocation_state_deferred_reason(
   return "not_deferred";
 }
 
+std::string_view regalloc_binding_frontier_kind(
+    const PreparedRegallocObject& object,
+    const PreparedRegallocAllocationDecision* decision,
+    const PreparedRegallocContentionSummary* contention) {
+  if (object.allocation_kind != "register_candidate") {
+    return "fixed_stack_authoritative";
+  }
+  if (decision == nullptr || contention == nullptr) {
+    return "binding_frontier_incomplete";
+  }
+  if (decision->reservation_scope == "unobserved_instruction_window" ||
+      decision->home_slot_mode == "home_slot_needs_future_analysis" ||
+      decision->sync_policy == "sync_policy_needs_future_analysis") {
+    return "binding_deferred";
+  }
+  if (decision->allocation_stage == "opportunistic_single_point") {
+    return "binding_deferred";
+  }
+  return "binding_ready";
+}
+
+std::string_view regalloc_binding_frontier_reason(
+    const PreparedRegallocObject& object,
+    const PreparedRegallocAllocationDecision* decision,
+    const PreparedRegallocContentionSummary* contention) {
+  if (object.allocation_kind != "register_candidate") {
+    return "fixed_stack_authoritative";
+  }
+  if (decision == nullptr) {
+    return "allocation_state_missing_decision";
+  }
+  if (contention == nullptr) {
+    return "allocation_state_missing_summary";
+  }
+  if (decision->reservation_scope == "unobserved_instruction_window" ||
+      decision->home_slot_mode == "home_slot_needs_future_analysis" ||
+      decision->sync_policy == "sync_policy_needs_future_analysis") {
+    return "awaiting_access_window_observation";
+  }
+  return contention->follow_up_category;
+}
+
 void populate_object_allocation_state(PreparedRegallocFunction& function) {
+  function.binding_ready_count = 0;
+  function.binding_deferred_count = 0;
+  function.binding_deferred_access_window_count = 0;
+  function.binding_deferred_coordination_count = 0;
+
   for (auto& object : function.objects) {
     const auto* decision = find_allocation_decision(function, object.source_kind, object.source_name);
     const auto* contention =
@@ -1045,6 +1092,8 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
                                       ? "stable_home_slot_required"
                                       : "fixed_stack_only";
       object.window_coordination_category = object.reservation_scope;
+      object.binding_frontier_kind = "fixed_stack_authoritative";
+      object.binding_frontier_reason = "fixed_stack_authoritative";
       continue;
     }
 
@@ -1057,6 +1106,8 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
       object.sync_coordination_category = "allocation_state_missing_decision";
       object.home_slot_category = "allocation_state_missing_decision";
       object.window_coordination_category = "allocation_state_missing_decision";
+      object.binding_frontier_kind = "binding_frontier_incomplete";
+      object.binding_frontier_reason = "allocation_state_missing_decision";
       continue;
     }
 
@@ -1074,6 +1125,21 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
       object.sync_coordination_category = "allocation_state_missing_summary";
       object.home_slot_category = "allocation_state_missing_summary";
       object.window_coordination_category = "allocation_state_missing_summary";
+    }
+
+    object.binding_frontier_kind =
+        std::string(regalloc_binding_frontier_kind(object, decision, contention));
+    object.binding_frontier_reason =
+        std::string(regalloc_binding_frontier_reason(object, decision, contention));
+    if (object.binding_frontier_kind == "binding_ready") {
+      ++function.binding_ready_count;
+    } else if (object.binding_frontier_kind == "binding_deferred") {
+      ++function.binding_deferred_count;
+      if (object.binding_frontier_reason == "awaiting_access_window_observation") {
+        ++function.binding_deferred_access_window_count;
+      } else {
+        ++function.binding_deferred_coordination_count;
+      }
     }
   }
 }
@@ -1259,7 +1325,10 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "group those summaries into window, sync, and home-slot coordination "
           "buckets for downstream prepared-BIR consumers, plus concrete object-level "
           "allocation states that collapse staged reservation, coordination, and "
-          "deferred-single-point facts back onto each prepared object, "
+          "deferred-single-point facts back onto each prepared object, plus a "
+          "ready-vs-deferred binding frontier that flags which prepared register "
+          "candidates are ready for stable home-slot/register binding and which "
+          "still wait on access-window observation or coordination buckets, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "

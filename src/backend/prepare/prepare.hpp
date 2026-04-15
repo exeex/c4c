@@ -72,6 +72,8 @@ struct PreparedRegallocObject {
   std::string sync_coordination_category;
   std::string home_slot_category;
   std::string window_coordination_category;
+  std::string binding_frontier_kind;
+  std::string binding_frontier_reason;
   std::string deferred_reason;
   std::string access_shape;
   std::string first_access_kind;
@@ -131,6 +133,10 @@ struct PreparedRegallocFunction {
   std::vector<PreparedRegallocContentionSummary> contention_summary;
   std::size_t register_candidate_count = 0;
   std::size_t fixed_stack_storage_count = 0;
+  std::size_t binding_ready_count = 0;
+  std::size_t binding_deferred_count = 0;
+  std::size_t binding_deferred_access_window_count = 0;
+  std::size_t binding_deferred_coordination_count = 0;
 };
 
 struct PreparedRegalloc {

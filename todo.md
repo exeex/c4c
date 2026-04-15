@@ -8,28 +8,29 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- turned the current semantic-BIR regalloc staging into a concrete per-object
-  allocation-state contract on `PreparedRegallocObject`, so each prepared
-  object now directly carries its allocation state kind, reservation kind and
-  scope, home-slot mode, sync policy, coordination categories, and deferred
-  reason without forcing downstream consumers to re-join
-  `allocation_sequence`, `reservation_summary`, and `contention_summary`
-- kept the new object-level state target-neutral by deriving it entirely from
-  existing prepare-owned reservation and contention facts, including deferred
-  opportunistic single-point candidates and fixed-stack authoritative objects
-- broadened the prepare entry-contract fixture to prove the new object-level
-  state across nearby deferred single-point, observed opportunistic,
-  across-call, local-reuse, and fixed-stack shapes
+- derived a concrete ready-vs-deferred prepared binding frontier from the
+  existing object-level regalloc state, so each `PreparedRegallocObject` now
+  carries `binding_frontier_kind` and `binding_frontier_reason` without
+  inventing physical registers, live intervals, or target-side legality
+- added per-function frontier counts on `PreparedRegallocFunction` to make the
+  current stable-binding-ready versus deferred-for-access-window versus
+  deferred-for-coordination split directly inspectable from prepare-owned
+  artifacts
+- proved the frontier on nearby same-shape cases in the backend prepare entry
+  contract fixture: unobserved opportunistic objects stay deferred for missing
+  access windows, observed batched single-point cases stay deferred for
+  coordination, across-call and local-reuse candidates become binding-ready,
+  and fixed-stack authoritative objects stay outside the register-binding
+  frontier
 - refreshed the regalloc prepare note so the public prepare contract now
-  advertises the new object-level allocation-state artifact explicitly
+  advertises the ready-vs-deferred binding frontier explicitly
 
 ## Suggested Next
-- keep step-4 work inside prepare by deriving one more concrete
-  per-function/per-object allocation frontier from the new object states:
-  identify which register candidates are ready for stable prepared
-  home-slot/register binding versus still deferred for access-window or
-  coordination reasons, without naming physical registers or drifting into
-  target ingestion
+- keep step-4 work inside prepare by turning the new ready frontier into a
+  concrete prepared binding batch/order artifact for the binding-ready
+  register candidates, while leaving deferred single-point cases parked behind
+  the current access-window and coordination guards and still avoiding any
+  physical-register naming or target-ingestion work
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -50,6 +51,10 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 - keep future ready/deferred frontier work derived from explicit prepared
   access-window, sync, home-slot, and contention facts rather than from target
   register names, synthetic intervals, or placeholder interference graphs
+- keep any follow-on binding batch/order artifact scoped to the current
+  `binding_ready` objects and derived from the existing reservation plus
+  contention summaries; do not backdoor single-point deferred cases into a
+  fake stable-binding path just to flatten the frontier counts
 - preserve the current split between register-candidate reservation decisions
   and fixed-stack authoritative objects; do not backdoor fixed-stack storage
   into the reservation sequence just to make a narrow testcase pass
