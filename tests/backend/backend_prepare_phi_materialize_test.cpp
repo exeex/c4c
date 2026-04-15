@@ -109,6 +109,11 @@ bool function_contains_i1(const bir::Function& function) {
                   return true;
                 }
               }
+              for (const auto& arg_abi : lowered.arg_abi) {
+                if (arg_abi.type == bir::TypeKind::I1) {
+                  return true;
+                }
+              }
               return lowered.result_abi.has_value() && lowered.result_abi->type == bir::TypeKind::I1;
             } else if constexpr (std::is_same_v<T, bir::LoadLocalInst> ||
                                  std::is_same_v<T, bir::LoadGlobalInst>) {
@@ -171,13 +176,80 @@ int check_prepare_i1_invariant(const prepare::PreparedBirModule& prepared) {
       prepare::prepared_bir_invariant_name(prepared.invariants[1]) != "no_target_facing_i1") {
     return fail("expected stable name for the no-target-facing-i1 invariant");
   }
-  if (prepared.module.functions.size() != 1) {
-    return fail("expected exactly one function when checking the i1 legality invariant");
+  for (const auto& function : prepared.module.functions) {
+    if (function_contains_i1(function)) {
+      return fail("expected legalize to remove target-facing i1 values from prepared semantic BIR");
+    }
   }
-  if (function_contains_i1(prepared.module.functions.front())) {
-    return fail("expected legalize to remove target-facing i1 values from prepared semantic BIR");
+  if (prepared.module.functions.empty()) {
+    return fail("expected at least one function when checking the i1 legality invariant");
   }
   return 0;
+}
+
+prepare::PreparedBirModule legalize_call_abi_module() {
+  bir::Module module;
+
+  bir::Function callee;
+  callee.name = "callee";
+  callee.return_type = bir::TypeKind::I1;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::I1,
+      .name = "flag",
+      .size_bytes = 1,
+      .align_bytes = 1,
+  });
+  callee.is_declaration = true;
+
+  bir::Function caller;
+  caller.name = "caller";
+  caller.return_type = bir::TypeKind::I1;
+  caller.params.push_back(bir::Param{
+      .type = bir::TypeKind::I1,
+      .name = "flag",
+      .size_bytes = 1,
+      .align_bytes = 1,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I1, "call_result"),
+      .callee = "callee",
+      .args = {bir::Value::named(bir::TypeKind::I1, "flag")},
+      .arg_types = {bir::TypeKind::I1},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I1,
+          .size_bytes = 1,
+          .align_bytes = 1,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i1",
+      .return_type = bir::TypeKind::I1,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I1,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I1, "call_result"),
+  };
+  caller.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(callee));
+  module.functions.push_back(std::move(caller));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+  prepare::run_legalize(prepared, options);
+  return prepared;
 }
 
 prepare::PreparedBirModule legalize_merge3_module(bool add_trailing_use) {
@@ -777,9 +849,67 @@ int check_materialized_conditional_successor_join(const bir::Function& legalized
   return 0;
 }
 
+int check_legalized_call_abi_metadata(const prepare::PreparedBirModule& prepared) {
+  if (prepared.module.functions.size() != 2) {
+    return fail("expected declaration plus caller when checking call ABI legalization");
+  }
+
+  const auto& callee = prepared.module.functions[0];
+  if (!callee.is_declaration || callee.return_type != bir::TypeKind::I32 || callee.params.size() != 1 ||
+      callee.params[0].type != bir::TypeKind::I32) {
+    return fail("expected legalize to promote declaration signatures away from i1");
+  }
+
+  const auto& caller = prepared.module.functions[1];
+  if (caller.return_type != bir::TypeKind::I32 || caller.params.size() != 1 ||
+      caller.params[0].type != bir::TypeKind::I32) {
+    return fail("expected legalize to promote caller signatures away from i1");
+  }
+  if (caller.blocks.size() != 1 || caller.blocks.front().insts.size() != 1) {
+    return fail("expected single caller block with one legalized call");
+  }
+
+  const auto* call = std::get_if<bir::CallInst>(&caller.blocks.front().insts.front());
+  if (call == nullptr) {
+    return fail("expected caller block to keep a call instruction");
+  }
+  if (!call->result.has_value() || call->result->type != bir::TypeKind::I32) {
+    return fail("expected legalize to promote call result value type away from i1");
+  }
+  if (call->args.size() != 1 || call->args.front().type != bir::TypeKind::I32) {
+    return fail("expected legalize to promote call argument value types away from i1");
+  }
+  if (call->arg_types.size() != 1 || call->arg_types.front() != bir::TypeKind::I32) {
+    return fail("expected legalize to promote call argument type metadata away from i1");
+  }
+  if (call->arg_abi.size() != 1 || call->arg_abi.front().type != bir::TypeKind::I32 ||
+      call->arg_abi.front().size_bytes != 4 || call->arg_abi.front().align_bytes != 4) {
+    return fail("expected legalize to promote call ABI metadata away from i1");
+  }
+  if (!call->result_abi.has_value() || call->result_abi->type != bir::TypeKind::I32) {
+    return fail("expected legalize to promote call result ABI metadata away from i1");
+  }
+  if (call->return_type != bir::TypeKind::I32) {
+    return fail("expected legalize to promote call return type metadata away from i1");
+  }
+  if (!caller.blocks.front().terminator.value.has_value() ||
+      caller.blocks.front().terminator.value->type != bir::TypeKind::I32) {
+    return fail("expected legalize to promote call return terminator away from i1");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
+  const auto prepared_call_abi = legalize_call_abi_module();
+  if (const int status = check_prepare_i1_invariant(prepared_call_abi); status != 0) {
+    return status;
+  }
+  if (const int status = check_legalized_call_abi_metadata(prepared_call_abi); status != 0) {
+    return status;
+  }
+
   const auto prepared_with_add = legalize_merge3_module(true);
   if (const int status = check_prepare_phi_invariant(prepared_with_add); status != 0) {
     return status;

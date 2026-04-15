@@ -54,6 +54,20 @@ std::size_t type_size_bytes(bir::TypeKind type) {
   }
 }
 
+void legalize_call_arg_abi(Target target, bir::CallArgAbiInfo& abi) {
+  const auto original_type = abi.type;
+  abi.type = legalize_type(target, abi.type);
+  if (original_type != abi.type) {
+    const auto legalized_size = type_size_bytes(abi.type);
+    abi.size_bytes = legalized_size;
+    abi.align_bytes = legalized_size;
+  }
+}
+
+void legalize_call_result_abi(Target target, bir::CallResultAbiInfo& abi) {
+  abi.type = legalize_type(target, abi.type);
+}
+
 std::string make_phi_slot_name(std::string_view result_name) {
   return std::string(result_name) + ".phi";
 }
@@ -747,8 +761,11 @@ void legalize_module(Target target, bir::Module& module) {
                 for (auto& arg_type : lowered.arg_types) {
                   arg_type = legalize_type(target, arg_type);
                 }
+                for (auto& arg_abi : lowered.arg_abi) {
+                  legalize_call_arg_abi(target, arg_abi);
+                }
                 if (lowered.result_abi.has_value()) {
-                  lowered.result_abi->type = legalize_type(target, lowered.result_abi->type);
+                  legalize_call_result_abi(target, *lowered.result_abi);
                 }
               } else if constexpr (std::is_same_v<T, bir::LoadLocalInst> ||
                                    std::is_same_v<T, bir::LoadGlobalInst>) {
@@ -799,8 +816,8 @@ void run_legalize(PreparedBirModule& module, const PrepareOptions& options) {
   module.notes.push_back(PrepareNote{
       .phase = "legalize",
       .message =
-          "bootstrap BIR legalize removed phi nodes and promoted i1 values to i32 for "
-          "x86/i686/aarch64/riscv64",
+          "bootstrap BIR legalize removed phi nodes and promoted i1 values plus call ABI metadata "
+          "to i32 for x86/i686/aarch64/riscv64",
   });
 }
 

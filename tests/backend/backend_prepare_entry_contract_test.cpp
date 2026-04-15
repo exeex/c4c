@@ -101,6 +101,9 @@ int main() {
                      "shared semantic-BIR to prepared-BIR route")) {
     return fail("missing semantic-BIR prepare entry contract note");
   }
+  if (!contains_note(prepared_bir.notes, "legalize", "call ABI metadata")) {
+    return fail("semantic-BIR prepare legalize note should mention call ABI metadata");
+  }
   if (prepared_bir.completed_phases.size() != 1 || prepared_bir.completed_phases[0] != "legalize") {
     return fail("semantic-BIR prepare entry should only complete legalize in the current slice");
   }
