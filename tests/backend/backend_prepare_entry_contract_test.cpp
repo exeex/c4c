@@ -6,7 +6,6 @@
 namespace {
 
 namespace bir = c4c::backend::bir;
-namespace lir = c4c::codegen::lir;
 namespace prepare = c4c::backend::prepare;
 
 int fail(const char* message) {
@@ -439,26 +438,6 @@ bir::Module make_prepare_contract_bir_module() {
       .align_bytes = 4,
   });
   entry.terminator = bir::ReturnTerminator{};
-
-  function.blocks.push_back(std::move(entry));
-  module.functions.push_back(std::move(function));
-  return module;
-}
-
-lir::LirModule make_minimal_lir_module() {
-  lir::LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
-
-  lir::LirFunction function;
-  function.name = "main";
-  function.signature_text = "define i32 @main()";
-
-  lir::LirBlock entry;
-  entry.label = "entry";
-  entry.terminator = lir::LirRet{
-      .value_str = "i32 0",
-      .type_str = "i32",
-  };
 
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
@@ -1742,32 +1721,6 @@ int main() {
       deferred_coordination_handoff_summary->candidate_count != 2) {
     return fail(
         "semantic-BIR regalloc should collapse coordination-deferred bindings into one downstream handoff summary");
-  }
-
-  const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(
-      make_minimal_lir_module(), c4c::backend::Target::X86_64);
-  if (prepared_lir.route != prepare::PrepareRoute::BootstrapLirFallback) {
-    return fail("bootstrap-LIR prepare entry should advertise the fallback prepare route");
-  }
-  if (prepare::prepare_route_name(prepared_lir.route) != "bootstrap_lir_fallback") {
-    return fail("bootstrap-LIR prepare route name drifted");
-  }
-  if (!contains_note(prepared_lir.notes, "prepare", "bootstrap LIR fallback route")) {
-    return fail("missing bootstrap-LIR prepare fallback note");
-  }
-  constexpr std::string_view kExpectedPhases[] = {
-      "legalize",
-      "stack_layout",
-      "liveness",
-      "regalloc",
-  };
-  if (prepared_lir.completed_phases.size() != std::size(kExpectedPhases)) {
-    return fail("unexpected bootstrap-LIR prepare phase count");
-  }
-  for (std::size_t index = 0; index < std::size(kExpectedPhases); ++index) {
-    if (prepared_lir.completed_phases[index] != kExpectedPhases[index]) {
-      return fail("unexpected bootstrap-LIR prepare phase order");
-    }
   }
 
   return 0;

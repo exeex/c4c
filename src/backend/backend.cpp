@@ -786,12 +786,6 @@ std::string emit_prepared_bir_or_fallback(const c4c::backend::bir::Module& modul
   return c4c::backend::bir::print(module);
 }
 
-c4c::backend::prepare::PreparedLirModule prepare_bootstrap_lir_pipeline(
-    const c4c::codegen::lir::LirModule& module,
-    Target target) {
-  return c4c::backend::prepare::prepare_bootstrap_lir_module_with_options(module, target);
-}
-
 c4c::backend::prepare::PreparedBirModule prepare_semantic_bir_pipeline(
     const c4c::backend::bir::Module& module,
     Target target) {
@@ -805,12 +799,6 @@ BackendModuleInput::BackendModuleInput(const bir::Module& bir_module)
 
 BackendModuleInput::BackendModuleInput(const c4c::codegen::lir::LirModule& lir_module)
     : module_(std::cref(lir_module)) {}
-
-c4c::codegen::lir::LirModule prepare_lir_module_for_target(
-    const c4c::codegen::lir::LirModule& module,
-    Target target) {
-  return prepare_bootstrap_lir_pipeline(module, target).module;
-}
 
 c4c::backend::bir::Module prepare_bir_module_for_target(
     const c4c::backend::bir::Module& module,
@@ -866,8 +854,7 @@ std::string emit_module(const BackendModuleInput& input,
     const auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target);
     return emit_prepared_bir_or_fallback(prepared_bir.module, target);
   }
-  const auto prepared = prepare_bootstrap_lir_pipeline(lir_module, target);
-  return emit_bootstrap_lir_module(prepared.module, target);
+  return emit_bootstrap_lir_module(lir_module, target);
 }
 
 }  // namespace c4c::backend

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../bir/bir.hpp"
-#include "../../codegen/lir/ir.hpp"
 #include "../target.hpp"
 
 #include <string>
@@ -205,15 +204,12 @@ struct PreparedRegalloc {
 
 enum class PrepareRoute {
   SemanticBirShared,
-  BootstrapLirFallback,
 };
 
 [[nodiscard]] constexpr std::string_view prepare_route_name(PrepareRoute route) {
   switch (route) {
     case PrepareRoute::SemanticBirShared:
       return "semantic_bir_shared";
-    case PrepareRoute::BootstrapLirFallback:
-      return "bootstrap_lir_fallback";
   }
   return "unknown";
 }
@@ -233,14 +229,6 @@ enum class PreparedBirInvariant {
   return "unknown";
 }
 
-struct [[deprecated("PreparedLirModule is a legacy bootstrap-LIR fallback; use PreparedBirModule and the semantic BIR prealloc route instead")]] PreparedLirModule {
-  c4c::codegen::lir::LirModule module;
-  Target target = Target::X86_64;
-  PrepareRoute route = PrepareRoute::BootstrapLirFallback;
-  std::vector<std::string> completed_phases;
-  std::vector<PrepareNote> notes;
-};
-
 struct PreparedBirModule {
   c4c::backend::bir::Module module;
   Target target = Target::X86_64;
@@ -253,18 +241,8 @@ struct PreparedBirModule {
   std::vector<PrepareNote> notes;
 };
 
-PreparedLirModule prepare_bootstrap_lir_module_with_options(
-    const c4c::codegen::lir::LirModule& module,
-    Target target,
-    const PrepareOptions& options = {});
-
 PreparedBirModule prepare_semantic_bir_module_with_options(
     const c4c::backend::bir::Module& module,
-    Target target,
-    const PrepareOptions& options = {});
-
-PreparedLirModule prepare_lir_module_with_options(
-    const c4c::codegen::lir::LirModule& module,
     Target target,
     const PrepareOptions& options = {});
 

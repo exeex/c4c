@@ -185,15 +185,6 @@ std::size_t count_function_instructions(const bir::Function& function) {
 
 }  // namespace
 
-void run_liveness(PreparedLirModule& module, const PrepareOptions& options) {
-  (void)options;
-  module.completed_phases.push_back("liveness");
-  module.notes.push_back(PrepareNote{
-      .phase = "liveness",
-      .message = "liveness skeleton is wired; no live-interval computation is performed yet",
-  });
-}
-
 void run_liveness(PreparedBirModule& module, const PrepareOptions& options) {
   (void)options;
   module.completed_phases.push_back("liveness");

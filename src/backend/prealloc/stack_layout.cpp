@@ -137,15 +137,6 @@ std::string_view stack_object_source_kind(const bir::Function& function, const b
 
 }  // namespace
 
-void run_stack_layout(PreparedLirModule& module, const PrepareOptions& options) {
-  (void)options;
-  module.completed_phases.push_back("stack_layout");
-  module.notes.push_back(PrepareNote{
-      .phase = "stack_layout",
-      .message = "stack layout skeleton is wired; no frame/slot allocation is performed yet",
-  });
-}
-
 void run_stack_layout(PreparedBirModule& module, const PrepareOptions& options) {
   (void)options;
   module.completed_phases.push_back("stack_layout");

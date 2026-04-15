@@ -57,10 +57,6 @@ struct BackendAssembleResult {
   std::string error;
 };
 
-[[nodiscard]] c4c::codegen::lir::LirModule prepare_lir_module_for_target(
-    const c4c::codegen::lir::LirModule& module,
-    Target target);
-
 [[nodiscard]] c4c::backend::bir::Module prepare_bir_module_for_target(
     const c4c::backend::bir::Module& module,
     Target target);

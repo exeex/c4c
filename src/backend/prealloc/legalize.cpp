@@ -838,16 +838,6 @@ void legalize_module(Target target, bir::Module& module) {
 
 }  // namespace
 
-void run_legalize(PreparedLirModule& module, const PrepareOptions& options) {
-  (void)options;
-  module.completed_phases.push_back("legalize");
-  module.notes.push_back(PrepareNote{
-      .phase = "legalize",
-      .message =
-          "target-dependent legalization skeleton is wired; bool promotion and ABI/type legalization still need implementation",
-  });
-}
-
 void run_legalize(PreparedBirModule& module, const PrepareOptions& options) {
   (void)options;
   module.completed_phases.push_back("legalize");
