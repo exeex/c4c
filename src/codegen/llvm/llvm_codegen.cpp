@@ -1,6 +1,6 @@
 #include "llvm_codegen.hpp"
 #include "backend.hpp"
-#include "lowering/lir_to_bir.hpp"
+#include "bir/lir_to_bir.hpp"
 #include "target.hpp"
 #include "hir_to_lir.hpp"
 #include "lir_printer.hpp"

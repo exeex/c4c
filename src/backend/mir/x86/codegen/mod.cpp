@@ -2,7 +2,7 @@
 
 #include "../../generation.hpp"
 #include "../../regalloc.hpp"
-#include "../../bir.hpp"
+#include "../../../bir/bir.hpp"
 
 #include <algorithm>
 #include <cctype>

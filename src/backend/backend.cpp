@@ -1,6 +1,6 @@
 #include "backend.hpp"
 
-#include "bir_printer.hpp"
+#include "bir/bir_printer.hpp"
 
 #include "../codegen/lir/lir_printer.hpp"
 

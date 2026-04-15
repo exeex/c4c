@@ -1,5 +1,5 @@
-#include "src/backend/bir.hpp"
-#include "src/backend/prepare/legalize.hpp"
+#include "src/backend/bir/bir.hpp"
+#include "src/backend/prealloc/legalize.hpp"
 #include "src/backend/target.hpp"
 
 #include <cstdlib>

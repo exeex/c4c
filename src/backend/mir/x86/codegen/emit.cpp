@@ -2,7 +2,7 @@
 #include "peephole/peephole.hpp"
 
 #include "../../backend.hpp"
-#include "../../lowering/lir_to_bir.hpp"
+#include "../../../bir/lir_to_bir.hpp"
 
 #include <stdexcept>
 

@@ -1,14 +1,14 @@
-# Prepare Pipeline Rebuild From Semantic BIR
+# Prealloc Pipeline Rebuild From Semantic BIR
 
 Status: Active
 Source Idea: ideas/open/48_prepare_pipeline_rebuild.md
 Source Plan: plan.md
-Current Plan Focus: step-5 regalloc consumer shrink
+Current Plan Focus: directory rehome to `bir / prealloc / mir`
 
 # Current Packet
 
 ## Goal
-- keep prepare liveness as the sole owner of access facts and keep regalloc as
+- keep prealloc liveness as the sole owner of access facts and keep regalloc as
   a consumer that stages reservation, contention, binding, and handoff without
   rebuilding liveness or inventing extra contract layers
 
@@ -22,7 +22,7 @@ Current Plan Focus: step-5 regalloc consumer shrink
   `populate_object_allocation_state(...)` so register-candidate, missing-state,
   and fixed-stack objects stop publishing coordination mirrors that had no
   non-test consumer
-- updated the prepare-entry contract test to keep coordination-category
+- updated the prealloc-entry contract test to keep coordination-category
   assertions on contention summaries while removing the deleted object-local
   mirror checks
 
@@ -36,7 +36,7 @@ Current Plan Focus: step-5 regalloc consumer shrink
 
 ## Watchouts
 - do not add more liveness-like fact gathering to
-  `src/backend/prepare/regalloc.cpp`
+  `src/backend/prealloc/regalloc.cpp`
 - do not drift into target ingestion or target-specific register policy
 - do not re-introduce synthetic pass layers, fake intervals, placeholder
   interference facts, or name-based special cases just to flatten the contract

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../bir.hpp"
+#include "../bir/bir.hpp"
 #include "../../codegen/lir/ir.hpp"
 #include "../target.hpp"
 
@@ -233,7 +233,7 @@ enum class PreparedBirInvariant {
   return "unknown";
 }
 
-struct PreparedLirModule {
+struct [[deprecated("PreparedLirModule is a legacy bootstrap-LIR fallback; use PreparedBirModule and the semantic BIR prealloc route instead")]] PreparedLirModule {
   c4c::codegen::lir::LirModule module;
   Target target = Target::X86_64;
   PrepareRoute route = PrepareRoute::BootstrapLirFallback;

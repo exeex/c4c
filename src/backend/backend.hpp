@@ -1,8 +1,8 @@
 #pragma once
 
-#include "bir.hpp"
-#include "lowering/lir_to_bir.hpp"
-#include "prepare/prepare.hpp"
+#include "bir/bir.hpp"
+#include "bir/lir_to_bir.hpp"
+#include "prealloc/prepare.hpp"
 #include "target.hpp"
 
 #include <functional>

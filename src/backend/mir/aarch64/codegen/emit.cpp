@@ -1,9 +1,9 @@
 #include "emit.hpp"
 
 #include "../../backend.hpp"
-#include "../../bir.hpp"
-#include "../../lowering/call_decode.hpp"
-#include "../../lowering/lir_to_bir.hpp"
+#include "../../../bir/bir.hpp"
+#include "../../../bir/call_decode.hpp"
+#include "../../../bir/lir_to_bir.hpp"
 #include "../../generation.hpp"
 #include "../../stack_layout/analysis.hpp"
 #include "../../stack_layout/regalloc_helpers.hpp"

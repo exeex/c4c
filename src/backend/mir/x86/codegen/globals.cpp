@@ -1,6 +1,6 @@
 #include "x86_codegen.hpp"
 
-#include "../../bir.hpp"
+#include "../../../bir/bir.hpp"
 
 namespace c4c::backend::x86 {
 

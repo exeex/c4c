@@ -1,4 +1,4 @@
-#include "src/backend/lowering/lir_to_bir.hpp"
+#include "src/backend/bir/lir_to_bir.hpp"
 
 #include <iostream>
 #include <optional>

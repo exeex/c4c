@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../bir.hpp"
+#include "bir.hpp"
 
 #include "../../codegen/lir/call_args_ops.hpp"
 #include "../../codegen/lir/ir.hpp"
