@@ -23,12 +23,13 @@ lowering or by letting targets keep reconstructing prepare-owned state.
 ## Read First
 
 - `ideas/open/48_prepare_pipeline_rebuild.md`
-- `src/backend/prepare/legalize.cpp`
-- `src/backend/prepare/prepare.cpp`
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/prealloc.cpp`
 - `src/backend/backend.cpp`
-- `src/backend/prepare/stack_layout.cpp`
-- `src/backend/prepare/liveness.cpp`
-- `src/backend/prepare/regalloc.cpp`
+- `src/backend/prealloc/legalize.cpp`
+- `src/backend/prealloc/stack_layout.cpp`
+- `src/backend/prealloc/liveness.cpp`
+- `src/backend/prealloc/regalloc.cpp`
 - `ref/claudes-c-compiler/src/backend/stack_layout/mod.rs`
 - `ref/claudes-c-compiler/src/backend/stack_layout/analysis.rs`
 - `ref/claudes-c-compiler/src/backend/stack_layout/slot_assignment.rs`
@@ -37,12 +38,13 @@ lowering or by letting targets keep reconstructing prepare-owned state.
 
 ## Current Targets
 
-- `src/backend/prepare/legalize.cpp`
-- `src/backend/prepare/prepare.cpp`
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/prealloc.cpp`
 - `src/backend/backend.cpp`
-- `src/backend/prepare/stack_layout.cpp`
-- `src/backend/prepare/liveness.cpp`
-- `src/backend/prepare/regalloc.cpp`
+- `src/backend/prealloc/legalize.cpp`
+- `src/backend/prealloc/stack_layout.cpp`
+- `src/backend/prealloc/liveness.cpp`
+- `src/backend/prealloc/regalloc.cpp`
 
 ## Activation Checkpoint
 
@@ -58,6 +60,9 @@ lowering or by letting targets keep reconstructing prepare-owned state.
 
 - do not let targets rebuild legality independently of `prepare`
 - do not treat current `prepare/*.cpp` placeholders as fixed local designs
+- do not rename the public `prepare` namespace/API surface to `prealloc`
+  unless a later lifecycle checkpoint explicitly changes the runbook and source
+  intent
 - do not route around missing prepare work by reopening direct/raw LIR paths
 - do not expand into target-specific ingestion work that belongs to idea 49
 
@@ -66,6 +71,9 @@ lowering or by letting targets keep reconstructing prepare-owned state.
 - semantic BIR should stay as the target-neutral lowering contract
 - `prepare` should transform semantic BIR into a prepared form that encodes
   legality decisions and concrete phase outputs needed by targets
+- the current implementation may use `src/backend/prealloc/` and `BirPreAlloc`
+  as internal structure names, but this runbook still treats `prepare` as the
+  public shared-route contract until source intent says otherwise
 - stack layout, liveness, and regalloc should become explicit phase owners
   with inspectable artifacts instead of notes, shells, or target-side guesses
 - the backend driver should make the shared route through `prepare` visible
@@ -80,19 +88,20 @@ semantic-BIR to prepared-BIR transition.
 
 Primary target:
 
-- `src/backend/prepare/prepare.cpp`
+- `src/backend/prealloc/prealloc.cpp`
+- `src/backend/prealloc/prealloc.hpp`
 - `src/backend/backend.cpp`
 
 Concrete actions:
 
 - inspect the current backend route and name the exact places where `prepare`
   is still a shell or advisory layer
-- define the prepared-phase entry contract in `prepare.cpp` instead of leaving
-  ownership implicit in target code paths
+- define the prepared-phase entry contract in the current prealloc-owned
+  implementation files without changing the public `prepare` contract
 - make the shared backend route through `prepare` explicit without yet
   reconnecting target ingestion work that belongs to idea 49
-- keep proof framed as `build -> narrow backend subset`, with broader
-  validation once shared-route changes land
+- keep proof framed as `build -> narrow backend subset`, and require a broader
+  backend checkpoint before accepting further route-shaping cleanup
 
 Completion check:
 
@@ -108,8 +117,8 @@ Goal: establish target-legality ownership in the prepare layer.
 
 Primary target:
 
-- `src/backend/prepare/legalize.cpp`
-- `src/backend/prepare/prepare.cpp`
+- `src/backend/prealloc/legalize.cpp`
+- `src/backend/prealloc/prealloc.cpp`
 
 Concrete actions:
 
@@ -135,7 +144,7 @@ Goal: turn stack layout from scaffold into a phase with concrete outputs.
 
 Primary target:
 
-- `src/backend/prepare/stack_layout.cpp`
+- `src/backend/prealloc/stack_layout.cpp`
 - reference stack-layout files under `ref/claudes-c-compiler/src/backend/stack_layout/`
 
 Concrete actions:
@@ -160,8 +169,8 @@ consume instead of recomputing them ad hoc.
 
 Primary target:
 
-- `src/backend/prepare/liveness.cpp`
-- `src/backend/prepare/prepare.hpp`
+- `src/backend/prealloc/liveness.cpp`
+- `src/backend/prealloc/prealloc.hpp`
 - `ref/claudes-c-compiler/src/backend/liveness.rs`
 
 Concrete actions:
@@ -196,8 +205,8 @@ instead of rebuilding their facts inside regalloc-local scaffolding.
 
 Primary target:
 
-- `src/backend/prepare/regalloc.cpp`
-- `src/backend/prepare/prepare.hpp`
+- `src/backend/prealloc/regalloc.cpp`
+- `src/backend/prealloc/prealloc.hpp`
 - `ref/claudes-c-compiler/src/backend/regalloc.rs`
 
 Concrete actions:
@@ -208,6 +217,9 @@ Concrete actions:
   binding/handoff, and downstream prepared contract projection
 - remove or retire regalloc-local logic whose only purpose is to reconstruct
   liveness-owned facts that should already be present in prepared artifacts
+- treat object-local batch attachment as intentional until a packet proves a
+  different stable consumer path; shrink mirrors first, not the last object-to-
+  batch attachment path
 - use `ref/claudes-c-compiler/src/backend/regalloc.rs` for responsibility
   boundaries so `liveness -> regalloc` remains the dependency direction on the
   shared prepared route
@@ -228,12 +240,13 @@ Goal: leave a stable prepare-owned contract for idea 49.
 
 Primary target:
 
-- `src/backend/prepare/prepare.cpp`
+- `src/backend/prealloc/prealloc.cpp`
+- `src/backend/prealloc/prealloc.hpp`
 - `src/backend/backend.cpp`
-- `src/backend/prepare/legalize.cpp`
-- `src/backend/prepare/stack_layout.cpp`
-- `src/backend/prepare/liveness.cpp`
-- `src/backend/prepare/regalloc.cpp`
+- `src/backend/prealloc/legalize.cpp`
+- `src/backend/prealloc/stack_layout.cpp`
+- `src/backend/prealloc/liveness.cpp`
+- `src/backend/prealloc/regalloc.cpp`
 
 Concrete actions:
 
@@ -241,6 +254,8 @@ Concrete actions:
   contract wording
 - verify the backend driver clearly routes semantic BIR through prepare before
   target codegen
+- keep internal `prealloc` naming from silently turning into a public contract
+  rename unless a later idea/runbook checkpoint explicitly authorizes it
 - capture any remaining target-ingestion-only work as follow-on scope for idea
   49 instead of silently extending this runbook
 - require a broader backend checkpoint before treating this runbook as
