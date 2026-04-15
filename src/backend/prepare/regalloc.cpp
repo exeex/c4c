@@ -826,27 +826,6 @@ std::string_view regalloc_binding_frontier_kind(
   return "binding_ready";
 }
 
-std::string_view regalloc_binding_frontier_reason(
-    const PreparedRegallocObject& object,
-    const PreparedRegallocAllocationDecision* decision,
-    const PreparedRegallocContentionSummary* contention) {
-  if (object.allocation_kind != "register_candidate") {
-    return "fixed_stack_authoritative";
-  }
-  if (decision == nullptr) {
-    return "allocation_state_missing_decision";
-  }
-  if (contention == nullptr) {
-    return "allocation_state_missing_summary";
-  }
-  if (decision->reservation_scope == "unobserved_instruction_window" ||
-      decision->home_slot_mode == "home_slot_needs_future_analysis" ||
-      decision->sync_policy == "sync_policy_needs_future_analysis") {
-    return "awaiting_access_window_observation";
-  }
-  return contention->follow_up_category;
-}
-
 std::string_view regalloc_binding_batch_kind(
     const PreparedRegallocAllocationDecision& decision,
     const PreparedRegallocContentionSummary& contention) {
@@ -1007,7 +986,6 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
                                       : "fixed_stack_only";
       object.window_coordination_category = object.reservation_scope;
       object.binding_frontier_kind = "fixed_stack_authoritative";
-      object.binding_frontier_reason = "fixed_stack_authoritative";
       object.binding_batch_kind.clear();
       object.binding_order_index = 0;
       continue;
@@ -1023,7 +1001,6 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
       object.home_slot_category = "allocation_state_missing_decision";
       object.window_coordination_category = "allocation_state_missing_decision";
       object.binding_frontier_kind = "binding_frontier_incomplete";
-      object.binding_frontier_reason = "allocation_state_missing_decision";
       object.binding_batch_kind.clear();
       object.binding_order_index = 0;
       continue;
@@ -1047,8 +1024,6 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
 
     object.binding_frontier_kind =
         std::string(regalloc_binding_frontier_kind(object, decision, contention));
-    object.binding_frontier_reason =
-        std::string(regalloc_binding_frontier_reason(object, decision, contention));
     object.binding_batch_kind.clear();
     object.binding_order_index = 0;
   }

@@ -13,25 +13,23 @@ Current Plan Focus: step-5 regalloc consumer shrink
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed the last deferred-batch use of
-  `regalloc_binding_frontier_reason_view(...)` so deferred binding batch
-  construction now derives its frontier reason directly from the real owners:
-  object-owned `deferred_reason` for access-window deferrals and
-  contention-owned `follow_up_category` for coordination deferrals
-- deleted the now-dead frontier-reason view helper instead of leaving a mirror
-  path behind for future batch construction
-- preserved the existing deferred-frontier split where access-window deferred
-  batches carry `awaiting_access_window_observation` in `deferred_reason`
-  while coordination-deferred batches keep
-  `batched_single_point_coordination` owned by contention summaries
+- dropped `PreparedRegallocObject::binding_frontier_reason` after confirming
+  the remaining helper had only one caller in
+  `populate_object_allocation_state(...)` and no non-reporting consumer
+- removed the now-dead object-local frontier-reason helper and assignments so
+  objects keep frontier kind plus batch attachment while batch and handoff
+  summaries remain the owners of frontier-reason publication
+- updated the prepare-entry contract test to stop asserting the deleted
+  object-local mirror and keep frontier-reason checks on handoff summaries
+  where that contract still lives
 
 ## Suggested Next
-- inspect whether object-local `binding_frontier_reason` still has any
-  non-reporting consumer or whether step 5 can shrink that remaining mirror
-  without removing downstream output that still depends on the object-local
-  projection
-- keep the next packet focused on ownership cleanup inside step 5; do not turn
-  it into new allocation policy or target-ingestion work
+- inspect whether object-local `follow_up_category` is still carrying any
+  purely mirrored publication that can move fully onto contention or
+  batch-owned summaries without deleting downstream contract that still needs a
+  per-object projection
+- keep the next packet inside step 5 ownership cleanup; do not turn it into
+  new allocation policy or target-ingestion work
 
 ## Watchouts
 - do not add more liveness-like fact gathering to

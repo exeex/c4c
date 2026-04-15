@@ -86,7 +86,6 @@ struct PreparedRegallocObject {
   std::string home_slot_category;
   std::string window_coordination_category;
   std::string binding_frontier_kind;
-  std::string binding_frontier_reason;
   std::string binding_batch_kind;
   std::size_t binding_order_index = 0;
   std::string deferred_reason;

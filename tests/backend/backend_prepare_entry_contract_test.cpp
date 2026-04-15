@@ -881,8 +881,7 @@ int main() {
       scratch_slot_regalloc->deferred_reason != "awaiting_access_window_observation") {
     return fail("semantic-BIR regalloc should publish a deferred opportunistic allocation state for unobserved single-point prepared objects");
   }
-  if (scratch_slot_regalloc->binding_frontier_kind != "binding_deferred" ||
-      scratch_slot_regalloc->binding_frontier_reason != "awaiting_access_window_observation") {
+  if (scratch_slot_regalloc->binding_frontier_kind != "binding_deferred") {
     return fail("semantic-BIR regalloc should defer stable binding when prepared access-window facts are still missing");
   }
   if (scratch_slot_regalloc->binding_batch_kind != "deferred_access_window_binding_batch") {
@@ -936,8 +935,7 @@ int main() {
       local_slot_regalloc->deferred_reason != "not_deferred") {
     return fail("semantic-BIR regalloc should publish an opportunistic object-level allocation state for observed single-point reads");
   }
-  if (local_slot_regalloc->binding_frontier_kind != "binding_deferred" ||
-      local_slot_regalloc->binding_frontier_reason != "batched_single_point_coordination") {
+  if (local_slot_regalloc->binding_frontier_kind != "binding_deferred") {
     return fail("semantic-BIR regalloc should keep observed single-point candidates deferred when coordination remains batched");
   }
   if (local_slot_regalloc->binding_batch_kind != "deferred_coordination_binding_batch") {
@@ -992,8 +990,7 @@ int main() {
       carry_slot_regalloc->deferred_reason != "not_deferred") {
     return fail("semantic-BIR regalloc should publish a call-preserved object-level allocation state for across-call candidates");
   }
-  if (carry_slot_regalloc->binding_frontier_kind != "binding_ready" ||
-      carry_slot_regalloc->binding_frontier_reason != "call_boundary_preservation") {
+  if (carry_slot_regalloc->binding_frontier_kind != "binding_ready") {
     return fail("semantic-BIR regalloc should mark across-call candidates as ready for stable prepared binding");
   }
   if (carry_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch" ||
@@ -1049,8 +1046,7 @@ int main() {
       window_slot_regalloc->deferred_reason != "not_deferred") {
     return fail("semantic-BIR regalloc should publish a local-reuse object-level allocation state for nearby multi-point candidates");
   }
-  if (window_slot_regalloc->binding_frontier_kind != "binding_ready" ||
-      window_slot_regalloc->binding_frontier_reason != "sequenced_local_reuse_coordination") {
+  if (window_slot_regalloc->binding_frontier_kind != "binding_ready") {
     return fail("semantic-BIR regalloc should mark sequenced local-reuse candidates as ready for stable prepared binding");
   }
   if (window_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch" ||
@@ -1097,8 +1093,7 @@ int main() {
       readonly_slot_regalloc->crosses_call_boundary) {
     return fail("semantic-BIR regalloc should publish non-call-spanning instruction-order cues for multi-point read-only value storage");
   }
-  if (readonly_slot_regalloc->binding_frontier_kind != "binding_ready" ||
-      readonly_slot_regalloc->binding_frontier_reason != "sequenced_local_reuse_coordination") {
+  if (readonly_slot_regalloc->binding_frontier_kind != "binding_ready") {
     return fail("semantic-BIR regalloc should mark non-call-spanning multi-read candidates as ready for stable prepared binding");
   }
   if (readonly_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch" ||
@@ -1142,8 +1137,7 @@ int main() {
       !callread_slot_regalloc->crosses_call_boundary) {
     return fail("semantic-BIR regalloc should publish call-crossing instruction-order cues for read-only value storage");
   }
-  if (callread_slot_regalloc->binding_frontier_kind != "binding_ready" ||
-      callread_slot_regalloc->binding_frontier_reason != "call_boundary_preservation") {
+  if (callread_slot_regalloc->binding_frontier_kind != "binding_ready") {
     return fail("semantic-BIR regalloc should mark call-spanning read-only candidates as ready for stable prepared binding");
   }
   if (callread_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch" ||
@@ -1190,8 +1184,7 @@ int main() {
       !callwrite_slot_regalloc->crosses_call_boundary) {
     return fail("semantic-BIR regalloc should publish call-crossing instruction-order cues for write-only value storage");
   }
-  if (callwrite_slot_regalloc->binding_frontier_kind != "binding_ready" ||
-      callwrite_slot_regalloc->binding_frontier_reason != "call_boundary_preservation") {
+  if (callwrite_slot_regalloc->binding_frontier_kind != "binding_ready") {
     return fail("semantic-BIR regalloc should mark call-spanning write-only candidates as ready for stable prepared binding");
   }
   if (callwrite_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch" ||
@@ -1238,8 +1231,7 @@ int main() {
       multiwrite_slot_regalloc->crosses_call_boundary) {
     return fail("semantic-BIR regalloc should publish non-call-spanning instruction-order cues for multi-point write-only value storage");
   }
-  if (multiwrite_slot_regalloc->binding_frontier_kind != "binding_ready" ||
-      multiwrite_slot_regalloc->binding_frontier_reason != "sequenced_local_reuse_coordination") {
+  if (multiwrite_slot_regalloc->binding_frontier_kind != "binding_ready") {
     return fail("semantic-BIR regalloc should mark non-call-spanning multi-write candidates as ready for stable prepared binding");
   }
   if (multiwrite_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch" ||
@@ -1315,8 +1307,7 @@ int main() {
       address_taken_regalloc->deferred_reason != "not_applicable_fixed_stack") {
     return fail("semantic-BIR regalloc should publish a fixed-stack authoritative allocation state for address-exposed prepared objects");
   }
-  if (address_taken_regalloc->binding_frontier_kind != "fixed_stack_authoritative" ||
-      address_taken_regalloc->binding_frontier_reason != "fixed_stack_authoritative") {
+  if (address_taken_regalloc->binding_frontier_kind != "fixed_stack_authoritative") {
     return fail("semantic-BIR regalloc should keep fixed-stack storage outside the register-binding frontier");
   }
   const auto* call_result_regalloc =
