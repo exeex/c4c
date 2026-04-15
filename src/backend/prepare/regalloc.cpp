@@ -446,19 +446,6 @@ struct BindingBatchContractView {
   std::string_view sync_handoff_state;
 };
 
-std::string_view regalloc_binding_frontier_reason_view(
-    const PreparedRegallocObject& object) {
-  if (regalloc_binding_frontier_is_deferred(object) &&
-      object.deferred_reason == "awaiting_access_window_observation") {
-    return object.deferred_reason;
-  }
-  if (regalloc_binding_frontier_is_ready(object) ||
-      regalloc_binding_frontier_is_deferred(object)) {
-    return object.follow_up_category;
-  }
-  return regalloc_binding_frontier_kind_view(object);
-}
-
 std::optional<BindingBatchContractView> binding_batch_contract_view(
     PreparedRegallocFunction& function,
     const PreparedRegallocObject& object,
@@ -1087,7 +1074,9 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
         function.deferred_binding_batches.push_back(PreparedRegallocDeferredBindingBatchSummary{
             .binding_batch_kind = binding_batch_kind,
             .allocation_stage = decision.allocation_stage,
-            .deferred_reason = std::string(regalloc_binding_frontier_reason_view(*object)),
+            .deferred_reason =
+                object->deferred_reason != "not_deferred" ? object->deferred_reason
+                                                          : contention->follow_up_category,
             .follow_up_category = contention->follow_up_category,
             .ordering_policy =
                 std::string(regalloc_deferred_binding_ordering_policy(*object, *contention)),

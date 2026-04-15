@@ -13,23 +13,23 @@ Current Plan Focus: step-5 regalloc consumer shrink
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- stopped binding handoff summary construction from reading a mirrored
-  object-level `binding_frontier_reason` fallback when the ready path already
-  owns that fact in batch `follow_up_category` and the deferred path already
-  owns it in deferred-batch `deferred_reason`
-- kept object-local `binding_frontier_reason` publication intact for downstream
-  consumers while shrinking handoff publication back toward
-  `binding_batches`/`deferred_binding_batches`
+- removed the last deferred-batch use of
+  `regalloc_binding_frontier_reason_view(...)` so deferred binding batch
+  construction now derives its frontier reason directly from the real owners:
+  object-owned `deferred_reason` for access-window deferrals and
+  contention-owned `follow_up_category` for coordination deferrals
+- deleted the now-dead frontier-reason view helper instead of leaving a mirror
+  path behind for future batch construction
 - preserved the existing deferred-frontier split where access-window deferred
-  handoffs publish `awaiting_access_window_observation` and coordination
-  deferred handoffs publish the contention-owned follow-up category
+  batches carry `awaiting_access_window_observation` in `deferred_reason`
+  while coordination-deferred batches keep
+  `batched_single_point_coordination` owned by contention summaries
 
 ## Suggested Next
-- keep shrinking step-5 contract mirrors by checking whether deferred-batch
-  construction still needs `regalloc_binding_frontier_reason_view(...)` or can
-  publish its `deferred_reason` directly from `deferred_reason` plus
-  contention-owned follow-up state without changing object-local frontier
-  output
+- inspect whether object-local `binding_frontier_reason` still has any
+  non-reporting consumer or whether step 5 can shrink that remaining mirror
+  without removing downstream output that still depends on the object-local
+  projection
 - keep the next packet focused on ownership cleanup inside step 5; do not turn
   it into new allocation policy or target-ingestion work
 
@@ -47,6 +47,9 @@ Current Plan Focus: step-5 regalloc consumer shrink
 - the handoff path now derives `binding_frontier_reason` from batch-owned
   `follow_up_category` or deferred-batch `deferred_reason`; do not reintroduce
   the object-level mirror as the internal owner for that publication path
+- deferred binding batch construction now takes `deferred_reason` directly from
+  the object; if later cleanup removes or reshapes that object field, confirm
+  deferred-batch ownership still stays clear instead of recreating a view
 - the ready frontier still derives its access-window prerequisite state from
   stage contention while deferred frontiers read it from batch-owned state; if
   the next cleanup tries to unify that, keep one clear owner for each fact
