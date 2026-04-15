@@ -241,8 +241,6 @@ class BirPreAlloc {
       std::string_view source_name) const;
   const PreparedRegallocContentionSummary* find_contention_summary(
       std::string_view allocation_stage) const;
-  PreparedRegallocDeferredBindingBatchSummary* find_deferred_binding_batch_summary(
-      std::string_view deferred_reason);
   PreparedRegallocReservationSummary summarize_reservation_stage(
       std::string_view allocation_stage) const;
   void populate_object_allocation_state();

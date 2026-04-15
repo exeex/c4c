@@ -586,30 +586,16 @@ std::string_view regalloc_binding_batch_kind(
   return "binding_batch_needs_future_analysis";
 }
 
-struct RegallocDeferredBindingOwners {
-  std::string_view deferred_reason;
-  const PreparedRegallocObject* object = nullptr;
-  const PreparedRegallocContentionSummary* contention = nullptr;
-};
-
-RegallocDeferredBindingOwners regalloc_deferred_binding_owners(
+std::string_view regalloc_deferred_binding_reason(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
   if (object.deferred_reason == "awaiting_access_window_observation") {
-    return {
-        .deferred_reason = object.deferred_reason,
-        .object = &object,
-    };
+    return object.deferred_reason;
   }
   if (contention.follow_up_category == "batched_single_point_coordination") {
-    return {
-        .deferred_reason = contention.follow_up_category,
-        .contention = &contention,
-    };
+    return contention.follow_up_category;
   }
-  return {
-      .deferred_reason = "binding_deferred_reason_needs_future_analysis",
-  };
+  return "binding_deferred_reason_needs_future_analysis";
 }
 
 std::string_view regalloc_binding_home_slot_prerequisite_state(
@@ -698,19 +684,6 @@ const PreparedRegallocContentionSummary* BirPreAlloc::find_contention_summary(
   }
   for (const auto& summary : current_regalloc_function_->contention_summary) {
     if (summary.allocation_stage == allocation_stage) {
-      return &summary;
-    }
-  }
-  return nullptr;
-}
-
-PreparedRegallocDeferredBindingBatchSummary* BirPreAlloc::find_deferred_binding_batch_summary(
-    std::string_view deferred_reason) {
-  if (current_regalloc_function_ == nullptr) {
-    return nullptr;
-  }
-  for (auto& summary : current_regalloc_function_->deferred_binding_batches) {
-    if (summary.deferred_reason == deferred_reason) {
       return &summary;
     }
   }
@@ -855,8 +828,7 @@ void BirPreAlloc::populate_binding_sequence() {
     }
 
     if (regalloc_binding_frontier_is_deferred(*object)) {
-      const auto owners = regalloc_deferred_binding_owners(*object, *contention);
-      const std::string deferred_reason(owners.deferred_reason);
+      const std::string deferred_reason(regalloc_deferred_binding_reason(*object, *contention));
       auto& batch_summary =
           ensure_deferred_binding_batch_summary(*current_regalloc_function_, deferred_reason);
       batch_summary.attachments.push_back(

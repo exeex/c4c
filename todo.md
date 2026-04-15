@@ -17,21 +17,26 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- collapsed the remaining repeated deferred-batch identity checks in
-  `tests/backend/backend_prepare_entry_contract_test.cpp` behind one explicit
-  deferred-batch identity helper, so lookup and handoff assertions now rejoin
-  through the existing access-window-object versus coordination-contention
-  owner-selection route instead of open-coding the same
-  `summary.deferred_reason` checks
+- trimmed stale deferred-batch helper scaffolding in
+  `src/backend/prealloc/regalloc.cpp` by deleting the unused deferred-owner
+  pointer bundle and keeping deferred batch construction keyed by the single
+  value regalloc actually owns there: the surviving deferred reason
+- removed the dead private deferred-batch lookup declaration/definition from
+  `src/backend/prealloc/prealloc.hpp` and
+  `src/backend/prealloc/regalloc.cpp`, then updated
+  `tests/backend/backend_prepare_entry_contract_test.cpp` so deferred-batch
+  joins resolve identity and access-window ownership once per batch instead of
+  bouncing through extra owner helper layers
 - kept the cleanup inside step-5 regalloc ownership work without renaming the
   public `prepare` contract, changing backend routing, or introducing a new
   deferred summary mirror
 
 ## Suggested Next
-- inspect whether the remaining deferred-batch helper surface still duplicates
-  any owner-selection joins that could collapse behind the same explicit
-  helper route without pushing coordination facts back onto objects or
-  inventing a new summary layer
+- inspect whether the remaining deferred-batch assertions at the bottom of
+  `tests/backend/backend_prepare_entry_contract_test.cpp` still repeat
+  `join_regalloc_deferred_binding_batch(...)` lookups that could collapse
+  behind one per-batch resolved join without changing any prepare-owned data
+  model
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -84,6 +89,10 @@ while keeping the public shared contract named `prepare`
   in both regalloc and the prepare-entry contract test; if later cleanup trims
   more helper branching, keep that route explicit instead of spreading new
   `deferred_reason` switches back across multiple helpers
+- deferred batch resolution in the contract test now caches identity plus the
+  access-window-owner choice on `RegallocDeferredBatchJoin`; if later cleanup
+  trims more helpers, keep that join result as the consumer surface instead of
+  recreating separate owner-object or owner-contention wrappers
 - deferred batch identity checks in the contract test now funnel through one
   explicit identity helper; if a later packet trims more helper branching,
   keep that route instead of re-scattering new `deferred_reason` checks across
