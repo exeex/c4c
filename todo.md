@@ -13,46 +13,23 @@ Current Plan Focus: step-5 regalloc consumer shrink
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- moved prepared liveness to an information-only owner of function call points,
-  object access shape, direct read/write counts, access windows, and
-  call-crossing cues
-- removed regalloc-local access summary rebuilding so regalloc now consumes
-  `PreparedLivenessObject` instead of rescanning BIR
-- deleted several cosmetic regalloc-only contract layers
-  (`preferred_register_pool`, pressure/reload/materialization/eligibility
-  hints, `assignment_readiness`, `eviction_friction_hint`)
-- deleted the synthetic ready-only `stable_binding_pass*` surface and kept
-  binding consumption anchored on binding batches, binding order, and handoff
-  summaries
-- deleted object-level deferred-only binding projection fields and kept
-  deferred objects on the same uniform `binding_*` and `binding_handoff_*`
-  contract already used by ready objects
-- removed the remaining object-level batch prerequisite and handoff mirrors so
-  `PreparedRegallocObject` now keeps only binding frontier, batch membership,
-  and order while batch and handoff summaries own the prerequisite/handoff
-  detail
-- rebuilt binding handoff summaries from batch-owned data instead of reading
-  object-local mirrored prerequisite and handoff fields
-- shrank `PreparedRegallocBindingDecision` so binding-sequence entries now keep
-  only source identity, batch membership, and binding order while batch and
-  handoff summaries remain the owners of stage, ordering policy, follow-up,
-  and prerequisite detail
-- updated `backend_prepare_entry_contract` to assert the slimmer per-binding
-  contract and keep stage/policy/prerequisite ownership checks on batch and
-  handoff summaries
+- replaced the duplicated ready-vs-deferred `binding_handoff_summary`
+  construction path with one shared batch-contract view that materializes
+  handoff summaries from batch-owned data regardless of frontier kind
+- kept ready and deferred batch summary ownership unchanged while removing the
+  separate handoff push paths that previously rebuilt the same contract fields
+  in parallel
+- preserved the focused `backend_prepare_entry_contract` proof while shrinking
+  the regalloc handoff seam to one contract-to-summary conversion path
 
 ## Suggested Next
 - continue shrinking `src/backend/prepare/regalloc.cpp` by removing any
-  remaining helper or sequence surface that duplicates batch or handoff
-  summary facts without adding new allocation facts
-- prefer one uniform object contract plus function-level summaries; avoid
-  parallel ready-vs-deferred object surfaces that encode the same prerequisite
-  facts twice
-- keep `PreparedRegallocFunction` focused on artifacts a downstream allocator
-  would actually consume: staged candidates, contention summaries, binding
-  sequence, and frontier summaries; the next likely seam is whether
-  `binding_handoff_summary` still needs separate ready-vs-deferred batch source
-  structs or can consume a slimmer shared batch contract
+  remaining ready-vs-deferred partition bookkeeping that now only mirrors
+  `binding_batches` and `binding_handoff_summary` counts instead of adding new
+  allocation facts
+- treat the next packet as a function-summary cleanup, not a new analysis
+  feature: if a count or batch field can be derived from the existing shared
+  batch frontier surface, prefer deleting the mirror
 
 ## Watchouts
 - do not add more liveness-like fact gathering to
@@ -65,8 +42,11 @@ Current Plan Focus: step-5 regalloc consumer shrink
 - if a regalloc field only repeats a function-level batch/handoff summary onto
   every object, prefer deleting it unless a downstream consumer truly needs the
   object-local projection
+- the ready frontier still derives its access-window prerequisite state from
+  stage contention while deferred frontiers read it from batch-owned state; if
+  the next cleanup tries to unify that too, keep one clear owner for each fact
 
 ## Proof
 - `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepare_entry_contract$' 2>&1 | tee test_after.log`
-- passed; the delegated build plus focused `backend_prepare_entry_contract`
-  proof completed successfully and preserved output at `test_after.log`
+- passed; the build plus focused `backend_prepare_entry_contract` proof
+  completed successfully and preserved output at `test_after.log`

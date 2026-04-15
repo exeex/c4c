@@ -1,6 +1,7 @@
 #include "regalloc.hpp"
 
 #include <algorithm>
+#include <optional>
 
 // Execution note: this file is still a scaffold.
 // Follow ref/claudes-c-compiler/src/backend/regalloc.rs for the intended
@@ -386,6 +387,94 @@ PreparedRegallocBindingHandoffSummary* find_binding_handoff_summary(
     }
   }
   return nullptr;
+}
+
+std::string_view regalloc_binding_access_window_prerequisite_state(
+    const PreparedRegallocContentionSummary& contention);
+
+struct BindingBatchContractView {
+  std::string_view binding_frontier_kind;
+  std::string_view binding_frontier_reason;
+  std::string_view binding_batch_kind;
+  std::string_view allocation_stage;
+  std::string_view follow_up_category;
+  std::string_view ordering_policy;
+  std::string_view access_window_prerequisite_category;
+  std::string_view access_window_prerequisite_state;
+  std::string_view home_slot_prerequisite_category;
+  std::string_view home_slot_prerequisite_state;
+  std::string_view sync_handoff_prerequisite_category;
+  std::string_view sync_handoff_state;
+};
+
+std::optional<BindingBatchContractView> binding_batch_contract_view(
+    PreparedRegallocFunction& function,
+    const PreparedRegallocObject& object,
+    const PreparedRegallocContentionSummary* contention) {
+  if (object.binding_frontier_kind == "binding_ready") {
+    auto* batch_summary = find_binding_batch_summary(function, object.binding_batch_kind);
+    if (batch_summary == nullptr || contention == nullptr) {
+      return std::nullopt;
+    }
+    return BindingBatchContractView{
+        .binding_frontier_kind = object.binding_frontier_kind,
+        .binding_frontier_reason = object.binding_frontier_reason,
+        .binding_batch_kind = object.binding_batch_kind,
+        .allocation_stage = batch_summary->allocation_stage,
+        .follow_up_category = batch_summary->follow_up_category,
+        .ordering_policy = batch_summary->ordering_policy,
+        .access_window_prerequisite_category = contention->window_coordination_category,
+        .access_window_prerequisite_state =
+            regalloc_binding_access_window_prerequisite_state(*contention),
+        .home_slot_prerequisite_category = batch_summary->home_slot_prerequisite_category,
+        .home_slot_prerequisite_state = batch_summary->home_slot_prerequisite_state,
+        .sync_handoff_prerequisite_category = batch_summary->sync_handoff_prerequisite_category,
+        .sync_handoff_state = batch_summary->sync_handoff_state,
+    };
+  }
+
+  auto* batch_summary = find_deferred_binding_batch_summary(function, object.binding_batch_kind);
+  if (batch_summary == nullptr) {
+    return std::nullopt;
+  }
+  return BindingBatchContractView{
+      .binding_frontier_kind = object.binding_frontier_kind,
+      .binding_frontier_reason = object.binding_frontier_reason,
+      .binding_batch_kind = object.binding_batch_kind,
+      .allocation_stage = batch_summary->allocation_stage,
+      .follow_up_category = batch_summary->follow_up_category,
+      .ordering_policy = batch_summary->ordering_policy,
+      .access_window_prerequisite_category =
+          batch_summary->access_window_prerequisite_category,
+      .access_window_prerequisite_state = batch_summary->access_window_prerequisite_state,
+      .home_slot_prerequisite_category = batch_summary->home_slot_prerequisite_category,
+      .home_slot_prerequisite_state = batch_summary->home_slot_prerequisite_state,
+      .sync_handoff_prerequisite_category =
+          batch_summary->sync_handoff_prerequisite_category,
+      .sync_handoff_state = batch_summary->sync_handoff_state,
+  };
+}
+
+PreparedRegallocBindingHandoffSummary make_binding_handoff_summary(
+    const BindingBatchContractView& contract) {
+  return PreparedRegallocBindingHandoffSummary{
+      .binding_frontier_kind = std::string(contract.binding_frontier_kind),
+      .binding_frontier_reason = std::string(contract.binding_frontier_reason),
+      .binding_batch_kind = std::string(contract.binding_batch_kind),
+      .allocation_stage = std::string(contract.allocation_stage),
+      .follow_up_category = std::string(contract.follow_up_category),
+      .ordering_policy = std::string(contract.ordering_policy),
+      .access_window_prerequisite_category =
+          std::string(contract.access_window_prerequisite_category),
+      .access_window_prerequisite_state =
+          std::string(contract.access_window_prerequisite_state),
+      .home_slot_prerequisite_category =
+          std::string(contract.home_slot_prerequisite_category),
+      .home_slot_prerequisite_state = std::string(contract.home_slot_prerequisite_state),
+      .sync_handoff_prerequisite_category =
+          std::string(contract.sync_handoff_prerequisite_category),
+      .sync_handoff_state = std::string(contract.sync_handoff_state),
+  };
 }
 
 bool access_windows_overlap(const PreparedRegallocObject& lhs, const PreparedRegallocObject& rhs) {
@@ -1044,53 +1133,11 @@ void populate_binding_handoff_summary(PreparedRegallocFunction& function) {
                                                  object->binding_frontier_kind,
                                                  object->binding_batch_kind);
     if (summary == nullptr) {
-      if (object->binding_frontier_kind == "binding_ready") {
-        auto* batch_summary = find_binding_batch_summary(function, object->binding_batch_kind);
-        if (batch_summary == nullptr || contention == nullptr) {
-          continue;
-        }
-        function.binding_handoff_summary.push_back(PreparedRegallocBindingHandoffSummary{
-            .binding_frontier_kind = object->binding_frontier_kind,
-            .binding_frontier_reason = object->binding_frontier_reason,
-            .binding_batch_kind = object->binding_batch_kind,
-            .allocation_stage = batch_summary->allocation_stage,
-            .follow_up_category = batch_summary->follow_up_category,
-            .ordering_policy = batch_summary->ordering_policy,
-            .access_window_prerequisite_category = contention->window_coordination_category,
-            .access_window_prerequisite_state =
-                std::string(regalloc_binding_access_window_prerequisite_state(*contention)),
-            .home_slot_prerequisite_category =
-                batch_summary->home_slot_prerequisite_category,
-            .home_slot_prerequisite_state = batch_summary->home_slot_prerequisite_state,
-            .sync_handoff_prerequisite_category =
-                batch_summary->sync_handoff_prerequisite_category,
-            .sync_handoff_state = batch_summary->sync_handoff_state,
-        });
-      } else {
-        auto* batch_summary =
-            find_deferred_binding_batch_summary(function, object->binding_batch_kind);
-        if (batch_summary == nullptr) {
-          continue;
-        }
-        function.binding_handoff_summary.push_back(PreparedRegallocBindingHandoffSummary{
-            .binding_frontier_kind = object->binding_frontier_kind,
-            .binding_frontier_reason = object->binding_frontier_reason,
-            .binding_batch_kind = object->binding_batch_kind,
-            .allocation_stage = batch_summary->allocation_stage,
-            .follow_up_category = batch_summary->follow_up_category,
-            .ordering_policy = batch_summary->ordering_policy,
-            .access_window_prerequisite_category =
-                batch_summary->access_window_prerequisite_category,
-            .access_window_prerequisite_state =
-                batch_summary->access_window_prerequisite_state,
-            .home_slot_prerequisite_category =
-                batch_summary->home_slot_prerequisite_category,
-            .home_slot_prerequisite_state = batch_summary->home_slot_prerequisite_state,
-            .sync_handoff_prerequisite_category =
-                batch_summary->sync_handoff_prerequisite_category,
-            .sync_handoff_state = batch_summary->sync_handoff_state,
-        });
+      const auto contract = binding_batch_contract_view(function, *object, contention);
+      if (!contract.has_value()) {
+        continue;
       }
+      function.binding_handoff_summary.push_back(make_binding_handoff_summary(*contract));
       summary = &function.binding_handoff_summary.back();
     }
     ++summary->candidate_count;
