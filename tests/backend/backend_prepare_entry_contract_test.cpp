@@ -847,6 +847,9 @@ int main() {
         "semantic-BIR regalloc should project access-window-deferred binding batch prerequisites back onto each deferred prepared object");
   }
   if (scratch_slot_regalloc->binding_batch_kind != "deferred_access_window_binding_batch" ||
+      scratch_slot_regalloc->binding_handoff_allocation_stage !=
+          "opportunistic_single_point" ||
+      scratch_slot_regalloc->binding_handoff_candidate_count != 7 ||
       scratch_slot_regalloc->binding_ordering_policy != "defer_until_access_window_observed" ||
       scratch_slot_regalloc->binding_access_window_prerequisite_category !=
           "unobserved_instruction_window" ||
@@ -952,6 +955,9 @@ int main() {
         "semantic-BIR regalloc should project coordination-deferred binding batch prerequisites back onto each deferred prepared object");
   }
   if (local_slot_regalloc->binding_batch_kind != "deferred_coordination_binding_batch" ||
+      local_slot_regalloc->binding_handoff_allocation_stage !=
+          "opportunistic_single_point" ||
+      local_slot_regalloc->binding_handoff_candidate_count != 2 ||
       local_slot_regalloc->binding_ordering_policy != "defer_until_frontier_ready" ||
       local_slot_regalloc->binding_access_window_prerequisite_category != "mixed_sparse_windows" ||
       local_slot_regalloc->binding_access_window_prerequisite_state !=

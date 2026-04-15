@@ -8,24 +8,23 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- projected the ready binding-handoff summary contract back onto prepared
-  regalloc objects by recording each ready object's handoff allocation stage
-  and candidate count directly from the existing handoff summaries instead of
-  making downstream consumers look through binding-batch or stable-pass
-  summaries to recover the full ready object handoff
-- kept that new object-level handoff surface derived from the existing
-  `binding_handoff_summary` records rather than inventing a parallel ready
-  sequencing model or recomputing counts from object-local state
-- extended the backend prepare entry fixture to assert the new object-level
-  ready handoff stage/count surface across the representative call-boundary
-  and local-reuse ready objects alongside the previously added pass-order and
-  prerequisite cues
+- proved that the object-level handoff projection already covers deferred
+  prepared regalloc objects as well as ready ones by asserting the deferred
+  frontier handoff allocation stage and candidate count on representative
+  access-window-deferred and coordination-deferred objects
+- kept the deferred object-level handoff surface derived from the existing
+  `binding_handoff_summary` records rather than inventing a second deferred
+  summary model or recomputing batch counts from object-local state
+- extended the backend prepare entry fixture so both representative deferred
+  frontier shapes now assert their explicit per-object handoff stage/count
+  alongside the previously added deferred prerequisite and uniform binding
+  contract cues
 
 ## Suggested Next
-- keep step-4 work inside prepare by projecting the same handoff-summary
-  stage/count contract onto deferred prepared regalloc objects, so downstream
-  consumers can recover the explicit deferred frontier handoff per object
-  without consulting deferred binding-batch summaries
+- checkpoint the current step-4 object-first regalloc frontier contract and
+  choose the next prepare-owned packet from the remaining regalloc consumer
+  gaps, because the ready and deferred handoff stage/count projection work is
+  now covered on representative shapes
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -61,6 +60,10 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
   existing handoff summaries; do not fork a second summary model on objects,
   and do not backfill deferred entries with fake ready-stage or ready-count
   values just to flatten the frontier contract
+- keep the same object-level deferred handoff stage/count surface derived from
+  the existing deferred handoff summaries; do not invent separate deferred
+  batch counters or object-local recount logic just to make the frontier look
+  more uniform than the current prepare facts support
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build
