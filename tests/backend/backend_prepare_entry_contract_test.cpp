@@ -46,6 +46,17 @@ const prepare::PreparedStackObject* find_stack_object(const prepare::PreparedBir
   return nullptr;
 }
 
+const prepare::PreparedLivenessObject* find_liveness_object(const prepare::PreparedBirModule& module,
+                                                            std::string_view source_kind,
+                                                            std::string_view source_name) {
+  for (const auto& object : module.liveness.objects) {
+    if (object.source_kind == source_kind && object.source_name == source_name) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
 bir::Module make_prepare_contract_bir_module() {
   bir::Module module;
   bir::Function function;
@@ -266,12 +277,16 @@ int main() {
   if (!contains_note(prepared_bir.notes, "stack_layout", "aggregate va_arg output storage")) {
     return fail("semantic-BIR prepare stack-layout note should mention aggregate va_arg output storage");
   }
+  if (!contains_note(prepared_bir.notes, "liveness", "value-storage or address-exposed storage contracts")) {
+    return fail("semantic-BIR prepare liveness note should mention the prepared frame-object contracts");
+  }
   constexpr std::string_view kExpectedBirPhases[] = {
       "legalize",
       "stack_layout",
+      "liveness",
   };
   if (prepared_bir.completed_phases.size() != std::size(kExpectedBirPhases)) {
-    return fail("semantic-BIR prepare entry should complete legalize and stack_layout in this slice");
+    return fail("semantic-BIR prepare entry should complete legalize, stack_layout, and liveness in this slice");
   }
   for (std::size_t index = 0; index < std::size(kExpectedBirPhases); ++index) {
     if (prepared_bir.completed_phases[index] != kExpectedBirPhases[index]) {
@@ -341,6 +356,39 @@ int main() {
       va_arg_result->align_bytes != 4) {
     return fail(
         "semantic-BIR stack layout should publish aggregate va_arg output storage as a prepared frame object");
+  }
+  if (prepared_bir.liveness.objects.size() != prepared_bir.stack_layout.objects.size()) {
+    return fail("semantic-BIR liveness should classify every prepared stack-layout object");
+  }
+  const auto* local_slot_liveness = find_liveness_object(prepared_bir, "local_slot", "flag.slot");
+  if (local_slot_liveness == nullptr || local_slot_liveness->function_name != "id_pair" ||
+      local_slot_liveness->contract_kind != "value_storage") {
+    return fail("semantic-BIR liveness should classify local stack objects as value storage");
+  }
+  const auto* scratch_slot_liveness =
+      find_liveness_object(prepared_bir, "lowering_scratch_slot", "scratch.slot");
+  if (scratch_slot_liveness == nullptr || scratch_slot_liveness->function_name != "id_pair" ||
+      scratch_slot_liveness->contract_kind != "value_storage") {
+    return fail("semantic-BIR liveness should classify lowering scratch stack objects as value storage");
+  }
+  const auto* address_taken_liveness =
+      find_liveness_object(prepared_bir, "address_taken_local_slot", "addressed.slot");
+  if (address_taken_liveness == nullptr || address_taken_liveness->function_name != "id_pair" ||
+      address_taken_liveness->contract_kind != "address_exposed_storage") {
+    return fail(
+        "semantic-BIR liveness should classify address-taken stack objects as address-exposed storage");
+  }
+  const auto* sret_param_liveness = find_liveness_object(prepared_bir, "sret_param", "%ret.sret");
+  if (sret_param_liveness == nullptr || sret_param_liveness->function_name != "id_pair" ||
+      sret_param_liveness->contract_kind != "address_exposed_storage") {
+    return fail("semantic-BIR liveness should classify sret memory routes as address-exposed storage");
+  }
+  const auto* call_result_liveness =
+      find_liveness_object(prepared_bir, "call_result_sret", "%call.result");
+  if (call_result_liveness == nullptr || call_result_liveness->function_name != "id_pair" ||
+      call_result_liveness->contract_kind != "address_exposed_storage") {
+    return fail(
+        "semantic-BIR liveness should classify aggregate call-result storage as address-exposed storage");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(

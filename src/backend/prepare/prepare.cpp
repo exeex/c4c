@@ -77,6 +77,9 @@ PreparedBirModule prepare_semantic_bir_module_with_options(
   if (options.run_stack_layout) {
     run_stack_layout(prepared, options);
   }
+  if (options.run_liveness) {
+    run_liveness(prepared, options);
+  }
   return prepared;
 }
 

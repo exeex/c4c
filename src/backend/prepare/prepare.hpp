@@ -35,6 +35,17 @@ struct PreparedStackLayout {
   std::vector<PreparedStackObject> objects;
 };
 
+struct PreparedLivenessObject {
+  std::string function_name;
+  std::string source_name;
+  std::string source_kind;
+  std::string contract_kind;
+};
+
+struct PreparedLiveness {
+  std::vector<PreparedLivenessObject> objects;
+};
+
 enum class PrepareRoute {
   SemanticBirShared,
   BootstrapLirFallback,
@@ -79,6 +90,7 @@ struct PreparedBirModule {
   PrepareRoute route = PrepareRoute::SemanticBirShared;
   std::vector<PreparedBirInvariant> invariants;
   PreparedStackLayout stack_layout;
+  PreparedLiveness liveness;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
 };
