@@ -682,8 +682,10 @@ Node* Parser::parse_stmt() {
             const bool empty_template =
                 asm_template && asm_template->kind == NK_STR_LIT && asm_template->sval &&
                 strip_quotes(asm_template->sval).empty();
-            if (empty_template && !outputs.empty()) {
+            if (empty_template && !outputs.empty() && !saw_volatile &&
+                clobbers.empty()) {
                 std::vector<Node*> lowered;
+                bool can_lower_all_outputs = true;
                 for (int oi = 0; oi < static_cast<int>(outputs.size()); ++oi) {
                     const AsmOperand& out = outputs[oi];
                     if (!out.expr) continue;
@@ -705,11 +707,15 @@ Node* Parser::parse_stmt() {
                             break;
                         }
                     }
-                    if (!rhs) continue;
+                    if (!rhs) {
+                        can_lower_all_outputs = false;
+                        break;
+                    }
                     Node* expr_stmt = make_node(NK_EXPR_STMT, ln);
                     expr_stmt->left = make_assign("=", out.expr, rhs, ln);
                     lowered.push_back(expr_stmt);
                 }
+                if (!can_lower_all_outputs) lowered.clear();
                 if (lowered.empty()) return make_node(NK_EMPTY, ln);
                 return make_block(lowered.data(), static_cast<int>(lowered.size()), ln);
             }
