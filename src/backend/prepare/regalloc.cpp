@@ -1549,6 +1549,57 @@ void populate_binding_handoff_summary(PreparedRegallocFunction& function) {
   }
 }
 
+void populate_stable_binding_passes(PreparedRegallocFunction& function) {
+  function.stable_binding_passes.clear();
+  function.stable_binding_passes.reserve(function.binding_ready_batch_count);
+
+  std::size_t pass_order_index = 0;
+  for (const auto& summary : function.binding_handoff_summary) {
+    if (summary.binding_frontier_kind != "binding_ready") {
+      continue;
+    }
+
+    PreparedRegallocStableBindingPass pass{
+        .pass_order_index = pass_order_index,
+        .binding_batch_kind = summary.binding_batch_kind,
+        .binding_frontier_reason = summary.binding_frontier_reason,
+        .allocation_stage = summary.allocation_stage,
+        .follow_up_category = summary.follow_up_category,
+        .ordering_policy = summary.ordering_policy,
+        .access_window_prerequisite_category = summary.access_window_prerequisite_category,
+        .access_window_prerequisite_state = summary.access_window_prerequisite_state,
+        .home_slot_prerequisite_category = summary.home_slot_prerequisite_category,
+        .home_slot_prerequisite_state = summary.home_slot_prerequisite_state,
+        .sync_handoff_prerequisite_category = summary.sync_handoff_prerequisite_category,
+        .sync_handoff_state = summary.sync_handoff_state,
+    };
+
+    bool found_binding = false;
+    for (const auto& binding : function.binding_sequence) {
+      if (binding.binding_batch_kind != summary.binding_batch_kind) {
+        continue;
+      }
+      if (!found_binding) {
+        pass.first_binding_order_index = binding.binding_order_index;
+        pass.last_binding_order_index = binding.binding_order_index;
+        found_binding = true;
+      } else {
+        pass.first_binding_order_index =
+            std::min(pass.first_binding_order_index, binding.binding_order_index);
+        pass.last_binding_order_index =
+            std::max(pass.last_binding_order_index, binding.binding_order_index);
+      }
+    }
+    if (!found_binding) {
+      continue;
+    }
+
+    pass.candidate_count = summary.candidate_count;
+    function.stable_binding_passes.push_back(std::move(pass));
+    ++pass_order_index;
+  }
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -1695,6 +1746,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
     populate_object_allocation_state(prepared_function);
     populate_binding_sequence(prepared_function);
     populate_binding_handoff_summary(prepared_function);
+    populate_stable_binding_passes(prepared_function);
     if (!prepared_function.objects.empty()) {
       module.regalloc.functions.push_back(std::move(prepared_function));
     }
@@ -1745,6 +1797,10 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "summaries alone, plus downstream handoff summaries that collapse "
           "ready, access-window-deferred, and coordination-deferred frontiers "
           "into one scan surface derived from those uniform per-object cues, "
+          "plus ready-only stable-binding pass summaries that turn those "
+          "handoff summaries back into one concrete consume-in-order surface "
+          "for call-boundary and local-reuse batches without naming physical "
+          "registers or flattening deferred frontiers, "
           "plus a ready-only binding batch/order artifact that keeps current "
           "stable-binding work grouped by prepare-owned call-boundary versus "
           "local-reuse batches without naming physical registers, plus per-binding "

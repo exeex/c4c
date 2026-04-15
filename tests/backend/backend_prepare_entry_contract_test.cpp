@@ -172,6 +172,17 @@ const prepare::PreparedRegallocBindingHandoffSummary* find_regalloc_binding_hand
   return nullptr;
 }
 
+const prepare::PreparedRegallocStableBindingPass* find_regalloc_stable_binding_pass(
+    const prepare::PreparedRegallocFunction& function,
+    std::string_view binding_batch_kind) {
+  for (const auto& pass : function.stable_binding_passes) {
+    if (pass.binding_batch_kind == binding_batch_kind) {
+      return &pass;
+    }
+  }
+  return nullptr;
+}
+
 bir::Module make_prepare_contract_bir_module() {
   bir::Module module;
   bir::Function function;
@@ -781,6 +792,11 @@ int main() {
       regalloc_function->deferred_binding_batches.size() !=
           regalloc_function->binding_deferred_batch_count) {
     return fail("semantic-BIR regalloc should publish explicit deferred binding batches for the current binding-deferred frontier");
+  }
+  if (regalloc_function->stable_binding_passes.size() !=
+      regalloc_function->binding_ready_batch_count) {
+    return fail(
+        "semantic-BIR regalloc should publish one ready-only stable-binding pass per ready binding batch");
   }
   if (regalloc_function->allocation_sequence.size() != regalloc_function->register_candidate_count) {
     return fail("semantic-BIR regalloc should publish one allocation-sequence decision per register candidate");
@@ -1601,6 +1617,10 @@ int main() {
       find_regalloc_binding_handoff_summary(*regalloc_function,
                                             "binding_deferred",
                                             "deferred_coordination_binding_batch");
+  const auto* call_boundary_stable_binding_pass =
+      find_regalloc_stable_binding_pass(*regalloc_function, "call_boundary_binding_batch");
+  const auto* local_reuse_stable_binding_pass =
+      find_regalloc_stable_binding_pass(*regalloc_function, "local_reuse_binding_batch");
   if (carry_sequence == nullptr || callread_sequence == nullptr || callwrite_sequence == nullptr ||
       window_sequence == nullptr || readonly_sequence == nullptr || multiwrite_sequence == nullptr ||
       local_slot_sequence == nullptr || writeonly_sequence == nullptr) {
@@ -1629,6 +1649,11 @@ int main() {
       deferred_coordination_handoff_summary == nullptr) {
     return fail(
         "semantic-BIR regalloc should publish unified downstream handoff summaries across ready and deferred binding frontiers");
+  }
+  if (call_boundary_stable_binding_pass == nullptr ||
+      local_reuse_stable_binding_pass == nullptr) {
+    return fail(
+        "semantic-BIR regalloc should publish ready-only stable-binding pass summaries for the current binding-ready frontier");
   }
   if (find_regalloc_binding_decision(*regalloc_function, "local_slot", "flag.slot") != nullptr ||
       find_regalloc_binding_decision(*regalloc_function, "local_slot", "writeonly.slot") != nullptr) {
@@ -1949,6 +1974,58 @@ int main() {
       local_reuse_handoff_summary->candidate_count != 3) {
     return fail(
         "semantic-BIR regalloc should collapse ready local-reuse bindings into one downstream handoff summary");
+  }
+  if (call_boundary_stable_binding_pass->pass_order_index != 0 ||
+      call_boundary_stable_binding_pass->binding_frontier_reason !=
+          "call_boundary_preservation" ||
+      call_boundary_stable_binding_pass->allocation_stage != "stabilize_across_calls" ||
+      call_boundary_stable_binding_pass->follow_up_category !=
+          "call_boundary_preservation" ||
+      call_boundary_stable_binding_pass->ordering_policy !=
+          "preserve_allocation_sequence" ||
+      call_boundary_stable_binding_pass->access_window_prerequisite_category !=
+          "overlapping_call_boundary_windows" ||
+      call_boundary_stable_binding_pass->access_window_prerequisite_state !=
+          "prepare_access_window_prerequisite_satisfied" ||
+      call_boundary_stable_binding_pass->home_slot_prerequisite_category !=
+          "stable_home_slot_required" ||
+      call_boundary_stable_binding_pass->home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      call_boundary_stable_binding_pass->sync_handoff_prerequisite_category !=
+          "mixed_sync_coordination" ||
+      call_boundary_stable_binding_pass->sync_handoff_state !=
+          "prepare_sync_handoff_ready" ||
+      call_boundary_stable_binding_pass->first_binding_order_index != 0 ||
+      call_boundary_stable_binding_pass->last_binding_order_index != 2 ||
+      call_boundary_stable_binding_pass->candidate_count != 3) {
+    return fail(
+        "semantic-BIR regalloc should turn ready call-boundary handoff summaries into one concrete stable-binding pass");
+  }
+  if (local_reuse_stable_binding_pass->pass_order_index != 1 ||
+      local_reuse_stable_binding_pass->binding_frontier_reason !=
+          "sequenced_local_reuse_coordination" ||
+      local_reuse_stable_binding_pass->allocation_stage != "stabilize_local_reuse" ||
+      local_reuse_stable_binding_pass->follow_up_category !=
+          "sequenced_local_reuse_coordination" ||
+      local_reuse_stable_binding_pass->ordering_policy !=
+          "preserve_allocation_sequence" ||
+      local_reuse_stable_binding_pass->access_window_prerequisite_category !=
+          "adjacent_local_windows" ||
+      local_reuse_stable_binding_pass->access_window_prerequisite_state !=
+          "prepare_access_window_prerequisite_satisfied" ||
+      local_reuse_stable_binding_pass->home_slot_prerequisite_category !=
+          "stable_home_slot_preferred" ||
+      local_reuse_stable_binding_pass->home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      local_reuse_stable_binding_pass->sync_handoff_prerequisite_category !=
+          "mixed_sync_coordination" ||
+      local_reuse_stable_binding_pass->sync_handoff_state !=
+          "prepare_sync_handoff_ready" ||
+      local_reuse_stable_binding_pass->first_binding_order_index != 0 ||
+      local_reuse_stable_binding_pass->last_binding_order_index != 2 ||
+      local_reuse_stable_binding_pass->candidate_count != 3) {
+    return fail(
+        "semantic-BIR regalloc should turn ready local-reuse handoff summaries into one concrete stable-binding pass");
   }
   if (deferred_access_window_handoff_summary->binding_frontier_reason !=
           "awaiting_access_window_observation" ||

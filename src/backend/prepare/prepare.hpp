@@ -203,6 +203,24 @@ struct PreparedRegallocBindingHandoffSummary {
   std::size_t candidate_count = 0;
 };
 
+struct PreparedRegallocStableBindingPass {
+  std::size_t pass_order_index = 0;
+  std::string binding_batch_kind;
+  std::string binding_frontier_reason;
+  std::string allocation_stage;
+  std::string follow_up_category;
+  std::string ordering_policy;
+  std::string access_window_prerequisite_category;
+  std::string access_window_prerequisite_state;
+  std::string home_slot_prerequisite_category;
+  std::string home_slot_prerequisite_state;
+  std::string sync_handoff_prerequisite_category;
+  std::string sync_handoff_state;
+  std::size_t first_binding_order_index = 0;
+  std::size_t last_binding_order_index = 0;
+  std::size_t candidate_count = 0;
+};
+
 struct PreparedRegallocFunction {
   std::string function_name;
   std::vector<PreparedRegallocObject> objects;
@@ -213,6 +231,7 @@ struct PreparedRegallocFunction {
   std::vector<PreparedRegallocBindingBatchSummary> binding_batches;
   std::vector<PreparedRegallocDeferredBindingBatchSummary> deferred_binding_batches;
   std::vector<PreparedRegallocBindingHandoffSummary> binding_handoff_summary;
+  std::vector<PreparedRegallocStableBindingPass> stable_binding_passes;
   std::size_t register_candidate_count = 0;
   std::size_t fixed_stack_storage_count = 0;
   std::size_t binding_ready_count = 0;

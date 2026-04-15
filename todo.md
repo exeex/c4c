@@ -8,25 +8,25 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- derived a unified downstream handoff summary from the existing uniform
-  per-object binding contract, so prepared consumers can scan ready,
-  access-window-deferred, and coordination-deferred regalloc frontiers without
-  rejoining object state to ready/deferred batch tables
-- kept the earlier ready-only and deferred batch artifacts in place, but added
-  one prepare-owned per-function handoff summary surface that carries frontier
-  kind/reason, allocation stage, ordering policy, prerequisite state, and
-  candidate counts across both ready and deferred batches
+- derived a ready-only stable-binding pass surface from the existing regalloc
+  handoff summaries, so prepared consumers can follow call-boundary and
+  local-reuse ready batches through one concrete pass-order contract without
+  naming physical registers or flattening deferred frontiers
+- kept the earlier binding sequence, ready/deferred batch artifacts, and
+  unified handoff summaries in place, but added one prepare-owned per-function
+  pass summary that carries batch kind, frontier reason, prerequisite state,
+  pass order, and covered binding-order span for the ready frontier only
 - extended the prepare entry backend fixture and regalloc note text to assert
-  the new downstream handoff summaries alongside the existing uniform
-  per-object binding cues without reopening target-ingestion work or naming
-  physical registers
+  the new stable-binding pass summaries alongside the existing handoff and
+  binding-order cues without reopening target-ingestion work or converting
+  deferred batches into fake ready bindings
 
 ## Suggested Next
-- keep step-4 work inside prepare by deriving the next concrete binding-ready
-  consumption artifact from the current handoff summaries, so downstream
-  prepared consumers can follow ready call-boundary and local-reuse batches
-  through a target-neutral stable-binding pass without inventing physical
-  registers or bypassing the deferred frontier
+- keep step-4 work inside prepare by projecting the ready-only stable-binding
+  pass contract back onto each binding entry, so downstream prepared consumers
+  can walk concrete call-boundary and local-reuse bindings from pass order to
+  per-binding prerequisites without consulting batch summaries or touching
+  deferred frontiers
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -54,6 +54,10 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 - preserve the current split between register-candidate reservation decisions
   and fixed-stack authoritative objects; do not backdoor fixed-stack storage
   into the reservation sequence just to make a narrow testcase pass
+- keep the new stable-binding pass surface derived from ready handoff
+  summaries and current binding order only; do not invent global binding
+  indices, target register names, or fake deferred pass ordering just to make
+  downstream consumption look uniform
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build
