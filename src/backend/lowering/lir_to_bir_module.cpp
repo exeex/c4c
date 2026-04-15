@@ -241,6 +241,7 @@ std::optional<bir::Function> BirFunctionLowerer::try_lower_canonical_select_func
 bool BirFunctionLowerer::lower_alloca_insts() {
   for (const auto& inst : function_.alloca_insts) {
     if (!lower_scalar_or_local_memory_inst(inst, &hoisted_alloca_scratch_)) {
+      note_function_lowering_family_failure("local-memory semantic family");
       return false;
     }
   }
@@ -260,6 +261,7 @@ bool BirFunctionLowerer::lower_block_phi_insts(const c4c::codegen::lir::LirBlock
     for (const auto& [label, operand] : phi_plan.incomings) {
       const auto incoming_value = lower_value(operand, phi_plan.type);
       if (!incoming_value.has_value()) {
+        note_function_lowering_family_failure("scalar-control-flow semantic family");
         return false;
       }
       incomings.push_back(bir::PhiIncoming{
@@ -283,6 +285,7 @@ bool BirFunctionLowerer::lower_block_insts(const c4c::codegen::lir::LirBlock& bl
       continue;
     }
     if (!lower_scalar_or_local_memory_inst(inst, &lowered_block->insts)) {
+      note_function_lowering_family_failure("scalar/local-memory semantic family");
       return false;
     }
   }
@@ -292,6 +295,7 @@ bool BirFunctionLowerer::lower_block_insts(const c4c::codegen::lir::LirBlock& bl
 bool BirFunctionLowerer::lower_block_terminator(const c4c::codegen::lir::LirBlock& block,
                                                 bir::Block* lowered_block) {
   if (!return_info_.has_value()) {
+    note_function_lowering_family_failure("scalar-control-flow semantic family");
     return false;
   }
 
@@ -301,14 +305,17 @@ bool BirFunctionLowerer::lower_block_terminator(const c4c::codegen::lir::LirBloc
       const c4c::codegen::lir::LirOperand ret_value(*ret->value_str);
       if (return_info_->returned_via_sret) {
         if (ret_value.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+          note_function_lowering_family_failure("scalar-control-flow semantic family");
           return false;
         }
         const auto aggregate_alias_it = aggregate_value_aliases_.find(ret_value.str());
         if (aggregate_alias_it == aggregate_value_aliases_.end()) {
+          note_function_lowering_family_failure("scalar-control-flow semantic family");
           return false;
         }
         const auto source_aggregate_it = local_aggregate_slots_.find(aggregate_alias_it->second);
         if (source_aggregate_it == local_aggregate_slots_.end()) {
+          note_function_lowering_family_failure("scalar-control-flow semantic family");
           return false;
         }
         if (!append_local_aggregate_copy_to_pointer(source_aggregate_it->second,
@@ -317,11 +324,13 @@ bool BirFunctionLowerer::lower_block_terminator(const c4c::codegen::lir::LirBloc
                                                     return_info_->align_bytes,
                                                     function_.name + ".ret.sret.copy",
                                                     &lowered_block->insts)) {
+          note_function_lowering_family_failure("scalar-control-flow semantic family");
           return false;
         }
       } else {
         const auto value = lower_value(ret_value, return_info_->type);
         if (!value.has_value()) {
+          note_function_lowering_family_failure("scalar-control-flow semantic family");
           return false;
         }
         if (!canonicalize_compare_return_alias(
@@ -342,6 +351,7 @@ bool BirFunctionLowerer::lower_block_terminator(const c4c::codegen::lir::LirBloc
   if (const auto* cond_br = std::get_if<c4c::codegen::lir::LirCondBr>(&block.terminator)) {
     const auto condition = lower_value(cond_br->cond_name, bir::TypeKind::I1);
     if (!condition.has_value()) {
+      note_function_lowering_family_failure("scalar-control-flow semantic family");
       return false;
     }
     lowered_block->terminator = bir::CondBranchTerminator{
@@ -352,6 +362,7 @@ bool BirFunctionLowerer::lower_block_terminator(const c4c::codegen::lir::LirBloc
     return true;
   }
 
+  note_function_lowering_family_failure("scalar-control-flow semantic family");
   return false;
 }
 
@@ -376,6 +387,12 @@ bool BirFunctionLowerer::lower_block(const c4c::codegen::lir::LirBlock& block,
   return true;
 }
 
+void BirFunctionLowerer::note_function_lowering_family_failure(std::string_view family) {
+  context_.note("function",
+                "semantic lir_to_bir function '" + function_.name +
+                    "' failed in " + std::string(family));
+}
+
 std::optional<bir::Function> BirFunctionLowerer::lower() {
   if (function_.is_declaration || function_.blocks.empty()) {
     return std::nullopt;
@@ -387,6 +404,7 @@ std::optional<bir::Function> BirFunctionLowerer::lower() {
 
   return_info_ = infer_function_return_info();
   if (!return_info_.has_value()) {
+    note_function_lowering_family_failure("function-signature semantic family");
     return std::nullopt;
   }
 
@@ -395,17 +413,23 @@ std::optional<bir::Function> BirFunctionLowerer::lower() {
   lowered_function_.return_size_bytes = return_info_->size_bytes;
   lowered_function_.return_align_bytes = return_info_->align_bytes;
   if (!lower_function_params(function_, return_info_, type_decls_, &lowered_function_)) {
+    note_function_lowering_family_failure("function-signature semantic family");
     return std::nullopt;
   }
 
   auto phi_plans = collect_phi_lowering_plans();
   if (!phi_plans.has_value()) {
+    note_function_lowering_family_failure("scalar-control-flow semantic family");
     return std::nullopt;
   }
   phi_plans_ = std::move(*phi_plans);
   aggregate_params_ = collect_aggregate_params();
 
-  if (!materialize_aggregate_param_aliases(&hoisted_alloca_scratch_) || !lower_alloca_insts()) {
+  if (!materialize_aggregate_param_aliases(&hoisted_alloca_scratch_)) {
+    note_function_lowering_family_failure("local-memory semantic family");
+    return std::nullopt;
+  }
+  if (!lower_alloca_insts()) {
     return std::nullopt;
   }
 

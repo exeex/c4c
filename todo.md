@@ -8,18 +8,18 @@ Current Plan Focus: ordered step 4, tighten the semantic unsupported boundary
 # Current Packet
 
 ## Just Finished
-- taught `BirFunctionLowerer` to record function-scoped semantic call-family notes when recognized direct or indirect call-lowering misses abort before the module-level capability-bucket fallback
-- kept the slice inside the existing lowering-note plumbing in `src/backend/lowering/lir_to_bir.hpp`, `src/backend/lowering/lir_to_bir_calling.cpp`, and `src/backend/lowering/lir_to_bir_memory.cpp`, without adding new semantic capability or testcase-shaped fallback handling
+- taught `BirFunctionLowerer` to record function-scoped non-call lowering notes for function-signature, scalar-control-flow, and local-memory wrapper failures before they collapse to the module-level capability bucket
+- kept the slice inside `src/backend/lowering/lir_to_bir.hpp` and `src/backend/lowering/lir_to_bir_module.cpp`, without widening admitted semantic capability or adding testcase-shaped fallback handling
 
 ## Suggested Next
-- continue step 4 by threading the same semantic-family note discipline into the remaining non-call, non-runtime function-lowering misses that still surface only as generic module-bucket failures
-- keep future unsupported-boundary work centered on stable semantic families rather than reviving feature inventories, testcase names, or backend-target shortcuts
+- continue step 4 by pushing the same stable semantic-family reporting into any still-unannotated instruction-level non-call misses inside `lower_scalar_or_local_memory_inst`, so wrapper-level notes can narrow from mixed buckets toward more exact family labels
+- keep unsupported-boundary work diagnostic-only unless a later packet explicitly widens semantic capability under the current runbook
 
 ## Watchouts
-- this packet only preserves semantic call-family diagnostics when lowering already fails; it does not widen admitted semantic capability and must not be treated as prepare/legalize or target-backend progress
-- non-call function-lowering failures still collapse to the module-level capability bucket, so the remaining step-4 work is broader unsupported-boundary plumbing rather than another note-only tweak
+- this packet only preserves non-call function-family diagnostics when lowering already fails; it does not widen admitted semantic capability and must not be treated as prepare/legalize or target-backend progress
+- instruction-level misses inside `lower_scalar_or_local_memory_inst` can still roll up into the new mixed wrapper families, so a follow-on packet should avoid overfitting the note taxonomy while tightening those remaining buckets
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
 - passed with `test_after.log`; backend subset result is `passed=54 failed=0 total=54`
-- delegated proof was sufficient for this packet because the diff stays inside semantic call-lowering note plumbing and does not widen lowering capability
+- delegated proof was sufficient for this packet because the diff stays inside wrapper-level unsupported-boundary note plumbing and does not widen lowering capability
