@@ -243,6 +243,17 @@ std::string_view regalloc_deferred_batch_access_window_prerequisite_state(
   return "prealloc_access_window_prerequisite_satisfied";
 }
 
+std::string_view regalloc_deferred_batch_ordering_policy(
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
+  if (summary.deferred_reason == "awaiting_access_window_observation") {
+    return "defer_until_access_window_observed";
+  }
+  if (summary.deferred_reason == "batched_single_point_coordination") {
+    return "defer_until_frontier_ready";
+  }
+  return "binding_policy_needs_future_analysis";
+}
+
 const prepare::PreparedRegallocObject* regalloc_deferred_batch_first_object(
     const prepare::PreparedRegallocFunction& function,
     const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
@@ -1707,7 +1718,7 @@ int main() {
           "opportunistic_single_point" ||
       deferred_access_window_binding_batch->deferred_reason !=
           "awaiting_access_window_observation" ||
-      deferred_access_window_binding_batch->ordering_policy !=
+      regalloc_deferred_batch_ordering_policy(*deferred_access_window_binding_batch) !=
           "defer_until_access_window_observed" ||
       regalloc_deferred_batch_access_window_prerequisite_state(
           *deferred_access_window_binding_batch) !=
@@ -1727,7 +1738,8 @@ int main() {
           "opportunistic_single_point" ||
       deferred_coordination_binding_batch->deferred_reason !=
           "batched_single_point_coordination" ||
-      deferred_coordination_binding_batch->ordering_policy != "defer_until_frontier_ready" ||
+      regalloc_deferred_batch_ordering_policy(*deferred_coordination_binding_batch) !=
+          "defer_until_frontier_ready" ||
       regalloc_deferred_batch_access_window_prerequisite_state(
           *deferred_coordination_binding_batch) !=
           "prealloc_access_window_prerequisite_satisfied" ||

@@ -17,23 +17,18 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed deferred-batch `home_slot_prerequisite_category` and
-  `sync_handoff_prerequisite_category` mirrors because deferred prerequisite
-  state can rejoin explicitly from surviving owners:
-  `attachments -> object.home_slot_mode|sync_policy` for access-window waits
-  and `attachments -> allocation decision -> contention_summary` for
-  coordination waits
+- removed deferred-batch `ordering_policy` because it only translated
+  surviving `deferred_reason` values instead of owning new frontier state
 - kept deferred frontier grouping explicit on
   `PreparedRegallocDeferredBindingBatchSummary` with `binding_batch_kind`,
-  `deferred_reason`, `ordering_policy`, and attachment-owned membership
-- refreshed the prepare-entry contract test so deferred home-slot and
-  sync-handoff prerequisite state are derived through the surviving owner
-  joins instead of second summary mirrors
+  `deferred_reason`, and attachment-owned membership
+- refreshed the prepare-entry contract test so deferred waiting policy rejoins
+  directly from `deferred_reason` instead of a second summary mirror
 
 ## Suggested Next
-- inspect whether deferred `ordering_policy` is still a real frontier-level
-  owner or whether it now duplicates `deferred_reason` plus surviving
-  contention/object joins after the prerequisite mirrors were removed
+- inspect whether deferred `binding_batch_kind` still needs separate summary
+  ownership or whether deferred family identity can rejoin from surviving
+  owners without weakening explicit frontier grouping
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -74,6 +69,9 @@ while keeping the public shared contract named `prepare`
   `PreparedRegallocDeferredBindingBatchSummary::deferred_reason`; do not add
   back a separate access-window category mirror unless a real downstream
   consumer proves `deferred_reason` is no longer enough
+- deferred ordering policy now rejoins directly from deferred
+  `deferred_reason`; do not recreate a second policy mirror unless a real
+  consumer proves that reason no longer identifies the waiting policy
 - deferred home-slot and sync-handoff prerequisite state now rejoins through
   `attachments -> object` for access-window waits and
   `attachments -> allocation decision -> contention_summary` for coordination

@@ -148,7 +148,6 @@ struct PreparedRegallocDeferredBindingAttachment {
 struct PreparedRegallocDeferredBindingBatchSummary {
   std::string binding_batch_kind;
   std::string deferred_reason;
-  std::string ordering_policy;
   std::vector<PreparedRegallocDeferredBindingAttachment> attachments;
 };
 

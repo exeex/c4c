@@ -597,17 +597,6 @@ std::string_view regalloc_deferred_binding_batch_kind(const PreparedRegallocObje
   return "binding_deferred_batch_needs_future_analysis";
 }
 
-std::string_view regalloc_deferred_binding_ordering_policy(const PreparedRegallocObject& object,
-                                                           const PreparedRegallocContentionSummary& contention) {
-  if (object.deferred_reason == "awaiting_access_window_observation") {
-    return "defer_until_access_window_observed";
-  }
-  if (contention.follow_up_category == "batched_single_point_coordination") {
-    return "defer_until_frontier_ready";
-  }
-  return "binding_policy_needs_future_analysis";
-}
-
 std::string_view regalloc_binding_home_slot_prerequisite_state(
     const PreparedRegallocContentionSummary& contention) {
   if (contention.home_slot_category == "stable_home_slot_required" ||
@@ -839,8 +828,6 @@ void BirPreAlloc::populate_binding_sequence() {
                 .deferred_reason =
                     object->deferred_reason != "not_deferred" ? object->deferred_reason
                                                               : contention->follow_up_category,
-                .ordering_policy =
-                    std::string(regalloc_deferred_binding_ordering_policy(*object, *contention)),
             });
         batch_summary = &current_regalloc_function_->deferred_binding_batches.back();
       }
