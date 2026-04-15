@@ -1688,45 +1688,27 @@ int main() {
         "semantic-BIR regalloc should group deferred single-point candidates waiting on coordination into an explicit deferred binding batch");
   }
   if (call_boundary_handoff_summary->binding_frontier_reason != "call_boundary_preservation" ||
-      call_boundary_handoff_summary->allocation_stage != "stabilize_across_calls" ||
-      call_boundary_handoff_summary->follow_up_category != "call_boundary_preservation" ||
-      call_boundary_handoff_summary->ordering_policy != "preserve_allocation_sequence" ||
       call_boundary_handoff_summary->candidate_count != 3) {
     return fail(
-        "semantic-BIR regalloc should keep ready handoff summaries focused on downstream frontier identity instead of republishing batch-owned prerequisites");
+        "semantic-BIR regalloc should keep ready handoff summaries focused on downstream frontier identity instead of republishing batch-owned metadata");
   }
   if (local_reuse_handoff_summary->binding_frontier_reason !=
           "sequenced_local_reuse_coordination" ||
-      local_reuse_handoff_summary->allocation_stage != "stabilize_local_reuse" ||
-      local_reuse_handoff_summary->follow_up_category !=
-          "sequenced_local_reuse_coordination" ||
-      local_reuse_handoff_summary->ordering_policy != "preserve_allocation_sequence" ||
       local_reuse_handoff_summary->candidate_count != 3) {
     return fail(
-        "semantic-BIR regalloc should keep ready local-reuse handoff summaries focused on downstream frontier identity instead of republishing batch-owned prerequisites");
+        "semantic-BIR regalloc should keep ready local-reuse handoff summaries focused on downstream frontier identity instead of republishing batch-owned metadata");
   }
   if (deferred_access_window_handoff_summary->binding_frontier_reason !=
           "awaiting_access_window_observation" ||
-      deferred_access_window_handoff_summary->allocation_stage !=
-          "opportunistic_single_point" ||
-      deferred_access_window_handoff_summary->follow_up_category !=
-          "batched_single_point_coordination" ||
-      deferred_access_window_handoff_summary->ordering_policy !=
-          "defer_until_access_window_observed" ||
       deferred_access_window_handoff_summary->candidate_count != 7) {
     return fail(
-        "semantic-BIR regalloc should keep deferred handoff summaries focused on frontier identity while leaving prerequisite ownership in deferred binding batches");
+        "semantic-BIR regalloc should keep deferred handoff summaries focused on frontier identity while leaving batch metadata ownership in deferred binding batches");
   }
   if (deferred_coordination_handoff_summary->binding_frontier_reason !=
           "batched_single_point_coordination" ||
-      deferred_coordination_handoff_summary->allocation_stage !=
-          "opportunistic_single_point" ||
-      deferred_coordination_handoff_summary->follow_up_category !=
-          "batched_single_point_coordination" ||
-      deferred_coordination_handoff_summary->ordering_policy != "defer_until_frontier_ready" ||
       deferred_coordination_handoff_summary->candidate_count != 2) {
     return fail(
-        "semantic-BIR regalloc should keep deferred coordination handoff summaries focused on frontier identity while leaving prerequisite ownership in deferred binding batches");
+        "semantic-BIR regalloc should keep deferred coordination handoff summaries focused on frontier identity while leaving batch metadata ownership in deferred binding batches");
   }
 
   return 0;
