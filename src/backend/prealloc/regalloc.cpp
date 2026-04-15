@@ -586,16 +586,30 @@ std::string_view regalloc_binding_batch_kind(
   return "binding_batch_needs_future_analysis";
 }
 
-std::string_view regalloc_deferred_binding_batch_reason(
+struct RegallocDeferredBindingOwners {
+  std::string_view deferred_reason;
+  const PreparedRegallocObject* object = nullptr;
+  const PreparedRegallocContentionSummary* contention = nullptr;
+};
+
+RegallocDeferredBindingOwners regalloc_deferred_binding_owners(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
   if (object.deferred_reason == "awaiting_access_window_observation") {
-    return object.deferred_reason;
+    return {
+        .deferred_reason = object.deferred_reason,
+        .object = &object,
+    };
   }
   if (contention.follow_up_category == "batched_single_point_coordination") {
-    return contention.follow_up_category;
+    return {
+        .deferred_reason = contention.follow_up_category,
+        .contention = &contention,
+    };
   }
-  return "binding_deferred_reason_needs_future_analysis";
+  return {
+      .deferred_reason = "binding_deferred_reason_needs_future_analysis",
+  };
 }
 
 std::string_view regalloc_binding_home_slot_prerequisite_state(
@@ -841,7 +855,8 @@ void BirPreAlloc::populate_binding_sequence() {
     }
 
     if (regalloc_binding_frontier_is_deferred(*object)) {
-      const std::string deferred_reason(regalloc_deferred_binding_batch_reason(*object, *contention));
+      const auto owners = regalloc_deferred_binding_owners(*object, *contention);
+      const std::string deferred_reason(owners.deferred_reason);
       auto& batch_summary =
           ensure_deferred_binding_batch_summary(*current_regalloc_function_, deferred_reason);
       batch_summary.attachments.push_back(

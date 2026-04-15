@@ -17,29 +17,23 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- collapsed deferred-batch attachment creation in `src/backend/prealloc/regalloc.cpp`
-  behind one local helper route so batch lookup/append stays keyed by the
-  surviving function-owned object index and batch-owned `deferred_reason`
-- collapsed the deferred-batch test helper cluster in
-  `tests/backend/backend_prepare_entry_contract_test.cpp` behind one explicit
-  `attachments.front() -> object -> decision -> contention` join helper so
-  derived batch facts now rejoin through one visible route instead of repeating
-  that walk in each helper
-- removed deferred-batch summary lookup by derived binding-batch kind so
-  `populate_binding_sequence()` now reuses deferred batches directly through
-  the surviving batch-owned `deferred_reason`
-- trimmed the last regalloc helper/header seam that recomputed deferred batch
-  identity from `attachments -> first object -> allocation decision /
-  contention` just to find the batch again
-- refreshed the prepare-entry contract test so deferred batch discovery keys on
-  `deferred_reason` ownership while batch-family assertions still derive their
-  external identity from the surviving owners
+- collapsed deferred-batch owner selection in `src/backend/prealloc/regalloc.cpp`
+  behind one helper that decides whether deferred batch identity comes from the
+  attachment-owned object or the contention summary before
+  `populate_binding_sequence()` keys the batch by the surviving
+  `deferred_reason`
+- refreshed `tests/backend/backend_prepare_entry_contract_test.cpp` so deferred
+  batch kind, home-slot prerequisite state, and sync handoff state all reuse
+  one owner-selection helper instead of open-coding the access-window-object
+  versus coordination-contention split in each derived helper
+- kept the cleanup inside step-5 regalloc ownership work without renaming the
+  public `prepare` contract or introducing a new deferred summary mirror
 
 ## Suggested Next
-- inspect whether the remaining deferred-batch helpers can also collapse the
-  split between access-window-object joins and coordination-contention joins
-  without introducing a new summary mirror or hiding which surviving owner
-  publishes each fact
+- inspect whether the remaining deferred-batch helper surface can collapse any
+  leftover `deferred_reason` string branching behind the same owner-selection
+  route without pushing coordination facts back onto objects or inventing a new
+  summary layer
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -88,6 +82,10 @@ while keeping the public shared contract named `prepare`
   `attachments -> allocation decision -> contention_summary` for coordination
   waits; do not recreate summary mirrors unless a real consumer cannot make
   those joins explicit
+- deferred-batch helper selection now funnels through one owner-choice helper
+  in both regalloc and the prepare-entry contract test; if later cleanup trims
+  more helper branching, keep that route explicit instead of spreading new
+  `deferred_reason` switches back across multiple helpers
 - the handoff lookup path now keys tests by `binding_batch_kind`; if a later
   packet trims more binding mirrors, keep batch kind as the consumer join key
   instead of rebuilding ready/deferred ownership mirrors in a new handoff
@@ -144,4 +142,4 @@ while keeping the public shared contract named `prepare`
 ## Proof
 - `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 - passed; proof output recorded in `test_after.log`
-- backend subset proof completed for this packet
+- backend subset proof completed for this packet, including `backend_prepare_entry_contract`

@@ -199,6 +199,23 @@ RegallocDeferredBatchJoin join_regalloc_deferred_binding_batch(
   };
 }
 
+bool regalloc_deferred_batch_uses_access_window_owner(
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
+  return summary.deferred_reason == "awaiting_access_window_observation";
+}
+
+const prepare::PreparedRegallocObject* regalloc_deferred_batch_owner_object(
+    const RegallocDeferredBatchJoin& join,
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
+  return regalloc_deferred_batch_uses_access_window_owner(summary) ? join.object : nullptr;
+}
+
+const prepare::PreparedRegallocContentionSummary* regalloc_deferred_batch_owner_contention(
+    const RegallocDeferredBatchJoin& join,
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
+  return regalloc_deferred_batch_uses_access_window_owner(summary) ? nullptr : join.contention;
+}
+
 std::string_view regalloc_deferred_binding_batch_kind(
     const prepare::PreparedRegallocFunction& function,
     const prepare::PreparedRegallocDeferredBindingBatchSummary& summary);
@@ -288,16 +305,15 @@ std::string_view regalloc_deferred_binding_batch_kind(
     const prepare::PreparedRegallocFunction& function,
     const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
   const auto join = join_regalloc_deferred_binding_batch(function, summary);
-  if (join.object == nullptr) {
+  const auto* object = regalloc_deferred_batch_owner_object(join, summary);
+  const auto* contention = regalloc_deferred_batch_owner_contention(join, summary);
+  if (object == nullptr && contention == nullptr) {
     return {};
   }
-  if (summary.deferred_reason == "awaiting_access_window_observation") {
+  if (object != nullptr) {
     return "deferred_access_window_binding_batch";
   }
-  if (join.contention == nullptr) {
-    return {};
-  }
-  if (join.contention->follow_up_category == "batched_single_point_coordination") {
+  if (contention->follow_up_category == "batched_single_point_coordination") {
     return "deferred_coordination_binding_batch";
   }
   return "binding_deferred_batch_needs_future_analysis";
@@ -307,32 +323,30 @@ std::string_view regalloc_deferred_batch_home_slot_prerequisite_state(
     const prepare::PreparedRegallocFunction& function,
     const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
   const auto join = join_regalloc_deferred_binding_batch(function, summary);
-  if (summary.deferred_reason == "awaiting_access_window_observation") {
-    if (join.object == nullptr) {
-      return {};
-    }
-    if (join.object->home_slot_mode == "home_slot_needs_future_analysis") {
+  if (const auto* object = regalloc_deferred_batch_owner_object(join, summary)) {
+    if (object->home_slot_mode == "home_slot_needs_future_analysis") {
       return "prealloc_home_slot_prerequisite_deferred";
     }
-    if (join.object->home_slot_mode == "stable_home_slot_required" ||
-        join.object->home_slot_mode == "stable_home_slot_preferred" ||
-        join.object->home_slot_mode == "single_use_home_slot_ok") {
+    if (object->home_slot_mode == "stable_home_slot_required" ||
+        object->home_slot_mode == "stable_home_slot_preferred" ||
+        object->home_slot_mode == "single_use_home_slot_ok") {
       return "prealloc_home_slot_prerequisite_satisfied";
     }
-    if (join.object->home_slot_mode == "idle_home_slot_coordination") {
+    if (object->home_slot_mode == "idle_home_slot_coordination") {
       return "no_home_slot_prerequisite";
     }
     return "prealloc_home_slot_prerequisite_deferred";
   }
-  if (join.contention == nullptr) {
+  const auto* contention = regalloc_deferred_batch_owner_contention(join, summary);
+  if (contention == nullptr) {
     return {};
   }
-  if (join.contention->home_slot_category == "stable_home_slot_required" ||
-      join.contention->home_slot_category == "stable_home_slot_preferred" ||
-      join.contention->home_slot_category == "single_use_home_slot_ok") {
+  if (contention->home_slot_category == "stable_home_slot_required" ||
+      contention->home_slot_category == "stable_home_slot_preferred" ||
+      contention->home_slot_category == "single_use_home_slot_ok") {
     return "prealloc_home_slot_prerequisite_satisfied";
   }
-  if (join.contention->home_slot_category == "idle_home_slot_coordination") {
+  if (contention->home_slot_category == "idle_home_slot_coordination") {
     return "no_home_slot_prerequisite";
   }
   return "prealloc_home_slot_prerequisite_deferred";
@@ -342,35 +356,33 @@ std::string_view regalloc_deferred_batch_sync_handoff_state(
     const prepare::PreparedRegallocFunction& function,
     const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
   const auto join = join_regalloc_deferred_binding_batch(function, summary);
-  if (summary.deferred_reason == "awaiting_access_window_observation") {
-    if (join.object == nullptr) {
-      return {};
-    }
-    if (join.object->sync_policy == "sync_policy_needs_future_analysis") {
+  if (const auto* object = regalloc_deferred_batch_owner_object(join, summary)) {
+    if (object->sync_policy == "sync_policy_needs_future_analysis") {
       return "prealloc_sync_handoff_deferred";
     }
-    if (join.object->sync_policy == "restore_before_read" ||
-        join.object->sync_policy == "writeback_after_write" ||
-        join.object->sync_policy == "sync_on_read_write_boundaries" ||
-        join.object->sync_policy == "memory_authoritative") {
+    if (object->sync_policy == "restore_before_read" ||
+        object->sync_policy == "writeback_after_write" ||
+        object->sync_policy == "sync_on_read_write_boundaries" ||
+        object->sync_policy == "memory_authoritative") {
       return "prealloc_sync_handoff_ready";
     }
-    if (join.object->sync_policy == "sync_free_coordination") {
+    if (object->sync_policy == "sync_free_coordination") {
       return "no_sync_handoff_required";
     }
     return "prealloc_sync_handoff_deferred";
   }
-  if (join.contention == nullptr) {
+  const auto* contention = regalloc_deferred_batch_owner_contention(join, summary);
+  if (contention == nullptr) {
     return {};
   }
-  if (join.contention->sync_coordination_category == "restore_only_coordination" ||
-      join.contention->sync_coordination_category == "writeback_only_coordination" ||
-      join.contention->sync_coordination_category == "read_write_coordination" ||
-      join.contention->sync_coordination_category == "bidirectional_sync_coordination" ||
-      join.contention->sync_coordination_category == "mixed_sync_coordination") {
+  if (contention->sync_coordination_category == "restore_only_coordination" ||
+      contention->sync_coordination_category == "writeback_only_coordination" ||
+      contention->sync_coordination_category == "read_write_coordination" ||
+      contention->sync_coordination_category == "bidirectional_sync_coordination" ||
+      contention->sync_coordination_category == "mixed_sync_coordination") {
     return "prealloc_sync_handoff_ready";
   }
-  if (join.contention->sync_coordination_category == "sync_free_coordination") {
+  if (contention->sync_coordination_category == "sync_free_coordination") {
     return "no_sync_handoff_required";
   }
   return "prealloc_sync_handoff_deferred";
