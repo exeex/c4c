@@ -147,6 +147,18 @@ const prepare::PreparedRegallocBindingDecision* find_regalloc_binding_decision(
   return nullptr;
 }
 
+const prepare::PreparedRegallocBindingAttachment* find_regalloc_binding_attachment(
+    const prepare::PreparedRegallocFunction& function,
+    std::string_view source_kind,
+    std::string_view source_name) {
+  for (const auto& attachment : function.binding_attachments) {
+    if (attachment.source_kind == source_kind && attachment.source_name == source_name) {
+      return &attachment;
+    }
+  }
+  return nullptr;
+}
+
 const prepare::PreparedRegallocBindingBatchSummary* find_regalloc_binding_batch(
     const prepare::PreparedRegallocFunction& function,
     std::string_view binding_batch_kind) {
@@ -825,10 +837,12 @@ int main() {
     return fail("semantic-BIR regalloc should summarize register-candidate vs fixed-stack prepared objects");
   }
   if (regalloc_function->binding_sequence.size() != 6 ||
+      regalloc_function->binding_attachments.size() !=
+          regalloc_function->register_candidate_count ||
       regalloc_function->binding_batches.size() != 2 ||
       regalloc_candidate_count_sum(regalloc_function->binding_batches) !=
           regalloc_function->binding_sequence.size()) {
-    return fail("semantic-BIR regalloc should publish ready-only binding batches and one binding order entry per ready candidate");
+    return fail("semantic-BIR regalloc should publish ready-only binding order plus one function-level batch attachment per register candidate");
   }
   if (regalloc_function->deferred_binding_batches.size() != 2 ||
       regalloc_candidate_count_sum(regalloc_function->deferred_binding_batches) != 9 ||
@@ -843,7 +857,11 @@ int main() {
   }
   const auto* scratch_slot_regalloc =
       find_regalloc_object(*regalloc_function, "lowering_scratch_slot", "scratch.slot");
+  const auto* scratch_slot_binding_attachment =
+      find_regalloc_binding_attachment(*regalloc_function, "lowering_scratch_slot", "scratch.slot");
   const auto* local_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "flag.slot");
+  const auto* local_slot_binding_attachment =
+      find_regalloc_binding_attachment(*regalloc_function, "local_slot", "flag.slot");
   if (scratch_slot_regalloc == nullptr || scratch_slot_regalloc->contract_kind != "value_storage" ||
       scratch_slot_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should keep lowering-created scratch slots in the value-storage register-candidate contract");
@@ -859,9 +877,11 @@ int main() {
   if (scratch_slot_regalloc->binding_frontier_kind != "binding_deferred") {
     return fail("semantic-BIR regalloc should defer stable binding when prepared access-window facts are still missing");
   }
-  if (scratch_slot_regalloc->binding_batch_kind != "deferred_access_window_binding_batch") {
+  if (scratch_slot_binding_attachment == nullptr ||
+      scratch_slot_binding_attachment->binding_batch_kind !=
+          "deferred_access_window_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should keep deferred objects attached to their deferred binding batch without mirroring batch-owned prerequisites onto each object");
+        "semantic-BIR regalloc should keep deferred objects attached to their deferred binding batch through a function-level attachment view instead of mirroring the batch kind onto each object");
   }
   if (local_slot_regalloc == nullptr || local_slot_regalloc->contract_kind != "value_storage" ||
       local_slot_regalloc->allocation_kind != "register_candidate") {
@@ -909,11 +929,14 @@ int main() {
   if (local_slot_regalloc->binding_frontier_kind != "binding_deferred") {
     return fail("semantic-BIR regalloc should keep observed single-point candidates deferred when coordination remains batched");
   }
-  if (local_slot_regalloc->binding_batch_kind != "deferred_coordination_binding_batch") {
+  if (local_slot_binding_attachment == nullptr ||
+      local_slot_binding_attachment->binding_batch_kind != "deferred_coordination_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should keep coordination-deferred objects attached to their deferred binding batch without mirroring batch-owned prerequisites onto each object");
+        "semantic-BIR regalloc should keep coordination-deferred objects attached to their deferred binding batch through a function-level attachment view instead of mirroring the batch kind onto each object");
   }
   const auto* carry_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "carry.slot");
+  const auto* carry_slot_binding_attachment =
+      find_regalloc_binding_attachment(*regalloc_function, "local_slot", "carry.slot");
   if (carry_slot_regalloc == nullptr || carry_slot_regalloc->contract_kind != "value_storage" ||
       carry_slot_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should keep call-crossing local slots as register candidates");
@@ -960,11 +983,14 @@ int main() {
   if (carry_slot_regalloc->binding_frontier_kind != "binding_ready") {
     return fail("semantic-BIR regalloc should mark across-call candidates as ready for stable prepared binding");
   }
-  if (carry_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch") {
+  if (carry_slot_binding_attachment == nullptr ||
+      carry_slot_binding_attachment->binding_batch_kind != "call_boundary_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should keep ready call-boundary objects attached to their batch without mirroring batch-owned sequencing onto each object");
+        "semantic-BIR regalloc should keep ready call-boundary objects attached to their batch through a function-level attachment view instead of mirroring the batch kind onto each object");
   }
   const auto* window_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "window.slot");
+  const auto* window_slot_binding_attachment =
+      find_regalloc_binding_attachment(*regalloc_function, "local_slot", "window.slot");
   if (window_slot_regalloc == nullptr || window_slot_regalloc->contract_kind != "value_storage" ||
       window_slot_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should keep non-call-spanning local slots as register candidates");
@@ -1011,12 +1037,15 @@ int main() {
   if (window_slot_regalloc->binding_frontier_kind != "binding_ready") {
     return fail("semantic-BIR regalloc should mark sequenced local-reuse candidates as ready for stable prepared binding");
   }
-  if (window_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch") {
+  if (window_slot_binding_attachment == nullptr ||
+      window_slot_binding_attachment->binding_batch_kind != "local_reuse_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should keep ready local-reuse objects attached to their batch without mirroring batch-owned sequencing onto each object");
+        "semantic-BIR regalloc should keep ready local-reuse objects attached to their batch through a function-level attachment view instead of mirroring the batch kind onto each object");
   }
   const auto* readonly_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "readonly.slot");
+  const auto* readonly_slot_binding_attachment =
+      find_regalloc_binding_attachment(*regalloc_function, "local_slot", "readonly.slot");
   if (readonly_slot_regalloc == nullptr || readonly_slot_regalloc->contract_kind != "value_storage" ||
       readonly_slot_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should keep non-call-spanning read-only local slots as register candidates");
@@ -1057,12 +1086,15 @@ int main() {
   if (readonly_slot_regalloc->binding_frontier_kind != "binding_ready") {
     return fail("semantic-BIR regalloc should mark non-call-spanning multi-read candidates as ready for stable prepared binding");
   }
-  if (readonly_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch") {
+  if (readonly_slot_binding_attachment == nullptr ||
+      readonly_slot_binding_attachment->binding_batch_kind != "local_reuse_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should keep ready local-reuse objects attached to their batch without mirroring batch-owned sequencing onto each object");
+        "semantic-BIR regalloc should keep ready local-reuse objects attached to their batch through a function-level attachment view instead of mirroring the batch kind onto each object");
   }
   const auto* callread_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "callread.slot");
+  const auto* callread_slot_binding_attachment =
+      find_regalloc_binding_attachment(*regalloc_function, "local_slot", "callread.slot");
   if (callread_slot_regalloc == nullptr || callread_slot_regalloc->contract_kind != "value_storage" ||
       callread_slot_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should keep call-spanning read-only local slots as register candidates");
@@ -1100,12 +1132,15 @@ int main() {
   if (callread_slot_regalloc->binding_frontier_kind != "binding_ready") {
     return fail("semantic-BIR regalloc should mark call-spanning read-only candidates as ready for stable prepared binding");
   }
-  if (callread_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch") {
+  if (callread_slot_binding_attachment == nullptr ||
+      callread_slot_binding_attachment->binding_batch_kind != "call_boundary_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should keep ready call-boundary objects attached to their batch without mirroring batch-owned sequencing onto each object");
+        "semantic-BIR regalloc should keep ready call-boundary objects attached to their batch through a function-level attachment view instead of mirroring the batch kind onto each object");
   }
   const auto* callwrite_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "callwrite.slot");
+  const auto* callwrite_slot_binding_attachment =
+      find_regalloc_binding_attachment(*regalloc_function, "local_slot", "callwrite.slot");
   if (callwrite_slot_regalloc == nullptr || callwrite_slot_regalloc->contract_kind != "value_storage" ||
       callwrite_slot_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should keep call-spanning write-only local slots as register candidates");
@@ -1146,12 +1181,15 @@ int main() {
   if (callwrite_slot_regalloc->binding_frontier_kind != "binding_ready") {
     return fail("semantic-BIR regalloc should mark call-spanning write-only candidates as ready for stable prepared binding");
   }
-  if (callwrite_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch") {
+  if (callwrite_slot_binding_attachment == nullptr ||
+      callwrite_slot_binding_attachment->binding_batch_kind != "call_boundary_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should keep ready call-boundary objects attached to their batch without mirroring batch-owned sequencing onto each object");
+        "semantic-BIR regalloc should keep ready call-boundary objects attached to their batch through a function-level attachment view instead of mirroring the batch kind onto each object");
   }
   const auto* multiwrite_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "multiwrite.slot");
+  const auto* multiwrite_slot_binding_attachment =
+      find_regalloc_binding_attachment(*regalloc_function, "local_slot", "multiwrite.slot");
   if (multiwrite_slot_regalloc == nullptr || multiwrite_slot_regalloc->contract_kind != "value_storage" ||
       multiwrite_slot_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should keep non-call-spanning multi-write local slots as register candidates");
@@ -1192,9 +1230,10 @@ int main() {
   if (multiwrite_slot_regalloc->binding_frontier_kind != "binding_ready") {
     return fail("semantic-BIR regalloc should mark non-call-spanning multi-write candidates as ready for stable prepared binding");
   }
-  if (multiwrite_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch") {
+  if (multiwrite_slot_binding_attachment == nullptr ||
+      multiwrite_slot_binding_attachment->binding_batch_kind != "local_reuse_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should keep ready local-reuse objects attached to their batch without mirroring batch-owned sequencing onto each object");
+        "semantic-BIR regalloc should keep ready local-reuse objects attached to their batch through a function-level attachment view instead of mirroring the batch kind onto each object");
   }
   const auto* writeonly_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "writeonly.slot");
   if (writeonly_regalloc == nullptr || writeonly_regalloc->contract_kind != "value_storage" ||

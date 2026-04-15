@@ -17,25 +17,27 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed object-level `binding_order_index` from
-  `PreparedRegallocObject`, so ready/deferred objects now keep only
-  `binding_batch_kind` as their attachment to the owning batch while ordering
-  stays owned by function-level `binding_sequence`
-- updated the prepare-entry contract test to assert per-object batch
-  attachment separately from batch-owned ordering, so this packet reduces one
-  real regalloc mirror without deleting the last stable object-to-batch link
+- removed object-level `binding_batch_kind` from
+  `PreparedRegallocObject` and moved object-to-batch attachment onto new
+  function-level `binding_attachments`, so ready/deferred objects keep their
+  frontier state locally while batch identity now lives in one prepare-owned
+  projection
+- updated the prepare-entry contract test to assert batch attachment through
+  that function-level projection while keeping ready ordering in
+  `binding_sequence`, so this packet reduces another real regalloc mirror
+  without renaming the public `prepare` contract
 
 ## Suggested Next
-- inspect whether the remaining object-local `binding_batch_kind` is still the
-  minimal attachment contract or whether a function-level object-to-batch
-  projection can replace it for both ready and deferred frontiers without
-  deleting the last stable attachment path first
+- after the required broader backend checkpoint, inspect whether ready
+  `binding_attachments` still duplicate enough of `binding_sequence` that the
+  ready frontier can publish attachment through one function-level owner while
+  leaving deferred attachment explicit
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
   work
-- keep using build plus a narrow backend proof for packet work, but expect a
-  broader backend checkpoint before accepting another route-shaping slice
+- keep using build plus a narrow backend proof for packet work, but require
+  the broader backend checkpoint before accepting another route-shaping slice
 
 ## Watchouts
 - do not add more liveness-like fact gathering to
@@ -63,11 +65,10 @@ while keeping the public shared contract named `prepare`
 - object-local coordination categories are gone now; keep future cleanup aimed
   at mirrors with real summary-level owners instead of recreating new
   fixed-stack or missing-state publication layers
-- object-local batch attachment still looks intentional because tests and
-  downstream reporting still need to map each object onto its owning batch
-  entry; now that sequence position is batch-owned, do not delete the
-  remaining `binding_batch_kind` projection unless the next packet can prove
-  another stable attachment path
+- ready and deferred batch identity now lives in
+  `PreparedRegallocFunction::binding_attachments`; if later cleanup trims that
+  view, keep one explicit function-level owner for deferred attachment instead
+  of pushing batch identity back onto `PreparedRegallocObject`
 - the current priority is structural clarity; if a cleanup only renames symbols
   but does not reduce architectural ambiguity, prefer the cleanup that removes
   an actual ownership seam or mirror first

@@ -83,7 +83,6 @@ struct PreparedRegallocObject {
   std::string home_slot_mode;
   std::string sync_policy;
   std::string binding_frontier_kind;
-  std::string binding_batch_kind;
   std::string deferred_reason;
   std::string access_shape;
   std::string first_access_kind;
@@ -142,6 +141,12 @@ struct PreparedRegallocBindingDecision {
   std::size_t binding_order_index = 0;
 };
 
+struct PreparedRegallocBindingAttachment {
+  std::string source_kind;
+  std::string source_name;
+  std::string binding_batch_kind;
+};
+
 struct PreparedRegallocBindingBatchSummary {
   std::string binding_batch_kind;
   std::string allocation_stage;
@@ -192,6 +197,7 @@ struct PreparedRegallocFunction {
   std::vector<PreparedRegallocReservationSummary> reservation_summary;
   std::vector<PreparedRegallocContentionSummary> contention_summary;
   std::vector<PreparedRegallocBindingDecision> binding_sequence;
+  std::vector<PreparedRegallocBindingAttachment> binding_attachments;
   std::vector<PreparedRegallocBindingBatchSummary> binding_batches;
   std::vector<PreparedRegallocDeferredBindingBatchSummary> deferred_binding_batches;
   std::vector<PreparedRegallocBindingHandoffSummary> binding_handoff_summary;
