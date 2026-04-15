@@ -781,6 +781,16 @@ PreparedRegallocDeferredBindingBatchSummary* BirPreAlloc::find_deferred_binding_
   return nullptr;
 }
 
+std::size_t regalloc_ready_binding_batch_member_count(
+    const PreparedRegallocFunction& function,
+    std::string_view binding_batch_kind) {
+  return static_cast<std::size_t>(std::count_if(
+      function.binding_sequence.begin(), function.binding_sequence.end(),
+      [binding_batch_kind](const PreparedRegallocBindingDecision& decision) {
+        return decision.binding_batch_kind == binding_batch_kind;
+      }));
+}
+
 PreparedRegallocReservationSummary BirPreAlloc::summarize_reservation_stage(
     std::string_view allocation_stage) const {
   PreparedRegallocReservationSummary summary{
@@ -973,9 +983,9 @@ void BirPreAlloc::populate_binding_sequence() {
         .source_kind = decision.source_kind,
         .source_name = decision.source_name,
         .binding_batch_kind = binding_batch_kind,
-        .binding_order_index = batch_summary->candidate_count,
+        .binding_order_index = regalloc_ready_binding_batch_member_count(
+            *current_regalloc_function_, binding_batch_kind),
     });
-    ++batch_summary->candidate_count;
   }
 }
 

@@ -221,11 +221,13 @@ const prepare::PreparedRegallocDeferredBindingBatchSummary* find_regalloc_deferr
   return nullptr;
 }
 
-template <typename Summary>
-std::size_t regalloc_candidate_count_sum(const std::vector<Summary>& summaries) {
+std::size_t regalloc_ready_batch_candidate_count(const prepare::PreparedRegallocFunction& function,
+                                                 std::string_view binding_batch_kind) {
   std::size_t total = 0;
-  for (const auto& summary : summaries) {
-    total += summary.candidate_count;
+  for (const auto& decision : function.binding_sequence) {
+    if (decision.binding_batch_kind == binding_batch_kind) {
+      ++total;
+    }
   }
   return total;
 }
@@ -883,9 +885,7 @@ int main() {
               regalloc_function->binding_sequence.size() ||
       regalloc_function->binding_batches.size() != 2 ||
       regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches) !=
-          regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches) ||
-      regalloc_candidate_count_sum(regalloc_function->binding_batches) !=
-          regalloc_function->binding_sequence.size()) {
+          regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches)) {
     return fail(
         "semantic-BIR regalloc should publish ready batch identity through binding_sequence while keeping deferred frontier attachment membership owned by deferred batch summaries");
   }
@@ -1619,8 +1619,7 @@ int main() {
           "prealloc_home_slot_prerequisite_satisfied" ||
       call_boundary_binding_batch->sync_handoff_prerequisite_category !=
           "mixed_sync_coordination" ||
-      call_boundary_binding_batch->sync_handoff_state != "prealloc_sync_handoff_ready" ||
-      call_boundary_binding_batch->candidate_count != 3) {
+      call_boundary_binding_batch->sync_handoff_state != "prealloc_sync_handoff_ready") {
     return fail(
         "semantic-BIR regalloc should summarize call-boundary batch prerequisites and ready sync/home-slot handoff from the existing reservation/contention frontier");
   }
@@ -1634,8 +1633,7 @@ int main() {
           "prealloc_home_slot_prerequisite_satisfied" ||
       local_reuse_binding_batch->sync_handoff_prerequisite_category !=
           "mixed_sync_coordination" ||
-      local_reuse_binding_batch->sync_handoff_state != "prealloc_sync_handoff_ready" ||
-      local_reuse_binding_batch->candidate_count != 3) {
+      local_reuse_binding_batch->sync_handoff_state != "prealloc_sync_handoff_ready") {
     return fail(
         "semantic-BIR regalloc should summarize local-reuse batch prerequisites and ready sync/home-slot handoff from the existing reservation/contention frontier");
   }
@@ -1697,6 +1695,11 @@ int main() {
       readonly_binding->binding_order_index != 1 || multiwrite_binding->binding_order_index != 2) {
     return fail(
         "semantic-BIR regalloc should keep ready frontier ordering owned by binding_sequence instead of publishing a duplicate ready summary mirror");
+  }
+  if (regalloc_ready_batch_candidate_count(*regalloc_function, "call_boundary_binding_batch") != 3 ||
+      regalloc_ready_batch_candidate_count(*regalloc_function, "local_reuse_binding_batch") != 3) {
+    return fail(
+        "semantic-BIR regalloc should keep ready frontier membership counts owned by binding_sequence instead of publishing a duplicate ready summary mirror");
   }
   if (deferred_access_window_binding_batch->deferred_reason !=
       "awaiting_access_window_observation") {

@@ -17,20 +17,19 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed ready binding batch `ordering_policy` because ready frontier
-  ordering already stays clear through `binding_sequence` plus
+- removed ready binding batch `candidate_count` because ready frontier
+  membership already rejoins through `binding_sequence` plus
   `binding_batch_kind`
-- kept deferred batch `ordering_policy` intact because deferred frontier
-  batches still own distinct wait semantics that are not recoverable from the
-  ready sequencing join
+- kept deferred batch attachment-owned counts intact because deferred frontier
+  membership still lives on batch summaries rather than the ready sequence
 - refreshed the prepare-entry contract test so ready batch expectations now
-  prove ordering through `binding_sequence` and preserve batch summaries only
-  for prerequisite and candidate aggregation
+  prove membership counts through `binding_sequence` and preserve batch
+  summaries only for prerequisite aggregation
 
 ## Suggested Next
-- inspect whether ready batch `candidate_count` still needs to live on the
-  summary once ready membership and ordering already rejoin through
-  `binding_sequence` plus `binding_batch_kind`
+- inspect whether ready batch prerequisite categories/states still need to
+  live on the summary once they currently restate contention-owned frontier
+  state for ready batches
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -77,8 +76,9 @@ while keeping the public shared contract named `prepare`
   real consumer cannot rejoin those surviving owners
 - ready batch family identity now rides on `binding_batch_kind` while ready
   member sequencing stays in `binding_sequence`; do not restore ready summary
-  `allocation_stage`, `follow_up_category`, or `ordering_policy` mirrors
-  unless a real consumer cannot rejoin those surviving owners
+  `allocation_stage`, `follow_up_category`, `ordering_policy`, or
+  `candidate_count` mirrors unless a real consumer cannot rejoin those
+  surviving owners
 - ready access-window prerequisite state now lands on `binding_batches` from
   stage contention while deferred frontier prerequisites stay on deferred batch
   summaries; if later cleanup tries to unify derivation, keep one clear owner

@@ -153,7 +153,6 @@ struct PreparedRegallocBindingBatchSummary {
   std::string home_slot_prerequisite_state;
   std::string sync_handoff_prerequisite_category;
   std::string sync_handoff_state;
-  std::size_t candidate_count = 0;
 };
 
 struct PreparedRegallocDeferredBindingBatchSummary {
