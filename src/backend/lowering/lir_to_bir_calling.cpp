@@ -800,6 +800,12 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
   return false;
 }
 
+void BirFunctionLowerer::note_semantic_call_family_failure(std::string_view family) {
+  context_.note("function",
+                "semantic lir_to_bir function '" + function_.name +
+                    "' failed in semantic call family '" + std::string(family) + "'");
+}
+
 void BirFunctionLowerer::note_runtime_intrinsic_family_failure(std::string_view family) {
   context_.note("function",
                 "semantic lir_to_bir function '" + function_.name +
