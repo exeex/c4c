@@ -52,6 +52,7 @@ struct PreparedRegallocObject {
   std::string source_kind;
   std::string contract_kind;
   std::string allocation_kind;
+  std::string priority_bucket;
   std::size_t direct_read_count = 0;
   std::size_t direct_write_count = 0;
   std::size_t addressed_access_count = 0;

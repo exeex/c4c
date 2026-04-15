@@ -328,6 +328,11 @@ int main() {
   }
   if (!contains_note(prepared_bir.notes,
                      "regalloc",
+                     "target-neutral priority buckets for single-point, multi-point, and call-spanning value-storage objects")) {
+    return fail("semantic-BIR prepare regalloc note should mention the target-neutral priority buckets");
+  }
+  if (!contains_note(prepared_bir.notes,
+                     "regalloc",
                      "instruction-order access windows and call-crossing cues")) {
     return fail("semantic-BIR prepare regalloc note should mention instruction-order access windows");
   }
@@ -472,6 +477,9 @@ int main() {
       local_slot_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should treat value-storage objects as register candidates");
   }
+  if (local_slot_regalloc->priority_bucket != "single_point_value") {
+    return fail("semantic-BIR regalloc should classify single-touch value storage into the single-point priority bucket");
+  }
   if (local_slot_regalloc->direct_read_count != 1 || local_slot_regalloc->direct_write_count != 0 ||
       local_slot_regalloc->addressed_access_count != 0 ||
       local_slot_regalloc->call_arg_exposure_count != 0) {
@@ -486,6 +494,9 @@ int main() {
   if (carry_slot_regalloc == nullptr || carry_slot_regalloc->contract_kind != "value_storage" ||
       carry_slot_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should keep call-crossing local slots as register candidates");
+  }
+  if (carry_slot_regalloc->priority_bucket != "call_spanning_value") {
+    return fail("semantic-BIR regalloc should classify call-spanning register candidates into the call-spanning priority bucket");
   }
   if (carry_slot_regalloc->direct_read_count != 1 || carry_slot_regalloc->direct_write_count != 1 ||
       carry_slot_regalloc->addressed_access_count != 0 ||
@@ -503,6 +514,9 @@ int main() {
       address_taken_regalloc->contract_kind != "address_exposed_storage" ||
       address_taken_regalloc->allocation_kind != "fixed_stack_storage") {
     return fail("semantic-BIR regalloc should keep address-exposed storage on fixed stack storage");
+  }
+  if (address_taken_regalloc->priority_bucket != "non_value_storage") {
+    return fail("semantic-BIR regalloc should keep non-value prepared objects out of value-storage priority buckets");
   }
   if (address_taken_regalloc->direct_read_count != 0 || address_taken_regalloc->direct_write_count != 0 ||
       address_taken_regalloc->addressed_access_count != 1 ||

@@ -3,28 +3,30 @@
 Status: Active
 Source Idea: ideas/open/48_prepare_pipeline_rebuild.md
 Source Plan: plan.md
-Current Plan Focus: step-4 semantic-BIR regalloc priority cue activation
+Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 
 # Current Packet
 
 ## Just Finished
-- extended each semantic-BIR `regalloc` object with instruction-order access
-  windows and a `crosses_call_boundary` cue derived from actual BIR load,
-  store, and call ordering instead of target heuristics or fake intervals
-- kept the regalloc contract target-neutral by pairing those priority cues
-  with the existing direct-read/direct-write, addressed-access, and
-  call-argument exposure summaries for downstream prepared-BIR consumers
-- extended the prepare entry-contract test with a representative
-  call-crossing local slot and concrete assertions for both single-point and
-  call-spanning regalloc access windows
+- added an explicit target-neutral `priority_bucket` to each semantic-BIR
+  `regalloc` object so prepared value-storage contracts now distinguish
+  single-point, multi-point, and call-spanning register candidates from
+  explicit prepared access-window and call-crossing cues
+- kept the bucket classification inside prepare-owned semantics by deriving it
+  from existing value-storage vs address-exposed contracts and real BIR
+  instruction ordering instead of target register rules or physical
+  assignment
+- extended the prepare entry-contract test so representative single-point,
+  call-spanning, and non-value prepared objects assert the new bucket naming
+  alongside the existing access summary
 
 ## Suggested Next
-- build on the new access-window summary by deriving target-neutral regalloc
-  priority buckets that distinguish single-point value-storage objects from
-  call-spanning register candidates without widening into physical assignment
-- keep any next priority classification keyed off prepared liveness,
-  stack-layout, and explicit BIR instruction structure rather than slot-name
-  families or target-specific register rules
+- build on the new bucket contract by deciding whether prepared regalloc needs
+  additional object-local cues for multi-point value storage, such as whether
+  the last touch is a write or read, before any physical assignment work
+- keep any next regalloc detail keyed off prepared liveness, stack-layout,
+  and explicit BIR instruction structure rather than target-specific register
+  classes or testcase-shaped heuristics
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that

@@ -111,6 +111,21 @@ bool crosses_call_boundary(const RegallocObjectAccessSummary& summary) {
                      });
 }
 
+std::string_view regalloc_priority_bucket(std::string_view contract_kind,
+                                          const RegallocObjectAccessSummary& summary) {
+  if (contract_kind != "value_storage") {
+    return "non_value_storage";
+  }
+  if (!summary.has_access_window ||
+      summary.first_access_instruction_index == summary.last_access_instruction_index) {
+    return "single_point_value";
+  }
+  if (crosses_call_boundary(summary)) {
+    return "call_spanning_value";
+  }
+  return "multi_point_value";
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -138,12 +153,14 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
       }
       const auto summary = summarize_object_accesses(function, object.source_name);
       const std::string allocation_kind(regalloc_allocation_kind(object.contract_kind));
+      const std::string priority_bucket(regalloc_priority_bucket(object.contract_kind, summary));
       prepared_function.objects.push_back(PreparedRegallocObject{
           .function_name = object.function_name,
           .source_name = object.source_name,
           .source_kind = object.source_kind,
           .contract_kind = object.contract_kind,
           .allocation_kind = allocation_kind,
+          .priority_bucket = priority_bucket,
           .direct_read_count = summary.direct_read_count,
           .direct_write_count = summary.direct_write_count,
           .addressed_access_count = summary.addressed_access_count,
@@ -168,10 +185,11 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
       .phase = "regalloc",
       .message =
           "regalloc now groups prepared liveness objects per function and classifies them as "
-          "register_candidate or fixed_stack_storage contracts, plus direct read/write, "
-          "addressed-access, and call-argument exposure counts plus instruction-order access "
-          "windows and call-crossing cues for downstream prepared-BIR consumers; physical "
-          "register assignment remains future work",
+          "register_candidate or fixed_stack_storage contracts, plus target-neutral priority "
+          "buckets for single-point, multi-point, and call-spanning value-storage objects, "
+          "direct read/write, addressed-access, and call-argument exposure counts, and "
+          "instruction-order access windows and call-crossing cues for downstream prepared-BIR "
+          "consumers; physical register assignment remains future work",
   });
 }
 
