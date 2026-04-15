@@ -18,14 +18,20 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
   local-reuse bindings inherit satisfied `stable_home_slot_preferred` plus
   ready mixed sync coordination, without naming target registers or widening
   into target-ingestion work
+- projected the existing ready-only batch ordering policy down into each
+  `binding_ready` regalloc binding decision, so downstream prepared consumers
+  can read the per-binding sequencing contract without consulting batch
+  summaries alone or backfilling deferred single-point cases
 - extended the prepare entry backend fixture to assert the new per-binding
-  prerequisite/handoff contract for the current binding-ready frontier
+  prerequisite, handoff, and sequencing contract for the current
+  binding-ready frontier
 
 ## Suggested Next
-- keep step-4 work inside prepare by projecting the current binding-batch
-  ordering policy down into each `binding_ready` decision, so downstream
-  prepared consumers can read the per-binding sequencing contract without
-  consulting batch summaries or backfilling deferred single-point cases
+- keep step-4 work inside prepare by classifying the current
+  `binding_deferred` opportunistic-single-point frontier into explicit
+  deferred batch metadata, so downstream prepared consumers can distinguish
+  access-window blockers from coordination blockers without reopening target
+  ingestion work
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that

@@ -131,6 +131,7 @@ struct PreparedRegallocBindingDecision {
   std::string allocation_stage;
   std::string binding_batch_kind;
   std::size_t binding_order_index = 0;
+  std::string ordering_policy;
   std::string reservation_kind;
   std::string reservation_scope;
   std::string home_slot_mode;

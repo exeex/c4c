@@ -1247,6 +1247,7 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
         .allocation_stage = decision.allocation_stage,
         .binding_batch_kind = binding_batch_kind,
         .binding_order_index = batch_summary->candidate_count,
+        .ordering_policy = batch_summary->ordering_policy,
         .reservation_kind = decision.reservation_kind,
         .reservation_scope = decision.reservation_scope,
         .home_slot_mode = decision.home_slot_mode,
@@ -1450,7 +1451,10 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "still wait on access-window observation or coordination buckets, "
           "plus a ready-only binding batch/order artifact that keeps current "
           "stable-binding work grouped by prepare-owned call-boundary versus "
-          "local-reuse batches without naming physical registers, "
+          "local-reuse batches without naming physical registers, plus per-binding "
+          "ordering-policy cues projected from those ready batches so downstream "
+          "prepared consumers can read the sequencing contract without consulting "
+          "batch summaries alone, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "
