@@ -265,8 +265,9 @@ prepare::PreparedBirModule legalize_call_abi_module() {
   options.run_stack_layout = false;
   options.run_liveness = false;
   options.run_regalloc = false;
-  prepare::BirPreAlloc::run_legalize(prepared, options);
-  return prepared;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  return std::move(planner.prepared());
 }
 
 prepare::PreparedBirModule legalize_memory_access_module() {
@@ -370,8 +371,9 @@ prepare::PreparedBirModule legalize_memory_access_module() {
   options.run_stack_layout = false;
   options.run_liveness = false;
   options.run_regalloc = false;
-  prepare::BirPreAlloc::run_legalize(prepared, options);
-  return prepared;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  return std::move(planner.prepared());
 }
 
 prepare::PreparedBirModule legalize_merge3_module(bool add_trailing_use) {
@@ -457,8 +459,9 @@ prepare::PreparedBirModule legalize_merge3_module(bool add_trailing_use) {
   options.run_stack_layout = false;
   options.run_liveness = false;
   options.run_regalloc = false;
-  prepare::BirPreAlloc::run_legalize(prepared, options);
-  return prepared;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  return std::move(planner.prepared());
 }
 
 prepare::PreparedBirModule legalize_merge3_successor_use_module() {
@@ -544,8 +547,9 @@ prepare::PreparedBirModule legalize_merge3_successor_use_module() {
   options.run_stack_layout = false;
   options.run_liveness = false;
   options.run_regalloc = false;
-  prepare::BirPreAlloc::run_legalize(prepared, options);
-  return prepared;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  return std::move(planner.prepared());
 }
 
 prepare::PreparedBirModule legalize_merge3_forwarded_successor_use_module() {
@@ -640,8 +644,9 @@ prepare::PreparedBirModule legalize_merge3_forwarded_successor_use_module() {
   options.run_stack_layout = false;
   options.run_liveness = false;
   options.run_regalloc = false;
-  prepare::BirPreAlloc::run_legalize(prepared, options);
-  return prepared;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  return std::move(planner.prepared());
 }
 
 prepare::PreparedBirModule legalize_merge3_conditional_successor_use_module() {
@@ -747,8 +752,9 @@ prepare::PreparedBirModule legalize_merge3_conditional_successor_use_module() {
   options.run_stack_layout = false;
   options.run_liveness = false;
   options.run_regalloc = false;
-  prepare::BirPreAlloc::run_legalize(prepared, options);
-  return prepared;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  return std::move(planner.prepared());
 }
 
 int check_materialized_join(const bir::Function& legalized, bool add_trailing_use) {

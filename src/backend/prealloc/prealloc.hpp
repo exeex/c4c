@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace c4c::backend::prepare {
@@ -246,13 +247,26 @@ class BirPreAlloc {
  public:
   BirPreAlloc(const c4c::backend::bir::Module& module,
               Target target,
-              const PrepareOptions& options = {});
+              const PrepareOptions& options = {})
+      : options_(options),
+        prepared_{
+            .module = module,
+            .target = target,
+            .route = PrepareRoute::SemanticBirShared,
+            .completed_phases = {},
+            .notes = {},
+        } {}
+  explicit BirPreAlloc(PreparedBirModule prepared,
+                       const PrepareOptions& options = {})
+      : options_(options), prepared_(std::move(prepared)) {}
 
-  static void run_legalize(PreparedBirModule& module, const PrepareOptions& options);
-  static void run_stack_layout(PreparedBirModule& module, const PrepareOptions& options);
-  static void run_liveness(PreparedBirModule& module, const PrepareOptions& options);
-  static void run_regalloc(PreparedBirModule& module, const PrepareOptions& options);
+  void run_legalize();
+  void run_stack_layout();
+  void run_liveness();
+  void run_regalloc();
 
+  PreparedBirModule& prepared() { return prepared_; }
+  const PreparedBirModule& prepared() const { return prepared_; }
   PreparedBirModule run();
 
  private:
@@ -282,8 +296,6 @@ class BirPreAlloc {
       const PreparedRegallocContentionSummary* contention) const;
   void note(std::string_view message);
 
-  const c4c::backend::bir::Module& module_;
-  Target target_;
   PrepareOptions options_;
   PreparedBirModule prepared_;
   PreparedRegallocFunction* current_regalloc_function_ = nullptr;

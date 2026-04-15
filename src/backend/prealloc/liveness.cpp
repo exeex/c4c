@@ -185,15 +185,14 @@ std::size_t count_function_instructions(const bir::Function& function) {
 
 }  // namespace
 
-void BirPreAlloc::run_liveness(PreparedBirModule& module, const PrepareOptions& options) {
-  (void)options;
-  module.completed_phases.push_back("liveness");
-  module.liveness.functions.clear();
-  module.liveness.objects.clear();
-  module.liveness.functions.reserve(module.module.functions.size());
-  module.liveness.objects.reserve(module.stack_layout.objects.size());
+void BirPreAlloc::run_liveness() {
+  prepared_.completed_phases.push_back("liveness");
+  prepared_.liveness.functions.clear();
+  prepared_.liveness.objects.clear();
+  prepared_.liveness.functions.reserve(prepared_.module.functions.size());
+  prepared_.liveness.objects.reserve(prepared_.stack_layout.objects.size());
 
-  for (const auto& function : module.module.functions) {
+  for (const auto& function : prepared_.module.functions) {
     PreparedLivenessFunction prepared_function{
         .function_name = function.name,
         .instruction_count = count_function_instructions(function),
@@ -210,12 +209,12 @@ void BirPreAlloc::run_liveness(PreparedBirModule& module, const PrepareOptions& 
 
     prepared_function.call_instruction_count = prepared_function.call_instruction_indices.size();
 
-    for (const auto& object : module.stack_layout.objects) {
+    for (const auto& object : prepared_.stack_layout.objects) {
       if (object.function_name != function.name) {
         continue;
       }
       auto summary = summarize_object_accesses(function, object.source_name);
-      module.liveness.objects.push_back(PreparedLivenessObject{
+      prepared_.liveness.objects.push_back(PreparedLivenessObject{
           .function_name = object.function_name,
           .source_name = object.source_name,
           .source_kind = object.source_kind,
@@ -235,10 +234,10 @@ void BirPreAlloc::run_liveness(PreparedBirModule& module, const PrepareOptions& 
       ++prepared_function.object_count;
     }
 
-    module.liveness.functions.push_back(std::move(prepared_function));
+    prepared_.liveness.functions.push_back(std::move(prepared_function));
   }
 
-  module.notes.push_back(PrepareNote{
+  prepared_.notes.push_back(PrepareNote{
       .phase = "liveness",
       .message =
           "liveness now classifies prepared stack-layout objects into value-storage "

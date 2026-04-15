@@ -1172,19 +1172,17 @@ void BirPreAlloc::populate_binding_handoff_summary() {
   }
 }
 
-void BirPreAlloc::run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
-  (void)options;
-  module.completed_phases.push_back("regalloc");
-  module.regalloc.functions.clear();
-  module.regalloc.functions.reserve(module.module.functions.size());
-  BirPreAlloc planner(module.module, module.target, options);
+void BirPreAlloc::run_regalloc() {
+  prepared_.completed_phases.push_back("regalloc");
+  prepared_.regalloc.functions.clear();
+  prepared_.regalloc.functions.reserve(prepared_.module.functions.size());
 
-  for (const auto& function : module.module.functions) {
+  for (const auto& function : prepared_.module.functions) {
     PreparedRegallocFunction prepared_function{
         .function_name = function.name,
     };
-    planner.current_regalloc_function_ = &prepared_function;
-    for (const auto& object : module.liveness.objects) {
+    current_regalloc_function_ = &prepared_function;
+    for (const auto& object : prepared_.liveness.objects) {
       if (object.function_name != function.name) {
         continue;
       }
@@ -1281,22 +1279,22 @@ void BirPreAlloc::run_regalloc(PreparedBirModule& module, const PrepareOptions& 
     prepared_function.reservation_summary.reserve(std::size(kReservationStages));
     prepared_function.contention_summary.reserve(std::size(kReservationStages));
     for (const auto stage : kReservationStages) {
-      auto summary = planner.summarize_reservation_stage(stage);
+      auto summary = summarize_reservation_stage(stage);
       if (summary.candidate_count != 0) {
         prepared_function.contention_summary.push_back(summarize_contention_stage(summary));
         prepared_function.reservation_summary.push_back(std::move(summary));
       }
     }
-    planner.populate_object_allocation_state();
-    planner.populate_binding_sequence();
-    planner.populate_binding_handoff_summary();
+    populate_object_allocation_state();
+    populate_binding_sequence();
+    populate_binding_handoff_summary();
     if (!prepared_function.objects.empty()) {
-      module.regalloc.functions.push_back(std::move(prepared_function));
+      prepared_.regalloc.functions.push_back(std::move(prepared_function));
     }
-    planner.current_regalloc_function_ = nullptr;
+    current_regalloc_function_ = nullptr;
   }
 
-  module.notes.push_back(PrepareNote{
+  prepared_.notes.push_back(PrepareNote{
       .phase = "regalloc",
       .message =
           "regalloc now groups prepared liveness objects per function and classifies them as "

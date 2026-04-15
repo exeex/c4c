@@ -137,16 +137,15 @@ std::string_view stack_object_source_kind(const bir::Function& function, const b
 
 }  // namespace
 
-void BirPreAlloc::run_stack_layout(PreparedBirModule& module, const PrepareOptions& options) {
-  (void)options;
-  module.completed_phases.push_back("stack_layout");
-  module.stack_layout.objects.clear();
-  for (const auto& function : module.module.functions) {
-    append_param_memory_route_objects(module.stack_layout, function);
-    append_call_result_objects(module.stack_layout, function);
-    append_variadic_aggregate_output_objects(module.stack_layout, function);
+void BirPreAlloc::run_stack_layout() {
+  prepared_.completed_phases.push_back("stack_layout");
+  prepared_.stack_layout.objects.clear();
+  for (const auto& function : prepared_.module.functions) {
+    append_param_memory_route_objects(prepared_.stack_layout, function);
+    append_call_result_objects(prepared_.stack_layout, function);
+    append_variadic_aggregate_output_objects(prepared_.stack_layout, function);
     for (const auto& slot : function.local_slots) {
-      append_stack_object(module.stack_layout,
+      append_stack_object(prepared_.stack_layout,
                           function.name,
                           slot.name,
                           stack_object_source_kind(function, slot),
@@ -155,7 +154,7 @@ void BirPreAlloc::run_stack_layout(PreparedBirModule& module, const PrepareOptio
                           slot.align_bytes);
     }
   }
-  module.notes.push_back(PrepareNote{
+  prepared_.notes.push_back(PrepareNote{
       .phase = "stack_layout",
       .message =
           "stack layout now publishes local-slot, lowering scratch, address-taken "

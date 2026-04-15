@@ -838,16 +838,15 @@ void legalize_module(Target target, bir::Module& module) {
 
 }  // namespace
 
-void BirPreAlloc::run_legalize(PreparedBirModule& module, const PrepareOptions& options) {
-  (void)options;
-  module.completed_phases.push_back("legalize");
-  legalize_module(module.target, module.module);
-  module.invariants.push_back(PreparedBirInvariant::NoPhiNodes);
-  if (should_promote_i1(module.target)) {
-    module.invariants.push_back(PreparedBirInvariant::NoTargetFacingI1);
+void BirPreAlloc::run_legalize() {
+  prepared_.completed_phases.push_back("legalize");
+  legalize_module(prepared_.target, prepared_.module);
+  prepared_.invariants.push_back(PreparedBirInvariant::NoPhiNodes);
+  if (should_promote_i1(prepared_.target)) {
+    prepared_.invariants.push_back(PreparedBirInvariant::NoTargetFacingI1);
   }
 
-  module.notes.push_back(PrepareNote{
+  prepared_.notes.push_back(PrepareNote{
       .phase = "legalize",
       .message =
           "bootstrap BIR legalize removed phi nodes and promoted i1 values plus function "
