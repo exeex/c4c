@@ -17,21 +17,21 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- updated the bottom-of-test deferred-batch assertions in
-  `tests/backend/backend_prepare_entry_contract_test.cpp` so each deferred
-  batch resolves `join_regalloc_deferred_binding_batch(...)` once and reuses
-  that explicit join surface across the remaining ownership checks
-- kept the cleanup test-side only: no prepare-owned regalloc data model
+- collapsed the remaining deferred-batch helper family in
+  `tests/backend/backend_prepare_entry_contract_test.cpp` onto one explicit
+  resolved batch surface so stage, ordering-policy, and prerequisite/handoff
+  queries stop recomputing the same deferred join per helper call
+- kept the packet test-side only: no prepare-owned regalloc data model
   changes, no backend routing changes, and no public `prepare` contract rename
 - reran the delegated build plus backend subset proof for the packet and kept
   the result in `test_after.log`
 
 ## Suggested Next
-- inspect the remaining deferred-batch helper family in
-  `tests/backend/backend_prepare_entry_contract_test.cpp` to see whether
-  stage, ordering-policy, and prerequisite-state helpers can consume one
-  resolved join/result surface directly instead of recomputing the same join
-  internally for each query
+- inspect the remaining deferred-batch lookup path in
+  `tests/backend/backend_prepare_entry_contract_test.cpp`, especially
+  `find_regalloc_deferred_binding_batch(...)`, to see whether identity lookup
+  can reuse the resolved batch surface instead of repeating join-plus-identity
+  work across deferred summaries
 - keep the next packet inside step-5 regalloc ownership cleanup in related
   tests or `src/backend/prealloc/regalloc.cpp`; do not widen into a public API
   rename, new allocation policy, MIR ingestion, or target-specific work
@@ -87,6 +87,10 @@ while keeping the public shared contract named `prepare`
   access-window-owner choice on `RegallocDeferredBatchJoin`; if later cleanup
   trims more helpers, keep that join result as the consumer surface instead of
   recreating separate owner-object or owner-contention wrappers
+- deferred batch helper queries for stage, ordering, and prerequisite/handoff
+  state now share `RegallocDeferredBatchResolution`; if later cleanup trims
+  lookup helpers too, keep one explicit resolved-batch surface instead of
+  pushing new join calls back into each query helper
 - deferred batch identity checks in the contract test now funnel through one
   explicit identity helper; if a later packet trims more helper branching,
   keep that route instead of re-scattering new `deferred_reason` checks across
