@@ -17,19 +17,19 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- changed regalloc handoff publication to consume
-  `binding_batches`/`deferred_binding_batches` directly, so
-  `populate_binding_handoff_summary()` no longer rescans per-object
-  `binding_batch_kind` mirrors to rebuild a batch-owned contract
-- kept the object-local `binding_batch_kind` / `binding_order_index` attachment
-  path intact for downstream mapping and reporting, so this packet shrank the
-  handoff ownership seam without deleting the last stable object-to-batch link
+- removed object-level `binding_order_index` from
+  `PreparedRegallocObject`, so ready/deferred objects now keep only
+  `binding_batch_kind` as their attachment to the owning batch while ordering
+  stays owned by function-level `binding_sequence`
+- updated the prepare-entry contract test to assert per-object batch
+  attachment separately from batch-owned ordering, so this packet reduces one
+  real regalloc mirror without deleting the last stable object-to-batch link
 
 ## Suggested Next
-- inspect whether object-local `binding_batch_kind` and
-  `binding_order_index` are still the minimal per-object attachment contract or
-  whether one of them can shrink further now that handoff publication is fully
-  batch-owned, without removing the last stable object-to-batch attachment path
+- inspect whether the remaining object-local `binding_batch_kind` is still the
+  minimal attachment contract or whether a function-level object-to-batch
+  projection can replace it for both ready and deferred frontiers without
+  deleting the last stable attachment path first
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -64,9 +64,10 @@ while keeping the public shared contract named `prepare`
   at mirrors with real summary-level owners instead of recreating new
   fixed-stack or missing-state publication layers
 - object-local batch attachment still looks intentional because tests and
-  downstream reporting need to map each object onto its owning batch entry; do
-  not delete that projection unless the next packet can prove another stable
-  attachment path
+  downstream reporting still need to map each object onto its owning batch
+  entry; now that sequence position is batch-owned, do not delete the
+  remaining `binding_batch_kind` projection unless the next packet can prove
+  another stable attachment path
 - the current priority is structural clarity; if a cleanup only renames symbols
   but does not reduce architectural ambiguity, prefer the cleanup that removes
   an actual ownership seam or mirror first

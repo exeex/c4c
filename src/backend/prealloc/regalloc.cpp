@@ -1002,7 +1002,6 @@ void BirPreAlloc::populate_object_allocation_state() {
       object.sync_policy = std::string(regalloc_fixed_stack_sync_policy(object));
       object.binding_frontier_kind = "fixed_stack_authoritative";
       object.binding_batch_kind.clear();
-      object.binding_order_index = 0;
       continue;
     }
 
@@ -1013,7 +1012,6 @@ void BirPreAlloc::populate_object_allocation_state() {
       object.sync_policy = "allocation_state_missing_decision";
       object.binding_frontier_kind = "binding_frontier_incomplete";
       object.binding_batch_kind.clear();
-      object.binding_order_index = 0;
       continue;
     }
 
@@ -1025,7 +1023,6 @@ void BirPreAlloc::populate_object_allocation_state() {
     object.binding_frontier_kind =
         std::string(regalloc_binding_frontier_kind(object, decision, contention));
     object.binding_batch_kind.clear();
-    object.binding_order_index = 0;
   }
 }
 
@@ -1079,7 +1076,6 @@ void BirPreAlloc::populate_binding_sequence() {
         batch_summary = &current_regalloc_function_->deferred_binding_batches.back();
       }
       object->binding_batch_kind = binding_batch_kind;
-      object->binding_order_index = batch_summary->candidate_count;
       ++batch_summary->candidate_count;
       continue;
     }
@@ -1105,7 +1101,6 @@ void BirPreAlloc::populate_binding_sequence() {
       batch_summary = &current_regalloc_function_->binding_batches.back();
     }
     object->binding_batch_kind = binding_batch_kind;
-    object->binding_order_index = batch_summary->candidate_count;
 
     current_regalloc_function_->binding_sequence.push_back(PreparedRegallocBindingDecision{
         .source_kind = decision.source_kind,

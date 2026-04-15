@@ -84,7 +84,6 @@ struct PreparedRegallocObject {
   std::string sync_policy;
   std::string binding_frontier_kind;
   std::string binding_batch_kind;
-  std::size_t binding_order_index = 0;
   std::string deferred_reason;
   std::string access_shape;
   std::string first_access_kind;
