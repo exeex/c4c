@@ -17,19 +17,20 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed ready binding batch `candidate_count` because ready frontier
-  membership already rejoins through `binding_sequence` plus
-  `binding_batch_kind`
-- kept deferred batch attachment-owned counts intact because deferred frontier
-  membership still lives on batch summaries rather than the ready sequence
-- refreshed the prepare-entry contract test so ready batch expectations now
-  prove membership counts through `binding_sequence` and preserve batch
-  summaries only for prerequisite aggregation
+- removed the ready `binding_batches` summary layer because its prerequisite
+  and handoff fields only restated contention-owned facts for ready frontier
+  families
+- kept ready frontier ownership split on `binding_sequence` plus
+  `binding_batch_kind` for family identity/order while preserving deferred
+  batch summaries as the owner of deferred frontier grouping
+- refreshed the prepare-entry contract test so ready prerequisite/handoff
+  expectations now live on reservation/contention summaries instead of a
+  duplicate ready batch mirror
 
 ## Suggested Next
-- inspect whether ready batch prerequisite categories/states still need to
-  live on the summary once they currently restate contention-owned frontier
-  state for ready batches
+- inspect whether deferred batch prerequisite-state fields still need summary
+  ownership or can be rejoined from surviving deferred owners without
+  collapsing the explicit deferred frontier grouping
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -75,14 +76,13 @@ while keeping the public shared contract named `prepare`
   `deferred_reason`; do not restore a second deferred summary mirror unless a
   real consumer cannot rejoin those surviving owners
 - ready batch family identity now rides on `binding_batch_kind` while ready
-  member sequencing stays in `binding_sequence`; do not restore ready summary
-  `allocation_stage`, `follow_up_category`, `ordering_policy`, or
-  `candidate_count` mirrors unless a real consumer cannot rejoin those
-  surviving owners
-- ready access-window prerequisite state now lands on `binding_batches` from
-  stage contention while deferred frontier prerequisites stay on deferred batch
-  summaries; if later cleanup tries to unify derivation, keep one clear owner
-  for each fact
+  member sequencing stays in `binding_sequence`; do not restore a ready batch
+  summary layer for prerequisite, handoff, stage, ordering, or membership
+  mirrors unless a real consumer cannot rejoin those surviving owners
+- ready prerequisite and handoff facts now rejoin through
+  `allocation_stage -> contention_summary`; if later cleanup reshapes ready
+  family identity, keep that join explicit instead of recreating a second ready
+  publication view
 - object-local coordination categories are gone now; keep future cleanup aimed
   at mirrors with real summary-level owners instead of recreating new
   fixed-stack or missing-state publication layers

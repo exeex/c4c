@@ -199,17 +199,6 @@ const std::string* find_regalloc_binding_batch_kind(const prepare::PreparedRegal
   return nullptr;
 }
 
-const prepare::PreparedRegallocBindingBatchSummary* find_regalloc_binding_batch(
-    const prepare::PreparedRegallocFunction& function,
-    std::string_view binding_batch_kind) {
-  for (const auto& summary : function.binding_batches) {
-    if (summary.binding_batch_kind == binding_batch_kind) {
-      return &summary;
-    }
-  }
-  return nullptr;
-}
-
 const prepare::PreparedRegallocDeferredBindingBatchSummary* find_regalloc_deferred_binding_batch(
     const prepare::PreparedRegallocFunction& function,
     std::string_view binding_batch_kind) {
@@ -881,9 +870,7 @@ int main() {
   }
   if (regalloc_function->binding_sequence.size() != 6 ||
       regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches) !=
-          regalloc_function->register_candidate_count -
-              regalloc_function->binding_sequence.size() ||
-      regalloc_function->binding_batches.size() != 2 ||
+          regalloc_function->register_candidate_count - regalloc_function->binding_sequence.size() ||
       regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches) !=
           regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches)) {
     return fail(
@@ -1419,10 +1406,6 @@ int main() {
       find_regalloc_binding_decision(*regalloc_function, "local_slot", "readonly.slot");
   const auto* multiwrite_binding =
       find_regalloc_binding_decision(*regalloc_function, "local_slot", "multiwrite.slot");
-  const auto* call_boundary_binding_batch =
-      find_regalloc_binding_batch(*regalloc_function, "call_boundary_binding_batch");
-  const auto* local_reuse_binding_batch =
-      find_regalloc_binding_batch(*regalloc_function, "local_reuse_binding_batch");
   const auto* deferred_access_window_binding_batch =
       find_regalloc_deferred_binding_batch(*regalloc_function,
                                            "deferred_access_window_binding_batch");
@@ -1444,10 +1427,9 @@ int main() {
   }
   if (carry_binding == nullptr || callread_binding == nullptr || callwrite_binding == nullptr ||
       window_binding == nullptr || readonly_binding == nullptr || multiwrite_binding == nullptr ||
-      call_boundary_binding_batch == nullptr || local_reuse_binding_batch == nullptr ||
       deferred_access_window_binding_batch == nullptr ||
       deferred_coordination_binding_batch == nullptr) {
-    return fail("semantic-BIR regalloc should publish binding decisions and batch summaries for the current binding-ready frontier");
+    return fail("semantic-BIR regalloc should publish binding decisions and deferred batch summaries for the current binding frontier");
   }
   if (find_regalloc_binding_decision(*regalloc_function, "local_slot", "flag.slot") != nullptr ||
       find_regalloc_binding_decision(*regalloc_function, "local_slot", "writeonly.slot") != nullptr) {
@@ -1609,34 +1591,6 @@ int main() {
     return fail(
         "semantic-BIR regalloc should keep binding-ready local-reuse entries focused on sequencing identity and order");
   }
-  if (call_boundary_binding_batch->access_window_prerequisite_category !=
-          "overlapping_call_boundary_windows" ||
-      call_boundary_binding_batch->access_window_prerequisite_state !=
-          "prealloc_access_window_prerequisite_satisfied" ||
-      call_boundary_binding_batch->home_slot_prerequisite_category !=
-          "stable_home_slot_required" ||
-      call_boundary_binding_batch->home_slot_prerequisite_state !=
-          "prealloc_home_slot_prerequisite_satisfied" ||
-      call_boundary_binding_batch->sync_handoff_prerequisite_category !=
-          "mixed_sync_coordination" ||
-      call_boundary_binding_batch->sync_handoff_state != "prealloc_sync_handoff_ready") {
-    return fail(
-        "semantic-BIR regalloc should summarize call-boundary batch prerequisites and ready sync/home-slot handoff from the existing reservation/contention frontier");
-  }
-  if (local_reuse_binding_batch->access_window_prerequisite_category !=
-          "adjacent_local_windows" ||
-      local_reuse_binding_batch->access_window_prerequisite_state !=
-          "prealloc_access_window_prerequisite_satisfied" ||
-      local_reuse_binding_batch->home_slot_prerequisite_category !=
-          "stable_home_slot_preferred" ||
-      local_reuse_binding_batch->home_slot_prerequisite_state !=
-          "prealloc_home_slot_prerequisite_satisfied" ||
-      local_reuse_binding_batch->sync_handoff_prerequisite_category !=
-          "mixed_sync_coordination" ||
-      local_reuse_binding_batch->sync_handoff_state != "prealloc_sync_handoff_ready") {
-    return fail(
-        "semantic-BIR regalloc should summarize local-reuse batch prerequisites and ready sync/home-slot handoff from the existing reservation/contention frontier");
-  }
   if (regalloc_deferred_batch_allocation_stage(*regalloc_function,
                                                *deferred_access_window_binding_batch) !=
           "opportunistic_single_point" ||
@@ -1681,14 +1635,6 @@ int main() {
       regalloc_deferred_batch_candidate_count(*deferred_coordination_binding_batch) != 2) {
     return fail(
         "semantic-BIR regalloc should group deferred single-point candidates waiting on coordination into an explicit deferred binding batch");
-  }
-  if (call_boundary_binding_batch->binding_batch_kind != "call_boundary_binding_batch") {
-    return fail(
-        "semantic-BIR regalloc should keep ready frontier family identity on binding batch kind instead of publishing redundant ready summary mirrors");
-  }
-  if (local_reuse_binding_batch->binding_batch_kind != "local_reuse_binding_batch") {
-    return fail(
-        "semantic-BIR regalloc should keep ready local-reuse frontier identity on binding batch kind instead of publishing redundant ready summary mirrors");
   }
   if (carry_binding->binding_order_index != 0 || callread_binding->binding_order_index != 1 ||
       callwrite_binding->binding_order_index != 2 || window_binding->binding_order_index != 0 ||

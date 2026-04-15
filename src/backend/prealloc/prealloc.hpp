@@ -145,16 +145,6 @@ struct PreparedRegallocDeferredBindingAttachment {
   std::size_t object_index = 0;
 };
 
-struct PreparedRegallocBindingBatchSummary {
-  std::string binding_batch_kind;
-  std::string access_window_prerequisite_category;
-  std::string access_window_prerequisite_state;
-  std::string home_slot_prerequisite_category;
-  std::string home_slot_prerequisite_state;
-  std::string sync_handoff_prerequisite_category;
-  std::string sync_handoff_state;
-};
-
 struct PreparedRegallocDeferredBindingBatchSummary {
   std::string binding_batch_kind;
   std::string deferred_reason;
@@ -175,7 +165,6 @@ struct PreparedRegallocFunction {
   std::vector<PreparedRegallocReservationSummary> reservation_summary;
   std::vector<PreparedRegallocContentionSummary> contention_summary;
   std::vector<PreparedRegallocBindingDecision> binding_sequence;
-  std::vector<PreparedRegallocBindingBatchSummary> binding_batches;
   std::vector<PreparedRegallocDeferredBindingBatchSummary> deferred_binding_batches;
   std::size_t register_candidate_count = 0;
   std::size_t fixed_stack_storage_count = 0;
@@ -260,8 +249,6 @@ class BirPreAlloc {
       std::string_view source_name) const;
   const PreparedRegallocContentionSummary* find_contention_summary(
       std::string_view allocation_stage) const;
-  PreparedRegallocBindingBatchSummary* find_binding_batch_summary(
-      std::string_view binding_batch_kind);
   PreparedRegallocDeferredBindingBatchSummary* find_deferred_binding_batch_summary(
       std::string_view binding_batch_kind);
   PreparedRegallocReservationSummary summarize_reservation_stage(

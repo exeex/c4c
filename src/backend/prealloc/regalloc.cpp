@@ -309,9 +309,6 @@ std::string_view regalloc_sync_policy(std::string_view spill_sync_hint) {
   return "sync_policy_needs_future_analysis";
 }
 
-std::string_view regalloc_binding_access_window_prerequisite_state(
-    const PreparedRegallocContentionSummary& contention);
-
 bool regalloc_binding_frontier_is_incomplete(const PreparedRegallocObject& object) {
   return object.allocation_kind == "register_candidate" &&
          object.allocation_state_kind == "allocation_state_incomplete";
@@ -624,12 +621,6 @@ std::string_view regalloc_binding_home_slot_prerequisite_state(
   return "prealloc_home_slot_prerequisite_deferred";
 }
 
-std::string_view regalloc_binding_access_window_prerequisite_state(
-    const PreparedRegallocContentionSummary& contention) {
-  (void)contention;
-  return "prealloc_access_window_prerequisite_satisfied";
-}
-
 std::string_view regalloc_deferred_binding_access_window_prerequisite_category(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
@@ -749,19 +740,6 @@ const PreparedRegallocContentionSummary* BirPreAlloc::find_contention_summary(
   }
   for (const auto& summary : current_regalloc_function_->contention_summary) {
     if (summary.allocation_stage == allocation_stage) {
-      return &summary;
-    }
-  }
-  return nullptr;
-}
-
-PreparedRegallocBindingBatchSummary* BirPreAlloc::find_binding_batch_summary(
-    std::string_view binding_batch_kind) {
-  if (current_regalloc_function_ == nullptr) {
-    return nullptr;
-  }
-  for (auto& summary : current_regalloc_function_->binding_batches) {
-    if (summary.binding_batch_kind == binding_batch_kind) {
       return &summary;
     }
   }
@@ -909,7 +887,6 @@ void BirPreAlloc::populate_binding_sequence() {
     return;
   }
   current_regalloc_function_->binding_sequence.clear();
-  current_regalloc_function_->binding_batches.clear();
   current_regalloc_function_->deferred_binding_batches.clear();
 
   for (const auto& decision : current_regalloc_function_->allocation_sequence) {
@@ -963,22 +940,6 @@ void BirPreAlloc::populate_binding_sequence() {
     }
 
     const std::string binding_batch_kind(regalloc_binding_batch_kind(decision, *contention));
-    auto* batch_summary = find_binding_batch_summary(binding_batch_kind);
-    if (batch_summary == nullptr) {
-      current_regalloc_function_->binding_batches.push_back(PreparedRegallocBindingBatchSummary{
-          .binding_batch_kind = binding_batch_kind,
-          .access_window_prerequisite_category = contention->window_coordination_category,
-          .access_window_prerequisite_state =
-              std::string(regalloc_binding_access_window_prerequisite_state(*contention)),
-          .home_slot_prerequisite_category = contention->home_slot_category,
-          .home_slot_prerequisite_state =
-              std::string(regalloc_binding_home_slot_prerequisite_state(*contention)),
-          .sync_handoff_prerequisite_category = contention->sync_coordination_category,
-          .sync_handoff_state = std::string(regalloc_binding_sync_handoff_state(*contention)),
-      });
-      batch_summary = &current_regalloc_function_->binding_batches.back();
-    }
-
     current_regalloc_function_->binding_sequence.push_back(PreparedRegallocBindingDecision{
         .source_kind = decision.source_kind,
         .source_name = decision.source_name,
