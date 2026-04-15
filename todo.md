@@ -17,24 +17,25 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- replaced the remaining hybrid
-  `find_regalloc_binding_batch_kind(...)` string-returning helper in
-  `tests/backend/backend_prepare_entry_contract_test.cpp` with an explicit
-  `RegallocBindingBatchMatch` surface so the contract test now reuses one
-  ready/deferred batch-match path for the last binding-batch-kind checks
-- replaced the deferred frontier-count check with a matched-batch attachment
-  total assertion so the contract test proves deferred membership through the
-  surviving batch summaries instead of relying on a weaker count-only branch
+- collapsed the remaining ready-frontier binding-decision consumer path in
+  `tests/backend/backend_prepare_entry_contract_test.cpp` onto
+  `RegallocBindingBatchMatch` so ready and deferred binding-frontier checks now
+  reuse one explicit batch-match surface instead of mixing direct
+  `find_regalloc_binding_decision(...)` lookups with the newer match helpers
+- kept the deferred single-point exclusion check on the same match surface by
+  asserting `decision == nullptr` while deferred batch membership still rejoins
+  through the surviving deferred summary
 - kept the packet test-side only: no prepare-owned regalloc data model
   changes, no backend routing changes, and no public `prepare` contract rename
 - reran the delegated build plus backend subset proof for the packet and kept
   the result in `test_after.log`
 
 ## Suggested Next
-- inspect whether the remaining ready-batch-only helper surfaces in
-  `tests/backend/backend_prepare_entry_contract_test.cpp` can now collapse
-  onto one explicit consumer path without reintroducing object-local batch
-  mirrors or hidden string caches
+- inspect whether the remaining ready-frontier aggregate helpers in
+  `tests/backend/backend_prepare_entry_contract_test.cpp`, especially
+  batch-count or ordering-only helpers, still deserve separate ready-only
+  surfaces now that both ready identity and ready ordering checks reuse one
+  explicit batch-match path
 - keep the next packet inside step-5 regalloc ownership cleanup in related
   tests or `src/backend/prealloc/regalloc.cpp`; do not widen into a public API
   rename, new allocation policy, MIR ingestion, or target-specific work
@@ -102,6 +103,10 @@ while keeping the public shared contract named `prepare`
   `RegallocBindingBatchMatch`; if later cleanup trims more ready helper
   branching, keep that match surface instead of restoring hidden string
   caches or separate ready/deferred query APIs
+- ready frontier presence, identity, and ordering checks now all consume
+  `RegallocBindingBatchMatch`; if later cleanup trims more ready-only helper
+  branching, keep that one surface instead of reintroducing direct
+  `find_regalloc_binding_decision(...)` consumers
 - deferred batch identity checks in the contract test now funnel through one
   explicit identity helper; if a later packet trims more helper branching,
   keep that route instead of re-scattering new `deferred_reason` checks across
