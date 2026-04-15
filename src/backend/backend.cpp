@@ -844,8 +844,9 @@ std::string emit_module(const BackendModuleInput& input,
   const auto& lir_module = input.lir_module();
   const auto target = resolve_public_lir_target(lir_module, options.target);
 
-  auto lowering = c4c::backend::try_lower_to_bir_with_options(
-      lir_module, c4c::backend::BirLoweringOptions{});
+  c4c::backend::BirLoweringOptions lowering_options{};
+  lowering_options.preserve_dynamic_alloca = options.emit_semantic_bir;
+  auto lowering = c4c::backend::try_lower_to_bir_with_options(lir_module, lowering_options);
   auto prepared = c4c::backend::prepare::prepare_lir_module_with_options(
       lir_module, target, c4c::backend::prepare::PrepareOptions{});
 

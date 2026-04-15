@@ -225,6 +225,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_vla_goto_stackrestore_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/vla_goto_stackrestore.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/vla_goto_stackrestore_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @accumulate_vla(i32 %p.n) -> i32 {|%t0 = bir.call ptr llvm.stacksave()|%t3 = bir.call ptr llvm.dynamic_alloca.i32(i64 %t2)|bir.call void llvm.stackrestore(ptr %t0)|bir.ret i32|bir.func @main() -> i32 {|bir.call i32 accumulate_vla(i32 3)|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "define i32 @accumulate_vla|call ptr @llvm.stacksave()|call void @llvm.stackrestore(ptr %t0)|alloca i32, i64 %t2"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_builtin_memcpy_local_pair_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_local_pair.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu

@@ -1528,13 +1528,40 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   }
 
   if (const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&inst)) {
-    if (alloca->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
-        !alloca->count.str().empty()) {
+    if (alloca->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
       return false;
     }
 
-    const auto slot_type = lower_scalar_or_function_pointer_type(alloca->type_str.str());
     const std::string slot_name = alloca->result.str();
+    if (!alloca->count.str().empty()) {
+      if (!context_.options.preserve_dynamic_alloca) {
+        return false;
+      }
+      const auto element_type = lower_scalar_or_function_pointer_type(alloca->type_str.str());
+      const auto lowered_count = lower_value(alloca->count, bir::TypeKind::I64, value_aliases);
+      if (!element_type.has_value() || !lowered_count.has_value()) {
+        return false;
+      }
+      const auto type_text =
+          std::string(c4c::codegen::lir::trim_lir_arg_text(alloca->type_str.str()));
+      lowered_insts->push_back(bir::CallInst{
+          .result = bir::Value::named(bir::TypeKind::Ptr, slot_name),
+          .callee = "llvm.dynamic_alloca." + type_text,
+          .args = {*lowered_count},
+          .arg_types = {bir::TypeKind::I64},
+          .return_type = bir::TypeKind::Ptr,
+      });
+      pointer_value_addresses[slot_name] = PointerAddress{
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, slot_name),
+          .value_type = *element_type,
+          .byte_offset = 0,
+          .storage_type_text = type_text,
+          .type_text = type_text,
+      };
+      return true;
+    }
+
+    const auto slot_type = lower_scalar_or_function_pointer_type(alloca->type_str.str());
     if (local_slot_types.find(slot_name) != local_slot_types.end() ||
         local_array_slots.find(slot_name) != local_array_slots.end()) {
       return false;

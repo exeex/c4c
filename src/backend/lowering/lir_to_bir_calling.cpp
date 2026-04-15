@@ -580,6 +580,33 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     return lower_va_arg_call(*va_arg);
   }
 
+  if (const auto* stacksave = std::get_if<c4c::codegen::lir::LirStackSaveOp>(&inst)) {
+    if (stacksave->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+    lowered_insts->push_back(bir::CallInst{
+        .result = bir::Value::named(bir::TypeKind::Ptr, stacksave->result.str()),
+        .callee = "llvm.stacksave",
+        .return_type = bir::TypeKind::Ptr,
+    });
+    return true;
+  }
+
+  if (const auto* stackrestore = std::get_if<c4c::codegen::lir::LirStackRestoreOp>(&inst)) {
+    const auto lowered_saved_ptr = lower_value(stackrestore->saved_ptr, bir::TypeKind::Ptr);
+    if (!lowered_saved_ptr.has_value()) {
+      return false;
+    }
+    lowered_insts->push_back(bir::CallInst{
+        .callee = "llvm.stackrestore",
+        .args = {*lowered_saved_ptr},
+        .arg_types = {bir::TypeKind::Ptr},
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    return true;
+  }
+
   if (const auto* abs = std::get_if<c4c::codegen::lir::LirAbsOp>(&inst)) {
     if (abs->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
       return false;

@@ -23,6 +23,7 @@ struct BirLoweringOptions {
   bool lower_calls = true;
   bool legalize_types = true;
   bool lower_aggregates = true;
+  bool preserve_dynamic_alloca = false;
   bool allow_bounded_pattern_folds = false;
 };
 
