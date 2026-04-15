@@ -189,10 +189,19 @@ int check_prepare_i1_invariant(const prepare::PreparedBirModule& prepared) {
 
 prepare::PreparedBirModule legalize_call_abi_module() {
   bir::Module module;
+  module.globals.push_back(bir::Global{
+      .name = "gflag",
+      .type = bir::TypeKind::I1,
+      .size_bytes = 1,
+      .align_bytes = 1,
+      .initializer = bir::Value::immediate_i1(true),
+  });
 
   bir::Function callee;
   callee.name = "callee";
   callee.return_type = bir::TypeKind::I1;
+  callee.return_size_bytes = 1;
+  callee.return_align_bytes = 1;
   callee.params.push_back(bir::Param{
       .type = bir::TypeKind::I1,
       .name = "flag",
@@ -204,9 +213,17 @@ prepare::PreparedBirModule legalize_call_abi_module() {
   bir::Function caller;
   caller.name = "caller";
   caller.return_type = bir::TypeKind::I1;
+  caller.return_size_bytes = 1;
+  caller.return_align_bytes = 1;
   caller.params.push_back(bir::Param{
       .type = bir::TypeKind::I1,
       .name = "flag",
+      .size_bytes = 1,
+      .align_bytes = 1,
+  });
+  caller.local_slots.push_back(bir::LocalSlot{
+      .name = "flag.slot",
+      .type = bir::TypeKind::I1,
       .size_bytes = 1,
       .align_bytes = 1,
   });
@@ -850,8 +867,15 @@ int check_materialized_conditional_successor_join(const bir::Function& legalized
 }
 
 int check_legalized_call_abi_metadata(const prepare::PreparedBirModule& prepared) {
-  if (prepared.module.functions.size() != 2) {
-    return fail("expected declaration plus caller when checking call ABI legalization");
+  if (prepared.module.globals.size() != 1 || prepared.module.functions.size() != 2) {
+    return fail("expected one global plus declaration and caller when checking legality metadata");
+  }
+
+  const auto& global = prepared.module.globals.front();
+  if (global.type != bir::TypeKind::I32 || global.size_bytes != 4 || global.align_bytes != 4 ||
+      !global.initializer.has_value() || global.initializer->type != bir::TypeKind::I32 ||
+      global.initializer->immediate != 1) {
+    return fail("expected legalize to promote global storage bookkeeping away from i1");
   }
 
   const auto& callee = prepared.module.functions[0];
@@ -859,11 +883,23 @@ int check_legalized_call_abi_metadata(const prepare::PreparedBirModule& prepared
       callee.params[0].type != bir::TypeKind::I32) {
     return fail("expected legalize to promote declaration signatures away from i1");
   }
+  if (callee.return_size_bytes != 4 || callee.return_align_bytes != 4 || callee.params[0].size_bytes != 4 ||
+      callee.params[0].align_bytes != 4) {
+    return fail("expected legalize to promote declaration signature bookkeeping away from i1");
+  }
 
   const auto& caller = prepared.module.functions[1];
   if (caller.return_type != bir::TypeKind::I32 || caller.params.size() != 1 ||
       caller.params[0].type != bir::TypeKind::I32) {
     return fail("expected legalize to promote caller signatures away from i1");
+  }
+  if (caller.return_size_bytes != 4 || caller.return_align_bytes != 4 || caller.params[0].size_bytes != 4 ||
+      caller.params[0].align_bytes != 4) {
+    return fail("expected legalize to promote caller signature bookkeeping away from i1");
+  }
+  if (caller.local_slots.size() != 1 || caller.local_slots.front().type != bir::TypeKind::I32 ||
+      caller.local_slots.front().size_bytes != 4 || caller.local_slots.front().align_bytes != 4) {
+    return fail("expected legalize to promote local slot bookkeeping away from i1");
   }
   if (caller.blocks.size() != 1 || caller.blocks.front().insts.size() != 1) {
     return fail("expected single caller block with one legalized call");
@@ -891,6 +927,9 @@ int check_legalized_call_abi_metadata(const prepare::PreparedBirModule& prepared
   }
   if (call->return_type != bir::TypeKind::I32) {
     return fail("expected legalize to promote call return type metadata away from i1");
+  }
+  if (call->return_type_name != "i32") {
+    return fail("expected legalize to promote call return type text away from i1");
   }
   if (!caller.blocks.front().terminator.value.has_value() ||
       caller.blocks.front().terminator.value->type != bir::TypeKind::I32) {

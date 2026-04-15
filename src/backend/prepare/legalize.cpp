@@ -54,14 +54,21 @@ std::size_t type_size_bytes(bir::TypeKind type) {
   }
 }
 
-void legalize_call_arg_abi(Target target, bir::CallArgAbiInfo& abi) {
-  const auto original_type = abi.type;
-  abi.type = legalize_type(target, abi.type);
-  if (original_type != abi.type) {
-    const auto legalized_size = type_size_bytes(abi.type);
-    abi.size_bytes = legalized_size;
-    abi.align_bytes = legalized_size;
+void legalize_sized_type(Target target,
+                         bir::TypeKind& type,
+                         std::size_t& size_bytes,
+                         std::size_t& align_bytes) {
+  const auto original_type = type;
+  type = legalize_type(target, type);
+  if (original_type != type) {
+    const auto legalized_size = type_size_bytes(type);
+    size_bytes = legalized_size;
+    align_bytes = legalized_size;
   }
+}
+
+void legalize_call_arg_abi(Target target, bir::CallArgAbiInfo& abi) {
+  legalize_sized_type(target, abi.type, abi.size_bytes, abi.align_bytes);
 }
 
 void legalize_call_result_abi(Target target, bir::CallResultAbiInfo& abi) {
@@ -704,7 +711,7 @@ void lower_phi_nodes(bir::Function* function) {
 
 void legalize_module(Target target, bir::Module& module) {
   for (auto& global : module.globals) {
-    global.type = legalize_type(target, global.type);
+    legalize_sized_type(target, global.type, global.size_bytes, global.align_bytes);
     if (global.initializer.has_value()) {
       legalize_value(target, *global.initializer);
     }
@@ -715,12 +722,13 @@ void legalize_module(Target target, bir::Module& module) {
 
   for (auto& function : module.functions) {
     lower_phi_nodes(&function);
-    function.return_type = legalize_type(target, function.return_type);
+    legalize_sized_type(
+        target, function.return_type, function.return_size_bytes, function.return_align_bytes);
     for (auto& param : function.params) {
-      param.type = legalize_type(target, param.type);
+      legalize_sized_type(target, param.type, param.size_bytes, param.align_bytes);
     }
     for (auto& slot : function.local_slots) {
-      slot.type = legalize_type(target, slot.type);
+      legalize_sized_type(target, slot.type, slot.size_bytes, slot.align_bytes);
     }
     for (auto& block : function.blocks) {
       for (auto& inst : block.insts) {
@@ -749,6 +757,9 @@ void legalize_module(Target target, bir::Module& module) {
                 }
               } else if constexpr (std::is_same_v<T, bir::CallInst>) {
                 lowered.return_type = legalize_type(target, lowered.return_type);
+                if (!lowered.return_type_name.empty()) {
+                  lowered.return_type_name = bir::render_type(lowered.return_type);
+                }
                 if (lowered.result.has_value()) {
                   legalize_value(target, *lowered.result);
                 }
@@ -816,8 +827,9 @@ void run_legalize(PreparedBirModule& module, const PrepareOptions& options) {
   module.notes.push_back(PrepareNote{
       .phase = "legalize",
       .message =
-          "bootstrap BIR legalize removed phi nodes and promoted i1 values plus call ABI metadata "
-          "to i32 for x86/i686/aarch64/riscv64",
+          "bootstrap BIR legalize removed phi nodes and promoted i1 values plus function "
+          "signature/storage bookkeeping, call ABI metadata, and call return type text to i32 "
+          "for x86/i686/aarch64/riscv64",
   });
 }
 
