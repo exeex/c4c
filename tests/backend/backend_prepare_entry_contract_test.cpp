@@ -79,6 +79,26 @@ bir::Module make_prepare_contract_bir_module() {
       .is_byval_copy = true,
   });
   function.local_slots.push_back(bir::LocalSlot{
+      .name = "phi.slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .phi_observation = bir::PhiObservation{
+          .result = bir::Value::named(bir::TypeKind::I32, "phi.result"),
+          .incomings =
+              {
+                  bir::PhiIncoming{
+                      .label = "then",
+                      .value = bir::Value::immediate_i32(1),
+                  },
+                  bir::PhiIncoming{
+                      .label = "else",
+                      .value = bir::Value::immediate_i32(0),
+                  },
+              },
+      },
+  });
+  function.local_slots.push_back(bir::LocalSlot{
       .name = "%call.result.0",
       .type = bir::TypeKind::I32,
       .size_bytes = 4,
@@ -208,7 +228,7 @@ int main() {
   if (!contains_note(prepared_bir.notes, "legalize", "call return type text")) {
     return fail("semantic-BIR prepare legalize note should mention call return type text");
   }
-  if (!contains_note(prepared_bir.notes, "stack_layout", "local-slot stack objects")) {
+  if (!contains_note(prepared_bir.notes, "stack_layout", "local-slot and phi-materialize stack objects")) {
     return fail("semantic-BIR prepare stack-layout note should mention local-slot stack objects");
   }
   if (!contains_note(prepared_bir.notes, "stack_layout", "byval/sret memory-route")) {
@@ -232,9 +252,9 @@ int main() {
       return fail("unexpected semantic-BIR prepare phase order");
     }
   }
-  if (prepared_bir.stack_layout.objects.size() != 10) {
+  if (prepared_bir.stack_layout.objects.size() != 11) {
     return fail(
-        "semantic-BIR stack layout should publish local-slot, byval/sret, call-result, and va_arg frame objects");
+        "semantic-BIR stack layout should publish local-slot, phi-materialize, byval/sret, call-result, and va_arg frame objects");
   }
   const auto* local_slot = find_stack_object(prepared_bir, "local_slot", "flag.slot");
   if (local_slot == nullptr || local_slot->function_name != "id_pair" ||
@@ -247,6 +267,13 @@ int main() {
       byval_copy_slot->type != bir::TypeKind::I32 || byval_copy_slot->size_bytes != 4 ||
       byval_copy_slot->align_bytes != 4) {
     return fail("semantic-BIR stack layout should publish byval-copy local slots as prepared frame objects");
+  }
+  const auto* phi_slot = find_stack_object(prepared_bir, "phi_materialize_slot", "phi.slot");
+  if (phi_slot == nullptr || phi_slot->function_name != "id_pair" ||
+      phi_slot->type != bir::TypeKind::I32 || phi_slot->size_bytes != 4 ||
+      phi_slot->align_bytes != 4) {
+    return fail(
+        "semantic-BIR stack layout should publish phi-materialized local slots as prepared frame objects");
   }
   const auto* sret_param = find_stack_object(prepared_bir, "sret_param", "%ret.sret");
   if (sret_param == nullptr || sret_param->function_name != "id_pair" ||
