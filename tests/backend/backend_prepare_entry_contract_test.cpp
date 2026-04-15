@@ -197,11 +197,9 @@ const prepare::PreparedRegallocDeferredBindingBatchSummary* find_regalloc_deferr
 
 const prepare::PreparedRegallocBindingHandoffSummary* find_regalloc_binding_handoff_summary(
     const prepare::PreparedRegallocFunction& function,
-    std::string_view binding_frontier_kind,
     std::string_view binding_batch_kind) {
   for (const auto& summary : function.binding_handoff_summary) {
-    if (summary.binding_frontier_kind == binding_frontier_kind &&
-        summary.binding_batch_kind == binding_batch_kind) {
+    if (summary.binding_batch_kind == binding_batch_kind) {
       return &summary;
     }
   }
@@ -1403,19 +1401,15 @@ int main() {
                                            "deferred_coordination_binding_batch");
   const auto* call_boundary_handoff_summary =
       find_regalloc_binding_handoff_summary(*regalloc_function,
-                                            "binding_ready",
                                             "call_boundary_binding_batch");
   const auto* local_reuse_handoff_summary =
       find_regalloc_binding_handoff_summary(*regalloc_function,
-                                            "binding_ready",
                                             "local_reuse_binding_batch");
   const auto* deferred_access_window_handoff_summary =
       find_regalloc_binding_handoff_summary(*regalloc_function,
-                                            "binding_deferred",
                                             "deferred_access_window_binding_batch");
   const auto* deferred_coordination_handoff_summary =
       find_regalloc_binding_handoff_summary(*regalloc_function,
-                                            "binding_deferred",
                                             "deferred_coordination_binding_batch");
   if (carry_sequence == nullptr || callread_sequence == nullptr || callwrite_sequence == nullptr ||
       window_sequence == nullptr || readonly_sequence == nullptr || multiwrite_sequence == nullptr ||
@@ -1688,6 +1682,7 @@ int main() {
         "semantic-BIR regalloc should group deferred single-point candidates waiting on coordination into an explicit deferred binding batch");
   }
   if (call_boundary_handoff_summary->binding_frontier_reason != "call_boundary_preservation" ||
+      call_boundary_handoff_summary->binding_frontier_kind != "binding_ready" ||
       call_boundary_handoff_summary->binding_batch_kind !=
           call_boundary_binding_batch->binding_batch_kind) {
     return fail(
@@ -1695,6 +1690,7 @@ int main() {
   }
   if (local_reuse_handoff_summary->binding_frontier_reason !=
           "sequenced_local_reuse_coordination" ||
+      local_reuse_handoff_summary->binding_frontier_kind != "binding_ready" ||
       local_reuse_handoff_summary->binding_batch_kind !=
           local_reuse_binding_batch->binding_batch_kind) {
     return fail(
@@ -1702,6 +1698,7 @@ int main() {
   }
   if (deferred_access_window_handoff_summary->binding_frontier_reason !=
           "awaiting_access_window_observation" ||
+      deferred_access_window_handoff_summary->binding_frontier_kind != "binding_deferred" ||
       deferred_access_window_handoff_summary->binding_batch_kind !=
           deferred_access_window_binding_batch->binding_batch_kind) {
     return fail(
@@ -1709,6 +1706,7 @@ int main() {
   }
   if (deferred_coordination_handoff_summary->binding_frontier_reason !=
           "batched_single_point_coordination" ||
+      deferred_coordination_handoff_summary->binding_frontier_kind != "binding_deferred" ||
       deferred_coordination_handoff_summary->binding_batch_kind !=
           deferred_coordination_binding_batch->binding_batch_kind) {
     return fail(
