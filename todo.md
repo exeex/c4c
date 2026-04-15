@@ -8,25 +8,24 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- extended the ready-only regalloc batch contract with explicit per-batch
-  stable-home-slot and sync-handoff prerequisite fields, so prepared consumers
-  can read the current binding-ready frontier as concrete batch-level handoff
-  facts instead of inferring them from contention summaries alone
-- kept the new prerequisite surface derived from the existing
-  reservation/contention artifacts: call-boundary batches advertise satisfied
+- projected the existing ready-only batch prerequisite and handoff state down
+  into each `binding_ready` regalloc binding decision, so downstream prepared
+  consumers can read per-binding stable-home-slot and sync-ready guarantees
+  without reconstructing them from batch summaries alone
+- kept the new per-binding fields derived directly from the current
+  reservation/contention frontier: call-boundary bindings inherit satisfied
   `stable_home_slot_required` plus ready mixed sync coordination, and
-  local-reuse batches advertise satisfied `stable_home_slot_preferred` plus
-  ready mixed sync coordination, without naming physical registers or widening
+  local-reuse bindings inherit satisfied `stable_home_slot_preferred` plus
+  ready mixed sync coordination, without naming target registers or widening
   into target-ingestion work
-- proved the new batch prerequisite contract in the prepare entry fixture and
-  reran the delegated backend subset successfully
+- extended the prepare entry backend fixture to assert the new per-binding
+  prerequisite/handoff contract for the current binding-ready frontier
 
 ## Suggested Next
-- keep step-4 work inside prepare by projecting the new batch prerequisite
-  state down into explicit per-binding handoff notes for the binding-ready
-  frontier, so downstream prepared consumers can tell which individual binding
-  decisions inherit stable-home-slot and sync-ready guarantees from their batch
-  without backfilling deferred single-point cases or naming target registers
+- keep step-4 work inside prepare by projecting the current binding-batch
+  ordering policy down into each `binding_ready` decision, so downstream
+  prepared consumers can read the per-binding sequencing contract without
+  consulting batch summaries or backfilling deferred single-point cases
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that

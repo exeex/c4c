@@ -136,6 +136,10 @@ struct PreparedRegallocBindingDecision {
   std::string home_slot_mode;
   std::string sync_policy;
   std::string follow_up_category;
+  std::string home_slot_prerequisite_category;
+  std::string home_slot_prerequisite_state;
+  std::string sync_handoff_prerequisite_category;
+  std::string sync_handoff_state;
 };
 
 struct PreparedRegallocBindingBatchSummary {

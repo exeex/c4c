@@ -1613,7 +1613,22 @@ int main() {
       callwrite_binding->binding_order_index != 2 ||
       carry_binding->follow_up_category != "call_boundary_preservation" ||
       callread_binding->follow_up_category != "call_boundary_preservation" ||
-      callwrite_binding->follow_up_category != "call_boundary_preservation") {
+      callwrite_binding->follow_up_category != "call_boundary_preservation" ||
+      carry_binding->home_slot_prerequisite_category != "stable_home_slot_required" ||
+      callread_binding->home_slot_prerequisite_category != "stable_home_slot_required" ||
+      callwrite_binding->home_slot_prerequisite_category != "stable_home_slot_required" ||
+      carry_binding->home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      callread_binding->home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      callwrite_binding->home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      carry_binding->sync_handoff_prerequisite_category != "mixed_sync_coordination" ||
+      callread_binding->sync_handoff_prerequisite_category != "mixed_sync_coordination" ||
+      callwrite_binding->sync_handoff_prerequisite_category != "mixed_sync_coordination" ||
+      carry_binding->sync_handoff_state != "prepare_sync_handoff_ready" ||
+      callread_binding->sync_handoff_state != "prepare_sync_handoff_ready" ||
+      callwrite_binding->sync_handoff_state != "prepare_sync_handoff_ready") {
     return fail("semantic-BIR regalloc should turn binding-ready across-call candidates into one ordered call-boundary binding batch");
   }
   if (window_binding->allocation_stage != "stabilize_local_reuse" ||
@@ -1626,7 +1641,22 @@ int main() {
       multiwrite_binding->binding_order_index != 2 ||
       window_binding->follow_up_category != "sequenced_local_reuse_coordination" ||
       readonly_binding->follow_up_category != "sequenced_local_reuse_coordination" ||
-      multiwrite_binding->follow_up_category != "sequenced_local_reuse_coordination") {
+      multiwrite_binding->follow_up_category != "sequenced_local_reuse_coordination" ||
+      window_binding->home_slot_prerequisite_category != "stable_home_slot_preferred" ||
+      readonly_binding->home_slot_prerequisite_category != "stable_home_slot_preferred" ||
+      multiwrite_binding->home_slot_prerequisite_category != "stable_home_slot_preferred" ||
+      window_binding->home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      readonly_binding->home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      multiwrite_binding->home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      window_binding->sync_handoff_prerequisite_category != "mixed_sync_coordination" ||
+      readonly_binding->sync_handoff_prerequisite_category != "mixed_sync_coordination" ||
+      multiwrite_binding->sync_handoff_prerequisite_category != "mixed_sync_coordination" ||
+      window_binding->sync_handoff_state != "prepare_sync_handoff_ready" ||
+      readonly_binding->sync_handoff_state != "prepare_sync_handoff_ready" ||
+      multiwrite_binding->sync_handoff_state != "prepare_sync_handoff_ready") {
     return fail("semantic-BIR regalloc should turn binding-ready local-reuse candidates into one ordered local-reuse binding batch");
   }
   if (call_boundary_binding_batch->allocation_stage != "stabilize_across_calls" ||
