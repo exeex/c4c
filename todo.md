@@ -9,24 +9,23 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 
 ## Just Finished
 - extended the semantic-BIR regalloc artifact with a target-neutral
-  `register_eligibility_hint` field sourced from current prepared facts:
-  single-read values advertise read-cache eligibility, write-only values
-  advertise write-buffer eligibility, local read/write windows advertise tight
-  reuse eligibility, call-crossing windows advertise call-preserved versus
-  call-writeback eligibility, and fixed-stack storage stays register-ineligible
-  based on address-exposed versus call-exposed contracts
+  `spill_sync_hint` field sourced from current prepared facts: read-only
+  values advertise restore-only sync, write-only values advertise writeback-
+  only sync, read/write windows advertise bidirectional sync, and fixed-stack
+  storage stays memory- or call-boundary-authoritative based on its prepared
+  exposure contract
 - broadened the prepare entry-contract fixture so nearby single-point,
   adjacent multi-point, call-spanning, write-only, address-exposed, and
-  call-exposed shapes all prove the new register-eligibility cue alongside the
-  existing pool/pressure/reload/materialization/locality/readiness/access
+  call-exposed shapes all prove the new spill-sync cue alongside the existing
+  pool/pressure/reload/materialization/locality/eligibility/readiness/access
   summaries
 
 ## Suggested Next
 - if execution stays inside this bucket, publish one more allocator-facing
   regalloc cue that still comes directly from prepared facts, such as a
-  spill-synchronization or home-slot stability hint keyed by direct-read/write
-  counts plus fixed-stack exposure kind rather than target names, synthetic
-  intervals, or placeholder interference claims
+  home-slot stability hint keyed by access-window width plus read/write
+  direction rather than target names, synthetic intervals, or placeholder
+  interference claims
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -55,6 +54,9 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
   locality, and readiness: it should answer whether the current prepared facts
   still permit a register-resident strategy, not which pool or window shape is
   preferred once that strategy is chosen
+- keep the new spill-sync cue focused on synchronization direction between a
+  register-resident strategy and its storage home; do not let it collapse into
+  another reload-cost, locality, or eligibility synonym
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build
