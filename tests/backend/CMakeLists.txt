@@ -195,6 +195,26 @@ c4c_set_backend_test_labels(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_fabs_f64_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_fabs_f64.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_fabs_f64_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @take_fabs(double %p.x) -> double {|%t0 = bir.call double llvm.fabs.double(double %p.x)|bir.ret double %t0"
+  FORBIDDEN_SNIPPETS "define double @take_fabs|call double @llvm.fabs.double"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_fabs_f32_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_fabs_f32.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_fabs_f32_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @take_fabsf(float %p.x) -> float {|%t0 = bir.call float llvm.fabs.float(float %p.x)|bir.ret float %t0"
+  FORBIDDEN_SNIPPETS "define float @take_fabsf|call float @llvm.fabs.float"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_variadic_sum2_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/variadic_sum2.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu

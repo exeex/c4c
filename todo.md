@@ -8,18 +8,18 @@ Current Plan Focus: ordered step 3, runtime and intrinsic families through seman
 # Current Packet
 
 ## Just Finished
-- added `backend_codegen_route_x86_64_builtin_memset_nonzero_nested_i32_scalar_field_observe_semantic_bir`, proving `memset(&dst.inner.value, 255, sizeof(dst.inner.value))` stays in semantic BIR as a direct `bir.store_local %lv.dst.4, i32 -1` update with the sibling field preserved
-- confirmed this nested aggregate scalar-field pointer shape was already handled by the shared local-slot metadata route, so the packet locked in the nearby semantic family with dedicated backend coverage instead of adding a new `memset` special case
+- widened shared semantic call-signature lowering to accept `float` / `double` params and returns, then taught `lower_runtime_intrinsic_inst` to recognize direct-intrinsic `@llvm.fabs.double` / `@llvm.fabs.float` calls through `parse_lir_call_callee(...)` plus inferred typed args instead of the direct-global parser
+- added isolated backend route cases `backend_codegen_route_x86_64_builtin_fabs_f64_observe_semantic_bir` and `backend_codegen_route_x86_64_builtin_fabs_f32_observe_semantic_bir`, proving simple wrapper functions now stay on semantic BIR as `bir.call double llvm.fabs.double(double %p.x)` and `bir.call float llvm.fabs.float(float %p.x)` without falling back to LLVM `define` output
 
 ## Suggested Next
-- move step 3 to the next uncovered runtime-family boundary instead of extending `memset` by inventory; the nearby nested scalar-field pointer shape is now covered on the same shared local-memory route as local scalars, arrays, and nested array fields
+- decide whether the same runtime-family packet should widen to `__builtin_fabsl` or stop here and move to the next uncovered step-3 runtime boundary, keeping any follow-on proof reduced to wrapper-only cases until broader floating-point semantic lowering is intentionally in scope
 
 ## Watchouts
-- this packet found no new lowering gap: nested aggregate scalar-field pointers already reuse the same local pointer-slot metadata as the earlier local scalar case, so follow-on runtime work should avoid reopening `memset` unless a genuinely shared semantic miss appears
-- keep `memset` support leaf-aligned and semantic: exact single-slot fills are fine, but byte-partial writes or multi-slot spans should still fail honestly instead of being approximated
-- nearby packets should continue grouping runtime families (`memcpy`, `memset`, `va_*`, `stacksave`, `stackrestore`, `abs`) by semantic capability, not by isolated testcase names
+- direct LLVM intrinsics are not `DirectGlobal` callees in the LIR helpers, so future semantic runtime matching must use `parse_lir_call_callee(...)` when the callee may be `llvm.*`
+- wrapper-only `fabs` tests were necessary here because adding `main`-body float negation or float-to-int conversion pulls in unrelated floating-point lowering that this packet does not claim to fix
+- keep follow-on runtime-family widening semantic and call-shaped, not testcase-shaped: this repair was about intrinsic callee classification and shared float signature support, not about broad float arithmetic legalization
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-- passed with `test_after.log`; backend subset result is `passed=51 failed=0 total=51`
-- verified `backend_codegen_route_x86_64_builtin_memset_nonzero_nested_i32_scalar_field_observe_semantic_bir` inside the passing run, proving `memset(&dst.inner.value, 255, sizeof(dst.inner.value))` stays on the semantic BIR local-slot route without escaping to `@memset`
+- passed with `test_after.log`; backend subset result is `passed=53 failed=0 total=53`
+- verified `backend_codegen_route_x86_64_builtin_fabs_f64_observe_semantic_bir` and `backend_codegen_route_x86_64_builtin_fabs_f32_observe_semantic_bir` inside the passing run, proving simple `fabs` wrappers now stay on the semantic BIR route without LLVM fallback

@@ -90,6 +90,12 @@ std::optional<bir::TypeKind> BirFunctionLowerer::lower_minimal_scalar_type(const
   if (type.ptr_level != 0 || type.array_rank != 0) {
     return std::nullopt;
   }
+  if (type.base == TB_FLOAT) {
+    return bir::TypeKind::F32;
+  }
+  if (type.base == TB_DOUBLE) {
+    return bir::TypeKind::F64;
+  }
   if (type.base == TB_CHAR || type.base == TB_SCHAR || type.base == TB_UCHAR) {
     return bir::TypeKind::I8;
   }
@@ -260,7 +266,7 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_r
   if (trimmed == "void") {
     return LoweredReturnInfo{};
   }
-  if (const auto scalar_type = lower_integer_type(trimmed); scalar_type.has_value()) {
+  if (const auto scalar_type = lower_scalar_or_function_pointer_type(trimmed); scalar_type.has_value()) {
     return LoweredReturnInfo{
         .type = *scalar_type,
     };
@@ -320,9 +326,9 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_s
 
 std::optional<bir::Function> BirFunctionLowerer::lower_extern_decl(
     const c4c::codegen::lir::LirExternDecl& decl) {
-  auto return_type = lower_integer_type(decl.return_type_str);
+  auto return_type = lower_scalar_or_function_pointer_type(decl.return_type_str);
   if (!return_type.has_value()) {
-    return_type = lower_integer_type(decl.return_type.str());
+    return_type = lower_scalar_or_function_pointer_type(decl.return_type.str());
   }
   if (!return_type.has_value() &&
       (c4c::codegen::lir::trim_lir_arg_text(decl.return_type_str) == "void" ||
@@ -442,7 +448,7 @@ bool BirFunctionLowerer::lower_function_params(
       lowered->is_variadic = true;
       return true;
     }
-    const auto lowered_type = lower_integer_type(param.type);
+    const auto lowered_type = lower_scalar_or_function_pointer_type(param.type);
     if (lowered_type.has_value()) {
       if (param.operand.empty()) {
         return false;
@@ -623,6 +629,60 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     lowered_insts->push_back(std::move(lowered_call));
     return true;
   };
+  const auto lower_fabs_intrinsic_call =
+      [&](const c4c::codegen::lir::LirCallOp& call) -> bool {
+    const auto parsed_callee = c4c::codegen::lir::parse_lir_call_callee(call.callee.str());
+    if (!parsed_callee.has_value() ||
+        parsed_callee->kind != c4c::codegen::lir::LirCallCalleeKind::DirectIntrinsic) {
+      return false;
+    }
+
+    const auto parsed_call = parse_typed_call(call);
+    if (!parsed_call.has_value() || parsed_call->args.size() != 1 ||
+        parsed_call->param_types.size() != 1) {
+      return false;
+    }
+
+    bir::TypeKind value_type = bir::TypeKind::Void;
+    if (parsed_callee->symbol_name == "llvm.fabs.float" &&
+        c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[0]) == "float" &&
+        c4c::codegen::lir::trim_lir_arg_text(call.return_type.str()) == "float") {
+      value_type = bir::TypeKind::F32;
+    } else if (parsed_callee->symbol_name == "llvm.fabs.double" &&
+               c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[0]) == "double" &&
+               c4c::codegen::lir::trim_lir_arg_text(call.return_type.str()) == "double") {
+      value_type = bir::TypeKind::F64;
+    } else {
+      return false;
+    }
+
+    if (call.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    const auto lowered_arg = lower_value(
+        c4c::codegen::lir::LirOperand(std::string(parsed_call->args[0].operand)),
+        value_type,
+        value_aliases);
+    if (!lowered_arg.has_value()) {
+      return false;
+    }
+
+    lowered_insts->push_back(bir::CallInst{
+        .result = bir::Value::named(value_type, call.result.str()),
+        .callee = std::string(parsed_callee->symbol_name),
+        .args = {*lowered_arg},
+        .arg_types = {value_type},
+        .return_type = value_type,
+    });
+    return true;
+  };
+
+  if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst)) {
+    if (lower_fabs_intrinsic_call(*call)) {
+      return true;
+    }
+  }
 
   if (const auto* va_start = std::get_if<c4c::codegen::lir::LirVaStartOp>(&inst)) {
     return lower_va_list_call("llvm.va_start.p0", va_start->ap_ptr);
