@@ -3,24 +3,26 @@
 Status: Active
 Source Idea: ideas/open/47_semantic_call_runtime_boundary.md
 Source Plan: plan.md
-Current Plan Focus: ordered step 2, broaden semantic call lowering beyond the current baseline
+Current Plan Focus: route checkpoint across ordered steps 2 and 3 before more execution
 
 # Current Packet
 
 ## Just Finished
-- added `indirect_variadic_pair_second.c` plus a matching backend route test to prove that aggregate-bearing indirect variadic calls also stay on the semantic-BIR route
-- widened the nearby proof surface from the scalar indirect variadic case to a same-family aggregate-bearing function-pointer parameter shape without changing backend lowering ownership
-- kept the slice on step-2 call lowering proof only; runtime-family behavior and unsupported-boundary wording did not change
+- recorded a reviewer checkpoint after 65 commits since activation because execution had outpaced the current transcript
+- confirmed that `plan.md` still matches `ideas/open/47_semantic_call_runtime_boundary.md`, but `todo.md` had fallen behind the landed semantic-BIR surface
+- recognized that the active backend route now spans step-2 call widening plus step-3 runtime-family lowering, including variadic/indirect calls, `va_*`, `stacksave`/`stackrestore`, inline asm, `abs`/`fabs`, `memcpy`, and `memset`
 
 ## Suggested Next
-- shift from adjacent indirect-variadic proof to another uncovered step-2 semantic call family only if it exposes a real route gap rather than another already-green neighbor
-- if no honest step-2 gap appears under backend proof, request a route review or plan checkpoint instead of padding the variadic call cluster further
+- take a broader backend validation checkpoint from a fresh build before authorizing another executor packet
+- if that broader checkpoint fails, route the next packet to the first uncovered semantic family revealed by the failures instead of adding more proof-only observer cases
+- if the broader checkpoint passes, pick the next bounded packet from an uncovered semantic family that is still missing semantic lowering or unsupported-boundary cleanup rather than extending the existing variadic proof cluster
 
 ## Watchouts
-- the aggregate-bearing proof still uses a function-pointer parameter wrapper because direct or optimizer-folded aliases can hide whether the indirect semantic call path actually owned the lowering
-- this slice extends proof only; if the next packet also lands in `tests/backend/CMakeLists.txt`, acceptance should consider a fresh route checkpoint instead of stacking more narrow harness-only commits
+- do not add another proof-only `tests/backend/CMakeLists.txt` slice before the broader backend checkpoint lands
+- keep new work under `BirFunctionLowerer` and the split `lir_to_bir_*` owners; do not revive `call_decode.cpp` or push ABI legality back into semantic lowering
+- prefer semantic-family gaps over testcase-neighbor padding when selecting the next executor packet
 
 ## Proof
-- `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_codegen_route_x86_64_variadic_sum2_observe_semantic_bir|backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir|backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir|backend_codegen_route_x86_64_variadic_va_copy_accumulate_observe_semantic_bir|backend_codegen_route_x86_64_indirect_variadic_sum2_observe_semantic_bir|backend_codegen_route_x86_64_indirect_variadic_pair_second_observe_semantic_bir)$" > test_after.log 2>&1'`
-- passed; the targeted variadic semantic-BIR route subset now proves both scalar and aggregate-bearing indirect variadic call shapes
-- proof log preserved at `test_after.log`
+- the reviewer checkpoint judged the route `drifting`, the source idea still matched, and the immediate repair as `todo.md` only
+- narrow variadic proof remains the last accepted packet evidence; no fresh broader `test_after.log` exists yet for the full backend checkpoint
+- next supervisor proof action should be a fresh build plus broader backend validation, then canonical log roll-forward on success
