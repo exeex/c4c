@@ -17,20 +17,20 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed deferred-batch `binding_batch_kind` because deferred family identity
-  now rejoins from `attachments -> first object -> allocation decision /
-  contention` plus the surviving batch-owned `deferred_reason`
-- kept deferred frontier grouping explicit on
-  `PreparedRegallocDeferredBindingBatchSummary` with `deferred_reason` and
-  attachment-owned membership only
-- refreshed the prepare-entry contract test so deferred batch-family checks
-  derive their identity from surviving owners instead of a second summary
-  mirror
+- removed deferred-batch summary lookup by derived binding-batch kind so
+  `populate_binding_sequence()` now reuses deferred batches directly through
+  the surviving batch-owned `deferred_reason`
+- trimmed the last regalloc helper/header seam that recomputed deferred batch
+  identity from `attachments -> first object -> allocation decision /
+  contention` just to find the batch again
+- refreshed the prepare-entry contract test so deferred batch discovery keys on
+  `deferred_reason` ownership while batch-family assertions still derive their
+  external identity from the surviving owners
 
 ## Suggested Next
-- inspect whether the deferred batch lookup helper still needs summary-level
-  search indirection or whether the remaining deferred frontier joins can
-  collapse onto one explicit attachment-owned lookup path
+- inspect whether the remaining deferred batch test helpers can collapse any
+  first-object/contention rejoin duplication without hiding the ownership
+  boundary between batch-owned `deferred_reason` and attachment-owned members
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific

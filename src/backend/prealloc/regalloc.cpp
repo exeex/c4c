@@ -586,15 +586,16 @@ std::string_view regalloc_binding_batch_kind(
   return "binding_batch_needs_future_analysis";
 }
 
-std::string_view regalloc_deferred_binding_batch_kind(const PreparedRegallocObject& object,
-                                                      const PreparedRegallocContentionSummary& contention) {
+std::string_view regalloc_deferred_binding_batch_reason(
+    const PreparedRegallocObject& object,
+    const PreparedRegallocContentionSummary& contention) {
   if (object.deferred_reason == "awaiting_access_window_observation") {
-    return "deferred_access_window_binding_batch";
+    return object.deferred_reason;
   }
   if (contention.follow_up_category == "batched_single_point_coordination") {
-    return "deferred_coordination_binding_batch";
+    return contention.follow_up_category;
   }
-  return "binding_deferred_batch_needs_future_analysis";
+  return "binding_deferred_reason_needs_future_analysis";
 }
 
 std::string_view regalloc_binding_home_slot_prerequisite_state(
@@ -667,39 +668,13 @@ const PreparedRegallocContentionSummary* BirPreAlloc::find_contention_summary(
   return nullptr;
 }
 
-const PreparedRegallocContentionSummary* BirPreAlloc::find_contention_summary_for_object(
-    const PreparedRegallocObject& object) const {
-  const auto* decision = find_allocation_decision(object.source_kind, object.source_name);
-  if (decision == nullptr) {
-    return nullptr;
-  }
-  return find_contention_summary(decision->allocation_stage);
-}
-
-std::string_view BirPreAlloc::deferred_binding_batch_kind(
-    const PreparedRegallocDeferredBindingBatchSummary& summary) const {
-  if (current_regalloc_function_ == nullptr || summary.attachments.empty()) {
-    return {};
-  }
-  const auto object_index = summary.attachments.front().object_index;
-  if (object_index >= current_regalloc_function_->objects.size()) {
-    return {};
-  }
-  const auto& object = current_regalloc_function_->objects[object_index];
-  const auto* contention = find_contention_summary_for_object(object);
-  if (contention == nullptr) {
-    return {};
-  }
-  return regalloc_deferred_binding_batch_kind(object, *contention);
-}
-
 PreparedRegallocDeferredBindingBatchSummary* BirPreAlloc::find_deferred_binding_batch_summary(
-    std::string_view binding_batch_kind) {
+    std::string_view deferred_reason) {
   if (current_regalloc_function_ == nullptr) {
     return nullptr;
   }
   for (auto& summary : current_regalloc_function_->deferred_binding_batches) {
-    if (deferred_binding_batch_kind(summary) == binding_batch_kind) {
+    if (summary.deferred_reason == deferred_reason) {
       return &summary;
     }
   }
@@ -844,15 +819,12 @@ void BirPreAlloc::populate_binding_sequence() {
     }
 
     if (regalloc_binding_frontier_is_deferred(*object)) {
-      const std::string binding_batch_kind(
-          regalloc_deferred_binding_batch_kind(*object, *contention));
-      auto* batch_summary = find_deferred_binding_batch_summary(binding_batch_kind);
+      const std::string deferred_reason(regalloc_deferred_binding_batch_reason(*object, *contention));
+      auto* batch_summary = find_deferred_binding_batch_summary(deferred_reason);
       if (batch_summary == nullptr) {
         current_regalloc_function_->deferred_binding_batches.push_back(
             PreparedRegallocDeferredBindingBatchSummary{
-                .deferred_reason =
-                    object->deferred_reason != "not_deferred" ? object->deferred_reason
-                                                              : contention->follow_up_category,
+                .deferred_reason = deferred_reason,
             });
         batch_summary = &current_regalloc_function_->deferred_binding_batches.back();
       }

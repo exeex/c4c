@@ -215,9 +215,9 @@ const std::string* find_regalloc_binding_batch_kind(const prepare::PreparedRegal
 
 const prepare::PreparedRegallocDeferredBindingBatchSummary* find_regalloc_deferred_binding_batch(
     const prepare::PreparedRegallocFunction& function,
-    std::string_view binding_batch_kind) {
+    std::string_view deferred_reason) {
   for (const auto& summary : function.deferred_binding_batches) {
-    if (regalloc_deferred_binding_batch_kind(function, summary) == binding_batch_kind) {
+    if (summary.deferred_reason == deferred_reason) {
       return &summary;
     }
   }
@@ -1035,10 +1035,11 @@ int main() {
   if (regalloc_function->deferred_binding_batches.size() != 2 ||
       regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches) != 9 ||
       find_regalloc_deferred_binding_batch(*regalloc_function,
-                                           "deferred_access_window_binding_batch") == nullptr ||
+                                           "awaiting_access_window_observation") == nullptr ||
       find_regalloc_deferred_binding_batch(*regalloc_function,
-                                           "deferred_coordination_binding_batch") == nullptr) {
-    return fail("semantic-BIR regalloc should publish explicit deferred binding batches for the current binding-deferred frontier");
+                                           "batched_single_point_coordination") == nullptr) {
+    return fail(
+        "semantic-BIR regalloc should publish explicit deferred binding batches keyed by their surviving deferred-reason owner for the current binding-deferred frontier");
   }
   if (regalloc_function->allocation_sequence.size() != regalloc_function->register_candidate_count) {
     return fail("semantic-BIR regalloc should publish one allocation-sequence decision per register candidate");
@@ -1566,10 +1567,10 @@ int main() {
       find_regalloc_binding_decision(*regalloc_function, "local_slot", "multiwrite.slot");
   const auto* deferred_access_window_binding_batch =
       find_regalloc_deferred_binding_batch(*regalloc_function,
-                                           "deferred_access_window_binding_batch");
+                                           "awaiting_access_window_observation");
   const auto* deferred_coordination_binding_batch =
       find_regalloc_deferred_binding_batch(*regalloc_function,
-                                           "deferred_coordination_binding_batch");
+                                           "batched_single_point_coordination");
   if (carry_sequence == nullptr || callread_sequence == nullptr || callwrite_sequence == nullptr ||
       window_sequence == nullptr || readonly_sequence == nullptr || multiwrite_sequence == nullptr ||
       local_slot_sequence == nullptr || writeonly_sequence == nullptr) {
