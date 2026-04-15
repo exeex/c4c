@@ -1,4 +1,4 @@
-#include "stack_layout.hpp"
+#include "prealloc.hpp"
 
 // Execution note: this file is still a scaffold.
 // Follow ref/claudes-c-compiler/src/backend/stack_layout/ for the intended
@@ -137,7 +137,7 @@ std::string_view stack_object_source_kind(const bir::Function& function, const b
 
 }  // namespace
 
-void run_stack_layout(PreparedBirModule& module, const PrepareOptions& options) {
+void BirPreAlloc::run_stack_layout(PreparedBirModule& module, const PrepareOptions& options) {
   (void)options;
   module.completed_phases.push_back("stack_layout");
   module.stack_layout.objects.clear();

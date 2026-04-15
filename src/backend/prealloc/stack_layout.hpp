@@ -1,9 +1,0 @@
-#pragma once
-
-#include "prealloc.hpp"
-
-namespace c4c::backend::prepare {
-
-void run_stack_layout(PreparedBirModule& module, const PrepareOptions& options);
-
-}  // namespace c4c::backend::prepare

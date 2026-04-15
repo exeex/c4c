@@ -1,4 +1,4 @@
-#include "liveness.hpp"
+#include "prealloc.hpp"
 
 #include <algorithm>
 
@@ -185,7 +185,7 @@ std::size_t count_function_instructions(const bir::Function& function) {
 
 }  // namespace
 
-void run_liveness(PreparedBirModule& module, const PrepareOptions& options) {
+void BirPreAlloc::run_liveness(PreparedBirModule& module, const PrepareOptions& options) {
   (void)options;
   module.completed_phases.push_back("liveness");
   module.liveness.functions.clear();

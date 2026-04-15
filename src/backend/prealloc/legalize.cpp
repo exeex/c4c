@@ -1,4 +1,4 @@
-#include "legalize.hpp"
+#include "prealloc.hpp"
 
 #include <string_view>
 #include <type_traits>
@@ -838,7 +838,7 @@ void legalize_module(Target target, bir::Module& module) {
 
 }  // namespace
 
-void run_legalize(PreparedBirModule& module, const PrepareOptions& options) {
+void BirPreAlloc::run_legalize(PreparedBirModule& module, const PrepareOptions& options) {
   (void)options;
   module.completed_phases.push_back("legalize");
   legalize_module(module.target, module.module);

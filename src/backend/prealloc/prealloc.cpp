@@ -1,10 +1,5 @@
 #include "prealloc.hpp"
 
-#include "legalize.hpp"
-#include "liveness.hpp"
-#include "regalloc.hpp"
-#include "stack_layout.hpp"
-
 namespace c4c::backend::prepare {
 
 BirPreAlloc::BirPreAlloc(const c4c::backend::bir::Module& module,
@@ -30,19 +25,10 @@ void BirPreAlloc::note(std::string_view message) {
 
 PreparedBirModule BirPreAlloc::run() {
   note("prepare owns the shared semantic-BIR to prepared-BIR route before target codegen");
-
-  if (options_.run_legalize) {
-    run_legalize(prepared_, options_);
-  }
-  if (options_.run_stack_layout) {
-    run_stack_layout(prepared_, options_);
-  }
-  if (options_.run_liveness) {
-    run_liveness(prepared_, options_);
-  }
-  if (options_.run_regalloc) {
-    run_regalloc(prepared_, options_);
-  }
+  run_legalize(prepared_, options_);
+  run_stack_layout(prepared_, options_);
+  run_liveness(prepared_, options_);
+  run_regalloc(prepared_, options_);
   return std::move(prepared_);
 }
 
