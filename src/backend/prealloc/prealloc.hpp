@@ -147,8 +147,6 @@ struct PreparedRegallocDeferredBindingAttachment {
 
 struct PreparedRegallocBindingBatchSummary {
   std::string binding_batch_kind;
-  std::string allocation_stage;
-  std::string follow_up_category;
   std::string ordering_policy;
   std::string access_window_prerequisite_category;
   std::string access_window_prerequisite_state;

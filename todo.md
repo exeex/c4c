@@ -17,19 +17,20 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed deferred binding batch `follow_up_category` because deferred batch
-  identity already stays clear through `binding_batch_kind` plus
-  `deferred_reason`
-- kept deferred frontier ownership on batch summaries and attachment joins
-  without publishing another handoff-reason mirror for deferred batches
-- refreshed the prepare-entry contract test so deferred batch expectations now
-  prove reason and membership ownership through the surviving batch-level
-  contract
+- removed ready binding batch `allocation_stage` and `follow_up_category`
+  because ready frontier identity already stays clear through
+  `binding_batch_kind` plus `binding_sequence`
+- kept ready batch prerequisite and ordering summaries intact while trimming
+  the ready summary mirrors that only restated stage and follow-up family
+  identity
+- refreshed the prepare-entry contract test so ready batch expectations now
+  prove family ownership through the surviving batch-level contract instead of
+  duplicated ready summary fields
 
 ## Suggested Next
-- inspect whether ready binding batches still need both `allocation_stage` and
-  `follow_up_category` once `binding_batch_kind` already names the current
-  ready frontier family
+- inspect whether ready binding batch `ordering_policy` still needs to live on
+  the summary once current ready frontier families already rejoin ordering
+  through `binding_batch_kind` and `binding_sequence`
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -74,6 +75,10 @@ while keeping the public shared contract named `prepare`
   `binding_batch_kind` while the specific deferred blocker rides on
   `deferred_reason`; do not restore a second deferred summary mirror unless a
   real consumer cannot rejoin those surviving owners
+- ready batch family identity now rides on `binding_batch_kind` while ready
+  member sequencing stays in `binding_sequence`; do not restore ready summary
+  `allocation_stage` or `follow_up_category` mirrors unless a real consumer
+  cannot rejoin those surviving owners
 - ready access-window prerequisite state now lands on `binding_batches` from
   stage contention while deferred frontier prerequisites stay on deferred batch
   summaries; if later cleanup tries to unify derivation, keep one clear owner

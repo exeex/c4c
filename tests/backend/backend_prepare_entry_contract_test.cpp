@@ -1609,9 +1609,7 @@ int main() {
     return fail(
         "semantic-BIR regalloc should keep binding-ready local-reuse entries focused on sequencing identity and order");
   }
-  if (call_boundary_binding_batch->allocation_stage != "stabilize_across_calls" ||
-      call_boundary_binding_batch->follow_up_category != "call_boundary_preservation" ||
-      call_boundary_binding_batch->ordering_policy != "preserve_allocation_sequence" ||
+  if (call_boundary_binding_batch->ordering_policy != "preserve_allocation_sequence" ||
       call_boundary_binding_batch->access_window_prerequisite_category !=
           "overlapping_call_boundary_windows" ||
       call_boundary_binding_batch->access_window_prerequisite_state !=
@@ -1627,9 +1625,7 @@ int main() {
     return fail(
         "semantic-BIR regalloc should summarize call-boundary batch prerequisites and ready sync/home-slot handoff from the existing reservation/contention frontier");
   }
-  if (local_reuse_binding_batch->allocation_stage != "stabilize_local_reuse" ||
-      local_reuse_binding_batch->follow_up_category != "sequenced_local_reuse_coordination" ||
-      local_reuse_binding_batch->ordering_policy != "preserve_allocation_sequence" ||
+  if (local_reuse_binding_batch->ordering_policy != "preserve_allocation_sequence" ||
       local_reuse_binding_batch->access_window_prerequisite_category !=
           "adjacent_local_windows" ||
       local_reuse_binding_batch->access_window_prerequisite_state !=
@@ -1690,14 +1686,13 @@ int main() {
     return fail(
         "semantic-BIR regalloc should group deferred single-point candidates waiting on coordination into an explicit deferred binding batch");
   }
-  if (call_boundary_binding_batch->follow_up_category != "call_boundary_preservation") {
+  if (call_boundary_binding_batch->binding_batch_kind != "call_boundary_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should keep ready handoff reason ownership on binding batch summaries instead of publishing a duplicate handoff view");
+        "semantic-BIR regalloc should keep ready frontier family identity on binding batch kind instead of publishing redundant ready summary mirrors");
   }
-  if (local_reuse_binding_batch->follow_up_category !=
-      "sequenced_local_reuse_coordination") {
+  if (local_reuse_binding_batch->binding_batch_kind != "local_reuse_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should keep ready local-reuse handoff reason ownership on binding batch summaries instead of publishing a duplicate handoff view");
+        "semantic-BIR regalloc should keep ready local-reuse frontier identity on binding batch kind instead of publishing redundant ready summary mirrors");
   }
   if (deferred_access_window_binding_batch->deferred_reason !=
       "awaiting_access_window_observation") {

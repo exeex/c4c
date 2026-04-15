@@ -969,8 +969,6 @@ void BirPreAlloc::populate_binding_sequence() {
     if (batch_summary == nullptr) {
       current_regalloc_function_->binding_batches.push_back(PreparedRegallocBindingBatchSummary{
           .binding_batch_kind = binding_batch_kind,
-          .allocation_stage = decision.allocation_stage,
-          .follow_up_category = contention->follow_up_category,
           .ordering_policy = std::string(regalloc_binding_ordering_policy(*contention)),
           .access_window_prerequisite_category = contention->window_coordination_category,
           .access_window_prerequisite_state =
