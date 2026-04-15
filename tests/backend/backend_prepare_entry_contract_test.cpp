@@ -1632,14 +1632,30 @@ int main() {
   if (call_boundary_binding_batch->allocation_stage != "stabilize_across_calls" ||
       call_boundary_binding_batch->follow_up_category != "call_boundary_preservation" ||
       call_boundary_binding_batch->ordering_policy != "preserve_allocation_sequence" ||
+      call_boundary_binding_batch->home_slot_prerequisite_category !=
+          "stable_home_slot_required" ||
+      call_boundary_binding_batch->home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      call_boundary_binding_batch->sync_handoff_prerequisite_category !=
+          "mixed_sync_coordination" ||
+      call_boundary_binding_batch->sync_handoff_state != "prepare_sync_handoff_ready" ||
       call_boundary_binding_batch->candidate_count != 3) {
-    return fail("semantic-BIR regalloc should summarize the call-boundary ready batch from the existing reservation/contention frontier");
+    return fail(
+        "semantic-BIR regalloc should summarize call-boundary batch prerequisites and ready sync/home-slot handoff from the existing reservation/contention frontier");
   }
   if (local_reuse_binding_batch->allocation_stage != "stabilize_local_reuse" ||
       local_reuse_binding_batch->follow_up_category != "sequenced_local_reuse_coordination" ||
       local_reuse_binding_batch->ordering_policy != "preserve_allocation_sequence" ||
+      local_reuse_binding_batch->home_slot_prerequisite_category !=
+          "stable_home_slot_preferred" ||
+      local_reuse_binding_batch->home_slot_prerequisite_state !=
+          "prepare_home_slot_prerequisite_satisfied" ||
+      local_reuse_binding_batch->sync_handoff_prerequisite_category !=
+          "mixed_sync_coordination" ||
+      local_reuse_binding_batch->sync_handoff_state != "prepare_sync_handoff_ready" ||
       local_reuse_binding_batch->candidate_count != 3) {
-    return fail("semantic-BIR regalloc should summarize the local-reuse ready batch from the existing reservation/contention frontier");
+    return fail(
+        "semantic-BIR regalloc should summarize local-reuse batch prerequisites and ready sync/home-slot handoff from the existing reservation/contention frontier");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(

@@ -1104,6 +1104,34 @@ std::string_view regalloc_binding_ordering_policy(
   return "binding_policy_needs_future_analysis";
 }
 
+std::string_view regalloc_binding_home_slot_prerequisite_state(
+    const PreparedRegallocContentionSummary& contention) {
+  if (contention.home_slot_category == "stable_home_slot_required" ||
+      contention.home_slot_category == "stable_home_slot_preferred" ||
+      contention.home_slot_category == "single_use_home_slot_ok") {
+    return "prepare_home_slot_prerequisite_satisfied";
+  }
+  if (contention.home_slot_category == "idle_home_slot_coordination") {
+    return "no_home_slot_prerequisite";
+  }
+  return "prepare_home_slot_prerequisite_deferred";
+}
+
+std::string_view regalloc_binding_sync_handoff_state(
+    const PreparedRegallocContentionSummary& contention) {
+  if (contention.sync_coordination_category == "restore_only_coordination" ||
+      contention.sync_coordination_category == "writeback_only_coordination" ||
+      contention.sync_coordination_category == "read_write_coordination" ||
+      contention.sync_coordination_category == "bidirectional_sync_coordination" ||
+      contention.sync_coordination_category == "mixed_sync_coordination") {
+    return "prepare_sync_handoff_ready";
+  }
+  if (contention.sync_coordination_category == "sync_free_coordination") {
+    return "no_sync_handoff_required";
+  }
+  return "prepare_sync_handoff_deferred";
+}
+
 void populate_object_allocation_state(PreparedRegallocFunction& function) {
   function.binding_ready_count = 0;
   function.binding_deferred_count = 0;
@@ -1203,6 +1231,11 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
           .allocation_stage = decision.allocation_stage,
           .follow_up_category = contention->follow_up_category,
           .ordering_policy = std::string(regalloc_binding_ordering_policy(*contention)),
+          .home_slot_prerequisite_category = contention->home_slot_category,
+          .home_slot_prerequisite_state =
+              std::string(regalloc_binding_home_slot_prerequisite_state(*contention)),
+          .sync_handoff_prerequisite_category = contention->sync_coordination_category,
+          .sync_handoff_state = std::string(regalloc_binding_sync_handoff_state(*contention)),
       });
       batch_summary = &function.binding_batches.back();
       ++function.binding_ready_batch_count;
