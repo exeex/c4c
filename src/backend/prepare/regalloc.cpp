@@ -239,6 +239,24 @@ std::string_view regalloc_preferred_register_pool(std::string_view allocation_ki
   return "caller_saved_preferred";
 }
 
+std::string_view regalloc_spill_pressure_hint(std::string_view allocation_kind,
+                                              std::string_view priority_bucket,
+                                              const RegallocObjectAccessSummary& summary) {
+  if (allocation_kind != "register_candidate") {
+    return "fixed_stack_only";
+  }
+  if (summary.direct_read_count == 0) {
+    return "write_only_spill_friendly";
+  }
+  if (priority_bucket == "call_spanning_value") {
+    return "call_surviving_spill_costly";
+  }
+  if (priority_bucket == "multi_point_value") {
+    return "repeat_use_spill_costly";
+  }
+  return "single_use_spill_friendly";
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -269,6 +287,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
       const std::string priority_bucket(regalloc_priority_bucket(object.contract_kind, summary));
       const std::string preferred_register_pool(
           regalloc_preferred_register_pool(allocation_kind, priority_bucket));
+      const std::string spill_pressure_hint(
+          regalloc_spill_pressure_hint(allocation_kind, priority_bucket, summary));
       const std::string assignment_readiness(
           regalloc_assignment_readiness(allocation_kind, priority_bucket, summary));
       prepared_function.objects.push_back(PreparedRegallocObject{
@@ -279,6 +299,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .allocation_kind = allocation_kind,
           .priority_bucket = priority_bucket,
           .preferred_register_pool = preferred_register_pool,
+          .spill_pressure_hint = spill_pressure_hint,
           .assignment_readiness = assignment_readiness,
           .access_shape = std::string(regalloc_access_shape_name(summary)),
           .first_access_kind = std::string(regalloc_access_kind_name(summary.first_access_kind)),
@@ -311,6 +332,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "buckets for single-point, multi-point, and call-spanning value-storage objects, "
           "preferred register pools that map call-spanning value storage toward callee-saved "
           "pressure and other register candidates toward caller-saved pressure, "
+          "spill-pressure hints that distinguish single-use, repeat-use, call-surviving, "
+          "write-only, and fixed-stack cases from current prepared facts, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "

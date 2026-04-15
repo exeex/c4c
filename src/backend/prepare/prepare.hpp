@@ -54,6 +54,7 @@ struct PreparedRegallocObject {
   std::string allocation_kind;
   std::string priority_bucket;
   std::string preferred_register_pool;
+  std::string spill_pressure_hint;
   std::string assignment_readiness;
   std::string access_shape;
   std::string first_access_kind;

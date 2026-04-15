@@ -8,21 +8,21 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- promoted the semantic-BIR regalloc artifact from raw readiness-only output
-  to a first allocator-facing contract by publishing a target-neutral
-  `preferred_register_pool` field that maps call-spanning value storage toward
-  callee-saved pressure, other register candidates toward caller-saved
-  pressure, and fixed-stack storage away from register pools entirely
-- extended the prepare entry-contract fixture so single-point, multi-point,
-  and call-spanning value-storage objects plus fixed-stack storage prove the
-  new pool preference end-to-end alongside the existing readiness/access
-  summaries
+- extended the semantic-BIR regalloc artifact with a target-neutral
+  `spill_pressure_hint` field sourced from current prepared facts: read-backed
+  single-use values stay spill-friendly, repeated reads become costlier,
+  call-surviving reads stay the highest spill-pressure case, write-only values
+  remain spill-friendly, and fixed-stack storage stays outside register
+  pressure hints entirely
+- broadened the prepare entry-contract fixture so nearby single-point,
+  multi-point, call-spanning, write-only, and fixed-stack shapes all prove the
+  new spill-pressure cue alongside the existing pool/readiness/access summaries
 
 ## Suggested Next
-- broaden step-4 validation to `^backend_`, or if execution continues inside
-  this bucket, publish the next honest allocator-facing regalloc contract such
-  as a spill-pressure or register-eligibility cue sourced from prepared facts
-  rather than testcase-shaped inference
+- if execution stays inside this bucket, publish one more allocator-facing
+  regalloc cue that still comes directly from prepared facts, such as a
+  register-eligibility or reload-cost hint keyed by address exposure and
+  access-window reuse rather than target names or synthetic intervals
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -37,8 +37,9 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 - keep the regalloc artifact inspectable and target-neutral; prefer concrete
   access summaries over broad notes, but do not fake live ranges or
   interference until the data is really available
-- prefer `build -> ^backend_` proof unless a narrower honest backend subset is
-  clearly available
+- keep any future allocator-facing hints semantically distinct from the
+  existing priority bucket, preferred pool, spill-pressure, and readiness
+  fields so the prepared contract does not devolve into renamed duplicates
 - if follow-on allocator-facing cues are added, keep them sourced from actual
   BIR access order, liveness contracts, and call-crossing facts rather than
   synthetic interval guesses, target register names, or phi-materialization
@@ -46,6 +47,5 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build
-  -j --output-on-failure -R '^backend_prepare_entry_contract$' 2>&1 | tee
-  test_after.log`
+  -j --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
 - passed and wrote `test_after.log`
