@@ -269,6 +269,111 @@ prepare::PreparedBirModule legalize_call_abi_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule legalize_memory_access_module() {
+  bir::Module module;
+  module.globals.push_back(bir::Global{
+      .name = "gflag",
+      .type = bir::TypeKind::I1,
+      .size_bytes = 1,
+      .align_bytes = 1,
+      .initializer = bir::Value::immediate_i1(true),
+  });
+
+  bir::Function function;
+  function.name = "memory_access";
+  function.return_type = bir::TypeKind::I1;
+  function.return_size_bytes = 1;
+  function.return_align_bytes = 1;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I1,
+      .name = "flag",
+      .size_bytes = 1,
+      .align_bytes = 1,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "local.addr",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "global.addr",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "flag.slot",
+      .type = bir::TypeKind::I1,
+      .size_bytes = 1,
+      .align_bytes = 1,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "flag.slot",
+      .value = bir::Value::named(bir::TypeKind::I1, "flag"),
+      .align_bytes = 1,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, "local.addr"),
+          .size_bytes = 1,
+          .align_bytes = 1,
+      },
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I1, "local.load"),
+      .slot_name = "flag.slot",
+      .align_bytes = 1,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, "local.addr"),
+          .size_bytes = 1,
+          .align_bytes = 1,
+      },
+  });
+  entry.insts.push_back(bir::StoreGlobalInst{
+      .global_name = "gflag",
+      .value = bir::Value::named(bir::TypeKind::I1, "flag"),
+      .align_bytes = 1,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, "global.addr"),
+          .size_bytes = 1,
+          .align_bytes = 1,
+      },
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I1, "global.load"),
+      .global_name = "gflag",
+      .align_bytes = 1,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, "global.addr"),
+          .size_bytes = 1,
+          .align_bytes = 1,
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I1, "global.load"),
+  };
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+  prepare::run_legalize(prepared, options);
+  return prepared;
+}
+
 prepare::PreparedBirModule legalize_merge3_module(bool add_trailing_use) {
   bir::Module module;
   bir::Function function;
@@ -938,6 +1043,57 @@ int check_legalized_call_abi_metadata(const prepare::PreparedBirModule& prepared
   return 0;
 }
 
+int check_legalized_memory_access_metadata(const prepare::PreparedBirModule& prepared) {
+  if (prepared.module.functions.size() != 1) {
+    return fail("expected one function when checking legalized memory-access metadata");
+  }
+  const auto& function = prepared.module.functions.front();
+  if (function.params.size() != 3 || function.params[0].type != bir::TypeKind::I32) {
+    return fail("expected legalize to promote the stored flag param away from i1");
+  }
+  if (function.blocks.size() != 1 || function.blocks.front().insts.size() != 4) {
+    return fail("expected one block with four legalized memory-access instructions");
+  }
+
+  const auto* store_local = std::get_if<bir::StoreLocalInst>(&function.blocks.front().insts[0]);
+  const auto* load_local = std::get_if<bir::LoadLocalInst>(&function.blocks.front().insts[1]);
+  const auto* store_global = std::get_if<bir::StoreGlobalInst>(&function.blocks.front().insts[2]);
+  const auto* load_global = std::get_if<bir::LoadGlobalInst>(&function.blocks.front().insts[3]);
+  if (store_local == nullptr || load_local == nullptr || store_global == nullptr || load_global == nullptr) {
+    return fail("expected legalized memory-access instructions to retain their structure");
+  }
+
+  const auto address_has_promoted_bookkeeping = [](const std::optional<bir::MemoryAddress>& address,
+                                                   std::string_view expected_base_name) {
+    return address.has_value() &&
+           address->base_kind == bir::MemoryAddress::BaseKind::PointerValue &&
+           address->base_value.type == bir::TypeKind::Ptr && address->base_value.name == expected_base_name &&
+           address->size_bytes == 4 && address->align_bytes == 4;
+  };
+
+  if (store_local->value.type != bir::TypeKind::I32 || store_local->align_bytes != 4 ||
+      !address_has_promoted_bookkeeping(store_local->address, "local.addr")) {
+    return fail("expected legalize to promote local store bookkeeping away from i1");
+  }
+  if (load_local->result.type != bir::TypeKind::I32 || load_local->align_bytes != 4 ||
+      !address_has_promoted_bookkeeping(load_local->address, "local.addr")) {
+    return fail("expected legalize to promote local load bookkeeping away from i1");
+  }
+  if (store_global->value.type != bir::TypeKind::I32 || store_global->align_bytes != 4 ||
+      !address_has_promoted_bookkeeping(store_global->address, "global.addr")) {
+    return fail("expected legalize to promote global store bookkeeping away from i1");
+  }
+  if (load_global->result.type != bir::TypeKind::I32 || load_global->align_bytes != 4 ||
+      !address_has_promoted_bookkeeping(load_global->address, "global.addr")) {
+    return fail("expected legalize to promote global load bookkeeping away from i1");
+  }
+  if (!function.blocks.front().terminator.value.has_value() ||
+      function.blocks.front().terminator.value->type != bir::TypeKind::I32) {
+    return fail("expected legalize to promote the memory-access return terminator away from i1");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -946,6 +1102,14 @@ int main() {
     return status;
   }
   if (const int status = check_legalized_call_abi_metadata(prepared_call_abi); status != 0) {
+    return status;
+  }
+
+  const auto prepared_memory_access = legalize_memory_access_module();
+  if (const int status = check_prepare_i1_invariant(prepared_memory_access); status != 0) {
+    return status;
+  }
+  if (const int status = check_legalized_memory_access_metadata(prepared_memory_access); status != 0) {
     return status;
   }
 

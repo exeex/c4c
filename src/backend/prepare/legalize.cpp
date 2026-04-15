@@ -75,6 +75,33 @@ void legalize_call_result_abi(Target target, bir::CallResultAbiInfo& abi) {
   abi.type = legalize_type(target, abi.type);
 }
 
+void legalize_memory_access_metadata(Target target,
+                                     bir::TypeKind original_type,
+                                     std::size_t& align_bytes,
+                                     std::optional<bir::MemoryAddress>& address) {
+  const auto legalized_type = legalize_type(target, original_type);
+  if (legalized_type == original_type) {
+    return;
+  }
+  const auto original_size = type_size_bytes(original_type);
+  const auto legalized_size = type_size_bytes(legalized_type);
+  if (original_size == 0 || legalized_size == 0) {
+    return;
+  }
+  if (align_bytes == original_size) {
+    align_bytes = legalized_size;
+  }
+  if (!address.has_value()) {
+    return;
+  }
+  if (address->size_bytes == original_size) {
+    address->size_bytes = legalized_size;
+  }
+  if (address->align_bytes == original_size) {
+    address->align_bytes = legalized_size;
+  }
+}
+
 std::string make_phi_slot_name(std::string_view result_name) {
   return std::string(result_name) + ".phi";
 }
@@ -780,13 +807,19 @@ void legalize_module(Target target, bir::Module& module) {
                 }
               } else if constexpr (std::is_same_v<T, bir::LoadLocalInst> ||
                                    std::is_same_v<T, bir::LoadGlobalInst>) {
+                const auto original_type = lowered.result.type;
                 lowered.result.type = legalize_type(target, lowered.result.type);
+                legalize_memory_access_metadata(
+                    target, original_type, lowered.align_bytes, lowered.address);
                 if (lowered.address.has_value()) {
                   legalize_value(target, lowered.address->base_value);
                 }
               } else if constexpr (std::is_same_v<T, bir::StoreLocalInst> ||
                                    std::is_same_v<T, bir::StoreGlobalInst>) {
+                const auto original_type = lowered.value.type;
                 legalize_value(target, lowered.value);
+                legalize_memory_access_metadata(
+                    target, original_type, lowered.align_bytes, lowered.address);
                 if (lowered.address.has_value()) {
                   legalize_value(target, lowered.address->base_value);
                 }
@@ -828,8 +861,8 @@ void run_legalize(PreparedBirModule& module, const PrepareOptions& options) {
       .phase = "legalize",
       .message =
           "bootstrap BIR legalize removed phi nodes and promoted i1 values plus function "
-          "signature/storage bookkeeping, call ABI metadata, and call return type text to i32 "
-          "for x86/i686/aarch64/riscv64",
+          "signature/storage bookkeeping, memory-address/load-store bookkeeping, call ABI "
+          "metadata, and call return type text to i32 for x86/i686/aarch64/riscv64",
   });
 }
 

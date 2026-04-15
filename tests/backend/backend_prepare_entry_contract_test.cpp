@@ -104,6 +104,9 @@ int main() {
   if (!contains_note(prepared_bir.notes, "legalize", "signature/storage bookkeeping")) {
     return fail("semantic-BIR prepare legalize note should mention signature/storage bookkeeping");
   }
+  if (!contains_note(prepared_bir.notes, "legalize", "memory-address/load-store bookkeeping")) {
+    return fail("semantic-BIR prepare legalize note should mention memory-address/load-store bookkeeping");
+  }
   if (!contains_note(prepared_bir.notes, "legalize", "call return type text")) {
     return fail("semantic-BIR prepare legalize note should mention call return type text");
   }
