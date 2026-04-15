@@ -79,6 +79,30 @@ const prepare::PreparedRegallocObject* find_regalloc_object(const prepare::Prepa
   return nullptr;
 }
 
+const prepare::PreparedRegallocAllocationDecision* find_regalloc_allocation_decision(
+    const prepare::PreparedRegallocFunction& function,
+    std::string_view source_kind,
+    std::string_view source_name) {
+  for (const auto& decision : function.allocation_sequence) {
+    if (decision.source_kind == source_kind && decision.source_name == source_name) {
+      return &decision;
+    }
+  }
+  return nullptr;
+}
+
+std::size_t regalloc_allocation_index(const prepare::PreparedRegallocFunction& function,
+                                      std::string_view source_kind,
+                                      std::string_view source_name) {
+  for (std::size_t index = 0; index < function.allocation_sequence.size(); ++index) {
+    const auto& decision = function.allocation_sequence[index];
+    if (decision.source_kind == source_kind && decision.source_name == source_name) {
+      return index;
+    }
+  }
+  return function.allocation_sequence.size();
+}
+
 bir::Module make_prepare_contract_bir_module() {
   bir::Module module;
   bir::Function function;
@@ -437,6 +461,9 @@ int main() {
   if (!contains_note(prepared_bir.notes, "regalloc", "eviction-friction hints")) {
     return fail("semantic-BIR prepare regalloc note should mention eviction-friction hints");
   }
+  if (!contains_note(prepared_bir.notes, "regalloc", "allocation-sequence decisions")) {
+    return fail("semantic-BIR prepare regalloc note should mention allocation-sequence decisions");
+  }
   if (!contains_note(prepared_bir.notes, "regalloc", "compact access-shape summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention compact access-shape summaries");
   }
@@ -645,6 +672,9 @@ int main() {
   if (regalloc_function->register_candidate_count != 15 ||
       regalloc_function->fixed_stack_storage_count != 5) {
     return fail("semantic-BIR regalloc should summarize register-candidate vs fixed-stack prepared objects");
+  }
+  if (regalloc_function->allocation_sequence.size() != regalloc_function->register_candidate_count) {
+    return fail("semantic-BIR regalloc should publish one allocation-sequence decision per register candidate");
   }
   const auto* local_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "flag.slot");
   if (local_slot_regalloc == nullptr || local_slot_regalloc->contract_kind != "value_storage" ||
@@ -1202,6 +1232,74 @@ int main() {
   }
   if (call_result_regalloc->first_access_kind != "call_argument_exposure") {
     return fail("semantic-BIR regalloc should publish call-exposure first-access cues");
+  }
+  if (find_regalloc_allocation_decision(*regalloc_function, "address_taken_local_slot", "addressed.slot") !=
+      nullptr) {
+    return fail("semantic-BIR regalloc allocation sequence should exclude fixed-stack address-exposed storage");
+  }
+  if (find_regalloc_allocation_decision(*regalloc_function, "call_result_sret", "%call.result") != nullptr) {
+    return fail("semantic-BIR regalloc allocation sequence should exclude fixed-stack call-exposed storage");
+  }
+  const auto* carry_sequence =
+      find_regalloc_allocation_decision(*regalloc_function, "local_slot", "carry.slot");
+  const auto* callread_sequence =
+      find_regalloc_allocation_decision(*regalloc_function, "local_slot", "callread.slot");
+  const auto* callwrite_sequence =
+      find_regalloc_allocation_decision(*regalloc_function, "local_slot", "callwrite.slot");
+  const auto* window_sequence =
+      find_regalloc_allocation_decision(*regalloc_function, "local_slot", "window.slot");
+  const auto* readonly_sequence =
+      find_regalloc_allocation_decision(*regalloc_function, "local_slot", "readonly.slot");
+  const auto* multiwrite_sequence =
+      find_regalloc_allocation_decision(*regalloc_function, "local_slot", "multiwrite.slot");
+  const auto* local_slot_sequence =
+      find_regalloc_allocation_decision(*regalloc_function, "local_slot", "flag.slot");
+  const auto* writeonly_sequence =
+      find_regalloc_allocation_decision(*regalloc_function, "local_slot", "writeonly.slot");
+  if (carry_sequence == nullptr || callread_sequence == nullptr || callwrite_sequence == nullptr ||
+      window_sequence == nullptr || readonly_sequence == nullptr || multiwrite_sequence == nullptr ||
+      local_slot_sequence == nullptr || writeonly_sequence == nullptr) {
+    return fail("semantic-BIR regalloc allocation sequence should cover nearby register-candidate shapes");
+  }
+  if (carry_sequence->allocation_stage != "stabilize_across_calls" ||
+      callread_sequence->allocation_stage != "stabilize_across_calls" ||
+      callwrite_sequence->allocation_stage != "stabilize_across_calls") {
+    return fail("semantic-BIR regalloc should stage call-spanning candidates for across-call stabilization");
+  }
+  if (window_sequence->allocation_stage != "stabilize_local_reuse" ||
+      readonly_sequence->allocation_stage != "stabilize_local_reuse" ||
+      multiwrite_sequence->allocation_stage != "stabilize_local_reuse") {
+    return fail("semantic-BIR regalloc should stage local multi-point candidates for local-reuse stabilization");
+  }
+  if (local_slot_sequence->allocation_stage != "opportunistic_single_point" ||
+      writeonly_sequence->allocation_stage != "opportunistic_single_point") {
+    return fail("semantic-BIR regalloc should stage single-point candidates as opportunistic assignments");
+  }
+  const std::size_t carry_sequence_index =
+      regalloc_allocation_index(*regalloc_function, "local_slot", "carry.slot");
+  const std::size_t callread_sequence_index =
+      regalloc_allocation_index(*regalloc_function, "local_slot", "callread.slot");
+  const std::size_t callwrite_sequence_index =
+      regalloc_allocation_index(*regalloc_function, "local_slot", "callwrite.slot");
+  const std::size_t window_sequence_index =
+      regalloc_allocation_index(*regalloc_function, "local_slot", "window.slot");
+  const std::size_t readonly_sequence_index =
+      regalloc_allocation_index(*regalloc_function, "local_slot", "readonly.slot");
+  const std::size_t multiwrite_sequence_index =
+      regalloc_allocation_index(*regalloc_function, "local_slot", "multiwrite.slot");
+  const std::size_t local_slot_sequence_index =
+      regalloc_allocation_index(*regalloc_function, "local_slot", "flag.slot");
+  const std::size_t writeonly_sequence_index =
+      regalloc_allocation_index(*regalloc_function, "local_slot", "writeonly.slot");
+  if (!(carry_sequence_index < callread_sequence_index &&
+        callread_sequence_index < callwrite_sequence_index &&
+        callwrite_sequence_index < window_sequence_index &&
+        window_sequence_index < readonly_sequence_index &&
+        readonly_sequence_index < multiwrite_sequence_index &&
+        multiwrite_sequence_index < local_slot_sequence_index &&
+        local_slot_sequence_index < writeonly_sequence_index)) {
+    return fail(
+        "semantic-BIR regalloc should order register candidates from call-stable reuse through local reuse to opportunistic single-point cases");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(

@@ -540,6 +540,91 @@ std::string_view regalloc_eviction_friction_hint(
   return "eviction_friction_wide_reuse_guarded";
 }
 
+std::string_view regalloc_allocation_stage(const PreparedRegallocObject& object) {
+  if (object.allocation_kind != "register_candidate") {
+    return "fixed_stack_storage";
+  }
+  if (object.priority_bucket == "call_spanning_value") {
+    return "stabilize_across_calls";
+  }
+  if (object.priority_bucket == "multi_point_value") {
+    return "stabilize_local_reuse";
+  }
+  return "opportunistic_single_point";
+}
+
+int regalloc_allocation_stage_rank(std::string_view allocation_stage) {
+  if (allocation_stage == "stabilize_across_calls") {
+    return 0;
+  }
+  if (allocation_stage == "stabilize_local_reuse") {
+    return 1;
+  }
+  if (allocation_stage == "opportunistic_single_point") {
+    return 2;
+  }
+  return 3;
+}
+
+int regalloc_assignment_readiness_rank(std::string_view assignment_readiness) {
+  if (assignment_readiness == "call_spanning_read_write_candidate") {
+    return 0;
+  }
+  if (assignment_readiness == "call_spanning_read_candidate") {
+    return 1;
+  }
+  if (assignment_readiness == "call_spanning_write_candidate") {
+    return 2;
+  }
+  if (assignment_readiness == "multi_point_read_write_candidate") {
+    return 3;
+  }
+  if (assignment_readiness == "multi_point_read_candidate") {
+    return 4;
+  }
+  if (assignment_readiness == "multi_point_write_candidate") {
+    return 5;
+  }
+  if (assignment_readiness == "single_point_read_candidate") {
+    return 6;
+  }
+  if (assignment_readiness == "single_point_write_candidate") {
+    return 7;
+  }
+  return 8;
+}
+
+int regalloc_eviction_friction_rank(std::string_view eviction_friction_hint) {
+  if (eviction_friction_hint == "eviction_friction_call_sync_heavy") {
+    return 0;
+  }
+  if (eviction_friction_hint == "eviction_friction_call_reload_guarded") {
+    return 1;
+  }
+  if (eviction_friction_hint == "eviction_friction_call_writeback_guarded") {
+    return 2;
+  }
+  if (eviction_friction_hint == "eviction_friction_tight_reuse_balanced") {
+    return 3;
+  }
+  if (eviction_friction_hint == "eviction_friction_local_read_buffered") {
+    return 4;
+  }
+  if (eviction_friction_hint == "eviction_friction_local_write_buffered") {
+    return 5;
+  }
+  if (eviction_friction_hint == "eviction_friction_wide_reuse_guarded") {
+    return 6;
+  }
+  if (eviction_friction_hint == "eviction_friction_single_read_light") {
+    return 7;
+  }
+  if (eviction_friction_hint == "eviction_friction_single_write_light") {
+    return 8;
+  }
+  return 9;
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -622,6 +707,49 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
         ++prepared_function.register_candidate_count;
       }
     }
+    std::vector<const PreparedRegallocObject*> ordered_register_candidates;
+    ordered_register_candidates.reserve(prepared_function.objects.size());
+    for (const auto& object : prepared_function.objects) {
+      if (object.allocation_kind == "register_candidate") {
+        ordered_register_candidates.push_back(&object);
+      }
+    }
+    std::stable_sort(ordered_register_candidates.begin(),
+                     ordered_register_candidates.end(),
+                     [](const PreparedRegallocObject* lhs, const PreparedRegallocObject* rhs) {
+                       const auto lhs_stage = regalloc_allocation_stage(*lhs);
+                       const auto rhs_stage = regalloc_allocation_stage(*rhs);
+                       if (lhs_stage != rhs_stage) {
+                         return regalloc_allocation_stage_rank(lhs_stage) <
+                                regalloc_allocation_stage_rank(rhs_stage);
+                       }
+                       const int lhs_readiness_rank =
+                           regalloc_assignment_readiness_rank(lhs->assignment_readiness);
+                       const int rhs_readiness_rank =
+                           regalloc_assignment_readiness_rank(rhs->assignment_readiness);
+                       if (lhs_readiness_rank != rhs_readiness_rank) {
+                         return lhs_readiness_rank < rhs_readiness_rank;
+                       }
+                       const int lhs_friction_rank =
+                           regalloc_eviction_friction_rank(lhs->eviction_friction_hint);
+                       const int rhs_friction_rank =
+                           regalloc_eviction_friction_rank(rhs->eviction_friction_hint);
+                       if (lhs_friction_rank != rhs_friction_rank) {
+                         return lhs_friction_rank < rhs_friction_rank;
+                       }
+                       if (lhs->source_kind != rhs->source_kind) {
+                         return lhs->source_kind < rhs->source_kind;
+                       }
+                       return lhs->source_name < rhs->source_name;
+                     });
+    prepared_function.allocation_sequence.reserve(ordered_register_candidates.size());
+    for (const auto* object : ordered_register_candidates) {
+      prepared_function.allocation_sequence.push_back(PreparedRegallocAllocationDecision{
+          .source_kind = object->source_kind,
+          .source_name = object->source_name,
+          .allocation_stage = std::string(regalloc_allocation_stage(*object)),
+      });
+    }
     if (!prepared_function.objects.empty()) {
       module.regalloc.functions.push_back(std::move(prepared_function));
     }
@@ -647,6 +775,9 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "stability hints keyed by access-window width and read/write direction plus "
           "fixed-stack exposure kind, eviction-friction hints keyed by the same prepared "
           "access-window and call-crossing facts without naming target registers, "
+          "allocation-sequence decisions that consume the current prepared contract into "
+          "stabilize_across_calls, stabilize_local_reuse, and opportunistic_single_point "
+          "staging for register candidates, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "

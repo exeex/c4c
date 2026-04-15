@@ -8,35 +8,23 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- extended the semantic-BIR regalloc artifact with a target-neutral
-  `home_slot_stability_hint` field sourced from current prepared facts:
-  single-use reads/writes stay definition- or use-point local, adjacent local
-  windows stay stable by direction, call-spanning windows advertise
-  call-preserved homes by direction, and fixed-stack storage stays anchored by
-  memory or call-boundary exposure contract
-- broadened the prepare entry-contract fixture so nearby single-point,
-  adjacent multi-point, call-spanning, write-only, address-exposed, and
-  call-exposed shapes all prove the new home-slot-stability cue alongside the
-  existing pool/pressure/reload/materialization/locality/eligibility/
-  readiness/sync/access summaries
-- extended the semantic-BIR regalloc artifact with a target-neutral
-  `eviction_friction_hint` field sourced from current prepared facts:
-  single-point reads/writes stay light to evict, local multi-point windows
-  advertise buffered read/write friction, call-spanning windows advertise
-  guarded reload/writeback or heavy sync friction by direction, and fixed-stack
-  storage stays anchored by memory or call-boundary exposure contract
-- broadened the prepare entry-contract fixture so nearby single-point,
-  adjacent multi-point, call-spanning, address-exposed, and call-exposed
-  shapes all prove the new eviction-friction cue alongside the existing
-  pool/pressure/reload/materialization/locality/eligibility/readiness/sync/
-  home-slot/access summaries
+- consumed the existing semantic-BIR regalloc contract in a first prepare-
+  owned allocator decision by publishing a per-function register-candidate
+  `allocation_sequence` that stages candidates as `stabilize_across_calls`,
+  `stabilize_local_reuse`, or `opportunistic_single_point` and orders them
+  from the current readiness and eviction-friction contracts rather than
+  adding another parallel hint
+- broadened the prepare entry-contract fixture so nearby call-spanning,
+  local-reuse, single-point, and fixed-stack shapes prove the new allocation-
+  sequence decision, including stage labels, ordering, and exclusion of
+  fixed-stack storage from the register-candidate sequence
 
 ## Suggested Next
-- if execution stays inside this bucket, either tighten the new allocator-
-  facing cues into a smaller shared classifier so adjacent fields do not drift
-  into renamed duplicates, or start consuming the prepared regalloc contract in
-  the first downstream prepare-owned allocator decision without naming target
-  registers, synthetic live intervals, or placeholder interference graphs
+- if execution stays inside this bucket, consume `allocation_sequence` in the
+  next prepare-owned allocator pass step so regalloc starts producing an
+  inspectable first-pass reservation or assignment attempt from that sequence
+  without naming target registers, synthetic live intervals, or placeholder
+  interference graphs
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -71,10 +59,13 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 - keep the new home-slot-stability cue focused on whether the current
   prepared facts imply a stable stack home for the object; do not let it
   collapse into another spill-sync or locality synonym
-- keep the new eviction-friction cue focused on how disruptive it would be to
-  evict a register-resident strategy from the current prepared access window;
-  do not let it collapse into another spill-pressure, reload-cost, spill-sync,
-  or locality synonym
+- keep `allocation_sequence` as a prepare-owned decision that consumes the
+  existing contract; do not let it devolve into another renamed hint list or a
+  target-specific register assignment table
+- if a follow-on packet starts emitting reservation or assignment attempts,
+  keep them target-neutral and derived from the staged sequence plus current
+  prepared stack/liveness facts rather than from synthetic intervals or
+  placeholder interference graphs
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build

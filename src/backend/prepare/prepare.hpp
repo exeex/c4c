@@ -76,9 +76,16 @@ struct PreparedRegallocObject {
   bool crosses_call_boundary = false;
 };
 
+struct PreparedRegallocAllocationDecision {
+  std::string source_kind;
+  std::string source_name;
+  std::string allocation_stage;
+};
+
 struct PreparedRegallocFunction {
   std::string function_name;
   std::vector<PreparedRegallocObject> objects;
+  std::vector<PreparedRegallocAllocationDecision> allocation_sequence;
   std::size_t register_candidate_count = 0;
   std::size_t fixed_stack_storage_count = 0;
 };
