@@ -96,11 +96,17 @@ struct Param {
   bool is_byval = false;
 };
 
+enum class LocalSlotStorageKind : unsigned char {
+  None,
+  LoweringScratch,
+};
+
 struct LocalSlot {
   std::string name;
   TypeKind type = TypeKind::Void;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
+  LocalSlotStorageKind storage_kind = LocalSlotStorageKind::None;
   bool is_address_taken = false;
   bool is_byval_copy = false;
   std::optional<PhiObservation> phi_observation;

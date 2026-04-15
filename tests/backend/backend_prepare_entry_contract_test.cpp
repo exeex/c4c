@@ -85,6 +85,13 @@ bir::Module make_prepare_contract_bir_module() {
       .align_bytes = 4,
   });
   function.local_slots.push_back(bir::LocalSlot{
+      .name = "scratch.slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .storage_kind = bir::LocalSlotStorageKind::LoweringScratch,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
       .name = "phi.slot",
       .type = bir::TypeKind::I32,
       .size_bytes = 4,
@@ -247,7 +254,7 @@ int main() {
   }
   if (!contains_note(prepared_bir.notes,
                      "stack_layout",
-                     "local-slot, address-taken local-slot, and phi-materialize stack objects")) {
+                     "local-slot, lowering scratch, address-taken local-slot, and phi-materialize stack objects")) {
     return fail("semantic-BIR prepare stack-layout note should mention local-slot stack objects");
   }
   if (!contains_note(prepared_bir.notes, "stack_layout", "byval/sret memory-route")) {
@@ -271,15 +278,22 @@ int main() {
       return fail("unexpected semantic-BIR prepare phase order");
     }
   }
-  if (prepared_bir.stack_layout.objects.size() != 12) {
+  if (prepared_bir.stack_layout.objects.size() != 13) {
     return fail(
-        "semantic-BIR stack layout should publish local-slot, address-taken local-slot, phi-materialize, byval/sret, call-result, and va_arg frame objects");
+        "semantic-BIR stack layout should publish local-slot, lowering scratch, address-taken local-slot, phi-materialize, byval/sret, call-result, and va_arg frame objects");
   }
   const auto* local_slot = find_stack_object(prepared_bir, "local_slot", "flag.slot");
   if (local_slot == nullptr || local_slot->function_name != "id_pair" ||
       local_slot->type != bir::TypeKind::I32 || local_slot->size_bytes != 4 ||
       local_slot->align_bytes != 4) {
     return fail("semantic-BIR stack-layout artifact drifted from the legalized local-slot contract");
+  }
+  const auto* scratch_slot = find_stack_object(prepared_bir, "lowering_scratch_slot", "scratch.slot");
+  if (scratch_slot == nullptr || scratch_slot->function_name != "id_pair" ||
+      scratch_slot->type != bir::TypeKind::I32 || scratch_slot->size_bytes != 4 ||
+      scratch_slot->align_bytes != 4) {
+    return fail(
+        "semantic-BIR stack layout should publish lowering-created scratch slots as prepared frame objects");
   }
   const auto* byval_copy_slot = find_stack_object(prepared_bir, "byval_copy_slot", "param.copy.0");
   if (byval_copy_slot == nullptr || byval_copy_slot->function_name != "id_pair" ||

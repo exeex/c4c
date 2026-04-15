@@ -1346,6 +1346,7 @@ bool BirFunctionLowerer::ensure_local_scratch_slot(std::string_view slot_name,
       .type = type,
       .size_bytes = slot_size,
       .align_bytes = align_bytes == 0 ? slot_size : align_bytes,
+      .storage_kind = bir::LocalSlotStorageKind::LoweringScratch,
   });
   return true;
 }

@@ -120,6 +120,9 @@ bool has_addressed_local_access(const bir::Function& function, std::string_view 
 }
 
 std::string_view stack_object_source_kind(const bir::Function& function, const bir::LocalSlot& slot) {
+  if (slot.storage_kind == bir::LocalSlotStorageKind::LoweringScratch) {
+    return "lowering_scratch_slot";
+  }
   if (slot.is_byval_copy) {
     return "byval_copy_slot";
   }
@@ -164,10 +167,11 @@ void run_stack_layout(PreparedBirModule& module, const PrepareOptions& options) 
   module.notes.push_back(PrepareNote{
       .phase = "stack_layout",
       .message =
-          "stack layout now publishes local-slot, address-taken local-slot, and "
-          "phi-materialize stack objects plus byval/sret memory-route frame objects, "
-          "aggregate call-result sret storage, and aggregate va_arg output storage as "
-          "prepared artifacts; frame offset assignment remains future work",
+          "stack layout now publishes local-slot, lowering scratch, address-taken "
+          "local-slot, and phi-materialize stack objects plus byval/sret memory-route "
+          "frame objects, aggregate call-result sret storage, and aggregate va_arg "
+          "output storage as prepared artifacts; frame offset assignment remains "
+          "future work",
   });
 }
 
