@@ -130,6 +130,10 @@ std::string_view regalloc_access_shape_suffix(const RegallocObjectAccessSummary&
   return "mixed_access";
 }
 
+bool string_view_starts_with(std::string_view text, std::string_view prefix) {
+  return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
+}
+
 RegallocObjectAccessSummary summarize_object_accesses(const bir::Function& function,
                                                       std::string_view source_name) {
   RegallocObjectAccessSummary summary;
@@ -625,6 +629,83 @@ int regalloc_eviction_friction_rank(std::string_view eviction_friction_hint) {
   return 9;
 }
 
+std::string_view regalloc_reservation_kind(const PreparedRegallocObject& object) {
+  const auto allocation_stage = regalloc_allocation_stage(object);
+  if (allocation_stage == "stabilize_across_calls") {
+    if (object.spill_sync_hint == "restore_only_call_window") {
+      return "call_preserved_read_cache";
+    }
+    if (object.spill_sync_hint == "writeback_only_call_window") {
+      return "call_preserved_writeback_buffer";
+    }
+    return "call_preserved_value_reservation";
+  }
+  if (allocation_stage == "stabilize_local_reuse") {
+    if (object.access_shape == "direct_read_only") {
+      return "local_read_cache_reservation";
+    }
+    if (object.access_shape == "direct_write_only") {
+      return "local_write_buffer_reservation";
+    }
+    return "local_reuse_value_reservation";
+  }
+  if (object.access_shape == "direct_read_only") {
+    return "single_read_cache_opportunity";
+  }
+  if (object.access_shape == "direct_write_only") {
+    return "single_write_buffer_opportunity";
+  }
+  return "single_point_value_opportunity";
+}
+
+std::string_view regalloc_reservation_scope(const PreparedRegallocObject& object) {
+  if (!object.has_access_window) {
+    return "unobserved_instruction_window";
+  }
+  if (object.crosses_call_boundary) {
+    return "call_boundary_window";
+  }
+
+  const auto access_window_width =
+      object.last_access_instruction_index - object.first_access_instruction_index;
+  if (access_window_width == 0) {
+    return "single_instruction_window";
+  }
+  if (access_window_width == 1) {
+    return "adjacent_instruction_window";
+  }
+  return "wide_instruction_window";
+}
+
+std::string_view regalloc_home_slot_mode(std::string_view home_slot_stability_hint) {
+  if (home_slot_stability_hint == "home_slot_unobserved") {
+    return "home_slot_needs_future_analysis";
+  }
+  if (home_slot_stability_hint == "memory_anchor_home_slot" ||
+      home_slot_stability_hint == "call_boundary_anchor_home_slot" ||
+      string_view_starts_with(home_slot_stability_hint, "call_preserved_")) {
+    return "stable_home_slot_required";
+  }
+  if (home_slot_stability_hint == "single_use_read_home_slot" ||
+      home_slot_stability_hint == "single_definition_write_home_slot") {
+    return "single_use_home_slot_ok";
+  }
+  return "stable_home_slot_preferred";
+}
+
+std::string_view regalloc_sync_policy(std::string_view spill_sync_hint) {
+  if (string_view_starts_with(spill_sync_hint, "restore_only_")) {
+    return "restore_before_read";
+  }
+  if (string_view_starts_with(spill_sync_hint, "writeback_only_")) {
+    return "writeback_after_write";
+  }
+  if (string_view_starts_with(spill_sync_hint, "bidirectional_sync_")) {
+    return "sync_on_read_write_boundaries";
+  }
+  return "sync_policy_needs_future_analysis";
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -748,6 +829,10 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .source_kind = object->source_kind,
           .source_name = object->source_name,
           .allocation_stage = std::string(regalloc_allocation_stage(*object)),
+          .reservation_kind = std::string(regalloc_reservation_kind(*object)),
+          .reservation_scope = std::string(regalloc_reservation_scope(*object)),
+          .home_slot_mode = std::string(regalloc_home_slot_mode(object->home_slot_stability_hint)),
+          .sync_policy = std::string(regalloc_sync_policy(object->spill_sync_hint)),
       });
     }
     if (!prepared_function.objects.empty()) {
@@ -777,7 +862,9 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "access-window and call-crossing facts without naming target registers, "
           "allocation-sequence decisions that consume the current prepared contract into "
           "stabilize_across_calls, stabilize_local_reuse, and opportunistic_single_point "
-          "staging for register candidates, "
+          "staging for register candidates, plus first-pass reservation decisions that "
+          "turn those stages into target-neutral call-preserved, local-reuse, or "
+          "single-point register attempts with scope, home-slot, and sync policies, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "

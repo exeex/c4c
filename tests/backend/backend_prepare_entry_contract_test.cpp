@@ -464,6 +464,9 @@ int main() {
   if (!contains_note(prepared_bir.notes, "regalloc", "allocation-sequence decisions")) {
     return fail("semantic-BIR prepare regalloc note should mention allocation-sequence decisions");
   }
+  if (!contains_note(prepared_bir.notes, "regalloc", "first-pass reservation decisions")) {
+    return fail("semantic-BIR prepare regalloc note should mention first-pass reservation decisions");
+  }
   if (!contains_note(prepared_bir.notes, "regalloc", "compact access-shape summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention compact access-shape summaries");
   }
@@ -1274,6 +1277,54 @@ int main() {
   if (local_slot_sequence->allocation_stage != "opportunistic_single_point" ||
       writeonly_sequence->allocation_stage != "opportunistic_single_point") {
     return fail("semantic-BIR regalloc should stage single-point candidates as opportunistic assignments");
+  }
+  if (carry_sequence->reservation_kind != "call_preserved_value_reservation" ||
+      carry_sequence->reservation_scope != "call_boundary_window" ||
+      carry_sequence->home_slot_mode != "stable_home_slot_required" ||
+      carry_sequence->sync_policy != "sync_on_read_write_boundaries") {
+    return fail("semantic-BIR regalloc should turn call-spanning read/write staging into a call-preserved first-pass reservation");
+  }
+  if (callread_sequence->reservation_kind != "call_preserved_read_cache" ||
+      callread_sequence->reservation_scope != "call_boundary_window" ||
+      callread_sequence->home_slot_mode != "stable_home_slot_required" ||
+      callread_sequence->sync_policy != "restore_before_read") {
+    return fail("semantic-BIR regalloc should turn call-spanning read-only staging into a call-preserved read-cache reservation");
+  }
+  if (callwrite_sequence->reservation_kind != "call_preserved_writeback_buffer" ||
+      callwrite_sequence->reservation_scope != "call_boundary_window" ||
+      callwrite_sequence->home_slot_mode != "stable_home_slot_required" ||
+      callwrite_sequence->sync_policy != "writeback_after_write") {
+    return fail("semantic-BIR regalloc should turn call-spanning write-only staging into a call-preserved writeback reservation");
+  }
+  if (window_sequence->reservation_kind != "local_reuse_value_reservation" ||
+      window_sequence->reservation_scope != "adjacent_instruction_window" ||
+      window_sequence->home_slot_mode != "stable_home_slot_preferred" ||
+      window_sequence->sync_policy != "sync_on_read_write_boundaries") {
+    return fail("semantic-BIR regalloc should turn local read/write reuse staging into a local reuse reservation");
+  }
+  if (readonly_sequence->reservation_kind != "local_read_cache_reservation" ||
+      readonly_sequence->reservation_scope != "adjacent_instruction_window" ||
+      readonly_sequence->home_slot_mode != "stable_home_slot_preferred" ||
+      readonly_sequence->sync_policy != "restore_before_read") {
+    return fail("semantic-BIR regalloc should turn local read-only reuse staging into a local read-cache reservation");
+  }
+  if (multiwrite_sequence->reservation_kind != "local_write_buffer_reservation" ||
+      multiwrite_sequence->reservation_scope != "adjacent_instruction_window" ||
+      multiwrite_sequence->home_slot_mode != "stable_home_slot_preferred" ||
+      multiwrite_sequence->sync_policy != "writeback_after_write") {
+    return fail("semantic-BIR regalloc should turn local write-only reuse staging into a local write-buffer reservation");
+  }
+  if (local_slot_sequence->reservation_kind != "single_read_cache_opportunity" ||
+      local_slot_sequence->reservation_scope != "single_instruction_window" ||
+      local_slot_sequence->home_slot_mode != "single_use_home_slot_ok" ||
+      local_slot_sequence->sync_policy != "restore_before_read") {
+    return fail("semantic-BIR regalloc should turn single-point read staging into a single-read opportunistic reservation");
+  }
+  if (writeonly_sequence->reservation_kind != "single_write_buffer_opportunity" ||
+      writeonly_sequence->reservation_scope != "single_instruction_window" ||
+      writeonly_sequence->home_slot_mode != "single_use_home_slot_ok" ||
+      writeonly_sequence->sync_policy != "writeback_after_write") {
+    return fail("semantic-BIR regalloc should turn single-point write staging into a single-write opportunistic reservation");
   }
   const std::size_t carry_sequence_index =
       regalloc_allocation_index(*regalloc_function, "local_slot", "carry.slot");

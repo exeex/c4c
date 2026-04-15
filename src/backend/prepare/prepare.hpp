@@ -80,6 +80,10 @@ struct PreparedRegallocAllocationDecision {
   std::string source_kind;
   std::string source_name;
   std::string allocation_stage;
+  std::string reservation_kind;
+  std::string reservation_scope;
+  std::string home_slot_mode;
+  std::string sync_policy;
 };
 
 struct PreparedRegallocFunction {

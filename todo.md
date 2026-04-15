@@ -8,23 +8,24 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- consumed the existing semantic-BIR regalloc contract in a first prepare-
-  owned allocator decision by publishing a per-function register-candidate
-  `allocation_sequence` that stages candidates as `stabilize_across_calls`,
-  `stabilize_local_reuse`, or `opportunistic_single_point` and orders them
-  from the current readiness and eviction-friction contracts rather than
-  adding another parallel hint
+- consumed the existing semantic-BIR regalloc `allocation_sequence` into a
+  first-pass prepare-owned reservation decision per register candidate by
+  publishing target-neutral `reservation_kind`, `reservation_scope`,
+  `home_slot_mode`, and `sync_policy` fields that translate the staged
+  call-spanning, local-reuse, and single-point buckets into inspectable
+  allocator actions without naming physical registers or inventing
+  interference graphs
 - broadened the prepare entry-contract fixture so nearby call-spanning,
-  local-reuse, single-point, and fixed-stack shapes prove the new allocation-
-  sequence decision, including stage labels, ordering, and exclusion of
-  fixed-stack storage from the register-candidate sequence
+  local-reuse, single-point, and fixed-stack shapes prove the new first-pass
+  reservation decision alongside the existing stage labels, ordering, and
+  fixed-stack exclusion from the register-candidate sequence
 
 ## Suggested Next
-- if execution stays inside this bucket, consume `allocation_sequence` in the
-  next prepare-owned allocator pass step so regalloc starts producing an
-  inspectable first-pass reservation or assignment attempt from that sequence
-  without naming target registers, synthetic live intervals, or placeholder
-  interference graphs
+- if execution stays inside this bucket, consume the new first-pass
+  reservation decisions into a prepare-owned per-function reservation pressure
+  or collision summary so regalloc starts exposing where the current prepared
+  route would need contention handling next, still without naming target
+  registers, synthetic live intervals, or placeholder interference graphs
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -33,39 +34,22 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 - keep downstream regalloc contracts driven by prepared liveness and
   stack-layout ownership rather than target-specific rules or slot-name pattern
   matching
-- if more source kinds appear, classify them from explicit semantic ABI facts,
-  intrinsic identity, or lowering metadata instead of inventing name-based
-  buckets inside liveness/regalloc
 - keep the regalloc artifact inspectable and target-neutral; prefer concrete
   access summaries over broad notes, but do not fake live ranges or
   interference until the data is really available
-- keep any future allocator-facing hints semantically distinct from the
-  existing priority bucket, preferred pool, spill-pressure, and readiness
-  fields so the prepared contract does not devolve into renamed duplicates
-- if follow-on allocator-facing cues are added, keep them sourced from actual
-  BIR access order, liveness contracts, and call-crossing facts rather than
-  synthetic interval guesses, target register names, or phi-materialization
-  scaffolding that does not exercise a real local-slot access window
-- keep the new spill/restore-locality cue tied to observable access-window
-  width and fixed-stack exposure kind; do not let it collapse back into a
-  renamed reload-cost or preferred-pool field
-- keep the new register-eligibility cue semantically distinct from priority,
-  locality, and readiness: it should answer whether the current prepared facts
-  still permit a register-resident strategy, not which pool or window shape is
-  preferred once that strategy is chosen
-- keep the new spill-sync cue focused on synchronization direction between a
-  register-resident strategy and its storage home; do not let it collapse into
-  another reload-cost, locality, or eligibility synonym
-- keep the new home-slot-stability cue focused on whether the current
-  prepared facts imply a stable stack home for the object; do not let it
-  collapse into another spill-sync or locality synonym
-- keep `allocation_sequence` as a prepare-owned decision that consumes the
-  existing contract; do not let it devolve into another renamed hint list or a
-  target-specific register assignment table
-- if a follow-on packet starts emitting reservation or assignment attempts,
-  keep them target-neutral and derived from the staged sequence plus current
-  prepared stack/liveness facts rather than from synthetic intervals or
+- if more source kinds appear, classify them from explicit semantic ABI facts,
+  intrinsic identity, or lowering metadata instead of inventing name-based
+  buckets inside liveness/regalloc
+- keep future reservation-pressure or collision summaries derived from the
+  staged sequence plus current prepared access-window, sync, and home-slot
+  facts rather than from target register names, synthetic intervals, or
   placeholder interference graphs
+- keep the new first-pass reservation fields semantically distinct from the
+  existing priority bucket, preferred pool, spill-pressure, and readiness
+  hints: they should express allocator action, not just restate earlier cues
+- preserve the current split between register-candidate reservation decisions
+  and fixed-stack objects; do not backdoor fixed-stack storage into the
+  reservation sequence just to make a narrow testcase pass
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build
