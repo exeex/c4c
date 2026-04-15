@@ -775,6 +775,107 @@ std::string regalloc_collision_signal(const PreparedRegallocReservationSummary& 
   return "window_overlap_collision_signal";
 }
 
+std::string_view regalloc_follow_up_category(const PreparedRegallocReservationSummary& summary) {
+  if (summary.candidate_count == 0) {
+    return "idle_follow_up";
+  }
+  if (summary.allocation_stage == "stabilize_across_calls") {
+    return "call_boundary_preservation";
+  }
+  if (summary.allocation_stage == "stabilize_local_reuse") {
+    if (summary.overlapping_window_count != 0) {
+      return "overlapping_local_reuse_coordination";
+    }
+    return "sequenced_local_reuse_coordination";
+  }
+  if (summary.single_instruction_window_count >= 2) {
+    return "batched_single_point_coordination";
+  }
+  if (summary.unobserved_window_count != 0) {
+    return "deferred_single_point_screen";
+  }
+  return "isolated_single_point_coordination";
+}
+
+std::string_view regalloc_sync_coordination_category(
+    const PreparedRegallocReservationSummary& summary) {
+  const bool has_restore = summary.restore_before_read_count != 0;
+  const bool has_writeback = summary.writeback_after_write_count != 0;
+  const bool has_bidirectional = summary.sync_on_read_write_boundaries_count != 0;
+  if (has_restore && has_writeback && has_bidirectional) {
+    return "mixed_sync_coordination";
+  }
+  if (has_restore && has_writeback) {
+    return "read_write_coordination";
+  }
+  if (has_bidirectional) {
+    return "bidirectional_sync_coordination";
+  }
+  if (has_restore) {
+    return "restore_only_coordination";
+  }
+  if (has_writeback) {
+    return "writeback_only_coordination";
+  }
+  return "sync_free_coordination";
+}
+
+std::string_view regalloc_home_slot_category(const PreparedRegallocReservationSummary& summary) {
+  if (summary.candidate_count == 0) {
+    return "idle_home_slot_coordination";
+  }
+  if (summary.stable_home_slot_required_count == summary.candidate_count) {
+    return "stable_home_slot_required";
+  }
+  if (summary.stable_home_slot_preferred_count == summary.candidate_count) {
+    return "stable_home_slot_preferred";
+  }
+  if (summary.single_use_home_slot_ok_count == summary.candidate_count) {
+    return "single_use_home_slot_ok";
+  }
+  return "mixed_home_slot_modes";
+}
+
+std::string_view regalloc_window_coordination_category(
+    const PreparedRegallocReservationSummary& summary) {
+  if (summary.candidate_count == 0) {
+    return "idle_windows";
+  }
+  if (summary.overlapping_window_count != 0) {
+    if (summary.call_boundary_window_count == summary.candidate_count) {
+      return "overlapping_call_boundary_windows";
+    }
+    return "overlapping_windows";
+  }
+  if (summary.adjacent_instruction_window_count == summary.candidate_count) {
+    return "adjacent_local_windows";
+  }
+  if (summary.single_instruction_window_count == summary.candidate_count) {
+    return "single_instruction_windows";
+  }
+  if (summary.unobserved_window_count == summary.candidate_count) {
+    return "unobserved_windows";
+  }
+  if (summary.unobserved_window_count != 0 && summary.single_instruction_window_count != 0) {
+    return "mixed_sparse_windows";
+  }
+  if (summary.wide_instruction_window_count != 0) {
+    return "wide_local_windows";
+  }
+  return "sequenced_local_windows";
+}
+
+PreparedRegallocContentionSummary summarize_contention_stage(
+    const PreparedRegallocReservationSummary& summary) {
+  return PreparedRegallocContentionSummary{
+      .allocation_stage = summary.allocation_stage,
+      .follow_up_category = std::string(regalloc_follow_up_category(summary)),
+      .sync_coordination_category = std::string(regalloc_sync_coordination_category(summary)),
+      .home_slot_category = std::string(regalloc_home_slot_category(summary)),
+      .window_coordination_category = std::string(regalloc_window_coordination_category(summary)),
+  };
+}
+
 PreparedRegallocReservationSummary summarize_reservation_stage(
     const PreparedRegallocFunction& function,
     std::string_view allocation_stage) {
@@ -978,9 +1079,11 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
         "opportunistic_single_point",
     };
     prepared_function.reservation_summary.reserve(std::size(kReservationStages));
+    prepared_function.contention_summary.reserve(std::size(kReservationStages));
     for (const auto stage : kReservationStages) {
       auto summary = summarize_reservation_stage(prepared_function, stage);
       if (summary.candidate_count != 0) {
+        prepared_function.contention_summary.push_back(summarize_contention_stage(summary));
         prepared_function.reservation_summary.push_back(std::move(summary));
       }
     }
@@ -1017,7 +1120,9 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "per-function reservation pressure/collision summaries derived from that "
           "allocation sequence plus the current prepared access-window, sync-policy, "
           "and home-slot facts without naming physical registers or inventing "
-          "interference graphs, "
+          "interference graphs, plus explicit contention follow-up categories that "
+          "group those summaries into window, sync, and home-slot coordination "
+          "buckets for downstream prepared-BIR consumers, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "

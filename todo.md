@@ -22,13 +22,18 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
   local-reuse, opportunistic single-point, and fixed-stack shapes prove the
   new per-function summary alongside the existing per-object reservation
   decisions and register-candidate ordering
+- added a second per-function `contention_summary` reduction that groups the
+  existing reservation summaries into explicit follow-up categories for
+  window coordination, sync coordination, and home-slot handling so later
+  prepared-BIR consumers do not need to reverse-engineer raw bucket counts
 
 ## Suggested Next
-- if execution stays inside this bucket, decide whether downstream prepared-BIR
-  consumers should read `reservation_summary` directly or whether prepare
-  should add one more target-neutral reduction that groups the current bucket
-  signals into explicit contention-handling follow-up categories for later
-  target ingestion
+- keep step-4 work inside prepare by deciding whether liveness/regalloc should
+  now publish one more object-level artifact that explains why unobserved
+  single-point candidates remain deferred, or whether the next honest slice is
+  to stop expanding summaries and start turning these contracts into a more
+  concrete prepared-BIR allocation state that target ingestion can eventually
+  consume without raw-LIR assumptions
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that

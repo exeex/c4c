@@ -114,6 +114,17 @@ const prepare::PreparedRegallocReservationSummary* find_regalloc_reservation_sum
   return nullptr;
 }
 
+const prepare::PreparedRegallocContentionSummary* find_regalloc_contention_summary(
+    const prepare::PreparedRegallocFunction& function,
+    std::string_view allocation_stage) {
+  for (const auto& summary : function.contention_summary) {
+    if (summary.allocation_stage == allocation_stage) {
+      return &summary;
+    }
+  }
+  return nullptr;
+}
+
 bir::Module make_prepare_contract_bir_module() {
   bir::Module module;
   bir::Function function;
@@ -1279,6 +1290,12 @@ int main() {
       find_regalloc_reservation_summary(*regalloc_function, "stabilize_local_reuse");
   const auto* opportunistic_summary =
       find_regalloc_reservation_summary(*regalloc_function, "opportunistic_single_point");
+  const auto* across_calls_contention =
+      find_regalloc_contention_summary(*regalloc_function, "stabilize_across_calls");
+  const auto* local_reuse_contention =
+      find_regalloc_contention_summary(*regalloc_function, "stabilize_local_reuse");
+  const auto* opportunistic_contention =
+      find_regalloc_contention_summary(*regalloc_function, "opportunistic_single_point");
   if (carry_sequence == nullptr || callread_sequence == nullptr || callwrite_sequence == nullptr ||
       window_sequence == nullptr || readonly_sequence == nullptr || multiwrite_sequence == nullptr ||
       local_slot_sequence == nullptr || writeonly_sequence == nullptr) {
@@ -1287,6 +1304,10 @@ int main() {
   if (across_calls_summary == nullptr || local_reuse_summary == nullptr ||
       opportunistic_summary == nullptr) {
     return fail("semantic-BIR regalloc should publish per-function reservation summaries for the active allocation stages");
+  }
+  if (across_calls_contention == nullptr || local_reuse_contention == nullptr ||
+      opportunistic_contention == nullptr) {
+    return fail("semantic-BIR regalloc should publish explicit per-function contention follow-up categories for the active allocation stages");
   }
   if (carry_sequence->allocation_stage != "stabilize_across_calls" ||
       callread_sequence->allocation_stage != "stabilize_across_calls" ||
@@ -1408,6 +1429,25 @@ int main() {
       opportunistic_summary->pressure_signal != "batched_single_point_pressure" ||
       opportunistic_summary->collision_signal != "single_instruction_collision_watch") {
     return fail("semantic-BIR regalloc should summarize opportunistic single-point pressure and same-shape collision watch signals");
+  }
+  if (across_calls_contention->follow_up_category != "call_boundary_preservation" ||
+      across_calls_contention->sync_coordination_category != "mixed_sync_coordination" ||
+      across_calls_contention->home_slot_category != "stable_home_slot_required" ||
+      across_calls_contention->window_coordination_category !=
+          "overlapping_call_boundary_windows") {
+    return fail("semantic-BIR regalloc should reduce call-spanning reservation summaries into explicit contention follow-up categories");
+  }
+  if (local_reuse_contention->follow_up_category != "sequenced_local_reuse_coordination" ||
+      local_reuse_contention->sync_coordination_category != "mixed_sync_coordination" ||
+      local_reuse_contention->home_slot_category != "stable_home_slot_preferred" ||
+      local_reuse_contention->window_coordination_category != "adjacent_local_windows") {
+    return fail("semantic-BIR regalloc should reduce local-reuse reservation summaries into explicit contention follow-up categories");
+  }
+  if (opportunistic_contention->follow_up_category != "batched_single_point_coordination" ||
+      opportunistic_contention->sync_coordination_category != "read_write_coordination" ||
+      opportunistic_contention->home_slot_category != "mixed_home_slot_modes" ||
+      opportunistic_contention->window_coordination_category != "mixed_sparse_windows") {
+    return fail("semantic-BIR regalloc should reduce opportunistic reservation summaries into explicit sparse-window follow-up categories");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(

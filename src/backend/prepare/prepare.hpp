@@ -105,11 +105,20 @@ struct PreparedRegallocReservationSummary {
   std::string collision_signal;
 };
 
+struct PreparedRegallocContentionSummary {
+  std::string allocation_stage;
+  std::string follow_up_category;
+  std::string sync_coordination_category;
+  std::string home_slot_category;
+  std::string window_coordination_category;
+};
+
 struct PreparedRegallocFunction {
   std::string function_name;
   std::vector<PreparedRegallocObject> objects;
   std::vector<PreparedRegallocAllocationDecision> allocation_sequence;
   std::vector<PreparedRegallocReservationSummary> reservation_summary;
+  std::vector<PreparedRegallocContentionSummary> contention_summary;
   std::size_t register_candidate_count = 0;
   std::size_t fixed_stack_storage_count = 0;
 };
