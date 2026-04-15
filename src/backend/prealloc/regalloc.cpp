@@ -621,15 +621,6 @@ std::string_view regalloc_binding_home_slot_prerequisite_state(
   return "prealloc_home_slot_prerequisite_deferred";
 }
 
-std::string_view regalloc_deferred_binding_access_window_prerequisite_category(
-    const PreparedRegallocObject& object,
-    const PreparedRegallocContentionSummary& contention) {
-  if (object.deferred_reason == "awaiting_access_window_observation") {
-    return "unobserved_instruction_window";
-  }
-  return contention.window_coordination_category;
-}
-
 std::string_view regalloc_deferred_binding_home_slot_prerequisite_category(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
@@ -868,9 +859,6 @@ void BirPreAlloc::populate_binding_sequence() {
                                                               : contention->follow_up_category,
                 .ordering_policy =
                     std::string(regalloc_deferred_binding_ordering_policy(*object, *contention)),
-                .access_window_prerequisite_category =
-                    std::string(regalloc_deferred_binding_access_window_prerequisite_category(
-                        *object, *contention)),
                 .home_slot_prerequisite_category =
                     std::string(regalloc_deferred_binding_home_slot_prerequisite_category(
                         *object, *contention)),

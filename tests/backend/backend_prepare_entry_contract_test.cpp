@@ -1640,8 +1640,6 @@ int main() {
           "awaiting_access_window_observation" ||
       deferred_access_window_binding_batch->ordering_policy !=
           "defer_until_access_window_observed" ||
-      deferred_access_window_binding_batch->access_window_prerequisite_category !=
-          "unobserved_instruction_window" ||
       regalloc_deferred_batch_access_window_prerequisite_state(
           *deferred_access_window_binding_batch) !=
           "prealloc_access_window_prerequisite_deferred" ||
@@ -1664,8 +1662,6 @@ int main() {
       deferred_coordination_binding_batch->deferred_reason !=
           "batched_single_point_coordination" ||
       deferred_coordination_binding_batch->ordering_policy != "defer_until_frontier_ready" ||
-      deferred_coordination_binding_batch->access_window_prerequisite_category !=
-          "mixed_sparse_windows" ||
       regalloc_deferred_batch_access_window_prerequisite_state(
           *deferred_coordination_binding_batch) !=
           "prealloc_access_window_prerequisite_satisfied" ||
