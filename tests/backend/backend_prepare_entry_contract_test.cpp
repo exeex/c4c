@@ -149,6 +149,12 @@ bir::Module make_prepare_contract_bir_module() {
       .align_bytes = 4,
   });
   function.local_slots.push_back(bir::LocalSlot{
+      .name = "multiwrite.slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
       .name = "phi.slot",
       .type = bir::TypeKind::I32,
       .size_bytes = 4,
@@ -277,6 +283,16 @@ bir::Module make_prepare_contract_bir_module() {
       .slot_name = "readonly.slot",
       .align_bytes = 4,
   });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "multiwrite.slot",
+      .value = bir::Value::immediate_i32(17),
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "multiwrite.slot",
+      .value = bir::Value::immediate_i32(19),
+      .align_bytes = 4,
+  });
   entry.terminator = bir::ReturnTerminator{};
 
   function.blocks.push_back(std::move(entry));
@@ -402,7 +418,7 @@ int main() {
       return fail("unexpected semantic-BIR prepare phase order");
     }
   }
-  if (prepared_bir.stack_layout.objects.size() != 17) {
+  if (prepared_bir.stack_layout.objects.size() != 18) {
     return fail(
         "semantic-BIR stack layout should publish local-slot, lowering scratch, address-taken local-slot, phi-materialize, byval/sret, call-result, and va_arg frame objects");
   }
@@ -436,6 +452,12 @@ int main() {
       readonly_slot->type != bir::TypeKind::I32 || readonly_slot->size_bytes != 4 ||
       readonly_slot->align_bytes != 4) {
     return fail("semantic-BIR stack-layout should preserve non-call-spanning read-only local slots as prepared frame objects");
+  }
+  const auto* multiwrite_slot = find_stack_object(prepared_bir, "local_slot", "multiwrite.slot");
+  if (multiwrite_slot == nullptr || multiwrite_slot->function_name != "id_pair" ||
+      multiwrite_slot->type != bir::TypeKind::I32 || multiwrite_slot->size_bytes != 4 ||
+      multiwrite_slot->align_bytes != 4) {
+    return fail("semantic-BIR stack-layout should preserve non-call-spanning multi-write local slots as prepared frame objects");
   }
   const auto* byval_copy_slot = find_stack_object(prepared_bir, "byval_copy_slot", "param.copy.0");
   if (byval_copy_slot == nullptr || byval_copy_slot->function_name != "id_pair" ||
@@ -514,6 +536,12 @@ int main() {
       readonly_slot_liveness->contract_kind != "value_storage") {
     return fail("semantic-BIR liveness should keep non-call-spanning read-only local slots in the value-storage contract");
   }
+  const auto* multiwrite_slot_liveness =
+      find_liveness_object(prepared_bir, "local_slot", "multiwrite.slot");
+  if (multiwrite_slot_liveness == nullptr || multiwrite_slot_liveness->function_name != "id_pair" ||
+      multiwrite_slot_liveness->contract_kind != "value_storage") {
+    return fail("semantic-BIR liveness should keep non-call-spanning multi-write local slots in the value-storage contract");
+  }
   const auto* address_taken_liveness =
       find_liveness_object(prepared_bir, "address_taken_local_slot", "addressed.slot");
   if (address_taken_liveness == nullptr || address_taken_liveness->function_name != "id_pair" ||
@@ -543,7 +571,7 @@ int main() {
   if (regalloc_function->objects.size() != prepared_bir.liveness.objects.size()) {
     return fail("semantic-BIR regalloc should classify every prepared liveness object");
   }
-  if (regalloc_function->register_candidate_count != 12 ||
+  if (regalloc_function->register_candidate_count != 13 ||
       regalloc_function->fixed_stack_storage_count != 5) {
     return fail("semantic-BIR regalloc should summarize register-candidate vs fixed-stack prepared objects");
   }
@@ -669,6 +697,39 @@ int main() {
       readonly_slot_regalloc->last_access_instruction_index != 9 ||
       readonly_slot_regalloc->crosses_call_boundary) {
     return fail("semantic-BIR regalloc should publish non-call-spanning instruction-order cues for multi-point read-only value storage");
+  }
+  const auto* multiwrite_slot_regalloc =
+      find_regalloc_object(*regalloc_function, "local_slot", "multiwrite.slot");
+  if (multiwrite_slot_regalloc == nullptr || multiwrite_slot_regalloc->contract_kind != "value_storage" ||
+      multiwrite_slot_regalloc->allocation_kind != "register_candidate") {
+    return fail("semantic-BIR regalloc should keep non-call-spanning multi-write local slots as register candidates");
+  }
+  if (multiwrite_slot_regalloc->priority_bucket != "multi_point_value") {
+    return fail("semantic-BIR regalloc should classify non-call-spanning multi-write value storage into the multi-point priority bucket");
+  }
+  if (multiwrite_slot_regalloc->assignment_readiness != "multi_point_write_candidate") {
+    return fail("semantic-BIR regalloc should expose a multi-point write readiness cue for non-call-spanning write-only value storage");
+  }
+  if (multiwrite_slot_regalloc->access_shape != "direct_write_only") {
+    return fail("semantic-BIR regalloc should summarize non-call-spanning multi-point write-only value storage with a direct-write-only access shape");
+  }
+  if (multiwrite_slot_regalloc->direct_read_count != 0 ||
+      multiwrite_slot_regalloc->direct_write_count != 2 ||
+      multiwrite_slot_regalloc->addressed_access_count != 0 ||
+      multiwrite_slot_regalloc->call_arg_exposure_count != 0) {
+    return fail("semantic-BIR regalloc should publish direct-write counts for non-call-spanning multi-write local slots");
+  }
+  if (multiwrite_slot_regalloc->last_access_kind != "direct_write") {
+    return fail("semantic-BIR regalloc should publish the latest direct access kind for non-call-spanning multi-write local slots");
+  }
+  if (multiwrite_slot_regalloc->first_access_kind != "direct_write") {
+    return fail("semantic-BIR regalloc should publish the opening direct access kind for non-call-spanning multi-write local slots");
+  }
+  if (!multiwrite_slot_regalloc->has_access_window ||
+      multiwrite_slot_regalloc->first_access_instruction_index != 10 ||
+      multiwrite_slot_regalloc->last_access_instruction_index != 11 ||
+      multiwrite_slot_regalloc->crosses_call_boundary) {
+    return fail("semantic-BIR regalloc should publish non-call-spanning instruction-order cues for multi-point write-only value storage");
   }
   const auto* writeonly_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "writeonly.slot");
   if (writeonly_regalloc == nullptr || writeonly_regalloc->contract_kind != "value_storage" ||
