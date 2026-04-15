@@ -591,7 +591,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     auto lowered_function = function_lowerer.lower();
     if (!lowered_function.has_value()) {
       std::string message =
-          "semantic lir_to_bir failed outside the currently admitted capability buckets for scalar control flow, local/global memory, semantic call lowering, and explicit runtime or intrinsic families";
+          "semantic lir_to_bir failed outside the currently admitted capability buckets covering function-signature, scalar-control-flow, scalar/local-memory, and local/global memory semantics, plus semantic call lowering and explicit runtime or intrinsic families";
       if (const auto function_failure = latest_function_failure_note(context);
           function_failure.has_value()) {
         message += "; latest function failure: ";
@@ -605,7 +605,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
 
   context.note(
       "module",
-      "lowered semantic-BIR module within the currently admitted capability buckets for scalar control flow, local/global memory, semantic call lowering, and explicit runtime or intrinsic families");
+      "lowered semantic-BIR module within the currently admitted capability buckets covering function-signature, scalar-control-flow, scalar/local-memory, and local/global memory semantics, plus semantic call lowering and explicit runtime or intrinsic families");
   return module;
 }
 

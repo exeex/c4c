@@ -8,19 +8,19 @@ Current Plan Focus: ordered step 4, tighten the semantic unsupported boundary
 # Current Packet
 
 ## Just Finished
-- tightened the step-4 module latest-failure selector around semantic-family wording without widening lowering behavior: the summary helper now ranks by the extracted failure family instead of brittle free-form substring matching
-- added a nearby backend notes regression for `alloca local-memory semantic family`, proving a specific local-memory failure survives the later umbrella `local-memory semantic family` wrapper note in the module-level summary
-- kept the slice on unsupported-boundary cleanup only; no call/runtime lowering or target legality behavior changed
+- refreshed the step-4 module capability-bucket summary wording so it names current function-signature plus scalar/local-memory coverage directly without claiming new lowering behavior
+- tightened the adjacent `backend_lir_to_bir_notes` regression so each failure case now proves both the refreshed module-summary contract and the carried latest-function-failure note
+- kept the slice on planner-facing unsupported-boundary wording only; no call/runtime lowering, ABI legality, or note-ranking behavior changed
 
 ## Suggested Next
-- keep step 4 on planner-facing unsupported-boundary cleanup and audit whether the module-level admitted-buckets wording itself should be refreshed to mention function-signature and semantic-family-specific scalar/local-memory coverage more directly
-- if another note-level regression is added, keep it adjacent to the summary contract rather than widening lowering, ABI, or inline-asm capability work
+- keep step 4 on unsupported-boundary cleanup and audit whether any other planner-facing module notes still describe admitted semantic families too generically compared with the backend's current family names
+- if another notes regression is added, keep it adjacent to the module-summary contract instead of widening lowering, ABI, or runtime capability work
 
 ## Watchouts
-- the summary helper still gives top precedence only to runtime/intrinsic and semantic-call families; any broader re-ranking should stay justified as unsupported-boundary wording work, not capability progress
-- this packet remains note-contract hardening only; it does not expand local-memory lowering, inline-asm carriers, call ABI legality, or any other lowering surface
+- this packet only refreshes planner-facing module wording and its adjacent regression; it does not change what semantic families lower successfully
+- any later note cleanup should avoid smuggling new family precedence or capability claims into the module summary text
 
 ## Proof
-- `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-- passed; the backend subset now includes the added `backend_lir_to_bir_notes` regression covering the specific `alloca local-memory semantic family` versus umbrella `local-memory semantic family` summary contract
+- `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_lir_to_bir_notes$" > test_after.log 2>&1'`
+- passed; `backend_lir_to_bir_notes` now locks the refreshed module capability-bucket summary alongside the latest-function-failure note for each focused failure case
 - proof log preserved at `test_after.log`

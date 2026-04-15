@@ -38,13 +38,18 @@ bool contains_note(const std::vector<BirLoweringNote>& notes,
 }
 
 int expect_failure_notes(const LirModule& module,
+                         std::string_view module_summary,
                          std::string_view function_failure,
                          std::string_view module_failure,
+                         const char* missing_module_summary,
                          const char* missing_function_note,
                          const char* missing_module_note) {
   auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
   if (result.module.has_value()) {
     return fail("expected semantic BIR lowering to fail");
+  }
+  if (!contains_note(result.notes, "module", module_summary)) {
+    return fail(missing_module_summary);
   }
   if (!contains_note(result.notes, "function", function_failure)) {
     return fail(missing_function_note);
@@ -166,10 +171,14 @@ LirModule make_bad_alloca_module() {
 }  // namespace
 
 int main() {
+  constexpr std::string_view kModuleSummary =
+      "currently admitted capability buckets covering function-signature, scalar-control-flow, scalar/local-memory, and local/global memory semantics, plus semantic call lowering and explicit runtime or intrinsic families";
   if (const int inline_asm_status = expect_failure_notes(
           make_unsupported_inline_asm_module(),
+          kModuleSummary,
           "failed in runtime/intrinsic family 'inline-asm placeholder family'",
           "latest function failure: semantic lir_to_bir function 'bad_inline_asm' failed in runtime/intrinsic family 'inline-asm placeholder family'",
+          "missing module capability-bucket summary note",
           "missing specific runtime family function note",
           "missing module note carrying the runtime family failure");
       inline_asm_status != 0) {
@@ -178,8 +187,10 @@ int main() {
 
   if (const int direct_call_status = expect_failure_notes(
           make_bad_direct_call_module(),
+          kModuleSummary,
           "failed in semantic call family 'direct-call semantic family'",
           "latest function failure: semantic lir_to_bir function 'bad_direct_call' failed in semantic call family 'direct-call semantic family'",
+          "missing module capability-bucket summary note",
           "missing specific semantic-call function note",
           "missing module note carrying the semantic-call family failure");
       direct_call_status != 0) {
@@ -188,8 +199,10 @@ int main() {
 
   if (const int scalar_cast_status = expect_failure_notes(
           make_bad_scalar_cast_module(),
+          kModuleSummary,
           "failed in scalar-cast semantic family",
           "latest function failure: semantic lir_to_bir function 'bad_scalar_cast' failed in scalar-cast semantic family",
+          "missing module capability-bucket summary note",
           "missing specific scalar-cast function note",
           "missing module note carrying the scalar-cast semantic family failure");
       scalar_cast_status != 0) {
@@ -198,8 +211,10 @@ int main() {
 
   if (const int alloca_status = expect_failure_notes(
           make_bad_alloca_module(),
+          kModuleSummary,
           "failed in alloca local-memory semantic family",
           "latest function failure: semantic lir_to_bir function 'bad_alloca' failed in alloca local-memory semantic family",
+          "missing module capability-bucket summary note",
           "missing specific alloca local-memory function note",
           "missing module note carrying the alloca local-memory semantic family failure");
       alloca_status != 0) {
