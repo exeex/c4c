@@ -57,6 +57,28 @@ const prepare::PreparedLivenessObject* find_liveness_object(const prepare::Prepa
   return nullptr;
 }
 
+const prepare::PreparedRegallocFunction* find_regalloc_function(
+    const prepare::PreparedBirModule& module,
+    std::string_view function_name) {
+  for (const auto& function : module.regalloc.functions) {
+    if (function.function_name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+const prepare::PreparedRegallocObject* find_regalloc_object(const prepare::PreparedRegallocFunction& function,
+                                                            std::string_view source_kind,
+                                                            std::string_view source_name) {
+  for (const auto& object : function.objects) {
+    if (object.source_kind == source_kind && object.source_name == source_name) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
 bir::Module make_prepare_contract_bir_module() {
   bir::Module module;
   bir::Function function;
@@ -280,13 +302,17 @@ int main() {
   if (!contains_note(prepared_bir.notes, "liveness", "value-storage or address-exposed storage contracts")) {
     return fail("semantic-BIR prepare liveness note should mention the prepared frame-object contracts");
   }
+  if (!contains_note(prepared_bir.notes, "regalloc", "register_candidate or fixed_stack_storage")) {
+    return fail("semantic-BIR prepare regalloc note should mention the prepared allocation contracts");
+  }
   constexpr std::string_view kExpectedBirPhases[] = {
       "legalize",
       "stack_layout",
       "liveness",
+      "regalloc",
   };
   if (prepared_bir.completed_phases.size() != std::size(kExpectedBirPhases)) {
-    return fail("semantic-BIR prepare entry should complete legalize, stack_layout, and liveness in this slice");
+    return fail("semantic-BIR prepare entry should complete legalize, stack_layout, liveness, and regalloc in this slice");
   }
   for (std::size_t index = 0; index < std::size(kExpectedBirPhases); ++index) {
     if (prepared_bir.completed_phases[index] != kExpectedBirPhases[index]) {
@@ -389,6 +415,39 @@ int main() {
       call_result_liveness->contract_kind != "address_exposed_storage") {
     return fail(
         "semantic-BIR liveness should classify aggregate call-result storage as address-exposed storage");
+  }
+  if (prepared_bir.regalloc.functions.size() != 1) {
+    return fail("semantic-BIR regalloc should publish one per-function grouping for this module");
+  }
+  const auto* regalloc_function = find_regalloc_function(prepared_bir, "id_pair");
+  if (regalloc_function == nullptr) {
+    return fail("semantic-BIR regalloc should publish the function grouping by semantic function name");
+  }
+  if (regalloc_function->objects.size() != prepared_bir.liveness.objects.size()) {
+    return fail("semantic-BIR regalloc should classify every prepared liveness object");
+  }
+  if (regalloc_function->register_candidate_count != 8 ||
+      regalloc_function->fixed_stack_storage_count != 5) {
+    return fail("semantic-BIR regalloc should summarize register-candidate vs fixed-stack prepared objects");
+  }
+  const auto* local_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "flag.slot");
+  if (local_slot_regalloc == nullptr || local_slot_regalloc->contract_kind != "value_storage" ||
+      local_slot_regalloc->allocation_kind != "register_candidate") {
+    return fail("semantic-BIR regalloc should treat value-storage objects as register candidates");
+  }
+  const auto* address_taken_regalloc =
+      find_regalloc_object(*regalloc_function, "address_taken_local_slot", "addressed.slot");
+  if (address_taken_regalloc == nullptr ||
+      address_taken_regalloc->contract_kind != "address_exposed_storage" ||
+      address_taken_regalloc->allocation_kind != "fixed_stack_storage") {
+    return fail("semantic-BIR regalloc should keep address-exposed storage on fixed stack storage");
+  }
+  const auto* call_result_regalloc =
+      find_regalloc_object(*regalloc_function, "call_result_sret", "%call.result");
+  if (call_result_regalloc == nullptr ||
+      call_result_regalloc->contract_kind != "address_exposed_storage" ||
+      call_result_regalloc->allocation_kind != "fixed_stack_storage") {
+    return fail("semantic-BIR regalloc should keep aggregate call-result storage on fixed stack storage");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(

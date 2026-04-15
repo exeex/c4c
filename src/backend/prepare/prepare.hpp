@@ -46,6 +46,25 @@ struct PreparedLiveness {
   std::vector<PreparedLivenessObject> objects;
 };
 
+struct PreparedRegallocObject {
+  std::string function_name;
+  std::string source_name;
+  std::string source_kind;
+  std::string contract_kind;
+  std::string allocation_kind;
+};
+
+struct PreparedRegallocFunction {
+  std::string function_name;
+  std::vector<PreparedRegallocObject> objects;
+  std::size_t register_candidate_count = 0;
+  std::size_t fixed_stack_storage_count = 0;
+};
+
+struct PreparedRegalloc {
+  std::vector<PreparedRegallocFunction> functions;
+};
+
 enum class PrepareRoute {
   SemanticBirShared,
   BootstrapLirFallback,
@@ -91,6 +110,7 @@ struct PreparedBirModule {
   std::vector<PreparedBirInvariant> invariants;
   PreparedStackLayout stack_layout;
   PreparedLiveness liveness;
+  PreparedRegalloc regalloc;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
 };
