@@ -8,26 +8,24 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- projected the existing ready-only stable-binding pass contract onto ready
-  prepared regalloc objects as well as binding entries, so downstream prepared
-  consumers can start from a ready object and recover prepare-owned pass
-  order/span plus local prerequisite state without consulting batch summaries
-  or handoff summaries
-- kept the ready-only stable-binding pass summaries as the single ordering
-  source by matching ready objects through their existing local source
-  contract and binding batch kind instead of inventing deferred pass order or
-  a second sequencing model
+- projected the ready binding-handoff summary contract back onto prepared
+  regalloc objects by recording each ready object's handoff allocation stage
+  and candidate count directly from the existing handoff summaries instead of
+  making downstream consumers look through binding-batch or stable-pass
+  summaries to recover the full ready object handoff
+- kept that new object-level handoff surface derived from the existing
+  `binding_handoff_summary` records rather than inventing a parallel ready
+  sequencing model or recomputing counts from object-local state
 - extended the backend prepare entry fixture to assert the new object-level
-  stable-pass surface across the remaining representative call-boundary and
-  local-reuse ready objects, so the ready frontier is covered at object level
-  instead of only through one per-batch example plus binding-level checks
+  ready handoff stage/count surface across the representative call-boundary
+  and local-reuse ready objects alongside the previously added pass-order and
+  prerequisite cues
 
 ## Suggested Next
-- keep step-4 work inside prepare by lifting the same object-first stable
-  prepared contract from stable-binding ordering into the remaining ready
-  object follow-up summaries, so downstream consumers can recover the full
-  per-object ready handoff without consulting binding batches or pass
-  summaries
+- keep step-4 work inside prepare by projecting the same handoff-summary
+  stage/count contract onto deferred prepared regalloc objects, so downstream
+  consumers can recover the explicit deferred frontier handoff per object
+  without consulting deferred binding-batch summaries
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -59,10 +57,10 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
   summaries and current binding order only; do not invent global binding
   indices, target register names, or fake deferred pass ordering just to make
   downstream consumption look uniform
-- keep the new object-level and per-binding stable-pass metadata derived from
-  the existing ready-only pass summaries; do not fork a second pass-order
-  model on objects or bindings, and do not backfill deferred entries with fake
-  ready pass slots
+- keep the new object-level ready handoff stage/count surface derived from the
+  existing handoff summaries; do not fork a second summary model on objects,
+  and do not backfill deferred entries with fake ready-stage or ready-count
+  values just to flatten the frontier contract
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build

@@ -75,6 +75,8 @@ struct PreparedRegallocObject {
   std::string binding_frontier_kind;
   std::string binding_frontier_reason;
   std::string binding_batch_kind;
+  std::string binding_handoff_allocation_stage;
+  std::size_t binding_handoff_candidate_count = 0;
   std::size_t binding_order_index = 0;
   std::size_t stable_binding_pass_order_index = 0;
   std::size_t stable_binding_pass_first_binding_order_index = 0;

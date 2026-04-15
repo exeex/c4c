@@ -1600,6 +1600,26 @@ void populate_stable_binding_passes(PreparedRegallocFunction& function) {
   }
 }
 
+void project_binding_handoff_contract(PreparedRegallocFunction& function) {
+  for (auto& object : function.objects) {
+    if (object.binding_frontier_kind.empty() || object.binding_batch_kind.empty()) {
+      continue;
+    }
+    const auto it = std::find_if(
+        function.binding_handoff_summary.begin(),
+        function.binding_handoff_summary.end(),
+        [&](const PreparedRegallocBindingHandoffSummary& summary) {
+          return summary.binding_frontier_kind == object.binding_frontier_kind &&
+                 summary.binding_batch_kind == object.binding_batch_kind;
+        });
+    if (it == function.binding_handoff_summary.end()) {
+      continue;
+    }
+    object.binding_handoff_allocation_stage = it->allocation_stage;
+    object.binding_handoff_candidate_count = it->candidate_count;
+  }
+}
+
 void project_stable_binding_pass_contract(PreparedRegallocFunction& function) {
   for (auto& object : function.objects) {
     if (object.binding_frontier_kind != "binding_ready") {
@@ -1781,6 +1801,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
     populate_object_allocation_state(prepared_function);
     populate_binding_sequence(prepared_function);
     populate_binding_handoff_summary(prepared_function);
+    project_binding_handoff_contract(prepared_function);
     populate_stable_binding_passes(prepared_function);
     project_stable_binding_pass_contract(prepared_function);
     if (!prepared_function.objects.empty()) {

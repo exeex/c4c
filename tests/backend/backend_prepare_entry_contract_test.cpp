@@ -1040,6 +1040,8 @@ int main() {
     return fail("semantic-BIR regalloc should mark across-call candidates as ready for stable prepared binding");
   }
   if (carry_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch" ||
+      carry_slot_regalloc->binding_handoff_allocation_stage != "stabilize_across_calls" ||
+      carry_slot_regalloc->binding_handoff_candidate_count != 3 ||
       carry_slot_regalloc->binding_order_index != 0 ||
       carry_slot_regalloc->stable_binding_pass_order_index != 0 ||
       carry_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
@@ -1133,6 +1135,8 @@ int main() {
     return fail("semantic-BIR regalloc should mark sequenced local-reuse candidates as ready for stable prepared binding");
   }
   if (window_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch" ||
+      window_slot_regalloc->binding_handoff_allocation_stage != "stabilize_local_reuse" ||
+      window_slot_regalloc->binding_handoff_candidate_count != 3 ||
       window_slot_regalloc->binding_order_index != 0 ||
       window_slot_regalloc->stable_binding_pass_order_index != 1 ||
       window_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
@@ -1217,6 +1221,8 @@ int main() {
     return fail("semantic-BIR regalloc should mark non-call-spanning multi-read candidates as ready for stable prepared binding");
   }
   if (readonly_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch" ||
+      readonly_slot_regalloc->binding_handoff_allocation_stage != "stabilize_local_reuse" ||
+      readonly_slot_regalloc->binding_handoff_candidate_count != 3 ||
       readonly_slot_regalloc->binding_order_index != 1 ||
       readonly_slot_regalloc->stable_binding_pass_order_index != 1 ||
       readonly_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
@@ -1299,6 +1305,8 @@ int main() {
     return fail("semantic-BIR regalloc should mark call-spanning read-only candidates as ready for stable prepared binding");
   }
   if (callread_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch" ||
+      callread_slot_regalloc->binding_handoff_allocation_stage != "stabilize_across_calls" ||
+      callread_slot_regalloc->binding_handoff_candidate_count != 3 ||
       callread_slot_regalloc->binding_order_index != 1 ||
       callread_slot_regalloc->stable_binding_pass_order_index != 0 ||
       callread_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
@@ -1384,6 +1392,8 @@ int main() {
     return fail("semantic-BIR regalloc should mark call-spanning write-only candidates as ready for stable prepared binding");
   }
   if (callwrite_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch" ||
+      callwrite_slot_regalloc->binding_handoff_allocation_stage != "stabilize_across_calls" ||
+      callwrite_slot_regalloc->binding_handoff_candidate_count != 3 ||
       callwrite_slot_regalloc->binding_order_index != 2 ||
       callwrite_slot_regalloc->stable_binding_pass_order_index != 0 ||
       callwrite_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
@@ -1469,6 +1479,8 @@ int main() {
     return fail("semantic-BIR regalloc should mark non-call-spanning multi-write candidates as ready for stable prepared binding");
   }
   if (multiwrite_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch" ||
+      multiwrite_slot_regalloc->binding_handoff_allocation_stage != "stabilize_local_reuse" ||
+      multiwrite_slot_regalloc->binding_handoff_candidate_count != 3 ||
       multiwrite_slot_regalloc->binding_order_index != 2 ||
       multiwrite_slot_regalloc->stable_binding_pass_order_index != 1 ||
       multiwrite_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
