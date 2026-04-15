@@ -125,6 +125,29 @@ const prepare::PreparedRegallocContentionSummary* find_regalloc_contention_summa
   return nullptr;
 }
 
+const prepare::PreparedRegallocBindingDecision* find_regalloc_binding_decision(
+    const prepare::PreparedRegallocFunction& function,
+    std::string_view source_kind,
+    std::string_view source_name) {
+  for (const auto& decision : function.binding_sequence) {
+    if (decision.source_kind == source_kind && decision.source_name == source_name) {
+      return &decision;
+    }
+  }
+  return nullptr;
+}
+
+const prepare::PreparedRegallocBindingBatchSummary* find_regalloc_binding_batch(
+    const prepare::PreparedRegallocFunction& function,
+    std::string_view binding_batch_kind) {
+  for (const auto& summary : function.binding_batches) {
+    if (summary.binding_batch_kind == binding_batch_kind) {
+      return &summary;
+    }
+  }
+  return nullptr;
+}
+
 bir::Module make_prepare_contract_bir_module() {
   bir::Module module;
   bir::Function function;
@@ -498,6 +521,9 @@ int main() {
   if (!contains_note(prepared_bir.notes, "regalloc", "ready-vs-deferred binding frontier")) {
     return fail("semantic-BIR prepare regalloc note should mention the prepared binding frontier");
   }
+  if (!contains_note(prepared_bir.notes, "regalloc", "binding batch/order artifact")) {
+    return fail("semantic-BIR prepare regalloc note should mention the ready-only binding batch/order artifact");
+  }
   if (!contains_note(prepared_bir.notes, "regalloc", "compact access-shape summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention compact access-shape summaries");
   }
@@ -712,6 +738,11 @@ int main() {
       regalloc_function->binding_deferred_access_window_count != 7 ||
       regalloc_function->binding_deferred_coordination_count != 2) {
     return fail("semantic-BIR regalloc should summarize the per-function ready-vs-deferred binding frontier");
+  }
+  if (regalloc_function->binding_sequence.size() != regalloc_function->binding_ready_count ||
+      regalloc_function->binding_ready_batch_count != 2 ||
+      regalloc_function->binding_batches.size() != regalloc_function->binding_ready_batch_count) {
+    return fail("semantic-BIR regalloc should publish ready-only binding batches and one binding order entry per ready candidate");
   }
   if (regalloc_function->allocation_sequence.size() != regalloc_function->register_candidate_count) {
     return fail("semantic-BIR regalloc should publish one allocation-sequence decision per register candidate");
@@ -1394,6 +1425,22 @@ int main() {
       find_regalloc_contention_summary(*regalloc_function, "stabilize_local_reuse");
   const auto* opportunistic_contention =
       find_regalloc_contention_summary(*regalloc_function, "opportunistic_single_point");
+  const auto* carry_binding =
+      find_regalloc_binding_decision(*regalloc_function, "local_slot", "carry.slot");
+  const auto* callread_binding =
+      find_regalloc_binding_decision(*regalloc_function, "local_slot", "callread.slot");
+  const auto* callwrite_binding =
+      find_regalloc_binding_decision(*regalloc_function, "local_slot", "callwrite.slot");
+  const auto* window_binding =
+      find_regalloc_binding_decision(*regalloc_function, "local_slot", "window.slot");
+  const auto* readonly_binding =
+      find_regalloc_binding_decision(*regalloc_function, "local_slot", "readonly.slot");
+  const auto* multiwrite_binding =
+      find_regalloc_binding_decision(*regalloc_function, "local_slot", "multiwrite.slot");
+  const auto* call_boundary_binding_batch =
+      find_regalloc_binding_batch(*regalloc_function, "call_boundary_binding_batch");
+  const auto* local_reuse_binding_batch =
+      find_regalloc_binding_batch(*regalloc_function, "local_reuse_binding_batch");
   if (carry_sequence == nullptr || callread_sequence == nullptr || callwrite_sequence == nullptr ||
       window_sequence == nullptr || readonly_sequence == nullptr || multiwrite_sequence == nullptr ||
       local_slot_sequence == nullptr || writeonly_sequence == nullptr) {
@@ -1406,6 +1453,15 @@ int main() {
   if (across_calls_contention == nullptr || local_reuse_contention == nullptr ||
       opportunistic_contention == nullptr) {
     return fail("semantic-BIR regalloc should publish explicit per-function contention follow-up categories for the active allocation stages");
+  }
+  if (carry_binding == nullptr || callread_binding == nullptr || callwrite_binding == nullptr ||
+      window_binding == nullptr || readonly_binding == nullptr || multiwrite_binding == nullptr ||
+      call_boundary_binding_batch == nullptr || local_reuse_binding_batch == nullptr) {
+    return fail("semantic-BIR regalloc should publish binding decisions and batch summaries for the current binding-ready frontier");
+  }
+  if (find_regalloc_binding_decision(*regalloc_function, "local_slot", "flag.slot") != nullptr ||
+      find_regalloc_binding_decision(*regalloc_function, "local_slot", "writeonly.slot") != nullptr) {
+    return fail("semantic-BIR regalloc binding sequence should exclude deferred single-point candidates");
   }
   if (carry_sequence->allocation_stage != "stabilize_across_calls" ||
       callread_sequence->allocation_stage != "stabilize_across_calls" ||
@@ -1546,6 +1602,44 @@ int main() {
       opportunistic_contention->home_slot_category != "mixed_home_slot_modes" ||
       opportunistic_contention->window_coordination_category != "mixed_sparse_windows") {
     return fail("semantic-BIR regalloc should reduce opportunistic reservation summaries into explicit sparse-window follow-up categories");
+  }
+  if (carry_binding->allocation_stage != "stabilize_across_calls" ||
+      callread_binding->allocation_stage != "stabilize_across_calls" ||
+      callwrite_binding->allocation_stage != "stabilize_across_calls" ||
+      carry_binding->binding_batch_kind != "call_boundary_binding_batch" ||
+      callread_binding->binding_batch_kind != "call_boundary_binding_batch" ||
+      callwrite_binding->binding_batch_kind != "call_boundary_binding_batch" ||
+      carry_binding->binding_order_index != 0 || callread_binding->binding_order_index != 1 ||
+      callwrite_binding->binding_order_index != 2 ||
+      carry_binding->follow_up_category != "call_boundary_preservation" ||
+      callread_binding->follow_up_category != "call_boundary_preservation" ||
+      callwrite_binding->follow_up_category != "call_boundary_preservation") {
+    return fail("semantic-BIR regalloc should turn binding-ready across-call candidates into one ordered call-boundary binding batch");
+  }
+  if (window_binding->allocation_stage != "stabilize_local_reuse" ||
+      readonly_binding->allocation_stage != "stabilize_local_reuse" ||
+      multiwrite_binding->allocation_stage != "stabilize_local_reuse" ||
+      window_binding->binding_batch_kind != "local_reuse_binding_batch" ||
+      readonly_binding->binding_batch_kind != "local_reuse_binding_batch" ||
+      multiwrite_binding->binding_batch_kind != "local_reuse_binding_batch" ||
+      window_binding->binding_order_index != 0 || readonly_binding->binding_order_index != 1 ||
+      multiwrite_binding->binding_order_index != 2 ||
+      window_binding->follow_up_category != "sequenced_local_reuse_coordination" ||
+      readonly_binding->follow_up_category != "sequenced_local_reuse_coordination" ||
+      multiwrite_binding->follow_up_category != "sequenced_local_reuse_coordination") {
+    return fail("semantic-BIR regalloc should turn binding-ready local-reuse candidates into one ordered local-reuse binding batch");
+  }
+  if (call_boundary_binding_batch->allocation_stage != "stabilize_across_calls" ||
+      call_boundary_binding_batch->follow_up_category != "call_boundary_preservation" ||
+      call_boundary_binding_batch->ordering_policy != "preserve_allocation_sequence" ||
+      call_boundary_binding_batch->candidate_count != 3) {
+    return fail("semantic-BIR regalloc should summarize the call-boundary ready batch from the existing reservation/contention frontier");
+  }
+  if (local_reuse_binding_batch->allocation_stage != "stabilize_local_reuse" ||
+      local_reuse_binding_batch->follow_up_category != "sequenced_local_reuse_coordination" ||
+      local_reuse_binding_batch->ordering_policy != "preserve_allocation_sequence" ||
+      local_reuse_binding_batch->candidate_count != 3) {
+    return fail("semantic-BIR regalloc should summarize the local-reuse ready batch from the existing reservation/contention frontier");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(

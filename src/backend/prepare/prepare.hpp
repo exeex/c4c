@@ -125,18 +125,42 @@ struct PreparedRegallocContentionSummary {
   std::string window_coordination_category;
 };
 
+struct PreparedRegallocBindingDecision {
+  std::string source_kind;
+  std::string source_name;
+  std::string allocation_stage;
+  std::string binding_batch_kind;
+  std::size_t binding_order_index = 0;
+  std::string reservation_kind;
+  std::string reservation_scope;
+  std::string home_slot_mode;
+  std::string sync_policy;
+  std::string follow_up_category;
+};
+
+struct PreparedRegallocBindingBatchSummary {
+  std::string binding_batch_kind;
+  std::string allocation_stage;
+  std::string follow_up_category;
+  std::string ordering_policy;
+  std::size_t candidate_count = 0;
+};
+
 struct PreparedRegallocFunction {
   std::string function_name;
   std::vector<PreparedRegallocObject> objects;
   std::vector<PreparedRegallocAllocationDecision> allocation_sequence;
   std::vector<PreparedRegallocReservationSummary> reservation_summary;
   std::vector<PreparedRegallocContentionSummary> contention_summary;
+  std::vector<PreparedRegallocBindingDecision> binding_sequence;
+  std::vector<PreparedRegallocBindingBatchSummary> binding_batches;
   std::size_t register_candidate_count = 0;
   std::size_t fixed_stack_storage_count = 0;
   std::size_t binding_ready_count = 0;
   std::size_t binding_deferred_count = 0;
   std::size_t binding_deferred_access_window_count = 0;
   std::size_t binding_deferred_coordination_count = 0;
+  std::size_t binding_ready_batch_count = 0;
 };
 
 struct PreparedRegalloc {

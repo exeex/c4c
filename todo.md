@@ -8,29 +8,30 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- derived a concrete ready-vs-deferred prepared binding frontier from the
-  existing object-level regalloc state, so each `PreparedRegallocObject` now
-  carries `binding_frontier_kind` and `binding_frontier_reason` without
-  inventing physical registers, live intervals, or target-side legality
-- added per-function frontier counts on `PreparedRegallocFunction` to make the
-  current stable-binding-ready versus deferred-for-access-window versus
-  deferred-for-coordination split directly inspectable from prepare-owned
-  artifacts
-- proved the frontier on nearby same-shape cases in the backend prepare entry
-  contract fixture: unobserved opportunistic objects stay deferred for missing
-  access windows, observed batched single-point cases stay deferred for
-  coordination, across-call and local-reuse candidates become binding-ready,
-  and fixed-stack authoritative objects stay outside the register-binding
-  frontier
+- turned the existing ready-vs-deferred frontier into a concrete ready-only
+  binding artifact by adding `binding_sequence` and `binding_batches` on
+  `PreparedRegallocFunction`, so binding-ready register candidates now carry a
+  prepare-owned batch kind plus per-batch order derived from the current
+  reservation/contention summaries without naming physical registers
+- kept deferred single-point candidates parked outside the new binding
+  sequence, so the artifact only covers the current binding-ready across-call
+  and local-reuse frontier instead of flattening deferred cases into fake
+  stable bindings
+- proved the new batch/order artifact on nearby backend shapes in the prepare
+  contract fixture: call-spanning candidates form one ordered
+  `call_boundary_binding_batch`, local-reuse candidates form one ordered
+  `local_reuse_binding_batch`, and deferred single-point candidates stay out
+  of the binding sequence
 - refreshed the regalloc prepare note so the public prepare contract now
-  advertises the ready-vs-deferred binding frontier explicitly
+  advertises the ready-only binding batch/order artifact alongside the
+  existing binding frontier
 
 ## Suggested Next
-- keep step-4 work inside prepare by turning the new ready frontier into a
-  concrete prepared binding batch/order artifact for the binding-ready
-  register candidates, while leaving deferred single-point cases parked behind
-  the current access-window and coordination guards and still avoiding any
-  physical-register naming or target-ingestion work
+- keep step-4 work inside prepare by turning the new ready-only binding
+  batches into explicit per-batch binding prerequisites for stable home-slot
+  and sync handoff, so downstream prepared consumers can see which batch-level
+  coordination facts are already satisfied versus still deferred, while still
+  avoiding physical-register naming or target-ingestion work
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -51,10 +52,10 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 - keep future ready/deferred frontier work derived from explicit prepared
   access-window, sync, home-slot, and contention facts rather than from target
   register names, synthetic intervals, or placeholder interference graphs
-- keep any follow-on binding batch/order artifact scoped to the current
-  `binding_ready` objects and derived from the existing reservation plus
-  contention summaries; do not backdoor single-point deferred cases into a
-  fake stable-binding path just to flatten the frontier counts
+- keep any follow-on binding prerequisite or handoff work scoped to the
+  current `binding_ready` batches and derived from the existing reservation
+  plus contention summaries; do not backdoor single-point deferred cases into
+  a fake stable-binding path just to flatten the frontier counts
 - preserve the current split between register-candidate reservation decisions
   and fixed-stack authoritative objects; do not backdoor fixed-stack storage
   into the reservation sequence just to make a narrow testcase pass
