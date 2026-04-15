@@ -8,18 +8,18 @@ Current Plan Focus: ordered step 4, tighten the semantic unsupported boundary
 # Current Packet
 
 ## Just Finished
-- audited `lower_scalar_or_local_memory_inst` end to end after the `load`/`store` note pass and confirmed there is no remaining real non-call, non-runtime unsupported exit inside that function that still bypasses the existing semantic-family note buckets
-- kept the result diagnostic-only: the surviving `return false` sites belong to runtime-family handling, call-family handling, or the intentional outer `scalar/local-memory semantic family` wrapper catch-all, so this packet made no code change and did not widen lowering capability
+- audited the outer wrapper boundary in `src/backend/lowering/lir_to_bir_module.cpp` after the inner local-memory note pass and confirmed the remaining wrapper buckets are already the honest step-4 boundary
+- kept the result diagnostic-only: `lower_alloca_insts()` owns `local-memory semantic family`, `lower_block_insts()` owns the broader non-terminator `scalar/local-memory semantic family`, and this packet made no code change or lowering-capability change
 
 ## Suggested Next
-- if step 4 continues, audit the outer wrapper boundary in `src/backend/lowering/lir_to_bir_module.cpp` and adjacent lowering entry points to decide whether the remaining `scalar/local-memory semantic family` catch-all is the intended final bucket or whether a still-honest cross-cutting family is missing outside `lower_scalar_or_local_memory_inst`
-- avoid reopening `lir_to_bir_memory.cpp` for more note plumbing unless a later packet finds a genuinely unbucketed unsupported path beyond runtime/call handling or the wrapper-level fallthrough
+- if the supervisor keeps step 4 active, move out of `lir_to_bir_memory.cpp`/wrapper note audits and decide whether the current unsupported-boundary work is exhausted enough for a plan-owner close-or-switch decision
+- otherwise, only reopen the wrapper boundary if a later packet finds a real cross-cutting unsupported path outside the existing function-signature, control-flow, call/runtime, local-memory, or scalar/local-memory families
 
 ## Watchouts
-- do not manufacture a new helper-shaped family for the final fallthrough in `lower_scalar_or_local_memory_inst`; that path now means the instruction never matched the scalar/local-memory/runtime/call route, and the outer wrapper bucket is the honest boundary unless a broader cross-cutting family is identified elsewhere
-- `memcpy`/`memset` runtime handling and direct/indirect call-family failures are intentionally out of scope for this audit and already own their own semantic-family notes
+- do not split `scalar/local-memory semantic family` further just to mirror helper boundaries; at the wrapper level it now means the instruction failed to enter the compare/cast/binop/runtime/call/local-memory route at all, which is the honest residual bucket
+- `memcpy`/`memset` runtime handling, direct/indirect call-family failures, and scalar-control-flow failures already own separate semantic-family notes, so this wrapper audit should not be read as justification to reopen those routes without a new concrete miss
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
 - passed with `test_after.log`; backend subset result is `passed=54 failed=0 total=54`
-- delegated proof was conservative for this packet because the resulting diff is `todo.md` only, but it preserves the current backend baseline while recording that the audited note-plumbing sub-slice is exhausted
+- delegated proof was conservative for this packet because the resulting diff is `todo.md` only, but it preserves the current backend baseline while recording that the wrapper-level unsupported-boundary audit is exhausted
