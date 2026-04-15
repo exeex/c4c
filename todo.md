@@ -13,21 +13,21 @@ Current Plan Focus: step-5 regalloc consumer shrink
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- dropped `PreparedRegallocObject::binding_frontier_reason` after confirming
-  the remaining helper had only one caller in
-  `populate_object_allocation_state(...)` and no non-reporting consumer
-- removed the now-dead object-local frontier-reason helper and assignments so
-  objects keep frontier kind plus batch attachment while batch and handoff
-  summaries remain the owners of frontier-reason publication
+- removed object-local `PreparedRegallocObject::follow_up_category` after
+  confirming the downstream binding and handoff route already reads
+  follow-up ownership from contention, binding-batch, and handoff summaries
+- dropped the now-dead object-level assignments in
+  `populate_object_allocation_state(...)` so register-candidate and
+  fixed-stack objects no longer mirror contention follow-up classification
 - updated the prepare-entry contract test to stop asserting the deleted
-  object-local mirror and keep frontier-reason checks on handoff summaries
-  where that contract still lives
+  object-local mirror while keeping follow-up checks on contention,
+  binding-batch, and handoff summaries where that contract still lives
 
 ## Suggested Next
-- inspect whether object-local `follow_up_category` is still carrying any
-  purely mirrored publication that can move fully onto contention or
-  batch-owned summaries without deleting downstream contract that still needs a
-  per-object projection
+- inspect whether object-local `sync_coordination_category`,
+  `home_slot_category`, and `window_coordination_category` are likewise pure
+  mirrors of contention or fixed-stack ownership and remove only the fields
+  that have no surviving non-test consumer
 - keep the next packet inside step 5 ownership cleanup; do not turn it into
   new allocation policy or target-ingestion work
 
@@ -51,6 +51,10 @@ Current Plan Focus: step-5 regalloc consumer shrink
 - the ready frontier still derives its access-window prerequisite state from
   stage contention while deferred frontiers read it from batch-owned state; if
   the next cleanup tries to unify that, keep one clear owner for each fact
+- the remaining object-local coordination categories appear to be the next
+  mirrored layer, but fixed-stack objects still synthesize their values
+  locally; confirm whether those fixed-stack projections are consumed anywhere
+  real before deleting them
 
 ## Proof
 - `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`

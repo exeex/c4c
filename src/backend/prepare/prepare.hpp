@@ -81,7 +81,6 @@ struct PreparedRegallocObject {
   std::string reservation_scope;
   std::string home_slot_mode;
   std::string sync_policy;
-  std::string follow_up_category;
   std::string sync_coordination_category;
   std::string home_slot_category;
   std::string window_coordination_category;
