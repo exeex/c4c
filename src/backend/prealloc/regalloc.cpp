@@ -630,14 +630,6 @@ std::string_view regalloc_deferred_binding_access_window_prerequisite_category(
   return contention.window_coordination_category;
 }
 
-std::string_view regalloc_deferred_binding_access_window_prerequisite_state(
-    const PreparedRegallocObject& object) {
-  if (object.deferred_reason == "awaiting_access_window_observation") {
-    return "prealloc_access_window_prerequisite_deferred";
-  }
-  return "prealloc_access_window_prerequisite_satisfied";
-}
-
 std::string_view regalloc_deferred_binding_home_slot_prerequisite_category(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
@@ -647,30 +639,6 @@ std::string_view regalloc_deferred_binding_home_slot_prerequisite_category(
   return contention.home_slot_category;
 }
 
-std::string_view regalloc_deferred_binding_home_slot_prerequisite_state(
-    const PreparedRegallocObject& object,
-    const PreparedRegallocContentionSummary& contention) {
-  if (object.deferred_reason == "awaiting_access_window_observation") {
-    return "prealloc_home_slot_prerequisite_deferred";
-  }
-  return regalloc_binding_home_slot_prerequisite_state(contention);
-}
-
-std::string_view regalloc_binding_sync_handoff_state(
-    const PreparedRegallocContentionSummary& contention) {
-  if (contention.sync_coordination_category == "restore_only_coordination" ||
-      contention.sync_coordination_category == "writeback_only_coordination" ||
-      contention.sync_coordination_category == "read_write_coordination" ||
-      contention.sync_coordination_category == "bidirectional_sync_coordination" ||
-      contention.sync_coordination_category == "mixed_sync_coordination") {
-    return "prealloc_sync_handoff_ready";
-  }
-  if (contention.sync_coordination_category == "sync_free_coordination") {
-    return "no_sync_handoff_required";
-  }
-  return "prealloc_sync_handoff_deferred";
-}
-
 std::string_view regalloc_deferred_binding_sync_handoff_prerequisite_category(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
@@ -678,15 +646,6 @@ std::string_view regalloc_deferred_binding_sync_handoff_prerequisite_category(
     return object.sync_policy;
   }
   return contention.sync_coordination_category;
-}
-
-std::string_view regalloc_deferred_binding_sync_handoff_state(
-    const PreparedRegallocObject& object,
-    const PreparedRegallocContentionSummary& contention) {
-  if (object.deferred_reason == "awaiting_access_window_observation") {
-    return "prealloc_sync_handoff_deferred";
-  }
-  return regalloc_binding_sync_handoff_state(contention);
 }
 
 }  // namespace
@@ -912,19 +871,12 @@ void BirPreAlloc::populate_binding_sequence() {
                 .access_window_prerequisite_category =
                     std::string(regalloc_deferred_binding_access_window_prerequisite_category(
                         *object, *contention)),
-                .access_window_prerequisite_state =
-                    std::string(regalloc_deferred_binding_access_window_prerequisite_state(*object)),
                 .home_slot_prerequisite_category =
                     std::string(regalloc_deferred_binding_home_slot_prerequisite_category(
-                        *object, *contention)),
-                .home_slot_prerequisite_state =
-                    std::string(regalloc_deferred_binding_home_slot_prerequisite_state(
                         *object, *contention)),
                 .sync_handoff_prerequisite_category =
                     std::string(regalloc_deferred_binding_sync_handoff_prerequisite_category(
                         *object, *contention)),
-                .sync_handoff_state =
-                    std::string(regalloc_deferred_binding_sync_handoff_state(*object, *contention)),
             });
         batch_summary = &current_regalloc_function_->deferred_binding_batches.back();
       }

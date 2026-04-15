@@ -17,20 +17,20 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed the ready `binding_batches` summary layer because its prerequisite
-  and handoff fields only restated contention-owned facts for ready frontier
-  families
-- kept ready frontier ownership split on `binding_sequence` plus
-  `binding_batch_kind` for family identity/order while preserving deferred
-  batch summaries as the owner of deferred frontier grouping
-- refreshed the prepare-entry contract test so ready prerequisite/handoff
-  expectations now live on reservation/contention summaries instead of a
-  duplicate ready batch mirror
+- removed deferred batch prerequisite-state fields because they only restated
+  state rejoinable from deferred owners: `deferred_reason` plus the surviving
+  prerequisite categories
+- kept deferred frontier grouping explicit on
+  `PreparedRegallocDeferredBindingBatchSummary` with `binding_batch_kind`,
+  `ordering_policy`, prerequisite categories, and attachment-owned membership
+- refreshed the prepare-entry contract test so deferred prerequisite/handoff
+  state is re-derived from surviving deferred owners instead of stored as a
+  second summary mirror
 
 ## Suggested Next
-- inspect whether deferred batch prerequisite-state fields still need summary
-  ownership or can be rejoined from surviving deferred owners without
-  collapsing the explicit deferred frontier grouping
+- inspect whether deferred prerequisite categories still need batch-summary
+  ownership or whether one or more can rejoin through surviving deferred
+  owners without collapsing explicit deferred frontier grouping
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -63,6 +63,10 @@ while keeping the public shared contract named `prepare`
   family joins stay on `binding_sequence` plus contention; if later cleanup
   trims more handoff mirrors, keep one clear answer for whether downstream
   joins or frontier-level aggregate views own each remaining fact
+- deferred prerequisite state now rejoins from batch-owned
+  `deferred_reason` plus prerequisite categories; do not restore separate
+  deferred state mirrors unless a real downstream consumer cannot make that
+  join explicit
 - the handoff lookup path now keys tests by `binding_batch_kind`; if a later
   packet trims more binding mirrors, keep batch kind as the consumer join key
   instead of rebuilding ready/deferred ownership mirrors in a new handoff

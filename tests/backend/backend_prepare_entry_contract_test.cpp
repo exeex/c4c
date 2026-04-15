@@ -235,6 +235,48 @@ std::size_t regalloc_deferred_attachment_count_sum(
   return total;
 }
 
+std::string_view regalloc_deferred_batch_access_window_prerequisite_state(
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
+  if (summary.deferred_reason == "awaiting_access_window_observation") {
+    return "prealloc_access_window_prerequisite_deferred";
+  }
+  return "prealloc_access_window_prerequisite_satisfied";
+}
+
+std::string_view regalloc_deferred_batch_home_slot_prerequisite_state(
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
+  if (summary.deferred_reason == "awaiting_access_window_observation") {
+    return "prealloc_home_slot_prerequisite_deferred";
+  }
+  if (summary.home_slot_prerequisite_category == "stable_home_slot_required" ||
+      summary.home_slot_prerequisite_category == "stable_home_slot_preferred" ||
+      summary.home_slot_prerequisite_category == "single_use_home_slot_ok") {
+    return "prealloc_home_slot_prerequisite_satisfied";
+  }
+  if (summary.home_slot_prerequisite_category == "idle_home_slot_coordination") {
+    return "no_home_slot_prerequisite";
+  }
+  return "prealloc_home_slot_prerequisite_deferred";
+}
+
+std::string_view regalloc_deferred_batch_sync_handoff_state(
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
+  if (summary.deferred_reason == "awaiting_access_window_observation") {
+    return "prealloc_sync_handoff_deferred";
+  }
+  if (summary.sync_handoff_prerequisite_category == "restore_only_coordination" ||
+      summary.sync_handoff_prerequisite_category == "writeback_only_coordination" ||
+      summary.sync_handoff_prerequisite_category == "read_write_coordination" ||
+      summary.sync_handoff_prerequisite_category == "bidirectional_sync_coordination" ||
+      summary.sync_handoff_prerequisite_category == "mixed_sync_coordination") {
+    return "prealloc_sync_handoff_ready";
+  }
+  if (summary.sync_handoff_prerequisite_category == "sync_free_coordination") {
+    return "no_sync_handoff_required";
+  }
+  return "prealloc_sync_handoff_deferred";
+}
+
 bir::Module make_prepare_contract_bir_module() {
   bir::Module module;
   bir::Function function;
@@ -1600,15 +1642,17 @@ int main() {
           "defer_until_access_window_observed" ||
       deferred_access_window_binding_batch->access_window_prerequisite_category !=
           "unobserved_instruction_window" ||
-      deferred_access_window_binding_batch->access_window_prerequisite_state !=
+      regalloc_deferred_batch_access_window_prerequisite_state(
+          *deferred_access_window_binding_batch) !=
           "prealloc_access_window_prerequisite_deferred" ||
       deferred_access_window_binding_batch->home_slot_prerequisite_category !=
           "home_slot_needs_future_analysis" ||
-      deferred_access_window_binding_batch->home_slot_prerequisite_state !=
+      regalloc_deferred_batch_home_slot_prerequisite_state(
+          *deferred_access_window_binding_batch) !=
           "prealloc_home_slot_prerequisite_deferred" ||
       deferred_access_window_binding_batch->sync_handoff_prerequisite_category !=
           "sync_policy_needs_future_analysis" ||
-      deferred_access_window_binding_batch->sync_handoff_state !=
+      regalloc_deferred_batch_sync_handoff_state(*deferred_access_window_binding_batch) !=
           "prealloc_sync_handoff_deferred" ||
       regalloc_deferred_batch_candidate_count(*deferred_access_window_binding_batch) != 7) {
     return fail(
@@ -1622,15 +1666,17 @@ int main() {
       deferred_coordination_binding_batch->ordering_policy != "defer_until_frontier_ready" ||
       deferred_coordination_binding_batch->access_window_prerequisite_category !=
           "mixed_sparse_windows" ||
-      deferred_coordination_binding_batch->access_window_prerequisite_state !=
+      regalloc_deferred_batch_access_window_prerequisite_state(
+          *deferred_coordination_binding_batch) !=
           "prealloc_access_window_prerequisite_satisfied" ||
       deferred_coordination_binding_batch->home_slot_prerequisite_category !=
           "mixed_home_slot_modes" ||
-      deferred_coordination_binding_batch->home_slot_prerequisite_state !=
+      regalloc_deferred_batch_home_slot_prerequisite_state(
+          *deferred_coordination_binding_batch) !=
           "prealloc_home_slot_prerequisite_deferred" ||
       deferred_coordination_binding_batch->sync_handoff_prerequisite_category !=
           "read_write_coordination" ||
-      deferred_coordination_binding_batch->sync_handoff_state !=
+      regalloc_deferred_batch_sync_handoff_state(*deferred_coordination_binding_batch) !=
           "prealloc_sync_handoff_ready" ||
       regalloc_deferred_batch_candidate_count(*deferred_coordination_binding_batch) != 2) {
     return fail(
