@@ -773,6 +773,19 @@ PreparedRegallocDeferredBindingBatchSummary* find_deferred_binding_batch_summary
   return nullptr;
 }
 
+PreparedRegallocBindingHandoffSummary* find_binding_handoff_summary(
+    PreparedRegallocFunction& function,
+    std::string_view binding_frontier_kind,
+    std::string_view binding_batch_kind) {
+  for (auto& summary : function.binding_handoff_summary) {
+    if (summary.binding_frontier_kind == binding_frontier_kind &&
+        summary.binding_batch_kind == binding_batch_kind) {
+      return &summary;
+    }
+  }
+  return nullptr;
+}
+
 bool access_windows_overlap(const PreparedRegallocObject& lhs, const PreparedRegallocObject& rhs) {
   if (!lhs.has_access_window || !rhs.has_access_window) {
     return false;
@@ -1492,6 +1505,50 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
   }
 }
 
+void populate_binding_handoff_summary(PreparedRegallocFunction& function) {
+  function.binding_handoff_summary.clear();
+  function.binding_handoff_summary.reserve(function.binding_ready_batch_count +
+                                           function.binding_deferred_batch_count);
+
+  for (const auto& decision : function.allocation_sequence) {
+    const auto* object = find_regalloc_object(function, decision.source_kind, decision.source_name);
+    if (object == nullptr) {
+      continue;
+    }
+    if (object->binding_frontier_kind != "binding_ready" &&
+        object->binding_frontier_kind != "binding_deferred") {
+      continue;
+    }
+    if (object->binding_batch_kind.empty()) {
+      continue;
+    }
+
+    auto* summary = find_binding_handoff_summary(function,
+                                                 object->binding_frontier_kind,
+                                                 object->binding_batch_kind);
+    if (summary == nullptr) {
+      function.binding_handoff_summary.push_back(PreparedRegallocBindingHandoffSummary{
+          .binding_frontier_kind = object->binding_frontier_kind,
+          .binding_frontier_reason = object->binding_frontier_reason,
+          .binding_batch_kind = object->binding_batch_kind,
+          .allocation_stage = decision.allocation_stage,
+          .follow_up_category = object->follow_up_category,
+          .ordering_policy = object->binding_ordering_policy,
+          .access_window_prerequisite_category =
+              object->binding_access_window_prerequisite_category,
+          .access_window_prerequisite_state = object->binding_access_window_prerequisite_state,
+          .home_slot_prerequisite_category = object->binding_home_slot_prerequisite_category,
+          .home_slot_prerequisite_state = object->binding_home_slot_prerequisite_state,
+          .sync_handoff_prerequisite_category =
+              object->binding_sync_handoff_prerequisite_category,
+          .sync_handoff_state = object->binding_sync_handoff_state,
+      });
+      summary = &function.binding_handoff_summary.back();
+    }
+    ++summary->candidate_count;
+  }
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -1637,6 +1694,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
     }
     populate_object_allocation_state(prepared_function);
     populate_binding_sequence(prepared_function);
+    populate_binding_handoff_summary(prepared_function);
     if (!prepared_function.objects.empty()) {
       module.regalloc.functions.push_back(std::move(prepared_function));
     }
@@ -1684,7 +1742,9 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "per-object binding batch/order and prerequisite cues projected from "
           "those ready and deferred batches so downstream prepared consumers "
           "can read one uniform binding contract without consulting batch "
-          "summaries alone, "
+          "summaries alone, plus downstream handoff summaries that collapse "
+          "ready, access-window-deferred, and coordination-deferred frontiers "
+          "into one scan surface derived from those uniform per-object cues, "
           "plus a ready-only binding batch/order artifact that keeps current "
           "stable-binding work grouped by prepare-owned call-boundary versus "
           "local-reuse batches without naming physical registers, plus per-binding "

@@ -8,24 +8,25 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- projected binding batch membership and prerequisite state back onto each
-  ready prepared regalloc object, so call-boundary and local-reuse candidates
-  now carry explicit per-object batch kind, order index, ordering policy, and
-  access-window/home-slot/sync handoff cues instead of forcing downstream
-  consumers to rejoin object frontier facts with ready batch summaries
-- mirrored the same generic per-object binding contract onto deferred prepared
-  objects, so both ready and deferred register candidates now expose one
-  uniform binding contract while preserving the earlier deferred-only fields
-  for the current access-window and coordination frontier
+- derived a unified downstream handoff summary from the existing uniform
+  per-object binding contract, so prepared consumers can scan ready,
+  access-window-deferred, and coordination-deferred regalloc frontiers without
+  rejoining object state to ready/deferred batch tables
+- kept the earlier ready-only and deferred batch artifacts in place, but added
+  one prepare-owned per-function handoff summary surface that carries frontier
+  kind/reason, allocation stage, ordering policy, prerequisite state, and
+  candidate counts across both ready and deferred batches
 - extended the prepare entry backend fixture and regalloc note text to assert
-  the new uniform per-object binding cues without reopening target-ingestion
-  work or naming physical registers
+  the new downstream handoff summaries alongside the existing uniform
+  per-object binding cues without reopening target-ingestion work or naming
+  physical registers
 
 ## Suggested Next
-- keep step-4 work inside prepare by deriving the next downstream regalloc
-  handoff summary from the new uniform per-object binding contract, so prepared
-  consumers can scan ready, access-window-deferred, and coordination-deferred
-  candidates without rejoining object state to batch tables
+- keep step-4 work inside prepare by deriving the next concrete binding-ready
+  consumption artifact from the current handoff summaries, so downstream
+  prepared consumers can follow ready call-boundary and local-reuse batches
+  through a target-neutral stable-binding pass without inventing physical
+  registers or bypassing the deferred frontier
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
