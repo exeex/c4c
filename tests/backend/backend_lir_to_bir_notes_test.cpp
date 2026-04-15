@@ -1,6 +1,7 @@
 #include "src/backend/lowering/lir_to_bir.hpp"
 
 #include <iostream>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -10,6 +11,7 @@ using c4c::backend::BirLoweringNote;
 using c4c::backend::BirLoweringOptions;
 using c4c::backend::try_lower_to_bir_with_options;
 using c4c::codegen::lir::LirBlock;
+using c4c::codegen::lir::LirCallOp;
 using c4c::codegen::lir::LirFunction;
 using c4c::codegen::lir::LirInlineAsmOp;
 using c4c::codegen::lir::LirModule;
@@ -30,6 +32,24 @@ bool contains_note(const std::vector<BirLoweringNote>& notes,
     }
   }
   return false;
+}
+
+int expect_failure_notes(const LirModule& module,
+                         std::string_view function_failure,
+                         std::string_view module_failure,
+                         const char* missing_function_note,
+                         const char* missing_module_note) {
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("expected semantic BIR lowering to fail");
+  }
+  if (!contains_note(result.notes, "function", function_failure)) {
+    return fail(missing_function_note);
+  }
+  if (!contains_note(result.notes, "module", module_failure)) {
+    return fail(missing_module_note);
+  }
+  return 0;
 }
 
 LirModule make_unsupported_inline_asm_module() {
@@ -60,23 +80,54 @@ LirModule make_unsupported_inline_asm_module() {
   return module;
 }
 
+LirModule make_bad_direct_call_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_direct_call";
+  function.signature_text = "define void @bad_direct_call()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@callee"),
+      .callee_type_suffix = "(ptr)",
+      .args_str = "ptr @missing_object",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 }  // namespace
 
 int main() {
-  auto result = try_lower_to_bir_with_options(
-      make_unsupported_inline_asm_module(), BirLoweringOptions{});
-  if (result.module.has_value()) {
-    return fail("expected unsupported inline asm lowering to fail");
+  if (const int inline_asm_status = expect_failure_notes(
+          make_unsupported_inline_asm_module(),
+          "failed in runtime/intrinsic family 'inline-asm placeholder family'",
+          "latest function failure: semantic lir_to_bir function 'bad_inline_asm' failed in runtime/intrinsic family 'inline-asm placeholder family'",
+          "missing specific runtime family function note",
+          "missing module note carrying the runtime family failure");
+      inline_asm_status != 0) {
+    return inline_asm_status;
   }
-  if (!contains_note(result.notes,
-                     "function",
-                     "failed in runtime/intrinsic family 'inline-asm placeholder family'")) {
-    return fail("missing specific function-family lowering note");
-  }
-  if (!contains_note(result.notes,
-                     "module",
-                     "latest function failure: semantic lir_to_bir function 'bad_inline_asm' failed in runtime/intrinsic family 'inline-asm placeholder family'")) {
-    return fail("missing module note carrying the latest semantic family failure");
+
+  if (const int direct_call_status = expect_failure_notes(
+          make_bad_direct_call_module(),
+          "failed in semantic call family 'direct-call semantic family'",
+          "latest function failure: semantic lir_to_bir function 'bad_direct_call' failed in semantic call family 'direct-call semantic family'",
+          "missing specific semantic-call function note",
+          "missing module note carrying the semantic-call family failure");
+      direct_call_status != 0) {
+    return direct_call_status;
   }
   return 0;
 }
