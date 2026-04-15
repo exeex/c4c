@@ -422,6 +422,9 @@ int main() {
                      "target-neutral priority buckets for single-point, multi-point, and call-spanning value-storage objects")) {
     return fail("semantic-BIR prepare regalloc note should mention the target-neutral priority buckets");
   }
+  if (!contains_note(prepared_bir.notes, "regalloc", "preferred register pools")) {
+    return fail("semantic-BIR prepare regalloc note should mention target-neutral preferred register pools");
+  }
   if (!contains_note(prepared_bir.notes, "regalloc", "compact access-shape summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention compact access-shape summaries");
   }
@@ -639,6 +642,9 @@ int main() {
   if (local_slot_regalloc->priority_bucket != "single_point_value") {
     return fail("semantic-BIR regalloc should classify single-touch value storage into the single-point priority bucket");
   }
+  if (local_slot_regalloc->preferred_register_pool != "caller_saved_preferred") {
+    return fail("semantic-BIR regalloc should prefer caller-saved pools for non-call-spanning register candidates");
+  }
   if (local_slot_regalloc->assignment_readiness != "single_point_read_candidate") {
     return fail("semantic-BIR regalloc should expose a single-point read readiness cue for single-read value storage");
   }
@@ -668,6 +674,9 @@ int main() {
   }
   if (carry_slot_regalloc->priority_bucket != "call_spanning_value") {
     return fail("semantic-BIR regalloc should classify call-spanning register candidates into the call-spanning priority bucket");
+  }
+  if (carry_slot_regalloc->preferred_register_pool != "callee_saved_preferred") {
+    return fail("semantic-BIR regalloc should prefer callee-saved pools for call-spanning register candidates");
   }
   if (carry_slot_regalloc->assignment_readiness != "call_spanning_read_write_candidate") {
     return fail("semantic-BIR regalloc should expose a call-spanning read/write readiness cue for call-crossing value storage");
@@ -699,6 +708,9 @@ int main() {
   if (window_slot_regalloc->priority_bucket != "multi_point_value") {
     return fail("semantic-BIR regalloc should classify non-call-spanning multi-access value storage into the multi-point priority bucket");
   }
+  if (window_slot_regalloc->preferred_register_pool != "caller_saved_preferred") {
+    return fail("semantic-BIR regalloc should prefer caller-saved pools for non-call-spanning multi-point value storage");
+  }
   if (window_slot_regalloc->assignment_readiness != "multi_point_read_write_candidate") {
     return fail("semantic-BIR regalloc should expose a multi-point read/write readiness cue for non-call-spanning value storage");
   }
@@ -729,6 +741,9 @@ int main() {
   }
   if (readonly_slot_regalloc->priority_bucket != "multi_point_value") {
     return fail("semantic-BIR regalloc should classify non-call-spanning multi-read value storage into the multi-point priority bucket");
+  }
+  if (readonly_slot_regalloc->preferred_register_pool != "caller_saved_preferred") {
+    return fail("semantic-BIR regalloc should prefer caller-saved pools for non-call-spanning read-only value storage");
   }
   if (readonly_slot_regalloc->assignment_readiness != "multi_point_read_candidate") {
     return fail("semantic-BIR regalloc should expose a multi-point read readiness cue for non-call-spanning read-only value storage");
@@ -763,6 +778,9 @@ int main() {
   if (callread_slot_regalloc->priority_bucket != "call_spanning_value") {
     return fail("semantic-BIR regalloc should classify call-spanning read-only value storage into the call-spanning priority bucket");
   }
+  if (callread_slot_regalloc->preferred_register_pool != "callee_saved_preferred") {
+    return fail("semantic-BIR regalloc should prefer callee-saved pools for call-spanning read-only value storage");
+  }
   if (callread_slot_regalloc->assignment_readiness != "call_spanning_read_candidate") {
     return fail("semantic-BIR regalloc should expose a call-spanning read readiness cue for call-crossing read-only value storage");
   }
@@ -795,6 +813,9 @@ int main() {
   }
   if (callwrite_slot_regalloc->priority_bucket != "call_spanning_value") {
     return fail("semantic-BIR regalloc should classify call-spanning write-only value storage into the call-spanning priority bucket");
+  }
+  if (callwrite_slot_regalloc->preferred_register_pool != "callee_saved_preferred") {
+    return fail("semantic-BIR regalloc should prefer callee-saved pools for call-spanning write-only value storage");
   }
   if (callwrite_slot_regalloc->assignment_readiness != "call_spanning_write_candidate") {
     return fail("semantic-BIR regalloc should expose a call-spanning write readiness cue for call-crossing write-only value storage");
@@ -829,6 +850,9 @@ int main() {
   if (multiwrite_slot_regalloc->priority_bucket != "multi_point_value") {
     return fail("semantic-BIR regalloc should classify non-call-spanning multi-write value storage into the multi-point priority bucket");
   }
+  if (multiwrite_slot_regalloc->preferred_register_pool != "caller_saved_preferred") {
+    return fail("semantic-BIR regalloc should prefer caller-saved pools for non-call-spanning write-only value storage");
+  }
   if (multiwrite_slot_regalloc->assignment_readiness != "multi_point_write_candidate") {
     return fail("semantic-BIR regalloc should expose a multi-point write readiness cue for non-call-spanning write-only value storage");
   }
@@ -858,6 +882,9 @@ int main() {
       writeonly_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should keep write-only local slots in the value-storage register-candidate contract");
   }
+  if (writeonly_regalloc->preferred_register_pool != "caller_saved_preferred") {
+    return fail("semantic-BIR regalloc should prefer caller-saved pools for non-call-spanning single-point write-only value storage");
+  }
   if (writeonly_regalloc->last_access_kind != "direct_write") {
     return fail("semantic-BIR regalloc should publish direct-write last-access cues");
   }
@@ -879,6 +906,9 @@ int main() {
   }
   if (address_taken_regalloc->priority_bucket != "non_value_storage") {
     return fail("semantic-BIR regalloc should keep non-value prepared objects out of value-storage priority buckets");
+  }
+  if (address_taken_regalloc->preferred_register_pool != "fixed_stack_only") {
+    return fail("semantic-BIR regalloc should keep address-exposed storage out of register-pool preference contracts");
   }
   if (address_taken_regalloc->assignment_readiness != "fixed_stack_only") {
     return fail("semantic-BIR regalloc should keep address-exposed storage in the fixed-stack readiness contract");
@@ -908,6 +938,9 @@ int main() {
       call_result_regalloc->addressed_access_count != 0 ||
       call_result_regalloc->call_arg_exposure_count != 1) {
     return fail("semantic-BIR regalloc should publish call-argument exposure counts for call-result storage");
+  }
+  if (call_result_regalloc->preferred_register_pool != "fixed_stack_only") {
+    return fail("semantic-BIR regalloc should keep call-result storage out of register-pool preference contracts");
   }
   if (call_result_regalloc->assignment_readiness != "fixed_stack_only") {
     return fail("semantic-BIR regalloc should keep call-result storage in the fixed-stack readiness contract");

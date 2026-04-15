@@ -8,20 +8,21 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- added one representative call-spanning `callwrite.slot` value-storage case
-  to the prepare entry-contract fixture with one direct store between the
-  existing calls and another later direct store after them, so the regalloc
-  contract now proves a genuine `call_spanning_write_candidate` path from
-  actual BIR instruction order
-- extended the same fixture’s stack-layout, liveness, register-candidate
-  count, and regalloc assertions so the new slot is checked end-to-end as
-  prepared value storage rather than a synthetic interval or target-shaped
-  heuristic
+- promoted the semantic-BIR regalloc artifact from raw readiness-only output
+  to a first allocator-facing contract by publishing a target-neutral
+  `preferred_register_pool` field that maps call-spanning value storage toward
+  callee-saved pressure, other register candidates toward caller-saved
+  pressure, and fixed-stack storage away from register pools entirely
+- extended the prepare entry-contract fixture so single-point, multi-point,
+  and call-spanning value-storage objects plus fixed-stack storage prove the
+  new pool preference end-to-end alongside the existing readiness/access
+  summaries
 
 ## Suggested Next
-- review the prepare entry-contract fixture for the next honest regalloc gap,
-  or move up a level to broader step-4 validation if the call-crossing and
-  non-call-spanning readiness coverage is now sufficient for this bucket
+- broaden step-4 validation to `^backend_`, or if execution continues inside
+  this bucket, publish the next honest allocator-facing regalloc contract such
+  as a spill-pressure or register-eligibility cue sourced from prepared facts
+  rather than testcase-shaped inference
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -38,10 +39,10 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
   interference until the data is really available
 - prefer `build -> ^backend_` proof unless a narrower honest backend subset is
   clearly available
-- if follow-on readiness cues are added, keep them sourced from actual BIR
-  access order, liveness contracts, and call-crossing facts rather than
-  synthetic interval guesses or phi-materialization scaffolding that does not
-  exercise a real local-slot access window
+- if follow-on allocator-facing cues are added, keep them sourced from actual
+  BIR access order, liveness contracts, and call-crossing facts rather than
+  synthetic interval guesses, target register names, or phi-materialization
+  scaffolding that does not exercise a real local-slot access window
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build

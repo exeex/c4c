@@ -228,6 +228,17 @@ std::string regalloc_assignment_readiness(std::string_view allocation_kind,
          std::string(regalloc_access_shape_suffix(summary)) + "_candidate";
 }
 
+std::string_view regalloc_preferred_register_pool(std::string_view allocation_kind,
+                                                  std::string_view priority_bucket) {
+  if (allocation_kind != "register_candidate") {
+    return "fixed_stack_only";
+  }
+  if (priority_bucket == "call_spanning_value") {
+    return "callee_saved_preferred";
+  }
+  return "caller_saved_preferred";
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -256,6 +267,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
       const auto summary = summarize_object_accesses(function, object.source_name);
       const std::string allocation_kind(regalloc_allocation_kind(object.contract_kind));
       const std::string priority_bucket(regalloc_priority_bucket(object.contract_kind, summary));
+      const std::string preferred_register_pool(
+          regalloc_preferred_register_pool(allocation_kind, priority_bucket));
       const std::string assignment_readiness(
           regalloc_assignment_readiness(allocation_kind, priority_bucket, summary));
       prepared_function.objects.push_back(PreparedRegallocObject{
@@ -265,6 +278,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .contract_kind = object.contract_kind,
           .allocation_kind = allocation_kind,
           .priority_bucket = priority_bucket,
+          .preferred_register_pool = preferred_register_pool,
           .assignment_readiness = assignment_readiness,
           .access_shape = std::string(regalloc_access_shape_name(summary)),
           .first_access_kind = std::string(regalloc_access_kind_name(summary.first_access_kind)),
@@ -295,6 +309,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "regalloc now groups prepared liveness objects per function and classifies them as "
           "register_candidate or fixed_stack_storage contracts, plus target-neutral priority "
           "buckets for single-point, multi-point, and call-spanning value-storage objects, "
+          "preferred register pools that map call-spanning value storage toward callee-saved "
+          "pressure and other register candidates toward caller-saved pressure, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "
