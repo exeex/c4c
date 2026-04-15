@@ -24,4 +24,4 @@ Current Plan Focus: step-4 unsupported-boundary cleanup after the broader backen
 ## Proof
 - supervisor broader checkpoint: `cmake --preset default && cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'` passed and was rolled forward to `test_before.log`
 - executor packet proof: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-- proof log path for this packet: `test_after.log`
+- executor packet wrote `test_after.log`, and the accepted baseline now lives at `test_before.log`
