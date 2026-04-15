@@ -1109,11 +1109,6 @@ void BirPreAlloc::populate_binding_sequence() {
         .binding_batch_kind = binding_batch_kind,
         .binding_order_index = batch_summary->candidate_count,
     });
-    current_regalloc_function_->binding_attachments.push_back(PreparedRegallocBindingAttachment{
-        .source_kind = decision.source_kind,
-        .source_name = decision.source_name,
-        .binding_batch_kind = binding_batch_kind,
-    });
     ++batch_summary->candidate_count;
   }
 }

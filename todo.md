@@ -17,27 +17,25 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed object-level `binding_batch_kind` from
-  `PreparedRegallocObject` and moved object-to-batch attachment onto new
-  function-level `binding_attachments`, so ready/deferred objects keep their
-  frontier state locally while batch identity now lives in one prepare-owned
-  projection
-- updated the prepare-entry contract test to assert batch attachment through
-  that function-level projection while keeping ready ordering in
-  `binding_sequence`, so this packet reduces another real regalloc mirror
-  without renaming the public `prepare` contract
+- removed ready-frontier `binding_attachments` from
+  `PreparedRegallocFunction`, so ready batch identity now publishes through
+  `binding_sequence` alone while deferred frontier attachment stays explicit in
+  `binding_attachments`
+- updated the prepare-entry contract test to treat `binding_sequence` as the
+  ready owner and `binding_attachments` as the deferred-only attachment view,
+  so this packet trims a real ready-path mirror without renaming the public
+  `prepare` contract
 
 ## Suggested Next
-- after the required broader backend checkpoint, inspect whether ready
-  `binding_attachments` still duplicate enough of `binding_sequence` that the
-  ready frontier can publish attachment through one function-level owner while
-  leaving deferred attachment explicit
+- inspect whether `binding_handoff_summary` still republishes ready-batch
+  prerequisite state that already lives in `binding_batches`, and only trim it
+  if the handoff view can stay a consumer of ready/deferred batch owners
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
   work
-- keep using build plus a narrow backend proof for packet work, but require
-  the broader backend checkpoint before accepting another route-shaping slice
+- keep using build plus the backend subset proof for packet work while this
+  route-shaping cleanup stays inside shared prepare ownership work
 
 ## Watchouts
 - do not add more liveness-like fact gathering to
@@ -65,16 +63,19 @@ while keeping the public shared contract named `prepare`
 - object-local coordination categories are gone now; keep future cleanup aimed
   at mirrors with real summary-level owners instead of recreating new
   fixed-stack or missing-state publication layers
-- ready and deferred batch identity now lives in
+- ready batch identity now lives in `PreparedRegallocFunction::binding_sequence`;
+  do not re-expand `binding_attachments` back into the ready frontier unless a
+  downstream consumer proves sequence ownership is insufficient
+- deferred batch identity still lives in
   `PreparedRegallocFunction::binding_attachments`; if later cleanup trims that
   view, keep one explicit function-level owner for deferred attachment instead
-  of pushing batch identity back onto `PreparedRegallocObject`
+  of pushing batch identity back onto `PreparedRegallocObject` or inventing a
+  fake deferred order contract
 - the current priority is structural clarity; if a cleanup only renames symbols
   but does not reduce architectural ambiguity, prefer the cleanup that removes
   an actual ownership seam or mirror first
 
 ## Proof
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepare_entry_contract$'`
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 - passed; proof output recorded in `test_after.log`
-- before accepting another route-shaping slice, require a broader backend
-  checkpoint than this narrow single-test subset
+- broader backend checkpoint completed for this packet
