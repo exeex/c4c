@@ -78,6 +78,9 @@ std::optional<bir::TypeKind> BirFunctionLowerer::lower_scalar_or_function_pointe
   if (trimmed == "double") {
     return bir::TypeKind::F64;
   }
+  if (trimmed == "x86_fp80" || trimmed == "f128") {
+    return bir::TypeKind::F128;
+  }
   if (trimmed == "ptr" || trimmed.rfind("ptr ", 0) == 0) {
     return bir::TypeKind::Ptr;
   }

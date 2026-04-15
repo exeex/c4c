@@ -644,14 +644,19 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     }
 
     bir::TypeKind value_type = bir::TypeKind::Void;
-    if (parsed_callee->symbol_name == "llvm.fabs.float" &&
-        c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[0]) == "float" &&
-        c4c::codegen::lir::trim_lir_arg_text(call.return_type.str()) == "float") {
+    const auto param_type = c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[0]);
+    const auto return_type = c4c::codegen::lir::trim_lir_arg_text(call.return_type.str());
+    if (parsed_callee->symbol_name == "llvm.fabs.float" && param_type == "float" &&
+        return_type == "float") {
       value_type = bir::TypeKind::F32;
-    } else if (parsed_callee->symbol_name == "llvm.fabs.double" &&
-               c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[0]) == "double" &&
-               c4c::codegen::lir::trim_lir_arg_text(call.return_type.str()) == "double") {
+    } else if (parsed_callee->symbol_name == "llvm.fabs.double" && param_type == "double" &&
+               return_type == "double") {
       value_type = bir::TypeKind::F64;
+    } else if ((parsed_callee->symbol_name == "llvm.fabs.x86_fp80" ||
+                parsed_callee->symbol_name == "llvm.fabs.f128") &&
+               (param_type == "x86_fp80" || param_type == "f128") &&
+               (return_type == "x86_fp80" || return_type == "f128")) {
+      value_type = bir::TypeKind::F128;
     } else {
       return false;
     }

@@ -81,6 +81,8 @@ std::string render_type(TypeKind type) {
       return "float";
     case TypeKind::F64:
       return "double";
+    case TypeKind::F128:
+      return "f128";
   }
   return "<unknown>";
 }

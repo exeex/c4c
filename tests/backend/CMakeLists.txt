@@ -215,6 +215,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_fabsl_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_fabsl.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_fabsl_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @take_fabsl(f128 %p.x) -> f128 {|%t0 = bir.call f128 llvm.fabs.x86_fp80(f128 %p.x)|bir.ret f128 %t0"
+  FORBIDDEN_SNIPPETS "define x86_fp80 @take_fabsl|call x86_fp80 @llvm.fabs.x86_fp80"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_variadic_sum2_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/variadic_sum2.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu
