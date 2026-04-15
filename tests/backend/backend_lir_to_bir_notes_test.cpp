@@ -20,6 +20,9 @@ using c4c::codegen::lir::LirModule;
 using c4c::codegen::lir::LirOperand;
 using c4c::codegen::lir::LirRet;
 using c4c::codegen::lir::LirAllocaOp;
+using c4c::codegen::lir::LirAbsOp;
+using c4c::codegen::lir::LirStackSaveOp;
+using c4c::codegen::lir::LirVaArgOp;
 
 int fail(const char* message) {
   std::cerr << message << "\n";
@@ -223,6 +226,79 @@ LirModule make_bad_memset_runtime_module() {
   return module;
 }
 
+LirModule make_bad_variadic_runtime_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_variadic_runtime";
+  function.signature_text = "define void @bad_variadic_runtime()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirVaArgOp{
+      .result = LirOperand("@not_ssa"),
+      .ap_ptr = LirOperand("%ap"),
+      .type_str = "i32",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_bad_stack_state_runtime_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_stack_state_runtime";
+  function.signature_text = "define void @bad_stack_state_runtime()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirStackSaveOp{
+      .result = LirOperand("@not_ssa"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_bad_abs_runtime_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_abs_runtime";
+  function.signature_text = "define void @bad_abs_runtime()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirAbsOp{
+      .result = LirOperand("@not_ssa"),
+      .arg = LirOperand("%x"),
+      .int_type = "i32",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_scalar_cast_module() {
   LirModule module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -280,7 +356,7 @@ LirModule make_bad_alloca_module() {
 
 int main() {
   constexpr std::string_view kModuleSummary =
-      "currently admitted capability buckets covering function-signature, scalar-control-flow, scalar/local-memory (including scalar-cast/scalar-binop and alloca/gep/load/store local-memory), and local/global memory semantics, plus semantic call families (direct-call, indirect-call, and call-return) and explicit runtime or intrinsic families such as memcpy, memset, and inline-asm placeholders";
+      "currently admitted capability buckets covering function-signature, scalar-control-flow, scalar/local-memory (including scalar-cast/scalar-binop and alloca/gep/load/store local-memory), and local/global memory semantics, plus semantic call families (direct-call, indirect-call, and call-return) and explicit runtime or intrinsic families such as variadic, stack-state, absolute-value, memcpy, memset, and inline-asm placeholders";
   if (const int inline_asm_status = expect_failure_notes(
           make_unsupported_inline_asm_module(),
           kModuleSummary,
@@ -351,6 +427,42 @@ int main() {
           "missing module note carrying the memset runtime family failure");
       memset_status != 0) {
     return memset_status;
+  }
+
+  if (const int variadic_status = expect_failure_notes(
+          make_bad_variadic_runtime_module(),
+          kModuleSummary,
+          "failed in runtime/intrinsic family 'variadic runtime family'",
+          "latest function failure: semantic lir_to_bir function 'bad_variadic_runtime' failed in runtime/intrinsic family 'variadic runtime family'",
+          "missing module capability-bucket summary note",
+          "missing specific variadic runtime function note",
+          "missing module note carrying the variadic runtime family failure");
+      variadic_status != 0) {
+    return variadic_status;
+  }
+
+  if (const int stack_state_status = expect_failure_notes(
+          make_bad_stack_state_runtime_module(),
+          kModuleSummary,
+          "failed in runtime/intrinsic family 'stack-state runtime family'",
+          "latest function failure: semantic lir_to_bir function 'bad_stack_state_runtime' failed in runtime/intrinsic family 'stack-state runtime family'",
+          "missing module capability-bucket summary note",
+          "missing specific stack-state runtime function note",
+          "missing module note carrying the stack-state runtime family failure");
+      stack_state_status != 0) {
+    return stack_state_status;
+  }
+
+  if (const int abs_status = expect_failure_notes(
+          make_bad_abs_runtime_module(),
+          kModuleSummary,
+          "failed in runtime/intrinsic family 'absolute-value intrinsic family'",
+          "latest function failure: semantic lir_to_bir function 'bad_abs_runtime' failed in runtime/intrinsic family 'absolute-value intrinsic family'",
+          "missing module capability-bucket summary note",
+          "missing specific absolute-value runtime function note",
+          "missing module note carrying the absolute-value runtime family failure");
+      abs_status != 0) {
+    return abs_status;
   }
 
   if (const int scalar_cast_status = expect_failure_notes(

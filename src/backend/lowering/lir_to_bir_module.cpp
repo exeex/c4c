@@ -24,7 +24,8 @@ constexpr std::string_view kModuleCapabilityBucketSummary =
     "scalar-binop and alloca/gep/load/store local-memory), and local/global "
     "memory semantics, plus semantic call families (direct-call, "
     "indirect-call, and call-return) and explicit runtime or intrinsic "
-    "families such as memcpy, memset, and inline-asm placeholders";
+    "families such as variadic, stack-state, absolute-value, memcpy, memset, "
+    "and inline-asm placeholders";
 
 int semantic_failure_note_rank(std::string_view message) {
   if (message.find("failed in runtime/intrinsic family") != std::string::npos ||

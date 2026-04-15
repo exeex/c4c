@@ -3,26 +3,25 @@
 Status: Active
 Source Idea: ideas/open/47_semantic_call_runtime_boundary.md
 Source Plan: plan.md
-Current Plan Focus: route checkpoint across ordered steps 2 and 3 before more execution
+Current Plan Focus: step-4 unsupported-boundary cleanup after the broader backend checkpoint
 
 # Current Packet
 
 ## Just Finished
-- recorded a reviewer checkpoint after 65 commits since activation because execution had outpaced the current transcript
-- confirmed that `plan.md` still matches `ideas/open/47_semantic_call_runtime_boundary.md`, but `todo.md` had fallen behind the landed semantic-BIR surface
-- recognized that the active backend route now spans step-2 call widening plus step-3 runtime-family lowering, including variadic/indirect calls, `va_*`, `stacksave`/`stackrestore`, inline asm, `abs`/`fabs`, `memcpy`, and `memset`
+- accepted a fresh `^backend_` checkpoint from a clean build and rolled it forward into `test_before.log`
+- tightened the semantic unsupported-boundary transcript so the module capability summary now names the admitted runtime/intrinsic families already on this route: variadic, stack-state, absolute-value, memcpy, memset, and inline-asm placeholders
+- extended `backend_lir_to_bir_notes` coverage with explicit failure-note checks for `variadic runtime family`, `stack-state runtime family`, and `absolute-value intrinsic family`
 
 ## Suggested Next
-- take a broader backend validation checkpoint from a fresh build before authorizing another executor packet
-- if that broader checkpoint fails, route the next packet to the first uncovered semantic family revealed by the failures instead of adding more proof-only observer cases
-- if the broader checkpoint passes, pick the next bounded packet from an uncovered semantic family that is still missing semantic lowering or unsupported-boundary cleanup rather than extending the existing variadic proof cluster
+- inspect the remaining step-4 unsupported surface for any semantic family that is still implemented in lowering but missing explicit failure-bucket coverage or planner-facing wording
+- prefer a bounded note-contract cleanup packet over adding more observer proofs unless a real unsupported family gap turns up in code or tests
 
 ## Watchouts
-- do not add another proof-only `tests/backend/CMakeLists.txt` slice before the broader backend checkpoint lands
+- keep step-4 packets on semantic-family wording and failure buckets, not testcase inventory churn
+- do not reopen `tests/backend/CMakeLists.txt` proof expansion unless a real lowering gap appears beyond the now-refreshed module-note coverage
 - keep new work under `BirFunctionLowerer` and the split `lir_to_bir_*` owners; do not revive `call_decode.cpp` or push ABI legality back into semantic lowering
-- prefer semantic-family gaps over testcase-neighbor padding when selecting the next executor packet
 
 ## Proof
-- the reviewer checkpoint judged the route `drifting`, the source idea still matched, and the immediate repair as `todo.md` only
-- narrow variadic proof remains the last accepted packet evidence; no fresh broader `test_after.log` exists yet for the full backend checkpoint
-- next supervisor proof action should be a fresh build plus broader backend validation, then canonical log roll-forward on success
+- supervisor broader checkpoint: `cmake --preset default && cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'` passed and was rolled forward to `test_before.log`
+- executor packet proof: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+- proof log path for this packet: `test_after.log`
