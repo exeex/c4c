@@ -17,20 +17,21 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- collapsed the remaining deferred-batch helper branching in
-  `tests/backend/backend_prepare_entry_contract_test.cpp` so ordering-policy
-  and access-window prerequisite checks now rejoin through the existing
-  access-window-object versus coordination-contention owner-selection route
-  instead of branching directly on `summary.deferred_reason`
+- collapsed the remaining repeated deferred-batch identity checks in
+  `tests/backend/backend_prepare_entry_contract_test.cpp` behind one explicit
+  deferred-batch identity helper, so lookup and handoff assertions now rejoin
+  through the existing access-window-object versus coordination-contention
+  owner-selection route instead of open-coding the same
+  `summary.deferred_reason` checks
 - kept the cleanup inside step-5 regalloc ownership work without renaming the
   public `prepare` contract, changing backend routing, or introducing a new
   deferred summary mirror
 
 ## Suggested Next
-- inspect whether the remaining deferred-batch helper surface can collapse the
-  last direct `deferred_reason` identity checks used only for batch lookup and
-  handoff assertions into one explicit deferred-batch identity helper without
-  pushing coordination facts back onto objects or inventing a new summary layer
+- inspect whether the remaining deferred-batch helper surface still duplicates
+  any owner-selection joins that could collapse behind the same explicit
+  helper route without pushing coordination facts back onto objects or
+  inventing a new summary layer
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -83,10 +84,10 @@ while keeping the public shared contract named `prepare`
   in both regalloc and the prepare-entry contract test; if later cleanup trims
   more helper branching, keep that route explicit instead of spreading new
   `deferred_reason` switches back across multiple helpers
-- the remaining direct `deferred_reason` checks in the contract test now serve
-  deferred batch identity assertions and targeted batch lookup only; if a later
-  packet trims them, keep one explicit identity helper instead of re-scattering
-  the same string checks across assertions
+- deferred batch identity checks in the contract test now funnel through one
+  explicit identity helper; if a later packet trims more helper branching,
+  keep that route instead of re-scattering new `deferred_reason` checks across
+  lookups and assertions
 - the handoff lookup path now keys tests by `binding_batch_kind`; if a later
   packet trims more binding mirrors, keep batch kind as the consumer join key
   instead of rebuilding ready/deferred ownership mirrors in a new handoff

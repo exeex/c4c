@@ -199,21 +199,35 @@ RegallocDeferredBatchJoin join_regalloc_deferred_binding_batch(
   };
 }
 
-bool regalloc_deferred_batch_uses_access_window_owner(
+std::string_view regalloc_deferred_batch_identity(
+    const RegallocDeferredBatchJoin& join,
     const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
-  return summary.deferred_reason == "awaiting_access_window_observation";
+  if (summary.deferred_reason == "awaiting_access_window_observation") {
+    return "awaiting_access_window_observation";
+  }
+  if (join.contention != nullptr &&
+      join.contention->follow_up_category == "batched_single_point_coordination") {
+    return "batched_single_point_coordination";
+  }
+  return summary.deferred_reason;
+}
+
+bool regalloc_deferred_batch_uses_access_window_owner(
+    const RegallocDeferredBatchJoin& join,
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
+  return regalloc_deferred_batch_identity(join, summary) == "awaiting_access_window_observation";
 }
 
 const prepare::PreparedRegallocObject* regalloc_deferred_batch_owner_object(
     const RegallocDeferredBatchJoin& join,
     const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
-  return regalloc_deferred_batch_uses_access_window_owner(summary) ? join.object : nullptr;
+  return regalloc_deferred_batch_uses_access_window_owner(join, summary) ? join.object : nullptr;
 }
 
 const prepare::PreparedRegallocContentionSummary* regalloc_deferred_batch_owner_contention(
     const RegallocDeferredBatchJoin& join,
     const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
-  return regalloc_deferred_batch_uses_access_window_owner(summary) ? nullptr : join.contention;
+  return regalloc_deferred_batch_uses_access_window_owner(join, summary) ? nullptr : join.contention;
 }
 
 std::string_view regalloc_deferred_binding_batch_kind(
@@ -250,7 +264,8 @@ const prepare::PreparedRegallocDeferredBindingBatchSummary* find_regalloc_deferr
     const prepare::PreparedRegallocFunction& function,
     std::string_view deferred_reason) {
   for (const auto& summary : function.deferred_binding_batches) {
-    if (summary.deferred_reason == deferred_reason) {
+    const auto join = join_regalloc_deferred_binding_batch(function, summary);
+    if (regalloc_deferred_batch_identity(join, summary) == deferred_reason) {
       return &summary;
     }
   }
@@ -1756,8 +1771,10 @@ int main() {
   if (regalloc_deferred_batch_allocation_stage(*regalloc_function,
                                                *deferred_access_window_binding_batch) !=
           "opportunistic_single_point" ||
-      deferred_access_window_binding_batch->deferred_reason !=
-          "awaiting_access_window_observation" ||
+      regalloc_deferred_batch_identity(
+          join_regalloc_deferred_binding_batch(*regalloc_function,
+                                               *deferred_access_window_binding_batch),
+          *deferred_access_window_binding_batch) != "awaiting_access_window_observation" ||
       regalloc_deferred_batch_ordering_policy(*regalloc_function,
                                               *deferred_access_window_binding_batch) !=
           "defer_until_access_window_observed" ||
@@ -1777,8 +1794,10 @@ int main() {
   if (regalloc_deferred_batch_allocation_stage(*regalloc_function,
                                                *deferred_coordination_binding_batch) !=
           "opportunistic_single_point" ||
-      deferred_coordination_binding_batch->deferred_reason !=
-          "batched_single_point_coordination" ||
+      regalloc_deferred_batch_identity(
+          join_regalloc_deferred_binding_batch(*regalloc_function,
+                                               *deferred_coordination_binding_batch),
+          *deferred_coordination_binding_batch) != "batched_single_point_coordination" ||
       regalloc_deferred_batch_ordering_policy(*regalloc_function,
                                               *deferred_coordination_binding_batch) !=
           "defer_until_frontier_ready" ||
@@ -1806,13 +1825,17 @@ int main() {
     return fail(
         "semantic-BIR regalloc should keep ready frontier membership counts owned by binding_sequence instead of publishing a duplicate ready summary mirror");
   }
-  if (deferred_access_window_binding_batch->deferred_reason !=
-      "awaiting_access_window_observation") {
+  if (regalloc_deferred_batch_identity(
+          join_regalloc_deferred_binding_batch(*regalloc_function,
+                                               *deferred_access_window_binding_batch),
+          *deferred_access_window_binding_batch) != "awaiting_access_window_observation") {
     return fail(
         "semantic-BIR regalloc should keep deferred handoff reason ownership on deferred binding batches instead of publishing a duplicate handoff view");
   }
-  if (deferred_coordination_binding_batch->deferred_reason !=
-      "batched_single_point_coordination") {
+  if (regalloc_deferred_batch_identity(
+          join_regalloc_deferred_binding_batch(*regalloc_function,
+                                               *deferred_coordination_binding_batch),
+          *deferred_coordination_binding_batch) != "batched_single_point_coordination") {
     return fail(
         "semantic-BIR regalloc should keep deferred coordination handoff reason ownership on deferred binding batches instead of publishing a duplicate handoff view");
   }
