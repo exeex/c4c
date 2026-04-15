@@ -73,16 +73,9 @@ struct PreparedRegallocObject {
   std::string contract_kind;
   std::string allocation_kind;
   std::string priority_bucket;
-  std::string preferred_register_pool;
-  std::string spill_pressure_hint;
-  std::string reload_cost_hint;
-  std::string materialization_timing_hint;
   std::string spill_restore_locality_hint;
-  std::string register_eligibility_hint;
   std::string spill_sync_hint;
   std::string home_slot_stability_hint;
-  std::string eviction_friction_hint;
-  std::string assignment_readiness;
   std::string allocation_state_kind;
   std::string reservation_kind;
   std::string reservation_scope;
@@ -98,9 +91,6 @@ struct PreparedRegallocObject {
   std::string binding_handoff_allocation_stage;
   std::size_t binding_handoff_candidate_count = 0;
   std::size_t binding_order_index = 0;
-  std::size_t stable_binding_pass_order_index = 0;
-  std::size_t stable_binding_pass_first_binding_order_index = 0;
-  std::size_t stable_binding_pass_last_binding_order_index = 0;
   std::string binding_ordering_policy;
   std::string binding_access_window_prerequisite_category;
   std::string binding_access_window_prerequisite_state;
@@ -108,14 +98,6 @@ struct PreparedRegallocObject {
   std::string binding_home_slot_prerequisite_state;
   std::string binding_sync_handoff_prerequisite_category;
   std::string binding_sync_handoff_state;
-  std::string deferred_binding_batch_kind;
-  std::string deferred_binding_ordering_policy;
-  std::string deferred_access_window_prerequisite_category;
-  std::string deferred_access_window_prerequisite_state;
-  std::string deferred_home_slot_prerequisite_category;
-  std::string deferred_home_slot_prerequisite_state;
-  std::string deferred_sync_handoff_prerequisite_category;
-  std::string deferred_sync_handoff_state;
   std::string deferred_reason;
   std::string access_shape;
   std::string first_access_kind;
@@ -172,9 +154,6 @@ struct PreparedRegallocBindingDecision {
   std::string source_name;
   std::string allocation_stage;
   std::string binding_batch_kind;
-  std::size_t stable_binding_pass_order_index = 0;
-  std::size_t stable_binding_pass_first_binding_order_index = 0;
-  std::size_t stable_binding_pass_last_binding_order_index = 0;
   std::size_t binding_order_index = 0;
   std::string ordering_policy;
   std::string reservation_kind;
@@ -231,24 +210,6 @@ struct PreparedRegallocBindingHandoffSummary {
   std::size_t candidate_count = 0;
 };
 
-struct PreparedRegallocStableBindingPass {
-  std::size_t pass_order_index = 0;
-  std::string binding_batch_kind;
-  std::string binding_frontier_reason;
-  std::string allocation_stage;
-  std::string follow_up_category;
-  std::string ordering_policy;
-  std::string access_window_prerequisite_category;
-  std::string access_window_prerequisite_state;
-  std::string home_slot_prerequisite_category;
-  std::string home_slot_prerequisite_state;
-  std::string sync_handoff_prerequisite_category;
-  std::string sync_handoff_state;
-  std::size_t first_binding_order_index = 0;
-  std::size_t last_binding_order_index = 0;
-  std::size_t candidate_count = 0;
-};
-
 struct PreparedRegallocFunction {
   std::string function_name;
   std::vector<PreparedRegallocObject> objects;
@@ -259,7 +220,6 @@ struct PreparedRegallocFunction {
   std::vector<PreparedRegallocBindingBatchSummary> binding_batches;
   std::vector<PreparedRegallocDeferredBindingBatchSummary> deferred_binding_batches;
   std::vector<PreparedRegallocBindingHandoffSummary> binding_handoff_summary;
-  std::vector<PreparedRegallocStableBindingPass> stable_binding_passes;
   std::size_t register_candidate_count = 0;
   std::size_t fixed_stack_storage_count = 0;
   std::size_t binding_ready_count = 0;

@@ -183,17 +183,6 @@ const prepare::PreparedRegallocBindingHandoffSummary* find_regalloc_binding_hand
   return nullptr;
 }
 
-const prepare::PreparedRegallocStableBindingPass* find_regalloc_stable_binding_pass(
-    const prepare::PreparedRegallocFunction& function,
-    std::string_view binding_batch_kind) {
-  for (const auto& pass : function.stable_binding_passes) {
-    if (pass.binding_batch_kind == binding_batch_kind) {
-      return &pass;
-    }
-  }
-  return nullptr;
-}
-
 bir::Module make_prepare_contract_bir_module() {
   bir::Module module;
   bir::Function function;
@@ -545,20 +534,8 @@ int main() {
                      "target-neutral priority buckets for single-point, multi-point, and call-spanning value-storage objects")) {
     return fail("semantic-BIR prepare regalloc note should mention the target-neutral priority buckets");
   }
-  if (!contains_note(prepared_bir.notes, "regalloc", "preferred register pools")) {
-    return fail("semantic-BIR prepare regalloc note should mention target-neutral preferred register pools");
-  }
-  if (!contains_note(prepared_bir.notes, "regalloc", "reload-cost hints")) {
-    return fail("semantic-BIR prepare regalloc note should mention reload-cost hints");
-  }
-  if (!contains_note(prepared_bir.notes, "regalloc", "materialization-timing hints")) {
-    return fail("semantic-BIR prepare regalloc note should mention materialization-timing hints");
-  }
   if (!contains_note(prepared_bir.notes, "regalloc", "home-slot stability hints")) {
     return fail("semantic-BIR prepare regalloc note should mention home-slot stability hints");
-  }
-  if (!contains_note(prepared_bir.notes, "regalloc", "eviction-friction hints")) {
-    return fail("semantic-BIR prepare regalloc note should mention eviction-friction hints");
   }
   if (!contains_note(prepared_bir.notes, "regalloc", "allocation-sequence decisions")) {
     return fail("semantic-BIR prepare regalloc note should mention allocation-sequence decisions");
@@ -587,15 +564,8 @@ int main() {
   if (!contains_note(prepared_bir.notes, "regalloc", "downstream handoff summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention downstream handoff summaries");
   }
-  if (!contains_note(prepared_bir.notes, "regalloc", "per-binding stable-binding pass order/span cues")) {
-    return fail(
-        "semantic-BIR prepare regalloc note should mention per-binding stable-binding pass order/span cues");
-  }
   if (!contains_note(prepared_bir.notes, "regalloc", "compact access-shape summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention compact access-shape summaries");
-  }
-  if (!contains_note(prepared_bir.notes, "regalloc", "assignment-readiness cues")) {
-    return fail("semantic-BIR prepare regalloc note should mention assignment-readiness cues");
   }
   if (!contains_note(prepared_bir.notes, "regalloc", "first and last access-kind cues")) {
     return fail("semantic-BIR prepare regalloc note should mention first and last access-kind cues");
@@ -882,11 +852,6 @@ int main() {
           regalloc_function->binding_deferred_batch_count) {
     return fail("semantic-BIR regalloc should publish explicit deferred binding batches for the current binding-deferred frontier");
   }
-  if (regalloc_function->stable_binding_passes.size() !=
-      regalloc_function->binding_ready_batch_count) {
-    return fail(
-        "semantic-BIR regalloc should publish one ready-only stable-binding pass per ready binding batch");
-  }
   if (regalloc_function->allocation_sequence.size() != regalloc_function->register_candidate_count) {
     return fail("semantic-BIR regalloc should publish one allocation-sequence decision per register candidate");
   }
@@ -912,24 +877,6 @@ int main() {
   if (scratch_slot_regalloc->binding_frontier_kind != "binding_deferred" ||
       scratch_slot_regalloc->binding_frontier_reason != "awaiting_access_window_observation") {
     return fail("semantic-BIR regalloc should defer stable binding when prepared access-window facts are still missing");
-  }
-  if (scratch_slot_regalloc->deferred_binding_batch_kind != "deferred_access_window_binding_batch" ||
-      scratch_slot_regalloc->deferred_binding_ordering_policy !=
-          "defer_until_access_window_observed" ||
-      scratch_slot_regalloc->deferred_access_window_prerequisite_category !=
-          "unobserved_instruction_window" ||
-      scratch_slot_regalloc->deferred_access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_deferred" ||
-      scratch_slot_regalloc->deferred_home_slot_prerequisite_category !=
-          "home_slot_needs_future_analysis" ||
-      scratch_slot_regalloc->deferred_home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_deferred" ||
-      scratch_slot_regalloc->deferred_sync_handoff_prerequisite_category !=
-          "sync_policy_needs_future_analysis" ||
-      scratch_slot_regalloc->deferred_sync_handoff_state !=
-          "prepare_sync_handoff_deferred") {
-    return fail(
-        "semantic-BIR regalloc should project access-window-deferred binding batch prerequisites back onto each deferred prepared object");
   }
   if (scratch_slot_regalloc->binding_batch_kind != "deferred_access_window_binding_batch" ||
       scratch_slot_regalloc->binding_handoff_allocation_stage !=
@@ -958,35 +905,14 @@ int main() {
   if (local_slot_regalloc->priority_bucket != "single_point_value") {
     return fail("semantic-BIR regalloc should classify single-touch value storage into the single-point priority bucket");
   }
-  if (local_slot_regalloc->preferred_register_pool != "caller_saved_preferred") {
-    return fail("semantic-BIR regalloc should prefer caller-saved pools for non-call-spanning register candidates");
-  }
-  if (local_slot_regalloc->spill_pressure_hint != "single_use_spill_friendly") {
-    return fail("semantic-BIR regalloc should expose a single-use spill-pressure hint for single-read value storage");
-  }
-  if (local_slot_regalloc->reload_cost_hint != "single_use_reload_light") {
-    return fail("semantic-BIR regalloc should expose a light single-use reload-cost hint for single-read value storage");
-  }
-  if (local_slot_regalloc->materialization_timing_hint != "materialize_at_first_read") {
-    return fail("semantic-BIR regalloc should expose a first-read materialization-timing hint for single-read value storage");
-  }
   if (local_slot_regalloc->spill_restore_locality_hint != "single_instruction_reuse_window") {
     return fail("semantic-BIR regalloc should expose a single-instruction spill/restore locality hint for single-read value storage");
-  }
-  if (local_slot_regalloc->register_eligibility_hint != "register_eligible_single_read_cache") {
-    return fail("semantic-BIR regalloc should expose a single-read register-eligibility hint for single-read value storage");
   }
   if (local_slot_regalloc->spill_sync_hint != "restore_only_single_use") {
     return fail("semantic-BIR regalloc should expose a restore-only spill-sync hint for single-read value storage");
   }
   if (local_slot_regalloc->home_slot_stability_hint != "single_use_read_home_slot") {
     return fail("semantic-BIR regalloc should expose a single-use-read home-slot stability hint for single-read value storage");
-  }
-  if (local_slot_regalloc->eviction_friction_hint != "eviction_friction_single_read_light") {
-    return fail("semantic-BIR regalloc should expose a light single-read eviction-friction hint for single-read value storage");
-  }
-  if (local_slot_regalloc->assignment_readiness != "single_point_read_candidate") {
-    return fail("semantic-BIR regalloc should expose a single-point read readiness cue for single-read value storage");
   }
   if (local_slot_regalloc->access_shape != "direct_read_only") {
     return fail("semantic-BIR regalloc should summarize single-read value storage with a direct-read-only access shape");
@@ -1023,22 +949,6 @@ int main() {
       local_slot_regalloc->binding_frontier_reason != "batched_single_point_coordination") {
     return fail("semantic-BIR regalloc should keep observed single-point candidates deferred when coordination remains batched");
   }
-  if (local_slot_regalloc->deferred_binding_batch_kind != "deferred_coordination_binding_batch" ||
-      local_slot_regalloc->deferred_binding_ordering_policy != "defer_until_frontier_ready" ||
-      local_slot_regalloc->deferred_access_window_prerequisite_category !=
-          "mixed_sparse_windows" ||
-      local_slot_regalloc->deferred_access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
-      local_slot_regalloc->deferred_home_slot_prerequisite_category !=
-          "mixed_home_slot_modes" ||
-      local_slot_regalloc->deferred_home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_deferred" ||
-      local_slot_regalloc->deferred_sync_handoff_prerequisite_category !=
-          "read_write_coordination" ||
-      local_slot_regalloc->deferred_sync_handoff_state != "prepare_sync_handoff_ready") {
-    return fail(
-        "semantic-BIR regalloc should project coordination-deferred binding batch prerequisites back onto each deferred prepared object");
-  }
   if (local_slot_regalloc->binding_batch_kind != "deferred_coordination_binding_batch" ||
       local_slot_regalloc->binding_handoff_allocation_stage !=
           "opportunistic_single_point" ||
@@ -1065,35 +975,14 @@ int main() {
   if (carry_slot_regalloc->priority_bucket != "call_spanning_value") {
     return fail("semantic-BIR regalloc should classify call-spanning register candidates into the call-spanning priority bucket");
   }
-  if (carry_slot_regalloc->preferred_register_pool != "callee_saved_preferred") {
-    return fail("semantic-BIR regalloc should prefer callee-saved pools for call-spanning register candidates");
-  }
-  if (carry_slot_regalloc->spill_pressure_hint != "call_surviving_spill_costly") {
-    return fail("semantic-BIR regalloc should expose a call-surviving spill-pressure hint for call-crossing read/write value storage");
-  }
-  if (carry_slot_regalloc->reload_cost_hint != "call_spanning_reload_heavy") {
-    return fail("semantic-BIR regalloc should expose a heavy call-spanning reload-cost hint for call-crossing read/write value storage");
-  }
-  if (carry_slot_regalloc->materialization_timing_hint != "materialize_after_write_before_read") {
-    return fail("semantic-BIR regalloc should expose a write-then-read materialization-timing hint for call-crossing value storage");
-  }
   if (carry_slot_regalloc->spill_restore_locality_hint != "call_split_reuse_window") {
     return fail("semantic-BIR regalloc should expose a call-split spill/restore locality hint for call-crossing value storage");
-  }
-  if (carry_slot_regalloc->register_eligibility_hint != "register_eligible_call_preserved_window") {
-    return fail("semantic-BIR regalloc should expose a call-preserved register-eligibility hint for call-crossing value storage");
   }
   if (carry_slot_regalloc->spill_sync_hint != "bidirectional_sync_call_window") {
     return fail("semantic-BIR regalloc should expose a bidirectional call-window spill-sync hint for call-crossing value storage");
   }
   if (carry_slot_regalloc->home_slot_stability_hint != "call_preserved_read_write_home_slot") {
     return fail("semantic-BIR regalloc should expose a call-preserved read/write home-slot stability hint for call-crossing value storage");
-  }
-  if (carry_slot_regalloc->eviction_friction_hint != "eviction_friction_call_sync_heavy") {
-    return fail("semantic-BIR regalloc should expose a heavy call-sync eviction-friction hint for call-crossing read/write value storage");
-  }
-  if (carry_slot_regalloc->assignment_readiness != "call_spanning_read_write_candidate") {
-    return fail("semantic-BIR regalloc should expose a call-spanning read/write readiness cue for call-crossing value storage");
   }
   if (carry_slot_regalloc->access_shape != "direct_read_write") {
     return fail("semantic-BIR regalloc should summarize read/write local slots with a direct-read-write access shape");
@@ -1134,9 +1023,6 @@ int main() {
       carry_slot_regalloc->binding_handoff_allocation_stage != "stabilize_across_calls" ||
       carry_slot_regalloc->binding_handoff_candidate_count != 3 ||
       carry_slot_regalloc->binding_order_index != 0 ||
-      carry_slot_regalloc->stable_binding_pass_order_index != 0 ||
-      carry_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
-      carry_slot_regalloc->stable_binding_pass_last_binding_order_index != 2 ||
       carry_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
       carry_slot_regalloc->binding_access_window_prerequisite_category !=
           "overlapping_call_boundary_windows" ||
@@ -1150,7 +1036,7 @@ int main() {
           "mixed_sync_coordination" ||
       carry_slot_regalloc->binding_sync_handoff_state != "prepare_sync_handoff_ready") {
     return fail(
-        "semantic-BIR regalloc should project call-boundary stable-binding pass and prerequisite cues back onto each ready prepared object");
+        "semantic-BIR regalloc should project call-boundary handoff and prerequisite cues back onto each ready prepared object");
   }
   const auto* window_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "window.slot");
   if (window_slot_regalloc == nullptr || window_slot_regalloc->contract_kind != "value_storage" ||
@@ -1160,35 +1046,14 @@ int main() {
   if (window_slot_regalloc->priority_bucket != "multi_point_value") {
     return fail("semantic-BIR regalloc should classify non-call-spanning multi-access value storage into the multi-point priority bucket");
   }
-  if (window_slot_regalloc->preferred_register_pool != "caller_saved_preferred") {
-    return fail("semantic-BIR regalloc should prefer caller-saved pools for non-call-spanning multi-point value storage");
-  }
-  if (window_slot_regalloc->spill_pressure_hint != "repeat_use_spill_costly") {
-    return fail("semantic-BIR regalloc should expose a repeat-use spill-pressure hint for non-call-spanning multi-point value storage");
-  }
-  if (window_slot_regalloc->reload_cost_hint != "multi_point_reload_moderate") {
-    return fail("semantic-BIR regalloc should expose a moderate multi-point reload-cost hint for non-call-spanning read/write value storage");
-  }
-  if (window_slot_regalloc->materialization_timing_hint != "materialize_after_write_before_read") {
-    return fail("semantic-BIR regalloc should expose a write-then-read materialization-timing hint for non-call-spanning read/write value storage");
-  }
   if (window_slot_regalloc->spill_restore_locality_hint != "adjacent_instruction_reuse_window") {
     return fail("semantic-BIR regalloc should expose an adjacent-instruction spill/restore locality hint for non-call-spanning read/write value storage");
-  }
-  if (window_slot_regalloc->register_eligibility_hint != "register_eligible_tight_reuse_window") {
-    return fail("semantic-BIR regalloc should expose a tight-reuse register-eligibility hint for non-call-spanning read/write value storage");
   }
   if (window_slot_regalloc->spill_sync_hint != "bidirectional_sync_local_window") {
     return fail("semantic-BIR regalloc should expose a bidirectional local-window spill-sync hint for non-call-spanning read/write value storage");
   }
   if (window_slot_regalloc->home_slot_stability_hint != "tight_read_write_home_slot") {
     return fail("semantic-BIR regalloc should expose a tight read/write home-slot stability hint for non-call-spanning read/write value storage");
-  }
-  if (window_slot_regalloc->eviction_friction_hint != "eviction_friction_tight_reuse_balanced") {
-    return fail("semantic-BIR regalloc should expose a balanced tight-reuse eviction-friction hint for non-call-spanning read/write value storage");
-  }
-  if (window_slot_regalloc->assignment_readiness != "multi_point_read_write_candidate") {
-    return fail("semantic-BIR regalloc should expose a multi-point read/write readiness cue for non-call-spanning value storage");
   }
   if (window_slot_regalloc->access_shape != "direct_read_write") {
     return fail("semantic-BIR regalloc should summarize non-call-spanning multi-point value storage with a direct-read-write access shape");
@@ -1229,9 +1094,6 @@ int main() {
       window_slot_regalloc->binding_handoff_allocation_stage != "stabilize_local_reuse" ||
       window_slot_regalloc->binding_handoff_candidate_count != 3 ||
       window_slot_regalloc->binding_order_index != 0 ||
-      window_slot_regalloc->stable_binding_pass_order_index != 1 ||
-      window_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
-      window_slot_regalloc->stable_binding_pass_last_binding_order_index != 2 ||
       window_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
       window_slot_regalloc->binding_access_window_prerequisite_category !=
           "adjacent_local_windows" ||
@@ -1245,7 +1107,7 @@ int main() {
           "mixed_sync_coordination" ||
       window_slot_regalloc->binding_sync_handoff_state != "prepare_sync_handoff_ready") {
     return fail(
-        "semantic-BIR regalloc should project local-reuse stable-binding pass and prerequisite cues back onto each ready prepared object");
+        "semantic-BIR regalloc should project local-reuse handoff and prerequisite cues back onto each ready prepared object");
   }
   const auto* readonly_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "readonly.slot");
@@ -1256,35 +1118,14 @@ int main() {
   if (readonly_slot_regalloc->priority_bucket != "multi_point_value") {
     return fail("semantic-BIR regalloc should classify non-call-spanning multi-read value storage into the multi-point priority bucket");
   }
-  if (readonly_slot_regalloc->preferred_register_pool != "caller_saved_preferred") {
-    return fail("semantic-BIR regalloc should prefer caller-saved pools for non-call-spanning read-only value storage");
-  }
-  if (readonly_slot_regalloc->spill_pressure_hint != "repeat_use_spill_costly") {
-    return fail("semantic-BIR regalloc should expose a repeat-use spill-pressure hint for non-call-spanning multi-read value storage");
-  }
-  if (readonly_slot_regalloc->reload_cost_hint != "reuse_window_reload_amortized") {
-    return fail("semantic-BIR regalloc should expose an amortized reuse-window reload-cost hint for non-call-spanning multi-read value storage");
-  }
-  if (readonly_slot_regalloc->materialization_timing_hint != "materialize_at_first_read") {
-    return fail("semantic-BIR regalloc should expose a first-read materialization-timing hint for non-call-spanning multi-read value storage");
-  }
   if (readonly_slot_regalloc->spill_restore_locality_hint != "adjacent_instruction_reuse_window") {
     return fail("semantic-BIR regalloc should expose an adjacent-instruction spill/restore locality hint for non-call-spanning multi-read value storage");
-  }
-  if (readonly_slot_regalloc->register_eligibility_hint != "register_eligible_local_read_cache") {
-    return fail("semantic-BIR regalloc should expose a local-read-cache register-eligibility hint for non-call-spanning multi-read value storage");
   }
   if (readonly_slot_regalloc->spill_sync_hint != "restore_only_reuse_window") {
     return fail("semantic-BIR regalloc should expose a restore-only reuse-window spill-sync hint for non-call-spanning multi-read value storage");
   }
   if (readonly_slot_regalloc->home_slot_stability_hint != "adjacent_read_home_slot") {
     return fail("semantic-BIR regalloc should expose an adjacent-read home-slot stability hint for non-call-spanning multi-read value storage");
-  }
-  if (readonly_slot_regalloc->eviction_friction_hint != "eviction_friction_local_read_buffered") {
-    return fail("semantic-BIR regalloc should expose a buffered local-read eviction-friction hint for non-call-spanning multi-read value storage");
-  }
-  if (readonly_slot_regalloc->assignment_readiness != "multi_point_read_candidate") {
-    return fail("semantic-BIR regalloc should expose a multi-point read readiness cue for non-call-spanning read-only value storage");
   }
   if (readonly_slot_regalloc->access_shape != "direct_read_only") {
     return fail("semantic-BIR regalloc should summarize non-call-spanning multi-point read-only value storage with a direct-read-only access shape");
@@ -1315,9 +1156,6 @@ int main() {
       readonly_slot_regalloc->binding_handoff_allocation_stage != "stabilize_local_reuse" ||
       readonly_slot_regalloc->binding_handoff_candidate_count != 3 ||
       readonly_slot_regalloc->binding_order_index != 1 ||
-      readonly_slot_regalloc->stable_binding_pass_order_index != 1 ||
-      readonly_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
-      readonly_slot_regalloc->stable_binding_pass_last_binding_order_index != 2 ||
       readonly_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
       readonly_slot_regalloc->binding_access_window_prerequisite_category !=
           "adjacent_local_windows" ||
@@ -1332,7 +1170,7 @@ int main() {
       readonly_slot_regalloc->binding_sync_handoff_state !=
           "prepare_sync_handoff_ready") {
     return fail(
-        "semantic-BIR regalloc should project local-reuse stable-binding pass and prerequisite cues onto non-call-spanning multi-read ready objects");
+        "semantic-BIR regalloc should project local-reuse handoff and prerequisite cues onto non-call-spanning multi-read ready objects");
   }
   const auto* callread_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "callread.slot");
@@ -1343,32 +1181,11 @@ int main() {
   if (callread_slot_regalloc->priority_bucket != "call_spanning_value") {
     return fail("semantic-BIR regalloc should classify call-spanning read-only value storage into the call-spanning priority bucket");
   }
-  if (callread_slot_regalloc->preferred_register_pool != "callee_saved_preferred") {
-    return fail("semantic-BIR regalloc should prefer callee-saved pools for call-spanning read-only value storage");
-  }
-  if (callread_slot_regalloc->spill_pressure_hint != "call_surviving_spill_costly") {
-    return fail("semantic-BIR regalloc should expose a call-surviving spill-pressure hint for call-spanning read-only value storage");
-  }
-  if (callread_slot_regalloc->reload_cost_hint != "call_spanning_reload_heavy") {
-    return fail("semantic-BIR regalloc should expose a heavy call-spanning reload-cost hint for call-spanning read-only value storage");
-  }
-  if (callread_slot_regalloc->materialization_timing_hint != "materialize_at_first_read") {
-    return fail("semantic-BIR regalloc should expose a first-read materialization-timing hint for call-spanning read-only value storage");
-  }
-  if (callread_slot_regalloc->register_eligibility_hint != "register_eligible_call_preserved_window") {
-    return fail("semantic-BIR regalloc should expose a call-preserved register-eligibility hint for call-spanning read-only value storage");
-  }
   if (callread_slot_regalloc->spill_sync_hint != "restore_only_call_window") {
     return fail("semantic-BIR regalloc should expose a restore-only call-window spill-sync hint for call-spanning read-only value storage");
   }
   if (callread_slot_regalloc->home_slot_stability_hint != "call_preserved_read_home_slot") {
     return fail("semantic-BIR regalloc should expose a call-preserved read home-slot stability hint for call-spanning read-only value storage");
-  }
-  if (callread_slot_regalloc->eviction_friction_hint != "eviction_friction_call_reload_guarded") {
-    return fail("semantic-BIR regalloc should expose a guarded call-reload eviction-friction hint for call-spanning read-only value storage");
-  }
-  if (callread_slot_regalloc->assignment_readiness != "call_spanning_read_candidate") {
-    return fail("semantic-BIR regalloc should expose a call-spanning read readiness cue for call-crossing read-only value storage");
   }
   if (callread_slot_regalloc->access_shape != "direct_read_only") {
     return fail("semantic-BIR regalloc should summarize call-spanning read-only value storage with a direct-read-only access shape");
@@ -1399,9 +1216,6 @@ int main() {
       callread_slot_regalloc->binding_handoff_allocation_stage != "stabilize_across_calls" ||
       callread_slot_regalloc->binding_handoff_candidate_count != 3 ||
       callread_slot_regalloc->binding_order_index != 1 ||
-      callread_slot_regalloc->stable_binding_pass_order_index != 0 ||
-      callread_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
-      callread_slot_regalloc->stable_binding_pass_last_binding_order_index != 2 ||
       callread_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
       callread_slot_regalloc->binding_access_window_prerequisite_category !=
           "overlapping_call_boundary_windows" ||
@@ -1416,7 +1230,7 @@ int main() {
       callread_slot_regalloc->binding_sync_handoff_state !=
           "prepare_sync_handoff_ready") {
     return fail(
-        "semantic-BIR regalloc should project call-boundary stable-binding pass and prerequisite cues onto call-spanning read-only ready objects");
+        "semantic-BIR regalloc should project call-boundary handoff and prerequisite cues onto call-spanning read-only ready objects");
   }
   const auto* callwrite_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "callwrite.slot");
@@ -1427,35 +1241,14 @@ int main() {
   if (callwrite_slot_regalloc->priority_bucket != "call_spanning_value") {
     return fail("semantic-BIR regalloc should classify call-spanning write-only value storage into the call-spanning priority bucket");
   }
-  if (callwrite_slot_regalloc->preferred_register_pool != "callee_saved_preferred") {
-    return fail("semantic-BIR regalloc should prefer callee-saved pools for call-spanning write-only value storage");
-  }
-  if (callwrite_slot_regalloc->spill_pressure_hint != "write_only_spill_friendly") {
-    return fail("semantic-BIR regalloc should expose a write-only spill-pressure hint for call-spanning write-only value storage");
-  }
-  if (callwrite_slot_regalloc->reload_cost_hint != "reload_not_needed") {
-    return fail("semantic-BIR regalloc should expose a reload-free hint for call-spanning write-only value storage");
-  }
-  if (callwrite_slot_regalloc->materialization_timing_hint != "materialize_on_write_path") {
-    return fail("semantic-BIR regalloc should expose a write-path materialization-timing hint for call-spanning write-only value storage");
-  }
   if (callwrite_slot_regalloc->spill_restore_locality_hint != "call_split_reuse_window") {
     return fail("semantic-BIR regalloc should expose a call-split spill/restore locality hint for call-spanning write-only value storage");
-  }
-  if (callwrite_slot_regalloc->register_eligibility_hint != "register_eligible_call_writeback_window") {
-    return fail("semantic-BIR regalloc should expose a call-writeback register-eligibility hint for call-spanning write-only value storage");
   }
   if (callwrite_slot_regalloc->spill_sync_hint != "writeback_only_call_window") {
     return fail("semantic-BIR regalloc should expose a writeback-only call-window spill-sync hint for call-spanning write-only value storage");
   }
   if (callwrite_slot_regalloc->home_slot_stability_hint != "call_preserved_write_home_slot") {
     return fail("semantic-BIR regalloc should expose a call-preserved write home-slot stability hint for call-spanning write-only value storage");
-  }
-  if (callwrite_slot_regalloc->eviction_friction_hint != "eviction_friction_call_writeback_guarded") {
-    return fail("semantic-BIR regalloc should expose a guarded call-writeback eviction-friction hint for call-spanning write-only value storage");
-  }
-  if (callwrite_slot_regalloc->assignment_readiness != "call_spanning_write_candidate") {
-    return fail("semantic-BIR regalloc should expose a call-spanning write readiness cue for call-crossing write-only value storage");
   }
   if (callwrite_slot_regalloc->access_shape != "direct_write_only") {
     return fail("semantic-BIR regalloc should summarize call-spanning write-only value storage with a direct-write-only access shape");
@@ -1486,9 +1279,6 @@ int main() {
       callwrite_slot_regalloc->binding_handoff_allocation_stage != "stabilize_across_calls" ||
       callwrite_slot_regalloc->binding_handoff_candidate_count != 3 ||
       callwrite_slot_regalloc->binding_order_index != 2 ||
-      callwrite_slot_regalloc->stable_binding_pass_order_index != 0 ||
-      callwrite_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
-      callwrite_slot_regalloc->stable_binding_pass_last_binding_order_index != 2 ||
       callwrite_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
       callwrite_slot_regalloc->binding_access_window_prerequisite_category !=
           "overlapping_call_boundary_windows" ||
@@ -1503,7 +1293,7 @@ int main() {
       callwrite_slot_regalloc->binding_sync_handoff_state !=
           "prepare_sync_handoff_ready") {
     return fail(
-        "semantic-BIR regalloc should project call-boundary stable-binding pass and prerequisite cues onto call-spanning write-only ready objects");
+        "semantic-BIR regalloc should project call-boundary handoff and prerequisite cues onto call-spanning write-only ready objects");
   }
   const auto* multiwrite_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "multiwrite.slot");
@@ -1514,35 +1304,14 @@ int main() {
   if (multiwrite_slot_regalloc->priority_bucket != "multi_point_value") {
     return fail("semantic-BIR regalloc should classify non-call-spanning multi-write value storage into the multi-point priority bucket");
   }
-  if (multiwrite_slot_regalloc->preferred_register_pool != "caller_saved_preferred") {
-    return fail("semantic-BIR regalloc should prefer caller-saved pools for non-call-spanning write-only value storage");
-  }
-  if (multiwrite_slot_regalloc->spill_pressure_hint != "write_only_spill_friendly") {
-    return fail("semantic-BIR regalloc should expose a write-only spill-pressure hint for non-call-spanning multi-write value storage");
-  }
-  if (multiwrite_slot_regalloc->reload_cost_hint != "reload_not_needed") {
-    return fail("semantic-BIR regalloc should expose a reload-free hint for non-call-spanning multi-write value storage");
-  }
-  if (multiwrite_slot_regalloc->materialization_timing_hint != "materialize_on_write_path") {
-    return fail("semantic-BIR regalloc should expose a write-path materialization-timing hint for non-call-spanning multi-write value storage");
-  }
   if (multiwrite_slot_regalloc->spill_restore_locality_hint != "adjacent_instruction_reuse_window") {
     return fail("semantic-BIR regalloc should expose an adjacent-instruction spill/restore locality hint for non-call-spanning multi-write value storage");
-  }
-  if (multiwrite_slot_regalloc->register_eligibility_hint != "register_eligible_local_write_buffer") {
-    return fail("semantic-BIR regalloc should expose a local-write-buffer register-eligibility hint for non-call-spanning multi-write value storage");
   }
   if (multiwrite_slot_regalloc->spill_sync_hint != "writeback_only_redefinition_window") {
     return fail("semantic-BIR regalloc should expose a repeated-writeback spill-sync hint for non-call-spanning multi-write value storage");
   }
   if (multiwrite_slot_regalloc->home_slot_stability_hint != "adjacent_write_home_slot") {
     return fail("semantic-BIR regalloc should expose an adjacent-write home-slot stability hint for non-call-spanning multi-write value storage");
-  }
-  if (multiwrite_slot_regalloc->eviction_friction_hint != "eviction_friction_local_write_buffered") {
-    return fail("semantic-BIR regalloc should expose a buffered local-write eviction-friction hint for non-call-spanning multi-write value storage");
-  }
-  if (multiwrite_slot_regalloc->assignment_readiness != "multi_point_write_candidate") {
-    return fail("semantic-BIR regalloc should expose a multi-point write readiness cue for non-call-spanning write-only value storage");
   }
   if (multiwrite_slot_regalloc->access_shape != "direct_write_only") {
     return fail("semantic-BIR regalloc should summarize non-call-spanning multi-point write-only value storage with a direct-write-only access shape");
@@ -1573,9 +1342,6 @@ int main() {
       multiwrite_slot_regalloc->binding_handoff_allocation_stage != "stabilize_local_reuse" ||
       multiwrite_slot_regalloc->binding_handoff_candidate_count != 3 ||
       multiwrite_slot_regalloc->binding_order_index != 2 ||
-      multiwrite_slot_regalloc->stable_binding_pass_order_index != 1 ||
-      multiwrite_slot_regalloc->stable_binding_pass_first_binding_order_index != 0 ||
-      multiwrite_slot_regalloc->stable_binding_pass_last_binding_order_index != 2 ||
       multiwrite_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
       multiwrite_slot_regalloc->binding_access_window_prerequisite_category !=
           "adjacent_local_windows" ||
@@ -1590,30 +1356,15 @@ int main() {
       multiwrite_slot_regalloc->binding_sync_handoff_state !=
           "prepare_sync_handoff_ready") {
     return fail(
-        "semantic-BIR regalloc should project local-reuse stable-binding pass and prerequisite cues onto non-call-spanning multi-write ready objects");
+        "semantic-BIR regalloc should project local-reuse handoff and prerequisite cues onto non-call-spanning multi-write ready objects");
   }
   const auto* writeonly_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "writeonly.slot");
   if (writeonly_regalloc == nullptr || writeonly_regalloc->contract_kind != "value_storage" ||
       writeonly_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should keep write-only local slots in the value-storage register-candidate contract");
   }
-  if (writeonly_regalloc->preferred_register_pool != "caller_saved_preferred") {
-    return fail("semantic-BIR regalloc should prefer caller-saved pools for non-call-spanning single-point write-only value storage");
-  }
-  if (writeonly_regalloc->spill_pressure_hint != "write_only_spill_friendly") {
-    return fail("semantic-BIR regalloc should expose a write-only spill-pressure hint for single-point write-only local slots");
-  }
-  if (writeonly_regalloc->reload_cost_hint != "reload_not_needed") {
-    return fail("semantic-BIR regalloc should expose a reload-free hint for single-point write-only local slots");
-  }
-  if (writeonly_regalloc->materialization_timing_hint != "materialize_on_write_path") {
-    return fail("semantic-BIR regalloc should expose a write-path materialization-timing hint for single-point write-only local slots");
-  }
   if (writeonly_regalloc->spill_restore_locality_hint != "single_instruction_reuse_window") {
     return fail("semantic-BIR regalloc should expose a single-instruction spill/restore locality hint for single-point write-only local slots");
-  }
-  if (writeonly_regalloc->register_eligibility_hint != "register_eligible_single_write_buffer") {
-    return fail("semantic-BIR regalloc should expose a single-write-buffer register-eligibility hint for single-point write-only local slots");
   }
   if (writeonly_regalloc->spill_sync_hint != "writeback_only_single_definition") {
     return fail("semantic-BIR regalloc should expose a single-definition writeback-only spill-sync hint for single-point write-only local slots");
@@ -1621,14 +1372,8 @@ int main() {
   if (writeonly_regalloc->home_slot_stability_hint != "single_definition_write_home_slot") {
     return fail("semantic-BIR regalloc should expose a single-definition-write home-slot stability hint for single-point write-only local slots");
   }
-  if (writeonly_regalloc->eviction_friction_hint != "eviction_friction_single_write_light") {
-    return fail("semantic-BIR regalloc should expose a light single-write eviction-friction hint for single-point write-only local slots");
-  }
   if (writeonly_regalloc->last_access_kind != "direct_write") {
     return fail("semantic-BIR regalloc should publish direct-write last-access cues");
-  }
-  if (writeonly_regalloc->assignment_readiness != "single_point_write_candidate") {
-    return fail("semantic-BIR regalloc should expose a single-point write readiness cue for write-only local slots");
   }
   if (writeonly_regalloc->access_shape != "direct_write_only") {
     return fail("semantic-BIR regalloc should summarize write-only local slots with a direct-write-only access shape");
@@ -1646,35 +1391,14 @@ int main() {
   if (address_taken_regalloc->priority_bucket != "non_value_storage") {
     return fail("semantic-BIR regalloc should keep non-value prepared objects out of value-storage priority buckets");
   }
-  if (address_taken_regalloc->preferred_register_pool != "fixed_stack_only") {
-    return fail("semantic-BIR regalloc should keep address-exposed storage out of register-pool preference contracts");
-  }
-  if (address_taken_regalloc->spill_pressure_hint != "fixed_stack_only") {
-    return fail("semantic-BIR regalloc should keep address-exposed storage out of spill-pressure register-candidate hints");
-  }
-  if (address_taken_regalloc->reload_cost_hint != "stack_address_exposed") {
-    return fail("semantic-BIR regalloc should expose an address-exposed fixed-stack reload-cost hint");
-  }
-  if (address_taken_regalloc->materialization_timing_hint != "materialize_via_address_exposure") {
-    return fail("semantic-BIR regalloc should expose an address-exposed materialization-timing hint");
-  }
   if (address_taken_regalloc->spill_restore_locality_hint != "fixed_stack_address_anchor") {
     return fail("semantic-BIR regalloc should expose an address-anchored spill/restore locality hint for fixed-stack storage");
-  }
-  if (address_taken_regalloc->register_eligibility_hint != "register_ineligible_address_exposed") {
-    return fail("semantic-BIR regalloc should expose an address-exposed register-ineligibility hint for fixed-stack storage");
   }
   if (address_taken_regalloc->spill_sync_hint != "fixed_stack_memory_authoritative") {
     return fail("semantic-BIR regalloc should expose a memory-authoritative spill-sync hint for address-exposed fixed-stack storage");
   }
   if (address_taken_regalloc->home_slot_stability_hint != "memory_anchor_home_slot") {
     return fail("semantic-BIR regalloc should expose a memory-anchor home-slot stability hint for address-exposed fixed-stack storage");
-  }
-  if (address_taken_regalloc->eviction_friction_hint != "eviction_fixed_stack_memory_anchor") {
-    return fail("semantic-BIR regalloc should expose a memory-anchored eviction-friction hint for address-exposed fixed-stack storage");
-  }
-  if (address_taken_regalloc->assignment_readiness != "fixed_stack_only") {
-    return fail("semantic-BIR regalloc should keep address-exposed storage in the fixed-stack readiness contract");
   }
   if (address_taken_regalloc->access_shape != "addressed_access_only") {
     return fail("semantic-BIR regalloc should summarize addressed storage with an addressed-access-only shape");
@@ -1718,35 +1442,14 @@ int main() {
       call_result_regalloc->call_arg_exposure_count != 1) {
     return fail("semantic-BIR regalloc should publish call-argument exposure counts for call-result storage");
   }
-  if (call_result_regalloc->preferred_register_pool != "fixed_stack_only") {
-    return fail("semantic-BIR regalloc should keep call-result storage out of register-pool preference contracts");
-  }
-  if (call_result_regalloc->spill_pressure_hint != "fixed_stack_only") {
-    return fail("semantic-BIR regalloc should keep call-result storage out of spill-pressure register-candidate hints");
-  }
-  if (call_result_regalloc->reload_cost_hint != "stack_call_exposed") {
-    return fail("semantic-BIR regalloc should expose a call-exposed fixed-stack reload-cost hint");
-  }
-  if (call_result_regalloc->materialization_timing_hint != "materialize_for_call_exposure") {
-    return fail("semantic-BIR regalloc should expose a call-exposed materialization-timing hint");
-  }
   if (call_result_regalloc->spill_restore_locality_hint != "fixed_stack_call_boundary_anchor") {
     return fail("semantic-BIR regalloc should expose a call-boundary spill/restore locality hint for call-exposed fixed-stack storage");
-  }
-  if (call_result_regalloc->register_eligibility_hint != "register_ineligible_call_exposed") {
-    return fail("semantic-BIR regalloc should expose a call-exposed register-ineligibility hint for fixed-stack storage");
   }
   if (call_result_regalloc->spill_sync_hint != "fixed_stack_call_boundary_authoritative") {
     return fail("semantic-BIR regalloc should expose a call-boundary-authoritative spill-sync hint for call-exposed fixed-stack storage");
   }
   if (call_result_regalloc->home_slot_stability_hint != "call_boundary_anchor_home_slot") {
     return fail("semantic-BIR regalloc should expose a call-boundary-anchor home-slot stability hint for call-exposed fixed-stack storage");
-  }
-  if (call_result_regalloc->eviction_friction_hint != "eviction_fixed_stack_call_anchor") {
-    return fail("semantic-BIR regalloc should expose a call-anchored eviction-friction hint for call-exposed fixed-stack storage");
-  }
-  if (call_result_regalloc->assignment_readiness != "fixed_stack_only") {
-    return fail("semantic-BIR regalloc should keep call-result storage in the fixed-stack readiness contract");
   }
   if (call_result_regalloc->access_shape != "call_argument_exposure_only") {
     return fail("semantic-BIR regalloc should summarize call-result storage with a call-exposure-only shape");
@@ -1830,10 +1533,6 @@ int main() {
       find_regalloc_binding_handoff_summary(*regalloc_function,
                                             "binding_deferred",
                                             "deferred_coordination_binding_batch");
-  const auto* call_boundary_stable_binding_pass =
-      find_regalloc_stable_binding_pass(*regalloc_function, "call_boundary_binding_batch");
-  const auto* local_reuse_stable_binding_pass =
-      find_regalloc_stable_binding_pass(*regalloc_function, "local_reuse_binding_batch");
   if (carry_sequence == nullptr || callread_sequence == nullptr || callwrite_sequence == nullptr ||
       window_sequence == nullptr || readonly_sequence == nullptr || multiwrite_sequence == nullptr ||
       local_slot_sequence == nullptr || writeonly_sequence == nullptr) {
@@ -1862,11 +1561,6 @@ int main() {
       deferred_coordination_handoff_summary == nullptr) {
     return fail(
         "semantic-BIR regalloc should publish unified downstream handoff summaries across ready and deferred binding frontiers");
-  }
-  if (call_boundary_stable_binding_pass == nullptr ||
-      local_reuse_stable_binding_pass == nullptr) {
-    return fail(
-        "semantic-BIR regalloc should publish ready-only stable-binding pass summaries for the current binding-ready frontier");
   }
   if (find_regalloc_binding_decision(*regalloc_function, "local_slot", "flag.slot") != nullptr ||
       find_regalloc_binding_decision(*regalloc_function, "local_slot", "writeonly.slot") != nullptr) {
@@ -2018,15 +1712,6 @@ int main() {
       carry_binding->binding_batch_kind != "call_boundary_binding_batch" ||
       callread_binding->binding_batch_kind != "call_boundary_binding_batch" ||
       callwrite_binding->binding_batch_kind != "call_boundary_binding_batch" ||
-      carry_binding->stable_binding_pass_order_index != 0 ||
-      callread_binding->stable_binding_pass_order_index != 0 ||
-      callwrite_binding->stable_binding_pass_order_index != 0 ||
-      carry_binding->stable_binding_pass_first_binding_order_index != 0 ||
-      callread_binding->stable_binding_pass_first_binding_order_index != 0 ||
-      callwrite_binding->stable_binding_pass_first_binding_order_index != 0 ||
-      carry_binding->stable_binding_pass_last_binding_order_index != 2 ||
-      callread_binding->stable_binding_pass_last_binding_order_index != 2 ||
-      callwrite_binding->stable_binding_pass_last_binding_order_index != 2 ||
       carry_binding->binding_order_index != 0 || callread_binding->binding_order_index != 1 ||
       callwrite_binding->binding_order_index != 2 ||
       carry_binding->ordering_policy != "preserve_allocation_sequence" ||
@@ -2051,7 +1736,7 @@ int main() {
       callread_binding->sync_handoff_state != "prepare_sync_handoff_ready" ||
       callwrite_binding->sync_handoff_state != "prepare_sync_handoff_ready") {
     return fail(
-        "semantic-BIR regalloc should turn binding-ready across-call candidates into one ordered call-boundary batch with per-binding stable-pass and sequencing cues");
+        "semantic-BIR regalloc should turn binding-ready across-call candidates into one ordered call-boundary batch with per-binding sequencing cues");
   }
   if (window_binding->allocation_stage != "stabilize_local_reuse" ||
       readonly_binding->allocation_stage != "stabilize_local_reuse" ||
@@ -2059,15 +1744,6 @@ int main() {
       window_binding->binding_batch_kind != "local_reuse_binding_batch" ||
       readonly_binding->binding_batch_kind != "local_reuse_binding_batch" ||
       multiwrite_binding->binding_batch_kind != "local_reuse_binding_batch" ||
-      window_binding->stable_binding_pass_order_index != 1 ||
-      readonly_binding->stable_binding_pass_order_index != 1 ||
-      multiwrite_binding->stable_binding_pass_order_index != 1 ||
-      window_binding->stable_binding_pass_first_binding_order_index != 0 ||
-      readonly_binding->stable_binding_pass_first_binding_order_index != 0 ||
-      multiwrite_binding->stable_binding_pass_first_binding_order_index != 0 ||
-      window_binding->stable_binding_pass_last_binding_order_index != 2 ||
-      readonly_binding->stable_binding_pass_last_binding_order_index != 2 ||
-      multiwrite_binding->stable_binding_pass_last_binding_order_index != 2 ||
       window_binding->binding_order_index != 0 || readonly_binding->binding_order_index != 1 ||
       multiwrite_binding->binding_order_index != 2 ||
       window_binding->ordering_policy != "preserve_allocation_sequence" ||
@@ -2092,7 +1768,7 @@ int main() {
       readonly_binding->sync_handoff_state != "prepare_sync_handoff_ready" ||
       multiwrite_binding->sync_handoff_state != "prepare_sync_handoff_ready") {
     return fail(
-        "semantic-BIR regalloc should turn binding-ready local-reuse candidates into one ordered local-reuse batch with per-binding stable-pass and sequencing cues");
+        "semantic-BIR regalloc should turn binding-ready local-reuse candidates into one ordered local-reuse batch with per-binding sequencing cues");
   }
   if (call_boundary_binding_batch->allocation_stage != "stabilize_across_calls" ||
       call_boundary_binding_batch->follow_up_category != "call_boundary_preservation" ||
@@ -2207,58 +1883,6 @@ int main() {
       local_reuse_handoff_summary->candidate_count != 3) {
     return fail(
         "semantic-BIR regalloc should collapse ready local-reuse bindings into one downstream handoff summary");
-  }
-  if (call_boundary_stable_binding_pass->pass_order_index != 0 ||
-      call_boundary_stable_binding_pass->binding_frontier_reason !=
-          "call_boundary_preservation" ||
-      call_boundary_stable_binding_pass->allocation_stage != "stabilize_across_calls" ||
-      call_boundary_stable_binding_pass->follow_up_category !=
-          "call_boundary_preservation" ||
-      call_boundary_stable_binding_pass->ordering_policy !=
-          "preserve_allocation_sequence" ||
-      call_boundary_stable_binding_pass->access_window_prerequisite_category !=
-          "overlapping_call_boundary_windows" ||
-      call_boundary_stable_binding_pass->access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
-      call_boundary_stable_binding_pass->home_slot_prerequisite_category !=
-          "stable_home_slot_required" ||
-      call_boundary_stable_binding_pass->home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_satisfied" ||
-      call_boundary_stable_binding_pass->sync_handoff_prerequisite_category !=
-          "mixed_sync_coordination" ||
-      call_boundary_stable_binding_pass->sync_handoff_state !=
-          "prepare_sync_handoff_ready" ||
-      call_boundary_stable_binding_pass->first_binding_order_index != 0 ||
-      call_boundary_stable_binding_pass->last_binding_order_index != 2 ||
-      call_boundary_stable_binding_pass->candidate_count != 3) {
-    return fail(
-        "semantic-BIR regalloc should turn ready call-boundary handoff summaries into one concrete stable-binding pass");
-  }
-  if (local_reuse_stable_binding_pass->pass_order_index != 1 ||
-      local_reuse_stable_binding_pass->binding_frontier_reason !=
-          "sequenced_local_reuse_coordination" ||
-      local_reuse_stable_binding_pass->allocation_stage != "stabilize_local_reuse" ||
-      local_reuse_stable_binding_pass->follow_up_category !=
-          "sequenced_local_reuse_coordination" ||
-      local_reuse_stable_binding_pass->ordering_policy !=
-          "preserve_allocation_sequence" ||
-      local_reuse_stable_binding_pass->access_window_prerequisite_category !=
-          "adjacent_local_windows" ||
-      local_reuse_stable_binding_pass->access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
-      local_reuse_stable_binding_pass->home_slot_prerequisite_category !=
-          "stable_home_slot_preferred" ||
-      local_reuse_stable_binding_pass->home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_satisfied" ||
-      local_reuse_stable_binding_pass->sync_handoff_prerequisite_category !=
-          "mixed_sync_coordination" ||
-      local_reuse_stable_binding_pass->sync_handoff_state !=
-          "prepare_sync_handoff_ready" ||
-      local_reuse_stable_binding_pass->first_binding_order_index != 0 ||
-      local_reuse_stable_binding_pass->last_binding_order_index != 2 ||
-      local_reuse_stable_binding_pass->candidate_count != 3) {
-    return fail(
-        "semantic-BIR regalloc should turn ready local-reuse handoff summaries into one concrete stable-binding pass");
   }
   if (deferred_access_window_handoff_summary->binding_frontier_reason !=
           "awaiting_access_window_observation" ||
