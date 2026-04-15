@@ -568,6 +568,10 @@ int main() {
   if (!contains_note(prepared_bir.notes, "regalloc", "downstream handoff summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention downstream handoff summaries");
   }
+  if (!contains_note(prepared_bir.notes, "regalloc", "per-binding stable-binding pass order/span cues")) {
+    return fail(
+        "semantic-BIR prepare regalloc note should mention per-binding stable-binding pass order/span cues");
+  }
   if (!contains_note(prepared_bir.notes, "regalloc", "compact access-shape summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention compact access-shape summaries");
   }
@@ -1805,6 +1809,15 @@ int main() {
       carry_binding->binding_batch_kind != "call_boundary_binding_batch" ||
       callread_binding->binding_batch_kind != "call_boundary_binding_batch" ||
       callwrite_binding->binding_batch_kind != "call_boundary_binding_batch" ||
+      carry_binding->stable_binding_pass_order_index != 0 ||
+      callread_binding->stable_binding_pass_order_index != 0 ||
+      callwrite_binding->stable_binding_pass_order_index != 0 ||
+      carry_binding->stable_binding_pass_first_binding_order_index != 0 ||
+      callread_binding->stable_binding_pass_first_binding_order_index != 0 ||
+      callwrite_binding->stable_binding_pass_first_binding_order_index != 0 ||
+      carry_binding->stable_binding_pass_last_binding_order_index != 2 ||
+      callread_binding->stable_binding_pass_last_binding_order_index != 2 ||
+      callwrite_binding->stable_binding_pass_last_binding_order_index != 2 ||
       carry_binding->binding_order_index != 0 || callread_binding->binding_order_index != 1 ||
       callwrite_binding->binding_order_index != 2 ||
       carry_binding->ordering_policy != "preserve_allocation_sequence" ||
@@ -1828,7 +1841,8 @@ int main() {
       carry_binding->sync_handoff_state != "prepare_sync_handoff_ready" ||
       callread_binding->sync_handoff_state != "prepare_sync_handoff_ready" ||
       callwrite_binding->sync_handoff_state != "prepare_sync_handoff_ready") {
-    return fail("semantic-BIR regalloc should turn binding-ready across-call candidates into one ordered call-boundary batch with per-binding sequencing cues");
+    return fail(
+        "semantic-BIR regalloc should turn binding-ready across-call candidates into one ordered call-boundary batch with per-binding stable-pass and sequencing cues");
   }
   if (window_binding->allocation_stage != "stabilize_local_reuse" ||
       readonly_binding->allocation_stage != "stabilize_local_reuse" ||
@@ -1836,6 +1850,15 @@ int main() {
       window_binding->binding_batch_kind != "local_reuse_binding_batch" ||
       readonly_binding->binding_batch_kind != "local_reuse_binding_batch" ||
       multiwrite_binding->binding_batch_kind != "local_reuse_binding_batch" ||
+      window_binding->stable_binding_pass_order_index != 1 ||
+      readonly_binding->stable_binding_pass_order_index != 1 ||
+      multiwrite_binding->stable_binding_pass_order_index != 1 ||
+      window_binding->stable_binding_pass_first_binding_order_index != 0 ||
+      readonly_binding->stable_binding_pass_first_binding_order_index != 0 ||
+      multiwrite_binding->stable_binding_pass_first_binding_order_index != 0 ||
+      window_binding->stable_binding_pass_last_binding_order_index != 2 ||
+      readonly_binding->stable_binding_pass_last_binding_order_index != 2 ||
+      multiwrite_binding->stable_binding_pass_last_binding_order_index != 2 ||
       window_binding->binding_order_index != 0 || readonly_binding->binding_order_index != 1 ||
       multiwrite_binding->binding_order_index != 2 ||
       window_binding->ordering_policy != "preserve_allocation_sequence" ||
@@ -1859,7 +1882,8 @@ int main() {
       window_binding->sync_handoff_state != "prepare_sync_handoff_ready" ||
       readonly_binding->sync_handoff_state != "prepare_sync_handoff_ready" ||
       multiwrite_binding->sync_handoff_state != "prepare_sync_handoff_ready") {
-    return fail("semantic-BIR regalloc should turn binding-ready local-reuse candidates into one ordered local-reuse batch with per-binding sequencing cues");
+    return fail(
+        "semantic-BIR regalloc should turn binding-ready local-reuse candidates into one ordered local-reuse batch with per-binding stable-pass and sequencing cues");
   }
   if (call_boundary_binding_batch->allocation_stage != "stabilize_across_calls" ||
       call_boundary_binding_batch->follow_up_category != "call_boundary_preservation" ||

@@ -1600,6 +1600,23 @@ void populate_stable_binding_passes(PreparedRegallocFunction& function) {
   }
 }
 
+void project_stable_binding_pass_contract(PreparedRegallocFunction& function) {
+  for (auto& binding : function.binding_sequence) {
+    const auto it = std::find_if(
+        function.stable_binding_passes.begin(),
+        function.stable_binding_passes.end(),
+        [&](const PreparedRegallocStableBindingPass& pass) {
+          return pass.binding_batch_kind == binding.binding_batch_kind;
+        });
+    if (it == function.stable_binding_passes.end()) {
+      continue;
+    }
+    binding.stable_binding_pass_order_index = it->pass_order_index;
+    binding.stable_binding_pass_first_binding_order_index = it->first_binding_order_index;
+    binding.stable_binding_pass_last_binding_order_index = it->last_binding_order_index;
+  }
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -1747,6 +1764,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
     populate_binding_sequence(prepared_function);
     populate_binding_handoff_summary(prepared_function);
     populate_stable_binding_passes(prepared_function);
+    project_stable_binding_pass_contract(prepared_function);
     if (!prepared_function.objects.empty()) {
       module.regalloc.functions.push_back(std::move(prepared_function));
     }
@@ -1806,7 +1824,10 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "local-reuse batches without naming physical registers, plus per-binding "
           "ordering-policy cues projected from those ready batches so downstream "
           "prepared consumers can read the sequencing contract without consulting "
-          "batch summaries alone, "
+          "batch summaries alone, plus per-binding stable-binding pass order/span "
+          "cues projected from those ready-only pass summaries so downstream "
+          "prepared consumers can walk from pass order to local prerequisite "
+          "details without consulting batch summaries alone, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "
