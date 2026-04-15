@@ -26,6 +26,7 @@ struct RegallocObjectAccessSummary {
   bool has_access_window = false;
   std::size_t first_access_instruction_index = 0;
   std::size_t last_access_instruction_index = 0;
+  RegallocAccessKind first_access_kind = RegallocAccessKind::None;
   RegallocAccessKind last_access_kind = RegallocAccessKind::None;
   std::vector<std::size_t> call_instruction_indices;
 };
@@ -36,6 +37,7 @@ void record_access(RegallocObjectAccessSummary& summary,
   if (!summary.has_access_window) {
     summary.has_access_window = true;
     summary.first_access_instruction_index = instruction_index;
+    summary.first_access_kind = access_kind;
   }
   summary.last_access_instruction_index = instruction_index;
   summary.last_access_kind = access_kind;
@@ -189,6 +191,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .contract_kind = object.contract_kind,
           .allocation_kind = allocation_kind,
           .priority_bucket = priority_bucket,
+          .first_access_kind = std::string(regalloc_access_kind_name(summary.first_access_kind)),
           .last_access_kind = std::string(regalloc_access_kind_name(summary.last_access_kind)),
           .direct_read_count = summary.direct_read_count,
           .direct_write_count = summary.direct_write_count,
@@ -215,8 +218,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
       .message =
           "regalloc now groups prepared liveness objects per function and classifies them as "
           "register_candidate or fixed_stack_storage contracts, plus target-neutral priority "
-          "buckets for single-point, multi-point, and call-spanning value-storage objects, last "
-          "access-kind cues, "
+          "buckets for single-point, multi-point, and call-spanning value-storage objects, first "
+          "and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "
           "instruction-order access windows and call-crossing cues for downstream prepared-BIR "
           "consumers; physical register assignment remains future work",

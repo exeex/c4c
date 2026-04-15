@@ -8,21 +8,21 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- added a target-neutral `last_access_kind` cue to each semantic-BIR
-  `regalloc` object so prepared contracts now distinguish the latest direct
-  read, direct write, addressed access, or call-argument exposure from
-  explicit BIR instruction ordering
+- added a complementary target-neutral `first_access_kind` cue to each
+  semantic-BIR `regalloc` object so prepared contracts now expose both the
+  opening and closing direct-read, direct-write, addressed-access, or
+  call-argument exposure shape from explicit BIR instruction ordering
 - kept the new cue inside prepare-owned semantics by deriving it from the
   existing access-summary walk instead of target register classes, physical
   assignment, or testcase-shaped matcher logic
-- extended the prepare entry-contract test with representative direct-read,
-  direct-write, addressed-access, and call-exposure assertions for the new
-  regalloc cue
+- extended the prepare entry-contract test and note assertions with
+  representative direct-read, direct-write, addressed-access, and
+  call-exposure openings for the new regalloc cue
 
 ## Suggested Next
-- build on the published `last_access_kind` cue by deciding whether prepared
-  regalloc needs a complementary first-access or read/write-shape summary for
-  multi-point value storage before any physical assignment work
+- build on the published first/last access cues by deciding whether prepared
+  regalloc needs a compact access-shape summary for multi-point value storage
+  before any physical assignment work
 - keep any next regalloc detail keyed off prepared liveness, stack-layout,
   and explicit BIR instruction structure rather than target-specific register
   classes or testcase-shaped heuristics
@@ -42,8 +42,8 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
   interference until the data is really available
 - prefer `build -> ^backend_` proof unless a narrower honest backend subset is
   clearly available
-- if follow-on cues are added, keep them sourced from actual BIR access order
-  and object contracts rather than synthetic interval guesses
+- if follow-on summaries are added, keep them sourced from actual BIR access
+  order and object contracts rather than synthetic interval guesses
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build

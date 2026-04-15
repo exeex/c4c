@@ -342,8 +342,8 @@ int main() {
                      "target-neutral priority buckets for single-point, multi-point, and call-spanning value-storage objects")) {
     return fail("semantic-BIR prepare regalloc note should mention the target-neutral priority buckets");
   }
-  if (!contains_note(prepared_bir.notes, "regalloc", "last access-kind cues")) {
-    return fail("semantic-BIR prepare regalloc note should mention last access-kind cues");
+  if (!contains_note(prepared_bir.notes, "regalloc", "first and last access-kind cues")) {
+    return fail("semantic-BIR prepare regalloc note should mention first and last access-kind cues");
   }
   if (!contains_note(prepared_bir.notes,
                      "regalloc",
@@ -502,6 +502,9 @@ int main() {
   if (local_slot_regalloc->last_access_kind != "direct_read") {
     return fail("semantic-BIR regalloc should publish direct-read last-access cues");
   }
+  if (local_slot_regalloc->first_access_kind != "direct_read") {
+    return fail("semantic-BIR regalloc should publish direct-read first-access cues");
+  }
   if (!local_slot_regalloc->has_access_window || local_slot_regalloc->first_access_instruction_index != 3 ||
       local_slot_regalloc->last_access_instruction_index != 3 ||
       local_slot_regalloc->crosses_call_boundary) {
@@ -523,6 +526,9 @@ int main() {
   if (carry_slot_regalloc->last_access_kind != "direct_read") {
     return fail("semantic-BIR regalloc should publish the latest direct access kind for call-crossing local slots");
   }
+  if (carry_slot_regalloc->first_access_kind != "direct_write") {
+    return fail("semantic-BIR regalloc should publish the opening direct access kind for call-crossing local slots");
+  }
   if (!carry_slot_regalloc->has_access_window || carry_slot_regalloc->first_access_instruction_index != 0 ||
       carry_slot_regalloc->last_access_instruction_index != 4 ||
       !carry_slot_regalloc->crosses_call_boundary) {
@@ -535,6 +541,9 @@ int main() {
   }
   if (writeonly_regalloc->last_access_kind != "direct_write") {
     return fail("semantic-BIR regalloc should publish direct-write last-access cues");
+  }
+  if (writeonly_regalloc->first_access_kind != "direct_write") {
+    return fail("semantic-BIR regalloc should publish direct-write first-access cues");
   }
   const auto* address_taken_regalloc =
       find_regalloc_object(*regalloc_function, "address_taken_local_slot", "addressed.slot");
@@ -554,6 +563,9 @@ int main() {
   if (address_taken_regalloc->last_access_kind != "addressed_access") {
     return fail("semantic-BIR regalloc should publish addressed-access last-access cues");
   }
+  if (address_taken_regalloc->first_access_kind != "addressed_access") {
+    return fail("semantic-BIR regalloc should publish addressed-access first-access cues");
+  }
   const auto* call_result_regalloc =
       find_regalloc_object(*regalloc_function, "call_result_sret", "%call.result");
   if (call_result_regalloc == nullptr ||
@@ -568,6 +580,9 @@ int main() {
   }
   if (call_result_regalloc->last_access_kind != "call_argument_exposure") {
     return fail("semantic-BIR regalloc should publish call-exposure last-access cues");
+  }
+  if (call_result_regalloc->first_access_kind != "call_argument_exposure") {
+    return fail("semantic-BIR regalloc should publish call-exposure first-access cues");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(
