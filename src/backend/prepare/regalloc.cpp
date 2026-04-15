@@ -318,6 +318,37 @@ std::string_view regalloc_materialization_timing_hint(std::string_view allocatio
   return "materialize_at_first_access";
 }
 
+std::string_view regalloc_spill_restore_locality_hint(
+    std::string_view allocation_kind,
+    const RegallocObjectAccessSummary& summary) {
+  if (allocation_kind != "register_candidate") {
+    if (summary.addressed_access_count != 0) {
+      return "fixed_stack_address_anchor";
+    }
+    if (summary.call_arg_exposure_count != 0) {
+      return "fixed_stack_call_boundary_anchor";
+    }
+    return "fixed_stack_only";
+  }
+
+  if (!summary.has_access_window) {
+    return "unobserved_access_window";
+  }
+  if (crosses_call_boundary(summary)) {
+    return "call_split_reuse_window";
+  }
+
+  const auto access_window_width =
+      summary.last_access_instruction_index - summary.first_access_instruction_index;
+  if (access_window_width == 0) {
+    return "single_instruction_reuse_window";
+  }
+  if (access_window_width == 1) {
+    return "adjacent_instruction_reuse_window";
+  }
+  return "wide_reuse_window";
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -354,6 +385,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           regalloc_reload_cost_hint(allocation_kind, priority_bucket, summary));
       const std::string materialization_timing_hint(
           regalloc_materialization_timing_hint(allocation_kind, summary));
+      const std::string spill_restore_locality_hint(
+          regalloc_spill_restore_locality_hint(allocation_kind, summary));
       const std::string assignment_readiness(
           regalloc_assignment_readiness(allocation_kind, priority_bucket, summary));
       prepared_function.objects.push_back(PreparedRegallocObject{
@@ -367,6 +400,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .spill_pressure_hint = spill_pressure_hint,
           .reload_cost_hint = reload_cost_hint,
           .materialization_timing_hint = materialization_timing_hint,
+          .spill_restore_locality_hint = spill_restore_locality_hint,
           .assignment_readiness = assignment_readiness,
           .access_shape = std::string(regalloc_access_shape_name(summary)),
           .first_access_kind = std::string(regalloc_access_kind_name(summary.first_access_kind)),
@@ -404,7 +438,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "reload-cost hints that distinguish single-use, reuse-window, call-spanning, "
           "reload-free, and fixed-stack exposure cases from those same prepared facts, "
           "materialization-timing hints keyed by first/last access order plus fixed-stack "
-          "exposure kind, "
+          "exposure kind, spill/restore-locality hints keyed by access-window width plus "
+          "fixed-stack exposure kind, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "

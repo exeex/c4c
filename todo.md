@@ -9,21 +9,22 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 
 ## Just Finished
 - extended the semantic-BIR regalloc artifact with a target-neutral
-  `materialization_timing_hint` field sourced from current prepared facts:
-  read-first values materialize at first read, write-first values defer until
-  the write path, write-then-read windows advertise the handoff point between
-  production and later consumption, and fixed-stack storage splits into
-  address-exposed versus call-exposed timing
+  `spill_restore_locality_hint` field sourced from current prepared facts:
+  single-touch values stay in a single-instruction reuse window, adjacent
+  multi-point windows advertise tight spill/restore locality, call-crossing
+  windows advertise split locality across the call boundary, and fixed-stack
+  storage splits into address-anchored versus call-boundary-anchored locality
 - broadened the prepare entry-contract fixture so nearby single-point,
-  multi-point, call-spanning, write-only, address-exposed, and call-exposed
-  shapes all prove the new materialization-timing cue alongside the existing
-  pool/pressure/reload/readiness/access summaries
+  adjacent multi-point, call-spanning, write-only, address-exposed, and
+  call-exposed shapes all prove the new spill/restore-locality cue alongside
+  the existing pool/pressure/reload/materialization/readiness/access summaries
 
 ## Suggested Next
 - if execution stays inside this bucket, publish one more allocator-facing
   regalloc cue that still comes directly from prepared facts, such as a
-  register-eligibility or spill-restore-locality hint keyed by access-window
-  width and exposure kind rather than target names or synthetic intervals
+  register-eligibility hint keyed by contract kind, access shape, and
+  call-crossing status rather than target names, synthetic intervals, or
+  placeholder interference claims
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -45,6 +46,9 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
   BIR access order, liveness contracts, and call-crossing facts rather than
   synthetic interval guesses, target register names, or phi-materialization
   scaffolding that does not exercise a real local-slot access window
+- keep the new spill/restore-locality cue tied to observable access-window
+  width and fixed-stack exposure kind; do not let it collapse back into a
+  renamed reload-cost or preferred-pool field
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build

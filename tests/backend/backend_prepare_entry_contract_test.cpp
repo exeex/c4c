@@ -660,6 +660,9 @@ int main() {
   if (local_slot_regalloc->materialization_timing_hint != "materialize_at_first_read") {
     return fail("semantic-BIR regalloc should expose a first-read materialization-timing hint for single-read value storage");
   }
+  if (local_slot_regalloc->spill_restore_locality_hint != "single_instruction_reuse_window") {
+    return fail("semantic-BIR regalloc should expose a single-instruction spill/restore locality hint for single-read value storage");
+  }
   if (local_slot_regalloc->assignment_readiness != "single_point_read_candidate") {
     return fail("semantic-BIR regalloc should expose a single-point read readiness cue for single-read value storage");
   }
@@ -701,6 +704,9 @@ int main() {
   }
   if (carry_slot_regalloc->materialization_timing_hint != "materialize_after_write_before_read") {
     return fail("semantic-BIR regalloc should expose a write-then-read materialization-timing hint for call-crossing value storage");
+  }
+  if (carry_slot_regalloc->spill_restore_locality_hint != "call_split_reuse_window") {
+    return fail("semantic-BIR regalloc should expose a call-split spill/restore locality hint for call-crossing value storage");
   }
   if (carry_slot_regalloc->assignment_readiness != "call_spanning_read_write_candidate") {
     return fail("semantic-BIR regalloc should expose a call-spanning read/write readiness cue for call-crossing value storage");
@@ -744,6 +750,9 @@ int main() {
   if (window_slot_regalloc->materialization_timing_hint != "materialize_after_write_before_read") {
     return fail("semantic-BIR regalloc should expose a write-then-read materialization-timing hint for non-call-spanning read/write value storage");
   }
+  if (window_slot_regalloc->spill_restore_locality_hint != "adjacent_instruction_reuse_window") {
+    return fail("semantic-BIR regalloc should expose an adjacent-instruction spill/restore locality hint for non-call-spanning read/write value storage");
+  }
   if (window_slot_regalloc->assignment_readiness != "multi_point_read_write_candidate") {
     return fail("semantic-BIR regalloc should expose a multi-point read/write readiness cue for non-call-spanning value storage");
   }
@@ -786,6 +795,9 @@ int main() {
   }
   if (readonly_slot_regalloc->materialization_timing_hint != "materialize_at_first_read") {
     return fail("semantic-BIR regalloc should expose a first-read materialization-timing hint for non-call-spanning multi-read value storage");
+  }
+  if (readonly_slot_regalloc->spill_restore_locality_hint != "adjacent_instruction_reuse_window") {
+    return fail("semantic-BIR regalloc should expose an adjacent-instruction spill/restore locality hint for non-call-spanning multi-read value storage");
   }
   if (readonly_slot_regalloc->assignment_readiness != "multi_point_read_candidate") {
     return fail("semantic-BIR regalloc should expose a multi-point read readiness cue for non-call-spanning read-only value storage");
@@ -877,6 +889,9 @@ int main() {
   if (callwrite_slot_regalloc->materialization_timing_hint != "materialize_on_write_path") {
     return fail("semantic-BIR regalloc should expose a write-path materialization-timing hint for call-spanning write-only value storage");
   }
+  if (callwrite_slot_regalloc->spill_restore_locality_hint != "call_split_reuse_window") {
+    return fail("semantic-BIR regalloc should expose a call-split spill/restore locality hint for call-spanning write-only value storage");
+  }
   if (callwrite_slot_regalloc->assignment_readiness != "call_spanning_write_candidate") {
     return fail("semantic-BIR regalloc should expose a call-spanning write readiness cue for call-crossing write-only value storage");
   }
@@ -922,6 +937,9 @@ int main() {
   if (multiwrite_slot_regalloc->materialization_timing_hint != "materialize_on_write_path") {
     return fail("semantic-BIR regalloc should expose a write-path materialization-timing hint for non-call-spanning multi-write value storage");
   }
+  if (multiwrite_slot_regalloc->spill_restore_locality_hint != "adjacent_instruction_reuse_window") {
+    return fail("semantic-BIR regalloc should expose an adjacent-instruction spill/restore locality hint for non-call-spanning multi-write value storage");
+  }
   if (multiwrite_slot_regalloc->assignment_readiness != "multi_point_write_candidate") {
     return fail("semantic-BIR regalloc should expose a multi-point write readiness cue for non-call-spanning write-only value storage");
   }
@@ -963,6 +981,9 @@ int main() {
   if (writeonly_regalloc->materialization_timing_hint != "materialize_on_write_path") {
     return fail("semantic-BIR regalloc should expose a write-path materialization-timing hint for single-point write-only local slots");
   }
+  if (writeonly_regalloc->spill_restore_locality_hint != "single_instruction_reuse_window") {
+    return fail("semantic-BIR regalloc should expose a single-instruction spill/restore locality hint for single-point write-only local slots");
+  }
   if (writeonly_regalloc->last_access_kind != "direct_write") {
     return fail("semantic-BIR regalloc should publish direct-write last-access cues");
   }
@@ -996,6 +1017,9 @@ int main() {
   }
   if (address_taken_regalloc->materialization_timing_hint != "materialize_via_address_exposure") {
     return fail("semantic-BIR regalloc should expose an address-exposed materialization-timing hint");
+  }
+  if (address_taken_regalloc->spill_restore_locality_hint != "fixed_stack_address_anchor") {
+    return fail("semantic-BIR regalloc should expose an address-anchored spill/restore locality hint for fixed-stack storage");
   }
   if (address_taken_regalloc->assignment_readiness != "fixed_stack_only") {
     return fail("semantic-BIR regalloc should keep address-exposed storage in the fixed-stack readiness contract");
@@ -1037,6 +1061,9 @@ int main() {
   }
   if (call_result_regalloc->materialization_timing_hint != "materialize_for_call_exposure") {
     return fail("semantic-BIR regalloc should expose a call-exposed materialization-timing hint");
+  }
+  if (call_result_regalloc->spill_restore_locality_hint != "fixed_stack_call_boundary_anchor") {
+    return fail("semantic-BIR regalloc should expose a call-boundary spill/restore locality hint for call-exposed fixed-stack storage");
   }
   if (call_result_regalloc->assignment_readiness != "fixed_stack_only") {
     return fail("semantic-BIR regalloc should keep call-result storage in the fixed-stack readiness contract");
