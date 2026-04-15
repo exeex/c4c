@@ -177,7 +177,6 @@ struct PreparedRegallocDeferredBindingBatchSummary {
 };
 
 struct PreparedRegallocBindingHandoffSummary {
-  std::string binding_frontier_kind;
   std::string binding_frontier_reason;
   std::string binding_batch_kind;
 };
@@ -286,10 +285,8 @@ class BirPreAlloc {
   void populate_binding_sequence();
   void populate_binding_handoff_summary();
   std::optional<PreparedRegallocBindingHandoffSummary> binding_handoff_summary_contract(
-      std::string_view binding_frontier_kind,
       const PreparedRegallocBindingBatchSummary* batch_summary,
-      const PreparedRegallocDeferredBindingBatchSummary* deferred_batch_summary,
-      const PreparedRegallocContentionSummary* contention) const;
+      const PreparedRegallocDeferredBindingBatchSummary* deferred_batch_summary) const;
   void note(std::string_view message);
 
   PrepareOptions options_;

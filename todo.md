@@ -17,18 +17,21 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed the handoff contract-view mirror that re-copied ready
-  `follow_up_category` and deferred `deferred_reason`/`follow_up_category`
-  into a temporary handoff packet; handoff summaries now derive directly from
-  the owning batch summaries while staying keyed by `binding_batch_kind`
-- updated the prepare-entry contract test so handoff lookup joins on
-  `binding_batch_kind`, with frontier kind/reason still asserted as published
-  downstream identity rather than as the lookup key
+- removed `binding_frontier_kind` from
+  `PreparedRegallocBindingHandoffSummary`; ready versus deferred handoff
+  identity now stays derivable from the owning ready/deferred batch family
+  joined by `binding_batch_kind`
+- simplified the handoff-summary contract helper so it derives summaries
+  directly from ready or deferred batch owners without threading an extra
+  frontier-kind selector through regalloc
+- updated the prepare-entry contract test to assert handoff reason plus
+  batch-identity joins instead of treating handoff summaries as the owner of a
+  second ready/deferred frontier tag
 
 ## Suggested Next
-- inspect whether published `binding_frontier_kind` itself still needs to live
-  on handoff summaries or whether downstream consumers can derive that split
-  by joining `binding_batch_kind` against ready versus deferred batch owners
+- inspect whether `binding_handoff_summary` itself still needs to exist as a
+  separate published view or whether downstream consumers can join ready and
+  deferred batch owners directly once handoff reason publication stays clear
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -63,6 +66,10 @@ while keeping the public shared contract named `prepare`
   packet removes more handoff publication, keep batch kind as the consumer join
   key instead of rebuilding ready/deferred ownership mirrors in the handoff
   layer
+- handoff summaries now publish only `binding_frontier_reason` plus
+  `binding_batch_kind`; if a downstream consumer still needs ready versus
+  deferred identity, derive it from the owning batch family instead of
+  reintroducing a duplicated frontier tag on the handoff view
 - deferred binding batch construction now takes `deferred_reason` directly from
   the object; if later cleanup removes or reshapes that object field, confirm
   deferred-batch ownership still stays clear instead of recreating a view

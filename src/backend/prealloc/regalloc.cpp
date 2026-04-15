@@ -354,7 +354,6 @@ std::string_view regalloc_binding_frontier_kind_view(
 PreparedRegallocBindingHandoffSummary make_binding_handoff_summary(
     const PreparedRegallocBindingBatchSummary& batch_summary) {
   return PreparedRegallocBindingHandoffSummary{
-      .binding_frontier_kind = "binding_ready",
       .binding_frontier_reason = batch_summary.follow_up_category,
       .binding_batch_kind = batch_summary.binding_batch_kind,
   };
@@ -367,7 +366,6 @@ PreparedRegallocBindingHandoffSummary make_binding_handoff_summary(
           ? deferred_batch_summary.deferred_reason
           : deferred_batch_summary.follow_up_category;
   return PreparedRegallocBindingHandoffSummary{
-      .binding_frontier_kind = "binding_deferred",
       .binding_frontier_reason = std::string(binding_frontier_reason),
       .binding_batch_kind = deferred_batch_summary.binding_batch_kind,
   };
@@ -901,14 +899,9 @@ PreparedRegallocReservationSummary BirPreAlloc::summarize_reservation_stage(
 }
 
 std::optional<PreparedRegallocBindingHandoffSummary> BirPreAlloc::binding_handoff_summary_contract(
-    std::string_view binding_frontier_kind,
     const PreparedRegallocBindingBatchSummary* batch_summary,
-    const PreparedRegallocDeferredBindingBatchSummary* deferred_batch_summary,
-    const PreparedRegallocContentionSummary* contention) const {
-  if (binding_frontier_kind == "binding_ready") {
-    if (batch_summary == nullptr || contention == nullptr) {
-      return std::nullopt;
-    }
+    const PreparedRegallocDeferredBindingBatchSummary* deferred_batch_summary) const {
+  if (batch_summary != nullptr) {
     return make_binding_handoff_summary(*batch_summary);
   }
   if (deferred_batch_summary == nullptr) {
@@ -1062,9 +1055,7 @@ void BirPreAlloc::populate_binding_handoff_summary() {
       current_regalloc_function_->deferred_binding_batches.size());
 
   for (const auto& batch_summary : current_regalloc_function_->binding_batches) {
-    const auto* contention = find_contention_summary(batch_summary.allocation_stage);
-    const auto contract = binding_handoff_summary_contract(
-        "binding_ready", &batch_summary, nullptr, contention);
+    const auto contract = binding_handoff_summary_contract(&batch_summary, nullptr);
     if (!contract.has_value()) {
       continue;
     }
@@ -1073,8 +1064,7 @@ void BirPreAlloc::populate_binding_handoff_summary() {
 
   for (const auto& deferred_batch_summary :
        current_regalloc_function_->deferred_binding_batches) {
-    const auto contract = binding_handoff_summary_contract(
-        "binding_deferred", nullptr, &deferred_batch_summary, nullptr);
+    const auto contract = binding_handoff_summary_contract(nullptr, &deferred_batch_summary);
     if (!contract.has_value()) {
       continue;
     }
