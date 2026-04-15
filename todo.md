@@ -8,19 +8,18 @@ Current Plan Focus: ordered step 3, runtime and intrinsic families through seman
 # Current Packet
 
 ## Just Finished
-- widened semantic local `memset` lowering so exact local scalar-slot fills no longer escape when the destination is a direct pointer to one local leaf slot rather than an aggregate or array view
-- added `backend_codegen_route_x86_64_builtin_memset_nonzero_local_i32_scalar_observe_semantic_bir`, proving `memset(&dst, 255, sizeof(dst))` now stays in semantic BIR as a direct `bir.store_local %lv.dst, i32 -1` update without falling back to `@memset`
-- kept the widening on the shared local-memory route by resolving scalar pointer destinations from existing local slot metadata instead of adding a call-family-specific exception
+- added `backend_codegen_route_x86_64_builtin_memset_nonzero_nested_i32_scalar_field_observe_semantic_bir`, proving `memset(&dst.inner.value, 255, sizeof(dst.inner.value))` stays in semantic BIR as a direct `bir.store_local %lv.dst.4, i32 -1` update with the sibling field preserved
+- confirmed this nested aggregate scalar-field pointer shape was already handled by the shared local-slot metadata route, so the packet locked in the nearby semantic family with dedicated backend coverage instead of adding a new `memset` special case
 
 ## Suggested Next
-- decide whether step 3 still needs another honest `memset` widening packet, such as exact scalar leaf fills reached through nested aggregate member pointers, or whether the route should move on to the next uncovered runtime-family boundary instead of extending `memset` by testcase inventory
+- move step 3 to the next uncovered runtime-family boundary instead of extending `memset` by inventory; the nearby nested scalar-field pointer shape is now covered on the same shared local-memory route as local scalars, arrays, and nested array fields
 
 ## Watchouts
-- keep `memset` widening leaf-aligned and semantic: this repair only accepts exact fills of one known local scalar slot, so byte-partial writes or multi-slot spans should still fail honestly instead of being approximated
-- the scalar-slot path reuses existing local pointer-slot metadata, so any follow-on `memset` work should continue generalizing through shared local-memory metadata rather than through new direct-call special cases
+- this packet found no new lowering gap: nested aggregate scalar-field pointers already reuse the same local pointer-slot metadata as the earlier local scalar case, so follow-on runtime work should avoid reopening `memset` unless a genuinely shared semantic miss appears
+- keep `memset` support leaf-aligned and semantic: exact single-slot fills are fine, but byte-partial writes or multi-slot spans should still fail honestly instead of being approximated
 - nearby packets should continue grouping runtime families (`memcpy`, `memset`, `va_*`, `stacksave`, `stackrestore`, `abs`) by semantic capability, not by isolated testcase names
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-- passed with `test_after.log`; backend subset result is `passed=50 failed=0 total=50`
-- verified `backend_codegen_route_x86_64_builtin_memset_nonzero_local_i32_scalar_observe_semantic_bir` inside the passing run, proving `memset(&dst, 255, sizeof(dst))` stays on the semantic BIR local-slot route without escaping to `@memset`
+- passed with `test_after.log`; backend subset result is `passed=51 failed=0 total=51`
+- verified `backend_codegen_route_x86_64_builtin_memset_nonzero_nested_i32_scalar_field_observe_semantic_bir` inside the passing run, proving `memset(&dst.inner.value, 255, sizeof(dst.inner.value))` stays on the semantic BIR local-slot route without escaping to `@memset`
