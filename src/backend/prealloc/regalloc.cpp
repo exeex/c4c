@@ -929,7 +929,6 @@ void BirPreAlloc::populate_binding_sequence() {
         current_regalloc_function_->deferred_binding_batches.push_back(
             PreparedRegallocDeferredBindingBatchSummary{
                 .binding_batch_kind = binding_batch_kind,
-                .allocation_stage = decision.allocation_stage,
                 .deferred_reason =
                     object->deferred_reason != "not_deferred" ? object->deferred_reason
                                                               : contention->follow_up_category,

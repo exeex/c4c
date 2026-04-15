@@ -17,25 +17,21 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed redundant deferred batch `candidate_count` storage now that
-  attachment membership already counts deferred frontier entries directly
-- kept ready batch `candidate_count` as the ordering owner for
-  `binding_sequence` while switching deferred count checks to batch-owned
-  attachment membership
-- narrowed deferred batch membership attachments from duplicated
-  `source_kind/source_name` pairs to an object-index join back into
-  `PreparedRegallocFunction::objects`
-- kept deferred frontier identity owned by
-  `PreparedRegallocDeferredBindingBatchSummary::attachments` without
-  reintroducing a function-level attachment index
-- refreshed the prepare-entry contract helper so tests recover deferred batch
-  identity by resolving attachment indices through the function’s regalloc
-  objects
+- removed redundant deferred batch `allocation_stage` storage now that tests
+  can rejoin stage identity through attachment-owned objects back into
+  `allocation_sequence`
+- kept deferred frontier grouping owned by
+  `PreparedRegallocDeferredBindingBatchSummary::binding_batch_kind`,
+  `deferred_reason`, and `attachments` instead of repeating stage identity on
+  every deferred batch summary
+- refreshed the prepare-entry contract helper so deferred batch stage identity
+  now resolves through the surviving object-index join and allocation
+  decisions rather than a summary-level mirror
 
 ## Suggested Next
-- inspect whether deferred batch `allocation_stage` still needs to be repeated
-  on every deferred batch summary or whether the batch kind plus deferred
-  reason/follow-up ownership already names the same frontier grouping
+- inspect whether deferred batch `follow_up_category` still needs to live on
+  the summary once batch kind and deferred reason already separate the current
+  deferred frontier families
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -98,6 +94,10 @@ while keeping the public shared contract named `prepare`
 - deferred batch membership count now comes from `attachments.size()`; do not
   reintroduce a separate deferred `candidate_count` field unless a real
   consumer needs a count that differs from attachment membership
+- deferred batch stage identity now rejoins through attachment-owned objects
+  back into `allocation_sequence`; if later cleanup changes that join, keep one
+  stable owner for deferred stage identity instead of restoring a summary-level
+  `allocation_stage` mirror
 - the current priority is structural clarity; if a cleanup only renames symbols
   but does not reduce architectural ambiguity, prefer the cleanup that removes
   an actual ownership seam or mirror first

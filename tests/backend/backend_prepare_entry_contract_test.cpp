@@ -166,6 +166,25 @@ find_regalloc_deferred_binding_attachment_batch(
   return nullptr;
 }
 
+std::string_view regalloc_deferred_batch_allocation_stage(
+    const prepare::PreparedRegallocFunction& function,
+    const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
+  if (summary.attachments.empty()) {
+    return {};
+  }
+  const auto object_index = summary.attachments.front().object_index;
+  if (object_index >= function.objects.size()) {
+    return {};
+  }
+  const auto& object = function.objects[object_index];
+  const auto* decision =
+      find_regalloc_allocation_decision(function, object.source_kind, object.source_name);
+  if (decision == nullptr) {
+    return {};
+  }
+  return decision->allocation_stage;
+}
+
 const std::string* find_regalloc_binding_batch_kind(const prepare::PreparedRegallocFunction& function,
                                                     std::string_view source_kind,
                                                     std::string_view source_name) {
@@ -1626,7 +1645,9 @@ int main() {
     return fail(
         "semantic-BIR regalloc should summarize local-reuse batch prerequisites and ready sync/home-slot handoff from the existing reservation/contention frontier");
   }
-  if (deferred_access_window_binding_batch->allocation_stage != "opportunistic_single_point" ||
+  if (regalloc_deferred_batch_allocation_stage(*regalloc_function,
+                                               *deferred_access_window_binding_batch) !=
+          "opportunistic_single_point" ||
       deferred_access_window_binding_batch->deferred_reason !=
           "awaiting_access_window_observation" ||
       deferred_access_window_binding_batch->follow_up_category !=
@@ -1649,7 +1670,9 @@ int main() {
     return fail(
         "semantic-BIR regalloc should group deferred single-point candidates waiting on access-window observation into an explicit deferred binding batch");
   }
-  if (deferred_coordination_binding_batch->allocation_stage != "opportunistic_single_point" ||
+  if (regalloc_deferred_batch_allocation_stage(*regalloc_function,
+                                               *deferred_coordination_binding_batch) !=
+          "opportunistic_single_point" ||
       deferred_coordination_binding_batch->deferred_reason !=
           "batched_single_point_coordination" ||
       deferred_coordination_binding_batch->follow_up_category !=

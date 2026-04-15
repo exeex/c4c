@@ -161,7 +161,6 @@ struct PreparedRegallocBindingBatchSummary {
 
 struct PreparedRegallocDeferredBindingBatchSummary {
   std::string binding_batch_kind;
-  std::string allocation_stage;
   std::string deferred_reason;
   std::string follow_up_category;
   std::string ordering_policy;
