@@ -17,21 +17,19 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed redundant deferred batch `allocation_stage` storage now that tests
-  can rejoin stage identity through attachment-owned objects back into
-  `allocation_sequence`
-- kept deferred frontier grouping owned by
-  `PreparedRegallocDeferredBindingBatchSummary::binding_batch_kind`,
-  `deferred_reason`, and `attachments` instead of repeating stage identity on
-  every deferred batch summary
-- refreshed the prepare-entry contract helper so deferred batch stage identity
-  now resolves through the surviving object-index join and allocation
-  decisions rather than a summary-level mirror
+- removed deferred binding batch `follow_up_category` because deferred batch
+  identity already stays clear through `binding_batch_kind` plus
+  `deferred_reason`
+- kept deferred frontier ownership on batch summaries and attachment joins
+  without publishing another handoff-reason mirror for deferred batches
+- refreshed the prepare-entry contract test so deferred batch expectations now
+  prove reason and membership ownership through the surviving batch-level
+  contract
 
 ## Suggested Next
-- inspect whether deferred batch `follow_up_category` still needs to live on
-  the summary once batch kind and deferred reason already separate the current
-  deferred frontier families
+- inspect whether ready binding batches still need both `allocation_stage` and
+  `follow_up_category` once `binding_batch_kind` already names the current
+  ready frontier family
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -72,6 +70,10 @@ while keeping the public shared contract named `prepare`
 - deferred binding batch construction now takes `deferred_reason` directly from
   the object; if later cleanup removes or reshapes that object field, confirm
   deferred-batch ownership still stays clear instead of recreating a view
+- deferred batch handoff-family identity now rides on
+  `binding_batch_kind` while the specific deferred blocker rides on
+  `deferred_reason`; do not restore a second deferred summary mirror unless a
+  real consumer cannot rejoin those surviving owners
 - ready access-window prerequisite state now lands on `binding_batches` from
   stage contention while deferred frontier prerequisites stay on deferred batch
   summaries; if later cleanup tries to unify derivation, keep one clear owner

@@ -932,7 +932,6 @@ void BirPreAlloc::populate_binding_sequence() {
                 .deferred_reason =
                     object->deferred_reason != "not_deferred" ? object->deferred_reason
                                                               : contention->follow_up_category,
-                .follow_up_category = contention->follow_up_category,
                 .ordering_policy =
                     std::string(regalloc_deferred_binding_ordering_policy(*object, *contention)),
                 .access_window_prerequisite_category =

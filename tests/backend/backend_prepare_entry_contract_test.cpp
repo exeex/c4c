@@ -1650,8 +1650,6 @@ int main() {
           "opportunistic_single_point" ||
       deferred_access_window_binding_batch->deferred_reason !=
           "awaiting_access_window_observation" ||
-      deferred_access_window_binding_batch->follow_up_category !=
-          "batched_single_point_coordination" ||
       deferred_access_window_binding_batch->ordering_policy !=
           "defer_until_access_window_observed" ||
       deferred_access_window_binding_batch->access_window_prerequisite_category !=
@@ -1674,8 +1672,6 @@ int main() {
                                                *deferred_coordination_binding_batch) !=
           "opportunistic_single_point" ||
       deferred_coordination_binding_batch->deferred_reason !=
-          "batched_single_point_coordination" ||
-      deferred_coordination_binding_batch->follow_up_category !=
           "batched_single_point_coordination" ||
       deferred_coordination_binding_batch->ordering_policy != "defer_until_frontier_ready" ||
       deferred_coordination_binding_batch->access_window_prerequisite_category !=
