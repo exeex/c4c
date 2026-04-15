@@ -34,12 +34,12 @@ Current Plan Focus: step-5 regalloc consumer shrink
 - rebuilt binding handoff summaries from batch-owned data instead of reading
   object-local mirrored prerequisite and handoff fields
 - shrank `PreparedRegallocBindingDecision` so binding-sequence entries now keep
-  only source identity, stage, batch membership, and binding order while batch
-  and handoff summaries remain the owners of ordering policy, follow-up, and
-  prerequisite detail
+  only source identity, batch membership, and binding order while batch and
+  handoff summaries remain the owners of stage, ordering policy, follow-up,
+  and prerequisite detail
 - updated `backend_prepare_entry_contract` to assert the slimmer per-binding
-  contract and keep policy/prerequisite ownership checks on batch and handoff
-  summaries
+  contract and keep stage/policy/prerequisite ownership checks on batch and
+  handoff summaries
 
 ## Suggested Next
 - continue shrinking `src/backend/prepare/regalloc.cpp` by removing any
@@ -50,7 +50,9 @@ Current Plan Focus: step-5 regalloc consumer shrink
   facts twice
 - keep `PreparedRegallocFunction` focused on artifacts a downstream allocator
   would actually consume: staged candidates, contention summaries, binding
-  sequence, and frontier summaries
+  sequence, and frontier summaries; the next likely seam is whether
+  `binding_handoff_summary` still needs separate ready-vs-deferred batch source
+  structs or can consume a slimmer shared batch contract
 
 ## Watchouts
 - do not add more liveness-like fact gathering to

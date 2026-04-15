@@ -143,7 +143,6 @@ struct PreparedRegallocContentionSummary {
 struct PreparedRegallocBindingDecision {
   std::string source_kind;
   std::string source_name;
-  std::string allocation_stage;
   std::string binding_batch_kind;
   std::size_t binding_order_index = 0;
 };

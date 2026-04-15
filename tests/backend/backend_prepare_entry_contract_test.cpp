@@ -1588,10 +1588,7 @@ int main() {
       opportunistic_contention->window_coordination_category != "mixed_sparse_windows") {
     return fail("semantic-BIR regalloc should reduce opportunistic reservation summaries into explicit sparse-window follow-up categories");
   }
-  if (carry_binding->allocation_stage != "stabilize_across_calls" ||
-      callread_binding->allocation_stage != "stabilize_across_calls" ||
-      callwrite_binding->allocation_stage != "stabilize_across_calls" ||
-      carry_binding->binding_batch_kind != "call_boundary_binding_batch" ||
+  if (carry_binding->binding_batch_kind != "call_boundary_binding_batch" ||
       callread_binding->binding_batch_kind != "call_boundary_binding_batch" ||
       callwrite_binding->binding_batch_kind != "call_boundary_binding_batch" ||
       carry_binding->binding_order_index != 0 || callread_binding->binding_order_index != 1 ||
@@ -1599,10 +1596,7 @@ int main() {
     return fail(
         "semantic-BIR regalloc should keep binding-ready across-call entries focused on sequencing identity and order");
   }
-  if (window_binding->allocation_stage != "stabilize_local_reuse" ||
-      readonly_binding->allocation_stage != "stabilize_local_reuse" ||
-      multiwrite_binding->allocation_stage != "stabilize_local_reuse" ||
-      window_binding->binding_batch_kind != "local_reuse_binding_batch" ||
+  if (window_binding->binding_batch_kind != "local_reuse_binding_batch" ||
       readonly_binding->binding_batch_kind != "local_reuse_binding_batch" ||
       multiwrite_binding->binding_batch_kind != "local_reuse_binding_batch" ||
       window_binding->binding_order_index != 0 || readonly_binding->binding_order_index != 1 ||

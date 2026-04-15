@@ -1014,7 +1014,6 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
     function.binding_sequence.push_back(PreparedRegallocBindingDecision{
         .source_kind = decision.source_kind,
         .source_name = decision.source_name,
-        .allocation_stage = decision.allocation_stage,
         .binding_batch_kind = binding_batch_kind,
         .binding_order_index = batch_summary->candidate_count,
     });
