@@ -8,6 +8,31 @@ namespace c4c::backend::bir {
 
 namespace {
 
+std::string escape_quoted_text(std::string_view text) {
+  std::string escaped;
+  escaped.reserve(text.size());
+  for (const char ch : text) {
+    switch (ch) {
+      case '\\':
+        escaped += "\\\\";
+        break;
+      case '"':
+        escaped += "\\\"";
+        break;
+      case '\n':
+        escaped += "\\n";
+        break;
+      case '\t':
+        escaped += "\\t";
+        break;
+      default:
+        escaped.push_back(ch);
+        break;
+    }
+  }
+  return escaped;
+}
+
 std::string render_value(const Value& value) {
   if (value.kind == Value::Kind::Named) {
     return value.name;
@@ -194,7 +219,21 @@ void render_function(std::ostringstream& out, const Function& function) {
                 }
                 out << " " << render_value(lowered.args[arg_index]);
               }
-              out << ")\n";
+              out << ")";
+              if (lowered.inline_asm.has_value()) {
+                out << " [asm=\"" << escape_quoted_text(lowered.inline_asm->asm_text)
+                    << "\", constraints=\""
+                    << escape_quoted_text(lowered.inline_asm->constraints) << "\"";
+                if (!lowered.inline_asm->args_text.empty()) {
+                  out << ", raw_args=\""
+                      << escape_quoted_text(lowered.inline_asm->args_text) << "\"";
+                }
+                if (lowered.inline_asm->side_effects) {
+                  out << ", sideeffect";
+                }
+                out << "]";
+              }
+              out << "\n";
             } else if constexpr (std::is_same_v<T, LoadLocalInst>) {
               out << "  " << lowered.result.name << " = bir.load_local "
                   << render_type(lowered.result.type) << " " << lowered.slot_name;

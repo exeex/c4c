@@ -471,6 +471,7 @@ bool BirFunctionLowerer::lower_function_params(
 
 bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     const c4c::codegen::lir::LirInst& inst,
+    const ValueMap& value_aliases,
     std::vector<bir::Inst>* lowered_insts) {
   const auto lower_va_result_type = [](std::string_view type_text) -> std::optional<bir::TypeKind> {
     if (const auto lowered = lower_scalar_or_function_pointer_type(type_text); lowered.has_value()) {
@@ -551,6 +552,77 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     });
     return true;
   };
+  const auto lower_inline_asm_call =
+      [&](const c4c::codegen::lir::LirInlineAsmOp& inline_asm) -> bool {
+    const auto return_type_text =
+        std::string(c4c::codegen::lir::trim_lir_arg_text(inline_asm.ret_type.str()));
+    bir::CallInst lowered_call{
+        .callee = "llvm.inline_asm",
+        .return_type_name = return_type_text,
+        .return_type = bir::TypeKind::Void,
+        .inline_asm = bir::InlineAsmMetadata{
+            .asm_text = inline_asm.asm_text,
+            .constraints = inline_asm.constraints,
+            .args_text = inline_asm.args_str,
+            .side_effects = inline_asm.side_effects,
+        },
+    };
+
+    if (return_type_text != "void") {
+      if (inline_asm.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+        return false;
+      }
+      const auto lowered_type = lower_scalar_or_function_pointer_type(return_type_text);
+      if (!lowered_type.has_value()) {
+        return false;
+      }
+      lowered_call.result = bir::Value::named(*lowered_type, inline_asm.result.str());
+      lowered_call.return_type = *lowered_type;
+    } else if (!inline_asm.result.empty()) {
+      return false;
+    }
+
+    if (!inline_asm.args_str.empty()) {
+      auto lowered_args = std::vector<bir::Value>{};
+      auto lowered_arg_types = std::vector<bir::TypeKind>{};
+      for (const auto raw_item :
+           lir_to_bir_detail::split_top_level_initializer_items(inline_asm.args_str)) {
+        const auto item = c4c::codegen::lir::trim_lir_arg_text(raw_item);
+        if (item.empty()) {
+          continue;
+        }
+        const auto parsed_operand = lir_to_bir_detail::parse_typed_operand(item);
+        if (!parsed_operand.has_value()) {
+          lowered_args.clear();
+          lowered_arg_types.clear();
+          break;
+        }
+        const auto arg_type = lower_scalar_or_function_pointer_type(parsed_operand->type_text);
+        if (!arg_type.has_value()) {
+          lowered_args.clear();
+          lowered_arg_types.clear();
+          break;
+        }
+        const auto lowered_arg =
+            BirFunctionLowerer::lower_value(parsed_operand->operand, *arg_type, value_aliases);
+        if (!lowered_arg.has_value()) {
+          lowered_args.clear();
+          lowered_arg_types.clear();
+          break;
+        }
+        lowered_arg_types.push_back(*arg_type);
+        lowered_args.push_back(*lowered_arg);
+      }
+      if (!lowered_args.empty()) {
+        lowered_call.args = std::move(lowered_args);
+        lowered_call.arg_types = std::move(lowered_arg_types);
+        lowered_call.inline_asm->args_text.clear();
+      }
+    }
+
+    lowered_insts->push_back(std::move(lowered_call));
+    return true;
+  };
 
   if (const auto* va_start = std::get_if<c4c::codegen::lir::LirVaStartOp>(&inst)) {
     return lower_va_list_call("llvm.va_start.p0", va_start->ap_ptr);
@@ -578,6 +650,10 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
 
   if (const auto* va_arg = std::get_if<c4c::codegen::lir::LirVaArgOp>(&inst)) {
     return lower_va_arg_call(*va_arg);
+  }
+
+  if (const auto* inline_asm = std::get_if<c4c::codegen::lir::LirInlineAsmOp>(&inst)) {
+    return lower_inline_asm_call(*inline_asm);
   }
 
   if (const auto* stacksave = std::get_if<c4c::codegen::lir::LirStackSaveOp>(&inst)) {

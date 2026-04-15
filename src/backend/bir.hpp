@@ -225,6 +225,13 @@ struct PhiInst {
   std::vector<PhiIncoming> incomings;
 };
 
+struct InlineAsmMetadata {
+  std::string asm_text;
+  std::string constraints;
+  std::string args_text;
+  bool side_effects = false;
+};
+
 struct CallInst {
   std::optional<Value> result;
   std::string callee;
@@ -239,6 +246,7 @@ struct CallInst {
   bool is_indirect = false;
   bool is_variadic = false;
   bool is_noreturn = false;
+  std::optional<InlineAsmMetadata> inline_asm;
 };
 
 struct LoadLocalInst {

@@ -437,6 +437,7 @@ class BirFunctionLowerer {
                                     const TypeDeclMap& type_decls,
                                     bir::Function* lowered);
   bool lower_runtime_intrinsic_inst(const c4c::codegen::lir::LirInst& inst,
+                                    const ValueMap& value_aliases,
                                     std::vector<bir::Inst>* lowered_insts);
 
   // Aggregate lowering helpers.

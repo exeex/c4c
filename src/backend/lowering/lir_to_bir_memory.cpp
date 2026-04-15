@@ -1523,7 +1523,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     return true;
   }
 
-  if (lower_runtime_intrinsic_inst(inst, lowered_insts)) {
+  if (lower_runtime_intrinsic_inst(inst, value_aliases, lowered_insts)) {
     return true;
   }
 

@@ -8,17 +8,16 @@ Current Plan Focus: ordered step 3, runtime and intrinsic families through seman
 # Current Packet
 
 ## Just Finished
-- widened the runtime-family boundary to VLA stack rewinds by lowering `LirStackSaveOp` and `LirStackRestoreOp` directly to semantic BIR as `llvm.stacksave` and `llvm.stackrestore`, while preserving counted VLA allocation as a semantic `llvm.dynamic_alloca.i32` placeholder in semantic-observation mode so the backedge rewind stays in BIR instead of raw LLVM fallback
+- widened the runtime-family boundary to inline asm by lowering `LirInlineAsmOp` into an explicit semantic `llvm.inline_asm` BIR placeholder with preserved template, constraint, and side-effect metadata, so semantic observation no longer falls back to raw LLVM IR for a simple `asm volatile("nop")` route
 
 ## Suggested Next
-- stay on plan item 3 and widen the semantic runtime-family boundary to the next source-idea intrinsic family that still escapes semantic BIR, preferably `inline asm` placeholder routing or a nearby preserved `va_list` forwarding shape
+- stay on plan item 3 and either broaden the inline-asm placeholder to preserve typed operand lists beyond the current raw-args fallback path, or move to the next nearby runtime family that still escapes semantic BIR such as a preserved `va_list` forwarding shape
 
 ## Watchouts
-- keep follow-on work inside shared semantic lowering and semantic-observation LIR preservation; do not re-expand AMD64 variadic ABI details into semantic BIR or reopen `call_decode.cpp`
-- the call-site fix generalizes the existing local memcpy route to compiler-generated `LirMemcpyOp` as well as direct `memcpy` calls, so nearby packets should reuse that shared leaf-copy behavior instead of adding new variadic-case-only packing shortcuts
-- the current semantic variadic route now covers `va_start`, `va_copy`, scalar `va_arg`, aggregate `va_arg`, and `va_end` as explicit BIR calls; nearby packets should preserve that semantic family grouping instead of reclassifying progress by testcase names or target ABI details
-- the semantic counted-allocation placeholder is intentionally scoped to semantic-observation mode so default prepared/native backend routing does not silently change ownership of dynamic `alloca`, ABI legality, or target-specific stack management
+- keep follow-on work inside shared semantic lowering; do not route inline asm back through target-specific emitters, ABI shortcuts, or `call_decode.cpp`
+- the new `llvm.inline_asm` BIR placeholder is intentionally semantic-only metadata today: it preserves template, constraints, side-effect state, and parsed scalar arguments when possible, while falling back to raw argument text when operand typing is not yet modeled
+- nearby packets should preserve the existing runtime-family grouping for `memcpy`, `memset`, `va_*`, `stacksave`, `stackrestore`, and `abs` rather than mixing inline-asm follow-up with target legality or testcase-specific backend text matching
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-- passed with `test_after.log`; backend subset result is `passed=41 failed=0 total=41`, including `backend_codegen_route_x86_64_vla_goto_stackrestore_observe_semantic_bir`
+- passed with `test_after.log`; backend subset result is `passed=42 failed=0 total=42`, including `backend_codegen_route_x86_64_inline_asm_nop_observe_semantic_bir`
