@@ -3042,15 +3042,28 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
 
     const auto fill_leaf_slots =
         [&](const auto& leaf_slots, std::size_t total_size_bytes) -> bool {
-      if (fill_size_bytes < total_size_bytes) {
+      if (fill_size_bytes > total_size_bytes) {
         return false;
       }
+
+      std::size_t covered_bytes = 0;
       for (const auto& [byte_offset, slot_name] : leaf_slots) {
-        (void)byte_offset;
+        if (covered_bytes == fill_size_bytes) {
+          break;
+        }
+        if (byte_offset != covered_bytes) {
+          return false;
+        }
+
         const auto slot_type_it = local_slot_types.find(slot_name);
         if (slot_type_it == local_slot_types.end()) {
           return false;
         }
+        const auto slot_size = type_size_bytes(slot_type_it->second);
+        if (slot_size == 0 || byte_offset + slot_size > fill_size_bytes) {
+          return false;
+        }
+
         const auto fill_value =
             lower_repeated_byte_initializer_value(slot_type_it->second, fill_byte);
         if (!fill_value.has_value()) {
@@ -3060,8 +3073,9 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
             .slot_name = slot_name,
             .value = *fill_value,
         });
+        covered_bytes += slot_size;
       }
-      return true;
+      return covered_bytes == fill_size_bytes;
     };
 
     const auto resolve_local_memset_array_view =
