@@ -3,40 +3,51 @@
 Status: Active
 Source Idea: ideas/open/48_prepare_pipeline_rebuild.md
 Source Plan: plan.md
-Current Plan Focus: directory rehome to `bir / prealloc / mir`
+Current Plan Focus: finish the `prepare -> prealloc` structural cleanup so the backend pipeline reads cleanly as `bir -> prealloc -> mir`
 
 # Current Packet
 
 ## Goal
+- finish turning `src/backend/prealloc/` into a coherent class-owned API surface
+  and naming domain so the shared backend flow is clearly `bir -> prealloc -> mir`
 - keep prealloc liveness as the sole owner of access facts and keep regalloc as
   a consumer that stages reservation, contention, binding, and handoff without
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed object-local `sync_coordination_category`,
-  `home_slot_category`, and `window_coordination_category` after confirming
-  the live binding-prerequisite and handoff route already reads those facts
-  from contention plus batch-owned summaries instead of from per-object
-  mirrors
-- dropped the now-dead category assignments in
-  `populate_object_allocation_state(...)` so register-candidate, missing-state,
-  and fixed-stack objects stop publishing coordination mirrors that had no
-  non-test consumer
-- updated the prealloc-entry contract test to keep coordination-category
-  assertions on contention summaries while removing the deleted object-local
-  mirror checks
+- renamed the prealloc entry surface to `prealloc.hpp/.cpp`, deleted the
+  phase-local headers, and made `BirPreAlloc` the only public API index
+- removed the old bootstrap-LIR prealloc fallback route so the main public
+  surface is BIR-only
+- simplified `src/backend/backend.cpp` down to the shared pipeline orchestration
+  path instead of keeping target-specific RISC-V lowering logic in the driver
+- changed `BirPreAlloc` phase execution from static namespace-like helpers into
+  instance methods that operate on owned `prepared_` state
+- moved the regalloc function-local helper flow onto `BirPreAlloc` state so the
+  regalloc packet no longer threads `PreparedRegallocFunction&` through every
+  helper
+- aligned top-level entry notes and regalloc prerequisite/handoff state strings
+  from `prepare_*` naming to `prealloc_*`
 
 ## Suggested Next
-- inspect whether object-local `binding_batch_kind` and
+- rename the remaining `prepare` API and namespace surface to `prealloc`:
+  `namespace c4c::backend::prepare`, `PrepareRoute`,
+  `prepare_route_name(...)`, `prepare_semantic_bir_module_with_options(...)`,
+  and `prepare_bir_module_with_options(...)`
+- update backend/tests to consume the renamed `prealloc` API surface without
+  changing pipeline behavior
+- after the API rename, inspect whether object-local `binding_batch_kind` and
   `binding_order_index` are still the minimal per-object attachment contract or
   whether any remaining per-object publication can shrink further without
   taking batch ownership away from batch summaries
-- keep the next packet inside step 5 ownership cleanup; do not turn it into
-  new allocation policy or target-ingestion work
+- keep the next packets inside ownership and naming cleanup; do not turn them
+  into new allocation policy, MIR ingestion, or target-specific work
 
 ## Watchouts
 - do not add more liveness-like fact gathering to
   `src/backend/prealloc/regalloc.cpp`
+- do not leave the codebase in a half-renamed state where directory/class names
+  say `prealloc` but namespace/API names still advertise `prepare`
 - do not drift into target ingestion or target-specific register policy
 - do not re-introduce synthetic pass layers, fake intervals, placeholder
   interference facts, or name-based special cases just to flatten the contract
@@ -61,8 +72,11 @@ Current Plan Focus: directory rehome to `bir / prealloc / mir`
   downstream reporting need to map each object onto its owning batch entry; do
   not delete that projection unless the next packet can prove another stable
   attachment path
+- the current priority is structural clarity; if a cleanup only renames symbols
+  but does not reduce architectural ambiguity, prefer the cleanup that removes
+  an actual ownership seam or namespace mismatch first
 
 ## Proof
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
-- passed; the full `^backend_` subset completed successfully with output in
-  `test_after.log`
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_phi_materialize|backend_prepare_entry_contract|backend_lir_to_bir_notes)$'`
+- passed; the focused backend prealloc subset completed successfully after the
+  latest `BirPreAlloc` ownership and contract-naming cleanup
