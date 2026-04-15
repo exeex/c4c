@@ -18,12 +18,34 @@ using lir_to_bir_detail::resolve_known_global_address;
 using lir_to_bir_detail::resolve_pointer_initializer_offsets;
 using lir_to_bir_detail::TypeDeclMap;
 
+int semantic_failure_note_rank(std::string_view message) {
+  if (message.find("failed in runtime/intrinsic family") != std::string::npos ||
+      message.find("failed in semantic call family") != std::string::npos) {
+    return 3;
+  }
+  if (message.find("semantic family") != std::string::npos) {
+    constexpr std::string_view kUmbrellaFamilies[] = {
+        "function-signature semantic family",
+        "local-memory semantic family",
+        "scalar-control-flow semantic family",
+        "scalar/local-memory semantic family",
+    };
+    for (std::string_view umbrella : kUmbrellaFamilies) {
+      if (message.find(umbrella) != std::string::npos) {
+        return 1;
+      }
+    }
+    return 2;
+  }
+  return 0;
+}
+
 std::optional<std::string_view> latest_function_failure_note(const BirLoweringContext& context) {
-  for (auto it = context.notes.rbegin(); it != context.notes.rend(); ++it) {
-    if (it->phase == "function" &&
-        (it->message.find("failed in runtime/intrinsic family") != std::string::npos ||
-         it->message.find("failed in semantic call family") != std::string::npos)) {
-      return it->message;
+  for (int rank = 3; rank >= 1; --rank) {
+    for (auto it = context.notes.rbegin(); it != context.notes.rend(); ++it) {
+      if (it->phase == "function" && semantic_failure_note_rank(it->message) == rank) {
+        return it->message;
+      }
     }
   }
   for (auto it = context.notes.rbegin(); it != context.notes.rend(); ++it) {

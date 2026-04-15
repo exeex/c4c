@@ -10,9 +10,10 @@ Current Plan Focus: ordered step 4, tighten the semantic unsupported boundary
 ## Just Finished
 - tightened step-4 note coverage around module failure summaries without widening lowering behavior: the direct backend notes test now proves both runtime and semantic-call failures stay visible in the module note even when later wrapper notes also fire
 - added a nearby direct-call regression beside the existing inline-asm note case, proving `direct-call semantic family` survives into the module-level `latest function failure` summary instead of being replaced by `scalar/local-memory semantic family`
+- generalized the module-summary selector into ranked semantic-family handling: runtime and semantic-call failures still outrank later wrapper notes, and more specific non-call families such as `scalar-cast semantic family` now outrank umbrella summaries like `scalar/local-memory semantic family`
 
 ## Suggested Next
-- keep step 4 on planner-facing unsupported-boundary cleanup and audit whether non-call/non-runtime semantic families still need the same summary-precedence treatment before considering any route reset or closure checkpoint
+- keep step 4 on planner-facing unsupported-boundary cleanup and audit whether any remaining module-note wording still names the admitted buckets too narrowly now that summary precedence is semantic-family-wide
 - if another note-level regression is added, keep it adjacent to the summary contract rather than widening inline asm, call ABI, or other backend capability work
 
 ## Watchouts

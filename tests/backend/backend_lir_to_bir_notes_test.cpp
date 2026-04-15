@@ -11,6 +11,8 @@ using c4c::backend::BirLoweringNote;
 using c4c::backend::BirLoweringOptions;
 using c4c::backend::try_lower_to_bir_with_options;
 using c4c::codegen::lir::LirBlock;
+using c4c::codegen::lir::LirCastKind;
+using c4c::codegen::lir::LirCastOp;
 using c4c::codegen::lir::LirCallOp;
 using c4c::codegen::lir::LirFunction;
 using c4c::codegen::lir::LirInlineAsmOp;
@@ -107,6 +109,33 @@ LirModule make_bad_direct_call_module() {
   return module;
 }
 
+LirModule make_bad_scalar_cast_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_scalar_cast";
+  function.signature_text = "define void @bad_scalar_cast()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("@not_ssa"),
+      .kind = LirCastKind::PtrToInt,
+      .from_type = "ptr",
+      .operand = LirOperand("@object"),
+      .to_type = "i64",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 }  // namespace
 
 int main() {
@@ -128,6 +157,16 @@ int main() {
           "missing module note carrying the semantic-call family failure");
       direct_call_status != 0) {
     return direct_call_status;
+  }
+
+  if (const int scalar_cast_status = expect_failure_notes(
+          make_bad_scalar_cast_module(),
+          "failed in scalar-cast semantic family",
+          "latest function failure: semantic lir_to_bir function 'bad_scalar_cast' failed in scalar-cast semantic family",
+          "missing specific scalar-cast function note",
+          "missing module note carrying the scalar-cast semantic family failure");
+      scalar_cast_status != 0) {
+    return scalar_cast_status;
   }
   return 0;
 }
