@@ -8,26 +8,22 @@ Current Plan Focus: step-4 semantic-BIR regalloc contract activation
 # Current Packet
 
 ## Just Finished
-- added an explicit semantic-BIR `regalloc` artifact that groups prepared
-  liveness objects per function and classifies them into target-neutral
-  downstream allocation contracts: `register_candidate` vs
-  `fixed_stack_storage`
-- wired the shared semantic-BIR prepare entry through `regalloc` after
-  `liveness` so the phase order now publishes a concrete step-4 artifact
-  instead of stopping at liveness-only contracts
-- extended the prepare entry-contract test so one semantic function now checks
-  the new regalloc artifact alongside the existing prepare route, invariants,
-  stack-layout objects, liveness contracts, and bootstrap-LIR fallback phase
-  order
+- enriched each semantic-BIR `regalloc` object with explicit direct-read,
+  direct-write, addressed-access, and call-argument exposure counts derived
+  from actual BIR loads, stores, and calls instead of slot-name heuristics
+- kept the regalloc contract target-neutral by publishing those access anchors
+  alongside the existing `register_candidate` vs `fixed_stack_storage`
+  classification for downstream prepared-BIR consumers
+- extended the prepare entry-contract test so the semantic prepare route now
+  checks concrete access/exposure summaries for representative local-slot,
+  address-exposed, and call-result storage objects
 
 ## Suggested Next
-- refine the semantic-BIR regalloc artifact beyond coarse allocation classes
-  by publishing use/def anchors, live ranges, or interference-friendly
-  grouping that later physical assignment can consume without inferring back
-  from raw BIR text
-- keep any new regalloc detail keyed off prepared liveness and stack-layout
-  artifacts plus explicit semantic structure rather than slot-name families
-  or target heuristics
+- build on the new access summary by publishing phase-order-aware regalloc
+  priority cues such as call-crossing or def/use ordering that later physical
+  assignment can consume without reconstructing liveness from scratch
+- keep any next regalloc detail keyed off prepared liveness, stack-layout, and
+  explicit BIR structure rather than slot-name families or target heuristics
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -39,8 +35,9 @@ Current Plan Focus: step-4 semantic-BIR regalloc contract activation
 - if more source kinds appear, classify them from explicit semantic ABI facts,
   intrinsic identity, or lowering metadata instead of inventing name-based
   buckets inside liveness/regalloc
-- keep the regalloc artifact inspectable and target-neutral; avoid replacing
-  concrete classification data with broader notes
+- keep the regalloc artifact inspectable and target-neutral; prefer concrete
+  access summaries over broad notes, but do not fake live ranges or
+  interference until the data is really available
 - prefer `build -> ^backend_` proof unless a narrower honest backend subset is
   clearly available
 

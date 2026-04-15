@@ -305,6 +305,11 @@ int main() {
   if (!contains_note(prepared_bir.notes, "regalloc", "register_candidate or fixed_stack_storage")) {
     return fail("semantic-BIR prepare regalloc note should mention the prepared allocation contracts");
   }
+  if (!contains_note(prepared_bir.notes,
+                     "regalloc",
+                     "direct read/write, addressed-access, and call-argument exposure counts")) {
+    return fail("semantic-BIR prepare regalloc note should mention the prepared access/exposure summary");
+  }
   constexpr std::string_view kExpectedBirPhases[] = {
       "legalize",
       "stack_layout",
@@ -435,6 +440,11 @@ int main() {
       local_slot_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should treat value-storage objects as register candidates");
   }
+  if (local_slot_regalloc->direct_read_count != 1 || local_slot_regalloc->direct_write_count != 0 ||
+      local_slot_regalloc->addressed_access_count != 0 ||
+      local_slot_regalloc->call_arg_exposure_count != 0) {
+    return fail("semantic-BIR regalloc should publish direct-access counts for local value-storage objects");
+  }
   const auto* address_taken_regalloc =
       find_regalloc_object(*regalloc_function, "address_taken_local_slot", "addressed.slot");
   if (address_taken_regalloc == nullptr ||
@@ -442,12 +452,22 @@ int main() {
       address_taken_regalloc->allocation_kind != "fixed_stack_storage") {
     return fail("semantic-BIR regalloc should keep address-exposed storage on fixed stack storage");
   }
+  if (address_taken_regalloc->direct_read_count != 0 || address_taken_regalloc->direct_write_count != 0 ||
+      address_taken_regalloc->addressed_access_count != 1 ||
+      address_taken_regalloc->call_arg_exposure_count != 0) {
+    return fail("semantic-BIR regalloc should publish addressed-access counts for address-exposed storage");
+  }
   const auto* call_result_regalloc =
       find_regalloc_object(*regalloc_function, "call_result_sret", "%call.result");
   if (call_result_regalloc == nullptr ||
       call_result_regalloc->contract_kind != "address_exposed_storage" ||
       call_result_regalloc->allocation_kind != "fixed_stack_storage") {
     return fail("semantic-BIR regalloc should keep aggregate call-result storage on fixed stack storage");
+  }
+  if (call_result_regalloc->direct_read_count != 0 || call_result_regalloc->direct_write_count != 0 ||
+      call_result_regalloc->addressed_access_count != 0 ||
+      call_result_regalloc->call_arg_exposure_count != 1) {
+    return fail("semantic-BIR regalloc should publish call-argument exposure counts for call-result storage");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(
