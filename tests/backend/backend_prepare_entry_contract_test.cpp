@@ -874,9 +874,6 @@ int main() {
       scratch_slot_regalloc->reservation_scope != "unobserved_instruction_window" ||
       scratch_slot_regalloc->home_slot_mode != "home_slot_needs_future_analysis" ||
       scratch_slot_regalloc->sync_policy != "sync_policy_needs_future_analysis" ||
-      scratch_slot_regalloc->sync_coordination_category != "read_write_coordination" ||
-      scratch_slot_regalloc->home_slot_category != "mixed_home_slot_modes" ||
-      scratch_slot_regalloc->window_coordination_category != "mixed_sparse_windows" ||
       scratch_slot_regalloc->deferred_reason != "awaiting_access_window_observation") {
     return fail("semantic-BIR regalloc should publish a deferred opportunistic allocation state for unobserved single-point prepared objects");
   }
@@ -927,9 +924,6 @@ int main() {
       local_slot_regalloc->reservation_scope != "single_instruction_window" ||
       local_slot_regalloc->home_slot_mode != "single_use_home_slot_ok" ||
       local_slot_regalloc->sync_policy != "restore_before_read" ||
-      local_slot_regalloc->sync_coordination_category != "read_write_coordination" ||
-      local_slot_regalloc->home_slot_category != "mixed_home_slot_modes" ||
-      local_slot_regalloc->window_coordination_category != "mixed_sparse_windows" ||
       local_slot_regalloc->deferred_reason != "not_deferred") {
     return fail("semantic-BIR regalloc should publish an opportunistic object-level allocation state for observed single-point reads");
   }
@@ -981,9 +975,6 @@ int main() {
       carry_slot_regalloc->reservation_scope != "call_boundary_window" ||
       carry_slot_regalloc->home_slot_mode != "stable_home_slot_required" ||
       carry_slot_regalloc->sync_policy != "sync_on_read_write_boundaries" ||
-      carry_slot_regalloc->sync_coordination_category != "mixed_sync_coordination" ||
-      carry_slot_regalloc->home_slot_category != "stable_home_slot_required" ||
-      carry_slot_regalloc->window_coordination_category != "overlapping_call_boundary_windows" ||
       carry_slot_regalloc->deferred_reason != "not_deferred") {
     return fail("semantic-BIR regalloc should publish a call-preserved object-level allocation state for across-call candidates");
   }
@@ -1036,9 +1027,6 @@ int main() {
       window_slot_regalloc->reservation_scope != "adjacent_instruction_window" ||
       window_slot_regalloc->home_slot_mode != "stable_home_slot_preferred" ||
       window_slot_regalloc->sync_policy != "sync_on_read_write_boundaries" ||
-      window_slot_regalloc->sync_coordination_category != "mixed_sync_coordination" ||
-      window_slot_regalloc->home_slot_category != "stable_home_slot_preferred" ||
-      window_slot_regalloc->window_coordination_category != "adjacent_local_windows" ||
       window_slot_regalloc->deferred_reason != "not_deferred") {
     return fail("semantic-BIR regalloc should publish a local-reuse object-level allocation state for nearby multi-point candidates");
   }
@@ -1296,9 +1284,6 @@ int main() {
       address_taken_regalloc->reservation_scope != "fixed_stack_memory_anchor" ||
       address_taken_regalloc->home_slot_mode != "stable_home_slot_required" ||
       address_taken_regalloc->sync_policy != "memory_authoritative" ||
-      address_taken_regalloc->sync_coordination_category != "fixed_stack_authoritative" ||
-      address_taken_regalloc->home_slot_category != "stable_home_slot_required" ||
-      address_taken_regalloc->window_coordination_category != "fixed_stack_memory_anchor" ||
       address_taken_regalloc->deferred_reason != "not_applicable_fixed_stack") {
     return fail("semantic-BIR regalloc should publish a fixed-stack authoritative allocation state for address-exposed prepared objects");
   }

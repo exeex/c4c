@@ -979,11 +979,6 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
       object.reservation_scope = std::string(regalloc_fixed_stack_reservation_scope(object));
       object.home_slot_mode = std::string(regalloc_home_slot_mode(object.home_slot_stability_hint));
       object.sync_policy = std::string(regalloc_fixed_stack_sync_policy(object));
-      object.sync_coordination_category = "fixed_stack_authoritative";
-      object.home_slot_category = object.home_slot_mode == "stable_home_slot_required"
-                                      ? "stable_home_slot_required"
-                                      : "fixed_stack_only";
-      object.window_coordination_category = object.reservation_scope;
       object.binding_frontier_kind = "fixed_stack_authoritative";
       object.binding_batch_kind.clear();
       object.binding_order_index = 0;
@@ -995,9 +990,6 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
       object.reservation_scope = "allocation_state_missing_decision";
       object.home_slot_mode = "allocation_state_missing_decision";
       object.sync_policy = "allocation_state_missing_decision";
-      object.sync_coordination_category = "allocation_state_missing_decision";
-      object.home_slot_category = "allocation_state_missing_decision";
-      object.window_coordination_category = "allocation_state_missing_decision";
       object.binding_frontier_kind = "binding_frontier_incomplete";
       object.binding_batch_kind.clear();
       object.binding_order_index = 0;
@@ -1008,15 +1000,6 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
     object.reservation_scope = decision->reservation_scope;
     object.home_slot_mode = decision->home_slot_mode;
     object.sync_policy = decision->sync_policy;
-    if (contention != nullptr) {
-      object.sync_coordination_category = contention->sync_coordination_category;
-      object.home_slot_category = contention->home_slot_category;
-      object.window_coordination_category = contention->window_coordination_category;
-    } else {
-      object.sync_coordination_category = "allocation_state_missing_summary";
-      object.home_slot_category = "allocation_state_missing_summary";
-      object.window_coordination_category = "allocation_state_missing_summary";
-    }
 
     object.binding_frontier_kind =
         std::string(regalloc_binding_frontier_kind(object, decision, contention));

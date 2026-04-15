@@ -81,9 +81,6 @@ struct PreparedRegallocObject {
   std::string reservation_scope;
   std::string home_slot_mode;
   std::string sync_policy;
-  std::string sync_coordination_category;
-  std::string home_slot_category;
-  std::string window_coordination_category;
   std::string binding_frontier_kind;
   std::string binding_batch_kind;
   std::size_t binding_order_index = 0;

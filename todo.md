@@ -13,21 +13,24 @@ Current Plan Focus: step-5 regalloc consumer shrink
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed object-local `PreparedRegallocObject::follow_up_category` after
-  confirming the downstream binding and handoff route already reads
-  follow-up ownership from contention, binding-batch, and handoff summaries
-- dropped the now-dead object-level assignments in
-  `populate_object_allocation_state(...)` so register-candidate and
-  fixed-stack objects no longer mirror contention follow-up classification
-- updated the prepare-entry contract test to stop asserting the deleted
-  object-local mirror while keeping follow-up checks on contention,
-  binding-batch, and handoff summaries where that contract still lives
+- removed object-local `sync_coordination_category`,
+  `home_slot_category`, and `window_coordination_category` after confirming
+  the live binding-prerequisite and handoff route already reads those facts
+  from contention plus batch-owned summaries instead of from per-object
+  mirrors
+- dropped the now-dead category assignments in
+  `populate_object_allocation_state(...)` so register-candidate, missing-state,
+  and fixed-stack objects stop publishing coordination mirrors that had no
+  non-test consumer
+- updated the prepare-entry contract test to keep coordination-category
+  assertions on contention summaries while removing the deleted object-local
+  mirror checks
 
 ## Suggested Next
-- inspect whether object-local `sync_coordination_category`,
-  `home_slot_category`, and `window_coordination_category` are likewise pure
-  mirrors of contention or fixed-stack ownership and remove only the fields
-  that have no surviving non-test consumer
+- inspect whether object-local `binding_batch_kind` and
+  `binding_order_index` are still the minimal per-object attachment contract or
+  whether any remaining per-object publication can shrink further without
+  taking batch ownership away from batch summaries
 - keep the next packet inside step 5 ownership cleanup; do not turn it into
   new allocation policy or target-ingestion work
 
@@ -51,10 +54,13 @@ Current Plan Focus: step-5 regalloc consumer shrink
 - the ready frontier still derives its access-window prerequisite state from
   stage contention while deferred frontiers read it from batch-owned state; if
   the next cleanup tries to unify that, keep one clear owner for each fact
-- the remaining object-local coordination categories appear to be the next
-  mirrored layer, but fixed-stack objects still synthesize their values
-  locally; confirm whether those fixed-stack projections are consumed anywhere
-  real before deleting them
+- object-local coordination categories are gone now; keep future cleanup aimed
+  at mirrors with real summary-level owners instead of recreating new
+  fixed-stack or missing-state publication layers
+- object-local batch attachment still looks intentional because tests and
+  downstream reporting need to map each object onto its owning batch entry; do
+  not delete that projection unless the next packet can prove another stable
+  attachment path
 
 ## Proof
 - `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
