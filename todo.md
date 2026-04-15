@@ -8,18 +8,19 @@ Current Plan Focus: ordered step 3, lower runtime and intrinsic families semanti
 # Current Packet
 
 ## Just Finished
-- preserved single-output read/write inline asm through semantic BIR by carrying the `+r` source value into `LirInlineAsmOp` before storing the result back to the lvalue
-- added the scalar `i32` backend route proof for `__asm__ volatile("" : "+r"(x));`, and the semantic BIR now observes `bir.call i32 llvm.inline_asm(i32 %t0) [asm="", constraints="+r", sideeffect]`
+- proved pointer-valued inline asm output and read/write forms already stay on the semantic BIR route without new lowering changes
+- added backend route coverage for `__asm__ volatile("" : "=r"(q) : "r"(p));` and `__asm__ volatile("" : "+r"(p));`, and the semantic BIR now observes `bir.call ptr llvm.inline_asm(ptr %t0)` with `=r,r` and `+r` constraints before storing the pointer result back to the lvalue slot
 
 ## Suggested Next
-- decide whether the next honest inline-asm packet is digit-tied multi-output support or whether inline-asm should pause here and step 3 should move to another runtime/intrinsic family
-- if inline-asm continues, keep the next slice focused on semantics the current single-output HIR/LIR route can actually represent without inventing testcase-shaped special handling
+- treat inline asm as likely exhausted at the current single-output carrier boundary unless the next packet explicitly expands frontend/HIR representation for tied multi-output forms
+- if step 3 continues without a carrier expansion packet, move to the semantic unsupported-boundary cleanup in ordered step 4 instead of stretching inline asm with testcase-shaped coverage additions
 
 ## Watchouts
-- the new `+r` path still proves only single-output scalar lvalues; multi-output asm is still outside the current HIR carrier and should not be faked by dropping write results
+- this packet was a proof-only checkpoint: pointer outputs already lower honestly through the existing `StmtEmitter` and `lir_to_bir` path, so there was no backend/runtime code repair to land
+- the remaining inline-asm gap is still representational rather than backend-only: tied digit or multi-output cases need a carrier that can name more than one write result and should not be faked by dropping outputs
 - the empty-template parser fold remains intentionally separate from volatile asm preservation, so future inline-asm work still needs to keep the “all outputs must be representable” guard intact
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-- passed after the `+r` lowering fix and backend proof-case addition; the new route test now observes `bir.call i32 llvm.inline_asm(i32 %t0)` in semantic BIR for the single-output read/write path
+- passed with the new pointer inline-asm route cases; `backend_codegen_route_x86_64_inline_asm_output_ptr_observe_semantic_bir` and `backend_codegen_route_x86_64_inline_asm_output_readwrite_ptr_observe_semantic_bir` both observe semantic `bir.call ptr llvm.inline_asm(ptr %t0)` output paths
 - proof log preserved at `test_after.log`
