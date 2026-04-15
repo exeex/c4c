@@ -90,6 +90,18 @@ bir::Module make_prepare_contract_bir_module() {
       .size_bytes = 4,
       .align_bytes = 4,
   });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%va.arg.result.0",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%va.arg.result.4",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
 
   bir::Block entry;
   entry.label = "entry";
@@ -107,6 +119,27 @@ bir::Module make_prepare_contract_bir_module() {
       .return_type_name = "void",
       .return_type = bir::TypeKind::Void,
       .sret_storage_name = "%call.result",
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.va_arg.aggregate",
+      .args = {
+          bir::Value::named(bir::TypeKind::Ptr, "%va.arg.result"),
+          bir::Value::named(bir::TypeKind::Ptr, "%ap.cursor"),
+      },
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+      .arg_abi =
+          {bir::CallArgAbiInfo{
+               .type = bir::TypeKind::Ptr,
+               .size_bytes = 8,
+               .align_bytes = 4,
+               .primary_class = bir::AbiValueClass::Memory,
+               .sret_pointer = true,
+           },
+           bir::CallArgAbiInfo{
+               .type = bir::TypeKind::Ptr,
+           }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
   });
   entry.terminator = bir::ReturnTerminator{};
 
@@ -184,6 +217,9 @@ int main() {
   if (!contains_note(prepared_bir.notes, "stack_layout", "aggregate call-result sret storage")) {
     return fail("semantic-BIR prepare stack-layout note should mention aggregate call-result storage");
   }
+  if (!contains_note(prepared_bir.notes, "stack_layout", "aggregate va_arg output storage")) {
+    return fail("semantic-BIR prepare stack-layout note should mention aggregate va_arg output storage");
+  }
   constexpr std::string_view kExpectedBirPhases[] = {
       "legalize",
       "stack_layout",
@@ -196,8 +232,9 @@ int main() {
       return fail("unexpected semantic-BIR prepare phase order");
     }
   }
-  if (prepared_bir.stack_layout.objects.size() != 7) {
-    return fail("semantic-BIR stack layout should publish local-slot, byval/sret, and call-result frame objects");
+  if (prepared_bir.stack_layout.objects.size() != 10) {
+    return fail(
+        "semantic-BIR stack layout should publish local-slot, byval/sret, call-result, and va_arg frame objects");
   }
   const auto* local_slot = find_stack_object(prepared_bir, "local_slot", "flag.slot");
   if (local_slot == nullptr || local_slot->function_name != "id_pair" ||
@@ -228,6 +265,14 @@ int main() {
       call_result->type != bir::TypeKind::Ptr || call_result->size_bytes != 8 ||
       call_result->align_bytes != 4) {
     return fail("semantic-BIR stack layout should publish aggregate call-result sret storage as a prepared frame object");
+  }
+  const auto* va_arg_result =
+      find_stack_object(prepared_bir, "va_arg_aggregate_result", "%va.arg.result");
+  if (va_arg_result == nullptr || va_arg_result->function_name != "id_pair" ||
+      va_arg_result->type != bir::TypeKind::Ptr || va_arg_result->size_bytes != 8 ||
+      va_arg_result->align_bytes != 4) {
+    return fail(
+        "semantic-BIR stack layout should publish aggregate va_arg output storage as a prepared frame object");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(
