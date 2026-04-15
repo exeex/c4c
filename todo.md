@@ -13,29 +13,23 @@ Current Plan Focus: step-5 regalloc consumer shrink
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- stopped regalloc batch/handoff construction from reading per-object
-  `binding_frontier_reason` mirrors when the same information already lives in
-  object allocation-state fields and function-level batch summaries
-- switched deferred batch prerequisite selection to `deferred_reason` for the
-  access-window path and to contention-owned follow-up categories for the
-  coordination-deferred path, keeping object-local frontier publication intact
-- kept object-level `binding_frontier_*` output as downstream-facing state
-  while shrinking internal summary ownership back toward
-  `binding_batches`/`deferred_binding_batches`/`binding_handoff_summary`
-- stopped `populate_binding_sequence` and
-  `populate_binding_handoff_summary` from routing register-candidate objects
-  through mirrored `binding_frontier_kind`, deriving ready vs deferred
-  participation from allocation-state, reservation-scope, and deferred-state
-  fields instead
-- kept opportunistic single-point candidates on the deferred frontier in the
-  derived route so ready-only binding batches still match the current prepare
-  contract while object-local frontier publication remains available
+- stopped binding handoff summary construction from reading a mirrored
+  object-level `binding_frontier_reason` fallback when the ready path already
+  owns that fact in batch `follow_up_category` and the deferred path already
+  owns it in deferred-batch `deferred_reason`
+- kept object-local `binding_frontier_reason` publication intact for downstream
+  consumers while shrinking handoff publication back toward
+  `binding_batches`/`deferred_binding_batches`
+- preserved the existing deferred-frontier split where access-window deferred
+  handoffs publish `awaiting_access_window_observation` and coordination
+  deferred handoffs publish the contention-owned follow-up category
 
 ## Suggested Next
-- continue shrinking `src/backend/prepare/regalloc.cpp` by checking whether
-  `binding_frontier_reason` can stop acting as a mirrored fallback for
-  downstream handoff publication when the same fact already lives in
-  `deferred_reason`, `follow_up_category`, or derived frontier state
+- keep shrinking step-5 contract mirrors by checking whether deferred-batch
+  construction still needs `regalloc_binding_frontier_reason_view(...)` or can
+  publish its `deferred_reason` directly from `deferred_reason` plus
+  contention-owned follow-up state without changing object-local frontier
+  output
 - keep the next packet focused on ownership cleanup inside step 5; do not turn
   it into new allocation policy or target-ingestion work
 
@@ -50,17 +44,14 @@ Current Plan Focus: step-5 regalloc consumer shrink
 - if a regalloc field only repeats a function-level batch/handoff summary onto
   every object, prefer deleting it unless a downstream consumer truly needs the
   object-local projection
+- the handoff path now derives `binding_frontier_reason` from batch-owned
+  `follow_up_category` or deferred-batch `deferred_reason`; do not reintroduce
+  the object-level mirror as the internal owner for that publication path
 - the ready frontier still derives its access-window prerequisite state from
   stage contention while deferred frontiers read it from batch-owned state; if
   the next cleanup tries to unify that, keep one clear owner for each fact
 
 ## Proof
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepare_entry_contract$' 2>&1 | tee test_after.log`
-- passed; the build plus focused `backend_prepare_entry_contract` proof
-  completed successfully
-- `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
-- passed under `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 - `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
-- passed after restoring opportunistic single-point candidates to the deferred
-  frontier in the derived batch/handoff route; `backend_prepare_entry_contract`
-  and the full `^backend_` subset both completed successfully
+- passed; the full `^backend_` subset completed successfully with output in
+  `test_after.log`

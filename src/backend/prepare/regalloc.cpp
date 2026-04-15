@@ -433,9 +433,9 @@ std::string_view regalloc_binding_frontier_kind_view(
 
 struct BindingBatchContractView {
   std::string_view binding_frontier_kind;
-  std::string_view binding_frontier_reason;
   std::string_view binding_batch_kind;
   std::string_view allocation_stage;
+  std::string_view deferred_reason;
   std::string_view follow_up_category;
   std::string_view ordering_policy;
   std::string_view access_window_prerequisite_category;
@@ -471,9 +471,9 @@ std::optional<BindingBatchContractView> binding_batch_contract_view(
     }
     return BindingBatchContractView{
         .binding_frontier_kind = binding_frontier_kind,
-        .binding_frontier_reason = regalloc_binding_frontier_reason_view(object),
         .binding_batch_kind = object.binding_batch_kind,
         .allocation_stage = batch_summary->allocation_stage,
+        .deferred_reason = "not_deferred",
         .follow_up_category = batch_summary->follow_up_category,
         .ordering_policy = batch_summary->ordering_policy,
         .access_window_prerequisite_category = contention->window_coordination_category,
@@ -492,9 +492,9 @@ std::optional<BindingBatchContractView> binding_batch_contract_view(
   }
   return BindingBatchContractView{
       .binding_frontier_kind = binding_frontier_kind,
-      .binding_frontier_reason = regalloc_binding_frontier_reason_view(object),
       .binding_batch_kind = object.binding_batch_kind,
       .allocation_stage = batch_summary->allocation_stage,
+      .deferred_reason = batch_summary->deferred_reason,
       .follow_up_category = batch_summary->follow_up_category,
       .ordering_policy = batch_summary->ordering_policy,
       .access_window_prerequisite_category =
@@ -510,9 +510,14 @@ std::optional<BindingBatchContractView> binding_batch_contract_view(
 
 PreparedRegallocBindingHandoffSummary make_binding_handoff_summary(
     const BindingBatchContractView& contract) {
+  const auto binding_frontier_reason =
+      contract.binding_frontier_kind == "binding_deferred" &&
+              contract.deferred_reason != "not_deferred"
+          ? contract.deferred_reason
+          : contract.follow_up_category;
   return PreparedRegallocBindingHandoffSummary{
       .binding_frontier_kind = std::string(contract.binding_frontier_kind),
-      .binding_frontier_reason = std::string(contract.binding_frontier_reason),
+      .binding_frontier_reason = std::string(binding_frontier_reason),
       .binding_batch_kind = std::string(contract.binding_batch_kind),
       .allocation_stage = std::string(contract.allocation_stage),
       .follow_up_category = std::string(contract.follow_up_category),
