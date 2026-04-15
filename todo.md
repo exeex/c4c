@@ -17,22 +17,24 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- replaced the remaining attachment-keyed raw deferred-batch summary lookup in
-  `tests/backend/backend_prepare_entry_contract_test.cpp` with an
-  attachment-keyed `RegallocDeferredBatchMatch` path so the contract test
-  reuses one explicit summary-plus-resolution surface for both deferred-reason
-  and attachment-keyed checks
+- replaced the remaining hybrid
+  `find_regalloc_binding_batch_kind(...)` string-returning helper in
+  `tests/backend/backend_prepare_entry_contract_test.cpp` with an explicit
+  `RegallocBindingBatchMatch` surface so the contract test now reuses one
+  ready/deferred batch-match path for the last binding-batch-kind checks
+- replaced the deferred frontier-count check with a matched-batch attachment
+  total assertion so the contract test proves deferred membership through the
+  surviving batch summaries instead of relying on a weaker count-only branch
 - kept the packet test-side only: no prepare-owned regalloc data model
   changes, no backend routing changes, and no public `prepare` contract rename
 - reran the delegated build plus backend subset proof for the packet and kept
   the result in `test_after.log`
 
 ## Suggested Next
-- inspect whether the remaining hybrid
-  `find_regalloc_binding_batch_kind(...)` helper in
-  `tests/backend/backend_prepare_entry_contract_test.cpp` still deserves to
-  join ready and deferred batch identity behind one string-returning lookup
-  now that both paths reuse explicit match surfaces
+- inspect whether the remaining ready-batch-only helper surfaces in
+  `tests/backend/backend_prepare_entry_contract_test.cpp` can now collapse
+  onto one explicit consumer path without reintroducing object-local batch
+  mirrors or hidden string caches
 - keep the next packet inside step-5 regalloc ownership cleanup in related
   tests or `src/backend/prealloc/regalloc.cpp`; do not widen into a public API
   rename, new allocation policy, MIR ingestion, or target-specific work
@@ -96,6 +98,10 @@ while keeping the public shared contract named `prepare`
   deferred-reason and attachment-keyed checks; if later cleanup trims more
   helper branching, keep one stable consumer surface for identity-plus-
   resolution joins instead of splitting those fields back apart
+- ready and deferred binding-batch-kind checks now go through one explicit
+  `RegallocBindingBatchMatch`; if later cleanup trims more ready helper
+  branching, keep that match surface instead of restoring hidden string
+  caches or separate ready/deferred query APIs
 - deferred batch identity checks in the contract test now funnel through one
   explicit identity helper; if a later packet trims more helper branching,
   keep that route instead of re-scattering new `deferred_reason` checks across
