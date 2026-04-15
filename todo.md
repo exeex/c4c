@@ -8,27 +8,20 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- added a target-neutral `assignment_readiness` cue to each semantic-BIR
-  `regalloc` object so prepared contracts now combine the existing priority
-  bucket and access-shape summaries into explicit single-point,
-  multi-point, call-spanning, or fixed-stack readiness labels without
-  inventing target register policy or fake live intervals
-- kept the readiness cue prepare-owned by deriving it only from prepared
-  liveness contracts, BIR instruction-order access facts, and fixed-stack vs
-  register-candidate allocation kind
-- extended the prepare entry-contract test and note assertions with
-  representative single-read, write-only, call-spanning read/write,
-  addressed-storage, and call-exposure readiness checks for the new regalloc
-  cue
+- added one representative non-call-spanning `window.slot` value-storage case
+  to the prepare entry-contract fixture with a real direct store followed by a
+  later direct load after the existing calls, so the regalloc contract now
+  proves a genuine `multi_point_read_write_candidate` path from actual BIR
+  instruction order
+- extended the same fixture’s stack-layout, liveness, register-candidate count,
+  and regalloc assertions so the new slot is checked end-to-end as prepared
+  value storage rather than a synthetic interval or target-shaped heuristic
 
 ## Suggested Next
-- add one representative non-call-spanning multi-point value-storage case to
-  the prepare entry-contract fixture so the new readiness cue is also proved
-  on a genuine `multi_point_*_candidate` path instead of only single-point,
-  call-spanning, and fixed-stack shapes
-- keep that follow-on coverage derived from actual prepared liveness and BIR
-  instruction order, not synthetic intervals, target register classes, or
-  testcase-shaped heuristics
+- extend the prepare entry-contract fixture with one representative multi-point
+  read-only or write-only value-storage case so the remaining non-call-spanning
+  readiness shapes are still proved from actual BIR access order instead of
+  synthetic intervals or target register policy
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -47,7 +40,8 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
   clearly available
 - if follow-on readiness cues are added, keep them sourced from actual BIR
   access order, liveness contracts, and call-crossing facts rather than
-  synthetic interval guesses
+  synthetic interval guesses or phi-materialization scaffolding that does not
+  exercise a real local-slot access window
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build
