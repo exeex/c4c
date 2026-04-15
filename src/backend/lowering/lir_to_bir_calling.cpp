@@ -471,7 +471,7 @@ bool BirFunctionLowerer::lower_function_params(
 
 bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     const c4c::codegen::lir::LirInst& inst,
-    std::vector<bir::Inst>* lowered_insts) const {
+    std::vector<bir::Inst>* lowered_insts) {
   const auto lower_va_result_type = [](std::string_view type_text) -> std::optional<bir::TypeKind> {
     if (const auto lowered = lower_scalar_or_function_pointer_type(type_text); lowered.has_value()) {
       return lowered;
@@ -508,8 +508,38 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     }
     const auto lowered_ap = lower_value(va_arg.ap_ptr, bir::TypeKind::Ptr);
     const auto lowered_type = lower_va_result_type(va_arg.type_str.str());
-    if (!lowered_ap.has_value() || !lowered_type.has_value()) {
+    if (!lowered_ap.has_value()) {
       return false;
+    }
+    if (!lowered_type.has_value()) {
+      const auto aggregate_layout = lower_byval_aggregate_layout(va_arg.type_str.str(), type_decls_);
+      if (!aggregate_layout.has_value()) {
+        return false;
+      }
+      if (!declare_local_aggregate_slots(
+              va_arg.type_str.str(), va_arg.result.str(), aggregate_layout->align_bytes)) {
+        return false;
+      }
+      aggregate_value_aliases_[va_arg.result.str()] = va_arg.result.str();
+      lowered_insts->push_back(bir::CallInst{
+          .callee = "llvm.va_arg.aggregate",
+          .args = {bir::Value::named(bir::TypeKind::Ptr, va_arg.result.str()), *lowered_ap},
+          .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+          .arg_abi =
+              {bir::CallArgAbiInfo{
+                   .type = bir::TypeKind::Ptr,
+                   .size_bytes = aggregate_layout->size_bytes,
+                   .align_bytes = aggregate_layout->align_bytes,
+                   .primary_class = bir::AbiValueClass::Memory,
+                   .sret_pointer = true,
+               },
+               bir::CallArgAbiInfo{
+                   .type = bir::TypeKind::Ptr,
+               }},
+          .return_type_name = "void",
+          .return_type = bir::TypeKind::Void,
+      });
+      return true;
     }
     lowered_insts->push_back(bir::CallInst{
         .result = bir::Value::named(*lowered_type, va_arg.result.str()),

@@ -205,6 +205,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/variadic_pair_second.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/variadic_pair_second_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @variadic_pair_second(i32 %p.seed) -> i32 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|bir.call void llvm.va_arg.aggregate(ptr sret(size=8, align=4) %t0, ptr %lv.ap)|%lv.second.aggregate.copy.0 = bir.load_local i32 %t0.0|bir.store_local %lv.second.0, i32 %lv.second.aggregate.copy.0|%lv.second.aggregate.copy.4 = bir.load_local i32 %t0.4|bir.store_local %lv.second.4, i32 %lv.second.aggregate.copy.4|bir.call void llvm.va_end.p0(ptr %lv.ap)|%t2 = bir.load_local i32 %lv.second.4|bir.ret i32 %t3|bir.func @main() -> i32 {|%t4.memcpy.copy.0 = bir.load_local i32 %lv.pair.0|bir.store_local %lv.pair.0, i32 %t4.memcpy.copy.0, addr %t4|%t4.memcpy.copy.4 = bir.load_local i32 %lv.pair.4|bir.store_local %lv.pair.4, i32 %t4.memcpy.copy.4, addr %t4+4|bir.call i32 variadic_pair_second(i32 1, i64 %t5)|bir.ret i32 %t6"
+  FORBIDDEN_SNIPPETS "define i32 @variadic_pair_second|call void @llvm.va_start.p0|call void @llvm.va_end.p0|va_arg ptr %lv.ap, %struct.Pair|call void @llvm.memcpy.p0.p0.i64|call void @llvm.memset.p0.i64|bir.call ptr memcpy|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_builtin_memcpy_local_pair_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_local_pair.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu
