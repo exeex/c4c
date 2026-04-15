@@ -431,6 +431,9 @@ int main() {
   if (!contains_note(prepared_bir.notes, "regalloc", "materialization-timing hints")) {
     return fail("semantic-BIR prepare regalloc note should mention materialization-timing hints");
   }
+  if (!contains_note(prepared_bir.notes, "regalloc", "home-slot stability hints")) {
+    return fail("semantic-BIR prepare regalloc note should mention home-slot stability hints");
+  }
   if (!contains_note(prepared_bir.notes, "regalloc", "compact access-shape summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention compact access-shape summaries");
   }
@@ -669,6 +672,9 @@ int main() {
   if (local_slot_regalloc->spill_sync_hint != "restore_only_single_use") {
     return fail("semantic-BIR regalloc should expose a restore-only spill-sync hint for single-read value storage");
   }
+  if (local_slot_regalloc->home_slot_stability_hint != "single_use_read_home_slot") {
+    return fail("semantic-BIR regalloc should expose a single-use-read home-slot stability hint for single-read value storage");
+  }
   if (local_slot_regalloc->assignment_readiness != "single_point_read_candidate") {
     return fail("semantic-BIR regalloc should expose a single-point read readiness cue for single-read value storage");
   }
@@ -720,6 +726,9 @@ int main() {
   if (carry_slot_regalloc->spill_sync_hint != "bidirectional_sync_call_window") {
     return fail("semantic-BIR regalloc should expose a bidirectional call-window spill-sync hint for call-crossing value storage");
   }
+  if (carry_slot_regalloc->home_slot_stability_hint != "call_preserved_read_write_home_slot") {
+    return fail("semantic-BIR regalloc should expose a call-preserved read/write home-slot stability hint for call-crossing value storage");
+  }
   if (carry_slot_regalloc->assignment_readiness != "call_spanning_read_write_candidate") {
     return fail("semantic-BIR regalloc should expose a call-spanning read/write readiness cue for call-crossing value storage");
   }
@@ -770,6 +779,9 @@ int main() {
   }
   if (window_slot_regalloc->spill_sync_hint != "bidirectional_sync_local_window") {
     return fail("semantic-BIR regalloc should expose a bidirectional local-window spill-sync hint for non-call-spanning read/write value storage");
+  }
+  if (window_slot_regalloc->home_slot_stability_hint != "tight_read_write_home_slot") {
+    return fail("semantic-BIR regalloc should expose a tight read/write home-slot stability hint for non-call-spanning read/write value storage");
   }
   if (window_slot_regalloc->assignment_readiness != "multi_point_read_write_candidate") {
     return fail("semantic-BIR regalloc should expose a multi-point read/write readiness cue for non-call-spanning value storage");
@@ -823,6 +835,9 @@ int main() {
   if (readonly_slot_regalloc->spill_sync_hint != "restore_only_reuse_window") {
     return fail("semantic-BIR regalloc should expose a restore-only reuse-window spill-sync hint for non-call-spanning multi-read value storage");
   }
+  if (readonly_slot_regalloc->home_slot_stability_hint != "adjacent_read_home_slot") {
+    return fail("semantic-BIR regalloc should expose an adjacent-read home-slot stability hint for non-call-spanning multi-read value storage");
+  }
   if (readonly_slot_regalloc->assignment_readiness != "multi_point_read_candidate") {
     return fail("semantic-BIR regalloc should expose a multi-point read readiness cue for non-call-spanning read-only value storage");
   }
@@ -873,6 +888,9 @@ int main() {
   }
   if (callread_slot_regalloc->spill_sync_hint != "restore_only_call_window") {
     return fail("semantic-BIR regalloc should expose a restore-only call-window spill-sync hint for call-spanning read-only value storage");
+  }
+  if (callread_slot_regalloc->home_slot_stability_hint != "call_preserved_read_home_slot") {
+    return fail("semantic-BIR regalloc should expose a call-preserved read home-slot stability hint for call-spanning read-only value storage");
   }
   if (callread_slot_regalloc->assignment_readiness != "call_spanning_read_candidate") {
     return fail("semantic-BIR regalloc should expose a call-spanning read readiness cue for call-crossing read-only value storage");
@@ -928,6 +946,9 @@ int main() {
   if (callwrite_slot_regalloc->spill_sync_hint != "writeback_only_call_window") {
     return fail("semantic-BIR regalloc should expose a writeback-only call-window spill-sync hint for call-spanning write-only value storage");
   }
+  if (callwrite_slot_regalloc->home_slot_stability_hint != "call_preserved_write_home_slot") {
+    return fail("semantic-BIR regalloc should expose a call-preserved write home-slot stability hint for call-spanning write-only value storage");
+  }
   if (callwrite_slot_regalloc->assignment_readiness != "call_spanning_write_candidate") {
     return fail("semantic-BIR regalloc should expose a call-spanning write readiness cue for call-crossing write-only value storage");
   }
@@ -982,6 +1003,9 @@ int main() {
   if (multiwrite_slot_regalloc->spill_sync_hint != "writeback_only_redefinition_window") {
     return fail("semantic-BIR regalloc should expose a repeated-writeback spill-sync hint for non-call-spanning multi-write value storage");
   }
+  if (multiwrite_slot_regalloc->home_slot_stability_hint != "adjacent_write_home_slot") {
+    return fail("semantic-BIR regalloc should expose an adjacent-write home-slot stability hint for non-call-spanning multi-write value storage");
+  }
   if (multiwrite_slot_regalloc->assignment_readiness != "multi_point_write_candidate") {
     return fail("semantic-BIR regalloc should expose a multi-point write readiness cue for non-call-spanning write-only value storage");
   }
@@ -1032,6 +1056,9 @@ int main() {
   if (writeonly_regalloc->spill_sync_hint != "writeback_only_single_definition") {
     return fail("semantic-BIR regalloc should expose a single-definition writeback-only spill-sync hint for single-point write-only local slots");
   }
+  if (writeonly_regalloc->home_slot_stability_hint != "single_definition_write_home_slot") {
+    return fail("semantic-BIR regalloc should expose a single-definition-write home-slot stability hint for single-point write-only local slots");
+  }
   if (writeonly_regalloc->last_access_kind != "direct_write") {
     return fail("semantic-BIR regalloc should publish direct-write last-access cues");
   }
@@ -1074,6 +1101,9 @@ int main() {
   }
   if (address_taken_regalloc->spill_sync_hint != "fixed_stack_memory_authoritative") {
     return fail("semantic-BIR regalloc should expose a memory-authoritative spill-sync hint for address-exposed fixed-stack storage");
+  }
+  if (address_taken_regalloc->home_slot_stability_hint != "memory_anchor_home_slot") {
+    return fail("semantic-BIR regalloc should expose a memory-anchor home-slot stability hint for address-exposed fixed-stack storage");
   }
   if (address_taken_regalloc->assignment_readiness != "fixed_stack_only") {
     return fail("semantic-BIR regalloc should keep address-exposed storage in the fixed-stack readiness contract");
@@ -1124,6 +1154,9 @@ int main() {
   }
   if (call_result_regalloc->spill_sync_hint != "fixed_stack_call_boundary_authoritative") {
     return fail("semantic-BIR regalloc should expose a call-boundary-authoritative spill-sync hint for call-exposed fixed-stack storage");
+  }
+  if (call_result_regalloc->home_slot_stability_hint != "call_boundary_anchor_home_slot") {
+    return fail("semantic-BIR regalloc should expose a call-boundary-anchor home-slot stability hint for call-exposed fixed-stack storage");
   }
   if (call_result_regalloc->assignment_readiness != "fixed_stack_only") {
     return fail("semantic-BIR regalloc should keep call-result storage in the fixed-stack readiness contract");

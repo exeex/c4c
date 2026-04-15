@@ -9,23 +9,23 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 
 ## Just Finished
 - extended the semantic-BIR regalloc artifact with a target-neutral
-  `spill_sync_hint` field sourced from current prepared facts: read-only
-  values advertise restore-only sync, write-only values advertise writeback-
-  only sync, read/write windows advertise bidirectional sync, and fixed-stack
-  storage stays memory- or call-boundary-authoritative based on its prepared
-  exposure contract
+  `home_slot_stability_hint` field sourced from current prepared facts:
+  single-use reads/writes stay definition- or use-point local, adjacent local
+  windows stay stable by direction, call-spanning windows advertise
+  call-preserved homes by direction, and fixed-stack storage stays anchored by
+  memory or call-boundary exposure contract
 - broadened the prepare entry-contract fixture so nearby single-point,
   adjacent multi-point, call-spanning, write-only, address-exposed, and
-  call-exposed shapes all prove the new spill-sync cue alongside the existing
-  pool/pressure/reload/materialization/locality/eligibility/readiness/access
-  summaries
+  call-exposed shapes all prove the new home-slot-stability cue alongside the
+  existing pool/pressure/reload/materialization/locality/eligibility/
+  readiness/sync/access summaries
 
 ## Suggested Next
 - if execution stays inside this bucket, publish one more allocator-facing
-  regalloc cue that still comes directly from prepared facts, such as a
-  home-slot stability hint keyed by access-window width plus read/write
-  direction rather than target names, synthetic intervals, or placeholder
-  interference claims
+  regalloc cue that still comes directly from prepared facts, such as an
+  eviction-friction hint keyed by access-shape density, call crossing, and
+  fixed-stack exposure rather than target register names, synthetic live
+  intervals, or placeholder interference graphs
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -57,6 +57,9 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 - keep the new spill-sync cue focused on synchronization direction between a
   register-resident strategy and its storage home; do not let it collapse into
   another reload-cost, locality, or eligibility synonym
+- keep the new home-slot-stability cue focused on whether the current
+  prepared facts imply a stable stack home for the object; do not let it
+  collapse into another spill-sync or locality synonym
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build
