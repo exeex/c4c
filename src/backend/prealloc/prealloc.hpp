@@ -241,6 +241,23 @@ struct PreparedBirModule {
   std::vector<PrepareNote> notes;
 };
 
+class BirPreAlloc {
+ public:
+  BirPreAlloc(const c4c::backend::bir::Module& module,
+              Target target,
+              const PrepareOptions& options = {});
+
+  PreparedBirModule run();
+
+ private:
+  void note(std::string_view message);
+
+  const c4c::backend::bir::Module& module_;
+  Target target_;
+  PrepareOptions options_;
+  PreparedBirModule prepared_;
+};
+
 PreparedBirModule prepare_semantic_bir_module_with_options(
     const c4c::backend::bir::Module& module,
     Target target,

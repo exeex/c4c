@@ -2,7 +2,7 @@
 
 #include "bir/bir.hpp"
 #include "bir/lir_to_bir.hpp"
-#include "prealloc/prepare.hpp"
+#include "prealloc/prealloc.hpp"
 #include "target.hpp"
 
 #include <functional>

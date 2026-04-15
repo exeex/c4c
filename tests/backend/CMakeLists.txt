@@ -80,7 +80,7 @@ add_executable(backend_prepare_entry_contract_test
     "${BACKEND_TEST_ROOT}/backend_prepare_entry_contract_test.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/legalize.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepare.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prealloc.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/stack_layout.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/liveness.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/regalloc.cpp"
