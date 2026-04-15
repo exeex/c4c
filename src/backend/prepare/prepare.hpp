@@ -5,6 +5,7 @@
 #include "../target.hpp"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace c4c::backend::prepare {
@@ -21,9 +22,25 @@ struct PrepareNote {
   std::string message;
 };
 
+enum class PrepareRoute {
+  SemanticBirShared,
+  BootstrapLirFallback,
+};
+
+[[nodiscard]] constexpr std::string_view prepare_route_name(PrepareRoute route) {
+  switch (route) {
+    case PrepareRoute::SemanticBirShared:
+      return "semantic_bir_shared";
+    case PrepareRoute::BootstrapLirFallback:
+      return "bootstrap_lir_fallback";
+  }
+  return "unknown";
+}
+
 struct PreparedLirModule {
   c4c::codegen::lir::LirModule module;
   Target target = Target::X86_64;
+  PrepareRoute route = PrepareRoute::BootstrapLirFallback;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
 };
@@ -31,6 +48,7 @@ struct PreparedLirModule {
 struct PreparedBirModule {
   c4c::backend::bir::Module module;
   Target target = Target::X86_64;
+  PrepareRoute route = PrepareRoute::SemanticBirShared;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
 };

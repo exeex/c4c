@@ -32,6 +32,7 @@ PreparedLirModule prepare_bootstrap_lir_module_with_options(
   PreparedLirModule prepared{
       .module = module,
       .target = target,
+      .route = PrepareRoute::BootstrapLirFallback,
       .completed_phases = {},
       .notes = {},
   };
@@ -62,6 +63,7 @@ PreparedBirModule prepare_semantic_bir_module_with_options(
   PreparedBirModule prepared{
       .module = module,
       .target = target,
+      .route = PrepareRoute::SemanticBirShared,
       .completed_phases = {},
       .notes = {},
   };

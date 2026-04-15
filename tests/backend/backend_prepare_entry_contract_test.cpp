@@ -65,6 +65,12 @@ lir::LirModule make_minimal_lir_module() {
 int main() {
   const auto prepared_bir = prepare::prepare_semantic_bir_module_with_options(
       make_minimal_bir_module(), c4c::backend::Target::Riscv64);
+  if (prepared_bir.route != prepare::PrepareRoute::SemanticBirShared) {
+    return fail("semantic-BIR prepare entry should advertise the shared prepare route");
+  }
+  if (prepare::prepare_route_name(prepared_bir.route) != "semantic_bir_shared") {
+    return fail("semantic-BIR prepare route name drifted");
+  }
   if (!contains_note(prepared_bir.notes,
                      "prepare",
                      "shared semantic-BIR to prepared-BIR route")) {
@@ -76,6 +82,12 @@ int main() {
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(
       make_minimal_lir_module(), c4c::backend::Target::X86_64);
+  if (prepared_lir.route != prepare::PrepareRoute::BootstrapLirFallback) {
+    return fail("bootstrap-LIR prepare entry should advertise the fallback prepare route");
+  }
+  if (prepare::prepare_route_name(prepared_lir.route) != "bootstrap_lir_fallback") {
+    return fail("bootstrap-LIR prepare route name drifted");
+  }
   if (!contains_note(prepared_lir.notes, "prepare", "bootstrap LIR fallback route")) {
     return fail("missing bootstrap-LIR prepare fallback note");
   }
