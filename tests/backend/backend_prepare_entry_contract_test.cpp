@@ -105,6 +105,12 @@ bir::Module make_prepare_contract_bir_module() {
       .align_bytes = 1,
   });
   function.local_slots.push_back(bir::LocalSlot{
+      .name = "carry.slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
       .name = "param.copy.0",
       .type = bir::TypeKind::I32,
       .size_bytes = 4,
@@ -171,6 +177,11 @@ bir::Module make_prepare_contract_bir_module() {
 
   bir::Block entry;
   entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "carry.slot",
+      .value = bir::Value::immediate_i32(7),
+      .align_bytes = 4,
+  });
   entry.insts.push_back(bir::CallInst{
       .callee = "make_pair",
       .args = {bir::Value::named(bir::TypeKind::Ptr, "%call.result")},
@@ -217,6 +228,11 @@ bir::Module make_prepare_contract_bir_module() {
               .size_bytes = 4,
               .align_bytes = 4,
           },
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "carry.load"),
+      .slot_name = "carry.slot",
+      .align_bytes = 4,
   });
   entry.terminator = bir::ReturnTerminator{};
 
@@ -310,6 +326,11 @@ int main() {
                      "direct read/write, addressed-access, and call-argument exposure counts")) {
     return fail("semantic-BIR prepare regalloc note should mention the prepared access/exposure summary");
   }
+  if (!contains_note(prepared_bir.notes,
+                     "regalloc",
+                     "instruction-order access windows and call-crossing cues")) {
+    return fail("semantic-BIR prepare regalloc note should mention instruction-order access windows");
+  }
   constexpr std::string_view kExpectedBirPhases[] = {
       "legalize",
       "stack_layout",
@@ -324,7 +345,7 @@ int main() {
       return fail("unexpected semantic-BIR prepare phase order");
     }
   }
-  if (prepared_bir.stack_layout.objects.size() != 13) {
+  if (prepared_bir.stack_layout.objects.size() != 14) {
     return fail(
         "semantic-BIR stack layout should publish local-slot, lowering scratch, address-taken local-slot, phi-materialize, byval/sret, call-result, and va_arg frame objects");
   }
@@ -340,6 +361,12 @@ int main() {
       scratch_slot->align_bytes != 4) {
     return fail(
         "semantic-BIR stack layout should publish lowering-created scratch slots as prepared frame objects");
+  }
+  const auto* carry_slot = find_stack_object(prepared_bir, "local_slot", "carry.slot");
+  if (carry_slot == nullptr || carry_slot->function_name != "id_pair" ||
+      carry_slot->type != bir::TypeKind::I32 || carry_slot->size_bytes != 4 ||
+      carry_slot->align_bytes != 4) {
+    return fail("semantic-BIR stack-layout should preserve call-crossing local slots as prepared frame objects");
   }
   const auto* byval_copy_slot = find_stack_object(prepared_bir, "byval_copy_slot", "param.copy.0");
   if (byval_copy_slot == nullptr || byval_copy_slot->function_name != "id_pair" ||
@@ -402,6 +429,11 @@ int main() {
       scratch_slot_liveness->contract_kind != "value_storage") {
     return fail("semantic-BIR liveness should classify lowering scratch stack objects as value storage");
   }
+  const auto* carry_slot_liveness = find_liveness_object(prepared_bir, "local_slot", "carry.slot");
+  if (carry_slot_liveness == nullptr || carry_slot_liveness->function_name != "id_pair" ||
+      carry_slot_liveness->contract_kind != "value_storage") {
+    return fail("semantic-BIR liveness should keep call-crossing local slots in the value-storage contract");
+  }
   const auto* address_taken_liveness =
       find_liveness_object(prepared_bir, "address_taken_local_slot", "addressed.slot");
   if (address_taken_liveness == nullptr || address_taken_liveness->function_name != "id_pair" ||
@@ -431,7 +463,7 @@ int main() {
   if (regalloc_function->objects.size() != prepared_bir.liveness.objects.size()) {
     return fail("semantic-BIR regalloc should classify every prepared liveness object");
   }
-  if (regalloc_function->register_candidate_count != 8 ||
+  if (regalloc_function->register_candidate_count != 9 ||
       regalloc_function->fixed_stack_storage_count != 5) {
     return fail("semantic-BIR regalloc should summarize register-candidate vs fixed-stack prepared objects");
   }
@@ -444,6 +476,26 @@ int main() {
       local_slot_regalloc->addressed_access_count != 0 ||
       local_slot_regalloc->call_arg_exposure_count != 0) {
     return fail("semantic-BIR regalloc should publish direct-access counts for local value-storage objects");
+  }
+  if (!local_slot_regalloc->has_access_window || local_slot_regalloc->first_access_instruction_index != 3 ||
+      local_slot_regalloc->last_access_instruction_index != 3 ||
+      local_slot_regalloc->crosses_call_boundary) {
+    return fail("semantic-BIR regalloc should publish instruction-order access windows for direct local-slot reads");
+  }
+  const auto* carry_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "carry.slot");
+  if (carry_slot_regalloc == nullptr || carry_slot_regalloc->contract_kind != "value_storage" ||
+      carry_slot_regalloc->allocation_kind != "register_candidate") {
+    return fail("semantic-BIR regalloc should keep call-crossing local slots as register candidates");
+  }
+  if (carry_slot_regalloc->direct_read_count != 1 || carry_slot_regalloc->direct_write_count != 1 ||
+      carry_slot_regalloc->addressed_access_count != 0 ||
+      carry_slot_regalloc->call_arg_exposure_count != 0) {
+    return fail("semantic-BIR regalloc should publish direct read/write counts for call-crossing local slots");
+  }
+  if (!carry_slot_regalloc->has_access_window || carry_slot_regalloc->first_access_instruction_index != 0 ||
+      carry_slot_regalloc->last_access_instruction_index != 4 ||
+      !carry_slot_regalloc->crosses_call_boundary) {
+    return fail("semantic-BIR regalloc should publish call-crossing instruction-order cues for value-storage objects");
   }
   const auto* address_taken_regalloc =
       find_regalloc_object(*regalloc_function, "address_taken_local_slot", "addressed.slot");

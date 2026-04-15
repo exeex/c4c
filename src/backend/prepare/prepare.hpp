@@ -56,6 +56,10 @@ struct PreparedRegallocObject {
   std::size_t direct_write_count = 0;
   std::size_t addressed_access_count = 0;
   std::size_t call_arg_exposure_count = 0;
+  bool has_access_window = false;
+  std::size_t first_access_instruction_index = 0;
+  std::size_t last_access_instruction_index = 0;
+  bool crosses_call_boundary = false;
 };
 
 struct PreparedRegallocFunction {

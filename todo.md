@@ -3,27 +3,28 @@
 Status: Active
 Source Idea: ideas/open/48_prepare_pipeline_rebuild.md
 Source Plan: plan.md
-Current Plan Focus: step-4 semantic-BIR regalloc contract activation
+Current Plan Focus: step-4 semantic-BIR regalloc priority cue activation
 
 # Current Packet
 
 ## Just Finished
-- enriched each semantic-BIR `regalloc` object with explicit direct-read,
-  direct-write, addressed-access, and call-argument exposure counts derived
-  from actual BIR loads, stores, and calls instead of slot-name heuristics
-- kept the regalloc contract target-neutral by publishing those access anchors
-  alongside the existing `register_candidate` vs `fixed_stack_storage`
-  classification for downstream prepared-BIR consumers
-- extended the prepare entry-contract test so the semantic prepare route now
-  checks concrete access/exposure summaries for representative local-slot,
-  address-exposed, and call-result storage objects
+- extended each semantic-BIR `regalloc` object with instruction-order access
+  windows and a `crosses_call_boundary` cue derived from actual BIR load,
+  store, and call ordering instead of target heuristics or fake intervals
+- kept the regalloc contract target-neutral by pairing those priority cues
+  with the existing direct-read/direct-write, addressed-access, and
+  call-argument exposure summaries for downstream prepared-BIR consumers
+- extended the prepare entry-contract test with a representative
+  call-crossing local slot and concrete assertions for both single-point and
+  call-spanning regalloc access windows
 
 ## Suggested Next
-- build on the new access summary by publishing phase-order-aware regalloc
-  priority cues such as call-crossing or def/use ordering that later physical
-  assignment can consume without reconstructing liveness from scratch
-- keep any next regalloc detail keyed off prepared liveness, stack-layout, and
-  explicit BIR structure rather than slot-name families or target heuristics
+- build on the new access-window summary by deriving target-neutral regalloc
+  priority buckets that distinguish single-point value-storage objects from
+  call-spanning register candidates without widening into physical assignment
+- keep any next priority classification keyed off prepared liveness,
+  stack-layout, and explicit BIR instruction structure rather than slot-name
+  families or target-specific register rules
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -43,5 +44,6 @@ Current Plan Focus: step-4 semantic-BIR regalloc contract activation
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build
-  -j --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
+  -j --output-on-failure -R '^backend_prepare_entry_contract$' 2>&1 | tee
+  test_after.log`
 - passed and wrote `test_after.log`

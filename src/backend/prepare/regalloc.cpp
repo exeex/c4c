@@ -1,5 +1,7 @@
 #include "regalloc.hpp"
 
+#include <algorithm>
+
 // Execution note: this file is still a scaffold.
 // Follow ref/claudes-c-compiler/src/backend/regalloc.rs for the intended
 // register-allocation pipeline and policy shape.
@@ -13,7 +15,19 @@ struct RegallocObjectAccessSummary {
   std::size_t direct_write_count = 0;
   std::size_t addressed_access_count = 0;
   std::size_t call_arg_exposure_count = 0;
+  bool has_access_window = false;
+  std::size_t first_access_instruction_index = 0;
+  std::size_t last_access_instruction_index = 0;
+  std::vector<std::size_t> call_instruction_indices;
 };
+
+void record_access(RegallocObjectAccessSummary& summary, std::size_t instruction_index) {
+  if (!summary.has_access_window) {
+    summary.has_access_window = true;
+    summary.first_access_instruction_index = instruction_index;
+  }
+  summary.last_access_instruction_index = instruction_index;
+}
 
 std::string_view regalloc_allocation_kind(std::string_view contract_kind) {
   if (contract_kind == "address_exposed_storage") {
@@ -35,42 +49,66 @@ bool named_value_targets_object(const bir::Value& value, std::string_view source
 RegallocObjectAccessSummary summarize_object_accesses(const bir::Function& function,
                                                       std::string_view source_name) {
   RegallocObjectAccessSummary summary;
+  std::size_t instruction_index = 0;
 
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
       if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst); load != nullptr) {
         if (load->slot_name == source_name) {
           ++summary.direct_read_count;
+          record_access(summary, instruction_index);
         }
         if (memory_address_targets_object(load->address, source_name)) {
           ++summary.addressed_access_count;
+          record_access(summary, instruction_index);
         }
+        ++instruction_index;
         continue;
       }
 
       if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr) {
         if (store->slot_name == source_name) {
           ++summary.direct_write_count;
+          record_access(summary, instruction_index);
         }
         if (memory_address_targets_object(store->address, source_name)) {
           ++summary.addressed_access_count;
+          record_access(summary, instruction_index);
         }
+        ++instruction_index;
         continue;
       }
 
       const auto* call = std::get_if<bir::CallInst>(&inst);
       if (call == nullptr) {
+        ++instruction_index;
         continue;
       }
+      summary.call_instruction_indices.push_back(instruction_index);
       for (const auto& arg : call->args) {
         if (named_value_targets_object(arg, source_name)) {
           ++summary.call_arg_exposure_count;
+          record_access(summary, instruction_index);
         }
       }
+      ++instruction_index;
     }
   }
 
   return summary;
+}
+
+bool crosses_call_boundary(const RegallocObjectAccessSummary& summary) {
+  if (!summary.has_access_window ||
+      summary.first_access_instruction_index == summary.last_access_instruction_index) {
+    return false;
+  }
+  return std::any_of(summary.call_instruction_indices.begin(),
+                     summary.call_instruction_indices.end(),
+                     [&](std::size_t instruction_index) {
+                       return instruction_index > summary.first_access_instruction_index &&
+                              instruction_index < summary.last_access_instruction_index;
+                     });
 }
 
 }  // namespace
@@ -110,6 +148,10 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .direct_write_count = summary.direct_write_count,
           .addressed_access_count = summary.addressed_access_count,
           .call_arg_exposure_count = summary.call_arg_exposure_count,
+          .has_access_window = summary.has_access_window,
+          .first_access_instruction_index = summary.first_access_instruction_index,
+          .last_access_instruction_index = summary.last_access_instruction_index,
+          .crosses_call_boundary = crosses_call_boundary(summary),
       });
       if (allocation_kind == "fixed_stack_storage") {
         ++prepared_function.fixed_stack_storage_count;
@@ -127,8 +169,9 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
       .message =
           "regalloc now groups prepared liveness objects per function and classifies them as "
           "register_candidate or fixed_stack_storage contracts, plus direct read/write, "
-          "addressed-access, and call-argument exposure counts for downstream prepared-BIR "
-          "consumers; physical register assignment remains future work",
+          "addressed-access, and call-argument exposure counts plus instruction-order access "
+          "windows and call-crossing cues for downstream prepared-BIR consumers; physical "
+          "register assignment remains future work",
   });
 }
 
