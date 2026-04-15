@@ -63,6 +63,16 @@ struct PreparedRegallocObject {
   std::string home_slot_stability_hint;
   std::string eviction_friction_hint;
   std::string assignment_readiness;
+  std::string allocation_state_kind;
+  std::string reservation_kind;
+  std::string reservation_scope;
+  std::string home_slot_mode;
+  std::string sync_policy;
+  std::string follow_up_category;
+  std::string sync_coordination_category;
+  std::string home_slot_category;
+  std::string window_coordination_category;
+  std::string deferred_reason;
   std::string access_shape;
   std::string first_access_kind;
   std::string last_access_kind;

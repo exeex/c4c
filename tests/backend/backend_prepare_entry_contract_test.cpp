@@ -492,6 +492,9 @@ int main() {
   if (!contains_note(prepared_bir.notes, "regalloc", "reservation pressure/collision summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention reservation pressure/collision summaries");
   }
+  if (!contains_note(prepared_bir.notes, "regalloc", "object-level allocation states")) {
+    return fail("semantic-BIR prepare regalloc note should mention object-level allocation states");
+  }
   if (!contains_note(prepared_bir.notes, "regalloc", "compact access-shape summaries")) {
     return fail("semantic-BIR prepare regalloc note should mention compact access-shape summaries");
   }
@@ -704,7 +707,25 @@ int main() {
   if (regalloc_function->allocation_sequence.size() != regalloc_function->register_candidate_count) {
     return fail("semantic-BIR regalloc should publish one allocation-sequence decision per register candidate");
   }
+  const auto* scratch_slot_regalloc =
+      find_regalloc_object(*regalloc_function, "lowering_scratch_slot", "scratch.slot");
   const auto* local_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "flag.slot");
+  if (scratch_slot_regalloc == nullptr || scratch_slot_regalloc->contract_kind != "value_storage" ||
+      scratch_slot_regalloc->allocation_kind != "register_candidate") {
+    return fail("semantic-BIR regalloc should keep lowering-created scratch slots in the value-storage register-candidate contract");
+  }
+  if (scratch_slot_regalloc->allocation_state_kind != "deferred_single_point_candidate" ||
+      scratch_slot_regalloc->reservation_kind != "single_point_value_opportunity" ||
+      scratch_slot_regalloc->reservation_scope != "unobserved_instruction_window" ||
+      scratch_slot_regalloc->home_slot_mode != "home_slot_needs_future_analysis" ||
+      scratch_slot_regalloc->sync_policy != "sync_policy_needs_future_analysis" ||
+      scratch_slot_regalloc->follow_up_category != "batched_single_point_coordination" ||
+      scratch_slot_regalloc->sync_coordination_category != "read_write_coordination" ||
+      scratch_slot_regalloc->home_slot_category != "mixed_home_slot_modes" ||
+      scratch_slot_regalloc->window_coordination_category != "mixed_sparse_windows" ||
+      scratch_slot_regalloc->deferred_reason != "awaiting_access_window_observation") {
+    return fail("semantic-BIR regalloc should publish a deferred opportunistic allocation state for unobserved single-point prepared objects");
+  }
   if (local_slot_regalloc == nullptr || local_slot_regalloc->contract_kind != "value_storage" ||
       local_slot_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should treat value-storage objects as register candidates");
@@ -760,6 +781,18 @@ int main() {
       local_slot_regalloc->last_access_instruction_index != 5 ||
       local_slot_regalloc->crosses_call_boundary) {
     return fail("semantic-BIR regalloc should publish instruction-order access windows for direct local-slot reads");
+  }
+  if (local_slot_regalloc->allocation_state_kind != "opportunistic_single_point_candidate" ||
+      local_slot_regalloc->reservation_kind != "single_read_cache_opportunity" ||
+      local_slot_regalloc->reservation_scope != "single_instruction_window" ||
+      local_slot_regalloc->home_slot_mode != "single_use_home_slot_ok" ||
+      local_slot_regalloc->sync_policy != "restore_before_read" ||
+      local_slot_regalloc->follow_up_category != "batched_single_point_coordination" ||
+      local_slot_regalloc->sync_coordination_category != "read_write_coordination" ||
+      local_slot_regalloc->home_slot_category != "mixed_home_slot_modes" ||
+      local_slot_regalloc->window_coordination_category != "mixed_sparse_windows" ||
+      local_slot_regalloc->deferred_reason != "not_deferred") {
+    return fail("semantic-BIR regalloc should publish an opportunistic object-level allocation state for observed single-point reads");
   }
   const auto* carry_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "carry.slot");
   if (carry_slot_regalloc == nullptr || carry_slot_regalloc->contract_kind != "value_storage" ||
@@ -818,6 +851,18 @@ int main() {
       !carry_slot_regalloc->crosses_call_boundary) {
     return fail("semantic-BIR regalloc should publish call-crossing instruction-order cues for value-storage objects");
   }
+  if (carry_slot_regalloc->allocation_state_kind != "reserved_call_preserved_candidate" ||
+      carry_slot_regalloc->reservation_kind != "call_preserved_value_reservation" ||
+      carry_slot_regalloc->reservation_scope != "call_boundary_window" ||
+      carry_slot_regalloc->home_slot_mode != "stable_home_slot_required" ||
+      carry_slot_regalloc->sync_policy != "sync_on_read_write_boundaries" ||
+      carry_slot_regalloc->follow_up_category != "call_boundary_preservation" ||
+      carry_slot_regalloc->sync_coordination_category != "mixed_sync_coordination" ||
+      carry_slot_regalloc->home_slot_category != "stable_home_slot_required" ||
+      carry_slot_regalloc->window_coordination_category != "overlapping_call_boundary_windows" ||
+      carry_slot_regalloc->deferred_reason != "not_deferred") {
+    return fail("semantic-BIR regalloc should publish a call-preserved object-level allocation state for across-call candidates");
+  }
   const auto* window_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "window.slot");
   if (window_slot_regalloc == nullptr || window_slot_regalloc->contract_kind != "value_storage" ||
       window_slot_regalloc->allocation_kind != "register_candidate") {
@@ -874,6 +919,18 @@ int main() {
       window_slot_regalloc->last_access_instruction_index != 9 ||
       window_slot_regalloc->crosses_call_boundary) {
     return fail("semantic-BIR regalloc should publish non-call-spanning instruction-order cues for multi-point value storage");
+  }
+  if (window_slot_regalloc->allocation_state_kind != "reserved_local_reuse_candidate" ||
+      window_slot_regalloc->reservation_kind != "local_reuse_value_reservation" ||
+      window_slot_regalloc->reservation_scope != "adjacent_instruction_window" ||
+      window_slot_regalloc->home_slot_mode != "stable_home_slot_preferred" ||
+      window_slot_regalloc->sync_policy != "sync_on_read_write_boundaries" ||
+      window_slot_regalloc->follow_up_category != "sequenced_local_reuse_coordination" ||
+      window_slot_regalloc->sync_coordination_category != "mixed_sync_coordination" ||
+      window_slot_regalloc->home_slot_category != "stable_home_slot_preferred" ||
+      window_slot_regalloc->window_coordination_category != "adjacent_local_windows" ||
+      window_slot_regalloc->deferred_reason != "not_deferred") {
+    return fail("semantic-BIR regalloc should publish a local-reuse object-level allocation state for nearby multi-point candidates");
   }
   const auto* readonly_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "readonly.slot");
@@ -1209,6 +1266,18 @@ int main() {
   }
   if (address_taken_regalloc->first_access_kind != "addressed_access") {
     return fail("semantic-BIR regalloc should publish addressed-access first-access cues");
+  }
+  if (address_taken_regalloc->allocation_state_kind != "fixed_stack_authoritative" ||
+      address_taken_regalloc->reservation_kind != "fixed_stack_storage" ||
+      address_taken_regalloc->reservation_scope != "fixed_stack_memory_anchor" ||
+      address_taken_regalloc->home_slot_mode != "stable_home_slot_required" ||
+      address_taken_regalloc->sync_policy != "memory_authoritative" ||
+      address_taken_regalloc->follow_up_category != "fixed_stack_authoritative" ||
+      address_taken_regalloc->sync_coordination_category != "fixed_stack_authoritative" ||
+      address_taken_regalloc->home_slot_category != "stable_home_slot_required" ||
+      address_taken_regalloc->window_coordination_category != "fixed_stack_memory_anchor" ||
+      address_taken_regalloc->deferred_reason != "not_applicable_fixed_stack") {
+    return fail("semantic-BIR regalloc should publish a fixed-stack authoritative allocation state for address-exposed prepared objects");
   }
   const auto* call_result_regalloc =
       find_regalloc_object(*regalloc_function, "call_result_sret", "%call.result");

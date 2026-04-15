@@ -8,32 +8,28 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- extended prepare-owned semantic-BIR regalloc with a per-function
-  `reservation_summary` artifact that folds the existing
-  `allocation_sequence` together with current prepared access-window,
-  home-slot, and sync-policy facts into inspectable bucket summaries for
-  `stabilize_across_calls`, `stabilize_local_reuse`, and
-  `opportunistic_single_point`
-- published target-neutral pressure/collision signals plus bucket counts for
-  overlapping windows, unobserved windows, reservation scopes, home-slot
-  requirements, and restore/writeback/bidirectional sync mixes without naming
-  physical registers or inventing interference graphs
-- broadened the prepare entry-contract fixture so nearby call-spanning,
-  local-reuse, opportunistic single-point, and fixed-stack shapes prove the
-  new per-function summary alongside the existing per-object reservation
-  decisions and register-candidate ordering
-- added a second per-function `contention_summary` reduction that groups the
-  existing reservation summaries into explicit follow-up categories for
-  window coordination, sync coordination, and home-slot handling so later
-  prepared-BIR consumers do not need to reverse-engineer raw bucket counts
+- turned the current semantic-BIR regalloc staging into a concrete per-object
+  allocation-state contract on `PreparedRegallocObject`, so each prepared
+  object now directly carries its allocation state kind, reservation kind and
+  scope, home-slot mode, sync policy, coordination categories, and deferred
+  reason without forcing downstream consumers to re-join
+  `allocation_sequence`, `reservation_summary`, and `contention_summary`
+- kept the new object-level state target-neutral by deriving it entirely from
+  existing prepare-owned reservation and contention facts, including deferred
+  opportunistic single-point candidates and fixed-stack authoritative objects
+- broadened the prepare entry-contract fixture to prove the new object-level
+  state across nearby deferred single-point, observed opportunistic,
+  across-call, local-reuse, and fixed-stack shapes
+- refreshed the regalloc prepare note so the public prepare contract now
+  advertises the new object-level allocation-state artifact explicitly
 
 ## Suggested Next
-- keep step-4 work inside prepare by deciding whether liveness/regalloc should
-  now publish one more object-level artifact that explains why unobserved
-  single-point candidates remain deferred, or whether the next honest slice is
-  to stop expanding summaries and start turning these contracts into a more
-  concrete prepared-BIR allocation state that target ingestion can eventually
-  consume without raw-LIR assumptions
+- keep step-4 work inside prepare by deriving one more concrete
+  per-function/per-object allocation frontier from the new object states:
+  identify which register candidates are ready for stable prepared
+  home-slot/register binding versus still deferred for access-window or
+  coordination reasons, without naming physical registers or drifting into
+  target ingestion
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -48,19 +44,15 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 - if more source kinds appear, classify them from explicit semantic ABI facts,
   intrinsic identity, or lowering metadata instead of inventing name-based
   buckets inside liveness/regalloc
-- keep future reservation-pressure or collision summaries derived from the
-  staged sequence plus current prepared access-window, sync, and home-slot
-  facts rather than from target register names, synthetic intervals, or
-  placeholder interference graphs
-- keep the new first-pass reservation fields semantically distinct from the
-  existing priority bucket, preferred pool, spill-pressure, and readiness
-  hints: they should express allocator action, not just restate earlier cues
-- keep `reservation_summary` aligned with the existing ordered
-  `allocation_sequence`; do not fork a separate ordering model or sneak in
-  pairwise pseudo-interference state
+- keep the new object-level allocation state as a projection of the existing
+  staged reservation/contention artifacts; do not fork a second allocator
+  ordering model or let the per-object state drift from the sequence/summaries
+- keep future ready/deferred frontier work derived from explicit prepared
+  access-window, sync, home-slot, and contention facts rather than from target
+  register names, synthetic intervals, or placeholder interference graphs
 - preserve the current split between register-candidate reservation decisions
-  and fixed-stack objects; do not backdoor fixed-stack storage into the
-  reservation sequence just to make a narrow testcase pass
+  and fixed-stack authoritative objects; do not backdoor fixed-stack storage
+  into the reservation sequence just to make a narrow testcase pass
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build

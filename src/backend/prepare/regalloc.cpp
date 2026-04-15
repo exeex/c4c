@@ -717,6 +717,29 @@ const PreparedRegallocObject* find_regalloc_object(const PreparedRegallocFunctio
   return nullptr;
 }
 
+const PreparedRegallocAllocationDecision* find_allocation_decision(
+    const PreparedRegallocFunction& function,
+    std::string_view source_kind,
+    std::string_view source_name) {
+  for (const auto& decision : function.allocation_sequence) {
+    if (decision.source_kind == source_kind && decision.source_name == source_name) {
+      return &decision;
+    }
+  }
+  return nullptr;
+}
+
+const PreparedRegallocContentionSummary* find_contention_summary(
+    const PreparedRegallocFunction& function,
+    std::string_view allocation_stage) {
+  for (const auto& summary : function.contention_summary) {
+    if (summary.allocation_stage == allocation_stage) {
+      return &summary;
+    }
+  }
+  return nullptr;
+}
+
 bool access_windows_overlap(const PreparedRegallocObject& lhs, const PreparedRegallocObject& rhs) {
   if (!lhs.has_access_window || !rhs.has_access_window) {
     return false;
@@ -944,6 +967,117 @@ PreparedRegallocReservationSummary summarize_reservation_stage(
   return summary;
 }
 
+std::string_view regalloc_fixed_stack_reservation_scope(const PreparedRegallocObject& object) {
+  if (object.spill_restore_locality_hint == "fixed_stack_address_anchor") {
+    return "fixed_stack_memory_anchor";
+  }
+  if (object.spill_restore_locality_hint == "fixed_stack_call_boundary_anchor") {
+    return "fixed_stack_call_boundary_anchor";
+  }
+  return "fixed_stack_storage";
+}
+
+std::string_view regalloc_fixed_stack_sync_policy(const PreparedRegallocObject& object) {
+  if (object.spill_sync_hint == "fixed_stack_memory_authoritative") {
+    return "memory_authoritative";
+  }
+  if (object.spill_sync_hint == "fixed_stack_call_boundary_authoritative") {
+    return "call_boundary_authoritative";
+  }
+  return "fixed_stack_only";
+}
+
+std::string_view regalloc_allocation_state_kind(
+    const PreparedRegallocObject& object,
+    const PreparedRegallocAllocationDecision* decision) {
+  if (object.allocation_kind != "register_candidate") {
+    return "fixed_stack_authoritative";
+  }
+  if (decision == nullptr) {
+    return "allocation_state_incomplete";
+  }
+  if (decision->allocation_stage == "stabilize_across_calls") {
+    return "reserved_call_preserved_candidate";
+  }
+  if (decision->allocation_stage == "stabilize_local_reuse") {
+    return "reserved_local_reuse_candidate";
+  }
+  if (!object.has_access_window) {
+    return "deferred_single_point_candidate";
+  }
+  return "opportunistic_single_point_candidate";
+}
+
+std::string_view regalloc_allocation_state_deferred_reason(
+    const PreparedRegallocObject& object,
+    const PreparedRegallocAllocationDecision* decision) {
+  if (object.allocation_kind != "register_candidate") {
+    return "not_applicable_fixed_stack";
+  }
+  if (decision == nullptr) {
+    return "allocation_state_missing_decision";
+  }
+  if (decision->allocation_stage == "opportunistic_single_point" && !object.has_access_window) {
+    return "awaiting_access_window_observation";
+  }
+  return "not_deferred";
+}
+
+void populate_object_allocation_state(PreparedRegallocFunction& function) {
+  for (auto& object : function.objects) {
+    const auto* decision = find_allocation_decision(function, object.source_kind, object.source_name);
+    const auto* contention =
+        decision == nullptr ? nullptr : find_contention_summary(function, decision->allocation_stage);
+
+    object.allocation_state_kind =
+        std::string(regalloc_allocation_state_kind(object, decision));
+    object.deferred_reason =
+        std::string(regalloc_allocation_state_deferred_reason(object, decision));
+
+    if (object.allocation_kind != "register_candidate") {
+      object.reservation_kind = "fixed_stack_storage";
+      object.reservation_scope = std::string(regalloc_fixed_stack_reservation_scope(object));
+      object.home_slot_mode = std::string(regalloc_home_slot_mode(object.home_slot_stability_hint));
+      object.sync_policy = std::string(regalloc_fixed_stack_sync_policy(object));
+      object.follow_up_category = "fixed_stack_authoritative";
+      object.sync_coordination_category = "fixed_stack_authoritative";
+      object.home_slot_category = object.home_slot_mode == "stable_home_slot_required"
+                                      ? "stable_home_slot_required"
+                                      : "fixed_stack_only";
+      object.window_coordination_category = object.reservation_scope;
+      continue;
+    }
+
+    if (decision == nullptr) {
+      object.reservation_kind = "allocation_state_missing_decision";
+      object.reservation_scope = "allocation_state_missing_decision";
+      object.home_slot_mode = "allocation_state_missing_decision";
+      object.sync_policy = "allocation_state_missing_decision";
+      object.follow_up_category = "allocation_state_missing_decision";
+      object.sync_coordination_category = "allocation_state_missing_decision";
+      object.home_slot_category = "allocation_state_missing_decision";
+      object.window_coordination_category = "allocation_state_missing_decision";
+      continue;
+    }
+
+    object.reservation_kind = decision->reservation_kind;
+    object.reservation_scope = decision->reservation_scope;
+    object.home_slot_mode = decision->home_slot_mode;
+    object.sync_policy = decision->sync_policy;
+    if (contention != nullptr) {
+      object.follow_up_category = contention->follow_up_category;
+      object.sync_coordination_category = contention->sync_coordination_category;
+      object.home_slot_category = contention->home_slot_category;
+      object.window_coordination_category = contention->window_coordination_category;
+    } else {
+      object.follow_up_category = "allocation_state_missing_summary";
+      object.sync_coordination_category = "allocation_state_missing_summary";
+      object.home_slot_category = "allocation_state_missing_summary";
+      object.window_coordination_category = "allocation_state_missing_summary";
+    }
+  }
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -1087,6 +1221,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
         prepared_function.reservation_summary.push_back(std::move(summary));
       }
     }
+    populate_object_allocation_state(prepared_function);
     if (!prepared_function.objects.empty()) {
       module.regalloc.functions.push_back(std::move(prepared_function));
     }
@@ -1122,7 +1257,9 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "and home-slot facts without naming physical registers or inventing "
           "interference graphs, plus explicit contention follow-up categories that "
           "group those summaries into window, sync, and home-slot coordination "
-          "buckets for downstream prepared-BIR consumers, "
+          "buckets for downstream prepared-BIR consumers, plus concrete object-level "
+          "allocation states that collapse staged reservation, coordination, and "
+          "deferred-single-point facts back onto each prepared object, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "
