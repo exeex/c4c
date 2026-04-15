@@ -2249,31 +2249,17 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return true;
     }
 
+    std::optional<bir::Value> value;
     if (*value_type == bir::TypeKind::Ptr &&
-        store->val.kind() == c4c::codegen::lir::LirOperandKind::Global &&
-        store->ptr.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
-      const auto ptr_it = local_pointer_slots.find(store->ptr.str());
-      if (ptr_it == local_pointer_slots.end()) {
-        return fail_store();
-      }
-      const auto slot_it = local_slot_types.find(ptr_it->second);
-      if (slot_it == local_slot_types.end() || slot_it->second != *value_type) {
-        return fail_store();
-      }
+        store->val.kind() == c4c::codegen::lir::LirOperandKind::Global) {
       const std::string global_name = store->val.str().substr(1);
-      if (!is_known_function_symbol(global_name, function_symbols)) {
-        return fail_store();
+      if (is_known_function_symbol(global_name, function_symbols)) {
+        value = bir::Value::named(bir::TypeKind::Ptr, "@" + global_name);
       }
-      local_slot_address_slots.erase(ptr_it->second);
-      local_address_slots[ptr_it->second] = GlobalAddress{
-          .global_name = global_name,
-          .value_type = bir::TypeKind::Ptr,
-          .byte_offset = 0,
-      };
-      return true;
     }
-
-    const auto value = lower_value(store->val, *value_type, value_aliases);
+    if (!value.has_value()) {
+      value = lower_value(store->val, *value_type, value_aliases);
+    }
     if (!value.has_value()) {
       return fail_store();
     }
@@ -2602,18 +2588,25 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
               .value_type = bir::TypeKind::Ptr,
               .byte_offset = 0,
           };
-          return true;
+          if (!tracks_pointer_value_slot) {
+            return true;
+          }
         }
-        if (!global_it->second.supports_linear_addressing) {
+        if (global_it == global_types.end()) {
+          stored_local_slot_address = false;
+        } else if (!global_it->second.supports_linear_addressing) {
           return fail_store();
+        } else {
+          local_slot_address_slots.erase(ptr_it->second);
+          local_address_slots[ptr_it->second] = GlobalAddress{
+              .global_name = global_name,
+              .value_type = global_it->second.value_type,
+              .byte_offset = 0,
+          };
+          if (!tracks_pointer_value_slot) {
+            return true;
+          }
         }
-        local_slot_address_slots.erase(ptr_it->second);
-        local_address_slots[ptr_it->second] = GlobalAddress{
-            .global_name = global_name,
-            .value_type = global_it->second.value_type,
-            .byte_offset = 0,
-        };
-        return true;
       }
       if (store->val.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
         const auto local_slot_ptr_val_it = local_slot_pointer_values.find(store->val.str());
