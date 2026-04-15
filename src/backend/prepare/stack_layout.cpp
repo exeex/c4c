@@ -97,12 +97,37 @@ void append_variadic_aggregate_output_objects(PreparedStackLayout& layout,
   }
 }
 
-std::string_view stack_object_source_kind(const bir::LocalSlot& slot) {
+bool has_addressed_local_access(const bir::Function& function, std::string_view slot_name) {
+  const auto matches_addressed_slot = [&](const auto& inst) {
+    return inst.address.has_value() &&
+           inst.address->base_kind == bir::MemoryAddress::BaseKind::LocalSlot &&
+           inst.address->base_name == slot_name;
+  };
+
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst); load != nullptr &&
+          matches_addressed_slot(*load)) {
+        return true;
+      }
+      if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr &&
+          matches_addressed_slot(*store)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+std::string_view stack_object_source_kind(const bir::Function& function, const bir::LocalSlot& slot) {
   if (slot.is_byval_copy) {
     return "byval_copy_slot";
   }
   if (slot.phi_observation.has_value()) {
     return "phi_materialize_slot";
+  }
+  if (slot.is_address_taken || has_addressed_local_access(function, slot.name)) {
+    return "address_taken_local_slot";
   }
   return "local_slot";
 }
@@ -130,7 +155,7 @@ void run_stack_layout(PreparedBirModule& module, const PrepareOptions& options) 
       append_stack_object(module.stack_layout,
                           function.name,
                           slot.name,
-                          stack_object_source_kind(slot),
+                          stack_object_source_kind(function, slot),
                           slot.type,
                           slot.size_bytes,
                           slot.align_bytes);
@@ -139,10 +164,10 @@ void run_stack_layout(PreparedBirModule& module, const PrepareOptions& options) 
   module.notes.push_back(PrepareNote{
       .phase = "stack_layout",
       .message =
-          "stack layout now publishes local-slot and phi-materialize stack objects plus "
-          "byval/sret memory-route frame objects, aggregate call-result sret storage, and "
-          "aggregate va_arg output storage as prepared artifacts; frame offset assignment "
-          "remains future work",
+          "stack layout now publishes local-slot, address-taken local-slot, and "
+          "phi-materialize stack objects plus byval/sret memory-route frame objects, "
+          "aggregate call-result sret storage, and aggregate va_arg output storage as "
+          "prepared artifacts; frame offset assignment remains future work",
   });
 }
 
