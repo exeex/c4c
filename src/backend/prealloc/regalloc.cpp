@@ -358,12 +358,6 @@ struct BindingBatchContractView {
   std::string_view deferred_reason;
   std::string_view follow_up_category;
   std::string_view ordering_policy;
-  std::string_view access_window_prerequisite_category;
-  std::string_view access_window_prerequisite_state;
-  std::string_view home_slot_prerequisite_category;
-  std::string_view home_slot_prerequisite_state;
-  std::string_view sync_handoff_prerequisite_category;
-  std::string_view sync_handoff_state;
 };
 
 std::optional<BindingBatchContractView> binding_batch_contract_view(
@@ -382,13 +376,6 @@ std::optional<BindingBatchContractView> binding_batch_contract_view(
         .deferred_reason = "not_deferred",
         .follow_up_category = batch_summary->follow_up_category,
         .ordering_policy = batch_summary->ordering_policy,
-        .access_window_prerequisite_category = contention->window_coordination_category,
-        .access_window_prerequisite_state =
-            regalloc_binding_access_window_prerequisite_state(*contention),
-        .home_slot_prerequisite_category = batch_summary->home_slot_prerequisite_category,
-        .home_slot_prerequisite_state = batch_summary->home_slot_prerequisite_state,
-        .sync_handoff_prerequisite_category = batch_summary->sync_handoff_prerequisite_category,
-        .sync_handoff_state = batch_summary->sync_handoff_state,
     };
   }
 
@@ -402,14 +389,6 @@ std::optional<BindingBatchContractView> binding_batch_contract_view(
       .deferred_reason = deferred_batch_summary->deferred_reason,
       .follow_up_category = deferred_batch_summary->follow_up_category,
       .ordering_policy = deferred_batch_summary->ordering_policy,
-      .access_window_prerequisite_category =
-          deferred_batch_summary->access_window_prerequisite_category,
-      .access_window_prerequisite_state = deferred_batch_summary->access_window_prerequisite_state,
-      .home_slot_prerequisite_category = deferred_batch_summary->home_slot_prerequisite_category,
-      .home_slot_prerequisite_state = deferred_batch_summary->home_slot_prerequisite_state,
-      .sync_handoff_prerequisite_category =
-          deferred_batch_summary->sync_handoff_prerequisite_category,
-      .sync_handoff_state = deferred_batch_summary->sync_handoff_state,
   };
 }
 
@@ -427,16 +406,6 @@ PreparedRegallocBindingHandoffSummary make_binding_handoff_summary(
       .allocation_stage = std::string(contract.allocation_stage),
       .follow_up_category = std::string(contract.follow_up_category),
       .ordering_policy = std::string(contract.ordering_policy),
-      .access_window_prerequisite_category =
-          std::string(contract.access_window_prerequisite_category),
-      .access_window_prerequisite_state =
-          std::string(contract.access_window_prerequisite_state),
-      .home_slot_prerequisite_category =
-          std::string(contract.home_slot_prerequisite_category),
-      .home_slot_prerequisite_state = std::string(contract.home_slot_prerequisite_state),
-      .sync_handoff_prerequisite_category =
-          std::string(contract.sync_handoff_prerequisite_category),
-      .sync_handoff_state = std::string(contract.sync_handoff_state),
   };
 }
 
@@ -1094,6 +1063,9 @@ void BirPreAlloc::populate_binding_sequence() {
           .allocation_stage = decision.allocation_stage,
           .follow_up_category = contention->follow_up_category,
           .ordering_policy = std::string(regalloc_binding_ordering_policy(*contention)),
+          .access_window_prerequisite_category = contention->window_coordination_category,
+          .access_window_prerequisite_state =
+              std::string(regalloc_binding_access_window_prerequisite_state(*contention)),
           .home_slot_prerequisite_category = contention->home_slot_category,
           .home_slot_prerequisite_state =
               std::string(regalloc_binding_home_slot_prerequisite_state(*contention)),

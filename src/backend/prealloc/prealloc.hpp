@@ -152,6 +152,8 @@ struct PreparedRegallocBindingBatchSummary {
   std::string allocation_stage;
   std::string follow_up_category;
   std::string ordering_policy;
+  std::string access_window_prerequisite_category;
+  std::string access_window_prerequisite_state;
   std::string home_slot_prerequisite_category;
   std::string home_slot_prerequisite_state;
   std::string sync_handoff_prerequisite_category;
@@ -181,12 +183,6 @@ struct PreparedRegallocBindingHandoffSummary {
   std::string allocation_stage;
   std::string follow_up_category;
   std::string ordering_policy;
-  std::string access_window_prerequisite_category;
-  std::string access_window_prerequisite_state;
-  std::string home_slot_prerequisite_category;
-  std::string home_slot_prerequisite_state;
-  std::string sync_handoff_prerequisite_category;
-  std::string sync_handoff_state;
   std::size_t candidate_count = 0;
 };
 

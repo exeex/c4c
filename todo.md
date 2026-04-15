@@ -17,19 +17,19 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed ready-frontier `binding_attachments` from
-  `PreparedRegallocFunction`, so ready batch identity now publishes through
-  `binding_sequence` alone while deferred frontier attachment stays explicit in
-  `binding_attachments`
-- updated the prepare-entry contract test to treat `binding_sequence` as the
-  ready owner and `binding_attachments` as the deferred-only attachment view,
-  so this packet trims a real ready-path mirror without renaming the public
-  `prepare` contract
+- moved ready access-window prerequisite state onto
+  `PreparedRegallocBindingBatchSummary`, so both ready and deferred batch
+  summaries now own prerequisite publication directly
+- trimmed `binding_handoff_summary` down to frontier metadata plus batch
+  identity/order context, and updated the prepare-entry contract test to stop
+  treating handoff summaries as owners of batch prerequisite state
 
 ## Suggested Next
-- inspect whether `binding_handoff_summary` still republishes ready-batch
-  prerequisite state that already lives in `binding_batches`, and only trim it
-  if the handoff view can stay a consumer of ready/deferred batch owners
+- inspect whether `binding_handoff_summary` still republishes
+  `allocation_stage`, `follow_up_category`, or `ordering_policy` that already
+  live on ready/deferred batch owners, and only trim more if downstream
+  consumers can keep joining through batch identity without inventing a new
+  contract layer
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -54,12 +54,16 @@ while keeping the public shared contract named `prepare`
 - the handoff path now derives `binding_frontier_reason` from batch-owned
   `follow_up_category` or deferred-batch `deferred_reason`; do not reintroduce
   the object-level mirror as the internal owner for that publication path
+- ready/deferred prerequisite state now lives on batch summaries; if later
+  cleanup trims more handoff fields, keep handoff as a consumer keyed by
+  `binding_batch_kind` instead of rebuilding prerequisite ownership there
 - deferred binding batch construction now takes `deferred_reason` directly from
   the object; if later cleanup removes or reshapes that object field, confirm
   deferred-batch ownership still stays clear instead of recreating a view
-- the ready frontier still derives its access-window prerequisite state from
-  stage contention while deferred frontiers read it from batch-owned state; if
-  the next cleanup tries to unify that, keep one clear owner for each fact
+- ready access-window prerequisite state now lands on `binding_batches` from
+  stage contention while deferred frontier prerequisites stay on deferred batch
+  summaries; if later cleanup tries to unify derivation, keep one clear owner
+  for each fact
 - object-local coordination categories are gone now; keep future cleanup aimed
   at mirrors with real summary-level owners instead of recreating new
   fixed-stack or missing-state publication layers

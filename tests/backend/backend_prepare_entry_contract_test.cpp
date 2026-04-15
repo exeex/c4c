@@ -1609,6 +1609,10 @@ int main() {
   if (call_boundary_binding_batch->allocation_stage != "stabilize_across_calls" ||
       call_boundary_binding_batch->follow_up_category != "call_boundary_preservation" ||
       call_boundary_binding_batch->ordering_policy != "preserve_allocation_sequence" ||
+      call_boundary_binding_batch->access_window_prerequisite_category !=
+          "overlapping_call_boundary_windows" ||
+      call_boundary_binding_batch->access_window_prerequisite_state !=
+          "prealloc_access_window_prerequisite_satisfied" ||
       call_boundary_binding_batch->home_slot_prerequisite_category !=
           "stable_home_slot_required" ||
       call_boundary_binding_batch->home_slot_prerequisite_state !=
@@ -1623,6 +1627,10 @@ int main() {
   if (local_reuse_binding_batch->allocation_stage != "stabilize_local_reuse" ||
       local_reuse_binding_batch->follow_up_category != "sequenced_local_reuse_coordination" ||
       local_reuse_binding_batch->ordering_policy != "preserve_allocation_sequence" ||
+      local_reuse_binding_batch->access_window_prerequisite_category !=
+          "adjacent_local_windows" ||
+      local_reuse_binding_batch->access_window_prerequisite_state !=
+          "prealloc_access_window_prerequisite_satisfied" ||
       local_reuse_binding_batch->home_slot_prerequisite_category !=
           "stable_home_slot_preferred" ||
       local_reuse_binding_batch->home_slot_prerequisite_state !=
@@ -1683,21 +1691,9 @@ int main() {
       call_boundary_handoff_summary->allocation_stage != "stabilize_across_calls" ||
       call_boundary_handoff_summary->follow_up_category != "call_boundary_preservation" ||
       call_boundary_handoff_summary->ordering_policy != "preserve_allocation_sequence" ||
-      call_boundary_handoff_summary->access_window_prerequisite_category !=
-          "overlapping_call_boundary_windows" ||
-      call_boundary_handoff_summary->access_window_prerequisite_state !=
-          "prealloc_access_window_prerequisite_satisfied" ||
-      call_boundary_handoff_summary->home_slot_prerequisite_category !=
-          "stable_home_slot_required" ||
-      call_boundary_handoff_summary->home_slot_prerequisite_state !=
-          "prealloc_home_slot_prerequisite_satisfied" ||
-      call_boundary_handoff_summary->sync_handoff_prerequisite_category !=
-          "mixed_sync_coordination" ||
-      call_boundary_handoff_summary->sync_handoff_state !=
-          "prealloc_sync_handoff_ready" ||
       call_boundary_handoff_summary->candidate_count != 3) {
     return fail(
-        "semantic-BIR regalloc should collapse ready call-boundary bindings into one downstream handoff summary");
+        "semantic-BIR regalloc should keep ready handoff summaries focused on downstream frontier identity instead of republishing batch-owned prerequisites");
   }
   if (local_reuse_handoff_summary->binding_frontier_reason !=
           "sequenced_local_reuse_coordination" ||
@@ -1705,20 +1701,9 @@ int main() {
       local_reuse_handoff_summary->follow_up_category !=
           "sequenced_local_reuse_coordination" ||
       local_reuse_handoff_summary->ordering_policy != "preserve_allocation_sequence" ||
-      local_reuse_handoff_summary->access_window_prerequisite_category !=
-          "adjacent_local_windows" ||
-      local_reuse_handoff_summary->access_window_prerequisite_state !=
-          "prealloc_access_window_prerequisite_satisfied" ||
-      local_reuse_handoff_summary->home_slot_prerequisite_category !=
-          "stable_home_slot_preferred" ||
-      local_reuse_handoff_summary->home_slot_prerequisite_state !=
-          "prealloc_home_slot_prerequisite_satisfied" ||
-      local_reuse_handoff_summary->sync_handoff_prerequisite_category !=
-          "mixed_sync_coordination" ||
-      local_reuse_handoff_summary->sync_handoff_state != "prealloc_sync_handoff_ready" ||
       local_reuse_handoff_summary->candidate_count != 3) {
     return fail(
-        "semantic-BIR regalloc should collapse ready local-reuse bindings into one downstream handoff summary");
+        "semantic-BIR regalloc should keep ready local-reuse handoff summaries focused on downstream frontier identity instead of republishing batch-owned prerequisites");
   }
   if (deferred_access_window_handoff_summary->binding_frontier_reason !=
           "awaiting_access_window_observation" ||
@@ -1728,21 +1713,9 @@ int main() {
           "batched_single_point_coordination" ||
       deferred_access_window_handoff_summary->ordering_policy !=
           "defer_until_access_window_observed" ||
-      deferred_access_window_handoff_summary->access_window_prerequisite_category !=
-          "unobserved_instruction_window" ||
-      deferred_access_window_handoff_summary->access_window_prerequisite_state !=
-          "prealloc_access_window_prerequisite_deferred" ||
-      deferred_access_window_handoff_summary->home_slot_prerequisite_category !=
-          "home_slot_needs_future_analysis" ||
-      deferred_access_window_handoff_summary->home_slot_prerequisite_state !=
-          "prealloc_home_slot_prerequisite_deferred" ||
-      deferred_access_window_handoff_summary->sync_handoff_prerequisite_category !=
-          "sync_policy_needs_future_analysis" ||
-      deferred_access_window_handoff_summary->sync_handoff_state !=
-          "prealloc_sync_handoff_deferred" ||
       deferred_access_window_handoff_summary->candidate_count != 7) {
     return fail(
-        "semantic-BIR regalloc should collapse access-window-deferred bindings into one downstream handoff summary");
+        "semantic-BIR regalloc should keep deferred handoff summaries focused on frontier identity while leaving prerequisite ownership in deferred binding batches");
   }
   if (deferred_coordination_handoff_summary->binding_frontier_reason !=
           "batched_single_point_coordination" ||
@@ -1751,21 +1724,9 @@ int main() {
       deferred_coordination_handoff_summary->follow_up_category !=
           "batched_single_point_coordination" ||
       deferred_coordination_handoff_summary->ordering_policy != "defer_until_frontier_ready" ||
-      deferred_coordination_handoff_summary->access_window_prerequisite_category !=
-          "mixed_sparse_windows" ||
-      deferred_coordination_handoff_summary->access_window_prerequisite_state !=
-          "prealloc_access_window_prerequisite_satisfied" ||
-      deferred_coordination_handoff_summary->home_slot_prerequisite_category !=
-          "mixed_home_slot_modes" ||
-      deferred_coordination_handoff_summary->home_slot_prerequisite_state !=
-          "prealloc_home_slot_prerequisite_deferred" ||
-      deferred_coordination_handoff_summary->sync_handoff_prerequisite_category !=
-          "read_write_coordination" ||
-      deferred_coordination_handoff_summary->sync_handoff_state !=
-          "prealloc_sync_handoff_ready" ||
       deferred_coordination_handoff_summary->candidate_count != 2) {
     return fail(
-        "semantic-BIR regalloc should collapse coordination-deferred bindings into one downstream handoff summary");
+        "semantic-BIR regalloc should keep deferred coordination handoff summaries focused on frontier identity while leaving prerequisite ownership in deferred binding batches");
   }
 
   return 0;
