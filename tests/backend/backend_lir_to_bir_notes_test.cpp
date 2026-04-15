@@ -115,6 +115,114 @@ LirModule make_bad_direct_call_module() {
   return module;
 }
 
+LirModule make_bad_indirect_call_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_indirect_call";
+  function.signature_text = "define void @bad_indirect_call()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("%callee"),
+      .callee_type_suffix = "ptr",
+      .args_str = "",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_bad_call_return_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_call_return";
+  function.signature_text = "define void @bad_call_return()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "{ i32, i32 }",
+      .callee = LirOperand("@callee"),
+      .callee_type_suffix = "()",
+      .args_str = "",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_bad_memcpy_runtime_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_memcpy_runtime";
+  function.signature_text = "define void @bad_memcpy_runtime()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@memcpy"),
+      .callee_type_suffix = "(ptr, ptr, i64)",
+      .args_str = "ptr @dst, ptr @src, i64 -1",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_bad_memset_runtime_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_memset_runtime";
+  function.signature_text = "define void @bad_memset_runtime()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@memset"),
+      .callee_type_suffix = "(ptr, i8, i64)",
+      .args_str = "ptr @dst, i8 7, i64 -1",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_scalar_cast_module() {
   LirModule module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -195,6 +303,54 @@ int main() {
           "missing module note carrying the semantic-call family failure");
       direct_call_status != 0) {
     return direct_call_status;
+  }
+
+  if (const int indirect_call_status = expect_failure_notes(
+          make_bad_indirect_call_module(),
+          kModuleSummary,
+          "failed in semantic call family 'indirect-call semantic family'",
+          "latest function failure: semantic lir_to_bir function 'bad_indirect_call' failed in semantic call family 'indirect-call semantic family'",
+          "missing module capability-bucket summary note",
+          "missing specific indirect-call function note",
+          "missing module note carrying the indirect-call semantic family failure");
+      indirect_call_status != 0) {
+    return indirect_call_status;
+  }
+
+  if (const int call_return_status = expect_failure_notes(
+          make_bad_call_return_module(),
+          kModuleSummary,
+          "failed in semantic call family 'call-return semantic family'",
+          "latest function failure: semantic lir_to_bir function 'bad_call_return' failed in semantic call family 'call-return semantic family'",
+          "missing module capability-bucket summary note",
+          "missing specific call-return function note",
+          "missing module note carrying the call-return semantic family failure");
+      call_return_status != 0) {
+    return call_return_status;
+  }
+
+  if (const int memcpy_status = expect_failure_notes(
+          make_bad_memcpy_runtime_module(),
+          kModuleSummary,
+          "failed in runtime/intrinsic family 'memcpy runtime family'",
+          "latest function failure: semantic lir_to_bir function 'bad_memcpy_runtime' failed in runtime/intrinsic family 'memcpy runtime family'",
+          "missing module capability-bucket summary note",
+          "missing specific memcpy runtime function note",
+          "missing module note carrying the memcpy runtime family failure");
+      memcpy_status != 0) {
+    return memcpy_status;
+  }
+
+  if (const int memset_status = expect_failure_notes(
+          make_bad_memset_runtime_module(),
+          kModuleSummary,
+          "failed in runtime/intrinsic family 'memset runtime family'",
+          "latest function failure: semantic lir_to_bir function 'bad_memset_runtime' failed in runtime/intrinsic family 'memset runtime family'",
+          "missing module capability-bucket summary note",
+          "missing specific memset runtime function note",
+          "missing module note carrying the memset runtime family failure");
+      memset_status != 0) {
+    return memset_status;
   }
 
   if (const int scalar_cast_status = expect_failure_notes(

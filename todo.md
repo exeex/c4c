@@ -8,19 +8,19 @@ Current Plan Focus: ordered step 4, tighten the semantic unsupported boundary
 # Current Packet
 
 ## Just Finished
-- refreshed the step-4 module capability-bucket summary wording so it now names the admitted scalar/local-memory, semantic-call, and runtime/intrinsic family buckets more precisely without claiming new lowering behavior
-- kept `backend_lir_to_bir_notes` focused on proving that refreshed module-summary contract alongside nearby latest-function-failure notes for inline-asm, direct-call, scalar-cast, and alloca failures
+- kept the refreshed step-4 module capability-bucket summary wording unchanged and extended `backend_lir_to_bir_notes` so it now also proves the adjacent indirect-call, call-return, memcpy runtime, and memset runtime family failures
+- locked the explicit semantic-call and runtime/intrinsic family examples already named by the module summary without changing lowering behavior
 - kept the slice on planner-facing unsupported-boundary wording only; no call/runtime lowering, ABI legality, or note-ranking behavior changed
 
 ## Suggested Next
-- keep step 4 on unsupported-boundary cleanup and audit whether any remaining planner-facing module notes still collapse specific semantic-call or runtime/intrinsic family buckets too aggressively
-- if another notes regression is added, keep it adjacent to the module-summary contract instead of widening lowering, ABI, or runtime capability work
+- if step 4 stays active, check whether one final adjacent notes regression is still worth adding for the remaining scalar/local-memory leaf examples already named by the summary, such as scalar-binop or gep/load/store local-memory failures
+- otherwise shift the next packet away from summary-note cleanup and back to a concrete semantic capability gap rather than another generic audit
 
 ## Watchouts
-- this packet only refreshes planner-facing module wording; it does not change what semantic families lower successfully
-- the refreshed summary now names family buckets more specifically, so later note cleanup should avoid treating those examples as a promise that every nearby leaf family already lowers successfully
+- this packet only extends planner-facing notes coverage; it does not change what semantic families lower successfully
+- the module summary now has focused regression coverage for direct/indirect/call-return and memcpy/memset/inline-asm examples, so any further note cleanup should be justified by a concrete remaining boundary gap rather than another broad wording pass
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_lir_to_bir_notes$" > test_after.log 2>&1'`
-- passed; `backend_lir_to_bir_notes` now locks the refreshed module capability-bucket summary alongside the latest-function-failure note for each focused failure case
+- passed; `backend_lir_to_bir_notes` now locks the refreshed module capability-bucket summary alongside latest-function-failure notes for inline-asm, direct-call, indirect-call, call-return, memcpy, memset, scalar-cast, and alloca failure cases
 - proof log preserved at `test_after.log`
