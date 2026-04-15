@@ -17,23 +17,20 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- collapsed the remaining deferred-batch identity lookup in
-  `tests/backend/backend_prepare_entry_contract_test.cpp` onto one match
-  helper so lookup can reuse the resolved batch surface instead of rejoining
-  identity and stage facts in separate passes
-- fixed the deferred-vs-ready accounting assertion in the prepare-entry
-  contract test so the proof checks a real total instead of comparing one
-  helper call against itself
+- removed the remaining pointer-only deferred-reason lookup in
+  `tests/backend/backend_prepare_entry_contract_test.cpp` so the contract test
+  now checks deferred-batch presence through `RegallocDeferredBatchMatch`
+  instead of a separate raw-summary helper
 - kept the packet test-side only: no prepare-owned regalloc data model
   changes, no backend routing changes, and no public `prepare` contract rename
 - reran the delegated build plus backend subset proof for the packet and kept
   the result in `test_after.log`
 
 ## Suggested Next
-- inspect whether the remaining pointer-returning
-  `find_regalloc_deferred_binding_batch(...)` helper in
+- inspect whether the remaining attachment-keyed
+  `find_regalloc_deferred_binding_attachment_batch(...)` helper in
   `tests/backend/backend_prepare_entry_contract_test.cpp` still deserves to
-  exist now that the main lookup path has moved to
+  exist now that deferred-reason lookups have consolidated on
   `RegallocDeferredBatchMatch`
 - keep the next packet inside step-5 regalloc ownership cleanup in related
   tests or `src/backend/prealloc/regalloc.cpp`; do not widen into a public API
@@ -94,10 +91,10 @@ while keeping the public shared contract named `prepare`
   state now share `RegallocDeferredBatchResolution`; if later cleanup trims
   lookup helpers too, keep one explicit resolved-batch surface instead of
   pushing new join calls back into each query helper
-- deferred batch lookup now has a match helper that carries both summary and
-  resolution; if later cleanup trims the older pointer-only lookup, keep one
-  stable consumer surface for identity-plus-resolution joins instead of
-  splitting those fields back apart
+- deferred-reason batch lookup now goes through one match helper that carries
+  both summary and resolution; if later cleanup trims more attachment-keyed
+  helpers, keep one stable consumer surface for identity-plus-resolution joins
+  instead of splitting those fields back apart
 - deferred batch identity checks in the contract test now funnel through one
   explicit identity helper; if a later packet trims more helper branching,
   keep that route instead of re-scattering new `deferred_reason` checks across

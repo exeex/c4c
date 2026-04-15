@@ -268,18 +268,6 @@ const std::string* find_regalloc_binding_batch_kind(const prepare::PreparedRegal
   return nullptr;
 }
 
-const prepare::PreparedRegallocDeferredBindingBatchSummary* find_regalloc_deferred_binding_batch(
-    const prepare::PreparedRegallocFunction& function,
-    std::string_view deferred_reason) {
-  for (const auto& summary : function.deferred_binding_batches) {
-    const auto resolution = resolve_regalloc_deferred_binding_batch(function, summary);
-    if (regalloc_deferred_batch_identity(resolution.join, summary) == deferred_reason) {
-      return &summary;
-    }
-  }
-  return nullptr;
-}
-
 RegallocDeferredBatchMatch find_regalloc_deferred_binding_batch_match(
     const prepare::PreparedRegallocFunction& function,
     std::string_view deferred_reason) {
@@ -1066,12 +1054,16 @@ int main() {
     return fail(
         "semantic-BIR regalloc should publish ready batch identity through binding_sequence while keeping deferred frontier attachment membership owned by deferred batch summaries");
   }
+  const auto deferred_access_window_batch =
+      find_regalloc_deferred_binding_batch_match(*regalloc_function,
+                                                 "awaiting_access_window_observation");
+  const auto deferred_coordination_batch =
+      find_regalloc_deferred_binding_batch_match(*regalloc_function,
+                                                 "batched_single_point_coordination");
   if (regalloc_function->deferred_binding_batches.size() != 2 ||
       regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches) != 9 ||
-      find_regalloc_deferred_binding_batch(*regalloc_function,
-                                           "awaiting_access_window_observation") == nullptr ||
-      find_regalloc_deferred_binding_batch(*regalloc_function,
-                                           "batched_single_point_coordination") == nullptr) {
+      deferred_access_window_batch.summary == nullptr ||
+      deferred_coordination_batch.summary == nullptr) {
     return fail(
         "semantic-BIR regalloc should publish explicit deferred binding batches keyed by their surviving deferred-reason owner for the current binding-deferred frontier");
   }
