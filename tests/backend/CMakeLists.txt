@@ -185,6 +185,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_global_nested_aggregate_function_pointer_call_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/global_nested_aggregate_function_pointer_call.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/global_nested_aggregate_function_pointer_call_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t2 = bir.load_global ptr @g, offset 8|%t3 = bir.call i32 %t2(i32 4)|bir.ret i32 %t3"
+  FORBIDDEN_SNIPPETS "call i32 (ptr, i32) @g.inner.fn|addr @inc+8"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_pointer_return_direct_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/pointer_return_direct.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu
