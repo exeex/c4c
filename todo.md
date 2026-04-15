@@ -55,19 +55,22 @@ while keeping the public shared contract named `prepare`
 - the handoff path now derives `binding_frontier_reason` from batch-owned
   `follow_up_category` or deferred-batch `deferred_reason`; do not reintroduce
   the object-level mirror as the internal owner for that publication path
-- ready/deferred prerequisite state now lives on batch summaries; if later
-  cleanup trims more handoff fields, keep handoff as a consumer keyed by
-  `binding_batch_kind` instead of rebuilding prerequisite ownership there
-- batch metadata now lives on ready/deferred batch summaries too; if later
-  cleanup trims more handoff mirrors, keep one clear answer for whether
-  downstream joins or frontier-level aggregate views own each remaining fact
+- deferred prerequisite state now lives on deferred batch summaries while
+  ready prerequisite/handoff facts rejoin through contention; if later cleanup
+  trims more handoff fields, keep handoff as a consumer keyed by surviving
+  owners instead of rebuilding prerequisite ownership there
+- deferred frontier metadata now lives on deferred batch summaries while ready
+  family joins stay on `binding_sequence` plus contention; if later cleanup
+  trims more handoff mirrors, keep one clear answer for whether downstream
+  joins or frontier-level aggregate views own each remaining fact
 - the handoff lookup path now keys tests by `binding_batch_kind`; if a later
   packet trims more binding mirrors, keep batch kind as the consumer join key
   instead of rebuilding ready/deferred ownership mirrors in a new handoff
   layer
-- handoff reason ownership now lives directly on ready/deferred batch
-  summaries; do not recreate a separate aggregate handoff publication unless a
-  real downstream consumer proves batch-owned fields are insufficient
+- handoff reason ownership now lives on deferred batch summaries and ready
+  contention summaries; do not recreate a separate aggregate handoff
+  publication unless a real downstream consumer proves those owners are
+  insufficient
 - deferred binding batch construction now takes `deferred_reason` directly from
   the object; if later cleanup removes or reshapes that object field, confirm
   deferred-batch ownership still stays clear instead of recreating a view
