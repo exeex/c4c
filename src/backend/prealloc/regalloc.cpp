@@ -611,6 +611,28 @@ std::string_view regalloc_binding_home_slot_prerequisite_state(
   return "prealloc_home_slot_prerequisite_deferred";
 }
 
+PreparedRegallocDeferredBindingBatchSummary& ensure_deferred_binding_batch_summary(
+    PreparedRegallocFunction& function,
+    std::string_view deferred_reason) {
+  for (auto& summary : function.deferred_binding_batches) {
+    if (summary.deferred_reason == deferred_reason) {
+      return summary;
+    }
+  }
+  function.deferred_binding_batches.push_back(PreparedRegallocDeferredBindingBatchSummary{
+      .deferred_reason = std::string(deferred_reason),
+  });
+  return function.deferred_binding_batches.back();
+}
+
+PreparedRegallocDeferredBindingAttachment regalloc_deferred_binding_attachment(
+    const PreparedRegallocFunction& function,
+    const PreparedRegallocObject& object) {
+  return PreparedRegallocDeferredBindingAttachment{
+      .object_index = static_cast<std::size_t>(&object - function.objects.data()),
+  };
+}
+
 }  // namespace
 
 const PreparedRegallocObject* BirPreAlloc::find_regalloc_object(
@@ -820,18 +842,10 @@ void BirPreAlloc::populate_binding_sequence() {
 
     if (regalloc_binding_frontier_is_deferred(*object)) {
       const std::string deferred_reason(regalloc_deferred_binding_batch_reason(*object, *contention));
-      auto* batch_summary = find_deferred_binding_batch_summary(deferred_reason);
-      if (batch_summary == nullptr) {
-        current_regalloc_function_->deferred_binding_batches.push_back(
-            PreparedRegallocDeferredBindingBatchSummary{
-                .deferred_reason = deferred_reason,
-            });
-        batch_summary = &current_regalloc_function_->deferred_binding_batches.back();
-      }
-      batch_summary->attachments.push_back(PreparedRegallocDeferredBindingAttachment{
-          .object_index = static_cast<std::size_t>(
-              object - current_regalloc_function_->objects.data()),
-      });
+      auto& batch_summary =
+          ensure_deferred_binding_batch_summary(*current_regalloc_function_, deferred_reason);
+      batch_summary.attachments.push_back(
+          regalloc_deferred_binding_attachment(*current_regalloc_function_, *object));
       continue;
     }
 

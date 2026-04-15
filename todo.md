@@ -17,6 +17,14 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
+- collapsed deferred-batch attachment creation in `src/backend/prealloc/regalloc.cpp`
+  behind one local helper route so batch lookup/append stays keyed by the
+  surviving function-owned object index and batch-owned `deferred_reason`
+- collapsed the deferred-batch test helper cluster in
+  `tests/backend/backend_prepare_entry_contract_test.cpp` behind one explicit
+  `attachments.front() -> object -> decision -> contention` join helper so
+  derived batch facts now rejoin through one visible route instead of repeating
+  that walk in each helper
 - removed deferred-batch summary lookup by derived binding-batch kind so
   `populate_binding_sequence()` now reuses deferred batches directly through
   the surviving batch-owned `deferred_reason`
@@ -28,9 +36,10 @@ while keeping the public shared contract named `prepare`
   external identity from the surviving owners
 
 ## Suggested Next
-- inspect whether the remaining deferred batch test helpers can collapse any
-  first-object/contention rejoin duplication without hiding the ownership
-  boundary between batch-owned `deferred_reason` and attachment-owned members
+- inspect whether the remaining deferred-batch helpers can also collapse the
+  split between access-window-object joins and coordination-contention joins
+  without introducing a new summary mirror or hiding which surviving owner
+  publishes each fact
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
