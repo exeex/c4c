@@ -215,6 +215,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_variadic_va_copy_accumulate_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/variadic_va_copy_accumulate.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/variadic_va_copy_accumulate_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @variadic_va_copy_accumulate(i32 %p.seed) -> i64 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|bir.call void llvm.va_copy.p0.p0(ptr %lv.copy, ptr %lv.ap)|%t0 = bir.call i64 llvm.va_arg.i64(ptr %lv.ap)|%t1 = bir.call i64 llvm.va_arg.i64(ptr %lv.copy)|bir.call void llvm.va_end.p0(ptr %lv.copy)|bir.call void llvm.va_end.p0(ptr %lv.ap)|bir.ret i64 %t6|bir.func @main() -> i32 {|%t0 = bir.call i64 variadic_va_copy_accumulate(i32 1, i64 10)|bir.ret i32 %t2"
+  FORBIDDEN_SNIPPETS "define i64 @variadic_va_copy_accumulate|call void @llvm.va_copy.p0.p0|call void @llvm.va_start.p0|call void @llvm.va_end.p0|va_arg ptr %lv.ap, i64|va_arg ptr %lv.copy, i64|bir.call ptr memcpy|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_builtin_memcpy_local_pair_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_local_pair.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu

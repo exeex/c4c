@@ -560,6 +560,22 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     return lower_va_list_call("llvm.va_end.p0", va_end->ap_ptr);
   }
 
+  if (const auto* va_copy = std::get_if<c4c::codegen::lir::LirVaCopyOp>(&inst)) {
+    const auto lowered_dst = lower_value(va_copy->dst_ptr, bir::TypeKind::Ptr);
+    const auto lowered_src = lower_value(va_copy->src_ptr, bir::TypeKind::Ptr);
+    if (!lowered_dst.has_value() || !lowered_src.has_value()) {
+      return false;
+    }
+    lowered_insts->push_back(bir::CallInst{
+        .callee = "llvm.va_copy.p0.p0",
+        .args = {*lowered_dst, *lowered_src},
+        .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    return true;
+  }
+
   if (const auto* va_arg = std::get_if<c4c::codegen::lir::LirVaArgOp>(&inst)) {
     return lower_va_arg_call(*va_arg);
   }
