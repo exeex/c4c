@@ -17,26 +17,27 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed `PreparedRegallocBindingHandoffSummary` and the published
-  `binding_handoff_summary` vector; ready and deferred handoff reason
-  ownership now stays on `binding_batches.follow_up_category` and
-  `deferred_binding_batches.deferred_reason`
-- deleted the regalloc helper/population path that rebuilt a duplicate
-  handoff view from batch-owned summaries after `populate_binding_sequence()`
-- updated the prepare-entry contract test to assert handoff reason directly
-  from ready and deferred batch owners instead of joining through a second
-  published handoff surface
+- deleted `PreparedRegallocFunction::binding_attachments` so deferred frontier
+  membership now lives only on each
+  `PreparedRegallocDeferredBindingBatchSummary::attachments` owner
+- updated `populate_binding_sequence()` to attach deferred objects directly to
+  their deferred batch summary instead of publishing a parallel function-level
+  join vector
+- refreshed the prepare-entry contract test so deferred objects recover batch
+  identity by scanning deferred batch owners while ready entries still publish
+  identity only through `binding_sequence`
 
 ## Suggested Next
-- inspect whether `PreparedRegallocBindingAttachment` still needs to mirror
-  deferred batch identity per object or whether one explicit function-level
-  deferred attachment owner can replace that duplicate join path
+- inspect whether deferred batch `attachments` still need full
+  `source_kind/source_name` pairs or whether one narrower batch-owned join can
+  preserve deferred frontier identity without recreating a parallel function
+  index
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
   work
-- keep using build plus the backend subset proof for packet work while this
-  route-shaping cleanup stays inside shared prepare ownership work
+- keep using build plus the backend subset proof while this cleanup stays
+  inside shared prepare ownership work
 
 ## Watchouts
 - do not add more liveness-like fact gathering to
@@ -81,11 +82,11 @@ while keeping the public shared contract named `prepare`
 - ready batch identity now lives in `PreparedRegallocFunction::binding_sequence`;
   do not re-expand `binding_attachments` back into the ready frontier unless a
   downstream consumer proves sequence ownership is insufficient
-- deferred batch identity still lives in
-  `PreparedRegallocFunction::binding_attachments`; if later cleanup trims that
-  view, keep one explicit function-level owner for deferred attachment instead
-  of pushing batch identity back onto `PreparedRegallocObject` or inventing a
-  fake deferred order contract
+- deferred batch identity now lives on
+  `PreparedRegallocDeferredBindingBatchSummary::attachments`; if later cleanup
+  trims that view, keep deferred membership owned by batch summaries instead of
+  pushing batch identity back onto `PreparedRegallocObject` or recreating a
+  parallel function-level attachment index
 - the current priority is structural clarity; if a cleanup only renames symbols
   but does not reduce architectural ambiguity, prefer the cleanup that removes
   an actual ownership seam or mirror first
@@ -93,4 +94,4 @@ while keeping the public shared contract named `prepare`
 ## Proof
 - `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 - passed; proof output recorded in `test_after.log`
-- broader backend checkpoint completed for this packet
+- backend subset proof completed for this packet

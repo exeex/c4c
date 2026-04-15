@@ -141,10 +141,9 @@ struct PreparedRegallocBindingDecision {
   std::size_t binding_order_index = 0;
 };
 
-struct PreparedRegallocBindingAttachment {
+struct PreparedRegallocDeferredBindingAttachment {
   std::string source_kind;
   std::string source_name;
-  std::string binding_batch_kind;
 };
 
 struct PreparedRegallocBindingBatchSummary {
@@ -174,6 +173,7 @@ struct PreparedRegallocDeferredBindingBatchSummary {
   std::string sync_handoff_prerequisite_category;
   std::string sync_handoff_state;
   std::size_t candidate_count = 0;
+  std::vector<PreparedRegallocDeferredBindingAttachment> attachments;
 };
 
 struct PreparedRegallocFunction {
@@ -183,7 +183,6 @@ struct PreparedRegallocFunction {
   std::vector<PreparedRegallocReservationSummary> reservation_summary;
   std::vector<PreparedRegallocContentionSummary> contention_summary;
   std::vector<PreparedRegallocBindingDecision> binding_sequence;
-  std::vector<PreparedRegallocBindingAttachment> binding_attachments;
   std::vector<PreparedRegallocBindingBatchSummary> binding_batches;
   std::vector<PreparedRegallocDeferredBindingBatchSummary> deferred_binding_batches;
   std::size_t register_candidate_count = 0;

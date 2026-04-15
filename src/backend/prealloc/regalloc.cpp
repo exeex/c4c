@@ -911,7 +911,6 @@ void BirPreAlloc::populate_binding_sequence() {
     return;
   }
   current_regalloc_function_->binding_sequence.clear();
-  current_regalloc_function_->binding_attachments.clear();
   current_regalloc_function_->binding_batches.clear();
   current_regalloc_function_->deferred_binding_batches.clear();
 
@@ -956,10 +955,9 @@ void BirPreAlloc::populate_binding_sequence() {
             });
         batch_summary = &current_regalloc_function_->deferred_binding_batches.back();
       }
-      current_regalloc_function_->binding_attachments.push_back(PreparedRegallocBindingAttachment{
+      batch_summary->attachments.push_back(PreparedRegallocDeferredBindingAttachment{
           .source_kind = decision.source_kind,
           .source_name = decision.source_name,
-          .binding_batch_kind = binding_batch_kind,
       });
       ++batch_summary->candidate_count;
       continue;

@@ -147,13 +147,16 @@ const prepare::PreparedRegallocBindingDecision* find_regalloc_binding_decision(
   return nullptr;
 }
 
-const prepare::PreparedRegallocBindingAttachment* find_regalloc_binding_attachment(
+const prepare::PreparedRegallocDeferredBindingBatchSummary*
+find_regalloc_deferred_binding_attachment_batch(
     const prepare::PreparedRegallocFunction& function,
     std::string_view source_kind,
     std::string_view source_name) {
-  for (const auto& attachment : function.binding_attachments) {
-    if (attachment.source_kind == source_kind && attachment.source_name == source_name) {
-      return &attachment;
+  for (const auto& summary : function.deferred_binding_batches) {
+    for (const auto& attachment : summary.attachments) {
+      if (attachment.source_kind == source_kind && attachment.source_name == source_name) {
+        return &summary;
+      }
     }
   }
   return nullptr;
@@ -166,9 +169,9 @@ const std::string* find_regalloc_binding_batch_kind(const prepare::PreparedRegal
           find_regalloc_binding_decision(function, source_kind, source_name)) {
     return &decision->binding_batch_kind;
   }
-  if (const auto* attachment =
-          find_regalloc_binding_attachment(function, source_kind, source_name)) {
-    return &attachment->binding_batch_kind;
+  if (const auto* deferred_batch =
+          find_regalloc_deferred_binding_attachment_batch(function, source_kind, source_name)) {
+    return &deferred_batch->binding_batch_kind;
   }
   return nullptr;
 }
@@ -200,6 +203,15 @@ std::size_t regalloc_candidate_count_sum(const std::vector<Summary>& summaries) 
   std::size_t total = 0;
   for (const auto& summary : summaries) {
     total += summary.candidate_count;
+  }
+  return total;
+}
+
+std::size_t regalloc_deferred_attachment_count_sum(
+    const std::vector<prepare::PreparedRegallocDeferredBindingBatchSummary>& summaries) {
+  std::size_t total = 0;
+  for (const auto& summary : summaries) {
+    total += summary.attachments.size();
   }
   return total;
 }
@@ -838,16 +850,16 @@ int main() {
     return fail("semantic-BIR regalloc should summarize register-candidate vs fixed-stack prepared objects");
   }
   if (regalloc_function->binding_sequence.size() != 6 ||
-      regalloc_function->binding_attachments.size() !=
+      regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches) !=
           regalloc_function->register_candidate_count -
               regalloc_function->binding_sequence.size() ||
       regalloc_function->binding_batches.size() != 2 ||
       regalloc_candidate_count_sum(regalloc_function->deferred_binding_batches) !=
-          regalloc_function->binding_attachments.size() ||
+          regalloc_deferred_attachment_count_sum(regalloc_function->deferred_binding_batches) ||
       regalloc_candidate_count_sum(regalloc_function->binding_batches) !=
           regalloc_function->binding_sequence.size()) {
     return fail(
-        "semantic-BIR regalloc should publish ready batch identity through binding_sequence while keeping only deferred frontier attachment in the function-level binding_attachments view");
+        "semantic-BIR regalloc should publish ready batch identity through binding_sequence while keeping deferred frontier attachment membership owned by deferred batch summaries");
   }
   if (regalloc_function->deferred_binding_batches.size() != 2 ||
       regalloc_candidate_count_sum(regalloc_function->deferred_binding_batches) != 9 ||
@@ -862,11 +874,11 @@ int main() {
   }
   const auto* scratch_slot_regalloc =
       find_regalloc_object(*regalloc_function, "lowering_scratch_slot", "scratch.slot");
-  const auto* scratch_slot_binding_attachment =
-      find_regalloc_binding_attachment(*regalloc_function, "lowering_scratch_slot", "scratch.slot");
+  const auto* scratch_slot_deferred_binding_batch = find_regalloc_deferred_binding_attachment_batch(
+      *regalloc_function, "lowering_scratch_slot", "scratch.slot");
   const auto* local_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "flag.slot");
-  const auto* local_slot_binding_attachment =
-      find_regalloc_binding_attachment(*regalloc_function, "local_slot", "flag.slot");
+  const auto* local_slot_deferred_binding_batch = find_regalloc_deferred_binding_attachment_batch(
+      *regalloc_function, "local_slot", "flag.slot");
   if (scratch_slot_regalloc == nullptr || scratch_slot_regalloc->contract_kind != "value_storage" ||
       scratch_slot_regalloc->allocation_kind != "register_candidate") {
     return fail("semantic-BIR regalloc should keep lowering-created scratch slots in the value-storage register-candidate contract");
@@ -882,11 +894,11 @@ int main() {
   if (scratch_slot_regalloc->binding_frontier_kind != "binding_deferred") {
     return fail("semantic-BIR regalloc should defer stable binding when prepared access-window facts are still missing");
   }
-  if (scratch_slot_binding_attachment == nullptr ||
-      scratch_slot_binding_attachment->binding_batch_kind !=
+  if (scratch_slot_deferred_binding_batch == nullptr ||
+      scratch_slot_deferred_binding_batch->binding_batch_kind !=
           "deferred_access_window_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should keep deferred objects attached to their deferred binding batch through a function-level attachment view instead of mirroring the batch kind onto each object");
+        "semantic-BIR regalloc should keep deferred objects attached to their deferred binding batch through the deferred batch summary instead of mirroring the batch kind onto each object");
   }
   if (local_slot_regalloc == nullptr || local_slot_regalloc->contract_kind != "value_storage" ||
       local_slot_regalloc->allocation_kind != "register_candidate") {
@@ -934,10 +946,11 @@ int main() {
   if (local_slot_regalloc->binding_frontier_kind != "binding_deferred") {
     return fail("semantic-BIR regalloc should keep observed single-point candidates deferred when coordination remains batched");
   }
-  if (local_slot_binding_attachment == nullptr ||
-      local_slot_binding_attachment->binding_batch_kind != "deferred_coordination_binding_batch") {
+  if (local_slot_deferred_binding_batch == nullptr ||
+      local_slot_deferred_binding_batch->binding_batch_kind !=
+          "deferred_coordination_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should keep coordination-deferred objects attached to their deferred binding batch through a function-level attachment view instead of mirroring the batch kind onto each object");
+        "semantic-BIR regalloc should keep coordination-deferred objects attached to their deferred binding batch through the deferred batch summary instead of mirroring the batch kind onto each object");
   }
   const auto* carry_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "carry.slot");
   const auto* carry_slot_binding_batch_kind =
