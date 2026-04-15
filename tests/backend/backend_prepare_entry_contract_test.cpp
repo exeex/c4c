@@ -471,8 +471,8 @@ int main() {
     return fail("semantic-BIR prepare legality invariant name drifted");
   }
   if (!contains_note(prepared_bir.notes,
-                     "prepare",
-                     "shared semantic-BIR to prepared-BIR route")) {
+                     "prealloc",
+                     "shared semantic-BIR to prealloc-BIR route")) {
     return fail("missing semantic-BIR prepare entry contract note");
   }
   if (!contains_note(prepared_bir.notes, "legalize", "signature/storage bookkeeping")) {
@@ -1567,10 +1567,10 @@ int main() {
       call_boundary_binding_batch->home_slot_prerequisite_category !=
           "stable_home_slot_required" ||
       call_boundary_binding_batch->home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_satisfied" ||
+          "prealloc_home_slot_prerequisite_satisfied" ||
       call_boundary_binding_batch->sync_handoff_prerequisite_category !=
           "mixed_sync_coordination" ||
-      call_boundary_binding_batch->sync_handoff_state != "prepare_sync_handoff_ready" ||
+      call_boundary_binding_batch->sync_handoff_state != "prealloc_sync_handoff_ready" ||
       call_boundary_binding_batch->candidate_count != 3) {
     return fail(
         "semantic-BIR regalloc should summarize call-boundary batch prerequisites and ready sync/home-slot handoff from the existing reservation/contention frontier");
@@ -1581,10 +1581,10 @@ int main() {
       local_reuse_binding_batch->home_slot_prerequisite_category !=
           "stable_home_slot_preferred" ||
       local_reuse_binding_batch->home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_satisfied" ||
+          "prealloc_home_slot_prerequisite_satisfied" ||
       local_reuse_binding_batch->sync_handoff_prerequisite_category !=
           "mixed_sync_coordination" ||
-      local_reuse_binding_batch->sync_handoff_state != "prepare_sync_handoff_ready" ||
+      local_reuse_binding_batch->sync_handoff_state != "prealloc_sync_handoff_ready" ||
       local_reuse_binding_batch->candidate_count != 3) {
     return fail(
         "semantic-BIR regalloc should summarize local-reuse batch prerequisites and ready sync/home-slot handoff from the existing reservation/contention frontier");
@@ -1599,15 +1599,15 @@ int main() {
       deferred_access_window_binding_batch->access_window_prerequisite_category !=
           "unobserved_instruction_window" ||
       deferred_access_window_binding_batch->access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_deferred" ||
+          "prealloc_access_window_prerequisite_deferred" ||
       deferred_access_window_binding_batch->home_slot_prerequisite_category !=
           "home_slot_needs_future_analysis" ||
       deferred_access_window_binding_batch->home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_deferred" ||
+          "prealloc_home_slot_prerequisite_deferred" ||
       deferred_access_window_binding_batch->sync_handoff_prerequisite_category !=
           "sync_policy_needs_future_analysis" ||
       deferred_access_window_binding_batch->sync_handoff_state !=
-          "prepare_sync_handoff_deferred" ||
+          "prealloc_sync_handoff_deferred" ||
       deferred_access_window_binding_batch->candidate_count != 7) {
     return fail(
         "semantic-BIR regalloc should group deferred single-point candidates waiting on access-window observation into an explicit deferred binding batch");
@@ -1621,15 +1621,15 @@ int main() {
       deferred_coordination_binding_batch->access_window_prerequisite_category !=
           "mixed_sparse_windows" ||
       deferred_coordination_binding_batch->access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
+          "prealloc_access_window_prerequisite_satisfied" ||
       deferred_coordination_binding_batch->home_slot_prerequisite_category !=
           "mixed_home_slot_modes" ||
       deferred_coordination_binding_batch->home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_deferred" ||
+          "prealloc_home_slot_prerequisite_deferred" ||
       deferred_coordination_binding_batch->sync_handoff_prerequisite_category !=
           "read_write_coordination" ||
       deferred_coordination_binding_batch->sync_handoff_state !=
-          "prepare_sync_handoff_ready" ||
+          "prealloc_sync_handoff_ready" ||
       deferred_coordination_binding_batch->candidate_count != 2) {
     return fail(
         "semantic-BIR regalloc should group deferred single-point candidates waiting on coordination into an explicit deferred binding batch");
@@ -1641,15 +1641,15 @@ int main() {
       call_boundary_handoff_summary->access_window_prerequisite_category !=
           "overlapping_call_boundary_windows" ||
       call_boundary_handoff_summary->access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
+          "prealloc_access_window_prerequisite_satisfied" ||
       call_boundary_handoff_summary->home_slot_prerequisite_category !=
           "stable_home_slot_required" ||
       call_boundary_handoff_summary->home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_satisfied" ||
+          "prealloc_home_slot_prerequisite_satisfied" ||
       call_boundary_handoff_summary->sync_handoff_prerequisite_category !=
           "mixed_sync_coordination" ||
       call_boundary_handoff_summary->sync_handoff_state !=
-          "prepare_sync_handoff_ready" ||
+          "prealloc_sync_handoff_ready" ||
       call_boundary_handoff_summary->candidate_count != 3) {
     return fail(
         "semantic-BIR regalloc should collapse ready call-boundary bindings into one downstream handoff summary");
@@ -1663,14 +1663,14 @@ int main() {
       local_reuse_handoff_summary->access_window_prerequisite_category !=
           "adjacent_local_windows" ||
       local_reuse_handoff_summary->access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
+          "prealloc_access_window_prerequisite_satisfied" ||
       local_reuse_handoff_summary->home_slot_prerequisite_category !=
           "stable_home_slot_preferred" ||
       local_reuse_handoff_summary->home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_satisfied" ||
+          "prealloc_home_slot_prerequisite_satisfied" ||
       local_reuse_handoff_summary->sync_handoff_prerequisite_category !=
           "mixed_sync_coordination" ||
-      local_reuse_handoff_summary->sync_handoff_state != "prepare_sync_handoff_ready" ||
+      local_reuse_handoff_summary->sync_handoff_state != "prealloc_sync_handoff_ready" ||
       local_reuse_handoff_summary->candidate_count != 3) {
     return fail(
         "semantic-BIR regalloc should collapse ready local-reuse bindings into one downstream handoff summary");
@@ -1686,15 +1686,15 @@ int main() {
       deferred_access_window_handoff_summary->access_window_prerequisite_category !=
           "unobserved_instruction_window" ||
       deferred_access_window_handoff_summary->access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_deferred" ||
+          "prealloc_access_window_prerequisite_deferred" ||
       deferred_access_window_handoff_summary->home_slot_prerequisite_category !=
           "home_slot_needs_future_analysis" ||
       deferred_access_window_handoff_summary->home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_deferred" ||
+          "prealloc_home_slot_prerequisite_deferred" ||
       deferred_access_window_handoff_summary->sync_handoff_prerequisite_category !=
           "sync_policy_needs_future_analysis" ||
       deferred_access_window_handoff_summary->sync_handoff_state !=
-          "prepare_sync_handoff_deferred" ||
+          "prealloc_sync_handoff_deferred" ||
       deferred_access_window_handoff_summary->candidate_count != 7) {
     return fail(
         "semantic-BIR regalloc should collapse access-window-deferred bindings into one downstream handoff summary");
@@ -1709,15 +1709,15 @@ int main() {
       deferred_coordination_handoff_summary->access_window_prerequisite_category !=
           "mixed_sparse_windows" ||
       deferred_coordination_handoff_summary->access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
+          "prealloc_access_window_prerequisite_satisfied" ||
       deferred_coordination_handoff_summary->home_slot_prerequisite_category !=
           "mixed_home_slot_modes" ||
       deferred_coordination_handoff_summary->home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_deferred" ||
+          "prealloc_home_slot_prerequisite_deferred" ||
       deferred_coordination_handoff_summary->sync_handoff_prerequisite_category !=
           "read_write_coordination" ||
       deferred_coordination_handoff_summary->sync_handoff_state !=
-          "prepare_sync_handoff_ready" ||
+          "prealloc_sync_handoff_ready" ||
       deferred_coordination_handoff_summary->candidate_count != 2) {
     return fail(
         "semantic-BIR regalloc should collapse coordination-deferred bindings into one downstream handoff summary");

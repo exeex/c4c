@@ -4,13 +4,13 @@ namespace c4c::backend::prepare {
 
 void BirPreAlloc::note(std::string_view message) {
   prepared_.notes.push_back(PrepareNote{
-      .phase = "prepare",
+      .phase = "prealloc",
       .message = std::string(message),
   });
 }
 
 PreparedBirModule BirPreAlloc::run() {
-  note("prepare owns the shared semantic-BIR to prepared-BIR route before target codegen");
+  note("prealloc owns the shared semantic-BIR to prealloc-BIR route before MIR lowering");
   run_legalize();
   run_stack_layout();
   run_liveness();

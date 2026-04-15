@@ -732,18 +732,18 @@ std::string_view regalloc_binding_home_slot_prerequisite_state(
   if (contention.home_slot_category == "stable_home_slot_required" ||
       contention.home_slot_category == "stable_home_slot_preferred" ||
       contention.home_slot_category == "single_use_home_slot_ok") {
-    return "prepare_home_slot_prerequisite_satisfied";
+    return "prealloc_home_slot_prerequisite_satisfied";
   }
   if (contention.home_slot_category == "idle_home_slot_coordination") {
     return "no_home_slot_prerequisite";
   }
-  return "prepare_home_slot_prerequisite_deferred";
+  return "prealloc_home_slot_prerequisite_deferred";
 }
 
 std::string_view regalloc_binding_access_window_prerequisite_state(
     const PreparedRegallocContentionSummary& contention) {
   (void)contention;
-  return "prepare_access_window_prerequisite_satisfied";
+  return "prealloc_access_window_prerequisite_satisfied";
 }
 
 std::string_view regalloc_deferred_binding_access_window_prerequisite_category(
@@ -758,9 +758,9 @@ std::string_view regalloc_deferred_binding_access_window_prerequisite_category(
 std::string_view regalloc_deferred_binding_access_window_prerequisite_state(
     const PreparedRegallocObject& object) {
   if (object.deferred_reason == "awaiting_access_window_observation") {
-    return "prepare_access_window_prerequisite_deferred";
+    return "prealloc_access_window_prerequisite_deferred";
   }
-  return "prepare_access_window_prerequisite_satisfied";
+  return "prealloc_access_window_prerequisite_satisfied";
 }
 
 std::string_view regalloc_deferred_binding_home_slot_prerequisite_category(
@@ -776,7 +776,7 @@ std::string_view regalloc_deferred_binding_home_slot_prerequisite_state(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
   if (object.deferred_reason == "awaiting_access_window_observation") {
-    return "prepare_home_slot_prerequisite_deferred";
+    return "prealloc_home_slot_prerequisite_deferred";
   }
   return regalloc_binding_home_slot_prerequisite_state(contention);
 }
@@ -788,12 +788,12 @@ std::string_view regalloc_binding_sync_handoff_state(
       contention.sync_coordination_category == "read_write_coordination" ||
       contention.sync_coordination_category == "bidirectional_sync_coordination" ||
       contention.sync_coordination_category == "mixed_sync_coordination") {
-    return "prepare_sync_handoff_ready";
+    return "prealloc_sync_handoff_ready";
   }
   if (contention.sync_coordination_category == "sync_free_coordination") {
     return "no_sync_handoff_required";
   }
-  return "prepare_sync_handoff_deferred";
+  return "prealloc_sync_handoff_deferred";
 }
 
 std::string_view regalloc_deferred_binding_sync_handoff_prerequisite_category(
@@ -809,7 +809,7 @@ std::string_view regalloc_deferred_binding_sync_handoff_state(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
   if (object.deferred_reason == "awaiting_access_window_observation") {
-    return "prepare_sync_handoff_deferred";
+    return "prealloc_sync_handoff_deferred";
   }
   return regalloc_binding_sync_handoff_state(contention);
 }
