@@ -135,12 +135,40 @@ bool function_contains_i1(const bir::Function& function) {
   return false;
 }
 
+bool function_contains_phi(const bir::Function& function) {
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (std::holds_alternative<bir::PhiInst>(inst)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+int check_prepare_phi_invariant(const prepare::PreparedBirModule& prepared) {
+  if (!contains_invariant(prepared, prepare::PreparedBirInvariant::NoPhiNodes)) {
+    return fail("expected prepare legalize to publish the no-phi-nodes invariant");
+  }
+  if (prepared.invariants.empty() ||
+      prepare::prepared_bir_invariant_name(prepared.invariants.front()) != "no_phi_nodes") {
+    return fail("expected stable name for the no-phi-nodes invariant");
+  }
+  if (prepared.module.functions.size() != 1) {
+    return fail("expected exactly one function when checking the phi legality invariant");
+  }
+  if (function_contains_phi(prepared.module.functions.front())) {
+    return fail("expected legalize to remove phi nodes from prepared semantic BIR");
+  }
+  return 0;
+}
+
 int check_prepare_i1_invariant(const prepare::PreparedBirModule& prepared) {
   if (!contains_invariant(prepared, prepare::PreparedBirInvariant::NoTargetFacingI1)) {
     return fail("expected prepare legalize to publish the no-target-facing-i1 invariant");
   }
-  if (prepared.invariants.empty() ||
-      prepare::prepared_bir_invariant_name(prepared.invariants.front()) != "no_target_facing_i1") {
+  if (prepared.invariants.size() < 2 ||
+      prepare::prepared_bir_invariant_name(prepared.invariants[1]) != "no_target_facing_i1") {
     return fail("expected stable name for the no-target-facing-i1 invariant");
   }
   if (prepared.module.functions.size() != 1) {
@@ -753,6 +781,9 @@ int check_materialized_conditional_successor_join(const bir::Function& legalized
 
 int main() {
   const auto prepared_with_add = legalize_merge3_module(true);
+  if (const int status = check_prepare_phi_invariant(prepared_with_add); status != 0) {
+    return status;
+  }
   if (const int status = check_prepare_i1_invariant(prepared_with_add); status != 0) {
     return status;
   }
@@ -761,6 +792,9 @@ int main() {
   }
 
   const auto prepared_return_only = legalize_merge3_module(false);
+  if (const int status = check_prepare_phi_invariant(prepared_return_only); status != 0) {
+    return status;
+  }
   if (const int status = check_prepare_i1_invariant(prepared_return_only); status != 0) {
     return status;
   }
@@ -769,6 +803,9 @@ int main() {
   }
 
   const auto prepared_successor_use = legalize_merge3_successor_use_module();
+  if (const int status = check_prepare_phi_invariant(prepared_successor_use); status != 0) {
+    return status;
+  }
   if (const int status = check_prepare_i1_invariant(prepared_successor_use); status != 0) {
     return status;
   }
@@ -778,6 +815,9 @@ int main() {
   }
 
   const auto prepared_forwarded_successor_use = legalize_merge3_forwarded_successor_use_module();
+  if (const int status = check_prepare_phi_invariant(prepared_forwarded_successor_use); status != 0) {
+    return status;
+  }
   if (const int status = check_prepare_i1_invariant(prepared_forwarded_successor_use); status != 0) {
     return status;
   }
@@ -788,6 +828,9 @@ int main() {
   }
 
   const auto prepared_conditional_successor_use = legalize_merge3_conditional_successor_use_module();
+  if (const int status = check_prepare_phi_invariant(prepared_conditional_successor_use); status != 0) {
+    return status;
+  }
   if (const int status = check_prepare_i1_invariant(prepared_conditional_successor_use); status != 0) {
     return status;
   }

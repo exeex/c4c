@@ -39,12 +39,15 @@ enum class PrepareRoute {
 
 enum class PreparedBirInvariant {
   NoTargetFacingI1,
+  NoPhiNodes,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_bir_invariant_name(PreparedBirInvariant invariant) {
   switch (invariant) {
     case PreparedBirInvariant::NoTargetFacingI1:
       return "no_target_facing_i1";
+    case PreparedBirInvariant::NoPhiNodes:
+      return "no_phi_nodes";
   }
   return "unknown";
 }

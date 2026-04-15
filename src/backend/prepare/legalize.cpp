@@ -791,6 +791,7 @@ void run_legalize(PreparedBirModule& module, const PrepareOptions& options) {
   (void)options;
   module.completed_phases.push_back("legalize");
   legalize_module(module.target, module.module);
+  module.invariants.push_back(PreparedBirInvariant::NoPhiNodes);
   if (should_promote_i1(module.target)) {
     module.invariants.push_back(PreparedBirInvariant::NoTargetFacingI1);
   }
@@ -798,7 +799,8 @@ void run_legalize(PreparedBirModule& module, const PrepareOptions& options) {
   module.notes.push_back(PrepareNote{
       .phase = "legalize",
       .message =
-          "bootstrap BIR legalize promoted i1 values to i32 for x86/i686/aarch64/riscv64",
+          "bootstrap BIR legalize removed phi nodes and promoted i1 values to i32 for "
+          "x86/i686/aarch64/riscv64",
   });
 }
 

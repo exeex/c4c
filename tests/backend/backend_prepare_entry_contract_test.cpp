@@ -84,7 +84,16 @@ int main() {
   if (!contains_invariant(prepared_bir, prepare::PreparedBirInvariant::NoTargetFacingI1)) {
     return fail("semantic-BIR prepare entry should advertise the no-target-facing-i1 invariant");
   }
-  if (prepare::prepared_bir_invariant_name(prepared_bir.invariants.front()) != "no_target_facing_i1") {
+  if (!contains_invariant(prepared_bir, prepare::PreparedBirInvariant::NoPhiNodes)) {
+    return fail("semantic-BIR prepare entry should advertise the no-phi-nodes invariant");
+  }
+  if (prepared_bir.invariants.size() != 2) {
+    return fail("semantic-BIR prepare entry should advertise exactly the active legality invariants");
+  }
+  if (prepare::prepared_bir_invariant_name(prepared_bir.invariants[0]) != "no_phi_nodes") {
+    return fail("semantic-BIR prepare phi invariant name drifted");
+  }
+  if (prepare::prepared_bir_invariant_name(prepared_bir.invariants[1]) != "no_target_facing_i1") {
     return fail("semantic-BIR prepare legality invariant name drifted");
   }
   if (!contains_note(prepared_bir.notes,

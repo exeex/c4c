@@ -8,21 +8,21 @@ Current Plan Focus: step-2 first legality invariant activation
 # Current Packet
 
 ## Just Finished
-- made the first semantic-BIR legality invariant explicit with
-  `PreparedBirInvariant::NoTargetFacingI1`, and taught `run_legalize` to
-  publish that invariant when prepare-owned `i1` promotion is part of the
-  current target contract
-- tightened backend prepare tests so they prove both the explicit invariant
-  metadata and the concrete post-legalize effect that target-facing `i1`
-  values are removed from prepared semantic BIR in this slice
+- extended prepare-owned legality invariants with
+  `PreparedBirInvariant::NoPhiNodes`, and taught `run_legalize` to publish
+  that invariant alongside `NoTargetFacingI1` so prepared semantic BIR
+  exposes phi removal as part of the current contract
+- tightened backend prepare tests so they prove both invariant metadata and
+  the concrete post-legalize effect that prepared semantic BIR contains no raw
+  phi nodes while still removing target-facing `i1` values in the same slice
 
 ## Suggested Next
-- extend prepare-owned legality invariants beyond `i1` promotion by
-  inventorying which target-facing value and call forms still rely on implicit
-  target assumptions, then encode the next invariant where legalize already
-  owns the transformation
-- keep the next packet on general prepared-BIR legality ownership, not target
-  ingestion work or testcase-shaped backend shortcuts
+- inventory the remaining target-facing call and value forms that backend
+  routing still treats as implicit assumptions, and encode the next
+  prepare-owned legality invariant only where `legalize` already owns a real
+  transformation rather than target-side fallback
+- keep the next packet on prepared-BIR legality ownership and backend-route
+  contract clarity, not target ingestion work or testcase-shaped shortcuts
 
 ## Watchouts
 - do not let the current legality packet drift into target ingestion work that
@@ -37,3 +37,7 @@ Current Plan Focus: step-2 first legality invariant activation
 - delegated proof: `cmake --build --preset default && ctest --test-dir build
   -j --output-on-failure -R '^backend_'`
 - passed and wrote `test_after.log`
+- supervisor regression check:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+  reported `70 -> 70` with no new failing tests, but still returned failure
+  because the current guard script requires a strict pass-count increase
