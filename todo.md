@@ -3,24 +3,23 @@
 Status: Active
 Source Idea: ideas/open/47_semantic_call_runtime_boundary.md
 Source Plan: plan.md
-Current Plan Focus: ordered step 3, lower runtime and intrinsic families semantically
+Current Plan Focus: ordered step 4, tighten the semantic unsupported boundary
 
 # Current Packet
 
 ## Just Finished
-- proved pointer-valued inline asm output and read/write forms already stay on the semantic BIR route without new lowering changes
-- added backend route coverage for `__asm__ volatile("" : "=r"(q) : "r"(p));` and `__asm__ volatile("" : "+r"(p));`, and the semantic BIR now observes `bir.call ptr llvm.inline_asm(ptr %t0)` with `=r,r` and `+r` constraints before storing the pointer result back to the lvalue slot
+- preserved the most specific semantic family when semantic BIR lowering fails at module scope, so module notes now carry the latest runtime/call family miss instead of collapsing everything to the generic admitted-capability umbrella
+- added direct backend unit coverage for an unsupported aggregate-return inline-asm shape, proving the failure path keeps `inline-asm placeholder family` visible in both the function note and the module note
 
 ## Suggested Next
-- treat inline asm as likely exhausted at the current single-output carrier boundary unless the next packet explicitly expands frontend/HIR representation for tied multi-output forms
-- if step 3 continues without a carrier expansion packet, move to the semantic unsupported-boundary cleanup in ordered step 4 instead of stretching inline asm with testcase-shaped coverage additions
+- keep step 4 focused on planner-facing unsupported-boundary cleanup instead of stretching inline asm further without a real multi-output carrier
+- audit whether any remaining semantic-call or runtime failures still lose their family identity through later wrapper notes, and add the next direct note-level regression only if it tightens that contract rather than naming another testcase
 
 ## Watchouts
-- this packet was a proof-only checkpoint: pointer outputs already lower honestly through the existing `StmtEmitter` and `lir_to_bir` path, so there was no backend/runtime code repair to land
-- the remaining inline-asm gap is still representational rather than backend-only: tied digit or multi-output cases need a carrier that can name more than one write result and should not be faked by dropping outputs
-- the empty-template parser fold remains intentionally separate from volatile asm preservation, so future inline-asm work still needs to keep the “all outputs must be representable” guard intact
+- the lowering pipeline still emits wrapper failures such as `scalar/local-memory semantic family` after specific runtime/call misses; step-4 reporting should prefer the more precise family when summarizing module failure state
+- this packet tightens unsupported reporting only; it does not expand inline-asm carrier representation, so tied digit and multi-output forms remain representational follow-on work rather than backend fixes
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-- passed with the new pointer inline-asm route cases; `backend_codegen_route_x86_64_inline_asm_output_ptr_observe_semantic_bir` and `backend_codegen_route_x86_64_inline_asm_output_readwrite_ptr_observe_semantic_bir` both observe semantic `bir.call ptr llvm.inline_asm(ptr %t0)` output paths
+- passed with the new `backend_lir_to_bir_notes` unit alongside the existing backend subset
 - proof log preserved at `test_after.log`

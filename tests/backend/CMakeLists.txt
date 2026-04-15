@@ -76,6 +76,40 @@ set_tests_properties(backend_prepare_phi_materialize PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_lir_to_bir_notes_test
+    "${BACKEND_TEST_ROOT}/backend_lir_to_bir_notes_test.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_aggregate.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_analysis.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_calling.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_cfg.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_context.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_globals.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_memory.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_module.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_scalar.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lowering/lir_to_bir_types.cpp"
+)
+target_include_directories(backend_lir_to_bir_notes_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_lir_to_bir_notes_test PRIVATE
+    c4c_codegen
+)
+set_target_properties(backend_lir_to_bir_notes_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_lir_to_bir_notes
+  COMMAND $<TARGET_FILE:backend_lir_to_bir_notes_test>
+)
+set_tests_properties(backend_lir_to_bir_notes PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_phi
   SRC "${BACKEND_CASE_ROOT}/three_way_phi_merge_post_add_sub.c"

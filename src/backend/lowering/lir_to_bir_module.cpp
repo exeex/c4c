@@ -18,6 +18,22 @@ using lir_to_bir_detail::resolve_known_global_address;
 using lir_to_bir_detail::resolve_pointer_initializer_offsets;
 using lir_to_bir_detail::TypeDeclMap;
 
+std::optional<std::string_view> latest_function_failure_note(const BirLoweringContext& context) {
+  for (auto it = context.notes.rbegin(); it != context.notes.rend(); ++it) {
+    if (it->phase == "function" &&
+        (it->message.find("failed in runtime/intrinsic family") != std::string::npos ||
+         it->message.find("failed in semantic call family") != std::string::npos)) {
+      return it->message;
+    }
+  }
+  for (auto it = context.notes.rbegin(); it != context.notes.rend(); ++it) {
+    if (it->phase == "function") {
+      return it->message;
+    }
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 BirFunctionLowerer::BirFunctionLowerer(BirLoweringContext& context,
@@ -544,9 +560,14 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
         context, function, global_types, function_symbols, type_decls);
     auto lowered_function = function_lowerer.lower();
     if (!lowered_function.has_value()) {
-      context.note(
-          "module",
-          "semantic lir_to_bir failed outside the currently admitted capability buckets for scalar control flow, local/global memory, semantic call lowering, and explicit runtime or intrinsic families");
+      std::string message =
+          "semantic lir_to_bir failed outside the currently admitted capability buckets for scalar control flow, local/global memory, semantic call lowering, and explicit runtime or intrinsic families";
+      if (const auto function_failure = latest_function_failure_note(context);
+          function_failure.has_value()) {
+        message += "; latest function failure: ";
+        message += *function_failure;
+      }
+      context.note("module", std::move(message));
       return std::nullopt;
     }
     module.functions.push_back(std::move(*lowered_function));
