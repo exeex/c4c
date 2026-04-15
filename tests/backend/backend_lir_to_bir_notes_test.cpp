@@ -26,6 +26,8 @@ using c4c::codegen::lir::LirAllocaOp;
 using c4c::codegen::lir::LirAbsOp;
 using c4c::codegen::lir::LirStackSaveOp;
 using c4c::codegen::lir::LirStoreOp;
+using c4c::codegen::lir::LirPhiOp;
+using c4c::codegen::lir::LirSelectOp;
 using c4c::codegen::lir::LirVaArgOp;
 
 int fail(const char* message) {
@@ -44,7 +46,8 @@ bool contains_note(const std::vector<BirLoweringNote>& notes,
   return false;
 }
 
-int expect_failure_notes(const LirModule& module,
+int expect_failure_notes(std::string_view case_name,
+                         const LirModule& module,
                          std::string_view module_summary,
                          std::string_view function_failure,
                          std::string_view module_failure,
@@ -53,7 +56,9 @@ int expect_failure_notes(const LirModule& module,
                          const char* missing_module_note) {
   auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
   if (result.module.has_value()) {
-    return fail("expected semantic BIR lowering to fail");
+    return fail((std::string("expected semantic BIR lowering to fail for ") +
+                 std::string(case_name))
+                    .c_str());
   }
   if (!contains_note(result.notes, "module", module_summary)) {
     return fail(missing_module_summary);
@@ -356,6 +361,107 @@ LirModule make_bad_alloca_module() {
   return module;
 }
 
+LirModule make_bad_function_signature_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_function_signature";
+  function.signature_text = "define void @bad_function_signature()";
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+  int_type.enum_underlying_base = c4c::TB_VOID;
+  function.params.push_back({"%x", int_type});
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_bad_scalar_control_flow_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_scalar_control_flow";
+  function.signature_text = "define i32 @bad_scalar_control_flow()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirPhiOp{
+      .result = LirOperand("@not_ssa"),
+      .type_str = "i32",
+      .incoming = {{"0", "entry"}},
+  });
+  entry.terminator = LirRet{
+      .value_str = "i32 0",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_bad_local_memory_umbrella_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_local_memory_umbrella";
+  function.signature_text = "define void @bad_local_memory_umbrella()";
+  function.alloca_insts.push_back(LirPhiOp{
+      .result = LirOperand("%t0"),
+      .type_str = "i32",
+      .incoming = {{"0", "entry"}},
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_bad_scalar_local_memory_umbrella_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_scalar_local_memory_umbrella";
+  function.signature_text = "define void @bad_scalar_local_memory_umbrella()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirSelectOp{
+      .result = LirOperand("%t0"),
+      .type_str = "i32",
+      .cond = LirOperand("%cond"),
+      .true_val = LirOperand("1"),
+      .false_val = LirOperand("0"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_scalar_binop_module() {
   LirModule module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -465,6 +571,7 @@ int main() {
   constexpr std::string_view kModuleSummary =
       "currently admitted capability buckets covering function-signature, scalar-control-flow, scalar/local-memory (including scalar-cast/scalar-binop and alloca/gep/load/store local-memory), and local/global memory semantics, plus semantic call families (direct-call, indirect-call, and call-return) and explicit runtime or intrinsic families such as variadic, stack-state, absolute-value, memcpy, memset, and inline-asm placeholders";
   if (const int inline_asm_status = expect_failure_notes(
+          "bad_inline_asm",
           make_unsupported_inline_asm_module(),
           kModuleSummary,
           "failed in runtime/intrinsic family 'inline-asm placeholder family'",
@@ -477,6 +584,7 @@ int main() {
   }
 
   if (const int direct_call_status = expect_failure_notes(
+          "bad_direct_call",
           make_bad_direct_call_module(),
           kModuleSummary,
           "failed in semantic call family 'direct-call semantic family'",
@@ -489,6 +597,7 @@ int main() {
   }
 
   if (const int indirect_call_status = expect_failure_notes(
+          "bad_indirect_call",
           make_bad_indirect_call_module(),
           kModuleSummary,
           "failed in semantic call family 'indirect-call semantic family'",
@@ -501,6 +610,7 @@ int main() {
   }
 
   if (const int call_return_status = expect_failure_notes(
+          "bad_call_return",
           make_bad_call_return_module(),
           kModuleSummary,
           "failed in semantic call family 'call-return semantic family'",
@@ -513,6 +623,7 @@ int main() {
   }
 
   if (const int memcpy_status = expect_failure_notes(
+          "bad_memcpy_runtime",
           make_bad_memcpy_runtime_module(),
           kModuleSummary,
           "failed in runtime/intrinsic family 'memcpy runtime family'",
@@ -525,6 +636,7 @@ int main() {
   }
 
   if (const int memset_status = expect_failure_notes(
+          "bad_memset_runtime",
           make_bad_memset_runtime_module(),
           kModuleSummary,
           "failed in runtime/intrinsic family 'memset runtime family'",
@@ -537,6 +649,7 @@ int main() {
   }
 
   if (const int variadic_status = expect_failure_notes(
+          "bad_variadic_runtime",
           make_bad_variadic_runtime_module(),
           kModuleSummary,
           "failed in runtime/intrinsic family 'variadic runtime family'",
@@ -549,6 +662,7 @@ int main() {
   }
 
   if (const int stack_state_status = expect_failure_notes(
+          "bad_stack_state_runtime",
           make_bad_stack_state_runtime_module(),
           kModuleSummary,
           "failed in runtime/intrinsic family 'stack-state runtime family'",
@@ -561,6 +675,7 @@ int main() {
   }
 
   if (const int abs_status = expect_failure_notes(
+          "bad_abs_runtime",
           make_bad_abs_runtime_module(),
           kModuleSummary,
           "failed in runtime/intrinsic family 'absolute-value intrinsic family'",
@@ -573,6 +688,7 @@ int main() {
   }
 
   if (const int scalar_cast_status = expect_failure_notes(
+          "bad_scalar_cast",
           make_bad_scalar_cast_module(),
           kModuleSummary,
           "failed in scalar-cast semantic family",
@@ -585,6 +701,7 @@ int main() {
   }
 
   if (const int alloca_status = expect_failure_notes(
+          "bad_alloca",
           make_bad_alloca_module(),
           kModuleSummary,
           "failed in alloca local-memory semantic family",
@@ -596,7 +713,60 @@ int main() {
     return alloca_status;
   }
 
+  if (const int function_signature_status = expect_failure_notes(
+          "bad_function_signature",
+          make_bad_function_signature_module(),
+          kModuleSummary,
+          "failed in function-signature semantic family",
+          "latest function failure: semantic lir_to_bir function 'bad_function_signature' failed in function-signature semantic family",
+          "missing module capability-bucket summary note",
+          "missing function-signature umbrella function note",
+          "missing module note carrying the function-signature umbrella failure");
+      function_signature_status != 0) {
+    return function_signature_status;
+  }
+
+  if (const int scalar_control_flow_status = expect_failure_notes(
+          "bad_scalar_control_flow",
+          make_bad_scalar_control_flow_module(),
+          kModuleSummary,
+          "failed in scalar-control-flow semantic family",
+          "latest function failure: semantic lir_to_bir function 'bad_scalar_control_flow' failed in scalar-control-flow semantic family",
+          "missing module capability-bucket summary note",
+          "missing scalar-control-flow umbrella function note",
+          "missing module note carrying the scalar-control-flow umbrella failure");
+      scalar_control_flow_status != 0) {
+    return scalar_control_flow_status;
+  }
+
+  if (const int local_memory_umbrella_status = expect_failure_notes(
+          "bad_local_memory_umbrella",
+          make_bad_local_memory_umbrella_module(),
+          kModuleSummary,
+          "failed in local-memory semantic family",
+          "latest function failure: semantic lir_to_bir function 'bad_local_memory_umbrella' failed in local-memory semantic family",
+          "missing module capability-bucket summary note",
+          "missing local-memory umbrella function note",
+          "missing module note carrying the local-memory umbrella failure");
+      local_memory_umbrella_status != 0) {
+    return local_memory_umbrella_status;
+  }
+
+  if (const int scalar_local_memory_umbrella_status = expect_failure_notes(
+          "bad_scalar_local_memory_umbrella",
+          make_bad_scalar_local_memory_umbrella_module(),
+          kModuleSummary,
+          "failed in scalar/local-memory semantic family",
+          "latest function failure: semantic lir_to_bir function 'bad_scalar_local_memory_umbrella' failed in scalar/local-memory semantic family",
+          "missing module capability-bucket summary note",
+          "missing scalar/local-memory umbrella function note",
+          "missing module note carrying the scalar/local-memory umbrella failure");
+      scalar_local_memory_umbrella_status != 0) {
+    return scalar_local_memory_umbrella_status;
+  }
+
   if (const int scalar_binop_status = expect_failure_notes(
+          "bad_scalar_binop",
           make_bad_scalar_binop_module(),
           kModuleSummary,
           "failed in scalar-binop semantic family",
@@ -609,6 +779,7 @@ int main() {
   }
 
   if (const int gep_status = expect_failure_notes(
+          "bad_gep",
           make_bad_gep_module(),
           kModuleSummary,
           "failed in gep local-memory semantic family",
@@ -621,6 +792,7 @@ int main() {
   }
 
   if (const int store_status = expect_failure_notes(
+          "bad_store",
           make_bad_store_module(),
           kModuleSummary,
           "failed in store local-memory semantic family",
@@ -633,6 +805,7 @@ int main() {
   }
 
   if (const int load_status = expect_failure_notes(
+          "bad_load",
           make_bad_load_module(),
           kModuleSummary,
           "failed in load local-memory semantic family",
