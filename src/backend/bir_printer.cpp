@@ -1,5 +1,6 @@
 #include "bir_printer.hpp"
 
+#include <iomanip>
 #include <sstream>
 #include <type_traits>
 
@@ -10,6 +11,16 @@ namespace {
 std::string render_value(const Value& value) {
   if (value.kind == Value::Kind::Named) {
     return value.name;
+  }
+  if (value.type == TypeKind::F32 || value.type == TypeKind::F64) {
+    std::ostringstream out;
+    out << "0x" << std::hex << std::uppercase << std::setfill('0');
+    if (value.type == TypeKind::F32) {
+      out << std::setw(8) << static_cast<std::uint32_t>(value.immediate_bits);
+    } else {
+      out << std::setw(16) << value.immediate_bits;
+    }
+    return out.str();
   }
   return std::to_string(value.immediate);
 }

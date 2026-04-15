@@ -37,6 +37,24 @@ Value Value::immediate_i64(std::int64_t value) {
   return result;
 }
 
+Value Value::immediate_f32_bits(std::uint32_t bits) {
+  Value result;
+  result.kind = Kind::Immediate;
+  result.type = TypeKind::F32;
+  result.immediate = static_cast<std::int64_t>(bits);
+  result.immediate_bits = bits;
+  return result;
+}
+
+Value Value::immediate_f64_bits(std::uint64_t bits) {
+  Value result;
+  result.kind = Kind::Immediate;
+  result.type = TypeKind::F64;
+  result.immediate = static_cast<std::int64_t>(bits);
+  result.immediate_bits = bits;
+  return result;
+}
+
 Value Value::named(TypeKind type, std::string value_name) {
   Value result;
   result.kind = Kind::Named;
@@ -59,6 +77,10 @@ std::string render_type(TypeKind type) {
       return "i64";
     case TypeKind::Ptr:
       return "ptr";
+    case TypeKind::F32:
+      return "float";
+    case TypeKind::F64:
+      return "double";
   }
   return "<unknown>";
 }

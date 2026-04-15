@@ -56,7 +56,8 @@ std::optional<std::pair<std::size_t, bir::TypeKind>> BirFunctionLowerer::parse_l
     return std::nullopt;
   }
 
-  const auto element_type = lower_integer_type(text.substr(x_pos + 3, text.size() - x_pos - 4));
+  const auto element_type =
+      lower_scalar_or_function_pointer_type(text.substr(x_pos + 3, text.size() - x_pos - 4));
   if (!element_type.has_value()) {
     return std::nullopt;
   }
@@ -1532,7 +1533,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return false;
     }
 
-    const auto slot_type = lower_integer_type(alloca->type_str.str());
+    const auto slot_type = lower_scalar_or_function_pointer_type(alloca->type_str.str());
     const std::string slot_name = alloca->result.str();
     if (local_slot_types.find(slot_name) != local_slot_types.end() ||
         local_array_slots.find(slot_name) != local_array_slots.end()) {
@@ -2514,7 +2515,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return false;
     }
 
-    const auto value_type = lower_integer_type(load->type_str.str());
+    const auto value_type = lower_scalar_or_function_pointer_type(load->type_str.str());
     if (!value_type.has_value()) {
       const auto aggregate_layout = lower_byval_aggregate_layout(load->type_str.str(), type_decls);
       if (!aggregate_layout.has_value() ||
@@ -3458,7 +3459,8 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           lowered_arg_abi.push_back(bir::CallArgAbiInfo{.type = bir::TypeKind::Ptr});
           continue;
         }
-        const auto arg_type = lower_integer_type(parsed_call->typed_call.param_types[index]);
+        const auto arg_type =
+            lower_scalar_or_function_pointer_type(parsed_call->typed_call.param_types[index]);
         if (!arg_type.has_value()) {
           const auto aggregate_layout =
               lower_byval_aggregate_layout(parsed_call->typed_call.param_types[index], type_decls);
@@ -3522,7 +3524,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           lowered_arg_abi.push_back(bir::CallArgAbiInfo{.type = bir::TypeKind::Ptr});
           continue;
         }
-        const auto arg_type = lower_integer_type(parsed_call->param_types[index]);
+        const auto arg_type = lower_scalar_or_function_pointer_type(parsed_call->param_types[index]);
         if (!arg_type.has_value()) {
           const auto aggregate_layout =
               lower_byval_aggregate_layout(parsed_call->param_types[index], type_decls);

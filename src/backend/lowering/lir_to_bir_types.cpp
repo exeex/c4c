@@ -5,6 +5,8 @@
 
 namespace c4c::backend::lir_to_bir_detail {
 
+std::optional<bir::TypeKind> lower_integer_type(std::string_view text);
+
 namespace {
 
 std::optional<std::pair<std::size_t, std::string_view>> parse_integer_array_layer(
@@ -48,6 +50,19 @@ std::optional<std::string_view> resolve_type_decl_body(std::string_view text,
     return std::nullopt;
   }
   return std::string_view(it->second);
+}
+
+std::optional<bir::TypeKind> lower_scalar_storage_type(std::string_view text) {
+  if (const auto lowered = lower_integer_type(text); lowered.has_value()) {
+    return lowered;
+  }
+  if (text == "float" || text == "f32") {
+    return bir::TypeKind::F32;
+  }
+  if (text == "double" || text == "f64") {
+    return bir::TypeKind::F64;
+  }
+  return std::nullopt;
 }
 
 }  // namespace
@@ -113,9 +128,11 @@ std::size_t type_size_bytes(bir::TypeKind type) {
     case bir::TypeKind::I8:
       return 1;
     case bir::TypeKind::I32:
+    case bir::TypeKind::F32:
       return 4;
     case bir::TypeKind::I64:
     case bir::TypeKind::Ptr:
+    case bir::TypeKind::F64:
       return 8;
     default:
       return 0;
@@ -177,7 +194,7 @@ AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
     return {};
   }
 
-  if (const auto scalar_type = lower_integer_type(trimmed); scalar_type.has_value()) {
+  if (const auto scalar_type = lower_scalar_storage_type(trimmed); scalar_type.has_value()) {
     return AggregateTypeLayout{
         .kind = AggregateTypeLayout::Kind::Scalar,
         .scalar_type = *scalar_type,

@@ -1,5 +1,7 @@
 #include "lir_to_bir.hpp"
 
+#include <charconv>
+
 namespace c4c::backend {
 
 using lir_to_bir_detail::lower_integer_type;
@@ -70,6 +72,12 @@ std::optional<bir::TypeKind> BirFunctionLowerer::lower_scalar_or_function_pointe
     return lowered;
   }
   const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (trimmed == "float") {
+    return bir::TypeKind::F32;
+  }
+  if (trimmed == "double") {
+    return bir::TypeKind::F64;
+  }
   if (trimmed == "ptr" || trimmed.rfind("ptr ", 0) == 0) {
     return bir::TypeKind::Ptr;
   }
@@ -200,11 +208,6 @@ std::optional<bir::Value> BirFunctionLowerer::lower_value(
     return bir::Value::named(expected_type, operand.str());
   }
 
-  if (operand.kind() != c4c::codegen::lir::LirOperandKind::Immediate &&
-      operand.kind() != c4c::codegen::lir::LirOperandKind::SpecialToken) {
-    return std::nullopt;
-  }
-
   if (expected_type == bir::TypeKind::I1) {
     if (operand == "true") {
       return bir::Value::immediate_i1(true);
@@ -212,6 +215,32 @@ std::optional<bir::Value> BirFunctionLowerer::lower_value(
     if (operand == "false") {
       return bir::Value::immediate_i1(false);
     }
+  }
+
+  const auto try_parse_fp_bits = [&](bir::TypeKind float_type) -> std::optional<bir::Value> {
+    const auto text = operand.str();
+    if (text.size() < 3 || text[0] != '0' || (text[1] != 'x' && text[1] != 'X')) {
+      return std::nullopt;
+    }
+    std::uint64_t bits = 0;
+    const auto* begin = text.data() + 2;
+    const auto* end = text.data() + text.size();
+    const auto result = std::from_chars(begin, end, bits, 16);
+    if (result.ec != std::errc() || result.ptr != end) {
+      return std::nullopt;
+    }
+    if (float_type == bir::TypeKind::F32) {
+      return bir::Value::immediate_f32_bits(static_cast<std::uint32_t>(bits));
+    }
+    return bir::Value::immediate_f64_bits(bits);
+  };
+  if (expected_type == bir::TypeKind::F32 || expected_type == bir::TypeKind::F64) {
+    return try_parse_fp_bits(expected_type);
+  }
+
+  if (operand.kind() != c4c::codegen::lir::LirOperandKind::Immediate &&
+      operand.kind() != c4c::codegen::lir::LirOperandKind::SpecialToken) {
+    return std::nullopt;
   }
 
   const auto parsed = parse_i64(operand.str());

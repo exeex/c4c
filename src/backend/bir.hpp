@@ -62,12 +62,14 @@ struct Value {
   static Value immediate_i8(std::int8_t value);
   static Value immediate_i32(std::int32_t value);
   static Value immediate_i64(std::int64_t value);
+  static Value immediate_f32_bits(std::uint32_t bits);
+  static Value immediate_f64_bits(std::uint64_t bits);
   static Value named(TypeKind type, std::string name);
 };
 
 inline bool operator==(const Value& lhs, const Value& rhs) {
   return lhs.kind == rhs.kind && lhs.type == rhs.type && lhs.immediate == rhs.immediate &&
-         lhs.name == rhs.name;
+         lhs.immediate_bits == rhs.immediate_bits && lhs.name == rhs.name;
 }
 
 inline bool operator!=(const Value& lhs, const Value& rhs) {

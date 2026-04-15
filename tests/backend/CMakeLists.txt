@@ -195,6 +195,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/variadic_double_bytes.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/variadic_double_bytes_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @variadic_double_bytes(i32 %p.seed) -> i32 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|%t0 = bir.call double llvm.va_arg.double(ptr %lv.ap)|bir.store_local %lv.second, double %t0|bir.call void llvm.va_end.p0(ptr %lv.ap)|%t4 = bir.load_local i8 %t4.addr, addr %t1+6|%t10 = bir.load_local i8 %t10.addr, addr %t7+7|bir.ret i32 %t12|bir.func @main() -> i32 {|bir.call i32 variadic_double_bytes(i32 1, double 0x4002000000000000)|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "define i32 @variadic_double_bytes|call void @llvm.va_start.p0|call void @llvm.va_end.p0|va_arg ptr %lv.ap, double"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_builtin_memcpy_local_pair_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_local_pair.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu
