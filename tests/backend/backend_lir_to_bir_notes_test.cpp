@@ -14,14 +14,18 @@ using c4c::codegen::lir::LirBlock;
 using c4c::codegen::lir::LirCastKind;
 using c4c::codegen::lir::LirCastOp;
 using c4c::codegen::lir::LirCallOp;
+using c4c::codegen::lir::LirGepOp;
 using c4c::codegen::lir::LirFunction;
 using c4c::codegen::lir::LirInlineAsmOp;
+using c4c::codegen::lir::LirBinOp;
+using c4c::codegen::lir::LirLoadOp;
 using c4c::codegen::lir::LirModule;
 using c4c::codegen::lir::LirOperand;
 using c4c::codegen::lir::LirRet;
 using c4c::codegen::lir::LirAllocaOp;
 using c4c::codegen::lir::LirAbsOp;
 using c4c::codegen::lir::LirStackSaveOp;
+using c4c::codegen::lir::LirStoreOp;
 using c4c::codegen::lir::LirVaArgOp;
 
 int fail(const char* message) {
@@ -352,6 +356,109 @@ LirModule make_bad_alloca_module() {
   return module;
 }
 
+LirModule make_bad_scalar_binop_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_scalar_binop";
+  function.signature_text = "define void @bad_scalar_binop()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("@not_ssa"),
+      .opcode = "add",
+      .type_str = "i32",
+      .lhs = LirOperand("%lhs"),
+      .rhs = LirOperand("%rhs"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_bad_gep_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_gep";
+  function.signature_text = "define void @bad_gep()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("@not_ssa"),
+      .element_type = "i32",
+      .ptr = LirOperand("%ptr"),
+      .indices = {"i32 0"},
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_bad_store_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_store";
+  function.signature_text = "define void @bad_store()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "i32",
+      .val = LirOperand("%value"),
+      .ptr = LirOperand(""),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_bad_load_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_load";
+  function.signature_text = "define void @bad_load()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("@not_ssa"),
+      .type_str = "i32",
+      .ptr = LirOperand("%ptr"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 }  // namespace
 
 int main() {
@@ -487,6 +594,54 @@ int main() {
           "missing module note carrying the alloca local-memory semantic family failure");
       alloca_status != 0) {
     return alloca_status;
+  }
+
+  if (const int scalar_binop_status = expect_failure_notes(
+          make_bad_scalar_binop_module(),
+          kModuleSummary,
+          "failed in scalar-binop semantic family",
+          "latest function failure: semantic lir_to_bir function 'bad_scalar_binop' failed in scalar-binop semantic family",
+          "missing module capability-bucket summary note",
+          "missing specific scalar-binop function note",
+          "missing module note carrying the scalar-binop semantic family failure");
+      scalar_binop_status != 0) {
+    return scalar_binop_status;
+  }
+
+  if (const int gep_status = expect_failure_notes(
+          make_bad_gep_module(),
+          kModuleSummary,
+          "failed in gep local-memory semantic family",
+          "latest function failure: semantic lir_to_bir function 'bad_gep' failed in gep local-memory semantic family",
+          "missing module capability-bucket summary note",
+          "missing specific gep local-memory function note",
+          "missing module note carrying the gep local-memory semantic family failure");
+      gep_status != 0) {
+    return gep_status;
+  }
+
+  if (const int store_status = expect_failure_notes(
+          make_bad_store_module(),
+          kModuleSummary,
+          "failed in store local-memory semantic family",
+          "latest function failure: semantic lir_to_bir function 'bad_store' failed in store local-memory semantic family",
+          "missing module capability-bucket summary note",
+          "missing specific store local-memory function note",
+          "missing module note carrying the store local-memory semantic family failure");
+      store_status != 0) {
+    return store_status;
+  }
+
+  if (const int load_status = expect_failure_notes(
+          make_bad_load_module(),
+          kModuleSummary,
+          "failed in load local-memory semantic family",
+          "latest function failure: semantic lir_to_bir function 'bad_load' failed in load local-memory semantic family",
+          "missing module capability-bucket summary note",
+          "missing specific load local-memory function note",
+          "missing module note carrying the load local-memory semantic family failure");
+      load_status != 0) {
+    return load_status;
   }
   return 0;
 }

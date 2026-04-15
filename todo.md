@@ -11,10 +11,11 @@ Current Plan Focus: step-4 unsupported-boundary cleanup after the broader backen
 - accepted a fresh `^backend_` checkpoint from a clean build and rolled it forward into `test_before.log`
 - tightened the semantic unsupported-boundary transcript so the module capability summary now names the admitted runtime/intrinsic families already on this route: variadic, stack-state, absolute-value, memcpy, memset, and inline-asm placeholders
 - extended `backend_lir_to_bir_notes` coverage with explicit failure-note checks for `variadic runtime family`, `stack-state runtime family`, and `absolute-value intrinsic family`
+- closed the remaining emitted semantic-family note gap in `backend_lir_to_bir_notes` by adding explicit failure-note coverage for `scalar-binop`, `gep`, `store`, and `load` family failures that were already reported by lowering
 
 ## Suggested Next
-- inspect the remaining step-4 unsupported surface for any semantic family that is still implemented in lowering but missing explicit failure-bucket coverage or planner-facing wording
-- prefer a bounded note-contract cleanup packet over adding more observer proofs unless a real unsupported family gap turns up in code or tests
+- inspect whether the remaining step-4 unsupported surface still has any umbrella-family note wording that deserves targeted coverage, but avoid expanding into broader observer proofs unless a real semantic-family gap appears
+- keep the next packet bounded to unsupported-boundary contract cleanup or close-routing evidence rather than reopening implementation-heavy runtime work
 
 ## Watchouts
 - keep step-4 packets on semantic-family wording and failure buckets, not testcase inventory churn
@@ -24,4 +25,4 @@ Current Plan Focus: step-4 unsupported-boundary cleanup after the broader backen
 ## Proof
 - supervisor broader checkpoint: `cmake --preset default && cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'` passed and was rolled forward to `test_before.log`
 - executor packet proof: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-- executor packet wrote `test_after.log`, and the accepted baseline now lives at `test_before.log`
+- current packet proof passed: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'` -> `test_after.log`
