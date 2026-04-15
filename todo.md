@@ -27,11 +27,19 @@ Current Plan Focus: step-5 regalloc consumer shrink
 - deleted object-level deferred-only binding projection fields and kept
   deferred objects on the same uniform `binding_*` and `binding_handoff_*`
   contract already used by ready objects
+- removed the remaining object-level batch prerequisite and handoff mirrors so
+  `PreparedRegallocObject` now keeps only binding frontier, batch membership,
+  and order while batch and handoff summaries own the prerequisite/handoff
+  detail
+- rebuilt binding handoff summaries from batch-owned data instead of reading
+  object-local mirrored prerequisite and handoff fields
+- proved the slice with `backend_prepare_entry_contract` and then a broader
+  `^backend_` checkpoint
 
 ## Next
 - continue shrinking `src/backend/prepare/regalloc.cpp` by removing any
-  remaining object-level projection that merely mirrors batch or handoff
-  summaries without adding new allocation facts
+  remaining helper or sequence surface that duplicates batch or handoff
+  summary facts without adding new allocation facts
 - prefer one uniform object contract plus function-level summaries; avoid
   parallel ready-vs-deferred object surfaces that encode the same prerequisite
   facts twice

@@ -878,25 +878,9 @@ int main() {
       scratch_slot_regalloc->binding_frontier_reason != "awaiting_access_window_observation") {
     return fail("semantic-BIR regalloc should defer stable binding when prepared access-window facts are still missing");
   }
-  if (scratch_slot_regalloc->binding_batch_kind != "deferred_access_window_binding_batch" ||
-      scratch_slot_regalloc->binding_handoff_allocation_stage !=
-          "opportunistic_single_point" ||
-      scratch_slot_regalloc->binding_handoff_candidate_count != 7 ||
-      scratch_slot_regalloc->binding_ordering_policy != "defer_until_access_window_observed" ||
-      scratch_slot_regalloc->binding_access_window_prerequisite_category !=
-          "unobserved_instruction_window" ||
-      scratch_slot_regalloc->binding_access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_deferred" ||
-      scratch_slot_regalloc->binding_home_slot_prerequisite_category !=
-          "home_slot_needs_future_analysis" ||
-      scratch_slot_regalloc->binding_home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_deferred" ||
-      scratch_slot_regalloc->binding_sync_handoff_prerequisite_category !=
-          "sync_policy_needs_future_analysis" ||
-      scratch_slot_regalloc->binding_sync_handoff_state !=
-          "prepare_sync_handoff_deferred") {
+  if (scratch_slot_regalloc->binding_batch_kind != "deferred_access_window_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should mirror deferred object binding prerequisites into the uniform binding contract");
+        "semantic-BIR regalloc should keep deferred objects attached to their deferred binding batch without mirroring batch-owned prerequisites onto each object");
   }
   if (local_slot_regalloc == nullptr || local_slot_regalloc->contract_kind != "value_storage" ||
       local_slot_regalloc->allocation_kind != "register_candidate") {
@@ -949,23 +933,9 @@ int main() {
       local_slot_regalloc->binding_frontier_reason != "batched_single_point_coordination") {
     return fail("semantic-BIR regalloc should keep observed single-point candidates deferred when coordination remains batched");
   }
-  if (local_slot_regalloc->binding_batch_kind != "deferred_coordination_binding_batch" ||
-      local_slot_regalloc->binding_handoff_allocation_stage !=
-          "opportunistic_single_point" ||
-      local_slot_regalloc->binding_handoff_candidate_count != 2 ||
-      local_slot_regalloc->binding_ordering_policy != "defer_until_frontier_ready" ||
-      local_slot_regalloc->binding_access_window_prerequisite_category != "mixed_sparse_windows" ||
-      local_slot_regalloc->binding_access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
-      local_slot_regalloc->binding_home_slot_prerequisite_category !=
-          "mixed_home_slot_modes" ||
-      local_slot_regalloc->binding_home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_deferred" ||
-      local_slot_regalloc->binding_sync_handoff_prerequisite_category !=
-          "read_write_coordination" ||
-      local_slot_regalloc->binding_sync_handoff_state != "prepare_sync_handoff_ready") {
+  if (local_slot_regalloc->binding_batch_kind != "deferred_coordination_binding_batch") {
     return fail(
-        "semantic-BIR regalloc should mirror coordination-deferred object binding prerequisites into the uniform binding contract");
+        "semantic-BIR regalloc should keep coordination-deferred objects attached to their deferred binding batch without mirroring batch-owned prerequisites onto each object");
   }
   const auto* carry_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "carry.slot");
   if (carry_slot_regalloc == nullptr || carry_slot_regalloc->contract_kind != "value_storage" ||
@@ -1020,23 +990,9 @@ int main() {
     return fail("semantic-BIR regalloc should mark across-call candidates as ready for stable prepared binding");
   }
   if (carry_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch" ||
-      carry_slot_regalloc->binding_handoff_allocation_stage != "stabilize_across_calls" ||
-      carry_slot_regalloc->binding_handoff_candidate_count != 3 ||
-      carry_slot_regalloc->binding_order_index != 0 ||
-      carry_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
-      carry_slot_regalloc->binding_access_window_prerequisite_category !=
-          "overlapping_call_boundary_windows" ||
-      carry_slot_regalloc->binding_access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
-      carry_slot_regalloc->binding_home_slot_prerequisite_category !=
-          "stable_home_slot_required" ||
-      carry_slot_regalloc->binding_home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_satisfied" ||
-      carry_slot_regalloc->binding_sync_handoff_prerequisite_category !=
-          "mixed_sync_coordination" ||
-      carry_slot_regalloc->binding_sync_handoff_state != "prepare_sync_handoff_ready") {
+      carry_slot_regalloc->binding_order_index != 0) {
     return fail(
-        "semantic-BIR regalloc should project call-boundary handoff and prerequisite cues back onto each ready prepared object");
+        "semantic-BIR regalloc should keep ready call-boundary objects attached to their batch and sequence position without mirroring batch-owned summaries onto each object");
   }
   const auto* window_slot_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "window.slot");
   if (window_slot_regalloc == nullptr || window_slot_regalloc->contract_kind != "value_storage" ||
@@ -1091,23 +1047,9 @@ int main() {
     return fail("semantic-BIR regalloc should mark sequenced local-reuse candidates as ready for stable prepared binding");
   }
   if (window_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch" ||
-      window_slot_regalloc->binding_handoff_allocation_stage != "stabilize_local_reuse" ||
-      window_slot_regalloc->binding_handoff_candidate_count != 3 ||
-      window_slot_regalloc->binding_order_index != 0 ||
-      window_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
-      window_slot_regalloc->binding_access_window_prerequisite_category !=
-          "adjacent_local_windows" ||
-      window_slot_regalloc->binding_access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
-      window_slot_regalloc->binding_home_slot_prerequisite_category !=
-          "stable_home_slot_preferred" ||
-      window_slot_regalloc->binding_home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_satisfied" ||
-      window_slot_regalloc->binding_sync_handoff_prerequisite_category !=
-          "mixed_sync_coordination" ||
-      window_slot_regalloc->binding_sync_handoff_state != "prepare_sync_handoff_ready") {
+      window_slot_regalloc->binding_order_index != 0) {
     return fail(
-        "semantic-BIR regalloc should project local-reuse handoff and prerequisite cues back onto each ready prepared object");
+        "semantic-BIR regalloc should keep ready local-reuse objects attached to their batch and sequence position without mirroring batch-owned summaries onto each object");
   }
   const auto* readonly_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "readonly.slot");
@@ -1153,24 +1095,9 @@ int main() {
     return fail("semantic-BIR regalloc should mark non-call-spanning multi-read candidates as ready for stable prepared binding");
   }
   if (readonly_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch" ||
-      readonly_slot_regalloc->binding_handoff_allocation_stage != "stabilize_local_reuse" ||
-      readonly_slot_regalloc->binding_handoff_candidate_count != 3 ||
-      readonly_slot_regalloc->binding_order_index != 1 ||
-      readonly_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
-      readonly_slot_regalloc->binding_access_window_prerequisite_category !=
-          "adjacent_local_windows" ||
-      readonly_slot_regalloc->binding_access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
-      readonly_slot_regalloc->binding_home_slot_prerequisite_category !=
-          "stable_home_slot_preferred" ||
-      readonly_slot_regalloc->binding_home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_satisfied" ||
-      readonly_slot_regalloc->binding_sync_handoff_prerequisite_category !=
-          "mixed_sync_coordination" ||
-      readonly_slot_regalloc->binding_sync_handoff_state !=
-          "prepare_sync_handoff_ready") {
+      readonly_slot_regalloc->binding_order_index != 1) {
     return fail(
-        "semantic-BIR regalloc should project local-reuse handoff and prerequisite cues onto non-call-spanning multi-read ready objects");
+        "semantic-BIR regalloc should keep ready local-reuse objects attached to their batch and sequence position without mirroring batch-owned summaries onto each object");
   }
   const auto* callread_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "callread.slot");
@@ -1213,24 +1140,9 @@ int main() {
     return fail("semantic-BIR regalloc should mark call-spanning read-only candidates as ready for stable prepared binding");
   }
   if (callread_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch" ||
-      callread_slot_regalloc->binding_handoff_allocation_stage != "stabilize_across_calls" ||
-      callread_slot_regalloc->binding_handoff_candidate_count != 3 ||
-      callread_slot_regalloc->binding_order_index != 1 ||
-      callread_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
-      callread_slot_regalloc->binding_access_window_prerequisite_category !=
-          "overlapping_call_boundary_windows" ||
-      callread_slot_regalloc->binding_access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
-      callread_slot_regalloc->binding_home_slot_prerequisite_category !=
-          "stable_home_slot_required" ||
-      callread_slot_regalloc->binding_home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_satisfied" ||
-      callread_slot_regalloc->binding_sync_handoff_prerequisite_category !=
-          "mixed_sync_coordination" ||
-      callread_slot_regalloc->binding_sync_handoff_state !=
-          "prepare_sync_handoff_ready") {
+      callread_slot_regalloc->binding_order_index != 1) {
     return fail(
-        "semantic-BIR regalloc should project call-boundary handoff and prerequisite cues onto call-spanning read-only ready objects");
+        "semantic-BIR regalloc should keep ready call-boundary objects attached to their batch and sequence position without mirroring batch-owned summaries onto each object");
   }
   const auto* callwrite_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "callwrite.slot");
@@ -1276,24 +1188,9 @@ int main() {
     return fail("semantic-BIR regalloc should mark call-spanning write-only candidates as ready for stable prepared binding");
   }
   if (callwrite_slot_regalloc->binding_batch_kind != "call_boundary_binding_batch" ||
-      callwrite_slot_regalloc->binding_handoff_allocation_stage != "stabilize_across_calls" ||
-      callwrite_slot_regalloc->binding_handoff_candidate_count != 3 ||
-      callwrite_slot_regalloc->binding_order_index != 2 ||
-      callwrite_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
-      callwrite_slot_regalloc->binding_access_window_prerequisite_category !=
-          "overlapping_call_boundary_windows" ||
-      callwrite_slot_regalloc->binding_access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
-      callwrite_slot_regalloc->binding_home_slot_prerequisite_category !=
-          "stable_home_slot_required" ||
-      callwrite_slot_regalloc->binding_home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_satisfied" ||
-      callwrite_slot_regalloc->binding_sync_handoff_prerequisite_category !=
-          "mixed_sync_coordination" ||
-      callwrite_slot_regalloc->binding_sync_handoff_state !=
-          "prepare_sync_handoff_ready") {
+      callwrite_slot_regalloc->binding_order_index != 2) {
     return fail(
-        "semantic-BIR regalloc should project call-boundary handoff and prerequisite cues onto call-spanning write-only ready objects");
+        "semantic-BIR regalloc should keep ready call-boundary objects attached to their batch and sequence position without mirroring batch-owned summaries onto each object");
   }
   const auto* multiwrite_slot_regalloc =
       find_regalloc_object(*regalloc_function, "local_slot", "multiwrite.slot");
@@ -1339,24 +1236,9 @@ int main() {
     return fail("semantic-BIR regalloc should mark non-call-spanning multi-write candidates as ready for stable prepared binding");
   }
   if (multiwrite_slot_regalloc->binding_batch_kind != "local_reuse_binding_batch" ||
-      multiwrite_slot_regalloc->binding_handoff_allocation_stage != "stabilize_local_reuse" ||
-      multiwrite_slot_regalloc->binding_handoff_candidate_count != 3 ||
-      multiwrite_slot_regalloc->binding_order_index != 2 ||
-      multiwrite_slot_regalloc->binding_ordering_policy != "preserve_allocation_sequence" ||
-      multiwrite_slot_regalloc->binding_access_window_prerequisite_category !=
-          "adjacent_local_windows" ||
-      multiwrite_slot_regalloc->binding_access_window_prerequisite_state !=
-          "prepare_access_window_prerequisite_satisfied" ||
-      multiwrite_slot_regalloc->binding_home_slot_prerequisite_category !=
-          "stable_home_slot_preferred" ||
-      multiwrite_slot_regalloc->binding_home_slot_prerequisite_state !=
-          "prepare_home_slot_prerequisite_satisfied" ||
-      multiwrite_slot_regalloc->binding_sync_handoff_prerequisite_category !=
-          "mixed_sync_coordination" ||
-      multiwrite_slot_regalloc->binding_sync_handoff_state !=
-          "prepare_sync_handoff_ready") {
+      multiwrite_slot_regalloc->binding_order_index != 2) {
     return fail(
-        "semantic-BIR regalloc should project local-reuse handoff and prerequisite cues onto non-call-spanning multi-write ready objects");
+        "semantic-BIR regalloc should keep ready local-reuse objects attached to their batch and sequence position without mirroring batch-owned summaries onto each object");
   }
   const auto* writeonly_regalloc = find_regalloc_object(*regalloc_function, "local_slot", "writeonly.slot");
   if (writeonly_regalloc == nullptr || writeonly_regalloc->contract_kind != "value_storage" ||
