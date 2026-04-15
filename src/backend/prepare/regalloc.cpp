@@ -76,6 +76,37 @@ std::string_view regalloc_access_kind_name(RegallocAccessKind access_kind) {
   return "unknown";
 }
 
+std::string_view regalloc_access_shape_name(const RegallocObjectAccessSummary& summary) {
+  const bool has_direct_read = summary.direct_read_count != 0;
+  const bool has_direct_write = summary.direct_write_count != 0;
+  const bool has_addressed_access = summary.addressed_access_count != 0;
+  const bool has_call_arg_exposure = summary.call_arg_exposure_count != 0;
+  const std::size_t active_category_count = static_cast<std::size_t>(has_direct_read) +
+                                            static_cast<std::size_t>(has_direct_write) +
+                                            static_cast<std::size_t>(has_addressed_access) +
+                                            static_cast<std::size_t>(has_call_arg_exposure);
+  if (active_category_count == 0) {
+    return "no_access";
+  }
+  if (active_category_count == 1) {
+    if (has_direct_read) {
+      return "direct_read_only";
+    }
+    if (has_direct_write) {
+      return "direct_write_only";
+    }
+    if (has_addressed_access) {
+      return "addressed_access_only";
+    }
+    return "call_argument_exposure_only";
+  }
+  if (active_category_count == 2 && has_direct_read && has_direct_write &&
+      !has_addressed_access && !has_call_arg_exposure) {
+    return "direct_read_write";
+  }
+  return "mixed_access_shape";
+}
+
 RegallocObjectAccessSummary summarize_object_accesses(const bir::Function& function,
                                                       std::string_view source_name) {
   RegallocObjectAccessSummary summary;
@@ -191,6 +222,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .contract_kind = object.contract_kind,
           .allocation_kind = allocation_kind,
           .priority_bucket = priority_bucket,
+          .access_shape = std::string(regalloc_access_shape_name(summary)),
           .first_access_kind = std::string(regalloc_access_kind_name(summary.first_access_kind)),
           .last_access_kind = std::string(regalloc_access_kind_name(summary.last_access_kind)),
           .direct_read_count = summary.direct_read_count,
@@ -218,8 +250,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
       .message =
           "regalloc now groups prepared liveness objects per function and classifies them as "
           "register_candidate or fixed_stack_storage contracts, plus target-neutral priority "
-          "buckets for single-point, multi-point, and call-spanning value-storage objects, first "
-          "and last access-kind cues, "
+          "buckets for single-point, multi-point, and call-spanning value-storage objects, "
+          "compact access-shape summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "
           "instruction-order access windows and call-crossing cues for downstream prepared-BIR "
           "consumers; physical register assignment remains future work",

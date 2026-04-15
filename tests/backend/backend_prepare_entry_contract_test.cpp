@@ -342,6 +342,9 @@ int main() {
                      "target-neutral priority buckets for single-point, multi-point, and call-spanning value-storage objects")) {
     return fail("semantic-BIR prepare regalloc note should mention the target-neutral priority buckets");
   }
+  if (!contains_note(prepared_bir.notes, "regalloc", "compact access-shape summaries")) {
+    return fail("semantic-BIR prepare regalloc note should mention compact access-shape summaries");
+  }
   if (!contains_note(prepared_bir.notes, "regalloc", "first and last access-kind cues")) {
     return fail("semantic-BIR prepare regalloc note should mention first and last access-kind cues");
   }
@@ -494,6 +497,9 @@ int main() {
   if (local_slot_regalloc->priority_bucket != "single_point_value") {
     return fail("semantic-BIR regalloc should classify single-touch value storage into the single-point priority bucket");
   }
+  if (local_slot_regalloc->access_shape != "direct_read_only") {
+    return fail("semantic-BIR regalloc should summarize single-read value storage with a direct-read-only access shape");
+  }
   if (local_slot_regalloc->direct_read_count != 1 || local_slot_regalloc->direct_write_count != 0 ||
       local_slot_regalloc->addressed_access_count != 0 ||
       local_slot_regalloc->call_arg_exposure_count != 0) {
@@ -517,6 +523,9 @@ int main() {
   }
   if (carry_slot_regalloc->priority_bucket != "call_spanning_value") {
     return fail("semantic-BIR regalloc should classify call-spanning register candidates into the call-spanning priority bucket");
+  }
+  if (carry_slot_regalloc->access_shape != "direct_read_write") {
+    return fail("semantic-BIR regalloc should summarize read/write local slots with a direct-read-write access shape");
   }
   if (carry_slot_regalloc->direct_read_count != 1 || carry_slot_regalloc->direct_write_count != 1 ||
       carry_slot_regalloc->addressed_access_count != 0 ||
@@ -542,6 +551,9 @@ int main() {
   if (writeonly_regalloc->last_access_kind != "direct_write") {
     return fail("semantic-BIR regalloc should publish direct-write last-access cues");
   }
+  if (writeonly_regalloc->access_shape != "direct_write_only") {
+    return fail("semantic-BIR regalloc should summarize write-only local slots with a direct-write-only access shape");
+  }
   if (writeonly_regalloc->first_access_kind != "direct_write") {
     return fail("semantic-BIR regalloc should publish direct-write first-access cues");
   }
@@ -554,6 +566,9 @@ int main() {
   }
   if (address_taken_regalloc->priority_bucket != "non_value_storage") {
     return fail("semantic-BIR regalloc should keep non-value prepared objects out of value-storage priority buckets");
+  }
+  if (address_taken_regalloc->access_shape != "addressed_access_only") {
+    return fail("semantic-BIR regalloc should summarize addressed storage with an addressed-access-only shape");
   }
   if (address_taken_regalloc->direct_read_count != 0 || address_taken_regalloc->direct_write_count != 0 ||
       address_taken_regalloc->addressed_access_count != 1 ||
@@ -577,6 +592,9 @@ int main() {
       call_result_regalloc->addressed_access_count != 0 ||
       call_result_regalloc->call_arg_exposure_count != 1) {
     return fail("semantic-BIR regalloc should publish call-argument exposure counts for call-result storage");
+  }
+  if (call_result_regalloc->access_shape != "call_argument_exposure_only") {
+    return fail("semantic-BIR regalloc should summarize call-result storage with a call-exposure-only shape");
   }
   if (call_result_regalloc->last_access_kind != "call_argument_exposure") {
     return fail("semantic-BIR regalloc should publish call-exposure last-access cues");

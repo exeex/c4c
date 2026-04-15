@@ -8,21 +8,23 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- added a complementary target-neutral `first_access_kind` cue to each
-  semantic-BIR `regalloc` object so prepared contracts now expose both the
-  opening and closing direct-read, direct-write, addressed-access, or
-  call-argument exposure shape from explicit BIR instruction ordering
-- kept the new cue inside prepare-owned semantics by deriving it from the
-  existing access-summary walk instead of target register classes, physical
-  assignment, or testcase-shaped matcher logic
+- added a compact target-neutral `access_shape` summary to each semantic-BIR
+  `regalloc` object so prepared contracts now expose direct-read-only,
+  direct-write-only, direct-read-write, addressed-access-only, and
+  call-argument-exposure-only patterns alongside the existing access counts
+  and first/last access cues
+- kept the new summary inside prepare-owned semantics by deriving it from the
+  existing explicit BIR access counts instead of target register classes,
+  physical assignment, or testcase-shaped matcher logic
 - extended the prepare entry-contract test and note assertions with
-  representative direct-read, direct-write, addressed-access, and
-  call-exposure openings for the new regalloc cue
+  representative single-read, write-only, read-write, addressed, and
+  call-exposure access-shape checks for the new regalloc cue
 
 ## Suggested Next
-- build on the published first/last access cues by deciding whether prepared
-  regalloc needs a compact access-shape summary for multi-point value storage
-  before any physical assignment work
+- build on the published access-shape summary by deciding whether prepared
+  regalloc needs an assignment-readiness cue that combines priority bucket,
+  call-crossing state, and access shape without inventing fake intervals or
+  target register policy before physical assignment work
 - keep any next regalloc detail keyed off prepared liveness, stack-layout,
   and explicit BIR instruction structure rather than target-specific register
   classes or testcase-shaped heuristics
@@ -42,8 +44,9 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
   interference until the data is really available
 - prefer `build -> ^backend_` proof unless a narrower honest backend subset is
   clearly available
-- if follow-on summaries are added, keep them sourced from actual BIR access
-  order and object contracts rather than synthetic interval guesses
+- if follow-on readiness cues are added, keep them sourced from actual BIR
+  access order, liveness contracts, and call-crossing facts rather than
+  synthetic interval guesses
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build
