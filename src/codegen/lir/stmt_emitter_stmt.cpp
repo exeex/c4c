@@ -166,6 +166,11 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s)
   }
   std::vector<std::string> arg_vals;
   std::vector<TypeSpec> arg_tys;
+  if (s.output && s.output_is_readwrite) {
+    TypeSpec out_in_ts{};
+    arg_vals.push_back(emit_rval_id(ctx, *s.output, out_in_ts));
+    arg_tys.push_back(out_in_ts);
+  }
   for (ExprId input : s.inputs) {
     TypeSpec in_ts{};
     arg_vals.push_back(emit_rval_id(ctx, input, in_ts));

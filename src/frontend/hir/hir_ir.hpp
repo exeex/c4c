@@ -482,6 +482,7 @@ struct InlineAsmStmt {
   std::string asm_template;
   std::string constraints;
   std::optional<ExprId> output;
+  bool output_is_readwrite = false;
   QualType output_type{};
   std::vector<ExprId> inputs;
   bool has_side_effects = true;
