@@ -493,6 +493,53 @@ std::string_view regalloc_home_slot_stability_hint(
   return "wide_read_write_home_slot";
 }
 
+std::string_view regalloc_eviction_friction_hint(
+    std::string_view allocation_kind,
+    const RegallocObjectAccessSummary& summary) {
+  if (allocation_kind != "register_candidate") {
+    if (summary.addressed_access_count != 0) {
+      return "eviction_fixed_stack_memory_anchor";
+    }
+    if (summary.call_arg_exposure_count != 0) {
+      return "eviction_fixed_stack_call_anchor";
+    }
+    return "eviction_fixed_stack_only";
+  }
+
+  if (!summary.has_access_window) {
+    return "eviction_friction_unobserved";
+  }
+
+  if (crosses_call_boundary(summary)) {
+    if (summary.direct_write_count == 0) {
+      return "eviction_friction_call_reload_guarded";
+    }
+    if (summary.direct_read_count == 0) {
+      return "eviction_friction_call_writeback_guarded";
+    }
+    return "eviction_friction_call_sync_heavy";
+  }
+
+  const auto access_window_width =
+      summary.last_access_instruction_index - summary.first_access_instruction_index;
+  if (summary.direct_write_count == 0) {
+    if (access_window_width == 0) {
+      return "eviction_friction_single_read_light";
+    }
+    return "eviction_friction_local_read_buffered";
+  }
+  if (summary.direct_read_count == 0) {
+    if (access_window_width == 0) {
+      return "eviction_friction_single_write_light";
+    }
+    return "eviction_friction_local_write_buffered";
+  }
+  if (access_window_width <= 1) {
+    return "eviction_friction_tight_reuse_balanced";
+  }
+  return "eviction_friction_wide_reuse_guarded";
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -536,6 +583,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
       const std::string spill_sync_hint(regalloc_spill_sync_hint(allocation_kind, summary));
       const std::string home_slot_stability_hint(
           regalloc_home_slot_stability_hint(allocation_kind, summary));
+      const std::string eviction_friction_hint(
+          regalloc_eviction_friction_hint(allocation_kind, summary));
       const std::string assignment_readiness(
           regalloc_assignment_readiness(allocation_kind, priority_bucket, summary));
       prepared_function.objects.push_back(PreparedRegallocObject{
@@ -553,6 +602,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .register_eligibility_hint = register_eligibility_hint,
           .spill_sync_hint = spill_sync_hint,
           .home_slot_stability_hint = home_slot_stability_hint,
+          .eviction_friction_hint = eviction_friction_hint,
           .assignment_readiness = assignment_readiness,
           .access_shape = std::string(regalloc_access_shape_name(summary)),
           .first_access_kind = std::string(regalloc_access_kind_name(summary.first_access_kind)),
@@ -595,7 +645,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "access shape, and call-crossing or local-window reuse facts, spill-sync hints "
           "keyed by observed read/write direction plus fixed-stack exposure kind, home-slot "
           "stability hints keyed by access-window width and read/write direction plus "
-          "fixed-stack exposure kind, "
+          "fixed-stack exposure kind, eviction-friction hints keyed by the same prepared "
+          "access-window and call-crossing facts without naming target registers, "
           "assignment-readiness cues built from those buckets plus compact access-shape "
           "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "

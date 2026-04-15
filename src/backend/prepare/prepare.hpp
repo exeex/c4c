@@ -61,6 +61,7 @@ struct PreparedRegallocObject {
   std::string register_eligibility_hint;
   std::string spill_sync_hint;
   std::string home_slot_stability_hint;
+  std::string eviction_friction_hint;
   std::string assignment_readiness;
   std::string access_shape;
   std::string first_access_kind;

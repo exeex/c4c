@@ -19,13 +19,24 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
   call-exposed shapes all prove the new home-slot-stability cue alongside the
   existing pool/pressure/reload/materialization/locality/eligibility/
   readiness/sync/access summaries
+- extended the semantic-BIR regalloc artifact with a target-neutral
+  `eviction_friction_hint` field sourced from current prepared facts:
+  single-point reads/writes stay light to evict, local multi-point windows
+  advertise buffered read/write friction, call-spanning windows advertise
+  guarded reload/writeback or heavy sync friction by direction, and fixed-stack
+  storage stays anchored by memory or call-boundary exposure contract
+- broadened the prepare entry-contract fixture so nearby single-point,
+  adjacent multi-point, call-spanning, address-exposed, and call-exposed
+  shapes all prove the new eviction-friction cue alongside the existing
+  pool/pressure/reload/materialization/locality/eligibility/readiness/sync/
+  home-slot/access summaries
 
 ## Suggested Next
-- if execution stays inside this bucket, publish one more allocator-facing
-  regalloc cue that still comes directly from prepared facts, such as an
-  eviction-friction hint keyed by access-shape density, call crossing, and
-  fixed-stack exposure rather than target register names, synthetic live
-  intervals, or placeholder interference graphs
+- if execution stays inside this bucket, either tighten the new allocator-
+  facing cues into a smaller shared classifier so adjacent fields do not drift
+  into renamed duplicates, or start consuming the prepared regalloc contract in
+  the first downstream prepare-owned allocator decision without naming target
+  registers, synthetic live intervals, or placeholder interference graphs
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -60,6 +71,10 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 - keep the new home-slot-stability cue focused on whether the current
   prepared facts imply a stable stack home for the object; do not let it
   collapse into another spill-sync or locality synonym
+- keep the new eviction-friction cue focused on how disruptive it would be to
+  evict a register-resident strategy from the current prepared access window;
+  do not let it collapse into another spill-pressure, reload-cost, spill-sync,
+  or locality synonym
 
 ## Proof
 - delegated proof: `cmake --build --preset default && ctest --test-dir build
