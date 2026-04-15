@@ -283,19 +283,25 @@ std::size_t regalloc_deferred_attachment_count_sum(
 }
 
 std::string_view regalloc_deferred_batch_access_window_prerequisite_state(
+    const prepare::PreparedRegallocFunction& function,
     const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
-  if (summary.deferred_reason == "awaiting_access_window_observation") {
+  const auto join = join_regalloc_deferred_binding_batch(function, summary);
+  if (regalloc_deferred_batch_owner_object(join, summary) != nullptr) {
     return "prealloc_access_window_prerequisite_deferred";
   }
   return "prealloc_access_window_prerequisite_satisfied";
 }
 
 std::string_view regalloc_deferred_batch_ordering_policy(
+    const prepare::PreparedRegallocFunction& function,
     const prepare::PreparedRegallocDeferredBindingBatchSummary& summary) {
-  if (summary.deferred_reason == "awaiting_access_window_observation") {
+  const auto join = join_regalloc_deferred_binding_batch(function, summary);
+  if (regalloc_deferred_batch_owner_object(join, summary) != nullptr) {
     return "defer_until_access_window_observed";
   }
-  if (summary.deferred_reason == "batched_single_point_coordination") {
+  if (const auto* contention = regalloc_deferred_batch_owner_contention(join, summary);
+      contention != nullptr &&
+      contention->follow_up_category == "batched_single_point_coordination") {
     return "defer_until_frontier_ready";
   }
   return "binding_policy_needs_future_analysis";
@@ -1752,10 +1758,11 @@ int main() {
           "opportunistic_single_point" ||
       deferred_access_window_binding_batch->deferred_reason !=
           "awaiting_access_window_observation" ||
-      regalloc_deferred_batch_ordering_policy(*deferred_access_window_binding_batch) !=
+      regalloc_deferred_batch_ordering_policy(*regalloc_function,
+                                              *deferred_access_window_binding_batch) !=
           "defer_until_access_window_observed" ||
       regalloc_deferred_batch_access_window_prerequisite_state(
-          *deferred_access_window_binding_batch) !=
+          *regalloc_function, *deferred_access_window_binding_batch) !=
           "prealloc_access_window_prerequisite_deferred" ||
       regalloc_deferred_batch_home_slot_prerequisite_state(
           *regalloc_function, *deferred_access_window_binding_batch) !=
@@ -1772,10 +1779,11 @@ int main() {
           "opportunistic_single_point" ||
       deferred_coordination_binding_batch->deferred_reason !=
           "batched_single_point_coordination" ||
-      regalloc_deferred_batch_ordering_policy(*deferred_coordination_binding_batch) !=
+      regalloc_deferred_batch_ordering_policy(*regalloc_function,
+                                              *deferred_coordination_binding_batch) !=
           "defer_until_frontier_ready" ||
       regalloc_deferred_batch_access_window_prerequisite_state(
-          *deferred_coordination_binding_batch) !=
+          *regalloc_function, *deferred_coordination_binding_batch) !=
           "prealloc_access_window_prerequisite_satisfied" ||
       regalloc_deferred_batch_home_slot_prerequisite_state(
           *regalloc_function, *deferred_coordination_binding_batch) !=
