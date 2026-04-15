@@ -1762,13 +1762,18 @@ int main() {
     return fail(
         "semantic-BIR regalloc should keep binding-ready local-reuse entries focused on sequencing identity and order");
   }
+  const auto deferred_access_window_batch_join =
+      join_regalloc_deferred_binding_batch(*regalloc_function,
+                                           *deferred_access_window_binding_batch);
+  const auto deferred_coordination_batch_join =
+      join_regalloc_deferred_binding_batch(*regalloc_function,
+                                           *deferred_coordination_binding_batch);
   if (regalloc_deferred_batch_allocation_stage(*regalloc_function,
                                                *deferred_access_window_binding_batch) !=
           "opportunistic_single_point" ||
-      regalloc_deferred_batch_identity(
-          join_regalloc_deferred_binding_batch(*regalloc_function,
-                                               *deferred_access_window_binding_batch),
-          *deferred_access_window_binding_batch) != "awaiting_access_window_observation" ||
+      regalloc_deferred_batch_identity(deferred_access_window_batch_join,
+                                       *deferred_access_window_binding_batch) !=
+          "awaiting_access_window_observation" ||
       regalloc_deferred_batch_ordering_policy(*regalloc_function,
                                               *deferred_access_window_binding_batch) !=
           "defer_until_access_window_observed" ||
@@ -1788,10 +1793,9 @@ int main() {
   if (regalloc_deferred_batch_allocation_stage(*regalloc_function,
                                                *deferred_coordination_binding_batch) !=
           "opportunistic_single_point" ||
-      regalloc_deferred_batch_identity(
-          join_regalloc_deferred_binding_batch(*regalloc_function,
-                                               *deferred_coordination_binding_batch),
-          *deferred_coordination_binding_batch) != "batched_single_point_coordination" ||
+      regalloc_deferred_batch_identity(deferred_coordination_batch_join,
+                                       *deferred_coordination_binding_batch) !=
+          "batched_single_point_coordination" ||
       regalloc_deferred_batch_ordering_policy(*regalloc_function,
                                               *deferred_coordination_binding_batch) !=
           "defer_until_frontier_ready" ||
@@ -1820,15 +1824,13 @@ int main() {
         "semantic-BIR regalloc should keep ready frontier membership counts owned by binding_sequence instead of publishing a duplicate ready summary mirror");
   }
   if (regalloc_deferred_batch_identity(
-          join_regalloc_deferred_binding_batch(*regalloc_function,
-                                               *deferred_access_window_binding_batch),
+          deferred_access_window_batch_join,
           *deferred_access_window_binding_batch) != "awaiting_access_window_observation") {
     return fail(
         "semantic-BIR regalloc should keep deferred handoff reason ownership on deferred binding batches instead of publishing a duplicate handoff view");
   }
   if (regalloc_deferred_batch_identity(
-          join_regalloc_deferred_binding_batch(*regalloc_function,
-                                               *deferred_coordination_binding_batch),
+          deferred_coordination_batch_join,
           *deferred_coordination_binding_batch) != "batched_single_point_coordination") {
     return fail(
         "semantic-BIR regalloc should keep deferred coordination handoff reason ownership on deferred binding batches instead of publishing a duplicate handoff view");

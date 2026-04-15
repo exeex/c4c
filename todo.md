@@ -17,30 +17,24 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- trimmed stale deferred-batch helper scaffolding in
-  `src/backend/prealloc/regalloc.cpp` by deleting the unused deferred-owner
-  pointer bundle and keeping deferred batch construction keyed by the single
-  value regalloc actually owns there: the surviving deferred reason
-- removed the dead private deferred-batch lookup declaration/definition from
-  `src/backend/prealloc/prealloc.hpp` and
-  `src/backend/prealloc/regalloc.cpp`, then updated
-  `tests/backend/backend_prepare_entry_contract_test.cpp` so deferred-batch
-  joins resolve identity and access-window ownership once per batch instead of
-  bouncing through extra owner helper layers
-- kept the cleanup inside step-5 regalloc ownership work without renaming the
-  public `prepare` contract, changing backend routing, or introducing a new
-  deferred summary mirror
+- updated the bottom-of-test deferred-batch assertions in
+  `tests/backend/backend_prepare_entry_contract_test.cpp` so each deferred
+  batch resolves `join_regalloc_deferred_binding_batch(...)` once and reuses
+  that explicit join surface across the remaining ownership checks
+- kept the cleanup test-side only: no prepare-owned regalloc data model
+  changes, no backend routing changes, and no public `prepare` contract rename
+- reran the delegated build plus backend subset proof for the packet and kept
+  the result in `test_after.log`
 
 ## Suggested Next
-- inspect whether the remaining deferred-batch assertions at the bottom of
-  `tests/backend/backend_prepare_entry_contract_test.cpp` still repeat
-  `join_regalloc_deferred_binding_batch(...)` lookups that could collapse
-  behind one per-batch resolved join without changing any prepare-owned data
-  model
-- keep the next packet inside step-5 ownership cleanup in
-  `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
-  public API rename, new allocation policy, MIR ingestion, or target-specific
-  work
+- inspect the remaining deferred-batch helper family in
+  `tests/backend/backend_prepare_entry_contract_test.cpp` to see whether
+  stage, ordering-policy, and prerequisite-state helpers can consume one
+  resolved join/result surface directly instead of recomputing the same join
+  internally for each query
+- keep the next packet inside step-5 regalloc ownership cleanup in related
+  tests or `src/backend/prealloc/regalloc.cpp`; do not widen into a public API
+  rename, new allocation policy, MIR ingestion, or target-specific work
 - keep using build plus the backend subset proof while this cleanup stays
   inside shared prepare ownership work
 
