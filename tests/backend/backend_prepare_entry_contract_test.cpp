@@ -154,7 +154,11 @@ find_regalloc_deferred_binding_attachment_batch(
     std::string_view source_name) {
   for (const auto& summary : function.deferred_binding_batches) {
     for (const auto& attachment : summary.attachments) {
-      if (attachment.source_kind == source_kind && attachment.source_name == source_name) {
+      if (attachment.object_index >= function.objects.size()) {
+        continue;
+      }
+      const auto& object = function.objects[attachment.object_index];
+      if (object.source_kind == source_kind && object.source_name == source_name) {
         return &summary;
       }
     }

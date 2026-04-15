@@ -142,8 +142,7 @@ struct PreparedRegallocBindingDecision {
 };
 
 struct PreparedRegallocDeferredBindingAttachment {
-  std::string source_kind;
-  std::string source_name;
+  std::size_t object_index = 0;
 };
 
 struct PreparedRegallocBindingBatchSummary {

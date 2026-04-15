@@ -17,21 +17,20 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- deleted `PreparedRegallocFunction::binding_attachments` so deferred frontier
-  membership now lives only on each
-  `PreparedRegallocDeferredBindingBatchSummary::attachments` owner
-- updated `populate_binding_sequence()` to attach deferred objects directly to
-  their deferred batch summary instead of publishing a parallel function-level
-  join vector
-- refreshed the prepare-entry contract test so deferred objects recover batch
-  identity by scanning deferred batch owners while ready entries still publish
-  identity only through `binding_sequence`
+- narrowed deferred batch membership attachments from duplicated
+  `source_kind/source_name` pairs to an object-index join back into
+  `PreparedRegallocFunction::objects`
+- kept deferred frontier identity owned by
+  `PreparedRegallocDeferredBindingBatchSummary::attachments` without
+  reintroducing a function-level attachment index
+- refreshed the prepare-entry contract helper so tests recover deferred batch
+  identity by resolving attachment indices through the function’s regalloc
+  objects
 
 ## Suggested Next
-- inspect whether deferred batch `attachments` still need full
-  `source_kind/source_name` pairs or whether one narrower batch-owned join can
-  preserve deferred frontier identity without recreating a parallel function
-  index
+- inspect whether deferred batch `candidate_count` still needs to be stored
+  separately now that deferred membership lives on attachment indices owned by
+  the batch summary
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -87,6 +86,10 @@ while keeping the public shared contract named `prepare`
   trims that view, keep deferred membership owned by batch summaries instead of
   pushing batch identity back onto `PreparedRegallocObject` or recreating a
   parallel function-level attachment index
+- deferred attachment membership now rejoins through
+  `PreparedRegallocFunction::objects` by stable object index; if later cleanup
+  reshapes regalloc object ordering, keep one clear stable join for deferred
+  frontier identity instead of restoring duplicated source-name mirrors
 - the current priority is structural clarity; if a cleanup only renames symbols
   but does not reduce architectural ambiguity, prefer the cleanup that removes
   an actual ownership seam or mirror first

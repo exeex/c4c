@@ -956,8 +956,8 @@ void BirPreAlloc::populate_binding_sequence() {
         batch_summary = &current_regalloc_function_->deferred_binding_batches.back();
       }
       batch_summary->attachments.push_back(PreparedRegallocDeferredBindingAttachment{
-          .source_kind = decision.source_kind,
-          .source_name = decision.source_name,
+          .object_index = static_cast<std::size_t>(
+              object - current_regalloc_function_->objects.data()),
       });
       ++batch_summary->candidate_count;
       continue;
