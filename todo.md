@@ -8,26 +8,24 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- projected deferred binding batch membership back onto each deferred prepared
-  regalloc object, so access-window-blocked and coordination-blocked
-  single-point candidates now carry explicit per-object batch kind, ordering
-  policy, and deferred access/home-slot/sync prerequisite state instead of
-  forcing downstream consumers to rejoin object frontier facts with batch
-  summaries
-- kept that per-object deferred binding contract derived from the existing
-  allocation sequence and contention frontier: unobserved single-point objects
-  project the access-window deferred batch contract directly, while observed
-  single-point objects project the coordination-deferred contract with
-  satisfied access-window state plus deferred home-slot readiness
+- projected binding batch membership and prerequisite state back onto each
+  ready prepared regalloc object, so call-boundary and local-reuse candidates
+  now carry explicit per-object batch kind, order index, ordering policy, and
+  access-window/home-slot/sync handoff cues instead of forcing downstream
+  consumers to rejoin object frontier facts with ready batch summaries
+- mirrored the same generic per-object binding contract onto deferred prepared
+  objects, so both ready and deferred register candidates now expose one
+  uniform binding contract while preserving the earlier deferred-only fields
+  for the current access-window and coordination frontier
 - extended the prepare entry backend fixture and regalloc note text to assert
-  the new per-object deferred binding cues without reopening target-ingestion
+  the new uniform per-object binding cues without reopening target-ingestion
   work or naming physical registers
 
 ## Suggested Next
-- keep step-4 work inside prepare by projecting binding-ready batch membership
-  back onto each ready prepared object as the same kind of per-object binding
-  decision/prerequisite contract, so downstream prepared consumers can read a
-  uniform binding contract for both ready and deferred register candidates
+- keep step-4 work inside prepare by deriving the next downstream regalloc
+  handoff summary from the new uniform per-object binding contract, so prepared
+  consumers can scan ready, access-window-deferred, and coordination-deferred
+  candidates without rejoining object state to batch tables
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that

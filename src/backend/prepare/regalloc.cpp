@@ -717,6 +717,17 @@ const PreparedRegallocObject* find_regalloc_object(const PreparedRegallocFunctio
   return nullptr;
 }
 
+PreparedRegallocObject* find_mutable_regalloc_object(PreparedRegallocFunction& function,
+                                                     std::string_view source_kind,
+                                                     std::string_view source_name) {
+  for (auto& object : function.objects) {
+    if (object.source_kind == source_kind && object.source_name == source_name) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
 const PreparedRegallocAllocationDecision* find_allocation_decision(
     const PreparedRegallocFunction& function,
     std::string_view source_kind,
@@ -1150,6 +1161,12 @@ std::string_view regalloc_binding_home_slot_prerequisite_state(
   return "prepare_home_slot_prerequisite_deferred";
 }
 
+std::string_view regalloc_binding_access_window_prerequisite_state(
+    const PreparedRegallocContentionSummary& contention) {
+  (void)contention;
+  return "prepare_access_window_prerequisite_satisfied";
+}
+
 std::string_view regalloc_deferred_binding_access_window_prerequisite_category(
     const PreparedRegallocObject& object,
     const PreparedRegallocContentionSummary& contention) {
@@ -1253,10 +1270,19 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
                                       ? "stable_home_slot_required"
                                       : "fixed_stack_only";
       object.window_coordination_category = object.reservation_scope;
-      object.binding_frontier_kind = "fixed_stack_authoritative";
-      object.binding_frontier_reason = "fixed_stack_authoritative";
-      continue;
-    }
+    object.binding_frontier_kind = "fixed_stack_authoritative";
+    object.binding_frontier_reason = "fixed_stack_authoritative";
+    object.binding_batch_kind.clear();
+    object.binding_order_index = 0;
+    object.binding_ordering_policy.clear();
+    object.binding_access_window_prerequisite_category.clear();
+    object.binding_access_window_prerequisite_state.clear();
+    object.binding_home_slot_prerequisite_category.clear();
+    object.binding_home_slot_prerequisite_state.clear();
+    object.binding_sync_handoff_prerequisite_category.clear();
+    object.binding_sync_handoff_state.clear();
+    continue;
+  }
 
     if (decision == nullptr) {
       object.reservation_kind = "allocation_state_missing_decision";
@@ -1269,6 +1295,15 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
       object.window_coordination_category = "allocation_state_missing_decision";
       object.binding_frontier_kind = "binding_frontier_incomplete";
       object.binding_frontier_reason = "allocation_state_missing_decision";
+      object.binding_batch_kind.clear();
+      object.binding_order_index = 0;
+      object.binding_ordering_policy.clear();
+      object.binding_access_window_prerequisite_category.clear();
+      object.binding_access_window_prerequisite_state.clear();
+      object.binding_home_slot_prerequisite_category.clear();
+      object.binding_home_slot_prerequisite_state.clear();
+      object.binding_sync_handoff_prerequisite_category.clear();
+      object.binding_sync_handoff_state.clear();
       continue;
     }
 
@@ -1292,6 +1327,15 @@ void populate_object_allocation_state(PreparedRegallocFunction& function) {
         std::string(regalloc_binding_frontier_kind(object, decision, contention));
     object.binding_frontier_reason =
         std::string(regalloc_binding_frontier_reason(object, decision, contention));
+    object.binding_batch_kind.clear();
+    object.binding_order_index = 0;
+    object.binding_ordering_policy.clear();
+    object.binding_access_window_prerequisite_category.clear();
+    object.binding_access_window_prerequisite_state.clear();
+    object.binding_home_slot_prerequisite_category.clear();
+    object.binding_home_slot_prerequisite_state.clear();
+    object.binding_sync_handoff_prerequisite_category.clear();
+    object.binding_sync_handoff_state.clear();
     if (object.binding_frontier_kind == "binding_ready") {
       ++function.binding_ready_count;
     } else if (object.binding_frontier_kind == "binding_deferred") {
@@ -1335,7 +1379,7 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
   function.binding_deferred_batch_count = 0;
 
   for (const auto& decision : function.allocation_sequence) {
-    const auto* object = find_regalloc_object(function, decision.source_kind, decision.source_name);
+    auto* object = find_mutable_regalloc_object(function, decision.source_kind, decision.source_name);
     const auto* contention = find_contention_summary(function, decision.allocation_stage);
     if (object == nullptr || contention == nullptr) {
       continue;
@@ -1373,6 +1417,20 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
         batch_summary = &function.deferred_binding_batches.back();
         ++function.binding_deferred_batch_count;
       }
+      object->binding_batch_kind = binding_batch_kind;
+      object->binding_order_index = batch_summary->candidate_count;
+      object->binding_ordering_policy = batch_summary->ordering_policy;
+      object->binding_access_window_prerequisite_category =
+          batch_summary->access_window_prerequisite_category;
+      object->binding_access_window_prerequisite_state =
+          batch_summary->access_window_prerequisite_state;
+      object->binding_home_slot_prerequisite_category =
+          batch_summary->home_slot_prerequisite_category;
+      object->binding_home_slot_prerequisite_state =
+          batch_summary->home_slot_prerequisite_state;
+      object->binding_sync_handoff_prerequisite_category =
+          batch_summary->sync_handoff_prerequisite_category;
+      object->binding_sync_handoff_state = batch_summary->sync_handoff_state;
       ++batch_summary->candidate_count;
       continue;
     }
@@ -1398,6 +1456,19 @@ void populate_binding_sequence(PreparedRegallocFunction& function) {
       batch_summary = &function.binding_batches.back();
       ++function.binding_ready_batch_count;
     }
+    object->binding_batch_kind = binding_batch_kind;
+    object->binding_order_index = batch_summary->candidate_count;
+    object->binding_ordering_policy = batch_summary->ordering_policy;
+    object->binding_access_window_prerequisite_category =
+        contention->window_coordination_category;
+    object->binding_access_window_prerequisite_state =
+        std::string(regalloc_binding_access_window_prerequisite_state(*contention));
+    object->binding_home_slot_prerequisite_category = contention->home_slot_category;
+    object->binding_home_slot_prerequisite_state =
+        std::string(regalloc_binding_home_slot_prerequisite_state(*contention));
+    object->binding_sync_handoff_prerequisite_category = contention->sync_coordination_category;
+    object->binding_sync_handoff_state =
+        std::string(regalloc_binding_sync_handoff_state(*contention));
 
     function.binding_sequence.push_back(PreparedRegallocBindingDecision{
         .source_kind = decision.source_kind,
@@ -1610,10 +1681,10 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "plus explicit deferred binding batch artifacts that separate "
           "unobserved access-window blockers from coordination-blocked "
           "single-point batches without naming physical registers, plus "
-          "per-object deferred-binding batch/order and prerequisite cues "
-          "projected from those deferred batches so downstream prepared "
-          "consumers can read the deferred binding contract without consulting "
-          "batch summaries alone, "
+          "per-object binding batch/order and prerequisite cues projected from "
+          "those ready and deferred batches so downstream prepared consumers "
+          "can read one uniform binding contract without consulting batch "
+          "summaries alone, "
           "plus a ready-only binding batch/order artifact that keeps current "
           "stable-binding work grouped by prepare-owned call-boundary versus "
           "local-reuse batches without naming physical registers, plus per-binding "
