@@ -164,6 +164,16 @@ c4c_add_backend_codegen_route_test(
   FORBIDDEN_SNIPPETS "define ptr @forward(ptr %p.p)|call ptr (ptr) @id_ptr(ptr %p.p)"
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_local_pointer_deref_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/local_pointer_deref.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/local_pointer_deref_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.x, i32 7|bir.store_local %lv.p, ptr %lv.x|%t0 = bir.load_local ptr %lv.p|%t1 = bir.load_local i32 %lv.x|bir.ret i32 %t1"
+  FORBIDDEN_SNIPPETS "define i32 @main()|store i32 7, ptr %lv.x|%t1 = load i32, ptr %t0"
+)
+
 add_test(
   NAME backend_codegen_route_x86_64_builtin_abs_observe_semantic_bir
   COMMAND "${CMAKE_COMMAND}"
@@ -200,7 +210,7 @@ c4c_add_backend_codegen_route_test(
   TARGET_TRIPLE x86_64-unknown-linux-gnu
   OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/variadic_double_bytes_semantic_bir_x86_64.ll"
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
-  REQUIRED_SNIPPETS "bir.func @variadic_double_bytes(i32 %p.seed) -> i32 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|%t0 = bir.call double llvm.va_arg.double(ptr %lv.ap)|bir.store_local %lv.second, double %t0|bir.call void llvm.va_end.p0(ptr %lv.ap)|%t4 = bir.load_local i8 %t4.addr, addr %t1+6|%t10 = bir.load_local i8 %t10.addr, addr %t7+7|bir.ret i32 %t12|bir.func @main() -> i32 {|bir.call i32 variadic_double_bytes(i32 1, double 0x4002000000000000)|bir.ret i32 %t0"
+  REQUIRED_SNIPPETS "bir.func @variadic_double_bytes(i32 %p.seed) -> i32 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|%t0 = bir.call double llvm.va_arg.double(ptr %lv.ap)|bir.store_local %lv.second, double %t0|bir.call void llvm.va_end.p0(ptr %lv.ap)|bir.store_local %lv.bytes, ptr %lv.second|%t1 = bir.load_local ptr %lv.bytes|%t4 = bir.load_local i8 %t4.addr, addr %lv.second+6|%t7 = bir.load_local ptr %lv.bytes|%t10 = bir.load_local i8 %t10.addr, addr %lv.second+7|bir.ret i32 %t12|bir.func @main() -> i32 {|bir.call i32 variadic_double_bytes(i32 1, double 0x4002000000000000)|bir.ret i32 %t0"
   FORBIDDEN_SNIPPETS "define i32 @variadic_double_bytes|call void @llvm.va_start.p0|call void @llvm.va_end.p0|va_arg ptr %lv.ap, double"
 )
 

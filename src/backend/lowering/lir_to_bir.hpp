@@ -233,6 +233,15 @@ class BirFunctionLowerer {
   using GlobalAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
   using GlobalObjectAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
   using LocalAddressSlots = std::unordered_map<std::string, GlobalAddress>;
+  struct LocalSlotAddress {
+    std::string slot_name;
+    bir::TypeKind value_type = bir::TypeKind::Void;
+    std::size_t byte_offset = 0;
+    std::string storage_type_text;
+    std::string type_text;
+  };
+  using LocalSlotAddressSlots = std::unordered_map<std::string, LocalSlotAddress>;
+  using LocalSlotPointerValues = std::unordered_map<std::string, LocalSlotAddress>;
   using GlobalAddressSlots = std::unordered_map<std::string, std::optional<GlobalAddress>>;
   using AddressedGlobalPointerSlots =
       std::unordered_map<GlobalPointerSlotKey,
@@ -659,6 +668,8 @@ class BirFunctionLowerer {
   LocalPointerValueAliasMap local_pointer_value_aliases_;
   PointerAddressMap pointer_value_addresses_;
   LocalAddressSlots local_address_slots_;
+  LocalSlotAddressSlots local_slot_address_slots_;
+  LocalSlotPointerValues local_slot_pointer_values_;
   GlobalAddressSlots global_address_slots_;
   AddressedGlobalPointerSlots addressed_global_pointer_slots_;
   GlobalPointerMap global_pointer_slots_;
