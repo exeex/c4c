@@ -3,23 +3,22 @@
 Status: Active
 Source Idea: ideas/open/47_semantic_call_runtime_boundary.md
 Source Plan: plan.md
-Current Plan Focus: ordered step 4, tighten the semantic unsupported boundary
+Current Plan Focus: ordered step 2, broaden semantic call lowering beyond the current baseline
 
 # Current Packet
 
 ## Just Finished
-- audited the outer wrapper boundary in `src/backend/lowering/lir_to_bir_module.cpp` after the inner local-memory note pass and confirmed the remaining wrapper buckets are already the honest step-4 boundary
-- kept the result diagnostic-only: `lower_alloca_insts()` owns `local-memory semantic family`, `lower_block_insts()` owns the broader non-terminator `scalar/local-memory semantic family`, and this packet made no code change or lowering-capability change
+- lifecycle check: the recent inner local-memory and wrapper-boundary audits are enough to treat ordered step 4 as checkpointed for now, but they do not satisfy the full source idea
+- kept the active runbook instead of closing or switching because common direct/indirect call widening and additional runtime-family work still remain inside this same idea and plan
 
 ## Suggested Next
-- if the supervisor keeps step 4 active, move out of `lir_to_bir_memory.cpp`/wrapper note audits and decide whether the current unsupported-boundary work is exhausted enough for a plan-owner close-or-switch decision
-- otherwise, only reopen the wrapper boundary if a later packet finds a real cross-cutting unsupported path outside the existing function-signature, control-flow, call/runtime, local-memory, or scalar/local-memory families
+- return execution to ordered step 2 and choose one bounded semantic-call packet under `src/backend/lowering/lir_to_bir_calling.cpp` or closely related helpers that widens common direct/indirect callee provenance without reviving `call_decode.cpp` or introducing testcase-shaped ladders
+- leave step 4 note work parked unless a later call/runtime packet exposes a genuinely unbucketed unsupported path that the current semantic-family boundary no longer describes honestly
 
 ## Watchouts
-- do not split `scalar/local-memory semantic family` further just to mirror helper boundaries; at the wrapper level it now means the instruction failed to enter the compare/cast/binop/runtime/call/local-memory route at all, which is the honest residual bucket
-- `memcpy`/`memset` runtime handling, direct/indirect call-family failures, and scalar-control-flow failures already own separate semantic-family notes, so this wrapper audit should not be read as justification to reopen those routes without a new concrete miss
+- do not treat the step-4 checkpoint as idea completion; the source idea still requires additional semantic call and runtime capability work before close can be considered
+- do not reopen wrapper-note taxonomy work as a default next step; the next packet should add or clarify real semantic call capability, not further relabel already-honest residual buckets
 
 ## Proof
-- `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-- passed with `test_after.log`; backend subset result is `passed=54 failed=0 total=54`
-- delegated proof was conservative for this packet because the resulting diff is `todo.md` only, but it preserves the current backend baseline while recording that the wrapper-level unsupported-boundary audit is exhausted
+- no new proof run; this is a lifecycle-only focus reset that keeps the existing active plan in place
+- latest accepted backend proof remains `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1` with `passed=54 failed=0 total=54`
