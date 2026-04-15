@@ -3,28 +3,33 @@
 Status: Active
 Source Idea: ideas/open/48_prepare_pipeline_rebuild.md
 Source Plan: plan.md
-Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
+Current Plan Focus: step-4 prepared liveness ownership reset
 
 # Current Packet
 
 ## Just Finished
-- proved that the object-level handoff projection already covers deferred
-  prepared regalloc objects as well as ready ones by asserting the deferred
-  frontier handoff allocation stage and candidate count on representative
-  access-window-deferred and coordination-deferred objects
-- kept the deferred object-level handoff surface derived from the existing
-  `binding_handoff_summary` records rather than inventing a second deferred
-  summary model or recomputing batch counts from object-local state
-- extended the backend prepare entry fixture so both representative deferred
-  frontier shapes now assert their explicit per-object handoff stage/count
-  alongside the previously added deferred prerequisite and uniform binding
-  contract cues
+- grew `PreparedLiveness*` so liveness now publishes function-level call-point
+  metadata and object-level access-shape, direct read/write, addressed-access,
+  call-argument exposure, instruction-order access-window, and call-crossing
+  cues without changing prepared IR
+- implemented the new prepared liveness analysis in
+  `src/backend/prepare/liveness.cpp` as an information-only phase over
+  prepared stack objects, keeping responsibility aligned with
+  `ref/claudes-c-compiler/src/backend/liveness.rs`
+- extended `backend_prepare_entry_contract_test` to lock the new liveness
+  contract at both function and object granularity, including call points and
+  representative object access windows
+- removed the duplicate regalloc-local access-summary rebuild path from
+  `src/backend/prepare/regalloc.cpp` so regalloc now consumes
+  `PreparedLivenessObject` access-shape, access-window, and call-crossing
+  facts instead of rescanning BIR instructions for the same data
 
 ## Suggested Next
-- checkpoint the current step-4 object-first regalloc frontier contract and
-  choose the next prepare-owned packet from the remaining regalloc consumer
-  gaps, because the ready and deferred handoff stage/count projection work is
-  now covered on representative shapes
+- take the next packet in `src/backend/prepare/regalloc.cpp` to compress or
+  delete policy scaffolding that still exists only to inflate the prepared
+  contract beyond the current reference-shaped responsibility split
+- keep that follow-on cleanup focused on reducing regalloc surface area while
+  preserving the now-correct `liveness -> regalloc` dependency direction
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
@@ -33,6 +38,12 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 - keep downstream regalloc contracts driven by prepared liveness and
   stack-layout ownership rather than target-specific rules or slot-name pattern
   matching
+- do not add more liveness-like fact gathering to
+  `src/backend/prepare/regalloc.cpp` until the missing prepared liveness
+  ownership is established in `src/backend/prepare/liveness.cpp`
+- treat `ref/claudes-c-compiler/src/backend/liveness.rs` and
+  `ref/claudes-c-compiler/src/backend/regalloc.rs` as the responsibility split:
+  liveness owns analysis facts first, regalloc consumes them second
 - keep the regalloc artifact inspectable and target-neutral; prefer concrete
   access summaries over broad notes, but do not fake live ranges or
   interference until the data is really available
@@ -66,6 +77,6 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
   more uniform than the current prepare facts support
 
 ## Proof
-- delegated proof: `cmake --build --preset default && ctest --test-dir build
-  -j --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_prepare_entry_contract$' 2>&1 | tee test_after.log`
 - passed and wrote `test_after.log`

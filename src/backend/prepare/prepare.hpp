@@ -40,9 +40,29 @@ struct PreparedLivenessObject {
   std::string source_name;
   std::string source_kind;
   std::string contract_kind;
+  std::string access_shape;
+  std::string first_access_kind;
+  std::string last_access_kind;
+  std::size_t direct_read_count = 0;
+  std::size_t direct_write_count = 0;
+  std::size_t addressed_access_count = 0;
+  std::size_t call_arg_exposure_count = 0;
+  bool has_access_window = false;
+  std::size_t first_access_instruction_index = 0;
+  std::size_t last_access_instruction_index = 0;
+  bool crosses_call_boundary = false;
+};
+
+struct PreparedLivenessFunction {
+  std::string function_name;
+  std::size_t instruction_count = 0;
+  std::size_t call_instruction_count = 0;
+  std::size_t object_count = 0;
+  std::vector<std::size_t> call_instruction_indices;
 };
 
 struct PreparedLiveness {
+  std::vector<PreparedLivenessFunction> functions;
   std::vector<PreparedLivenessObject> objects;
 };
 

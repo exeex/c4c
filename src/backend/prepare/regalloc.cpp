@@ -10,39 +10,6 @@ namespace c4c::backend::prepare {
 
 namespace {
 
-enum class RegallocAccessKind {
-  None,
-  DirectRead,
-  DirectWrite,
-  AddressedAccess,
-  CallArgumentExposure,
-};
-
-struct RegallocObjectAccessSummary {
-  std::size_t direct_read_count = 0;
-  std::size_t direct_write_count = 0;
-  std::size_t addressed_access_count = 0;
-  std::size_t call_arg_exposure_count = 0;
-  bool has_access_window = false;
-  std::size_t first_access_instruction_index = 0;
-  std::size_t last_access_instruction_index = 0;
-  RegallocAccessKind first_access_kind = RegallocAccessKind::None;
-  RegallocAccessKind last_access_kind = RegallocAccessKind::None;
-  std::vector<std::size_t> call_instruction_indices;
-};
-
-void record_access(RegallocObjectAccessSummary& summary,
-                   std::size_t instruction_index,
-                   RegallocAccessKind access_kind) {
-  if (!summary.has_access_window) {
-    summary.has_access_window = true;
-    summary.first_access_instruction_index = instruction_index;
-    summary.first_access_kind = access_kind;
-  }
-  summary.last_access_instruction_index = instruction_index;
-  summary.last_access_kind = access_kind;
-}
-
 std::string_view regalloc_allocation_kind(std::string_view contract_kind) {
   if (contract_kind == "address_exposed_storage") {
     return "fixed_stack_storage";
@@ -50,65 +17,7 @@ std::string_view regalloc_allocation_kind(std::string_view contract_kind) {
   return "register_candidate";
 }
 
-bool memory_address_targets_object(const std::optional<bir::MemoryAddress>& address,
-                                   std::string_view source_name) {
-  return address.has_value() && address->base_kind == bir::MemoryAddress::BaseKind::LocalSlot &&
-         address->base_name == source_name;
-}
-
-bool named_value_targets_object(const bir::Value& value, std::string_view source_name) {
-  return value.kind == bir::Value::Kind::Named && value.name == source_name;
-}
-
-std::string_view regalloc_access_kind_name(RegallocAccessKind access_kind) {
-  switch (access_kind) {
-    case RegallocAccessKind::None:
-      return "none";
-    case RegallocAccessKind::DirectRead:
-      return "direct_read";
-    case RegallocAccessKind::DirectWrite:
-      return "direct_write";
-    case RegallocAccessKind::AddressedAccess:
-      return "addressed_access";
-    case RegallocAccessKind::CallArgumentExposure:
-      return "call_argument_exposure";
-  }
-  return "unknown";
-}
-
-std::string_view regalloc_access_shape_name(const RegallocObjectAccessSummary& summary) {
-  const bool has_direct_read = summary.direct_read_count != 0;
-  const bool has_direct_write = summary.direct_write_count != 0;
-  const bool has_addressed_access = summary.addressed_access_count != 0;
-  const bool has_call_arg_exposure = summary.call_arg_exposure_count != 0;
-  const std::size_t active_category_count = static_cast<std::size_t>(has_direct_read) +
-                                            static_cast<std::size_t>(has_direct_write) +
-                                            static_cast<std::size_t>(has_addressed_access) +
-                                            static_cast<std::size_t>(has_call_arg_exposure);
-  if (active_category_count == 0) {
-    return "no_access";
-  }
-  if (active_category_count == 1) {
-    if (has_direct_read) {
-      return "direct_read_only";
-    }
-    if (has_direct_write) {
-      return "direct_write_only";
-    }
-    if (has_addressed_access) {
-      return "addressed_access_only";
-    }
-    return "call_argument_exposure_only";
-  }
-  if (active_category_count == 2 && has_direct_read && has_direct_write &&
-      !has_addressed_access && !has_call_arg_exposure) {
-    return "direct_read_write";
-  }
-  return "mixed_access_shape";
-}
-
-std::string_view regalloc_access_shape_suffix(const RegallocObjectAccessSummary& summary) {
-  const auto access_shape = regalloc_access_shape_name(summary);
+std::string_view regalloc_access_shape_suffix(std::string_view access_shape) {
   if (access_shape == "direct_read_only") {
     return "read";
   }
@@ -134,81 +43,16 @@ bool string_view_starts_with(std::string_view text, std::string_view prefix) {
   return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
 }
 
-RegallocObjectAccessSummary summarize_object_accesses(const bir::Function& function,
-                                                      std::string_view source_name) {
-  RegallocObjectAccessSummary summary;
-  std::size_t instruction_index = 0;
-
-  for (const auto& block : function.blocks) {
-    for (const auto& inst : block.insts) {
-      if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst); load != nullptr) {
-        if (load->slot_name == source_name) {
-          ++summary.direct_read_count;
-          record_access(summary, instruction_index, RegallocAccessKind::DirectRead);
-        }
-        if (memory_address_targets_object(load->address, source_name)) {
-          ++summary.addressed_access_count;
-          record_access(summary, instruction_index, RegallocAccessKind::AddressedAccess);
-        }
-        ++instruction_index;
-        continue;
-      }
-
-      if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr) {
-        if (store->slot_name == source_name) {
-          ++summary.direct_write_count;
-          record_access(summary, instruction_index, RegallocAccessKind::DirectWrite);
-        }
-        if (memory_address_targets_object(store->address, source_name)) {
-          ++summary.addressed_access_count;
-          record_access(summary, instruction_index, RegallocAccessKind::AddressedAccess);
-        }
-        ++instruction_index;
-        continue;
-      }
-
-      const auto* call = std::get_if<bir::CallInst>(&inst);
-      if (call == nullptr) {
-        ++instruction_index;
-        continue;
-      }
-      summary.call_instruction_indices.push_back(instruction_index);
-      for (const auto& arg : call->args) {
-        if (named_value_targets_object(arg, source_name)) {
-          ++summary.call_arg_exposure_count;
-          record_access(summary, instruction_index, RegallocAccessKind::CallArgumentExposure);
-        }
-      }
-      ++instruction_index;
-    }
-  }
-
-  return summary;
-}
-
-bool crosses_call_boundary(const RegallocObjectAccessSummary& summary) {
-  if (!summary.has_access_window ||
-      summary.first_access_instruction_index == summary.last_access_instruction_index) {
-    return false;
-  }
-  return std::any_of(summary.call_instruction_indices.begin(),
-                     summary.call_instruction_indices.end(),
-                     [&](std::size_t instruction_index) {
-                       return instruction_index > summary.first_access_instruction_index &&
-                              instruction_index < summary.last_access_instruction_index;
-                     });
-}
-
 std::string_view regalloc_priority_bucket(std::string_view contract_kind,
-                                          const RegallocObjectAccessSummary& summary) {
+                                          const PreparedLivenessObject& object) {
   if (contract_kind != "value_storage") {
     return "non_value_storage";
   }
-  if (!summary.has_access_window ||
-      summary.first_access_instruction_index == summary.last_access_instruction_index) {
+  if (!object.has_access_window ||
+      object.first_access_instruction_index == object.last_access_instruction_index) {
     return "single_point_value";
   }
-  if (crosses_call_boundary(summary)) {
+  if (object.crosses_call_boundary) {
     return "call_spanning_value";
   }
   return "multi_point_value";
@@ -216,7 +60,7 @@ std::string_view regalloc_priority_bucket(std::string_view contract_kind,
 
 std::string regalloc_assignment_readiness(std::string_view allocation_kind,
                                           std::string_view priority_bucket,
-                                          const RegallocObjectAccessSummary& summary) {
+                                          const PreparedLivenessObject& object) {
   if (allocation_kind != "register_candidate") {
     return "fixed_stack_only";
   }
@@ -225,11 +69,11 @@ std::string regalloc_assignment_readiness(std::string_view allocation_kind,
                                              ? "single_point"
                                          : priority_bucket == "call_spanning_value"
                                              ? "call_spanning"
-                                             : priority_bucket == "multi_point_value"
+                                         : priority_bucket == "multi_point_value"
                                              ? "multi_point"
                                              : "register_candidate";
   return std::string(bucket_prefix) + "_" +
-         std::string(regalloc_access_shape_suffix(summary)) + "_candidate";
+         std::string(regalloc_access_shape_suffix(object.access_shape)) + "_candidate";
 }
 
 std::string_view regalloc_preferred_register_pool(std::string_view allocation_kind,
@@ -245,11 +89,11 @@ std::string_view regalloc_preferred_register_pool(std::string_view allocation_ki
 
 std::string_view regalloc_spill_pressure_hint(std::string_view allocation_kind,
                                               std::string_view priority_bucket,
-                                              const RegallocObjectAccessSummary& summary) {
+                                              const PreparedLivenessObject& object) {
   if (allocation_kind != "register_candidate") {
     return "fixed_stack_only";
   }
-  if (summary.direct_read_count == 0) {
+  if (object.direct_read_count == 0) {
     return "write_only_spill_friendly";
   }
   if (priority_bucket == "call_spanning_value") {
@@ -263,17 +107,17 @@ std::string_view regalloc_spill_pressure_hint(std::string_view allocation_kind,
 
 std::string_view regalloc_reload_cost_hint(std::string_view allocation_kind,
                                            std::string_view priority_bucket,
-                                           const RegallocObjectAccessSummary& summary) {
+                                           const PreparedLivenessObject& object) {
   if (allocation_kind != "register_candidate") {
-    if (summary.addressed_access_count != 0) {
+    if (object.addressed_access_count != 0) {
       return "stack_address_exposed";
     }
-    if (summary.call_arg_exposure_count != 0) {
+    if (object.call_arg_exposure_count != 0) {
       return "stack_call_exposed";
     }
     return "fixed_stack_only";
   }
-  if (summary.direct_read_count == 0) {
+  if (object.direct_read_count == 0) {
     return "reload_not_needed";
   }
   if (priority_bucket == "single_point_value") {
@@ -282,41 +126,41 @@ std::string_view regalloc_reload_cost_hint(std::string_view allocation_kind,
   if (priority_bucket == "call_spanning_value") {
     return "call_spanning_reload_heavy";
   }
-  if (summary.direct_read_count > 1 || summary.direct_write_count > 1) {
+  if (object.direct_read_count > 1 || object.direct_write_count > 1) {
     return "reuse_window_reload_amortized";
   }
   return "multi_point_reload_moderate";
 }
 
 std::string_view regalloc_materialization_timing_hint(std::string_view allocation_kind,
-                                                      const RegallocObjectAccessSummary& summary) {
+                                                      const PreparedLivenessObject& object) {
   if (allocation_kind != "register_candidate") {
-    if (summary.addressed_access_count != 0) {
+    if (object.addressed_access_count != 0) {
       return "materialize_via_address_exposure";
     }
-    if (summary.call_arg_exposure_count != 0) {
+    if (object.call_arg_exposure_count != 0) {
       return "materialize_for_call_exposure";
     }
     return "fixed_stack_only";
   }
 
-  switch (summary.first_access_kind) {
-    case RegallocAccessKind::DirectWrite:
-      if (summary.last_access_kind == RegallocAccessKind::DirectRead) {
+  if (object.first_access_kind == "direct_write") {
+    if (object.last_access_kind == "direct_read") {
         return "materialize_after_write_before_read";
-      }
-      return "materialize_on_write_path";
-    case RegallocAccessKind::DirectRead:
-      if (summary.last_access_kind == RegallocAccessKind::DirectWrite) {
+    }
+    return "materialize_on_write_path";
+  }
+  if (object.first_access_kind == "direct_read") {
+    if (object.last_access_kind == "direct_write") {
         return "materialize_at_first_read_then_update";
-      }
-      return "materialize_at_first_read";
-    case RegallocAccessKind::AddressedAccess:
-      return "materialize_via_address_exposure";
-    case RegallocAccessKind::CallArgumentExposure:
-      return "materialize_for_call_exposure";
-    case RegallocAccessKind::None:
-      break;
+    }
+    return "materialize_at_first_read";
+  }
+  if (object.first_access_kind == "addressed_access") {
+    return "materialize_via_address_exposure";
+  }
+  if (object.first_access_kind == "call_argument_exposure") {
+    return "materialize_for_call_exposure";
   }
 
   return "materialize_at_first_access";
@@ -324,26 +168,26 @@ std::string_view regalloc_materialization_timing_hint(std::string_view allocatio
 
 std::string_view regalloc_spill_restore_locality_hint(
     std::string_view allocation_kind,
-    const RegallocObjectAccessSummary& summary) {
+    const PreparedLivenessObject& object) {
   if (allocation_kind != "register_candidate") {
-    if (summary.addressed_access_count != 0) {
+    if (object.addressed_access_count != 0) {
       return "fixed_stack_address_anchor";
     }
-    if (summary.call_arg_exposure_count != 0) {
+    if (object.call_arg_exposure_count != 0) {
       return "fixed_stack_call_boundary_anchor";
     }
     return "fixed_stack_only";
   }
 
-  if (!summary.has_access_window) {
+  if (!object.has_access_window) {
     return "unobserved_access_window";
   }
-  if (crosses_call_boundary(summary)) {
+  if (object.crosses_call_boundary) {
     return "call_split_reuse_window";
   }
 
   const auto access_window_width =
-      summary.last_access_instruction_index - summary.first_access_instruction_index;
+      object.last_access_instruction_index - object.first_access_instruction_index;
   if (access_window_width == 0) {
     return "single_instruction_reuse_window";
   }
@@ -355,30 +199,30 @@ std::string_view regalloc_spill_restore_locality_hint(
 
 std::string_view regalloc_register_eligibility_hint(
     std::string_view allocation_kind,
-    const RegallocObjectAccessSummary& summary) {
+    const PreparedLivenessObject& object) {
   if (allocation_kind != "register_candidate") {
-    if (summary.addressed_access_count != 0) {
+    if (object.addressed_access_count != 0) {
       return "register_ineligible_address_exposed";
     }
-    if (summary.call_arg_exposure_count != 0) {
+    if (object.call_arg_exposure_count != 0) {
       return "register_ineligible_call_exposed";
     }
     return "register_ineligible_fixed_stack";
   }
 
-  if (!summary.has_access_window) {
+  if (!object.has_access_window) {
     return "register_eligibility_unobserved";
   }
-  if (crosses_call_boundary(summary)) {
-    if (summary.direct_write_count != 0 && summary.direct_read_count == 0) {
+  if (object.crosses_call_boundary) {
+    if (object.direct_write_count != 0 && object.direct_read_count == 0) {
       return "register_eligible_call_writeback_window";
     }
     return "register_eligible_call_preserved_window";
   }
 
-  const auto access_shape = regalloc_access_shape_name(summary);
+  const auto access_shape = std::string_view(object.access_shape);
   const auto access_window_width =
-      summary.last_access_instruction_index - summary.first_access_instruction_index;
+      object.last_access_instruction_index - object.first_access_instruction_index;
   if (access_shape == "direct_write_only") {
     if (access_window_width == 0) {
       return "register_eligible_single_write_buffer";
@@ -401,42 +245,42 @@ std::string_view regalloc_register_eligibility_hint(
 }
 
 std::string_view regalloc_spill_sync_hint(std::string_view allocation_kind,
-                                          const RegallocObjectAccessSummary& summary) {
+                                          const PreparedLivenessObject& object) {
   if (allocation_kind != "register_candidate") {
-    if (summary.addressed_access_count != 0) {
+    if (object.addressed_access_count != 0) {
       return "fixed_stack_memory_authoritative";
     }
-    if (summary.call_arg_exposure_count != 0) {
+    if (object.call_arg_exposure_count != 0) {
       return "fixed_stack_call_boundary_authoritative";
     }
     return "fixed_stack_only";
   }
 
-  if (!summary.has_access_window) {
+  if (!object.has_access_window) {
     return "spill_sync_unobserved";
   }
 
-  if (summary.direct_write_count == 0) {
-    if (crosses_call_boundary(summary)) {
+  if (object.direct_write_count == 0) {
+    if (object.crosses_call_boundary) {
       return "restore_only_call_window";
     }
-    if (summary.direct_read_count <= 1) {
+    if (object.direct_read_count <= 1) {
       return "restore_only_single_use";
     }
     return "restore_only_reuse_window";
   }
 
-  if (summary.direct_read_count == 0) {
-    if (crosses_call_boundary(summary)) {
+  if (object.direct_read_count == 0) {
+    if (object.crosses_call_boundary) {
       return "writeback_only_call_window";
     }
-    if (summary.direct_write_count <= 1) {
+    if (object.direct_write_count <= 1) {
       return "writeback_only_single_definition";
     }
     return "writeback_only_redefinition_window";
   }
 
-  if (crosses_call_boundary(summary)) {
+  if (object.crosses_call_boundary) {
     return "bidirectional_sync_call_window";
   }
   return "bidirectional_sync_local_window";
@@ -444,34 +288,34 @@ std::string_view regalloc_spill_sync_hint(std::string_view allocation_kind,
 
 std::string_view regalloc_home_slot_stability_hint(
     std::string_view allocation_kind,
-    const RegallocObjectAccessSummary& summary) {
+    const PreparedLivenessObject& object) {
   if (allocation_kind != "register_candidate") {
-    if (summary.addressed_access_count != 0) {
+    if (object.addressed_access_count != 0) {
       return "memory_anchor_home_slot";
     }
-    if (summary.call_arg_exposure_count != 0) {
+    if (object.call_arg_exposure_count != 0) {
       return "call_boundary_anchor_home_slot";
     }
     return "fixed_stack_only";
   }
 
-  if (!summary.has_access_window) {
+  if (!object.has_access_window) {
     return "home_slot_unobserved";
   }
 
-  if (crosses_call_boundary(summary)) {
-    if (summary.direct_write_count == 0) {
+  if (object.crosses_call_boundary) {
+    if (object.direct_write_count == 0) {
       return "call_preserved_read_home_slot";
     }
-    if (summary.direct_read_count == 0) {
+    if (object.direct_read_count == 0) {
       return "call_preserved_write_home_slot";
     }
     return "call_preserved_read_write_home_slot";
   }
 
   const auto access_window_width =
-      summary.last_access_instruction_index - summary.first_access_instruction_index;
-  if (summary.direct_write_count == 0) {
+      object.last_access_instruction_index - object.first_access_instruction_index;
+  if (object.direct_write_count == 0) {
     if (access_window_width == 0) {
       return "single_use_read_home_slot";
     }
@@ -481,7 +325,7 @@ std::string_view regalloc_home_slot_stability_hint(
     return "wide_read_home_slot";
   }
 
-  if (summary.direct_read_count == 0) {
+  if (object.direct_read_count == 0) {
     if (access_window_width == 0) {
       return "single_definition_write_home_slot";
     }
@@ -499,40 +343,40 @@ std::string_view regalloc_home_slot_stability_hint(
 
 std::string_view regalloc_eviction_friction_hint(
     std::string_view allocation_kind,
-    const RegallocObjectAccessSummary& summary) {
+    const PreparedLivenessObject& object) {
   if (allocation_kind != "register_candidate") {
-    if (summary.addressed_access_count != 0) {
+    if (object.addressed_access_count != 0) {
       return "eviction_fixed_stack_memory_anchor";
     }
-    if (summary.call_arg_exposure_count != 0) {
+    if (object.call_arg_exposure_count != 0) {
       return "eviction_fixed_stack_call_anchor";
     }
     return "eviction_fixed_stack_only";
   }
 
-  if (!summary.has_access_window) {
+  if (!object.has_access_window) {
     return "eviction_friction_unobserved";
   }
 
-  if (crosses_call_boundary(summary)) {
-    if (summary.direct_write_count == 0) {
+  if (object.crosses_call_boundary) {
+    if (object.direct_write_count == 0) {
       return "eviction_friction_call_reload_guarded";
     }
-    if (summary.direct_read_count == 0) {
+    if (object.direct_read_count == 0) {
       return "eviction_friction_call_writeback_guarded";
     }
     return "eviction_friction_call_sync_heavy";
   }
 
   const auto access_window_width =
-      summary.last_access_instruction_index - summary.first_access_instruction_index;
-  if (summary.direct_write_count == 0) {
+      object.last_access_instruction_index - object.first_access_instruction_index;
+  if (object.direct_write_count == 0) {
     if (access_window_width == 0) {
       return "eviction_friction_single_read_light";
     }
     return "eviction_friction_local_read_buffered";
   }
-  if (summary.direct_read_count == 0) {
+  if (object.direct_read_count == 0) {
     if (access_window_width == 0) {
       return "eviction_friction_single_write_light";
     }
@@ -1680,28 +1524,27 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
       if (object.function_name != function.name) {
         continue;
       }
-      const auto summary = summarize_object_accesses(function, object.source_name);
       const std::string allocation_kind(regalloc_allocation_kind(object.contract_kind));
-      const std::string priority_bucket(regalloc_priority_bucket(object.contract_kind, summary));
+      const std::string priority_bucket(regalloc_priority_bucket(object.contract_kind, object));
       const std::string preferred_register_pool(
           regalloc_preferred_register_pool(allocation_kind, priority_bucket));
       const std::string spill_pressure_hint(
-          regalloc_spill_pressure_hint(allocation_kind, priority_bucket, summary));
+          regalloc_spill_pressure_hint(allocation_kind, priority_bucket, object));
       const std::string reload_cost_hint(
-          regalloc_reload_cost_hint(allocation_kind, priority_bucket, summary));
+          regalloc_reload_cost_hint(allocation_kind, priority_bucket, object));
       const std::string materialization_timing_hint(
-          regalloc_materialization_timing_hint(allocation_kind, summary));
+          regalloc_materialization_timing_hint(allocation_kind, object));
       const std::string spill_restore_locality_hint(
-          regalloc_spill_restore_locality_hint(allocation_kind, summary));
+          regalloc_spill_restore_locality_hint(allocation_kind, object));
       const std::string register_eligibility_hint(
-          regalloc_register_eligibility_hint(allocation_kind, summary));
-      const std::string spill_sync_hint(regalloc_spill_sync_hint(allocation_kind, summary));
+          regalloc_register_eligibility_hint(allocation_kind, object));
+      const std::string spill_sync_hint(regalloc_spill_sync_hint(allocation_kind, object));
       const std::string home_slot_stability_hint(
-          regalloc_home_slot_stability_hint(allocation_kind, summary));
+          regalloc_home_slot_stability_hint(allocation_kind, object));
       const std::string eviction_friction_hint(
-          regalloc_eviction_friction_hint(allocation_kind, summary));
+          regalloc_eviction_friction_hint(allocation_kind, object));
       const std::string assignment_readiness(
-          regalloc_assignment_readiness(allocation_kind, priority_bucket, summary));
+          regalloc_assignment_readiness(allocation_kind, priority_bucket, object));
       prepared_function.objects.push_back(PreparedRegallocObject{
           .function_name = object.function_name,
           .source_name = object.source_name,
@@ -1719,17 +1562,17 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .home_slot_stability_hint = home_slot_stability_hint,
           .eviction_friction_hint = eviction_friction_hint,
           .assignment_readiness = assignment_readiness,
-          .access_shape = std::string(regalloc_access_shape_name(summary)),
-          .first_access_kind = std::string(regalloc_access_kind_name(summary.first_access_kind)),
-          .last_access_kind = std::string(regalloc_access_kind_name(summary.last_access_kind)),
-          .direct_read_count = summary.direct_read_count,
-          .direct_write_count = summary.direct_write_count,
-          .addressed_access_count = summary.addressed_access_count,
-          .call_arg_exposure_count = summary.call_arg_exposure_count,
-          .has_access_window = summary.has_access_window,
-          .first_access_instruction_index = summary.first_access_instruction_index,
-          .last_access_instruction_index = summary.last_access_instruction_index,
-          .crosses_call_boundary = crosses_call_boundary(summary),
+          .access_shape = object.access_shape,
+          .first_access_kind = object.first_access_kind,
+          .last_access_kind = object.last_access_kind,
+          .direct_read_count = object.direct_read_count,
+          .direct_write_count = object.direct_write_count,
+          .addressed_access_count = object.addressed_access_count,
+          .call_arg_exposure_count = object.call_arg_exposure_count,
+          .has_access_window = object.has_access_window,
+          .first_access_instruction_index = object.first_access_instruction_index,
+          .last_access_instruction_index = object.last_access_instruction_index,
+          .crosses_call_boundary = object.crosses_call_boundary,
       });
       if (allocation_kind == "fixed_stack_storage") {
         ++prepared_function.fixed_stack_storage_count;

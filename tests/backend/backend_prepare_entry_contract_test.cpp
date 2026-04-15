@@ -57,6 +57,17 @@ const prepare::PreparedLivenessObject* find_liveness_object(const prepare::Prepa
   return nullptr;
 }
 
+const prepare::PreparedLivenessFunction* find_liveness_function(
+    const prepare::PreparedBirModule& module,
+    std::string_view function_name) {
+  for (const auto& function : module.liveness.functions) {
+    if (function.function_name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
 const prepare::PreparedRegallocFunction* find_regalloc_function(
     const prepare::PreparedBirModule& module,
     std::string_view function_name) {
@@ -513,6 +524,14 @@ int main() {
   if (!contains_note(prepared_bir.notes, "liveness", "value-storage or address-exposed storage contracts")) {
     return fail("semantic-BIR prepare liveness note should mention the prepared frame-object contracts");
   }
+  if (!contains_note(prepared_bir.notes,
+                     "liveness",
+                     "direct read/write, addressed-access, and call-argument exposure counts")) {
+    return fail("semantic-BIR prepare liveness note should mention prepared access/exposure counts");
+  }
+  if (!contains_note(prepared_bir.notes, "liveness", "instruction-order access windows with call-crossing cues")) {
+    return fail("semantic-BIR prepare liveness note should mention access windows and call-crossing cues");
+  }
   if (!contains_note(prepared_bir.notes, "regalloc", "register_candidate or fixed_stack_storage")) {
     return fail("semantic-BIR prepare regalloc note should mention the prepared allocation contracts");
   }
@@ -703,10 +722,37 @@ int main() {
   if (prepared_bir.liveness.objects.size() != prepared_bir.stack_layout.objects.size()) {
     return fail("semantic-BIR liveness should classify every prepared stack-layout object");
   }
+  if (prepared_bir.liveness.functions.size() != 1) {
+    return fail("semantic-BIR liveness should publish one per-function analysis grouping for this module");
+  }
+  const auto* liveness_function = find_liveness_function(prepared_bir, "id_pair");
+  if (liveness_function == nullptr) {
+    return fail("semantic-BIR liveness should publish function-level analysis metadata by semantic function name");
+  }
+  if (liveness_function->instruction_count != 16 || liveness_function->call_instruction_count != 2 ||
+      liveness_function->object_count != prepared_bir.liveness.objects.size() ||
+      liveness_function->call_instruction_indices.size() != 2 ||
+      liveness_function->call_instruction_indices[0] != 1 ||
+      liveness_function->call_instruction_indices[1] != 4) {
+    return fail("semantic-BIR liveness should publish instruction-count and call-point metadata for prepared functions");
+  }
   const auto* local_slot_liveness = find_liveness_object(prepared_bir, "local_slot", "flag.slot");
   if (local_slot_liveness == nullptr || local_slot_liveness->function_name != "id_pair" ||
       local_slot_liveness->contract_kind != "value_storage") {
     return fail("semantic-BIR liveness should classify local stack objects as value storage");
+  }
+  if (local_slot_liveness->access_shape != "direct_read_only" ||
+      local_slot_liveness->first_access_kind != "direct_read" ||
+      local_slot_liveness->last_access_kind != "direct_read" ||
+      local_slot_liveness->direct_read_count != 1 ||
+      local_slot_liveness->direct_write_count != 0 ||
+      local_slot_liveness->addressed_access_count != 0 ||
+      local_slot_liveness->call_arg_exposure_count != 0 ||
+      !local_slot_liveness->has_access_window ||
+      local_slot_liveness->first_access_instruction_index != 5 ||
+      local_slot_liveness->last_access_instruction_index != 5 ||
+      local_slot_liveness->crosses_call_boundary) {
+    return fail("semantic-BIR liveness should publish direct-read access-window metadata for local slots");
   }
   const auto* scratch_slot_liveness =
       find_liveness_object(prepared_bir, "lowering_scratch_slot", "scratch.slot");
@@ -718,6 +764,19 @@ int main() {
   if (carry_slot_liveness == nullptr || carry_slot_liveness->function_name != "id_pair" ||
       carry_slot_liveness->contract_kind != "value_storage") {
     return fail("semantic-BIR liveness should keep call-crossing local slots in the value-storage contract");
+  }
+  if (carry_slot_liveness->access_shape != "direct_read_write" ||
+      carry_slot_liveness->first_access_kind != "direct_write" ||
+      carry_slot_liveness->last_access_kind != "direct_read" ||
+      carry_slot_liveness->direct_read_count != 1 ||
+      carry_slot_liveness->direct_write_count != 1 ||
+      carry_slot_liveness->addressed_access_count != 0 ||
+      carry_slot_liveness->call_arg_exposure_count != 0 ||
+      !carry_slot_liveness->has_access_window ||
+      carry_slot_liveness->first_access_instruction_index != 0 ||
+      carry_slot_liveness->last_access_instruction_index != 6 ||
+      !carry_slot_liveness->crosses_call_boundary) {
+    return fail("semantic-BIR liveness should publish call-crossing access windows for read/write local slots");
   }
   const auto* window_slot_liveness = find_liveness_object(prepared_bir, "local_slot", "window.slot");
   if (window_slot_liveness == nullptr || window_slot_liveness->function_name != "id_pair" ||
@@ -755,6 +814,19 @@ int main() {
     return fail(
         "semantic-BIR liveness should classify address-taken stack objects as address-exposed storage");
   }
+  if (address_taken_liveness->access_shape != "addressed_access_only" ||
+      address_taken_liveness->first_access_kind != "addressed_access" ||
+      address_taken_liveness->last_access_kind != "addressed_access" ||
+      address_taken_liveness->direct_read_count != 0 ||
+      address_taken_liveness->direct_write_count != 0 ||
+      address_taken_liveness->addressed_access_count != 1 ||
+      address_taken_liveness->call_arg_exposure_count != 0 ||
+      !address_taken_liveness->has_access_window ||
+      address_taken_liveness->first_access_instruction_index != 5 ||
+      address_taken_liveness->last_access_instruction_index != 5 ||
+      address_taken_liveness->crosses_call_boundary) {
+    return fail("semantic-BIR liveness should publish addressed-access metadata for address-exposed stack objects");
+  }
   const auto* sret_param_liveness = find_liveness_object(prepared_bir, "sret_param", "%ret.sret");
   if (sret_param_liveness == nullptr || sret_param_liveness->function_name != "id_pair" ||
       sret_param_liveness->contract_kind != "address_exposed_storage") {
@@ -766,6 +838,19 @@ int main() {
       call_result_liveness->contract_kind != "address_exposed_storage") {
     return fail(
         "semantic-BIR liveness should classify aggregate call-result storage as address-exposed storage");
+  }
+  if (call_result_liveness->access_shape != "call_argument_exposure_only" ||
+      call_result_liveness->first_access_kind != "call_argument_exposure" ||
+      call_result_liveness->last_access_kind != "call_argument_exposure" ||
+      call_result_liveness->direct_read_count != 0 ||
+      call_result_liveness->direct_write_count != 0 ||
+      call_result_liveness->addressed_access_count != 0 ||
+      call_result_liveness->call_arg_exposure_count != 1 ||
+      !call_result_liveness->has_access_window ||
+      call_result_liveness->first_access_instruction_index != 1 ||
+      call_result_liveness->last_access_instruction_index != 1 ||
+      call_result_liveness->crosses_call_boundary) {
+    return fail("semantic-BIR liveness should publish call-exposure metadata for aggregate call-result storage");
   }
   if (prepared_bir.regalloc.functions.size() != 1) {
     return fail("semantic-BIR regalloc should publish one per-function grouping for this module");

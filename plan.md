@@ -153,30 +153,76 @@ Completion check:
 - downstream phase requirements are visible in the stack-layout contract
 - proof shows shared prepared-phase behavior, not a single testcase shortcut
 
-### 4. Rebuild liveness and register allocation around prepared BIR
+### 4. Rebuild liveness as the prepared-BIR analysis owner
 
-Goal: make liveness and regalloc real phase owners on the prepared route.
+Goal: make liveness publish the prepared analysis facts that regalloc should
+consume instead of recomputing them ad hoc.
 
 Primary target:
 
 - `src/backend/prepare/liveness.cpp`
-- `src/backend/prepare/regalloc.cpp`
+- `src/backend/prepare/prepare.hpp`
+- `ref/claudes-c-compiler/src/backend/liveness.rs`
 
 Concrete actions:
 
-- define liveness data collection over prepared-BIR values and stack objects
-- replace regalloc scaffolding with concrete prepared-phase inputs and outputs
-- keep contracts inspectable enough that target ingestion can later consume
-  them without reviving raw-LIR assumptions
-- checkpoint broader validation before treating phase reconstruction as stable
+- define the prepared liveness artifact around explicit analysis ownership,
+  including instruction-order access windows, call-boundary crossing cues, and
+  other prepared facts that naturally belong to liveness instead of regalloc
+- grow `PreparedLiveness*` data so downstream phases can consume concrete
+  analysis output rather than only `value_storage` vs
+  `address_exposed_storage` classification
+- keep the prepared liveness contract target-neutral and derived from semantic
+  BIR plus stack-layout/legalize outputs, not from target register names or
+  testcase-shaped heuristics
+- use `ref/claudes-c-compiler/src/backend/liveness.rs` for responsibility
+  boundaries and dependency order even if the prepared-BIR data model differs
+- prove progress with nearby same-shape backend cases and a broader backend
+  checkpoint before treating liveness as a stable phase owner
 
 Completion check:
 
-- liveness and regalloc emit real prepared-phase artifacts
-- their contracts line up with stack layout and legality ownership
+- liveness emits real prepared-phase analysis artifacts, not only coarse object
+  classification
+- the repo has one clear answer for where access-window and call-crossing facts
+  come from on the prepared route
+- regalloc can be restated as a consumer of prepared liveness facts instead of
+  as a second analysis owner
+
+### 5. Rebuild register allocation as a consumer of prepared liveness
+
+Goal: make regalloc consume prepared liveness/stack-layout/legalize artifacts
+instead of rebuilding their facts inside regalloc-local scaffolding.
+
+Primary target:
+
+- `src/backend/prepare/regalloc.cpp`
+- `src/backend/prepare/prepare.hpp`
+- `ref/claudes-c-compiler/src/backend/regalloc.rs`
+
+Concrete actions:
+
+- move regalloc inputs and sequencing onto prepared liveness artifacts and
+  prepared stack objects rather than direct BIR rescans for access summaries
+- keep regalloc focused on allocation staging, reservation/contention,
+  binding/handoff, and downstream prepared contract projection
+- remove or retire regalloc-local logic whose only purpose is to reconstruct
+  liveness-owned facts that should already be present in prepared artifacts
+- use `ref/claudes-c-compiler/src/backend/regalloc.rs` for responsibility
+  boundaries so `liveness -> regalloc` remains the dependency direction on the
+  shared prepared route
+- checkpoint broader validation before treating the reconstructed regalloc
+  contract as stable
+
+Completion check:
+
+- regalloc consumes prepared liveness facts rather than owning a second shadow
+  analysis path
+- liveness and regalloc contracts line up with stack layout and legality
+  ownership
 - the backend route is meaningfully closer to prepared-BIR-only ingestion
 
-### 5. Tighten the prepared-route contract before target reconnection
+### 6. Tighten the prepared-route contract before target reconnection
 
 Goal: leave a stable prepare-owned contract for idea 49.
 
