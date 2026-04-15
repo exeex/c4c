@@ -35,21 +35,53 @@ bool contains_invariant(const prepare::PreparedBirModule& module,
   return false;
 }
 
-bir::Module make_minimal_bir_module() {
+const prepare::PreparedStackObject* find_stack_object(const prepare::PreparedBirModule& module,
+                                                      std::string_view source_kind,
+                                                      std::string_view source_name) {
+  for (const auto& object : module.stack_layout.objects) {
+    if (object.source_kind == source_kind && object.source_name == source_name) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
+bir::Module make_prepare_contract_bir_module() {
   bir::Module module;
   bir::Function function;
-  function.name = "main";
-  function.return_type = bir::TypeKind::I32;
+  function.name = "id_pair";
+  function.return_type = bir::TypeKind::Void;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%ret.sret",
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .is_sret = true,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%p.p",
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .is_byval = true,
+  });
   function.local_slots.push_back(bir::LocalSlot{
       .name = "flag.slot",
       .type = bir::TypeKind::I1,
       .size_bytes = 1,
       .align_bytes = 1,
   });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "param.copy.0",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_byval_copy = true,
+  });
 
   bir::Block entry;
   entry.label = "entry";
-  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+  entry.terminator = bir::ReturnTerminator{};
 
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
@@ -80,7 +112,7 @@ lir::LirModule make_minimal_lir_module() {
 
 int main() {
   const auto prepared_bir = prepare::prepare_semantic_bir_module_with_options(
-      make_minimal_bir_module(), c4c::backend::Target::Riscv64);
+      make_prepare_contract_bir_module(), c4c::backend::Target::Riscv64);
   if (prepared_bir.route != prepare::PrepareRoute::SemanticBirShared) {
     return fail("semantic-BIR prepare entry should advertise the shared prepare route");
   }
@@ -119,6 +151,9 @@ int main() {
   if (!contains_note(prepared_bir.notes, "stack_layout", "local-slot stack objects")) {
     return fail("semantic-BIR prepare stack-layout note should mention local-slot stack objects");
   }
+  if (!contains_note(prepared_bir.notes, "stack_layout", "byval/sret memory-route")) {
+    return fail("semantic-BIR prepare stack-layout note should mention byval/sret memory-route objects");
+  }
   constexpr std::string_view kExpectedBirPhases[] = {
       "legalize",
       "stack_layout",
@@ -131,14 +166,32 @@ int main() {
       return fail("unexpected semantic-BIR prepare phase order");
     }
   }
-  if (prepared_bir.stack_layout.objects.size() != 1) {
-    return fail("semantic-BIR stack layout should publish exactly one local-slot stack object");
+  if (prepared_bir.stack_layout.objects.size() != 4) {
+    return fail("semantic-BIR stack layout should publish local-slot plus byval/sret frame objects");
   }
-  const auto& stack_object = prepared_bir.stack_layout.objects.front();
-  if (stack_object.function_name != "main" || stack_object.source_name != "flag.slot" ||
-      stack_object.source_kind != "local_slot" || stack_object.type != bir::TypeKind::I32 ||
-      stack_object.size_bytes != 4 || stack_object.align_bytes != 4) {
+  const auto* local_slot = find_stack_object(prepared_bir, "local_slot", "flag.slot");
+  if (local_slot == nullptr || local_slot->function_name != "id_pair" ||
+      local_slot->type != bir::TypeKind::I32 || local_slot->size_bytes != 4 ||
+      local_slot->align_bytes != 4) {
     return fail("semantic-BIR stack-layout artifact drifted from the legalized local-slot contract");
+  }
+  const auto* byval_copy_slot = find_stack_object(prepared_bir, "byval_copy_slot", "param.copy.0");
+  if (byval_copy_slot == nullptr || byval_copy_slot->function_name != "id_pair" ||
+      byval_copy_slot->type != bir::TypeKind::I32 || byval_copy_slot->size_bytes != 4 ||
+      byval_copy_slot->align_bytes != 4) {
+    return fail("semantic-BIR stack layout should publish byval-copy local slots as prepared frame objects");
+  }
+  const auto* sret_param = find_stack_object(prepared_bir, "sret_param", "%ret.sret");
+  if (sret_param == nullptr || sret_param->function_name != "id_pair" ||
+      sret_param->type != bir::TypeKind::Ptr || sret_param->size_bytes != 8 ||
+      sret_param->align_bytes != 4) {
+    return fail("semantic-BIR stack layout should publish the sret memory route as a prepared frame object");
+  }
+  const auto* byval_param = find_stack_object(prepared_bir, "byval_param", "%p.p");
+  if (byval_param == nullptr || byval_param->function_name != "id_pair" ||
+      byval_param->type != bir::TypeKind::Ptr || byval_param->size_bytes != 8 ||
+      byval_param->align_bytes != 4) {
+    return fail("semantic-BIR stack layout should publish the byval memory route as a prepared frame object");
   }
 
   const auto prepared_lir = prepare::prepare_bootstrap_lir_module_with_options(

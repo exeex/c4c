@@ -6,6 +6,58 @@
 
 namespace c4c::backend::prepare {
 
+namespace {
+
+void append_stack_object(PreparedStackLayout& layout,
+                         std::string_view function_name,
+                         std::string_view source_name,
+                         std::string_view source_kind,
+                         bir::TypeKind type,
+                         std::size_t size_bytes,
+                         std::size_t align_bytes) {
+  layout.objects.push_back(PreparedStackObject{
+      .function_name = std::string(function_name),
+      .source_name = std::string(source_name),
+      .source_kind = std::string(source_kind),
+      .type = type,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes,
+  });
+}
+
+void append_param_memory_route_objects(PreparedStackLayout& layout, const bir::Function& function) {
+  for (const auto& param : function.params) {
+    if (param.is_sret) {
+      append_stack_object(layout,
+                          function.name,
+                          param.name,
+                          "sret_param",
+                          param.type,
+                          param.size_bytes,
+                          param.align_bytes);
+      continue;
+    }
+    if (param.is_byval) {
+      append_stack_object(layout,
+                          function.name,
+                          param.name,
+                          "byval_param",
+                          param.type,
+                          param.size_bytes,
+                          param.align_bytes);
+    }
+  }
+}
+
+std::string_view stack_object_source_kind(const bir::LocalSlot& slot) {
+  if (slot.is_byval_copy) {
+    return "byval_copy_slot";
+  }
+  return "local_slot";
+}
+
+}  // namespace
+
 void run_stack_layout(PreparedLirModule& module, const PrepareOptions& options) {
   (void)options;
   module.completed_phases.push_back("stack_layout");
@@ -20,22 +72,22 @@ void run_stack_layout(PreparedBirModule& module, const PrepareOptions& options) 
   module.completed_phases.push_back("stack_layout");
   module.stack_layout.objects.clear();
   for (const auto& function : module.module.functions) {
+    append_param_memory_route_objects(module.stack_layout, function);
     for (const auto& slot : function.local_slots) {
-      module.stack_layout.objects.push_back(PreparedStackObject{
-          .function_name = function.name,
-          .source_name = slot.name,
-          .source_kind = "local_slot",
-          .type = slot.type,
-          .size_bytes = slot.size_bytes,
-          .align_bytes = slot.align_bytes,
-      });
+      append_stack_object(module.stack_layout,
+                          function.name,
+                          slot.name,
+                          stack_object_source_kind(slot),
+                          slot.type,
+                          slot.size_bytes,
+                          slot.align_bytes);
     }
   }
   module.notes.push_back(PrepareNote{
       .phase = "stack_layout",
       .message =
-          "stack layout now publishes local-slot stack objects as prepared artifacts; frame "
-          "offset assignment remains future work",
+          "stack layout now publishes local-slot stack objects plus byval/sret memory-route "
+          "frame objects as prepared artifacts; frame offset assignment remains future work",
   });
 }
 
