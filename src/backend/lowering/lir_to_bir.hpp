@@ -104,6 +104,7 @@ using TypeDeclMap = std::unordered_map<std::string, std::string>;
 using FunctionSymbolSet = std::unordered_set<std::string>;
 using LocalSlotTypes = std::unordered_map<std::string, bir::TypeKind>;
 using LocalPointerSlots = std::unordered_map<std::string, std::string>;
+using LocalIndirectPointerSlotSet = std::unordered_set<std::string>;
 
 struct ParsedTypedOperand {
   std::string type_text;
@@ -207,6 +208,7 @@ class BirFunctionLowerer {
   using FunctionSymbolSet = lir_to_bir_detail::FunctionSymbolSet;
   using GlobalAddress = lir_to_bir_detail::GlobalAddress;
   using GlobalTypes = lir_to_bir_detail::GlobalTypes;
+  using LocalIndirectPointerSlotSet = lir_to_bir_detail::LocalIndirectPointerSlotSet;
   using LocalPointerSlots = lir_to_bir_detail::LocalPointerSlots;
   using LocalSlotTypes = lir_to_bir_detail::LocalSlotTypes;
   using ParsedTypedOperand = lir_to_bir_detail::ParsedTypedOperand;
@@ -669,6 +671,7 @@ class BirFunctionLowerer {
   LocalAggregateSlotMap local_aggregate_slots_;
   LocalAggregateFieldSet local_aggregate_field_slots_;
   LocalPointerValueAliasMap local_pointer_value_aliases_;
+  LocalIndirectPointerSlotSet local_indirect_pointer_slots_;
   PointerAddressMap pointer_value_addresses_;
   LocalAddressSlots local_address_slots_;
   LocalSlotAddressSlots local_slot_address_slots_;
