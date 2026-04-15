@@ -1688,25 +1688,29 @@ int main() {
         "semantic-BIR regalloc should group deferred single-point candidates waiting on coordination into an explicit deferred binding batch");
   }
   if (call_boundary_handoff_summary->binding_frontier_reason != "call_boundary_preservation" ||
-      call_boundary_handoff_summary->candidate_count != 3) {
+      call_boundary_handoff_summary->binding_batch_kind !=
+          call_boundary_binding_batch->binding_batch_kind) {
     return fail(
-        "semantic-BIR regalloc should keep ready handoff summaries focused on downstream frontier identity instead of republishing batch-owned metadata");
+        "semantic-BIR regalloc should keep ready handoff summaries focused on downstream frontier identity while batch summaries remain the sole owners of candidate counts");
   }
   if (local_reuse_handoff_summary->binding_frontier_reason !=
           "sequenced_local_reuse_coordination" ||
-      local_reuse_handoff_summary->candidate_count != 3) {
+      local_reuse_handoff_summary->binding_batch_kind !=
+          local_reuse_binding_batch->binding_batch_kind) {
     return fail(
-        "semantic-BIR regalloc should keep ready local-reuse handoff summaries focused on downstream frontier identity instead of republishing batch-owned metadata");
+        "semantic-BIR regalloc should keep ready local-reuse handoff summaries focused on downstream frontier identity while batch summaries remain the sole owners of candidate counts");
   }
   if (deferred_access_window_handoff_summary->binding_frontier_reason !=
           "awaiting_access_window_observation" ||
-      deferred_access_window_handoff_summary->candidate_count != 7) {
+      deferred_access_window_handoff_summary->binding_batch_kind !=
+          deferred_access_window_binding_batch->binding_batch_kind) {
     return fail(
         "semantic-BIR regalloc should keep deferred handoff summaries focused on frontier identity while leaving batch metadata ownership in deferred binding batches");
   }
   if (deferred_coordination_handoff_summary->binding_frontier_reason !=
           "batched_single_point_coordination" ||
-      deferred_coordination_handoff_summary->candidate_count != 2) {
+      deferred_coordination_handoff_summary->binding_batch_kind !=
+          deferred_coordination_binding_batch->binding_batch_kind) {
     return fail(
         "semantic-BIR regalloc should keep deferred coordination handoff summaries focused on frontier identity while leaving batch metadata ownership in deferred binding batches");
   }

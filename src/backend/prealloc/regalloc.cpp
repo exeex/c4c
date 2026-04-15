@@ -1092,9 +1092,7 @@ void BirPreAlloc::populate_binding_handoff_summary() {
     if (!contract.has_value()) {
       continue;
     }
-    auto summary = *contract;
-    summary.candidate_count = batch_summary.candidate_count;
-    current_regalloc_function_->binding_handoff_summary.push_back(std::move(summary));
+    current_regalloc_function_->binding_handoff_summary.push_back(*contract);
   }
 
   for (const auto& deferred_batch_summary :
@@ -1104,9 +1102,7 @@ void BirPreAlloc::populate_binding_handoff_summary() {
     if (!contract.has_value()) {
       continue;
     }
-    auto summary = *contract;
-    summary.candidate_count = deferred_batch_summary.candidate_count;
-    current_regalloc_function_->binding_handoff_summary.push_back(std::move(summary));
+    current_regalloc_function_->binding_handoff_summary.push_back(*contract);
   }
 }
 

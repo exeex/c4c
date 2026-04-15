@@ -180,7 +180,6 @@ struct PreparedRegallocBindingHandoffSummary {
   std::string binding_frontier_kind;
   std::string binding_frontier_reason;
   std::string binding_batch_kind;
-  std::size_t candidate_count = 0;
 };
 
 struct PreparedRegallocFunction {

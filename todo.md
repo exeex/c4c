@@ -17,18 +17,17 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- removed `allocation_stage`, `follow_up_category`, and `ordering_policy` from
-  `binding_handoff_summary`, so handoff now publishes only frontier identity,
-  frontier reason, batch identity, and candidate count
-- updated the prepare-entry contract test to treat ready/deferred batch
-  summaries as the owners of batch metadata while handoff remains a consumer
-  projection keyed by `binding_batch_kind`
+- removed `candidate_count` from `binding_handoff_summary`, so ready/deferred
+  batch summaries remain the sole owners of batch candidate counts while
+  handoff stays a frontier-identity consumer keyed by `binding_batch_kind`
+- updated the prepare-entry contract test to assert the new ownership split:
+  batch summaries own candidate counts, and handoff summaries only need
+  frontier reason plus batch identity to join downstream
 
 ## Suggested Next
-- inspect whether `binding_handoff_summary::candidate_count` still needs to be
-  published separately from ready/deferred batch owners, and only trim it if
-  downstream consumers can keep joining through batch identity without losing a
-  useful frontier-level summary
+- inspect whether any remaining handoff fields still mirror ready/deferred
+  batch ownership, especially if a downstream consumer can already join
+  through `binding_batch_kind` without losing useful frontier identity
 - keep the next packet inside step-5 ownership cleanup in
   `src/backend/prealloc/regalloc.cpp` and related tests; do not turn it into a
   public API rename, new allocation policy, MIR ingestion, or target-specific
@@ -57,8 +56,8 @@ while keeping the public shared contract named `prepare`
   cleanup trims more handoff fields, keep handoff as a consumer keyed by
   `binding_batch_kind` instead of rebuilding prerequisite ownership there
 - batch metadata now lives on ready/deferred batch summaries too; if later
-  cleanup trims `candidate_count` from handoff, keep one clear answer for
-  whether downstream joins or frontier-level aggregate views own that count
+  cleanup trims more handoff mirrors, keep one clear answer for whether
+  downstream joins or frontier-level aggregate views own each remaining fact
 - deferred binding batch construction now takes `deferred_reason` directly from
   the object; if later cleanup removes or reshapes that object field, confirm
   deferred-batch ownership still stays clear instead of recreating a view
