@@ -1609,8 +1609,7 @@ int main() {
     return fail(
         "semantic-BIR regalloc should keep binding-ready local-reuse entries focused on sequencing identity and order");
   }
-  if (call_boundary_binding_batch->ordering_policy != "preserve_allocation_sequence" ||
-      call_boundary_binding_batch->access_window_prerequisite_category !=
+  if (call_boundary_binding_batch->access_window_prerequisite_category !=
           "overlapping_call_boundary_windows" ||
       call_boundary_binding_batch->access_window_prerequisite_state !=
           "prealloc_access_window_prerequisite_satisfied" ||
@@ -1625,8 +1624,7 @@ int main() {
     return fail(
         "semantic-BIR regalloc should summarize call-boundary batch prerequisites and ready sync/home-slot handoff from the existing reservation/contention frontier");
   }
-  if (local_reuse_binding_batch->ordering_policy != "preserve_allocation_sequence" ||
-      local_reuse_binding_batch->access_window_prerequisite_category !=
+  if (local_reuse_binding_batch->access_window_prerequisite_category !=
           "adjacent_local_windows" ||
       local_reuse_binding_batch->access_window_prerequisite_state !=
           "prealloc_access_window_prerequisite_satisfied" ||
@@ -1693,6 +1691,12 @@ int main() {
   if (local_reuse_binding_batch->binding_batch_kind != "local_reuse_binding_batch") {
     return fail(
         "semantic-BIR regalloc should keep ready local-reuse frontier identity on binding batch kind instead of publishing redundant ready summary mirrors");
+  }
+  if (carry_binding->binding_order_index != 0 || callread_binding->binding_order_index != 1 ||
+      callwrite_binding->binding_order_index != 2 || window_binding->binding_order_index != 0 ||
+      readonly_binding->binding_order_index != 1 || multiwrite_binding->binding_order_index != 2) {
+    return fail(
+        "semantic-BIR regalloc should keep ready frontier ordering owned by binding_sequence instead of publishing a duplicate ready summary mirror");
   }
   if (deferred_access_window_binding_batch->deferred_reason !=
       "awaiting_access_window_observation") {
