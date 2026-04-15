@@ -107,6 +107,29 @@ std::string_view regalloc_access_shape_name(const RegallocObjectAccessSummary& s
   return "mixed_access_shape";
 }
 
+std::string_view regalloc_access_shape_suffix(const RegallocObjectAccessSummary& summary) {
+  const auto access_shape = regalloc_access_shape_name(summary);
+  if (access_shape == "direct_read_only") {
+    return "read";
+  }
+  if (access_shape == "direct_write_only") {
+    return "write";
+  }
+  if (access_shape == "direct_read_write") {
+    return "read_write";
+  }
+  if (access_shape == "addressed_access_only") {
+    return "addressed";
+  }
+  if (access_shape == "call_argument_exposure_only") {
+    return "call_exposed";
+  }
+  if (access_shape == "no_access") {
+    return "no_access";
+  }
+  return "mixed_access";
+}
+
 RegallocObjectAccessSummary summarize_object_accesses(const bir::Function& function,
                                                       std::string_view source_name) {
   RegallocObjectAccessSummary summary;
@@ -187,6 +210,24 @@ std::string_view regalloc_priority_bucket(std::string_view contract_kind,
   return "multi_point_value";
 }
 
+std::string regalloc_assignment_readiness(std::string_view allocation_kind,
+                                          std::string_view priority_bucket,
+                                          const RegallocObjectAccessSummary& summary) {
+  if (allocation_kind != "register_candidate") {
+    return "fixed_stack_only";
+  }
+
+  const std::string_view bucket_prefix = priority_bucket == "single_point_value"
+                                             ? "single_point"
+                                         : priority_bucket == "call_spanning_value"
+                                             ? "call_spanning"
+                                             : priority_bucket == "multi_point_value"
+                                             ? "multi_point"
+                                             : "register_candidate";
+  return std::string(bucket_prefix) + "_" +
+         std::string(regalloc_access_shape_suffix(summary)) + "_candidate";
+}
+
 }  // namespace
 
 void run_regalloc(PreparedLirModule& module, const PrepareOptions& options) {
@@ -215,6 +256,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
       const auto summary = summarize_object_accesses(function, object.source_name);
       const std::string allocation_kind(regalloc_allocation_kind(object.contract_kind));
       const std::string priority_bucket(regalloc_priority_bucket(object.contract_kind, summary));
+      const std::string assignment_readiness(
+          regalloc_assignment_readiness(allocation_kind, priority_bucket, summary));
       prepared_function.objects.push_back(PreparedRegallocObject{
           .function_name = object.function_name,
           .source_name = object.source_name,
@@ -222,6 +265,7 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           .contract_kind = object.contract_kind,
           .allocation_kind = allocation_kind,
           .priority_bucket = priority_bucket,
+          .assignment_readiness = assignment_readiness,
           .access_shape = std::string(regalloc_access_shape_name(summary)),
           .first_access_kind = std::string(regalloc_access_kind_name(summary.first_access_kind)),
           .last_access_kind = std::string(regalloc_access_kind_name(summary.last_access_kind)),
@@ -251,7 +295,8 @@ void run_regalloc(PreparedBirModule& module, const PrepareOptions& options) {
           "regalloc now groups prepared liveness objects per function and classifies them as "
           "register_candidate or fixed_stack_storage contracts, plus target-neutral priority "
           "buckets for single-point, multi-point, and call-spanning value-storage objects, "
-          "compact access-shape summaries, first and last access-kind cues, "
+          "assignment-readiness cues built from those buckets plus compact access-shape "
+          "summaries, first and last access-kind cues, "
           "direct read/write, addressed-access, and call-argument exposure counts, and "
           "instruction-order access windows and call-crossing cues for downstream prepared-BIR "
           "consumers; physical register assignment remains future work",

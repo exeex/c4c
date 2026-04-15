@@ -53,6 +53,7 @@ struct PreparedRegallocObject {
   std::string contract_kind;
   std::string allocation_kind;
   std::string priority_bucket;
+  std::string assignment_readiness;
   std::string access_shape;
   std::string first_access_kind;
   std::string last_access_kind;

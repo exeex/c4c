@@ -8,26 +8,27 @@ Current Plan Focus: step-4 semantic-BIR regalloc bucket activation
 # Current Packet
 
 ## Just Finished
-- added a compact target-neutral `access_shape` summary to each semantic-BIR
-  `regalloc` object so prepared contracts now expose direct-read-only,
-  direct-write-only, direct-read-write, addressed-access-only, and
-  call-argument-exposure-only patterns alongside the existing access counts
-  and first/last access cues
-- kept the new summary inside prepare-owned semantics by deriving it from the
-  existing explicit BIR access counts instead of target register classes,
-  physical assignment, or testcase-shaped matcher logic
+- added a target-neutral `assignment_readiness` cue to each semantic-BIR
+  `regalloc` object so prepared contracts now combine the existing priority
+  bucket and access-shape summaries into explicit single-point,
+  multi-point, call-spanning, or fixed-stack readiness labels without
+  inventing target register policy or fake live intervals
+- kept the readiness cue prepare-owned by deriving it only from prepared
+  liveness contracts, BIR instruction-order access facts, and fixed-stack vs
+  register-candidate allocation kind
 - extended the prepare entry-contract test and note assertions with
-  representative single-read, write-only, read-write, addressed, and
-  call-exposure access-shape checks for the new regalloc cue
+  representative single-read, write-only, call-spanning read/write,
+  addressed-storage, and call-exposure readiness checks for the new regalloc
+  cue
 
 ## Suggested Next
-- build on the published access-shape summary by deciding whether prepared
-  regalloc needs an assignment-readiness cue that combines priority bucket,
-  call-crossing state, and access shape without inventing fake intervals or
-  target register policy before physical assignment work
-- keep any next regalloc detail keyed off prepared liveness, stack-layout,
-  and explicit BIR instruction structure rather than target-specific register
-  classes or testcase-shaped heuristics
+- add one representative non-call-spanning multi-point value-storage case to
+  the prepare entry-contract fixture so the new readiness cue is also proved
+  on a genuine `multi_point_*_candidate` path instead of only single-point,
+  call-spanning, and fixed-stack shapes
+- keep that follow-on coverage derived from actual prepared liveness and BIR
+  instruction order, not synthetic intervals, target register classes, or
+  testcase-shaped heuristics
 
 ## Watchouts
 - do not let the current regalloc packet drift into target ingestion work that
