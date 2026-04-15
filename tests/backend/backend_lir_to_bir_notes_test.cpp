@@ -19,6 +19,7 @@ using c4c::codegen::lir::LirInlineAsmOp;
 using c4c::codegen::lir::LirModule;
 using c4c::codegen::lir::LirOperand;
 using c4c::codegen::lir::LirRet;
+using c4c::codegen::lir::LirAllocaOp;
 
 int fail(const char* message) {
   std::cerr << message << "\n";
@@ -136,6 +137,32 @@ LirModule make_bad_scalar_cast_module() {
   return module;
 }
 
+LirModule make_bad_alloca_module() {
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  LirFunction function;
+  function.name = "bad_alloca";
+  function.signature_text = "define void @bad_alloca()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("@not_ssa"),
+      .type_str = "i32",
+      .count = LirOperand(""),
+      .align = 0,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 }  // namespace
 
 int main() {
@@ -167,6 +194,16 @@ int main() {
           "missing module note carrying the scalar-cast semantic family failure");
       scalar_cast_status != 0) {
     return scalar_cast_status;
+  }
+
+  if (const int alloca_status = expect_failure_notes(
+          make_bad_alloca_module(),
+          "failed in alloca local-memory semantic family",
+          "latest function failure: semantic lir_to_bir function 'bad_alloca' failed in alloca local-memory semantic family",
+          "missing specific alloca local-memory function note",
+          "missing module note carrying the alloca local-memory semantic family failure");
+      alloca_status != 0) {
+    return alloca_status;
   }
   return 0;
 }

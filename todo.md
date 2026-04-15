@@ -8,19 +8,19 @@ Current Plan Focus: ordered step 4, tighten the semantic unsupported boundary
 # Current Packet
 
 ## Just Finished
-- tightened step-4 note coverage around module failure summaries without widening lowering behavior: the direct backend notes test now proves both runtime and semantic-call failures stay visible in the module note even when later wrapper notes also fire
-- added a nearby direct-call regression beside the existing inline-asm note case, proving `direct-call semantic family` survives into the module-level `latest function failure` summary instead of being replaced by `scalar/local-memory semantic family`
-- generalized the module-summary selector into ranked semantic-family handling: runtime and semantic-call failures still outrank later wrapper notes, and more specific non-call families such as `scalar-cast semantic family` now outrank umbrella summaries like `scalar/local-memory semantic family`
+- tightened the step-4 module latest-failure selector around semantic-family wording without widening lowering behavior: the summary helper now ranks by the extracted failure family instead of brittle free-form substring matching
+- added a nearby backend notes regression for `alloca local-memory semantic family`, proving a specific local-memory failure survives the later umbrella `local-memory semantic family` wrapper note in the module-level summary
+- kept the slice on unsupported-boundary cleanup only; no call/runtime lowering or target legality behavior changed
 
 ## Suggested Next
-- keep step 4 on planner-facing unsupported-boundary cleanup and audit whether any remaining module-note wording still names the admitted buckets too narrowly now that summary precedence is semantic-family-wide
-- if another note-level regression is added, keep it adjacent to the summary contract rather than widening inline asm, call ABI, or other backend capability work
+- keep step 4 on planner-facing unsupported-boundary cleanup and audit whether the module-level admitted-buckets wording itself should be refreshed to mention function-signature and semantic-family-specific scalar/local-memory coverage more directly
+- if another note-level regression is added, keep it adjacent to the summary contract rather than widening lowering, ABI, or inline-asm capability work
 
 ## Watchouts
-- the current module-summary helper still gives special precedence only to runtime/intrinsic and semantic-call failures; any follow-on broadening to other semantic families should be justified as unsupported-boundary work, not folded into capability claims
-- this packet remains note-contract hardening only; it does not expand inline-asm carriers, call ABI legality, or any other lowering surface
+- the summary helper still gives top precedence only to runtime/intrinsic and semantic-call families; any broader re-ranking should stay justified as unsupported-boundary wording work, not capability progress
+- this packet remains note-contract hardening only; it does not expand local-memory lowering, inline-asm carriers, call ABI legality, or any other lowering surface
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-- passed; the backend subset now includes the expanded `backend_lir_to_bir_notes` regression covering both the inline-asm runtime-family case and the unknown-global direct-call semantic-family case
+- passed; the backend subset now includes the added `backend_lir_to_bir_notes` regression covering the specific `alloca local-memory semantic family` versus umbrella `local-memory semantic family` summary contract
 - proof log preserved at `test_after.log`

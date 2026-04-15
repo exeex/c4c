@@ -23,21 +23,29 @@ int semantic_failure_note_rank(std::string_view message) {
       message.find("failed in semantic call family") != std::string::npos) {
     return 3;
   }
-  if (message.find("semantic family") != std::string::npos) {
-    constexpr std::string_view kUmbrellaFamilies[] = {
-        "function-signature semantic family",
-        "local-memory semantic family",
-        "scalar-control-flow semantic family",
-        "scalar/local-memory semantic family",
-    };
-    for (std::string_view umbrella : kUmbrellaFamilies) {
-      if (message.find(umbrella) != std::string::npos) {
-        return 1;
-      }
-    }
-    return 2;
+  constexpr std::string_view kFailedInPrefix = " failed in ";
+  const std::size_t failure_pos = message.find(kFailedInPrefix);
+  if (failure_pos == std::string::npos) {
+    return 0;
   }
-  return 0;
+
+  const std::string_view family = message.substr(failure_pos + kFailedInPrefix.size());
+  if (family.find("semantic family") == std::string::npos) {
+    return 0;
+  }
+
+  constexpr std::string_view kUmbrellaFamilies[] = {
+      "function-signature semantic family",
+      "local-memory semantic family",
+      "scalar-control-flow semantic family",
+      "scalar/local-memory semantic family",
+  };
+  for (std::string_view umbrella : kUmbrellaFamilies) {
+    if (family == umbrella) {
+      return 1;
+    }
+  }
+  return 2;
 }
 
 std::optional<std::string_view> latest_function_failure_note(const BirLoweringContext& context) {
