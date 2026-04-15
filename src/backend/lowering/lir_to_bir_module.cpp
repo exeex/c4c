@@ -522,7 +522,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     if (!lowered_function.has_value()) {
       context.note(
           "module",
-          "bootstrap lir_to_bir only supports scalar compare/branch/select/return functions right now");
+          "bootstrap lir_to_bir only supports the current semantic BIR route for scalar control flow, local/global memory, direct and indirect calls, current variadic runtime intrinsics, inline-asm placeholders, and the currently admitted runtime-family lowering right now");
       return std::nullopt;
     }
     module.functions.push_back(std::move(*lowered_function));
@@ -530,7 +530,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
 
   context.note(
       "module",
-      "lowered scalar compare/select/local-memory/global/call/return module to BIR");
+      "lowered semantic-BIR module with scalar control flow, local/global memory, direct and indirect calls, variadic/runtime intrinsics, inline-asm placeholders, and current admitted runtime families");
   return module;
 }
 

@@ -3,24 +3,23 @@
 Status: Active
 Source Idea: ideas/open/47_semantic_call_runtime_boundary.md
 Source Plan: plan.md
-Current Plan Focus: ordered step 3, runtime and intrinsic families through semantic BIR
+Current Plan Focus: ordered step 4, tighten the semantic unsupported boundary
 
 # Current Packet
 
 ## Just Finished
-- widened shared scalar-type recognition, BIR type rendering, and runtime intrinsic lowering to admit long-double `x86_fp80` / `f128` signatures, then taught `lower_runtime_intrinsic_inst` to keep direct-intrinsic `@llvm.fabs.x86_fp80` wrappers on semantic BIR through the same `parse_lir_call_callee(...)` route already used for `float` / `double`
-- added isolated backend route case `backend_codegen_route_x86_64_builtin_fabsl_observe_semantic_bir`, proving a simple `__builtin_fabsl` wrapper now stays on semantic BIR as `bir.call f128 llvm.fabs.x86_fp80(f128 %p.x)` without falling back to LLVM `define` output
+- tightened the module-level `lir_to_bir` note surface so function-lowering success and failure no longer claim the obsolete scalar-only route after the backend has already admitted semantic local/global memory, direct and indirect calls, `va_*`, inline asm placeholders, stack save/restore, and the current runtime-family work
+- kept the boundary cleanup in `src/backend/lowering/lir_to_bir_module.cpp` only, avoiding any testcase-shaped matcher growth or new semantic-lowering shortcuts just to manufacture more step-3 churn
 
 ## Suggested Next
-- move to the next uncovered step-3 runtime boundary outside the `fabs` family, with the same wrapper-only discipline where needed so semantic call routing stays isolated from unrelated floating-point arithmetic or legality work
+- if new semantic-BIR misses appear, continue step 4 by replacing any remaining stale scalar-only or testcase-history-oriented lowering notes with capability-bucket language that matches the actual admitted route
+- keep any future boundary cleanup honest about the current contract: semantic lowering can admit the supported family, or it should fail with a stable capability description instead of pretending the backend is still pre-call/pre-memory
 
 ## Watchouts
-- direct LLVM intrinsics are not `DirectGlobal` callees in the LIR helpers, so future semantic runtime matching must use `parse_lir_call_callee(...)` when the callee may be `llvm.*`
-- wrapper-only `fabs` tests remain necessary here because `main`-body floating-point expressions still pull in unrelated arithmetic, cast, or constant-lowering work that this packet does not claim to fix
-- long-double support in semantic BIR currently normalizes both `x86_fp80` and `f128` signature text to BIR `f128`, so future runtime-family matches should preserve that distinction at the callee symbol while reusing the shared BIR scalar type
-- keep follow-on runtime-family widening semantic and call-shaped, not testcase-shaped: this repair was about intrinsic callee classification plus long-double signature admission, not about broad floating-point legalization
+- this packet only fixes the planner-facing lowering notes; it does not add new semantic capability and must not be treated as evidence that later prepare/legalize or target-specific backend work is complete
+- the module-level note remains a coarse contract summary, so any future family-specific unsupported work should tighten messages toward stable semantic buckets rather than reintroducing testcase names or obsolete scalar-only wording
 
 ## Proof
 - `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
 - passed with `test_after.log`; backend subset result is `passed=54 failed=0 total=54`
-- verified `backend_codegen_route_x86_64_builtin_fabsl_observe_semantic_bir` inside the passing run and confirmed `build/backend_route/builtin_fabsl_semantic_bir_x86_64.ll` contains `bir.call f128 llvm.fabs.x86_fp80(f128 %p.x)`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed` passed; this packet only retargets planner-facing lowering notes, so equal pass counts were the expected non-regression outcome
