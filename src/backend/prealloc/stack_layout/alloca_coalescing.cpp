@@ -93,6 +93,21 @@ void merge_pointer_roots(const bir::Value& value,
   }
 }
 
+void record_local_slot_pointer_escape(const bir::Value& value,
+                                      std::size_t block_index,
+                                      const SlotNameSet& local_slot_names,
+                                      const PointerAliasMap& pointer_aliases,
+                                      SlotUseSummary& summary) {
+  RootNameSet roots;
+  merge_pointer_roots(value, local_slot_names, pointer_aliases, roots);
+  if (!roots.empty()) {
+    record_root_pointer_escape(roots, block_index, summary);
+    return;
+  }
+
+  record_local_slot_pointer_use(value, block_index, local_slot_names, pointer_aliases, summary);
+}
+
 [[nodiscard]] bool is_unrooted_pointer_value(const bir::Value& value,
                                              const SlotNameSet& local_slot_names,
                                              const PointerAliasMap& pointer_aliases) {
@@ -273,19 +288,19 @@ void record_call_pointer_uses(const bir::CallInst& call,
     switch (block.terminator.kind) {
       case bir::TerminatorKind::Return:
         if (block.terminator.value.has_value()) {
-          record_local_slot_pointer_use(*block.terminator.value,
-                                        block_index,
-                                        local_slot_names,
-                                        pointer_aliases,
-                                        summary);
+          record_local_slot_pointer_escape(*block.terminator.value,
+                                           block_index,
+                                           local_slot_names,
+                                           pointer_aliases,
+                                           summary);
         }
         break;
       case bir::TerminatorKind::CondBranch:
-        record_local_slot_pointer_use(block.terminator.condition,
-                                      block_index,
-                                      local_slot_names,
-                                      pointer_aliases,
-                                      summary);
+        record_local_slot_pointer_escape(block.terminator.condition,
+                                         block_index,
+                                         local_slot_names,
+                                         pointer_aliases,
+                                         summary);
         break;
       case bir::TerminatorKind::Branch:
         break;
