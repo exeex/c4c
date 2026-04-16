@@ -11,6 +11,8 @@ namespace {
 
 using SlotBlockSet = std::unordered_map<std::string_view, std::unordered_set<std::size_t>>;
 using SlotNameSet = std::unordered_set<std::string_view>;
+using RootNameSet = std::unordered_set<std::string_view>;
+using PointerAliasMap = std::unordered_map<std::string_view, RootNameSet>;
 
 struct SlotUseSummary {
   SlotBlockSet use_blocks;
@@ -33,21 +35,67 @@ void record_addressed_local_slot_use(const std::optional<bir::MemoryAddress>& ad
 void record_local_slot_pointer_use(const bir::Value& value,
                                    std::size_t block_index,
                                    const SlotNameSet& local_slot_names,
+                                   const PointerAliasMap& pointer_aliases,
                                    SlotUseSummary& summary) {
-  if (value.kind != bir::Value::Kind::Named ||
-      value.type != bir::TypeKind::Ptr ||
-      value.name.empty() ||
-      local_slot_names.find(value.name) == local_slot_names.end()) {
+  if (value.kind != bir::Value::Kind::Named || value.type != bir::TypeKind::Ptr ||
+      value.name.empty()) {
     return;
   }
 
-  summary.use_blocks[value.name].insert(block_index);
-  summary.addressed_slots.insert(value.name);
+  if (const auto slot_it = local_slot_names.find(value.name); slot_it != local_slot_names.end()) {
+    summary.use_blocks[*slot_it].insert(block_index);
+    summary.addressed_slots.insert(*slot_it);
+  }
+
+  const auto alias_it = pointer_aliases.find(value.name);
+  if (alias_it == pointer_aliases.end()) {
+    return;
+  }
+
+  for (const std::string_view root_name : alias_it->second) {
+    summary.use_blocks[root_name].insert(block_index);
+    summary.addressed_slots.insert(root_name);
+  }
+}
+
+void merge_pointer_roots(const bir::Value& value,
+                         const SlotNameSet& local_slot_names,
+                         const PointerAliasMap& pointer_aliases,
+                         RootNameSet& roots) {
+  if (value.kind != bir::Value::Kind::Named || value.type != bir::TypeKind::Ptr ||
+      value.name.empty()) {
+    return;
+  }
+
+  if (const auto slot_it = local_slot_names.find(value.name); slot_it != local_slot_names.end()) {
+    roots.insert(*slot_it);
+  }
+
+  if (const auto alias_it = pointer_aliases.find(value.name); alias_it != pointer_aliases.end()) {
+    roots.insert(alias_it->second.begin(), alias_it->second.end());
+  }
+}
+
+void update_pointer_alias(const bir::Value& result,
+                          const RootNameSet& roots,
+                          PointerAliasMap& pointer_aliases) {
+  if (result.kind != bir::Value::Kind::Named || result.type != bir::TypeKind::Ptr ||
+      result.name.empty()) {
+    return;
+  }
+
+  if (roots.empty()) {
+    pointer_aliases.erase(result.name);
+    return;
+  }
+
+  pointer_aliases[result.name] = roots;
 }
 
 [[nodiscard]] SlotUseSummary collect_slot_use_summary(const bir::Function& function,
                                                       const SlotNameSet& local_slot_names) {
   SlotUseSummary summary;
+  PointerAliasMap pointer_aliases;
 
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
@@ -60,6 +108,8 @@ void record_local_slot_pointer_use(const bir::Value& value,
       if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr) {
         summary.use_blocks[store->slot_name].insert(block_index);
         record_addressed_local_slot_use(store->address, block_index, summary);
+        record_local_slot_pointer_use(
+            store->value, block_index, local_slot_names, pointer_aliases, summary);
         continue;
       }
       if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst); load != nullptr) {
@@ -68,21 +118,86 @@ void record_local_slot_pointer_use(const bir::Value& value,
       }
       if (const auto* store = std::get_if<bir::StoreGlobalInst>(&inst); store != nullptr) {
         record_addressed_local_slot_use(store->address, block_index, summary);
+        record_local_slot_pointer_use(
+            store->value, block_index, local_slot_names, pointer_aliases, summary);
         continue;
       }
       if (const auto* call = std::get_if<bir::CallInst>(&inst);
           call != nullptr && call->sret_storage_name.has_value()) {
         summary.use_blocks[*call->sret_storage_name].insert(block_index);
         for (const auto& arg : call->args) {
-          record_local_slot_pointer_use(arg, block_index, local_slot_names, summary);
+          record_local_slot_pointer_use(
+              arg, block_index, local_slot_names, pointer_aliases, summary);
         }
         continue;
       }
       if (const auto* call = std::get_if<bir::CallInst>(&inst); call != nullptr) {
         for (const auto& arg : call->args) {
-          record_local_slot_pointer_use(arg, block_index, local_slot_names, summary);
+          record_local_slot_pointer_use(
+              arg, block_index, local_slot_names, pointer_aliases, summary);
         }
+        continue;
       }
+      if (const auto* cast = std::get_if<bir::CastInst>(&inst); cast != nullptr) {
+        RootNameSet roots;
+        merge_pointer_roots(cast->operand, local_slot_names, pointer_aliases, roots);
+        record_local_slot_pointer_use(
+            cast->operand, block_index, local_slot_names, pointer_aliases, summary);
+        update_pointer_alias(cast->result, roots, pointer_aliases);
+        continue;
+      }
+      if (const auto* phi = std::get_if<bir::PhiInst>(&inst); phi != nullptr) {
+        RootNameSet roots;
+        for (const auto& incoming : phi->incomings) {
+          merge_pointer_roots(incoming.value, local_slot_names, pointer_aliases, roots);
+          record_local_slot_pointer_use(
+              incoming.value, block_index, local_slot_names, pointer_aliases, summary);
+        }
+        update_pointer_alias(phi->result, roots, pointer_aliases);
+        continue;
+      }
+      if (const auto* select = std::get_if<bir::SelectInst>(&inst); select != nullptr) {
+        RootNameSet roots;
+        merge_pointer_roots(select->true_value, local_slot_names, pointer_aliases, roots);
+        merge_pointer_roots(select->false_value, local_slot_names, pointer_aliases, roots);
+        record_local_slot_pointer_use(
+            select->true_value, block_index, local_slot_names, pointer_aliases, summary);
+        record_local_slot_pointer_use(
+            select->false_value, block_index, local_slot_names, pointer_aliases, summary);
+        update_pointer_alias(select->result, roots, pointer_aliases);
+        continue;
+      }
+      if (const auto* binary = std::get_if<bir::BinaryInst>(&inst); binary != nullptr) {
+        RootNameSet roots;
+        merge_pointer_roots(binary->lhs, local_slot_names, pointer_aliases, roots);
+        merge_pointer_roots(binary->rhs, local_slot_names, pointer_aliases, roots);
+        record_local_slot_pointer_use(
+            binary->lhs, block_index, local_slot_names, pointer_aliases, summary);
+        record_local_slot_pointer_use(
+            binary->rhs, block_index, local_slot_names, pointer_aliases, summary);
+        update_pointer_alias(binary->result, roots, pointer_aliases);
+      }
+    }
+
+    switch (block.terminator.kind) {
+      case bir::TerminatorKind::Return:
+        if (block.terminator.value.has_value()) {
+          record_local_slot_pointer_use(*block.terminator.value,
+                                        block_index,
+                                        local_slot_names,
+                                        pointer_aliases,
+                                        summary);
+        }
+        break;
+      case bir::TerminatorKind::CondBranch:
+        record_local_slot_pointer_use(block.terminator.condition,
+                                      block_index,
+                                      local_slot_names,
+                                      pointer_aliases,
+                                      summary);
+        break;
+      case bir::TerminatorKind::Branch:
+        break;
     }
   }
 
