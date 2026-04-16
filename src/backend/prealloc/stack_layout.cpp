@@ -45,6 +45,7 @@ void BirPreAlloc::run_stack_layout() {
     prepared_.notes.push_back(PrepareNote{
         .phase = "stack_layout",
         .message = "stack layout prepared function '" + function.name + "' with " +
+                   std::to_string(function_slots.size()) + " home slot(s) and " +
                    std::to_string(function_frame_size) + " bytes of frame space",
     });
     if (inline_asm_summary.instruction_count != 0) {
@@ -59,7 +60,8 @@ void BirPreAlloc::run_stack_layout() {
 
   prepared_.notes.push_back(PrepareNote{
       .phase = "stack_layout",
-      .message = "stack layout now emits provisional stack objects and frame slots from semantic BIR",
+      .message = "stack layout now emits provisional stack objects and only allocates home slots "
+                 "for objects that still require frame storage",
   });
 }
 

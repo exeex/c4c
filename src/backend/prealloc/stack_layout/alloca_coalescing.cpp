@@ -55,14 +55,20 @@ void apply_alloca_coalescing_hints(const bir::Function& function,
 
     const bir::LocalSlot& slot = *slot_it->second;
     const auto use_it = use_blocks.find(slot.name);
+    const bool has_explicit_uses = use_it != use_blocks.end();
     const bool used_in_single_block =
-        use_it != use_blocks.end() && use_it->second.size() <= 1;
+        has_explicit_uses && use_it->second.size() <= 1;
+    const bool is_dead_local_slot =
+        !has_explicit_uses && !slot.is_address_taken && !slot.is_byval_copy &&
+        slot.storage_kind == bir::LocalSlotStorageKind::None &&
+        !slot.phi_observation.has_value();
 
     object.address_exposed = object.address_exposed || slot.is_address_taken;
     object.requires_home_slot =
-        object.requires_home_slot || slot.is_address_taken || slot.is_byval_copy ||
-        slot.storage_kind == bir::LocalSlotStorageKind::LoweringScratch ||
-        !used_in_single_block;
+        !is_dead_local_slot &&
+        (object.requires_home_slot || slot.is_address_taken || slot.is_byval_copy ||
+         slot.storage_kind == bir::LocalSlotStorageKind::LoweringScratch ||
+         !used_in_single_block);
   }
 }
 

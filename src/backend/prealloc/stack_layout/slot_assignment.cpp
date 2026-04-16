@@ -16,6 +16,10 @@ std::vector<PreparedFrameSlot> assign_frame_slots(const std::vector<PreparedStac
   std::size_t max_alignment_bytes = 1;
 
   for (const auto& object : objects) {
+    if (!object.requires_home_slot) {
+      continue;
+    }
+
     const std::size_t size_bytes = normalize_size(object.type, object.size_bytes);
     const std::size_t align_bytes =
         normalize_alignment(object.type, object.align_bytes, size_bytes);
