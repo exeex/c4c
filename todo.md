@@ -7,20 +7,19 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed the next Step 2 stack-layout activation packet by tightening
-rooted-only `bir::PhiInst` operand bookkeeping in
+rooted-only pointer `bir::BinaryInst` bookkeeping in
 `alloca_coalescing.cpp`. The active `backend_prepare_stack_layout` test now
-proves that pure rooted pointer phi merges conservatively mark the root local
-slot `address_exposed == true`, `requires_home_slot == true`, and keep
-dedicated frame-slot storage, removing the remaining active C++ `phi`
-escape-model divergence from the retained Rust reference.
+proves that pure rooted pointer binary operands conservatively mark the root
+local slot `address_exposed == true`, `requires_home_slot == true`, and keep
+dedicated frame-slot storage, removing the remaining active C++ rooted-pointer
+binary escape-model divergence from the retained Rust reference.
 
 ## Suggested Next
 
-Continue Step 2 by comparing rooted-only `bir::BinaryInst` pointer
-bookkeeping in `alloca_coalescing.cpp` against `alloca_coalescing.rs`, then
-decide whether the active C++ rooted-pointer binary no-home-slot path should
-remain a documented bounded divergence or be tightened so pure rooted pointer
-binary uses also conservatively force exposure and home-slot storage.
+Continue Step 2 by comparing `slot_assignment.cpp` against the retained Rust
+stack-layout references, focusing on whether the current conservative bridge
+still leaves any active C++ slot-tiering or shared-slot assignment gaps after
+the rooted pointer escape-model fixes.
 
 ## Watchouts
 
@@ -37,13 +36,15 @@ binary uses also conservatively force exposure and home-slot storage.
 - rooted-only `phi` operand bookkeeping is now aligned with the retained Rust
   escape model and no longer keeps a rooted-phi no-home-slot path in the
   active C++ route
+- rooted-only pointer `binary` operands are now aligned with the retained Rust
+  escape model and no longer keep a rooted-pointer binary no-home-slot path in
+  the active C++ route
 - mixed rooted+unrooted `select` and `phi` paths are now both covered as
   conservative escape boundaries; they still force address exposure plus
   dedicated-home storage
-- rooted-only pointer `binary` bookkeeping is still looser than the retained
-  Rust model, which marks `BinOp` and `Cmp` operands as escape sites
-  generally, so any future loosening needs an explicit reference comparison
-  rather than a test-only expectation flip
+- `BinaryInst` in BIR still covers both arithmetic/binop and compare-style
+  opcodes through `operand_type`, so any future relaxation here needs an
+  explicit Rust-reference comparison rather than a test-only expectation flip
 - direct local-slot loads/stores and `CallInst::sret_storage_name` still keep
   dedicated-home requirements even when they are single-block
 - `CallInst::sret_storage_name` remains a bounded host-framework divergence
