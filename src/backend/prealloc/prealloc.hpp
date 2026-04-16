@@ -120,8 +120,7 @@ struct PreparedLivenessValue {
   PreparedValueId value_id = 0;
   std::optional<PreparedObjectId> stack_object_id;
   std::string function_name;
-  std::string source_name;
-  std::string source_kind;
+  std::string value_name;
   c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
   PreparedValueKind value_kind = PreparedValueKind::Temporary;
   bool address_taken = false;
@@ -130,12 +129,24 @@ struct PreparedLivenessValue {
   std::optional<PreparedLiveInterval> live_interval;
 };
 
+struct PreparedLivenessBlock {
+  std::string block_name;
+  std::size_t block_index = 0;
+  std::size_t start_point = 0;
+  std::size_t end_point = 0;
+  std::vector<std::size_t> predecessor_block_indices;
+  std::vector<std::size_t> successor_block_indices;
+  std::vector<PreparedValueId> live_in;
+  std::vector<PreparedValueId> live_out;
+};
+
 struct PreparedLivenessFunction {
   std::string function_name;
   std::size_t instruction_count = 0;
   std::vector<PreparedLiveInterval> intervals;
   std::vector<std::size_t> call_points;
   std::vector<std::size_t> block_loop_depth;
+  std::vector<PreparedLivenessBlock> blocks;
   std::vector<PreparedLivenessValue> values;
 };
 
@@ -256,9 +267,11 @@ struct PreparedSpillReloadOp {
 
 struct PreparedRegallocValue {
   PreparedValueId value_id = 0;
+  std::optional<PreparedObjectId> stack_object_id;
   std::string function_name;
-  std::string source_name;
-  std::string source_kind;
+  std::string value_name;
+  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
+  PreparedValueKind value_kind = PreparedValueKind::Temporary;
   PreparedRegisterClass register_class = PreparedRegisterClass::None;
   PreparedAllocationStatus allocation_status = PreparedAllocationStatus::Unallocated;
   bool spillable = true;
