@@ -17,14 +17,14 @@ while keeping the public shared contract named `prepare`
   rebuilding liveness or inventing extra contract layers
 
 ## Just Finished
-- collapsed the remaining ready-frontier binding-decision consumer path in
+- collapsed the remaining ready-frontier aggregate membership-count check in
   `tests/backend/backend_prepare_entry_contract_test.cpp` onto
-  `RegallocBindingBatchMatch` so ready and deferred binding-frontier checks now
-  reuse one explicit batch-match surface instead of mixing direct
-  `find_regalloc_binding_decision(...)` lookups with the newer match helpers
-- kept the deferred single-point exclusion check on the same match surface by
-  asserting `decision == nullptr` while deferred batch membership still rejoins
-  through the surviving deferred summary
+  `RegallocBindingBatchMatch` so ready identity, ordering, and membership now
+  rejoin through one explicit batch-match surface instead of keeping a
+  separate ready-only aggregate helper
+- kept the helper generic enough to preserve deferred attachment counting on
+  the same match type, while still leaving deferred batch ownership on summary
+  attachments rather than recreating a ready/deferred mirror layer
 - kept the packet test-side only: no prepare-owned regalloc data model
   changes, no backend routing changes, and no public `prepare` contract rename
 - reran the delegated build plus backend subset proof for the packet and kept
@@ -32,10 +32,10 @@ while keeping the public shared contract named `prepare`
 
 ## Suggested Next
 - inspect whether the remaining ready-frontier aggregate helpers in
-  `tests/backend/backend_prepare_entry_contract_test.cpp`, especially
-  batch-count or ordering-only helpers, still deserve separate ready-only
-  surfaces now that both ready identity and ready ordering checks reuse one
-  explicit batch-match path
+  `tests/backend/backend_prepare_entry_contract_test.cpp`, especially the
+  raw `find_regalloc_binding_decision(...)` lookup that now survives mainly as
+  an internal helper for `find_regalloc_binding_batch_match(...)`, can be
+  absorbed without obscuring the one explicit binding-batch consumer surface
 - keep the next packet inside step-5 regalloc ownership cleanup in related
   tests or `src/backend/prealloc/regalloc.cpp`; do not widen into a public API
   rename, new allocation policy, MIR ingestion, or target-specific work

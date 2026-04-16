@@ -264,6 +264,10 @@ std::string_view regalloc_deferred_binding_batch_kind(
     const prepare::PreparedRegallocFunction& function,
     const prepare::PreparedRegallocDeferredBindingBatchSummary& summary);
 
+std::size_t regalloc_binding_batch_candidate_count(
+    const prepare::PreparedRegallocFunction& function,
+    const RegallocBindingBatchMatch& match);
+
 std::string_view regalloc_deferred_batch_allocation_stage(
     const RegallocDeferredBatchResolution& resolution) {
   return resolution.allocation_stage;
@@ -306,15 +310,22 @@ RegallocDeferredBatchMatch find_regalloc_deferred_binding_batch_match(
   return {};
 }
 
-std::size_t regalloc_ready_batch_candidate_count(const prepare::PreparedRegallocFunction& function,
-                                                 std::string_view binding_batch_kind) {
-  std::size_t total = 0;
-  for (const auto& decision : function.binding_sequence) {
-    if (decision.binding_batch_kind == binding_batch_kind) {
-      ++total;
+std::size_t regalloc_binding_batch_candidate_count(
+    const prepare::PreparedRegallocFunction& function,
+    const RegallocBindingBatchMatch& match) {
+  if (match.decision != nullptr) {
+    std::size_t total = 0;
+    for (const auto& decision : function.binding_sequence) {
+      if (decision.binding_batch_kind == match.kind) {
+        ++total;
+      }
     }
+    return total;
   }
-  return total;
+  if (match.deferred.summary != nullptr) {
+    return match.deferred.summary->attachments.size();
+  }
+  return 0;
 }
 
 std::size_t regalloc_deferred_batch_candidate_count(
@@ -1874,10 +1885,10 @@ int main() {
     return fail(
         "semantic-BIR regalloc should keep ready frontier ordering owned by binding_sequence instead of publishing a duplicate ready summary mirror");
   }
-  if (regalloc_ready_batch_candidate_count(*regalloc_function, "call_boundary_binding_batch") != 3 ||
-      regalloc_ready_batch_candidate_count(*regalloc_function, "local_reuse_binding_batch") != 3) {
+  if (regalloc_binding_batch_candidate_count(*regalloc_function, carry_binding_batch) != 3 ||
+      regalloc_binding_batch_candidate_count(*regalloc_function, window_binding_batch) != 3) {
     return fail(
-        "semantic-BIR regalloc should keep ready frontier membership counts owned by binding_sequence instead of publishing a duplicate ready summary mirror");
+        "semantic-BIR regalloc should keep ready frontier membership counts on the same binding-batch match surface that rejoins ready batch identity and ordering through binding_sequence");
   }
   if (regalloc_deferred_batch_identity(
           deferred_access_window_binding_batch.resolution.join,
