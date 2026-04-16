@@ -2,55 +2,9 @@
 
 #include <algorithm>
 
-// Execution note: this file is still a scaffold.
-// Follow ref/claudes-c-compiler/src/backend/liveness.rs for the intended
-// liveness/dataflow analysis shape.
-
 namespace c4c::backend::prepare {
 
 namespace {
-
-enum class LivenessAccessKind {
-  None,
-  DirectRead,
-  DirectWrite,
-  AddressedAccess,
-  CallArgumentExposure,
-};
-
-struct LivenessObjectAccessSummary {
-  std::size_t direct_read_count = 0;
-  std::size_t direct_write_count = 0;
-  std::size_t addressed_access_count = 0;
-  std::size_t call_arg_exposure_count = 0;
-  bool has_access_window = false;
-  std::size_t first_access_instruction_index = 0;
-  std::size_t last_access_instruction_index = 0;
-  LivenessAccessKind first_access_kind = LivenessAccessKind::None;
-  LivenessAccessKind last_access_kind = LivenessAccessKind::None;
-  std::vector<std::size_t> call_instruction_indices;
-};
-
-void record_access(LivenessObjectAccessSummary& summary,
-                   std::size_t instruction_index,
-                   LivenessAccessKind access_kind) {
-  if (!summary.has_access_window) {
-    summary.has_access_window = true;
-    summary.first_access_instruction_index = instruction_index;
-    summary.first_access_kind = access_kind;
-  }
-  summary.last_access_instruction_index = instruction_index;
-  summary.last_access_kind = access_kind;
-}
-
-std::string_view liveness_contract_kind(std::string_view source_kind) {
-  if (source_kind == "address_taken_local_slot" || source_kind == "sret_param" ||
-      source_kind == "byval_param" || source_kind == "call_result_sret" ||
-      source_kind == "va_arg_aggregate_result") {
-    return "address_exposed_storage";
-  }
-  return "value_storage";
-}
 
 bool memory_address_targets_object(const std::optional<bir::MemoryAddress>& address,
                                    std::string_view source_name) {
@@ -62,117 +16,14 @@ bool named_value_targets_object(const bir::Value& value, std::string_view source
   return value.kind == bir::Value::Kind::Named && value.name == source_name;
 }
 
-std::string_view liveness_access_kind_name(LivenessAccessKind access_kind) {
-  switch (access_kind) {
-    case LivenessAccessKind::None:
-      return "none";
-    case LivenessAccessKind::DirectRead:
-      return "direct_read";
-    case LivenessAccessKind::DirectWrite:
-      return "direct_write";
-    case LivenessAccessKind::AddressedAccess:
-      return "addressed_access";
-    case LivenessAccessKind::CallArgumentExposure:
-      return "call_argument_exposure";
+PreparedValueKind prepared_value_kind_from_source(std::string_view source_kind) {
+  if (source_kind == "call_result_sret") {
+    return PreparedValueKind::CallResult;
   }
-  return "unknown";
-}
-
-std::string_view liveness_access_shape_name(const LivenessObjectAccessSummary& summary) {
-  const bool has_direct_read = summary.direct_read_count != 0;
-  const bool has_direct_write = summary.direct_write_count != 0;
-  const bool has_addressed_access = summary.addressed_access_count != 0;
-  const bool has_call_arg_exposure = summary.call_arg_exposure_count != 0;
-  const std::size_t active_category_count = static_cast<std::size_t>(has_direct_read) +
-                                            static_cast<std::size_t>(has_direct_write) +
-                                            static_cast<std::size_t>(has_addressed_access) +
-                                            static_cast<std::size_t>(has_call_arg_exposure);
-  if (active_category_count == 0) {
-    return "no_access";
+  if (source_kind == "byval_param" || source_kind == "sret_param") {
+    return PreparedValueKind::Parameter;
   }
-  if (active_category_count == 1) {
-    if (has_direct_read) {
-      return "direct_read_only";
-    }
-    if (has_direct_write) {
-      return "direct_write_only";
-    }
-    if (has_addressed_access) {
-      return "addressed_access_only";
-    }
-    return "call_argument_exposure_only";
-  }
-  if (active_category_count == 2 && has_direct_read && has_direct_write &&
-      !has_addressed_access && !has_call_arg_exposure) {
-    return "direct_read_write";
-  }
-  return "mixed_access_shape";
-}
-
-LivenessObjectAccessSummary summarize_object_accesses(const bir::Function& function,
-                                                      std::string_view source_name) {
-  LivenessObjectAccessSummary summary;
-  std::size_t instruction_index = 0;
-
-  for (const auto& block : function.blocks) {
-    for (const auto& inst : block.insts) {
-      if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst); load != nullptr) {
-        if (load->slot_name == source_name) {
-          ++summary.direct_read_count;
-          record_access(summary, instruction_index, LivenessAccessKind::DirectRead);
-        }
-        if (memory_address_targets_object(load->address, source_name)) {
-          ++summary.addressed_access_count;
-          record_access(summary, instruction_index, LivenessAccessKind::AddressedAccess);
-        }
-        ++instruction_index;
-        continue;
-      }
-
-      if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr) {
-        if (store->slot_name == source_name) {
-          ++summary.direct_write_count;
-          record_access(summary, instruction_index, LivenessAccessKind::DirectWrite);
-        }
-        if (memory_address_targets_object(store->address, source_name)) {
-          ++summary.addressed_access_count;
-          record_access(summary, instruction_index, LivenessAccessKind::AddressedAccess);
-        }
-        ++instruction_index;
-        continue;
-      }
-
-      const auto* call = std::get_if<bir::CallInst>(&inst);
-      if (call == nullptr) {
-        ++instruction_index;
-        continue;
-      }
-
-      summary.call_instruction_indices.push_back(instruction_index);
-      for (const auto& arg : call->args) {
-        if (named_value_targets_object(arg, source_name)) {
-          ++summary.call_arg_exposure_count;
-          record_access(summary, instruction_index, LivenessAccessKind::CallArgumentExposure);
-        }
-      }
-      ++instruction_index;
-    }
-  }
-
-  return summary;
-}
-
-bool crosses_call_boundary(const LivenessObjectAccessSummary& summary) {
-  if (!summary.has_access_window ||
-      summary.first_access_instruction_index == summary.last_access_instruction_index) {
-    return false;
-  }
-  return std::any_of(summary.call_instruction_indices.begin(),
-                     summary.call_instruction_indices.end(),
-                     [&](std::size_t instruction_index) {
-                       return instruction_index > summary.first_access_instruction_index &&
-                              instruction_index < summary.last_access_instruction_index;
-                     });
+  return PreparedValueKind::StackObject;
 }
 
 std::size_t count_function_instructions(const bir::Function& function) {
@@ -183,55 +34,221 @@ std::size_t count_function_instructions(const bir::Function& function) {
   return instruction_count;
 }
 
+std::vector<std::size_t> collect_call_instruction_indices(const bir::Function& function) {
+  std::vector<std::size_t> call_indices;
+  std::size_t instruction_index = 0;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (std::holds_alternative<bir::CallInst>(inst)) {
+        call_indices.push_back(instruction_index);
+      }
+      ++instruction_index;
+    }
+  }
+  return call_indices;
+}
+
+PreparedLivenessBlock build_liveness_block(const bir::Block& block,
+                                           std::size_t block_index,
+                                           std::size_t instruction_start_index) {
+  PreparedLivenessBlock prepared_block{
+      .block_name = block.label,
+      .block_index = block_index,
+      .instruction_start_index = instruction_start_index,
+      .instruction_end_index = instruction_start_index + block.insts.size(),
+  };
+  return prepared_block;
+}
+
+PreparedLivenessValue build_liveness_value(const bir::Function& function,
+                                           const PreparedStackObject& object,
+                                           PreparedValueId value_id,
+                                           std::size_t function_instruction_count,
+                                           const std::vector<std::size_t>& call_instruction_indices) {
+  PreparedLivenessValue value{
+      .value_id = value_id,
+      .stack_object_id = object.object_id,
+      .function_name = object.function_name,
+      .source_name = object.source_name,
+      .source_kind = object.source_kind,
+      .type = object.type,
+      .value_kind = prepared_value_kind_from_source(object.source_kind),
+      .address_taken = object.address_exposed,
+      .requires_home_slot = object.requires_home_slot,
+  };
+
+  std::size_t block_index = 0;
+  std::size_t linear_instruction_index = 0;
+  bool has_definition = false;
+  bool has_any_use = false;
+  std::size_t first_use_instruction_index = 0;
+  std::size_t last_use_instruction_index = 0;
+
+  for (const auto& block : function.blocks) {
+    std::size_t block_instruction_index = 0;
+    for (const auto& inst : block.insts) {
+      if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst); load != nullptr) {
+        if (load->slot_name == object.source_name) {
+          value.use_sites.push_back(PreparedLivenessUseSite{
+              .block_index = block_index,
+              .instruction_index = linear_instruction_index,
+              .operand_index = 0,
+              .use_kind = PreparedUseKind::Read,
+          });
+          if (!has_any_use) {
+            first_use_instruction_index = linear_instruction_index;
+            has_any_use = true;
+          }
+          last_use_instruction_index = linear_instruction_index;
+        }
+        if (memory_address_targets_object(load->address, object.source_name)) {
+          value.use_sites.push_back(PreparedLivenessUseSite{
+              .block_index = block_index,
+              .instruction_index = linear_instruction_index,
+              .operand_index = 1,
+              .use_kind = PreparedUseKind::Address,
+          });
+          value.address_taken = true;
+          if (!has_any_use) {
+            first_use_instruction_index = linear_instruction_index;
+            has_any_use = true;
+          }
+          last_use_instruction_index = linear_instruction_index;
+        }
+      } else if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr) {
+        if (store->slot_name == object.source_name) {
+          value.use_sites.push_back(PreparedLivenessUseSite{
+              .block_index = block_index,
+              .instruction_index = linear_instruction_index,
+              .operand_index = 0,
+              .use_kind = PreparedUseKind::Write,
+          });
+          if (!has_definition) {
+            value.definition_site = PreparedLivenessDefSite{
+                .block_index = block_index,
+                .instruction_index = linear_instruction_index,
+                .definition_kind = "store_local",
+            };
+            has_definition = true;
+          }
+          if (!has_any_use) {
+            first_use_instruction_index = linear_instruction_index;
+            has_any_use = true;
+          }
+          last_use_instruction_index = linear_instruction_index;
+        }
+        if (memory_address_targets_object(store->address, object.source_name)) {
+          value.use_sites.push_back(PreparedLivenessUseSite{
+              .block_index = block_index,
+              .instruction_index = linear_instruction_index,
+              .operand_index = 1,
+              .use_kind = PreparedUseKind::Address,
+          });
+          value.address_taken = true;
+          if (!has_any_use) {
+            first_use_instruction_index = linear_instruction_index;
+            has_any_use = true;
+          }
+          last_use_instruction_index = linear_instruction_index;
+        }
+      } else if (const auto* call = std::get_if<bir::CallInst>(&inst); call != nullptr) {
+        for (std::size_t operand_index = 0; operand_index < call->args.size(); ++operand_index) {
+          if (!named_value_targets_object(call->args[operand_index], object.source_name)) {
+            continue;
+          }
+          value.use_sites.push_back(PreparedLivenessUseSite{
+              .block_index = block_index,
+              .instruction_index = linear_instruction_index,
+              .operand_index = operand_index,
+              .use_kind = PreparedUseKind::CallArgument,
+          });
+          if (!has_any_use) {
+            first_use_instruction_index = linear_instruction_index;
+            has_any_use = true;
+          }
+          last_use_instruction_index = linear_instruction_index;
+        }
+      }
+
+      ++block_instruction_index;
+      ++linear_instruction_index;
+    }
+    ++block_index;
+  }
+
+  if (has_any_use) {
+    value.live_segments.push_back(PreparedLivenessLiveSegment{
+        .start_block_index = value.definition_site.has_value() ? value.definition_site->block_index : 0,
+        .start_instruction_index =
+            value.definition_site.has_value() ? value.definition_site->instruction_index
+                                              : first_use_instruction_index,
+        .end_block_index = function.blocks.empty() ? 0 : block_index - 1,
+        .end_instruction_index = last_use_instruction_index,
+    });
+
+    std::copy_if(call_instruction_indices.begin(),
+                 call_instruction_indices.end(),
+                 std::back_inserter(value.crossed_call_instruction_indices),
+                 [&](std::size_t instruction_index) {
+                   const auto segment_start = value.live_segments.front().start_instruction_index;
+                   return instruction_index > segment_start &&
+                          instruction_index < value.live_segments.front().end_instruction_index;
+                 });
+    value.crosses_call = !value.crossed_call_instruction_indices.empty();
+  }
+
+  if (!has_definition && function_instruction_count != 0) {
+    value.definition_site = PreparedLivenessDefSite{
+        .block_index = 0,
+        .instruction_index = 0,
+        .definition_kind = "function_entry",
+    };
+  }
+
+  return value;
+}
+
 }  // namespace
 
 void BirPreAlloc::run_liveness() {
   prepared_.completed_phases.push_back("liveness");
   prepared_.liveness.functions.clear();
-  prepared_.liveness.objects.clear();
   prepared_.liveness.functions.reserve(prepared_.module.functions.size());
-  prepared_.liveness.objects.reserve(prepared_.stack_layout.objects.size());
 
+  PreparedValueId next_value_id = 0;
   for (const auto& function : prepared_.module.functions) {
     PreparedLivenessFunction prepared_function{
         .function_name = function.name,
         .instruction_count = count_function_instructions(function),
+        .call_instruction_count = 0,
+        .call_instruction_indices = collect_call_instruction_indices(function),
     };
-    std::size_t linear_instruction_index = 0;
-    for (const auto& block : function.blocks) {
-      for (const auto& inst : block.insts) {
-        if (std::holds_alternative<bir::CallInst>(inst)) {
-          prepared_function.call_instruction_indices.push_back(linear_instruction_index);
-        }
-        ++linear_instruction_index;
-      }
-    }
-
     prepared_function.call_instruction_count = prepared_function.call_instruction_indices.size();
+
+    std::size_t instruction_start_index = 0;
+    for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+      const auto& block = function.blocks[block_index];
+      auto prepared_block = build_liveness_block(block, block_index, instruction_start_index);
+      if (block_index != 0) {
+        prepared_block.predecessor_block_indices.push_back(block_index - 1);
+      }
+      if (block_index + 1 < function.blocks.size()) {
+        prepared_block.successor_block_indices.push_back(block_index + 1);
+      }
+      instruction_start_index += block.insts.size();
+      prepared_function.blocks.push_back(std::move(prepared_block));
+    }
 
     for (const auto& object : prepared_.stack_layout.objects) {
       if (object.function_name != function.name) {
         continue;
       }
-      auto summary = summarize_object_accesses(function, object.source_name);
-      prepared_.liveness.objects.push_back(PreparedLivenessObject{
-          .function_name = object.function_name,
-          .source_name = object.source_name,
-          .source_kind = object.source_kind,
-          .contract_kind = std::string(liveness_contract_kind(object.source_kind)),
-          .access_shape = std::string(liveness_access_shape_name(summary)),
-          .first_access_kind = std::string(liveness_access_kind_name(summary.first_access_kind)),
-          .last_access_kind = std::string(liveness_access_kind_name(summary.last_access_kind)),
-          .direct_read_count = summary.direct_read_count,
-          .direct_write_count = summary.direct_write_count,
-          .addressed_access_count = summary.addressed_access_count,
-          .call_arg_exposure_count = summary.call_arg_exposure_count,
-          .has_access_window = summary.has_access_window,
-          .first_access_instruction_index = summary.first_access_instruction_index,
-          .last_access_instruction_index = summary.last_access_instruction_index,
-          .crosses_call_boundary = crosses_call_boundary(summary),
-      });
-      ++prepared_function.object_count;
+      prepared_function.values.push_back(build_liveness_value(
+          function,
+          object,
+          next_value_id++,
+          prepared_function.instruction_count,
+          prepared_function.call_instruction_indices));
     }
 
     prepared_.liveness.functions.push_back(std::move(prepared_function));
@@ -240,12 +257,9 @@ void BirPreAlloc::run_liveness() {
   prepared_.notes.push_back(PrepareNote{
       .phase = "liveness",
       .message =
-          "liveness now classifies prepared stack-layout objects into value-storage "
-          "or address-exposed storage contracts, plus direct read/write, "
-          "addressed-access, and call-argument exposure counts, compact "
-          "access-shape summaries, and instruction-order access windows with "
-          "call-crossing cues for downstream prepared-BIR consumers; full "
-          "live-interval computation remains future work",
+          "liveness now publishes per-function value records with def/use sites, "
+          "live segments, block summaries, and crossed-call observations as the "
+          "new prepared-BIR lifetime contract",
   });
 }
 

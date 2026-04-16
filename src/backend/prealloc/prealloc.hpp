@@ -3,6 +3,7 @@
 #include "../bir/bir.hpp"
 #include "../target.hpp"
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -10,6 +11,10 @@
 #include <vector>
 
 namespace c4c::backend::prepare {
+
+using PreparedObjectId = std::size_t;
+using PreparedValueId = std::size_t;
+using PreparedFrameSlotId = std::size_t;
 
 struct PrepareOptions {
   bool run_legalize = true;
@@ -24,142 +29,283 @@ struct PrepareNote {
 };
 
 struct PreparedStackObject {
+  PreparedObjectId object_id = 0;
   std::string function_name;
   std::string source_name;
   std::string source_kind;
   c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
+  bool address_exposed = false;
+  bool requires_home_slot = false;
+};
+
+struct PreparedFrameSlot {
+  PreparedFrameSlotId slot_id = 0;
+  PreparedObjectId object_id = 0;
+  std::string function_name;
+  std::size_t offset_bytes = 0;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
+  bool fixed_location = false;
 };
 
 struct PreparedStackLayout {
   std::vector<PreparedStackObject> objects;
+  std::vector<PreparedFrameSlot> frame_slots;
+  std::size_t frame_size_bytes = 0;
+  std::size_t frame_alignment_bytes = 0;
 };
 
-struct PreparedLivenessObject {
+enum class PreparedValueKind {
+  StackObject,
+  Parameter,
+  CallResult,
+  Phi,
+  Temporary,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_value_kind_name(PreparedValueKind kind) {
+  switch (kind) {
+    case PreparedValueKind::StackObject:
+      return "stack_object";
+    case PreparedValueKind::Parameter:
+      return "parameter";
+    case PreparedValueKind::CallResult:
+      return "call_result";
+    case PreparedValueKind::Phi:
+      return "phi";
+    case PreparedValueKind::Temporary:
+      return "temporary";
+  }
+  return "unknown";
+}
+
+enum class PreparedUseKind {
+  Read,
+  Write,
+  ReadWrite,
+  Address,
+  CallArgument,
+  ReturnValue,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_use_kind_name(PreparedUseKind kind) {
+  switch (kind) {
+    case PreparedUseKind::Read:
+      return "read";
+    case PreparedUseKind::Write:
+      return "write";
+    case PreparedUseKind::ReadWrite:
+      return "read_write";
+    case PreparedUseKind::Address:
+      return "address";
+    case PreparedUseKind::CallArgument:
+      return "call_argument";
+    case PreparedUseKind::ReturnValue:
+      return "return_value";
+  }
+  return "unknown";
+}
+
+struct PreparedLivenessDefSite {
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  std::string definition_kind;
+};
+
+struct PreparedLivenessUseSite {
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  std::size_t operand_index = 0;
+  PreparedUseKind use_kind = PreparedUseKind::Read;
+};
+
+struct PreparedLivenessLiveSegment {
+  std::size_t start_block_index = 0;
+  std::size_t start_instruction_index = 0;
+  std::size_t end_block_index = 0;
+  std::size_t end_instruction_index = 0;
+};
+
+struct PreparedLivenessBlock {
+  std::string block_name;
+  std::size_t block_index = 0;
+  std::size_t instruction_start_index = 0;
+  std::size_t instruction_end_index = 0;
+  std::vector<std::size_t> predecessor_block_indices;
+  std::vector<std::size_t> successor_block_indices;
+  std::vector<PreparedValueId> defs;
+  std::vector<PreparedValueId> uses;
+  std::vector<PreparedValueId> live_in;
+  std::vector<PreparedValueId> live_out;
+};
+
+struct PreparedLivenessValue {
+  PreparedValueId value_id = 0;
+  std::optional<PreparedObjectId> stack_object_id;
   std::string function_name;
   std::string source_name;
   std::string source_kind;
-  std::string contract_kind;
-  std::string access_shape;
-  std::string first_access_kind;
-  std::string last_access_kind;
-  std::size_t direct_read_count = 0;
-  std::size_t direct_write_count = 0;
-  std::size_t addressed_access_count = 0;
-  std::size_t call_arg_exposure_count = 0;
-  bool has_access_window = false;
-  std::size_t first_access_instruction_index = 0;
-  std::size_t last_access_instruction_index = 0;
-  bool crosses_call_boundary = false;
+  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
+  PreparedValueKind value_kind = PreparedValueKind::Temporary;
+  bool address_taken = false;
+  bool requires_home_slot = false;
+  bool crosses_call = false;
+  std::optional<PreparedLivenessDefSite> definition_site;
+  std::vector<PreparedLivenessUseSite> use_sites;
+  std::vector<PreparedLivenessLiveSegment> live_segments;
+  std::vector<std::size_t> crossed_call_instruction_indices;
 };
 
 struct PreparedLivenessFunction {
   std::string function_name;
   std::size_t instruction_count = 0;
   std::size_t call_instruction_count = 0;
-  std::size_t object_count = 0;
   std::vector<std::size_t> call_instruction_indices;
+  std::vector<PreparedLivenessBlock> blocks;
+  std::vector<PreparedLivenessValue> values;
 };
 
 struct PreparedLiveness {
   std::vector<PreparedLivenessFunction> functions;
-  std::vector<PreparedLivenessObject> objects;
 };
 
-struct PreparedRegallocObject {
+enum class PreparedRegisterClass {
+  None,
+  General,
+  Float,
+  Vector,
+  AggregateAddress,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_register_class_name(
+    PreparedRegisterClass reg_class) {
+  switch (reg_class) {
+    case PreparedRegisterClass::None:
+      return "none";
+    case PreparedRegisterClass::General:
+      return "general";
+    case PreparedRegisterClass::Float:
+      return "float";
+    case PreparedRegisterClass::Vector:
+      return "vector";
+    case PreparedRegisterClass::AggregateAddress:
+      return "aggregate_address";
+  }
+  return "unknown";
+}
+
+enum class PreparedAllocationStatus {
+  Unallocated,
+  AssignedRegister,
+  AssignedStackSlot,
+  Split,
+  Spilled,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_allocation_status_name(
+    PreparedAllocationStatus status) {
+  switch (status) {
+    case PreparedAllocationStatus::Unallocated:
+      return "unallocated";
+    case PreparedAllocationStatus::AssignedRegister:
+      return "assigned_register";
+    case PreparedAllocationStatus::AssignedStackSlot:
+      return "assigned_stack_slot";
+    case PreparedAllocationStatus::Split:
+      return "split";
+    case PreparedAllocationStatus::Spilled:
+      return "spilled";
+  }
+  return "unknown";
+}
+
+enum class PreparedSpillReloadOpKind {
+  Spill,
+  Reload,
+  Rematerialize,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_spill_reload_op_kind_name(
+    PreparedSpillReloadOpKind kind) {
+  switch (kind) {
+    case PreparedSpillReloadOpKind::Spill:
+      return "spill";
+    case PreparedSpillReloadOpKind::Reload:
+      return "reload";
+    case PreparedSpillReloadOpKind::Rematerialize:
+      return "rematerialize";
+  }
+  return "unknown";
+}
+
+struct PreparedPhysicalRegisterAssignment {
+  PreparedRegisterClass reg_class = PreparedRegisterClass::None;
+  std::string register_name;
+};
+
+struct PreparedStackSlotAssignment {
+  PreparedFrameSlotId slot_id = 0;
+  std::size_t offset_bytes = 0;
+};
+
+struct PreparedAllocationConstraint {
+  PreparedValueId value_id = 0;
+  PreparedRegisterClass register_class = PreparedRegisterClass::None;
+  bool requires_register = false;
+  bool requires_home_slot = false;
+  bool cannot_cross_call = false;
+  std::optional<std::string> fixed_register_name;
+  std::vector<std::string> preferred_register_names;
+  std::vector<std::string> forbidden_register_names;
+};
+
+struct PreparedInterferenceEdge {
+  PreparedValueId lhs_value_id = 0;
+  PreparedValueId rhs_value_id = 0;
+  std::string reason;
+};
+
+struct PreparedMoveResolution {
+  PreparedValueId from_value_id = 0;
+  PreparedValueId to_value_id = 0;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  std::string reason;
+};
+
+struct PreparedSpillReloadOp {
+  PreparedValueId value_id = 0;
+  PreparedSpillReloadOpKind op_kind = PreparedSpillReloadOpKind::Spill;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+};
+
+struct PreparedRegallocValue {
+  PreparedValueId value_id = 0;
   std::string function_name;
   std::string source_name;
   std::string source_kind;
-  std::string contract_kind;
-  std::string allocation_kind;
-  std::string priority_bucket;
-  std::string spill_restore_locality_hint;
-  std::string spill_sync_hint;
-  std::string home_slot_stability_hint;
-  std::string allocation_state_kind;
-  std::string reservation_kind;
-  std::string reservation_scope;
-  std::string home_slot_mode;
-  std::string sync_policy;
-  std::string binding_frontier_kind;
-  std::string deferred_reason;
-  std::string access_shape;
-  std::string first_access_kind;
-  std::string last_access_kind;
-  std::size_t direct_read_count = 0;
-  std::size_t direct_write_count = 0;
-  std::size_t addressed_access_count = 0;
-  std::size_t call_arg_exposure_count = 0;
-  bool has_access_window = false;
-  std::size_t first_access_instruction_index = 0;
-  std::size_t last_access_instruction_index = 0;
-  bool crosses_call_boundary = false;
-};
-
-struct PreparedRegallocAllocationDecision {
-  std::string source_kind;
-  std::string source_name;
-  std::string allocation_stage;
-  std::string reservation_kind;
-  std::string reservation_scope;
-  std::string home_slot_mode;
-  std::string sync_policy;
-};
-
-struct PreparedRegallocReservationSummary {
-  std::string allocation_stage;
-  std::size_t candidate_count = 0;
-  std::size_t overlapping_window_count = 0;
-  std::size_t unobserved_window_count = 0;
-  std::size_t call_boundary_window_count = 0;
-  std::size_t single_instruction_window_count = 0;
-  std::size_t adjacent_instruction_window_count = 0;
-  std::size_t wide_instruction_window_count = 0;
-  std::size_t stable_home_slot_required_count = 0;
-  std::size_t stable_home_slot_preferred_count = 0;
-  std::size_t single_use_home_slot_ok_count = 0;
-  std::size_t restore_before_read_count = 0;
-  std::size_t writeback_after_write_count = 0;
-  std::size_t sync_on_read_write_boundaries_count = 0;
-  std::string pressure_signal;
-  std::string collision_signal;
-};
-
-struct PreparedRegallocContentionSummary {
-  std::string allocation_stage;
-  std::string follow_up_category;
-  std::string sync_coordination_category;
-  std::string home_slot_category;
-  std::string window_coordination_category;
-};
-
-struct PreparedRegallocBindingDecision {
-  std::string source_kind;
-  std::string source_name;
-  std::string binding_batch_kind;
-  std::size_t binding_order_index = 0;
-};
-
-struct PreparedRegallocDeferredBindingAttachment {
-  std::size_t object_index = 0;
-};
-
-struct PreparedRegallocDeferredBindingBatchSummary {
-  std::string deferred_reason;
-  std::vector<PreparedRegallocDeferredBindingAttachment> attachments;
+  PreparedRegisterClass register_class = PreparedRegisterClass::None;
+  PreparedAllocationStatus allocation_status = PreparedAllocationStatus::Unallocated;
+  bool spillable = true;
+  bool requires_home_slot = false;
+  bool crosses_call = false;
+  std::size_t priority = 0;
+  double spill_weight = 0.0;
+  std::vector<PreparedLivenessLiveSegment> live_segments;
+  std::optional<PreparedPhysicalRegisterAssignment> assigned_register;
+  std::optional<PreparedStackSlotAssignment> assigned_stack_slot;
 };
 
 struct PreparedRegallocFunction {
   std::string function_name;
-  std::vector<PreparedRegallocObject> objects;
-  std::vector<PreparedRegallocAllocationDecision> allocation_sequence;
-  std::vector<PreparedRegallocReservationSummary> reservation_summary;
-  std::vector<PreparedRegallocContentionSummary> contention_summary;
-  std::vector<PreparedRegallocBindingDecision> binding_sequence;
-  std::vector<PreparedRegallocDeferredBindingBatchSummary> deferred_binding_batches;
-  std::size_t register_candidate_count = 0;
-  std::size_t fixed_stack_storage_count = 0;
+  std::vector<PreparedRegallocValue> values;
+  std::vector<PreparedAllocationConstraint> constraints;
+  std::vector<PreparedInterferenceEdge> interference;
+  std::vector<PreparedMoveResolution> move_resolution;
+  std::vector<PreparedSpillReloadOp> spill_reload_ops;
 };
 
 struct PreparedRegalloc {
@@ -183,7 +329,8 @@ enum class PreparedBirInvariant {
   NoPhiNodes,
 };
 
-[[nodiscard]] constexpr std::string_view prepared_bir_invariant_name(PreparedBirInvariant invariant) {
+[[nodiscard]] constexpr std::string_view prepared_bir_invariant_name(
+    PreparedBirInvariant invariant) {
   switch (invariant) {
     case PreparedBirInvariant::NoTargetFacingI1:
       return "no_target_facing_i1";
@@ -232,24 +379,10 @@ class BirPreAlloc {
   PreparedBirModule run();
 
  private:
-  const PreparedRegallocObject* find_regalloc_object(std::string_view source_kind,
-                                                     std::string_view source_name) const;
-  PreparedRegallocObject* find_mutable_regalloc_object(std::string_view source_kind,
-                                                       std::string_view source_name);
-  const PreparedRegallocAllocationDecision* find_allocation_decision(
-      std::string_view source_kind,
-      std::string_view source_name) const;
-  const PreparedRegallocContentionSummary* find_contention_summary(
-      std::string_view allocation_stage) const;
-  PreparedRegallocReservationSummary summarize_reservation_stage(
-      std::string_view allocation_stage) const;
-  void populate_object_allocation_state();
-  void populate_binding_sequence();
   void note(std::string_view message);
 
   PrepareOptions options_;
   PreparedBirModule prepared_;
-  PreparedRegallocFunction* current_regalloc_function_ = nullptr;
 };
 
 PreparedBirModule prepare_semantic_bir_module_with_options(
