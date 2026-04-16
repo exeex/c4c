@@ -192,6 +192,92 @@ prepare::PreparedBirModule prepare_addressed_local_slot_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_packed_frame_slot_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_packed_frame_slot_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.pack.small0",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.pack.big",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.pack.small1",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.pack.small0",
+      .value = bir::Value::immediate_i32(1),
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.pack.big",
+      .value = bir::Value::immediate_i64(2),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.pack.small1",
+      .value = bir::Value::immediate_i32(3),
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "lv.pack.big.loaded"),
+      .slot_name = "lv.pack.big",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "lv.pack.small0.loaded"),
+      .slot_name = "lv.pack.small0",
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "lv.pack.small1.loaded"),
+      .slot_name = "lv.pack.small1",
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "lv.pack.sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "lv.pack.small0.loaded"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "lv.pack.small1.loaded"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "lv.pack.sum"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_call_escaped_local_slot_module() {
   bir::Module module;
 
@@ -989,6 +1075,39 @@ int check_addressed_local_slot_activation(const prepare::PreparedBirModule& prep
   return 0;
 }
 
+int check_packed_frame_slot_activation(const prepare::PreparedBirModule& prepared) {
+  const auto* small0_object = find_stack_object(prepared, "lv.pack.small0");
+  const auto* big_object = find_stack_object(prepared, "lv.pack.big");
+  const auto* small1_object = find_stack_object(prepared, "lv.pack.small1");
+  if (small0_object == nullptr || big_object == nullptr || small1_object == nullptr) {
+    return fail("expected all packed-frame local slots to produce stack-layout objects");
+  }
+
+  const auto* small0_slot = find_frame_slot(prepared, small0_object->object_id);
+  const auto* big_slot = find_frame_slot(prepared, big_object->object_id);
+  const auto* small1_slot = find_frame_slot(prepared, small1_object->object_id);
+  if (small0_slot == nullptr || big_slot == nullptr || small1_slot == nullptr) {
+    return fail("expected all packed-frame local slots to receive frame-slot storage");
+  }
+
+  if (big_slot->offset_bytes != 0) {
+    return fail("expected the widest aligned home slot to be packed at frame offset 0");
+  }
+  if (small0_slot->offset_bytes != 8 || small1_slot->offset_bytes != 12) {
+    return fail("expected smaller home slots to pack after the widest aligned slot");
+  }
+
+  if (prepared.stack_layout.frame_slots.size() != 3) {
+    return fail("expected packed-frame activation to keep exactly three frame slots");
+  }
+  if (prepared.stack_layout.frame_size_bytes != 16 ||
+      prepared.stack_layout.frame_alignment_bytes != 8) {
+    return fail("expected packed-frame activation to reduce frame metrics to the packed layout");
+  }
+
+  return 0;
+}
+
 int check_call_escaped_local_slot_activation(const prepare::PreparedBirModule& prepared) {
   const auto* root_object = find_stack_object(prepared, "lv.call.root");
   if (root_object == nullptr) {
@@ -1333,6 +1452,11 @@ int main() {
 
   const auto addressed_prepared = prepare_addressed_local_slot_module();
   if (const int rc = check_addressed_local_slot_activation(addressed_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto packed_frame_prepared = prepare_packed_frame_slot_module();
+  if (const int rc = check_packed_frame_slot_activation(packed_frame_prepared); rc != 0) {
     return rc;
   }
 
