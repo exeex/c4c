@@ -232,7 +232,7 @@ void record_call_pointer_uses(const bir::CallInst& call,
           merge_pointer_roots(incoming.value, local_slot_names, pointer_aliases, roots);
           saw_unrooted_pointer |=
               is_unrooted_pointer_value(incoming.value, local_slot_names, pointer_aliases);
-          record_local_slot_pointer_use(
+          record_local_slot_pointer_escape(
               incoming.value,
               incoming_block_index,
               local_slot_names,

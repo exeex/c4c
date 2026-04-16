@@ -1774,17 +1774,19 @@ int check_phi_single_block_local_slot_activation(const prepare::PreparedBirModul
   if (root_object == nullptr) {
     return fail("expected the single-block phi root local slot to produce a stack-layout object");
   }
-  if (root_object->address_exposed) {
-    return fail("expected non-escaping rooted phi bookkeeping to keep the root slot non-exposed");
+  if (!root_object->address_exposed) {
+    return fail("expected rooted-only phi merges to expose the root slot");
   }
-  if (root_object->requires_home_slot) {
-    return fail(
-        "expected predecessor-attributed rooted phi bookkeeping to keep single-block no-home-slot behavior");
+  if (!root_object->requires_home_slot) {
+    return fail("expected rooted-only phi merges to keep a dedicated home-slot requirement");
   }
 
   const auto* root_slot = find_frame_slot(prepared, root_object->object_id);
-  if (root_slot != nullptr) {
-    return fail("expected the single-block rooted phi path to skip dedicated frame-slot assignment");
+  if (root_slot == nullptr) {
+    return fail("expected the single-block rooted phi path to receive frame-slot storage");
+  }
+  if (root_slot->size_bytes != 8 || root_slot->align_bytes != 8) {
+    return fail("expected the single-block rooted phi path to preserve its frame-slot layout");
   }
 
   return 0;
@@ -1795,17 +1797,19 @@ int check_phi_multi_block_local_slot_activation(const prepare::PreparedBirModule
   if (root_object == nullptr) {
     return fail("expected the multi-block phi root local slot to produce a stack-layout object");
   }
-  if (root_object->address_exposed) {
-    return fail("expected multi-block rooted phi bookkeeping to keep the root slot non-exposed");
+  if (!root_object->address_exposed) {
+    return fail("expected rooted-only multi-block phi merges to expose the root slot");
   }
-  if (root_object->requires_home_slot) {
-    return fail(
-        "expected multi-block rooted phi bookkeeping without direct access to skip the dedicated home-slot requirement");
+  if (!root_object->requires_home_slot) {
+    return fail("expected rooted-only multi-block phi merges to keep a dedicated home-slot requirement");
   }
 
   const auto* root_slot = find_frame_slot(prepared, root_object->object_id);
-  if (root_slot != nullptr) {
-    return fail("expected the multi-block rooted phi path to skip dedicated frame-slot assignment");
+  if (root_slot == nullptr) {
+    return fail("expected the multi-block rooted phi path to receive frame-slot storage");
+  }
+  if (root_slot->size_bytes != 8 || root_slot->align_bytes != 8) {
+    return fail("expected the multi-block rooted phi path to preserve its frame-slot layout");
   }
 
   return 0;
