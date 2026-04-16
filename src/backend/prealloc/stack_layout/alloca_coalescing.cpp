@@ -271,9 +271,9 @@ void record_call_pointer_uses(const bir::CallInst& call,
           record_local_slot_pointer_use(
               select->rhs, block_index, local_slot_names, pointer_aliases, summary);
         }
-        record_local_slot_pointer_use(
+        record_local_slot_pointer_escape(
             select->true_value, block_index, local_slot_names, pointer_aliases, summary);
-        record_local_slot_pointer_use(
+        record_local_slot_pointer_escape(
             select->false_value, block_index, local_slot_names, pointer_aliases, summary);
         if (!roots.empty() && saw_unrooted_pointer) {
           record_root_pointer_escape(roots, block_index, summary);

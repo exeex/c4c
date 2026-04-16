@@ -1534,16 +1534,19 @@ int check_rooted_select_local_slot_activation(const prepare::PreparedBirModule& 
   if (root_object == nullptr) {
     return fail("expected the rooted-select root local slot to produce a stack-layout object");
   }
-  if (root_object->address_exposed) {
-    return fail("expected a rooted-only pointer select without later escape to keep the root slot non-exposed");
+  if (!root_object->address_exposed) {
+    return fail("expected rooted-only pointer select value merges to expose the root slot");
   }
-  if (root_object->requires_home_slot) {
-    return fail("expected rooted-only pointer select bookkeeping to skip the dedicated home-slot requirement");
+  if (!root_object->requires_home_slot) {
+    return fail("expected rooted-only pointer select value merges to keep a dedicated home-slot requirement");
   }
 
   const auto* root_slot = find_frame_slot(prepared, root_object->object_id);
-  if (root_slot != nullptr) {
-    return fail("expected the rooted-select local slot to skip dedicated frame-slot assignment");
+  if (root_slot == nullptr) {
+    return fail("expected the rooted-select local slot to receive frame-slot storage");
+  }
+  if (root_slot->size_bytes != 4 || root_slot->align_bytes != 4) {
+    return fail("expected the rooted-select local slot to preserve its frame-slot layout");
   }
 
   return 0;
