@@ -33,6 +33,8 @@ namespace {
       .align_bytes = slot.align_bytes,
       .address_exposed = slot.is_address_taken,
       .requires_home_slot = true,
+      .permanent_home_slot =
+          slot.is_address_taken || slot.is_byval_copy || slot.phi_observation.has_value(),
   };
 }
 
@@ -42,15 +44,18 @@ namespace {
   std::string_view source_kind;
   bool address_exposed = false;
   bool requires_home_slot = false;
+  bool permanent_home_slot = false;
 
   if (param.is_byval) {
     source_kind = "byval_param";
     address_exposed = true;
     requires_home_slot = true;
+    permanent_home_slot = true;
   } else if (param.is_sret) {
     source_kind = "sret_param";
     address_exposed = true;
     requires_home_slot = true;
+    permanent_home_slot = true;
   } else {
     return std::nullopt;
   }
@@ -65,6 +70,7 @@ namespace {
       .align_bytes = param.align_bytes,
       .address_exposed = address_exposed,
       .requires_home_slot = requires_home_slot,
+      .permanent_home_slot = permanent_home_slot,
   };
 }
 

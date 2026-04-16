@@ -335,6 +335,65 @@ prepare::PreparedBirModule prepare_fixed_location_frame_slot_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_permanent_home_slot_frame_slot_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_permanent_home_slot_frame_slot_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.perm.copy",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_byval_copy = true,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.perm.wide",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.perm.copy",
+      .value = bir::Value::immediate_i32(7),
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.perm.wide",
+      .value = bir::Value::immediate_i64(11),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "lv.perm.copy.loaded"),
+      .slot_name = "lv.perm.copy",
+      .align_bytes = 4,
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "lv.perm.copy.loaded"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_call_escaped_local_slot_module() {
   bir::Module module;
 
@@ -1522,8 +1581,14 @@ int check_fixed_location_frame_slot_activation(const prepare::PreparedBirModule&
   if (!root_object->address_exposed || !root_object->requires_home_slot) {
     return fail("expected the fixed root local slot to stay address-exposed with a dedicated home slot");
   }
+  if (!root_object->permanent_home_slot) {
+    return fail("expected the fixed root local slot to advertise a permanent home-slot contract");
+  }
   if (wide_object->address_exposed) {
     return fail("expected the reorderable wide local slot to remain non-address-exposed");
+  }
+  if (wide_object->permanent_home_slot) {
+    return fail("expected the non-address-exposed wide local slot to remain reorderable");
   }
 
   const auto* root_slot = find_frame_slot(prepared, root_object->object_id);
@@ -1547,6 +1612,47 @@ int check_fixed_location_frame_slot_activation(const prepare::PreparedBirModule&
   if (prepared.stack_layout.frame_size_bytes != 16 ||
       prepared.stack_layout.frame_alignment_bytes != 8) {
     return fail("expected fixed-location activation to preserve the packed frame metrics");
+  }
+
+  return 0;
+}
+
+int check_permanent_home_slot_frame_slot_activation(const prepare::PreparedBirModule& prepared) {
+  const auto* copy_object = find_stack_object(prepared, "lv.perm.copy");
+  const auto* wide_object = find_stack_object(prepared, "lv.perm.wide");
+  if (copy_object == nullptr || wide_object == nullptr) {
+    return fail("expected permanent-home-slot activation to produce both stack-layout objects");
+  }
+  if (copy_object->address_exposed) {
+    return fail("expected the byval-copy local slot to stay non-address-exposed");
+  }
+  if (!copy_object->requires_home_slot || !copy_object->permanent_home_slot) {
+    return fail("expected the byval-copy local slot to keep a permanent dedicated home-slot contract");
+  }
+  if (wide_object->permanent_home_slot) {
+    return fail("expected the comparison wide local slot to remain reorderable");
+  }
+
+  const auto* copy_slot = find_frame_slot(prepared, copy_object->object_id);
+  const auto* wide_slot = find_frame_slot(prepared, wide_object->object_id);
+  if (copy_slot == nullptr || wide_slot == nullptr) {
+    return fail("expected permanent-home-slot activation to assign frame-slot storage to both objects");
+  }
+  if (!copy_slot->fixed_location) {
+    return fail("expected the byval-copy local slot to use the fixed-location tier");
+  }
+  if (copy_slot->offset_bytes != 0 || copy_slot->size_bytes != 4 || copy_slot->align_bytes != 4) {
+    return fail("expected the byval-copy local slot to anchor frame offset 0 with its original layout");
+  }
+  if (wide_slot->fixed_location) {
+    return fail("expected the comparison wide local slot to remain reorderable");
+  }
+  if (wide_slot->offset_bytes != 8 || wide_slot->size_bytes != 8 || wide_slot->align_bytes != 8) {
+    return fail("expected the reorderable wide local slot to pack after the permanent home-slot tier");
+  }
+  if (prepared.stack_layout.frame_size_bytes != 16 ||
+      prepared.stack_layout.frame_alignment_bytes != 8) {
+    return fail("expected permanent-home-slot activation to preserve the packed frame metrics");
   }
 
   return 0;
@@ -2043,6 +2149,13 @@ int main() {
 
   const auto fixed_location_prepared = prepare_fixed_location_frame_slot_module();
   if (const int rc = check_fixed_location_frame_slot_activation(fixed_location_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto permanent_home_slot_prepared = prepare_permanent_home_slot_frame_slot_module();
+  if (const int rc =
+          check_permanent_home_slot_frame_slot_activation(permanent_home_slot_prepared);
       rc != 0) {
     return rc;
   }

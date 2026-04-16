@@ -38,6 +38,7 @@ struct PreparedStackObject {
   std::size_t align_bytes = 0;
   bool address_exposed = false;
   bool requires_home_slot = false;
+  bool permanent_home_slot = false;
 };
 
 struct PreparedFrameSlot {

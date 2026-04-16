@@ -13,7 +13,7 @@ namespace {
 }
 
 [[nodiscard]] bool uses_fixed_location_slot(const PreparedStackObject& object) {
-  return object.address_exposed;
+  return object.permanent_home_slot;
 }
 
 void sort_reorderable_objects(std::vector<const PreparedStackObject*>& objects) {
