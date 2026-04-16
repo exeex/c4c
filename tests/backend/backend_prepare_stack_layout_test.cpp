@@ -516,6 +516,50 @@ prepare::PreparedBirModule prepare_mixed_select_local_slot_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_rooted_select_local_slot_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_rooted_select_local_slot_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.select.rooted.root",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "lv.select.rooted.alias"),
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(1),
+      .true_value = bir::Value::named(bir::TypeKind::Ptr, "lv.select.rooted.root"),
+      .false_value = bir::Value::named(bir::TypeKind::Ptr, "lv.select.rooted.root"),
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_select_compare_escaped_local_slot_module() {
   bir::Module module;
 
@@ -1434,6 +1478,26 @@ int check_mixed_select_local_slot_activation(const prepare::PreparedBirModule& p
   return 0;
 }
 
+int check_rooted_select_local_slot_activation(const prepare::PreparedBirModule& prepared) {
+  const auto* root_object = find_stack_object(prepared, "lv.select.rooted.root");
+  if (root_object == nullptr) {
+    return fail("expected the rooted-select root local slot to produce a stack-layout object");
+  }
+  if (root_object->address_exposed) {
+    return fail("expected a rooted-only pointer select without later escape to keep the root slot non-exposed");
+  }
+  if (root_object->requires_home_slot) {
+    return fail("expected rooted-only pointer select bookkeeping to skip the dedicated home-slot requirement");
+  }
+
+  const auto* root_slot = find_frame_slot(prepared, root_object->object_id);
+  if (root_slot != nullptr) {
+    return fail("expected the rooted-select local slot to skip dedicated frame-slot assignment");
+  }
+
+  return 0;
+}
+
 int check_select_compare_escaped_local_slot_activation(const prepare::PreparedBirModule& prepared) {
   const auto* root_object = find_stack_object(prepared, "lv.select.compare.root");
   if (root_object == nullptr) {
@@ -1757,6 +1821,11 @@ int main() {
 
   const auto mixed_select_prepared = prepare_mixed_select_local_slot_module();
   if (const int rc = check_mixed_select_local_slot_activation(mixed_select_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto rooted_select_prepared = prepare_rooted_select_local_slot_module();
+  if (const int rc = check_rooted_select_local_slot_activation(rooted_select_prepared); rc != 0) {
     return rc;
   }
 

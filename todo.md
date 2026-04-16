@@ -7,20 +7,21 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed the next Step 2 stack-layout activation packet by adding focused
-coverage for the conservative mixed rooted-plus-unrooted pointer `phi`
-boundary. The active `backend_prepare_stack_layout` test now proves that a
-rooted pointer alias merged with an external pointer through `bir::PhiInst`
-keeps the root local slot `address_exposed == true`, `requires_home_slot ==
-true`, and preserves dedicated frame-slot assignment in line with the retained
-Rust escape-analysis intent.
+coverage for the non-escaping rooted-only pointer `select` boundary. The active
+`backend_prepare_stack_layout` test now proves that a `bir::SelectInst` which
+merges only rooted aliases and never escapes keeps the root local slot
+`address_exposed == false`, `requires_home_slot == false`, and skips dedicated
+frame-slot assignment as pure rooted-pointer bookkeeping in the active C++
+route.
 
 ## Suggested Next
 
-Continue Step 2 by comparing the remaining conservative mixed-alias
-stack-layout boundaries against `src/backend/prealloc/stack_layout/alloca_coalescing.rs`,
-especially whether any non-escaping rooted-only `select` paths still retain a
-dedicated-home requirement that the active C++ route can now safely elide
-without diverging from the retained Rust contract.
+Continue Step 2 by comparing the remaining rooted-only `select` and
+select-comparison bookkeeping behavior against
+`src/backend/prealloc/stack_layout/alloca_coalescing.rs`, then decide whether
+the active C++ relaxation is an intended bounded divergence that should be
+documented for the eventual acceptance pass or whether the stack-layout route
+still needs a semantic tightening.
 
 ## Watchouts
 
@@ -31,6 +32,11 @@ without diverging from the retained Rust contract.
 - rooted multi-block bookkeeping now stays elidable only while it remains pure
   bookkeeping; any direct slot access, addressed use, `is_address_taken`, or
   lowering-scratch requirement still forces dedicated-home storage
+- rooted-only pointer `select` bookkeeping is now covered as a no-home-slot,
+  non-exposed path in the active C++ route; the retained Rust
+  `alloca_coalescing.rs` still marks `Select` operands escaped generally, so
+  acceptance must either justify this as a bounded host-framework divergence or
+  tighten the C++ semantics before closure
 - mixed rooted+unrooted `select` and `phi` paths are now both covered as
   conservative escape boundaries; they still force address exposure plus
   dedicated-home storage
@@ -54,5 +60,5 @@ without diverging from the retained Rust contract.
 Ran the delegated proof command successfully:
 `cmake --build --preset default -j4 && ctest --test-dir build -j
 --output-on-failure -R '^backend_prepare_stack_layout$' > test_after.log 2>&1`
-after landing the mixed rooted-plus-unrooted `phi` activation coverage update.
+after landing the rooted-only `select` bookkeeping activation coverage update.
 Canonical proof log: `test_after.log`.
