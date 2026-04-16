@@ -17,60 +17,22 @@ using PointerAliasMap = std::unordered_map<std::string_view, RootNameSet>;
 struct SlotUseSummary {
   SlotBlockSet use_blocks;
   std::unordered_set<std::string_view> addressed_slots;
+  std::unordered_set<std::string_view> direct_access_slots;
 };
 
-void record_local_slot_pointer_use(const bir::Value& value,
-                                   std::size_t block_index,
-                                   const SlotNameSet& local_slot_names,
-                                   const PointerAliasMap& pointer_aliases,
-                                   SlotUseSummary& summary) {
-  if (value.kind != bir::Value::Kind::Named || value.type != bir::TypeKind::Ptr ||
-      value.name.empty()) {
-    return;
-  }
-
-  if (const auto slot_it = local_slot_names.find(value.name); slot_it != local_slot_names.end()) {
-    summary.use_blocks[*slot_it].insert(block_index);
-    summary.addressed_slots.insert(*slot_it);
-  }
-
-  const auto alias_it = pointer_aliases.find(value.name);
-  if (alias_it == pointer_aliases.end()) {
-    return;
-  }
-
-  for (const std::string_view root_name : alias_it->second) {
+void record_root_pointer_use(const RootNameSet& roots,
+                             std::size_t block_index,
+                             SlotUseSummary& summary) {
+  for (const std::string_view root_name : roots) {
     summary.use_blocks[root_name].insert(block_index);
-    summary.addressed_slots.insert(root_name);
-  }
-}
-
-void record_memory_address_use(const std::optional<bir::MemoryAddress>& address,
-                               std::size_t block_index,
-                               const SlotNameSet& local_slot_names,
-                               const PointerAliasMap& pointer_aliases,
-                               SlotUseSummary& summary) {
-  if (!address.has_value()) {
-    return;
-  }
-
-  if (address->base_kind == bir::MemoryAddress::BaseKind::LocalSlot && !address->base_name.empty()) {
-    summary.use_blocks[address->base_name].insert(block_index);
-    summary.addressed_slots.insert(address->base_name);
-    return;
-  }
-
-  if (address->base_kind == bir::MemoryAddress::BaseKind::PointerValue) {
-    record_local_slot_pointer_use(
-        address->base_value, block_index, local_slot_names, pointer_aliases, summary);
   }
 }
 
 void record_root_pointer_escape(const RootNameSet& roots,
                                 std::size_t block_index,
                                 SlotUseSummary& summary) {
+  record_root_pointer_use(roots, block_index, summary);
   for (const std::string_view root_name : roots) {
-    summary.use_blocks[root_name].insert(block_index);
     summary.addressed_slots.insert(root_name);
   }
 }
@@ -93,6 +55,18 @@ void merge_pointer_roots(const bir::Value& value,
   }
 }
 
+void record_local_slot_pointer_use(const bir::Value& value,
+                                   std::size_t block_index,
+                                   const SlotNameSet& local_slot_names,
+                                   const PointerAliasMap& pointer_aliases,
+                                   SlotUseSummary& summary) {
+  RootNameSet roots;
+  merge_pointer_roots(value, local_slot_names, pointer_aliases, roots);
+  if (!roots.empty()) {
+    record_root_pointer_use(roots, block_index, summary);
+  }
+}
+
 void record_local_slot_pointer_escape(const bir::Value& value,
                                       std::size_t block_index,
                                       const SlotNameSet& local_slot_names,
@@ -106,6 +80,27 @@ void record_local_slot_pointer_escape(const bir::Value& value,
   }
 
   record_local_slot_pointer_use(value, block_index, local_slot_names, pointer_aliases, summary);
+}
+
+void record_memory_address_use(const std::optional<bir::MemoryAddress>& address,
+                               std::size_t block_index,
+                               const SlotNameSet& local_slot_names,
+                               const PointerAliasMap& pointer_aliases,
+                               SlotUseSummary& summary) {
+  if (!address.has_value()) {
+    return;
+  }
+
+  if (address->base_kind == bir::MemoryAddress::BaseKind::LocalSlot && !address->base_name.empty()) {
+    summary.use_blocks[address->base_name].insert(block_index);
+    summary.addressed_slots.insert(address->base_name);
+    return;
+  }
+
+  if (address->base_kind == bir::MemoryAddress::BaseKind::PointerValue) {
+    record_local_slot_pointer_escape(
+        address->base_value, block_index, local_slot_names, pointer_aliases, summary);
+  }
 }
 
 [[nodiscard]] bool is_unrooted_pointer_value(const bir::Value& value,
@@ -149,9 +144,6 @@ void handle_single_input_pointer_transform(const bir::Value& operand,
   merge_pointer_roots(operand, local_slot_names, pointer_aliases, roots);
   record_local_slot_pointer_use(
       operand, block_index, local_slot_names, pointer_aliases, summary);
-  if (!roots.empty()) {
-    record_root_pointer_escape(roots, block_index, summary);
-  }
   update_pointer_alias(result, roots, pointer_aliases);
 }
 
@@ -162,6 +154,7 @@ void record_call_pointer_uses(const bir::CallInst& call,
                               SlotUseSummary& summary) {
   if (call.sret_storage_name.has_value()) {
     summary.use_blocks[*call.sret_storage_name].insert(block_index);
+    summary.direct_access_slots.insert(*call.sret_storage_name);
   }
   if (call.callee_value.has_value()) {
     record_local_slot_pointer_escape(
@@ -176,18 +169,26 @@ void record_call_pointer_uses(const bir::CallInst& call,
                                                       const SlotNameSet& local_slot_names) {
   SlotUseSummary summary;
   PointerAliasMap pointer_aliases;
+  std::unordered_map<std::string_view, std::size_t> block_indices_by_label;
+  block_indices_by_label.reserve(function.blocks.size());
+
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    block_indices_by_label.emplace(function.blocks[block_index].label, block_index);
+  }
 
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
     for (const auto& inst : block.insts) {
       if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst); load != nullptr) {
         summary.use_blocks[load->slot_name].insert(block_index);
+        summary.direct_access_slots.insert(load->slot_name);
         record_memory_address_use(
             load->address, block_index, local_slot_names, pointer_aliases, summary);
         continue;
       }
       if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr) {
         summary.use_blocks[store->slot_name].insert(block_index);
+        summary.direct_access_slots.insert(store->slot_name);
         record_memory_address_use(
             store->address, block_index, local_slot_names, pointer_aliases, summary);
         record_local_slot_pointer_escape(
@@ -224,11 +225,19 @@ void record_call_pointer_uses(const bir::CallInst& call,
         RootNameSet roots;
         bool saw_unrooted_pointer = false;
         for (const auto& incoming : phi->incomings) {
+          const auto incoming_block_it = block_indices_by_label.find(incoming.label);
+          const std::size_t incoming_block_index =
+              incoming_block_it == block_indices_by_label.end() ? block_index
+                                                                : incoming_block_it->second;
           merge_pointer_roots(incoming.value, local_slot_names, pointer_aliases, roots);
           saw_unrooted_pointer |=
               is_unrooted_pointer_value(incoming.value, local_slot_names, pointer_aliases);
           record_local_slot_pointer_use(
-              incoming.value, block_index, local_slot_names, pointer_aliases, summary);
+              incoming.value,
+              incoming_block_index,
+              local_slot_names,
+              pointer_aliases,
+              summary);
         }
         if (!roots.empty() && saw_unrooted_pointer) {
           record_root_pointer_escape(roots, block_index, summary);
@@ -340,6 +349,8 @@ void apply_alloca_coalescing_hints(const bir::Function& function,
     const bool used_in_single_block = has_explicit_uses && use_it->second.size() <= 1;
     const bool has_addressed_local_uses =
         use_summary.addressed_slots.find(slot.name) != use_summary.addressed_slots.end();
+    const bool has_direct_slot_accesses =
+        use_summary.direct_access_slots.find(slot.name) != use_summary.direct_access_slots.end();
     const bool is_dead_local_slot =
         !has_explicit_uses && !has_addressed_local_uses && !slot.is_address_taken &&
         !slot.is_byval_copy &&
@@ -350,7 +361,7 @@ void apply_alloca_coalescing_hints(const bir::Function& function,
         object.address_exposed || slot.is_address_taken || has_addressed_local_uses;
     object.requires_home_slot =
         !is_dead_local_slot &&
-        (object.requires_home_slot || slot.is_address_taken || has_addressed_local_uses ||
+        (has_direct_slot_accesses || slot.is_address_taken || has_addressed_local_uses ||
          slot.is_byval_copy || slot.storage_kind == bir::LocalSlotStorageKind::LoweringScratch ||
          !used_in_single_block);
   }

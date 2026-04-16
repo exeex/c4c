@@ -954,6 +954,65 @@ prepare::PreparedBirModule prepare_phi_escaped_local_slot_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_phi_single_block_local_slot_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_phi_single_block_local_slot_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.phi.single.root",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::BranchTerminator{.target_label = "left"};
+
+  bir::Block left;
+  left.label = "left";
+  left.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "lv.phi.single.alias"),
+      .operand = bir::Value::named(bir::TypeKind::Ptr, "lv.phi.single.root"),
+  });
+  left.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "lv.phi.single.forwarded"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "left",
+              .value = bir::Value::named(bir::TypeKind::Ptr, "lv.phi.single.alias"),
+          },
+      },
+  });
+  join.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(left));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_pointer_binary_escaped_local_slot_module() {
   bir::Module module;
 
@@ -1255,19 +1314,16 @@ int check_cast_escaped_local_slot_activation(const prepare::PreparedBirModule& p
   if (root_object == nullptr) {
     return fail("expected the cast-escaped root local slot to produce a stack-layout object");
   }
-  if (!root_object->address_exposed) {
-    return fail("expected a pointer cast to conservatively expose the root slot");
+  if (root_object->address_exposed) {
+    return fail("expected rooted pointer casts without later escape to keep the root slot non-exposed");
   }
-  if (!root_object->requires_home_slot) {
-    return fail("expected a pointer cast to keep a dedicated home-slot requirement");
+  if (root_object->requires_home_slot) {
+    return fail("expected rooted pointer casts without later escape to drop the dedicated home-slot requirement");
   }
 
   const auto* root_slot = find_frame_slot(prepared, root_object->object_id);
-  if (root_slot == nullptr) {
-    return fail("expected the cast-escaped root local slot to receive frame-slot storage");
-  }
-  if (root_slot->size_bytes != 4 || root_slot->align_bytes != 4) {
-    return fail("expected the cast-escaped root local slot to preserve its frame-slot layout");
+  if (root_slot != nullptr) {
+    return fail("expected the cast-only rooted local slot to skip dedicated frame-slot assignment");
   }
 
   return 0;
@@ -1421,6 +1477,27 @@ int check_phi_escaped_local_slot_activation(const prepare::PreparedBirModule& pr
   return 0;
 }
 
+int check_phi_single_block_local_slot_activation(const prepare::PreparedBirModule& prepared) {
+  const auto* root_object = find_stack_object(prepared, "lv.phi.single.root");
+  if (root_object == nullptr) {
+    return fail("expected the single-block phi root local slot to produce a stack-layout object");
+  }
+  if (root_object->address_exposed) {
+    return fail("expected non-escaping rooted phi bookkeeping to keep the root slot non-exposed");
+  }
+  if (root_object->requires_home_slot) {
+    return fail(
+        "expected predecessor-attributed rooted phi bookkeeping to keep single-block no-home-slot behavior");
+  }
+
+  const auto* root_slot = find_frame_slot(prepared, root_object->object_id);
+  if (root_slot != nullptr) {
+    return fail("expected the single-block rooted phi path to skip dedicated frame-slot assignment");
+  }
+
+  return 0;
+}
+
 int check_pointer_binary_escaped_local_slot_activation(const prepare::PreparedBirModule& prepared) {
   const auto* root_object = find_stack_object(prepared, "lv.binary.root");
   if (root_object == nullptr) {
@@ -1535,6 +1612,12 @@ int main() {
 
   const auto phi_escaped_prepared = prepare_phi_escaped_local_slot_module();
   if (const int rc = check_phi_escaped_local_slot_activation(phi_escaped_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto phi_single_block_prepared = prepare_phi_single_block_local_slot_module();
+  if (const int rc = check_phi_single_block_local_slot_activation(phi_single_block_prepared);
+      rc != 0) {
     return rc;
   }
 
