@@ -260,10 +260,17 @@ void record_call_pointer_uses(const bir::CallInst& call,
             is_unrooted_pointer_value(select->true_value, local_slot_names, pointer_aliases);
         saw_unrooted_pointer |=
             is_unrooted_pointer_value(select->false_value, local_slot_names, pointer_aliases);
-        record_local_slot_pointer_use(
-            select->lhs, block_index, local_slot_names, pointer_aliases, summary);
-        record_local_slot_pointer_use(
-            select->rhs, block_index, local_slot_names, pointer_aliases, summary);
+        if (select->compare_type == bir::TypeKind::Ptr) {
+          record_local_slot_pointer_escape(
+              select->lhs, block_index, local_slot_names, pointer_aliases, summary);
+          record_local_slot_pointer_escape(
+              select->rhs, block_index, local_slot_names, pointer_aliases, summary);
+        } else {
+          record_local_slot_pointer_use(
+              select->lhs, block_index, local_slot_names, pointer_aliases, summary);
+          record_local_slot_pointer_use(
+              select->rhs, block_index, local_slot_names, pointer_aliases, summary);
+        }
         record_local_slot_pointer_use(
             select->true_value, block_index, local_slot_names, pointer_aliases, summary);
         record_local_slot_pointer_use(
