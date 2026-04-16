@@ -1,7 +1,5 @@
 #include "support.hpp"
 
-#include <string_view>
-
 namespace c4c::backend::prepare::stack_layout {
 
 namespace {
@@ -15,18 +13,6 @@ const bir::LocalSlot* find_local_slot(const bir::Function& function, std::string
   return nullptr;
 }
 
-bool source_kind_requires_home_slot(std::string_view source_kind) {
-  return source_kind == "byval_param" || source_kind == "sret_param" ||
-         source_kind == "call_result_sret" || source_kind == "byval_copy" ||
-         source_kind == "phi";
-}
-
-bool source_kind_requires_permanent_home_slot(std::string_view source_kind) {
-  return source_kind == "byval_param" || source_kind == "sret_param" ||
-         source_kind == "call_result_sret" || source_kind == "byval_copy" ||
-         source_kind == "phi";
-}
-
 }  // namespace
 
 void apply_regalloc_hints(const bir::Function& function,
@@ -38,10 +24,8 @@ void apply_regalloc_hints(const bir::Function& function,
     }
 
     bool address_exposed = object.address_exposed;
-    bool requires_home_slot =
-        object.requires_home_slot || source_kind_requires_home_slot(object.source_kind);
-    bool permanent_home_slot =
-        object.permanent_home_slot || source_kind_requires_permanent_home_slot(object.source_kind);
+    bool requires_home_slot = object.requires_home_slot;
+    bool permanent_home_slot = object.permanent_home_slot;
 
     if (const auto* slot = find_local_slot(function, object.source_name); slot != nullptr) {
       address_exposed = address_exposed || slot->is_address_taken;

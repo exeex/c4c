@@ -6,20 +6,20 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed the remaining Step 2 `analysis.cpp` convergence packet by removing
-the last unconditional local-slot `requires_home_slot` seed during prepared
-object collection. Generic `lowering_scratch` locals now start without a
-home-slot requirement unless an explicit prepared contract already exists
-(`is_address_taken`, `byval_copy`, or `phi`), and the focused
-`backend_prepare_stack_layout` test now pins that source-level behavior
-directly through `collect_function_stack_objects()` alongside the existing
-runtime stack-layout coverage.
+Completed the Step 2 `regalloc_helpers.cpp` metadata cleanup packet by removing
+the last `source_kind`-based home-slot fallback from `apply_regalloc_hints()`.
+Regalloc-hint application now preserves the prepared object contract it is
+handed and only widens generic locals from real slot evidence such as
+`is_address_taken`, while the focused `backend_prepare_stack_layout` test now
+pins that helper behavior directly for generic `lowering_scratch`,
+`byval_copy`, `phi`, and addressed local-slot objects.
 
 ## Suggested Next
 
-Continue Step 2 by checking whether any remaining prepared-object or regalloc
-metadata paths still infer generic local-slot permanence from source-kind or
-storage-kind alone instead of explicit prepared contracts plus real use data.
+Continue Step 2 by auditing the remaining explicit permanent-home producers,
+especially `call_result_sret` and parameter-owned stack objects, and add
+focused coverage proving they no longer depend on downstream `source_kind`
+re-derivation after `apply_regalloc_hints()`.
 
 ## Watchouts
 
@@ -31,14 +31,19 @@ storage-kind alone instead of explicit prepared contracts plus real use data.
 - `analysis.cpp` no longer seeds generic local slots, including
   `lowering_scratch`, with `requires_home_slot = true`; later passes must add
   home-slot requirements from explicit contracts or observed use/address data
-- `regalloc_helpers.cpp` no longer widens generic non-copy `LoweringScratch`
-  locals into `permanent_home_slot`; only explicit prepared source kinds and
-  address exposure should enter the fixed-location tier
+- `regalloc_helpers.cpp` now trusts prepared object flags instead of
+  recomputing home-slot metadata from `source_kind`; generic non-copy
+  `LoweringScratch` locals only widen from real slot evidence such as address
+  exposure
 - generic non-copy `LoweringScratch` locals no longer inherit
-  `requires_home_slot` from storage kind alone; live scratch slots still keep
-  home slots when real direct slot accesses or address exposure require them
+  `requires_home_slot` or `permanent_home_slot` from storage/source kind
+  alone; live scratch slots still keep home slots when real direct slot
+  accesses or address exposure require them
 - unused generic `LoweringScratch` locals now elide like other dead stack
   objects even though they still publish `source_kind == lowering_scratch`
+- `call_result_sret` still gets its permanent-home contract upstream in
+  `alloca_coalescing.cpp`; keep checking that explicit producer path instead of
+  reintroducing downstream `source_kind` fallbacks
 - reorderable home-slot packing is still conservative size/alignment sorting;
   Rust-like shared-slot reuse is not active yet
 - do not fake shared-slot reuse or permanence widening with source-name
@@ -54,6 +59,6 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_stack_layout >
 test_after.log 2>&1`
-after removing the last unconditional generic local-slot home-slot seed from
-`analysis.cpp` and adding direct object-collection coverage for explicit vs.
-generic `lowering_scratch` contracts. Canonical proof log: `test_after.log`.
+after removing `apply_regalloc_hints()` source-kind home-slot fallbacks and
+adding direct helper coverage for generic vs. explicit prepared local-slot
+contracts. Canonical proof log: `test_after.log`.

@@ -37,7 +37,7 @@ const prepare::PreparedFrameSlot* find_frame_slot(const prepare::PreparedBirModu
   return nullptr;
 }
 
-std::vector<prepare::PreparedStackObject> collect_stack_layout_analysis_objects() {
+bir::Function make_stack_layout_analysis_object_collection_function() {
   bir::Function function;
   function.name = "stack_layout_analysis_object_collection_activation";
   function.return_type = bir::TypeKind::I32;
@@ -76,8 +76,22 @@ std::vector<prepare::PreparedStackObject> collect_stack_layout_analysis_objects(
       .is_address_taken = true,
   });
 
+  return function;
+}
+
+std::vector<prepare::PreparedStackObject> collect_stack_layout_analysis_objects() {
+  bir::Function function = make_stack_layout_analysis_object_collection_function();
+
   prepare::PreparedObjectId next_object_id = 0;
   return prepare::stack_layout::collect_function_stack_objects(function, next_object_id);
+}
+
+std::vector<prepare::PreparedStackObject> collect_stack_layout_regalloc_hint_objects() {
+  bir::Function function = make_stack_layout_analysis_object_collection_function();
+  prepare::PreparedObjectId next_object_id = 0;
+  auto objects = prepare::stack_layout::collect_function_stack_objects(function, next_object_id);
+  prepare::stack_layout::apply_regalloc_hints(function, prepare::FunctionInlineAsmSummary{}, objects);
+  return objects;
 }
 
 const prepare::PreparedStackObject* find_stack_object(
@@ -2026,6 +2040,39 @@ int check_stack_layout_analysis_object_collection_activation(
   return 0;
 }
 
+int check_stack_layout_regalloc_hint_activation(
+    const std::vector<prepare::PreparedStackObject>& objects) {
+  const auto* scratch_object = find_stack_object(objects, "lv.analysis.scratch");
+  const auto* copy_object = find_stack_object(objects, "lv.analysis.byval_copy");
+  const auto* phi_object = find_stack_object(objects, "lv.analysis.phi");
+  const auto* addressed_object = find_stack_object(objects, "lv.analysis.addr");
+  if (scratch_object == nullptr || copy_object == nullptr || phi_object == nullptr ||
+      addressed_object == nullptr) {
+    return fail("expected regalloc hints to preserve all analysis objects");
+  }
+
+  if (scratch_object->source_kind != "lowering_scratch") {
+    return fail("expected generic lowering-scratch regalloc-hint objects to retain their explicit source kind");
+  }
+  if (scratch_object->requires_home_slot || scratch_object->permanent_home_slot ||
+      scratch_object->address_exposed) {
+    return fail("expected generic lowering-scratch regalloc-hint objects to skip home-slot widening without explicit contracts or real use data");
+  }
+
+  if (!copy_object->requires_home_slot || !copy_object->permanent_home_slot) {
+    return fail("expected byval-copy regalloc-hint objects to keep their explicit home-slot contract");
+  }
+  if (!phi_object->requires_home_slot || !phi_object->permanent_home_slot) {
+    return fail("expected phi regalloc-hint objects to keep their explicit home-slot contract");
+  }
+  if (!addressed_object->requires_home_slot || !addressed_object->permanent_home_slot ||
+      !addressed_object->address_exposed) {
+    return fail("expected address-taken regalloc-hint objects to keep their explicit home-slot contract");
+  }
+
+  return 0;
+}
+
 int check_phi_permanent_home_slot_frame_slot_activation(
     const prepare::PreparedBirModule& prepared) {
   const auto* root_object = find_stack_object(prepared, "lv.phi.perm.root");
@@ -2556,6 +2603,12 @@ int check_rooted_pointer_binary_local_slot_activation(const prepare::PreparedBir
 int main() {
   const auto analysis_objects = collect_stack_layout_analysis_objects();
   if (const int rc = check_stack_layout_analysis_object_collection_activation(analysis_objects);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto regalloc_hint_objects = collect_stack_layout_regalloc_hint_objects();
+  if (const int rc = check_stack_layout_regalloc_hint_activation(regalloc_hint_objects);
       rc != 0) {
     return rc;
   }
