@@ -20,21 +20,26 @@ namespace {
   return "local_slot";
 }
 
+[[nodiscard]] bool source_kind_requires_permanent_home_slot(std::string_view source_kind) {
+  return source_kind == "byval_copy" || source_kind == "phi";
+}
+
 [[nodiscard]] PreparedStackObject make_local_slot_object(const bir::Function& function,
                                                          const bir::LocalSlot& slot,
                                                          PreparedObjectId object_id) {
+  const std::string_view source_kind = local_slot_source_kind(slot);
   return PreparedStackObject{
       .object_id = object_id,
       .function_name = function.name,
       .source_name = slot.name,
-      .source_kind = std::string(local_slot_source_kind(slot)),
+      .source_kind = std::string(source_kind),
       .type = slot.type,
       .size_bytes = slot.size_bytes,
       .align_bytes = slot.align_bytes,
       .address_exposed = slot.is_address_taken,
       .requires_home_slot = true,
       .permanent_home_slot =
-          slot.is_address_taken || slot.is_byval_copy || slot.phi_observation.has_value(),
+          slot.is_address_taken || source_kind_requires_permanent_home_slot(source_kind),
   };
 }
 

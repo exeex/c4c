@@ -17,12 +17,14 @@ const bir::LocalSlot* find_local_slot(const bir::Function& function, std::string
 
 bool source_kind_requires_home_slot(std::string_view source_kind) {
   return source_kind == "byval_param" || source_kind == "sret_param" ||
-         source_kind == "call_result_sret";
+         source_kind == "call_result_sret" || source_kind == "byval_copy" ||
+         source_kind == "phi";
 }
 
 bool source_kind_requires_permanent_home_slot(std::string_view source_kind) {
   return source_kind == "byval_param" || source_kind == "sret_param" ||
-         source_kind == "call_result_sret";
+         source_kind == "call_result_sret" || source_kind == "byval_copy" ||
+         source_kind == "phi";
 }
 
 bool source_kind_elides_dedicated_home_slot(std::string_view source_kind) {
@@ -48,13 +50,11 @@ void apply_regalloc_hints(const bir::Function& function,
 
     if (const auto* slot = find_local_slot(function, object.source_name); slot != nullptr) {
       address_exposed = address_exposed || slot->is_address_taken;
-      requires_home_slot = requires_home_slot || slot->is_address_taken || slot->is_byval_copy ||
-                           slot->phi_observation.has_value() ||
+      requires_home_slot = requires_home_slot || slot->is_address_taken ||
                            (slot->storage_kind == bir::LocalSlotStorageKind::LoweringScratch &&
                             !elides_dedicated_home_slot);
       permanent_home_slot =
-          permanent_home_slot || slot->is_address_taken || slot->is_byval_copy ||
-          slot->phi_observation.has_value() ||
+          permanent_home_slot || slot->is_address_taken ||
           (slot->storage_kind == bir::LocalSlotStorageKind::LoweringScratch &&
            !elides_dedicated_home_slot);
     }
