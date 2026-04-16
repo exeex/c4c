@@ -62,6 +62,6 @@ the rooted pointer escape-model fixes.
 Ran the delegated proof command successfully:
 `cmake --build --preset default -j4 && ctest --test-dir build -j
 --output-on-failure -R '^backend_prepare_stack_layout$' > test_after.log 2>&1`
-after tightening rooted-only `phi` operand escape handling and updating the
-focused rooted-only phi activation coverage. Canonical proof log:
+after tightening rooted-only pointer `BinaryInst` escape handling and updating
+the focused rooted-only pointer-binary activation coverage. Canonical proof log:
 `test_after.log`.
