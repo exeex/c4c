@@ -6,33 +6,32 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Continued Step 2 in `stack_layout` by making single-input pointer transforms
-explicit escape points in the active C++ alloca/use bridge. `alloca_coalescing.cpp`
-now routes `CastInst` through a dedicated single-input pointer-transform helper
-that conservatively marks rooted local-slot pointers as escaped while still
-preserving alias propagation, and `backend_prepare_stack_layout` proves that a
-cast-only pointer path keeps the root slot address-exposed and home-slotted
-without relying on a later call/store escape site.
+Continued Step 2 in `stack_layout` by teaching the active C++ alloca/use bridge
+to treat `MemoryAddress::PointerValue` bases as rooted local-slot pointer uses.
+`alloca_coalescing.cpp` now records pointer-based load/store addresses through
+the same alias-aware root lookup used for other pointer values, and
+`backend_prepare_stack_layout` proves that a cast-derived pointer base keeps
+the root local slot address-exposed and home-slotted when the address flows
+through a BIR memory access instead of a direct local-slot base.
 
 ## Suggested Next
 
 Continue Step 2 in `stack_layout`: compare the remaining C++ pointer-alias
-bridge against `alloca_coalescing.rs` and take the next bounded escape-analysis
-gain around any remaining current-BIR escape sites that are still modeled only
-as addressed-use bookkeeping instead of explicit escape classification,
-especially if future pointer-preserving single-input forms should share the new
-helper instead of silently depending on alias propagation.
+bridge against `alloca_coalescing.rs` and take the next bounded parity gain in
+how pointer-preserving control-flow/value forms are classified, especially if a
+current-BIR escape site still depends on ad hoc addressed-use bookkeeping
+instead of sharing one explicit alias-to-root escape/use path.
 
 ## Watchouts
 
-- the active C++ route now elides dedicated frame slots for dead local-slot
-  objects and for prepared `copy_coalescing_candidate` lowering-scratch objects,
-  while both addressed-local-slot roots and call-escaped local-slot roots now
-  correctly stay live and address-exposed
-- derived pointer aliases now keep local-slot roots live through the current
+- the active C++ route now treats both direct `LocalSlot` addresses and
+  pointer-based `MemoryAddress::PointerValue` bases as real local-slot uses, so
+  cast-derived pointer bases keep rooted local slots live even when the memory
+  op no longer names the slot directly
+- derived pointer aliases still keep local-slot roots live through the current
   BIR `CastInst` / `PhiInst` / `SelectInst` / pointer-shaped `BinaryInst`
-  bridge, and `CastInst` now records an explicit escape instead of relying only
-  on address-use bookkeeping plus alias propagation
+  bridge, but the remaining Rust-vs-C++ comparison should stay tied to real
+  current-BIR instruction/address forms instead of speculative scaffolding
 - the C++ port still differs from `alloca_coalescing.rs` in that the Rust
   reference covers additional instruction families that the current BIR does
   not model, so keep future parity work tied to real active instruction shapes

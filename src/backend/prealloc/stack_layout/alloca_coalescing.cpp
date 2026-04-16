@@ -19,19 +19,6 @@ struct SlotUseSummary {
   std::unordered_set<std::string_view> addressed_slots;
 };
 
-void record_addressed_local_slot_use(const std::optional<bir::MemoryAddress>& address,
-                                     std::size_t block_index,
-                                     SlotUseSummary& summary) {
-  if (!address.has_value() ||
-      address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot ||
-      address->base_name.empty()) {
-    return;
-  }
-
-  summary.use_blocks[address->base_name].insert(block_index);
-  summary.addressed_slots.insert(address->base_name);
-}
-
 void record_local_slot_pointer_use(const bir::Value& value,
                                    std::size_t block_index,
                                    const SlotNameSet& local_slot_names,
@@ -55,6 +42,27 @@ void record_local_slot_pointer_use(const bir::Value& value,
   for (const std::string_view root_name : alias_it->second) {
     summary.use_blocks[root_name].insert(block_index);
     summary.addressed_slots.insert(root_name);
+  }
+}
+
+void record_memory_address_use(const std::optional<bir::MemoryAddress>& address,
+                               std::size_t block_index,
+                               const SlotNameSet& local_slot_names,
+                               const PointerAliasMap& pointer_aliases,
+                               SlotUseSummary& summary) {
+  if (!address.has_value()) {
+    return;
+  }
+
+  if (address->base_kind == bir::MemoryAddress::BaseKind::LocalSlot && !address->base_name.empty()) {
+    summary.use_blocks[address->base_name].insert(block_index);
+    summary.addressed_slots.insert(address->base_name);
+    return;
+  }
+
+  if (address->base_kind == bir::MemoryAddress::BaseKind::PointerValue) {
+    record_local_slot_pointer_use(
+        address->base_value, block_index, local_slot_names, pointer_aliases, summary);
   }
 }
 
@@ -142,22 +150,26 @@ void handle_single_input_pointer_transform(const bir::Value& operand,
     for (const auto& inst : block.insts) {
       if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst); load != nullptr) {
         summary.use_blocks[load->slot_name].insert(block_index);
-        record_addressed_local_slot_use(load->address, block_index, summary);
+        record_memory_address_use(
+            load->address, block_index, local_slot_names, pointer_aliases, summary);
         continue;
       }
       if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr) {
         summary.use_blocks[store->slot_name].insert(block_index);
-        record_addressed_local_slot_use(store->address, block_index, summary);
+        record_memory_address_use(
+            store->address, block_index, local_slot_names, pointer_aliases, summary);
         record_local_slot_pointer_use(
             store->value, block_index, local_slot_names, pointer_aliases, summary);
         continue;
       }
       if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst); load != nullptr) {
-        record_addressed_local_slot_use(load->address, block_index, summary);
+        record_memory_address_use(
+            load->address, block_index, local_slot_names, pointer_aliases, summary);
         continue;
       }
       if (const auto* store = std::get_if<bir::StoreGlobalInst>(&inst); store != nullptr) {
-        record_addressed_local_slot_use(store->address, block_index, summary);
+        record_memory_address_use(
+            store->address, block_index, local_slot_names, pointer_aliases, summary);
         record_local_slot_pointer_use(
             store->value, block_index, local_slot_names, pointer_aliases, summary);
         continue;
