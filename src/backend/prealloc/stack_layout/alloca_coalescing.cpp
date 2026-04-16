@@ -224,12 +224,22 @@ void record_call_pointer_uses(const bir::CallInst& call,
       if (const auto* select = std::get_if<bir::SelectInst>(&inst); select != nullptr) {
         RootNameSet roots;
         bool saw_unrooted_pointer = false;
+        merge_pointer_roots(select->lhs, local_slot_names, pointer_aliases, roots);
+        merge_pointer_roots(select->rhs, local_slot_names, pointer_aliases, roots);
         merge_pointer_roots(select->true_value, local_slot_names, pointer_aliases, roots);
         merge_pointer_roots(select->false_value, local_slot_names, pointer_aliases, roots);
+        saw_unrooted_pointer |=
+            is_unrooted_pointer_value(select->lhs, local_slot_names, pointer_aliases);
+        saw_unrooted_pointer |=
+            is_unrooted_pointer_value(select->rhs, local_slot_names, pointer_aliases);
         saw_unrooted_pointer |=
             is_unrooted_pointer_value(select->true_value, local_slot_names, pointer_aliases);
         saw_unrooted_pointer |=
             is_unrooted_pointer_value(select->false_value, local_slot_names, pointer_aliases);
+        record_local_slot_pointer_use(
+            select->lhs, block_index, local_slot_names, pointer_aliases, summary);
+        record_local_slot_pointer_use(
+            select->rhs, block_index, local_slot_names, pointer_aliases, summary);
         record_local_slot_pointer_use(
             select->true_value, block_index, local_slot_names, pointer_aliases, summary);
         record_local_slot_pointer_use(

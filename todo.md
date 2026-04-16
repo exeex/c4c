@@ -6,33 +6,39 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Continued Step 2 in `stack_layout` by teaching the active C++ alloca/use bridge
-to treat indirect-call `callee_value` pointers as rooted local-slot escapes.
-`alloca_coalescing.cpp` now routes indirect callees through the same alias-aware
-pointer-use path as call arguments and pointer-based memory addresses, and
-`backend_prepare_stack_layout` proves that a cast-derived callee alias keeps
-the root local slot address-exposed and home-slotted when the pointer escapes
-through an indirect BIR call target.
+Continued Step 2 in `stack_layout` by teaching the active C++
+`alloca_coalescing` bridge to treat rooted pointer aliases that appear only in
+`bir::SelectInst` compare operands as real local-slot uses. The active C++
+path now routes `SelectInst::lhs` and `rhs` through the same alias-aware
+pointer-use logic already used for pointer results and call/address sites, and
+`backend_prepare_stack_layout` proves that a cast-derived root alias used only
+in a pointer comparison still leaves the root local slot address-exposed and
+home-slotted.
 
 ## Suggested Next
 
 Continue Step 2 in `stack_layout`: compare the remaining C++ pointer-alias
 bridge against `alloca_coalescing.rs` and take the next bounded parity gain in
-how pointer-preserving control-flow/value forms are classified, especially if a
-current-BIR root escape or use path is still open-coded instead of sharing one
-explicit alias-to-root helper across call, memory-address, terminator, and
-pointer-transform sites.
+how current-BIR terminator and pointer-shaped value sites are classified,
+especially where the active C++ path still records rooted pointer aliases as
+ordinary uses instead of explicit escapes or still open-codes the alias-to-root
+bridge instead of sharing one helper across call, memory-address, terminator,
+and pointer-transform sites.
 
 ## Watchouts
 
 - the active C++ route now treats direct `LocalSlot` addresses, indirect-call
-  `callee_value` pointers, and pointer-based `MemoryAddress::PointerValue`
-  bases as real local-slot uses, so cast-derived pointer aliases keep rooted
-  local slots live even when the use site no longer names the slot directly
+  `callee_value` pointers, pointer-based `MemoryAddress::PointerValue` bases,
+  and `SelectInst` compare operands as real local-slot uses, so cast-derived
+  pointer aliases keep rooted local slots live even when the use site no
+  longer names the slot directly
 - derived pointer aliases still keep local-slot roots live through the current
   BIR `CastInst` / `PhiInst` / `SelectInst` / pointer-shaped `BinaryInst`
   bridge, but the remaining Rust-vs-C++ comparison should stay tied to real
   current-BIR instruction/address forms instead of speculative scaffolding
+- the new focused test only proves rooted-pointer usage in `SelectInst`
+  comparison operands; it does not yet settle whether nearby terminator-only
+  alias paths should stay ordinary uses or become explicit escape markers
 - the C++ port still differs from `alloca_coalescing.rs` in that the Rust
   reference covers additional instruction families that the current BIR does
   not model, so keep future parity work tied to real active instruction shapes
