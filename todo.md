@@ -6,44 +6,35 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Continued Step 2 in `stack_layout` by adding focused
-`backend_prepare_stack_layout` proof for the active host-framework
-`CallInst::sret_storage_name` path in `alloca_coalescing.cpp`. The active C++
-helper already kept the referenced local slot live in stack-layout output by
-recording it as a use-site instead of letting dead-slot elision drop it, so
-this packet landed as missing runtime proof rather than a semantic code fix.
+Completed the bounded Step 2 `.cpp` vs `.rs` audit for
+`stack_layout/alloca_coalescing`: no new code change was warranted because the
+active C++ helper already covers the repo's current `bir::Inst` pointer shapes
+through direct local-slot uses, pointer-alias tracking, pointer-address
+bridges, call/return/branch escape handling, and the host-framework
+`CallInst::sret_storage_name` retention path. The remaining Rust-only
+differences are instruction families that the current BIR does not model, so
+this packet closed as a comparison result plus refreshed focused proof rather
+than a semantic patch.
 
 ## Suggested Next
 
-Continue Step 2 in `stack_layout`: compare the active C++
-`alloca_coalescing.cpp` helper responsibilities against
-`stack_layout/alloca_coalescing.rs` now that focused proof covers both pointer
-escape paths and the active host-framework `CallInst::sret_storage_name`
-retention path, then take the next bounded packet only where that comparison
-exposes a real semantic gap or one remaining active current-BIR shape that
-still lacks proof.
+Continue Step 2 in `stack_layout` by comparing
+`src/backend/prealloc/stack_layout/regalloc_helpers.cpp` against
+`stack_layout/regalloc_helpers.rs`, then take the next bounded packet only if
+that comparison exposes one active current-pipeline semantic gap in how
+stack-layout objects keep or drop home-slot requirements.
 
 ## Watchouts
 
-- the active C++ route now has focused proof for return, pointer-typed
-  cond-branch, call-operand, indirect-callee, pointer-address, select, cast,
-  store-of-pointer, `PhiInst`, pointer-valued `BinaryInst`, global
-  pointer-address escape sites, and the `CallInst::sret_storage_name`
-  retention path, but Step 2 acceptance still needs the broader `.cpp` vs
-  `.rs` comparison rather than treating testcase coverage as convergence by
-  itself
-- derived pointer aliases still keep local-slot roots live through the current
-  BIR `CastInst` / `PhiInst` / `SelectInst` / pointer-shaped `BinaryInst` /
-  pointer-address bridge, but the remaining Rust-vs-C++ comparison should stay
-  tied to real active instruction/address forms instead of speculative
-  scaffolding
-- the C++ port still differs from `alloca_coalescing.rs` in that the Rust
-  reference covers additional instruction families that the current BIR does
-  not model, so keep future parity work tied to real active instruction shapes
-  instead of speculative scaffolding
+- the active `alloca_coalescing.cpp` route now has both focused proof and a
+  bounded `.cpp` vs `.rs` audit for the current BIR surface, so do not reopen
+  that helper unless a new active instruction or address form lands in BIR
+- the remaining `alloca_coalescing.rs` differences are Rust-only instruction
+  families outside today's `bir::Inst` model; adding speculative C++ handling
+  for them here would be route drift, not Step 2 progress
 - `CallInst::sret_storage_name` remains a bounded host-framework divergence
-  from the Rust reference helper, so keep it framed as host adaptation rather
-  than one-to-one Rust parity during the eventual comparison pass
+  from the Rust reference helper, so keep it framed as host adaptation during
+  the eventual acceptance comparison
 - `regalloc_helpers.cpp` still keeps most live local-slot objects conservative,
   so broader Rust-like alloca tiering is not active yet
 - keep `.rs` files as references until the final comparison pass is complete
@@ -55,5 +46,6 @@ still lacks proof.
 
 Ran `cmake --build --preset default -j4 && ctest --test-dir build -j
 --output-on-failure -R '^backend_prepare_stack_layout$' > test_after.log 2>&1`
-successfully; canonical proof log: `test_after.log`. No broader checkpoint was
-run in this executor packet.
+successfully after the bounded `alloca_coalescing` parity audit; canonical
+proof log: `test_after.log`. No broader checkpoint was run in this executor
+packet.
