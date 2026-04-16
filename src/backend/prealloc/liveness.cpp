@@ -108,6 +108,8 @@ struct BlockProgramPoints {
 
 struct ProgramPointState {
   std::vector<BlockProgramPoints> blocks;
+  std::vector<std::optional<std::size_t>> def_points;
+  std::vector<std::vector<std::size_t>> use_points;
   std::vector<std::size_t> first_points;
   std::vector<std::size_t> last_points;
   std::vector<bool> seen_activity;
@@ -419,6 +421,8 @@ void collect_terminator_uses(const bir::Terminator& terminator,
 void record_point_activity(const std::vector<std::size_t>& uses,
                            const std::vector<std::size_t>& defs,
                            std::size_t point,
+                           std::vector<std::optional<std::size_t>>& def_points,
+                           std::vector<std::vector<std::size_t>>& use_points,
                            std::vector<std::size_t>& first_points,
                            std::vector<std::size_t>& last_points,
                            std::vector<bool>& seen_activity,
@@ -426,6 +430,7 @@ void record_point_activity(const std::vector<std::size_t>& uses,
                            BitSet& kill) {
   for (const std::size_t dense_index : uses) {
     seen_activity[dense_index] = true;
+    use_points[dense_index].push_back(point);
     if (first_points[dense_index] == kNoPoint) {
       first_points[dense_index] = point;
     }
@@ -437,6 +442,9 @@ void record_point_activity(const std::vector<std::size_t>& uses,
 
   for (const std::size_t dense_index : defs) {
     seen_activity[dense_index] = true;
+    if (!def_points[dense_index].has_value()) {
+      def_points[dense_index] = point;
+    }
     if (first_points[dense_index] == kNoPoint) {
       first_points[dense_index] = point;
     }
@@ -582,6 +590,8 @@ void record_point_activity(const std::vector<std::size_t>& uses,
   const std::size_t value_count = dense_values.values.size();
   ProgramPointState state{
       .blocks = {},
+      .def_points = std::vector<std::optional<std::size_t>>(value_count),
+      .use_points = std::vector<std::vector<std::size_t>>(value_count),
       .first_points = std::vector<std::size_t>(value_count, kNoPoint),
       .last_points = std::vector<std::size_t>(value_count, 0),
       .seen_activity = std::vector<bool>(value_count, false),
@@ -605,6 +615,7 @@ void record_point_activity(const std::vector<std::size_t>& uses,
           continue;
         }
         state.seen_activity[dense_index] = true;
+        state.def_points[dense_index] = block_state.start_point;
         state.first_points[dense_index] = block_state.start_point;
         state.last_points[dense_index] = block_state.start_point;
         block_state.kill.insert(dense_index);
@@ -618,6 +629,8 @@ void record_point_activity(const std::vector<std::size_t>& uses,
       record_point_activity(uses,
                             defs,
                             state.total_points,
+                            state.def_points,
+                            state.use_points,
                             state.first_points,
                             state.last_points,
                             state.seen_activity,
@@ -638,6 +651,8 @@ void record_point_activity(const std::vector<std::size_t>& uses,
     record_point_activity(terminator_uses,
                           {},
                           state.total_points,
+                          state.def_points,
+                          state.use_points,
                           state.first_points,
                           state.last_points,
                           state.seen_activity,
@@ -738,6 +753,8 @@ void extend_intervals_from_liveness(const std::vector<BlockProgramPoints>& block
 [[nodiscard]] PreparedLivenessValue build_liveness_value(const DenseValueInfo& info,
                                                          const std::string& function_name,
                                                          PreparedValueId value_id,
+                                                         std::optional<std::size_t> definition_point,
+                                                         std::vector<std::size_t> use_points,
                                                          std::optional<PreparedLiveInterval> interval,
                                                          const std::vector<std::size_t>& call_points) {
   PreparedLivenessValue value{
@@ -750,6 +767,8 @@ void extend_intervals_from_liveness(const std::vector<BlockProgramPoints>& block
       .address_taken = info.address_taken,
       .requires_home_slot = info.requires_home_slot,
       .crosses_call = false,
+      .definition_point = definition_point,
+      .use_points = std::move(use_points),
       .live_interval = std::move(interval),
   };
 
@@ -825,6 +844,8 @@ void BirPreAlloc::run_liveness() {
       auto value = build_liveness_value(dense_values.values[dense_index],
                                         function.name,
                                         dense_value_ids[dense_index],
+                                        points.def_points[dense_index],
+                                        points.use_points[dense_index],
                                         interval,
                                         prepared_function.call_points);
       if (value.live_interval.has_value()) {
@@ -852,8 +873,9 @@ void BirPreAlloc::run_liveness() {
   prepared_.notes.push_back(PrepareNote{
       .phase = "liveness",
       .message =
-          "liveness now computes BIR named-value intervals, predecessor-edge phi uses, call points, "
-          "CFG-aware live-through extension, and loop depth independently of stack-layout object identity",
+          "liveness now computes BIR named-value intervals, exact def/use program points, "
+          "predecessor-edge phi uses, call points, CFG-aware live-through extension, and loop depth "
+          "independently of stack-layout object identity",
   });
 }
 

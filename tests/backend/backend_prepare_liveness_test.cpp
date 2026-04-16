@@ -154,6 +154,19 @@ int check_phi_predecessor_edge_liveness(const prepare::PreparedBirModule& prepar
     return fail("expected left.v, right.v, phi.v, and sum in prepared liveness");
   }
 
+  if (left->definition_point != 2 || left->use_points != std::vector<std::size_t>{3}) {
+    return fail("expected left.v to publish its definition point and predecessor-edge phi use point");
+  }
+  if (right->definition_point != 4 || right->use_points != std::vector<std::size_t>{5}) {
+    return fail("expected right.v to publish its definition point and predecessor-edge phi use point");
+  }
+  if (phi->definition_point != 6 || phi->use_points != std::vector<std::size_t>{7}) {
+    return fail("expected phi.v to publish its definition point and downstream use point");
+  }
+  if (sum->definition_point != 7 || sum->use_points != std::vector<std::size_t>{8}) {
+    return fail("expected sum to publish its definition point and return use point");
+  }
+
   if (!left->live_interval.has_value() || left->live_interval->start_point != 2 ||
       left->live_interval->end_point != 3) {
     return fail("expected left.v interval to end at the left predecessor terminator point");

@@ -127,6 +127,8 @@ struct PreparedLivenessValue {
   bool address_taken = false;
   bool requires_home_slot = false;
   bool crosses_call = false;
+  std::optional<std::size_t> definition_point;
+  std::vector<std::size_t> use_points;
   std::optional<PreparedLiveInterval> live_interval;
 };
 
