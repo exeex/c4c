@@ -10,6 +10,7 @@ namespace c4c::backend::prepare::stack_layout {
 namespace {
 
 using SlotBlockSet = std::unordered_map<std::string_view, std::unordered_set<std::size_t>>;
+using SlotNameSet = std::unordered_set<std::string_view>;
 
 struct SlotUseSummary {
   SlotBlockSet use_blocks;
@@ -29,7 +30,23 @@ void record_addressed_local_slot_use(const std::optional<bir::MemoryAddress>& ad
   summary.addressed_slots.insert(address->base_name);
 }
 
-[[nodiscard]] SlotUseSummary collect_slot_use_summary(const bir::Function& function) {
+void record_local_slot_pointer_use(const bir::Value& value,
+                                   std::size_t block_index,
+                                   const SlotNameSet& local_slot_names,
+                                   SlotUseSummary& summary) {
+  if (value.kind != bir::Value::Kind::Named ||
+      value.type != bir::TypeKind::Ptr ||
+      value.name.empty() ||
+      local_slot_names.find(value.name) == local_slot_names.end()) {
+    return;
+  }
+
+  summary.use_blocks[value.name].insert(block_index);
+  summary.addressed_slots.insert(value.name);
+}
+
+[[nodiscard]] SlotUseSummary collect_slot_use_summary(const bir::Function& function,
+                                                      const SlotNameSet& local_slot_names) {
   SlotUseSummary summary;
 
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
@@ -56,6 +73,15 @@ void record_addressed_local_slot_use(const std::optional<bir::MemoryAddress>& ad
       if (const auto* call = std::get_if<bir::CallInst>(&inst);
           call != nullptr && call->sret_storage_name.has_value()) {
         summary.use_blocks[*call->sret_storage_name].insert(block_index);
+        for (const auto& arg : call->args) {
+          record_local_slot_pointer_use(arg, block_index, local_slot_names, summary);
+        }
+        continue;
+      }
+      if (const auto* call = std::get_if<bir::CallInst>(&inst); call != nullptr) {
+        for (const auto& arg : call->args) {
+          record_local_slot_pointer_use(arg, block_index, local_slot_names, summary);
+        }
       }
     }
   }
@@ -73,7 +99,13 @@ void apply_alloca_coalescing_hints(const bir::Function& function,
     slots_by_name.emplace(slot.name, &slot);
   }
 
-  const SlotUseSummary use_summary = collect_slot_use_summary(function);
+  SlotNameSet local_slot_names;
+  local_slot_names.reserve(function.local_slots.size());
+  for (const auto& slot : function.local_slots) {
+    local_slot_names.insert(slot.name);
+  }
+
+  const SlotUseSummary use_summary = collect_slot_use_summary(function, local_slot_names);
 
   for (auto& object : objects) {
     const auto slot_it = slots_by_name.find(object.source_name);
