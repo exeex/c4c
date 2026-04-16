@@ -6,26 +6,31 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed the next Step 2 permanent-home producer audit by proving
-`analysis.cpp` already emits explicit prepared contracts for `byval` and
-`sret` params and that the active stack-layout path preserves those contracts
-without any downstream `source_kind` re-derivation. The focused
-`backend_prepare_stack_layout` test now covers parameter-object collection,
-post-`apply_regalloc_hints()` preservation, and full frame-slot activation for
-`byval_param` plus `sret_param`, while a plain parameter remains outside the
-prepared stack-object set.
+Completed the next Step 2 fixed-tier audit by comparing the active C++
+`slot_assignment.cpp` path against the retained Rust Tier 1 ordering
+expectation and correcting the one remaining mismatch: C++ collected local
+objects before params, so fixed-location locals could claim earlier offsets
+than `byval_param` or `sret_param` permanent-home objects. The fixed tier now
+keeps parameter-owned permanent-home objects ahead of later fixed-location
+locals, and the focused `backend_prepare_stack_layout` activation coverage now
+proves that ordering with a mixed byval/sret-param plus addressed-local case.
 
 ## Suggested Next
 
-Continue Step 2 by comparing the remaining C++ stack-layout fixed-tier behavior
-against the retained Rust `slot_assignment.rs` path, especially around
-parameter/alloca ordering and any dead-parameter elision rules that are still
-missing from the active C++ route.
+Continue Step 2 by auditing the remaining Rust `slot_assignment.rs`
+parameter-specific behavior that is not yet covered in the active C++ route,
+especially dead-parameter/dead-param-alloca elision and whether any surviving
+fixed-tier assumptions still depend on reference-only Tier 1 classification
+order.
 
 ## Watchouts
 
 - `slot_assignment.cpp` now keys the fixed-location tier off
   `PreparedStackObject.permanent_home_slot`, not `address_exposed`
+- `analysis.cpp` still collects local-slot objects before params; the active
+  fixed-tier helper now compensates by partitioning `byval_param` and
+  `sret_param` objects ahead of later fixed-location locals to match the Rust
+  Tier 1 ordering intent
 - `byval_copy`, `phi`, and `call_result_sret` are now the explicit
   non-address-exposed permanent-home source kinds covered by focused activation
   tests
@@ -66,6 +71,6 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_stack_layout$ >
 test_after.log 2>&1`
-after adding focused byval/sret parameter coverage for object collection,
-regalloc-hint preservation, and active frame-slot assignment. Canonical proof
-log: `test_after.log`.
+after adding focused parameter-vs-local fixed-tier ordering coverage for mixed
+byval/sret params, an addressed local, and a reorderable comparison local.
+Canonical proof log: `test_after.log`.

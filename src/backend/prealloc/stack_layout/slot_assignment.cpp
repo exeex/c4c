@@ -16,6 +16,11 @@ namespace {
   return object.permanent_home_slot;
 }
 
+[[nodiscard]] bool is_parameter_owned_fixed_slot(const PreparedStackObject& object) {
+  return object.source_kind == std::string_view("byval_param") ||
+         object.source_kind == std::string_view("sret_param");
+}
+
 void sort_reorderable_objects(std::vector<const PreparedStackObject*>& objects) {
   std::stable_sort(objects.begin(),
                    objects.end(),
@@ -72,8 +77,12 @@ std::vector<PreparedFrameSlot> assign_frame_slots(const std::vector<PreparedStac
   slots.reserve(objects.size());
 
   std::vector<const PreparedStackObject*> fixed_location_objects;
+  std::vector<const PreparedStackObject*> parameter_fixed_location_objects;
+  std::vector<const PreparedStackObject*> local_fixed_location_objects;
   std::vector<const PreparedStackObject*> reorderable_objects;
   fixed_location_objects.reserve(objects.size());
+  parameter_fixed_location_objects.reserve(objects.size());
+  local_fixed_location_objects.reserve(objects.size());
   reorderable_objects.reserve(objects.size());
 
   for (const auto& object : objects) {
@@ -81,11 +90,22 @@ std::vector<PreparedFrameSlot> assign_frame_slots(const std::vector<PreparedStac
       continue;
     }
     if (uses_fixed_location_slot(object)) {
-      fixed_location_objects.push_back(&object);
+      if (is_parameter_owned_fixed_slot(object)) {
+        parameter_fixed_location_objects.push_back(&object);
+      } else {
+        local_fixed_location_objects.push_back(&object);
+      }
       continue;
     }
     reorderable_objects.push_back(&object);
   }
+
+  fixed_location_objects.insert(fixed_location_objects.end(),
+                                parameter_fixed_location_objects.begin(),
+                                parameter_fixed_location_objects.end());
+  fixed_location_objects.insert(fixed_location_objects.end(),
+                                local_fixed_location_objects.begin(),
+                                local_fixed_location_objects.end());
 
   sort_reorderable_objects(reorderable_objects);
 

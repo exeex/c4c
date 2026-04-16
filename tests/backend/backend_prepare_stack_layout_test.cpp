@@ -292,6 +292,79 @@ prepare::PreparedBirModule prepare_param_permanent_home_slot_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_param_fixed_location_ordering_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_param_fixed_location_ordering_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "p.byval.fixed",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .is_byval = true,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "p.sret.fixed",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .is_sret = true,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.fixed.local.root",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.fixed.local.wide",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.fixed.local.wide",
+      .value = bir::Value::immediate_i64(21),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.fixed.local.wide",
+      .value = bir::Value::immediate_i64(34),
+      .align_bytes = 8,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "lv.fixed.local.root",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::immediate_i32(0),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_addressed_local_slot_module() {
   bir::Module module;
 
@@ -2080,6 +2153,49 @@ int check_param_permanent_home_slot_frame_slot_activation(
   return 0;
 }
 
+int check_param_fixed_location_ordering_activation(const prepare::PreparedBirModule& prepared) {
+  const auto* byval_object = find_stack_object(prepared, "p.byval.fixed");
+  const auto* sret_object = find_stack_object(prepared, "p.sret.fixed");
+  const auto* local_object = find_stack_object(prepared, "lv.fixed.local.root");
+  const auto* wide_object = find_stack_object(prepared, "lv.fixed.local.wide");
+  if (byval_object == nullptr || sret_object == nullptr || local_object == nullptr ||
+      wide_object == nullptr) {
+    return fail("expected parameter-vs-local fixed-tier activation to produce params, fixed local, and comparison objects");
+  }
+  if (!byval_object->permanent_home_slot || !sret_object->permanent_home_slot ||
+      !local_object->permanent_home_slot) {
+    return fail("expected the byval param, sret param, and addressed local to remain fixed-tier objects");
+  }
+  if (wide_object->permanent_home_slot) {
+    return fail("expected the comparison wide local slot to remain reorderable");
+  }
+
+  const auto* byval_slot = find_frame_slot(prepared, byval_object->object_id);
+  const auto* sret_slot = find_frame_slot(prepared, sret_object->object_id);
+  const auto* local_slot = find_frame_slot(prepared, local_object->object_id);
+  const auto* wide_slot = find_frame_slot(prepared, wide_object->object_id);
+  if (byval_slot == nullptr || sret_slot == nullptr || local_slot == nullptr ||
+      wide_slot == nullptr) {
+    return fail("expected parameter-vs-local fixed-tier activation to assign frame-slot storage");
+  }
+  if (!byval_slot->fixed_location || !sret_slot->fixed_location || !local_slot->fixed_location) {
+    return fail("expected byval, sret, and addressed local objects to use the fixed-location tier");
+  }
+  if (wide_slot->fixed_location) {
+    return fail("expected the comparison wide local slot to stay reorderable");
+  }
+  if (byval_slot->offset_bytes != 0 || sret_slot->offset_bytes != 8 ||
+      local_slot->offset_bytes != 16 || wide_slot->offset_bytes != 24) {
+    return fail("expected parameter-owned fixed slots to anchor ahead of the later fixed-location local");
+  }
+  if (prepared.stack_layout.frame_size_bytes != 32 ||
+      prepared.stack_layout.frame_alignment_bytes != 8) {
+    return fail("expected parameter-vs-local fixed-tier activation to preserve the aligned frame metrics");
+  }
+
+  return 0;
+}
+
 int check_lowering_scratch_frame_slot_activation(const prepare::PreparedBirModule& prepared) {
   const auto* scratch_object = find_stack_object(prepared, "lv.scratch.root");
   const auto* wide_object = find_stack_object(prepared, "lv.scratch.wide");
@@ -2873,6 +2989,14 @@ int main() {
   if (const int rc =
           check_param_permanent_home_slot_frame_slot_activation(
               param_permanent_home_slot_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto param_fixed_location_ordering_prepared =
+      prepare_param_fixed_location_ordering_module();
+  if (const int rc =
+          check_param_fixed_location_ordering_activation(param_fixed_location_ordering_prepared);
       rc != 0) {
     return rc;
   }
