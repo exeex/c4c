@@ -41,6 +41,47 @@ void sort_reorderable_objects(std::vector<const PreparedStackObject*>& objects) 
                    });
 }
 
+[[nodiscard]] std::size_t aligned_end_offset(std::size_t offset_bytes,
+                                             const PreparedStackObject& object) {
+  const std::size_t size_bytes = normalize_size(object.type, object.size_bytes);
+  const std::size_t align_bytes =
+      normalize_alignment(object.type, object.align_bytes, size_bytes);
+  return align_to(offset_bytes, align_bytes) + size_bytes;
+}
+
+std::vector<const PreparedStackObject*>::iterator select_gap_filler(
+    std::vector<const PreparedStackObject*>& objects,
+    const std::size_t next_offset_bytes) {
+  if (objects.size() < 2) {
+    return objects.end();
+  }
+
+  const std::size_t primary_start = align_to(
+      next_offset_bytes,
+      normalize_alignment(objects.front()->type,
+                          objects.front()->align_bytes,
+                          normalize_size(objects.front()->type, objects.front()->size_bytes)));
+  if (primary_start == next_offset_bytes) {
+    return objects.end();
+  }
+
+  auto best_it = objects.end();
+  std::size_t best_end_offset = next_offset_bytes;
+  for (auto it = std::next(objects.begin()); it != objects.end(); ++it) {
+    const std::size_t end_offset = aligned_end_offset(next_offset_bytes, **it);
+    if (end_offset > primary_start) {
+      continue;
+    }
+    if (best_it == objects.end() || end_offset > best_end_offset ||
+        (end_offset == best_end_offset && (*it)->object_id < (*best_it)->object_id)) {
+      best_it = it;
+      best_end_offset = end_offset;
+    }
+  }
+
+  return best_it;
+}
+
 void append_slot_for_object(const PreparedStackObject& object,
                             bool fixed_location,
                             PreparedFrameSlotId& next_slot_id,
@@ -115,8 +156,16 @@ std::vector<PreparedFrameSlot> assign_frame_slots(const std::vector<PreparedStac
   for (const PreparedStackObject* object : fixed_location_objects) {
     append_slot_for_object(*object, true, next_slot_id, next_offset_bytes, max_alignment_bytes, slots);
   }
-  for (const PreparedStackObject* object : reorderable_objects) {
+
+  while (!reorderable_objects.empty()) {
+    auto selected_it = select_gap_filler(reorderable_objects, next_offset_bytes);
+    if (selected_it == reorderable_objects.end()) {
+      selected_it = reorderable_objects.begin();
+    }
+
+    const PreparedStackObject* object = *selected_it;
     append_slot_for_object(*object, false, next_slot_id, next_offset_bytes, max_alignment_bytes, slots);
+    reorderable_objects.erase(selected_it);
   }
 
   frame_alignment_bytes = max_alignment_bytes;
