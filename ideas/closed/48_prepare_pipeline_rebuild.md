@@ -59,3 +59,24 @@ This idea is complete when:
 - target legality lives in `prepare`
 - stack layout, liveness, and regalloc produce real prepared-phase artifacts
   instead of notes or placeholders
+
+## 2026-04-16 Deactivation Note
+
+The active runbook for this idea was retired by a user-directed route reset.
+
+Execution had crossed into a different initiative: the old summary/batch-heavy
+`src/backend/prealloc/` model was being discarded in favor of a
+value/interval-driven redesign across:
+
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/stack_layout.cpp`
+- `src/backend/prealloc/liveness.cpp`
+- `src/backend/prealloc/regalloc.cpp`
+
+That redesign now lives in
+`ideas/open/54_value_interval_driven_prepare_data_model_reset.md`, and the
+active runbook should follow that narrower reset instead of stretching this
+idea's older runbook around a new structure.
+
+This source idea remains open. The broader prepare-pipeline objective is not
+complete yet; only the previous runbook was retired.
