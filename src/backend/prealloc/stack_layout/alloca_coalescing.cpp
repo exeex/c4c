@@ -116,6 +116,22 @@ void update_pointer_alias(const bir::Value& result,
   pointer_aliases[result.name] = roots;
 }
 
+void handle_single_input_pointer_transform(const bir::Value& operand,
+                                           const bir::Value& result,
+                                           std::size_t block_index,
+                                           const SlotNameSet& local_slot_names,
+                                           PointerAliasMap& pointer_aliases,
+                                           SlotUseSummary& summary) {
+  RootNameSet roots;
+  merge_pointer_roots(operand, local_slot_names, pointer_aliases, roots);
+  record_local_slot_pointer_use(
+      operand, block_index, local_slot_names, pointer_aliases, summary);
+  if (!roots.empty()) {
+    record_root_pointer_escape(roots, block_index, summary);
+  }
+  update_pointer_alias(result, roots, pointer_aliases);
+}
+
 [[nodiscard]] SlotUseSummary collect_slot_use_summary(const bir::Function& function,
                                                       const SlotNameSet& local_slot_names) {
   SlotUseSummary summary;
@@ -163,11 +179,12 @@ void update_pointer_alias(const bir::Value& result,
         continue;
       }
       if (const auto* cast = std::get_if<bir::CastInst>(&inst); cast != nullptr) {
-        RootNameSet roots;
-        merge_pointer_roots(cast->operand, local_slot_names, pointer_aliases, roots);
-        record_local_slot_pointer_use(
-            cast->operand, block_index, local_slot_names, pointer_aliases, summary);
-        update_pointer_alias(cast->result, roots, pointer_aliases);
+        handle_single_input_pointer_transform(cast->operand,
+                                              cast->result,
+                                              block_index,
+                                              local_slot_names,
+                                              pointer_aliases,
+                                              summary);
         continue;
       }
       if (const auto* phi = std::get_if<bir::PhiInst>(&inst); phi != nullptr) {

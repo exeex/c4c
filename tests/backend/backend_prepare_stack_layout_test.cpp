@@ -343,6 +343,46 @@ prepare::PreparedBirModule prepare_mixed_select_local_slot_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_cast_escaped_local_slot_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_cast_escaped_local_slot_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.cast.root",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "lv.cast.alias"),
+      .operand = bir::Value::named(bir::TypeKind::Ptr, "lv.cast.root"),
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 int check_stack_layout_activation(const prepare::PreparedBirModule& prepared) {
   const auto* live_object = find_stack_object(prepared, "lv.live");
   const auto* dead_object = find_stack_object(prepared, "lv.dead");
@@ -477,6 +517,29 @@ int check_mixed_select_local_slot_activation(const prepare::PreparedBirModule& p
   return 0;
 }
 
+int check_cast_escaped_local_slot_activation(const prepare::PreparedBirModule& prepared) {
+  const auto* root_object = find_stack_object(prepared, "lv.cast.root");
+  if (root_object == nullptr) {
+    return fail("expected the cast-escaped root local slot to produce a stack-layout object");
+  }
+  if (!root_object->address_exposed) {
+    return fail("expected a pointer cast to conservatively expose the root slot");
+  }
+  if (!root_object->requires_home_slot) {
+    return fail("expected a pointer cast to keep a dedicated home-slot requirement");
+  }
+
+  const auto* root_slot = find_frame_slot(prepared, root_object->object_id);
+  if (root_slot == nullptr) {
+    return fail("expected the cast-escaped root local slot to receive frame-slot storage");
+  }
+  if (root_slot->size_bytes != 4 || root_slot->align_bytes != 4) {
+    return fail("expected the cast-escaped root local slot to preserve its frame-slot layout");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -502,6 +565,11 @@ int main() {
 
   const auto mixed_select_prepared = prepare_mixed_select_local_slot_module();
   if (const int rc = check_mixed_select_local_slot_activation(mixed_select_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto cast_escaped_prepared = prepare_cast_escaped_local_slot_module();
+  if (const int rc = check_cast_escaped_local_slot_activation(cast_escaped_prepared); rc != 0) {
     return rc;
   }
   return 0;
