@@ -114,6 +114,84 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_addressed_local_slot_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_addressed_local_slot_activation";
+  function.return_type = bir::TypeKind::I64;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.addr.root",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.addr.store",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .storage_kind = bir::LocalSlotStorageKind::LoweringScratch,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.addr.load",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .storage_kind = bir::LocalSlotStorageKind::LoweringScratch,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.addr.store",
+      .value = bir::Value::immediate_i64(7),
+      .align_bytes = 8,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "lv.addr.root",
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+  });
+  entry.terminator = bir::BranchTerminator{.target_label = "use"};
+
+  bir::Block use;
+  use.label = "use";
+  use.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "loaded.addr"),
+      .slot_name = "lv.addr.load",
+      .align_bytes = 8,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "lv.addr.root",
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+  });
+  use.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I64, "loaded.addr"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(use));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 int check_stack_layout_activation(const prepare::PreparedBirModule& prepared) {
   const auto* live_object = find_stack_object(prepared, "lv.live");
   const auto* dead_object = find_stack_object(prepared, "lv.dead");
@@ -156,11 +234,39 @@ int check_stack_layout_activation(const prepare::PreparedBirModule& prepared) {
   return 0;
 }
 
+int check_addressed_local_slot_activation(const prepare::PreparedBirModule& prepared) {
+  const auto* root_object = find_stack_object(prepared, "lv.addr.root");
+  if (root_object == nullptr) {
+    return fail("expected the addressed root local slot to produce a stack-layout object");
+  }
+  if (!root_object->address_exposed) {
+    return fail("expected addressed local-slot uses to mark the root slot address-exposed");
+  }
+  if (!root_object->requires_home_slot) {
+    return fail("expected addressed local-slot uses to keep a dedicated home-slot requirement");
+  }
+
+  const auto* root_slot = find_frame_slot(prepared, root_object->object_id);
+  if (root_slot == nullptr) {
+    return fail("expected the addressed root local slot to receive frame-slot storage");
+  }
+  if (root_slot->size_bytes != 8 || root_slot->align_bytes != 8) {
+    return fail("expected the addressed root local slot to preserve its frame-slot layout");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
-  const auto prepared = prepare_stack_layout_module();
-  if (const int rc = check_stack_layout_activation(prepared); rc != 0) {
+  const auto copy_prepared = prepare_stack_layout_module();
+  if (const int rc = check_stack_layout_activation(copy_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto addressed_prepared = prepare_addressed_local_slot_module();
+  if (const int rc = check_addressed_local_slot_activation(addressed_prepared); rc != 0) {
     return rc;
   }
   return 0;
