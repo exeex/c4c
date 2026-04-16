@@ -58,6 +58,15 @@ void record_local_slot_pointer_use(const bir::Value& value,
   }
 }
 
+void record_root_pointer_escape(const RootNameSet& roots,
+                                std::size_t block_index,
+                                SlotUseSummary& summary) {
+  for (const std::string_view root_name : roots) {
+    summary.use_blocks[root_name].insert(block_index);
+    summary.addressed_slots.insert(root_name);
+  }
+}
+
 void merge_pointer_roots(const bir::Value& value,
                          const SlotNameSet& local_slot_names,
                          const PointerAliasMap& pointer_aliases,
@@ -74,6 +83,21 @@ void merge_pointer_roots(const bir::Value& value,
   if (const auto alias_it = pointer_aliases.find(value.name); alias_it != pointer_aliases.end()) {
     roots.insert(alias_it->second.begin(), alias_it->second.end());
   }
+}
+
+[[nodiscard]] bool is_unrooted_pointer_value(const bir::Value& value,
+                                             const SlotNameSet& local_slot_names,
+                                             const PointerAliasMap& pointer_aliases) {
+  if (value.kind != bir::Value::Kind::Named || value.type != bir::TypeKind::Ptr ||
+      value.name.empty()) {
+    return false;
+  }
+
+  if (local_slot_names.find(value.name) != local_slot_names.end()) {
+    return false;
+  }
+
+  return pointer_aliases.find(value.name) == pointer_aliases.end();
 }
 
 void update_pointer_alias(const bir::Value& result,
@@ -148,33 +172,55 @@ void update_pointer_alias(const bir::Value& result,
       }
       if (const auto* phi = std::get_if<bir::PhiInst>(&inst); phi != nullptr) {
         RootNameSet roots;
+        bool saw_unrooted_pointer = false;
         for (const auto& incoming : phi->incomings) {
           merge_pointer_roots(incoming.value, local_slot_names, pointer_aliases, roots);
+          saw_unrooted_pointer |=
+              is_unrooted_pointer_value(incoming.value, local_slot_names, pointer_aliases);
           record_local_slot_pointer_use(
               incoming.value, block_index, local_slot_names, pointer_aliases, summary);
+        }
+        if (!roots.empty() && saw_unrooted_pointer) {
+          record_root_pointer_escape(roots, block_index, summary);
         }
         update_pointer_alias(phi->result, roots, pointer_aliases);
         continue;
       }
       if (const auto* select = std::get_if<bir::SelectInst>(&inst); select != nullptr) {
         RootNameSet roots;
+        bool saw_unrooted_pointer = false;
         merge_pointer_roots(select->true_value, local_slot_names, pointer_aliases, roots);
         merge_pointer_roots(select->false_value, local_slot_names, pointer_aliases, roots);
+        saw_unrooted_pointer |=
+            is_unrooted_pointer_value(select->true_value, local_slot_names, pointer_aliases);
+        saw_unrooted_pointer |=
+            is_unrooted_pointer_value(select->false_value, local_slot_names, pointer_aliases);
         record_local_slot_pointer_use(
             select->true_value, block_index, local_slot_names, pointer_aliases, summary);
         record_local_slot_pointer_use(
             select->false_value, block_index, local_slot_names, pointer_aliases, summary);
+        if (!roots.empty() && saw_unrooted_pointer) {
+          record_root_pointer_escape(roots, block_index, summary);
+        }
         update_pointer_alias(select->result, roots, pointer_aliases);
         continue;
       }
       if (const auto* binary = std::get_if<bir::BinaryInst>(&inst); binary != nullptr) {
         RootNameSet roots;
+        bool saw_unrooted_pointer = false;
         merge_pointer_roots(binary->lhs, local_slot_names, pointer_aliases, roots);
         merge_pointer_roots(binary->rhs, local_slot_names, pointer_aliases, roots);
+        saw_unrooted_pointer |=
+            is_unrooted_pointer_value(binary->lhs, local_slot_names, pointer_aliases);
+        saw_unrooted_pointer |=
+            is_unrooted_pointer_value(binary->rhs, local_slot_names, pointer_aliases);
         record_local_slot_pointer_use(
             binary->lhs, block_index, local_slot_names, pointer_aliases, summary);
         record_local_slot_pointer_use(
             binary->rhs, block_index, local_slot_names, pointer_aliases, summary);
+        if (!roots.empty() && saw_unrooted_pointer) {
+          record_root_pointer_escape(roots, block_index, summary);
+        }
         update_pointer_alias(binary->result, roots, pointer_aliases);
       }
     }
