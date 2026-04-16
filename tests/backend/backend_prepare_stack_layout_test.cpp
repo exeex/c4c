@@ -394,6 +394,77 @@ prepare::PreparedBirModule prepare_permanent_home_slot_frame_slot_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_lowering_scratch_frame_slot_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_lowering_scratch_frame_slot_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.scratch.root",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .storage_kind = bir::LocalSlotStorageKind::LoweringScratch,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.scratch.wide",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.scratch.root",
+      .value = bir::Value::immediate_i32(9),
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.scratch.wide",
+      .value = bir::Value::immediate_i64(17),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "lv.scratch.loaded"),
+      .slot_name = "lv.scratch.root",
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "lv.scratch.reloaded"),
+      .slot_name = "lv.scratch.root",
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "lv.scratch.sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "lv.scratch.loaded"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "lv.scratch.reloaded"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "lv.scratch.sum"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_phi_permanent_home_slot_frame_slot_module() {
   bir::Module module;
 
@@ -1728,6 +1799,51 @@ int check_permanent_home_slot_frame_slot_activation(const prepare::PreparedBirMo
   return 0;
 }
 
+int check_lowering_scratch_frame_slot_activation(const prepare::PreparedBirModule& prepared) {
+  const auto* scratch_object = find_stack_object(prepared, "lv.scratch.root");
+  const auto* wide_object = find_stack_object(prepared, "lv.scratch.wide");
+  if (scratch_object == nullptr || wide_object == nullptr) {
+    return fail("expected lowering-scratch activation to produce both stack-layout objects");
+  }
+  if (scratch_object->source_kind != "lowering_scratch") {
+    return fail("expected the lowering-scratch local slot to publish its explicit prepared source kind");
+  }
+  if (scratch_object->address_exposed) {
+    return fail("expected the generic lowering-scratch local slot to stay non-address-exposed");
+  }
+  if (!scratch_object->requires_home_slot) {
+    return fail("expected the generic lowering-scratch local slot to keep its home-slot requirement");
+  }
+  if (scratch_object->permanent_home_slot) {
+    return fail("expected the generic lowering-scratch local slot to stay reorderable without an explicit permanent-home contract");
+  }
+
+  const auto* scratch_slot = find_frame_slot(prepared, scratch_object->object_id);
+  const auto* wide_slot = find_frame_slot(prepared, wide_object->object_id);
+  if (scratch_slot == nullptr || wide_slot == nullptr) {
+    return fail("expected lowering-scratch activation to assign frame-slot storage to both objects");
+  }
+  if (scratch_slot->fixed_location) {
+    return fail("expected the generic lowering-scratch local slot to stay out of the fixed-location tier");
+  }
+  if (wide_slot->fixed_location) {
+    return fail("expected the comparison wide local slot to remain reorderable");
+  }
+  if (wide_slot->offset_bytes != 0 || wide_slot->size_bytes != 8 || wide_slot->align_bytes != 8) {
+    return fail("expected the reorderable wide local slot to anchor frame offset 0");
+  }
+  if (scratch_slot->offset_bytes != 8 || scratch_slot->size_bytes != 4 ||
+      scratch_slot->align_bytes != 4) {
+    return fail("expected the generic lowering-scratch local slot to pack after the wider reorderable slot");
+  }
+  if (prepared.stack_layout.frame_size_bytes != 16 ||
+      prepared.stack_layout.frame_alignment_bytes != 8) {
+    return fail("expected lowering-scratch activation to preserve the packed frame metrics");
+  }
+
+  return 0;
+}
+
 int check_phi_permanent_home_slot_frame_slot_activation(
     const prepare::PreparedBirModule& prepared) {
   const auto* root_object = find_stack_object(prepared, "lv.phi.perm.root");
@@ -2280,6 +2396,12 @@ int main() {
   const auto permanent_home_slot_prepared = prepare_permanent_home_slot_frame_slot_module();
   if (const int rc =
           check_permanent_home_slot_frame_slot_activation(permanent_home_slot_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto lowering_scratch_prepared = prepare_lowering_scratch_frame_slot_module();
+  if (const int rc = check_lowering_scratch_frame_slot_activation(lowering_scratch_prepared);
       rc != 0) {
     return rc;
   }

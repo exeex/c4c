@@ -53,10 +53,7 @@ void apply_regalloc_hints(const bir::Function& function,
       requires_home_slot = requires_home_slot || slot->is_address_taken ||
                            (slot->storage_kind == bir::LocalSlotStorageKind::LoweringScratch &&
                             !elides_dedicated_home_slot);
-      permanent_home_slot =
-          permanent_home_slot || slot->is_address_taken ||
-          (slot->storage_kind == bir::LocalSlotStorageKind::LoweringScratch &&
-           !elides_dedicated_home_slot);
+      permanent_home_slot = permanent_home_slot || slot->is_address_taken;
     }
     permanent_home_slot = permanent_home_slot || address_exposed;
 

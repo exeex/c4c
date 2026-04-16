@@ -6,23 +6,22 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed the next Step 2 stack-layout activation packet by making the
-remaining explicit non-address-exposed permanent-home local-slot roots follow
-their prepared source kinds instead of raw slot metadata in
-`regalloc_helpers.cpp`. `analysis.cpp` now derives `permanent_home_slot` for
-`byval_copy` and `phi` objects from their published `source_kind`, and the
-active `backend_prepare_stack_layout` test now proves both that
-`byval_copy` keeps its explicit prepared source kind and that a
-non-address-exposed phi-observed local slot publishes `source_kind == "phi"`,
-keeps `requires_home_slot == true`, publishes `permanent_home_slot == true`,
-and lands in the fixed-location frame-slot tier at offset `0`.
+Completed the next Step 2 stack-layout activation packet by removing the last
+generic `LoweringScratch -> permanent_home_slot` widening from
+`regalloc_helpers.cpp`. Generic non-copy scratch slots now stay reorderable
+unless an explicit prepared contract marks them permanent, and the active
+`backend_prepare_stack_layout` test now proves that a non-copy
+`lowering_scratch` object keeps `requires_home_slot == true`, publishes
+`permanent_home_slot == false`, stays out of the fixed-location tier, and packs
+after a wider reorderable slot while the explicit permanent-home source kinds
+remain covered separately.
 
 ## Suggested Next
 
-Continue Step 2 by auditing the still-generic `LoweringScratch` permanence
-path and decide whether the active non-copy scratch cases need an explicit
-prepared source kind or a separate prepared contract bit instead of relying on
-raw local-slot metadata in `regalloc_helpers.cpp`.
+Continue Step 2 by auditing the remaining generic
+`LoweringScratch -> requires_home_slot` path and decide whether the active
+non-copy scratch cases should keep that behavior or move to a more explicit
+prepared contract that better matches the retained Rust phase split.
 
 ## Watchouts
 
@@ -31,9 +30,12 @@ raw local-slot metadata in `regalloc_helpers.cpp`.
 - `byval_copy`, `phi`, and `call_result_sret` are now the explicit
   non-address-exposed permanent-home source kinds covered by focused activation
   tests
-- `regalloc_helpers.cpp` still widens non-copy `LoweringScratch` locals from
-  raw slot metadata; that is the main remaining generic permanence path inside
-  Step 2
+- `regalloc_helpers.cpp` no longer widens generic non-copy `LoweringScratch`
+  locals into `permanent_home_slot`; only explicit prepared source kinds and
+  address exposure should enter the fixed-location tier
+- generic non-copy `LoweringScratch` locals still inherit a home-slot
+  requirement from raw slot metadata; that is now the main remaining generic
+  scratch path inside Step 2
 - reorderable home-slot packing is still conservative size/alignment sorting;
   Rust-like shared-slot reuse is not active yet
 - do not fake shared-slot reuse or permanence widening with source-name
@@ -48,6 +50,6 @@ raw local-slot metadata in `regalloc_helpers.cpp`.
 Ran the delegated proof command successfully:
 `cmake --build --preset default -j4 && ctest --test-dir build -j
 --output-on-failure -R '^backend_prepare_stack_layout$' > test_after.log 2>&1`
-after moving `byval_copy` / `phi` permanence to explicit prepared-source
-semantics and extending the focused activation coverage. Canonical proof log:
-`test_after.log`.
+after removing the generic `LoweringScratch` permanence widening and extending
+the focused activation coverage for reorderable scratch behavior. Canonical
+proof log: `test_after.log`.
