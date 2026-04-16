@@ -135,18 +135,6 @@ const prepare::PreparedRegallocContentionSummary* find_regalloc_contention_summa
   return nullptr;
 }
 
-const prepare::PreparedRegallocBindingDecision* find_regalloc_binding_decision(
-    const prepare::PreparedRegallocFunction& function,
-    std::string_view source_kind,
-    std::string_view source_name) {
-  for (const auto& decision : function.binding_sequence) {
-    if (decision.source_kind == source_kind && decision.source_name == source_name) {
-      return &decision;
-    }
-  }
-  return nullptr;
-}
-
 struct RegallocDeferredBatchJoin {
   const prepare::PreparedRegallocObject* object = nullptr;
   const prepare::PreparedRegallocAllocationDecision* decision = nullptr;
@@ -277,12 +265,13 @@ RegallocBindingBatchMatch find_regalloc_binding_batch_match(
     const prepare::PreparedRegallocFunction& function,
     std::string_view source_kind,
     std::string_view source_name) {
-  if (const auto* decision =
-          find_regalloc_binding_decision(function, source_kind, source_name)) {
-    return {
-        .decision = decision,
-        .kind = decision->binding_batch_kind,
-    };
+  for (const auto& decision : function.binding_sequence) {
+    if (decision.source_kind == source_kind && decision.source_name == source_name) {
+      return {
+          .decision = &decision,
+          .kind = decision.binding_batch_kind,
+      };
+    }
   }
   auto deferred_batch_match =
       find_regalloc_deferred_binding_attachment_batch_match(function, source_kind, source_name);
