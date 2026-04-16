@@ -6,27 +6,19 @@
 
 namespace c4c::backend::prepare::stack_layout {
 
-std::vector<PreparedFrameSlot> assign_frame_slots(const std::vector<PreparedStackObject>& objects,
-                                                  PreparedFrameSlotId& next_slot_id,
-                                                  std::size_t& frame_size_bytes,
-                                                  std::size_t& frame_alignment_bytes) {
-  std::vector<PreparedFrameSlot> slots;
-  slots.reserve(objects.size());
+namespace {
 
-  std::vector<const PreparedStackObject*> assignable_objects;
-  assignable_objects.reserve(objects.size());
+[[nodiscard]] bool uses_copy_coalesced_slot(const PreparedStackObject& object) {
+  return object.source_kind == std::string_view("copy_coalescing_candidate");
+}
 
-  for (const auto& object : objects) {
-    const bool uses_copy_coalesced_slot =
-        object.source_kind == std::string_view("copy_coalescing_candidate");
-    if (!object.requires_home_slot || uses_copy_coalesced_slot) {
-      continue;
-    }
-    assignable_objects.push_back(&object);
-  }
+[[nodiscard]] bool uses_fixed_location_slot(const PreparedStackObject& object) {
+  return object.address_exposed;
+}
 
-  std::stable_sort(assignable_objects.begin(),
-                   assignable_objects.end(),
+void sort_reorderable_objects(std::vector<const PreparedStackObject*>& objects) {
+  std::stable_sort(objects.begin(),
+                   objects.end(),
                    [](const PreparedStackObject* lhs, const PreparedStackObject* rhs) {
                      const std::size_t lhs_size = normalize_size(lhs->type, lhs->size_bytes);
                      const std::size_t rhs_size = normalize_size(rhs->type, rhs->size_bytes);
@@ -42,29 +34,69 @@ std::vector<PreparedFrameSlot> assign_frame_slots(const std::vector<PreparedStac
                      }
                      return lhs->object_id < rhs->object_id;
                    });
+}
+
+void append_slot_for_object(const PreparedStackObject& object,
+                            bool fixed_location,
+                            PreparedFrameSlotId& next_slot_id,
+                            std::size_t& next_offset_bytes,
+                            std::size_t& max_alignment_bytes,
+                            std::vector<PreparedFrameSlot>& slots) {
+  const std::size_t size_bytes = normalize_size(object.type, object.size_bytes);
+  const std::size_t align_bytes =
+      normalize_alignment(object.type, object.align_bytes, size_bytes);
+
+  next_offset_bytes = align_to(next_offset_bytes, align_bytes);
+  max_alignment_bytes = std::max(max_alignment_bytes, align_bytes);
+
+  slots.push_back(PreparedFrameSlot{
+      .slot_id = next_slot_id++,
+      .object_id = object.object_id,
+      .function_name = object.function_name,
+      .offset_bytes = next_offset_bytes,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes,
+      .fixed_location = fixed_location,
+  });
+
+  next_offset_bytes += size_bytes;
+}
+
+}  // namespace
+
+std::vector<PreparedFrameSlot> assign_frame_slots(const std::vector<PreparedStackObject>& objects,
+                                                  PreparedFrameSlotId& next_slot_id,
+                                                  std::size_t& frame_size_bytes,
+                                                  std::size_t& frame_alignment_bytes) {
+  std::vector<PreparedFrameSlot> slots;
+  slots.reserve(objects.size());
+
+  std::vector<const PreparedStackObject*> fixed_location_objects;
+  std::vector<const PreparedStackObject*> reorderable_objects;
+  fixed_location_objects.reserve(objects.size());
+  reorderable_objects.reserve(objects.size());
+
+  for (const auto& object : objects) {
+    if (!object.requires_home_slot || uses_copy_coalesced_slot(object)) {
+      continue;
+    }
+    if (uses_fixed_location_slot(object)) {
+      fixed_location_objects.push_back(&object);
+      continue;
+    }
+    reorderable_objects.push_back(&object);
+  }
+
+  sort_reorderable_objects(reorderable_objects);
 
   std::size_t next_offset_bytes = 0;
   std::size_t max_alignment_bytes = 1;
 
-  for (const PreparedStackObject* object : assignable_objects) {
-    const std::size_t size_bytes = normalize_size(object->type, object->size_bytes);
-    const std::size_t align_bytes =
-        normalize_alignment(object->type, object->align_bytes, size_bytes);
-
-    next_offset_bytes = align_to(next_offset_bytes, align_bytes);
-    max_alignment_bytes = std::max(max_alignment_bytes, align_bytes);
-
-    slots.push_back(PreparedFrameSlot{
-        .slot_id = next_slot_id++,
-        .object_id = object->object_id,
-        .function_name = object->function_name,
-        .offset_bytes = next_offset_bytes,
-        .size_bytes = size_bytes,
-        .align_bytes = align_bytes,
-        .fixed_location = false,
-    });
-
-    next_offset_bytes += size_bytes;
+  for (const PreparedStackObject* object : fixed_location_objects) {
+    append_slot_for_object(*object, true, next_slot_id, next_offset_bytes, max_alignment_bytes, slots);
+  }
+  for (const PreparedStackObject* object : reorderable_objects) {
+    append_slot_for_object(*object, false, next_slot_id, next_offset_bytes, max_alignment_bytes, slots);
   }
 
   frame_alignment_bytes = max_alignment_bytes;
