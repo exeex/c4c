@@ -6,36 +6,31 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Continued Step 2 in `stack_layout` by routing the active C++
-`alloca_coalescing` call operands and stored pointer values through the same
-explicit escape helper shape already used for terminators. The focused
-`backend_prepare_stack_layout` coverage now also includes a real current-BIR
-store-of-pointer-value shape where a root local slot escapes by being stored,
-and the active C++ path still leaves that root slot address-exposed and
-home-slotted.
+Continued Step 2 in `stack_layout` by adding focused
+`backend_prepare_stack_layout` proof for the unusual current-BIR
+pointer-typed `CondBranch` condition shape. The active C++ terminator escape
+path already kept that rooted local slot address-exposed and home-slotted, so
+the packet landed as runtime-proof coverage rather than a semantic code fix.
 
 ## Suggested Next
 
-Continue Step 2 in `stack_layout`: compare the remaining current-BIR
-pointer-address sites against `alloca_coalescing.rs` and take the next bounded
-parity gain where rooted pointer operands are still treated as generic uses,
-especially `MemoryAddress::PointerValue` forms and any other active address
-base shapes that should share the explicit escape/helper split without
-speculative scaffolding.
+Continue Step 2 in `stack_layout`: compare the remaining active current-BIR
+pointer-address and pointer-transform sites against `alloca_coalescing.rs` and
+take the next bounded parity gain only where a real active shape still lacks
+either semantic alignment or focused proof, instead of broadening into
+speculative instruction families that current BIR does not model.
 
 ## Watchouts
 
-- the active C++ route now treats return/conditional-branch terminators, call
-  operands, and stored pointer values through an explicit pointer-escape
-  helper, but current-BIR coverage still does not prove the unusual
-  pointer-typed branch-condition shape
+- the active C++ route now has focused proof for return, pointer-typed
+  cond-branch, call-operand, indirect-callee, pointer-address, select, cast,
+  and store-of-pointer escape sites, but Step 2 acceptance still needs the
+  broader `.cpp` vs `.rs` comparison rather than treating testcase coverage as
+  convergence by itself
 - derived pointer aliases still keep local-slot roots live through the current
   BIR `CastInst` / `PhiInst` / `SelectInst` / pointer-shaped `BinaryInst`
   bridge, but the remaining Rust-vs-C++ comparison should stay tied to real
   active instruction/address forms instead of speculative scaffolding
-- `MemoryAddress::PointerValue` still routes through the generic use helper, so
-  the next parity pass should decide explicitly whether active address-base
-  shapes should remain ordinary uses or join the escape helper path
 - the C++ port still differs from `alloca_coalescing.rs` in that the Rust
   reference covers additional instruction families that the current BIR does
   not model, so keep future parity work tied to real active instruction shapes
