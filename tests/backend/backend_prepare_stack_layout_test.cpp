@@ -465,6 +465,60 @@ prepare::PreparedBirModule prepare_lowering_scratch_frame_slot_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_dead_lowering_scratch_frame_slot_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_dead_lowering_scratch_frame_slot_activation";
+  function.return_type = bir::TypeKind::I64;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.scratch.dead",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .storage_kind = bir::LocalSlotStorageKind::LoweringScratch,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.scratch.live",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.scratch.live",
+      .value = bir::Value::immediate_i64(23),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "lv.scratch.live.loaded"),
+      .slot_name = "lv.scratch.live",
+      .align_bytes = 8,
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I64, "lv.scratch.live.loaded"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_phi_permanent_home_slot_frame_slot_module() {
   bir::Module module;
 
@@ -1844,6 +1898,47 @@ int check_lowering_scratch_frame_slot_activation(const prepare::PreparedBirModul
   return 0;
 }
 
+int check_dead_lowering_scratch_frame_slot_activation(const prepare::PreparedBirModule& prepared) {
+  const auto* dead_scratch_object = find_stack_object(prepared, "lv.scratch.dead");
+  const auto* live_object = find_stack_object(prepared, "lv.scratch.live");
+  if (dead_scratch_object == nullptr || live_object == nullptr) {
+    return fail("expected dead lowering-scratch activation to produce both stack-layout objects");
+  }
+  if (dead_scratch_object->source_kind != "lowering_scratch") {
+    return fail("expected the dead generic lowering-scratch slot to keep its explicit prepared source kind");
+  }
+  if (dead_scratch_object->address_exposed) {
+    return fail("expected the dead generic lowering-scratch slot to stay non-address-exposed");
+  }
+  if (dead_scratch_object->requires_home_slot) {
+    return fail("expected the dead generic lowering-scratch slot to drop its dedicated home-slot requirement");
+  }
+  if (dead_scratch_object->permanent_home_slot) {
+    return fail("expected the dead generic lowering-scratch slot to stay out of the permanent-home tier");
+  }
+
+  const auto* dead_slot = find_frame_slot(prepared, dead_scratch_object->object_id);
+  const auto* live_slot = find_frame_slot(prepared, live_object->object_id);
+  if (dead_slot != nullptr) {
+    return fail("expected the dead generic lowering-scratch slot to skip dedicated frame-slot assignment");
+  }
+  if (live_slot == nullptr) {
+    return fail("expected the comparison live local slot to keep frame-slot storage");
+  }
+  if (live_slot->offset_bytes != 0 || live_slot->size_bytes != 8 || live_slot->align_bytes != 8) {
+    return fail("expected the live comparison local slot to anchor the remaining frame layout");
+  }
+  if (prepared.stack_layout.frame_slots.size() != 1) {
+    return fail("expected dead lowering-scratch activation to leave only one frame slot");
+  }
+  if (prepared.stack_layout.frame_size_bytes != 8 ||
+      prepared.stack_layout.frame_alignment_bytes != 8) {
+    return fail("expected dead lowering-scratch activation to shrink the frame metrics to the live slot");
+  }
+
+  return 0;
+}
+
 int check_phi_permanent_home_slot_frame_slot_activation(
     const prepare::PreparedBirModule& prepared) {
   const auto* root_object = find_stack_object(prepared, "lv.phi.perm.root");
@@ -2402,6 +2497,13 @@ int main() {
 
   const auto lowering_scratch_prepared = prepare_lowering_scratch_frame_slot_module();
   if (const int rc = check_lowering_scratch_frame_slot_activation(lowering_scratch_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto dead_lowering_scratch_prepared = prepare_dead_lowering_scratch_frame_slot_module();
+  if (const int rc =
+          check_dead_lowering_scratch_frame_slot_activation(dead_lowering_scratch_prepared);
       rc != 0) {
     return rc;
   }

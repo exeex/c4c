@@ -371,9 +371,7 @@ void apply_alloca_coalescing_hints(const bir::Function& function,
         use_summary.sret_storage_slots.find(slot.name) != use_summary.sret_storage_slots.end();
     const bool is_dead_local_slot =
         !has_explicit_uses && !has_addressed_local_uses && !slot.is_address_taken &&
-        !slot.is_byval_copy &&
-        slot.storage_kind == bir::LocalSlotStorageKind::None &&
-        !slot.phi_observation.has_value();
+        !slot.is_byval_copy && !slot.phi_observation.has_value();
 
     object.address_exposed =
         object.address_exposed || slot.is_address_taken || has_addressed_local_uses;
@@ -384,8 +382,7 @@ void apply_alloca_coalescing_hints(const bir::Function& function,
     object.requires_home_slot =
         !is_dead_local_slot &&
         (has_direct_slot_accesses || slot.is_address_taken || has_addressed_local_uses ||
-         slot.is_byval_copy || slot.storage_kind == bir::LocalSlotStorageKind::LoweringScratch ||
-         (!used_in_single_block && !rooted_pointer_bookkeeping_only));
+         slot.is_byval_copy || (!used_in_single_block && !rooted_pointer_bookkeeping_only));
     if (is_sret_storage_slot) {
       object.source_kind = "call_result_sret";
       object.permanent_home_slot = true;

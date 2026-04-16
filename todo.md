@@ -6,22 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed the next Step 2 stack-layout activation packet by removing the last
-generic `LoweringScratch -> permanent_home_slot` widening from
-`regalloc_helpers.cpp`. Generic non-copy scratch slots now stay reorderable
-unless an explicit prepared contract marks them permanent, and the active
-`backend_prepare_stack_layout` test now proves that a non-copy
-`lowering_scratch` object keeps `requires_home_slot == true`, publishes
-`permanent_home_slot == false`, stays out of the fixed-location tier, and packs
-after a wider reorderable slot while the explicit permanent-home source kinds
-remain covered separately.
+Completed the next Step 2 stack-layout activation packet by removing the
+remaining generic `LoweringScratch -> requires_home_slot` widening from
+`alloca_coalescing.cpp` and `regalloc_helpers.cpp`. Generic non-copy scratch
+slots now need real direct slot use, address exposure, or another explicit
+prepared contract to keep a dedicated home slot, and the active
+`backend_prepare_stack_layout` test now proves both that a live
+`lowering_scratch` slot still keeps `requires_home_slot == true` from real
+loads/stores and that an unused generic scratch slot drops
+`requires_home_slot`, skips frame-slot assignment, and shrinks the prepared
+frame metrics.
 
 ## Suggested Next
 
-Continue Step 2 by auditing the remaining generic
-`LoweringScratch -> requires_home_slot` path and decide whether the active
-non-copy scratch cases should keep that behavior or move to a more explicit
-prepared contract that better matches the retained Rust phase split.
+Continue Step 2 by comparing the remaining `lowering_scratch` source-kind path
+in `analysis.cpp` against the retained Rust stack-layout references and decide
+whether any live scratch cases still need an explicit prepared contract beyond
+the direct-access and address-exposure signals that now drive home-slot
+retention.
 
 ## Watchouts
 
@@ -33,9 +35,11 @@ prepared contract that better matches the retained Rust phase split.
 - `regalloc_helpers.cpp` no longer widens generic non-copy `LoweringScratch`
   locals into `permanent_home_slot`; only explicit prepared source kinds and
   address exposure should enter the fixed-location tier
-- generic non-copy `LoweringScratch` locals still inherit a home-slot
-  requirement from raw slot metadata; that is now the main remaining generic
-  scratch path inside Step 2
+- generic non-copy `LoweringScratch` locals no longer inherit
+  `requires_home_slot` from storage kind alone; live scratch slots still keep
+  home slots when real direct slot accesses or address exposure require them
+- unused generic `LoweringScratch` locals now elide like other dead stack
+  objects even though they still publish `source_kind == lowering_scratch`
 - reorderable home-slot packing is still conservative size/alignment sorting;
   Rust-like shared-slot reuse is not active yet
 - do not fake shared-slot reuse or permanence widening with source-name
@@ -50,6 +54,6 @@ prepared contract that better matches the retained Rust phase split.
 Ran the delegated proof command successfully:
 `cmake --build --preset default -j4 && ctest --test-dir build -j
 --output-on-failure -R '^backend_prepare_stack_layout$' > test_after.log 2>&1`
-after removing the generic `LoweringScratch` permanence widening and extending
-the focused activation coverage for reorderable scratch behavior. Canonical
-proof log: `test_after.log`.
+after removing the generic `LoweringScratch` home-slot widening and extending
+the focused activation coverage for both live and dead scratch behavior.
+Canonical proof log: `test_after.log`.
