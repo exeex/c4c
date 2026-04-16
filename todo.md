@@ -6,24 +6,20 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed the next Step 2 stack-layout activation packet by removing the
-remaining generic `LoweringScratch -> requires_home_slot` widening from
-`alloca_coalescing.cpp` and `regalloc_helpers.cpp`. Generic non-copy scratch
-slots now need real direct slot use, address exposure, or another explicit
-prepared contract to keep a dedicated home slot, and the active
-`backend_prepare_stack_layout` test now proves both that a live
-`lowering_scratch` slot still keeps `requires_home_slot == true` from real
-loads/stores and that an unused generic scratch slot drops
-`requires_home_slot`, skips frame-slot assignment, and shrinks the prepared
-frame metrics.
+Completed the remaining Step 2 `analysis.cpp` convergence packet by removing
+the last unconditional local-slot `requires_home_slot` seed during prepared
+object collection. Generic `lowering_scratch` locals now start without a
+home-slot requirement unless an explicit prepared contract already exists
+(`is_address_taken`, `byval_copy`, or `phi`), and the focused
+`backend_prepare_stack_layout` test now pins that source-level behavior
+directly through `collect_function_stack_objects()` alongside the existing
+runtime stack-layout coverage.
 
 ## Suggested Next
 
-Continue Step 2 by comparing the remaining `lowering_scratch` source-kind path
-in `analysis.cpp` against the retained Rust stack-layout references and decide
-whether any live scratch cases still need an explicit prepared contract beyond
-the direct-access and address-exposure signals that now drive home-slot
-retention.
+Continue Step 2 by checking whether any remaining prepared-object or regalloc
+metadata paths still infer generic local-slot permanence from source-kind or
+storage-kind alone instead of explicit prepared contracts plus real use data.
 
 ## Watchouts
 
@@ -32,6 +28,9 @@ retention.
 - `byval_copy`, `phi`, and `call_result_sret` are now the explicit
   non-address-exposed permanent-home source kinds covered by focused activation
   tests
+- `analysis.cpp` no longer seeds generic local slots, including
+  `lowering_scratch`, with `requires_home_slot = true`; later passes must add
+  home-slot requirements from explicit contracts or observed use/address data
 - `regalloc_helpers.cpp` no longer widens generic non-copy `LoweringScratch`
   locals into `permanent_home_slot`; only explicit prepared source kinds and
   address exposure should enter the fixed-location tier
@@ -52,8 +51,9 @@ retention.
 ## Proof
 
 Ran the delegated proof command successfully:
-`cmake --build --preset default -j4 && ctest --test-dir build -j
---output-on-failure -R '^backend_prepare_stack_layout$' > test_after.log 2>&1`
-after removing the generic `LoweringScratch` home-slot widening and extending
-the focused activation coverage for both live and dead scratch behavior.
-Canonical proof log: `test_after.log`.
+`cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
+build -j --output-on-failure -R ^backend_prepare_stack_layout >
+test_after.log 2>&1`
+after removing the last unconditional generic local-slot home-slot seed from
+`analysis.cpp` and adding direct object-collection coverage for explicit vs.
+generic `lowering_scratch` contracts. Canonical proof log: `test_after.log`.

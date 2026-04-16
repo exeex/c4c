@@ -37,6 +37,60 @@ const prepare::PreparedFrameSlot* find_frame_slot(const prepare::PreparedBirModu
   return nullptr;
 }
 
+std::vector<prepare::PreparedStackObject> collect_stack_layout_analysis_objects() {
+  bir::Function function;
+  function.name = "stack_layout_analysis_object_collection_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.analysis.scratch",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .storage_kind = bir::LocalSlotStorageKind::LoweringScratch,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.analysis.byval_copy",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_byval_copy = true,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.analysis.phi",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .phi_observation = bir::PhiObservation{
+          .result = bir::Value::named(bir::TypeKind::I32, "lv.analysis.phi.result"),
+          .incomings = {bir::PhiIncoming{
+                            .label = "entry",
+                            .value = bir::Value::immediate_i32(1),
+                        }},
+      },
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.analysis.addr",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .is_address_taken = true,
+  });
+
+  prepare::PreparedObjectId next_object_id = 0;
+  return prepare::stack_layout::collect_function_stack_objects(function, next_object_id);
+}
+
+const prepare::PreparedStackObject* find_stack_object(
+    const std::vector<prepare::PreparedStackObject>& objects,
+    std::string_view source_name) {
+  for (const auto& object : objects) {
+    if (object.source_name == source_name) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
 prepare::PreparedBirModule prepare_stack_layout_module() {
   bir::Module module;
 
@@ -1939,6 +1993,39 @@ int check_dead_lowering_scratch_frame_slot_activation(const prepare::PreparedBir
   return 0;
 }
 
+int check_stack_layout_analysis_object_collection_activation(
+    const std::vector<prepare::PreparedStackObject>& objects) {
+  const auto* scratch_object = find_stack_object(objects, "lv.analysis.scratch");
+  const auto* copy_object = find_stack_object(objects, "lv.analysis.byval_copy");
+  const auto* phi_object = find_stack_object(objects, "lv.analysis.phi");
+  const auto* addressed_object = find_stack_object(objects, "lv.analysis.addr");
+  if (scratch_object == nullptr || copy_object == nullptr || phi_object == nullptr ||
+      addressed_object == nullptr) {
+    return fail("expected analysis object collection to publish all local-slot objects");
+  }
+
+  if (scratch_object->source_kind != "lowering_scratch") {
+    return fail("expected generic lowering-scratch analysis objects to retain their explicit source kind");
+  }
+  if (scratch_object->requires_home_slot || scratch_object->permanent_home_slot ||
+      scratch_object->address_exposed) {
+    return fail("expected generic lowering-scratch analysis objects to skip home-slot requirements without an explicit contract");
+  }
+
+  if (!copy_object->requires_home_slot || !copy_object->permanent_home_slot) {
+    return fail("expected byval-copy analysis objects to keep their explicit home-slot contract");
+  }
+  if (!phi_object->requires_home_slot || !phi_object->permanent_home_slot) {
+    return fail("expected phi analysis objects to keep their explicit home-slot contract");
+  }
+  if (!addressed_object->requires_home_slot || !addressed_object->permanent_home_slot ||
+      !addressed_object->address_exposed) {
+    return fail("expected address-taken analysis objects to keep their explicit home-slot contract");
+  }
+
+  return 0;
+}
+
 int check_phi_permanent_home_slot_frame_slot_activation(
     const prepare::PreparedBirModule& prepared) {
   const auto* root_object = find_stack_object(prepared, "lv.phi.perm.root");
@@ -2467,6 +2554,12 @@ int check_rooted_pointer_binary_local_slot_activation(const prepare::PreparedBir
 }  // namespace
 
 int main() {
+  const auto analysis_objects = collect_stack_layout_analysis_objects();
+  if (const int rc = check_stack_layout_analysis_object_collection_activation(analysis_objects);
+      rc != 0) {
+    return rc;
+  }
+
   const auto copy_prepared = prepare_stack_layout_module();
   if (const int rc = check_stack_layout_activation(copy_prepared); rc != 0) {
     return rc;

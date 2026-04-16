@@ -24,10 +24,17 @@ namespace {
   return source_kind == "byval_copy" || source_kind == "phi";
 }
 
+[[nodiscard]] bool local_slot_has_explicit_home_slot_contract(const bir::LocalSlot& slot,
+                                                              std::string_view source_kind) {
+  return slot.is_address_taken || source_kind_requires_permanent_home_slot(source_kind);
+}
+
 [[nodiscard]] PreparedStackObject make_local_slot_object(const bir::Function& function,
                                                          const bir::LocalSlot& slot,
                                                          PreparedObjectId object_id) {
   const std::string_view source_kind = local_slot_source_kind(slot);
+  const bool has_explicit_home_slot_contract =
+      local_slot_has_explicit_home_slot_contract(slot, source_kind);
   return PreparedStackObject{
       .object_id = object_id,
       .function_name = function.name,
@@ -37,9 +44,8 @@ namespace {
       .size_bytes = slot.size_bytes,
       .align_bytes = slot.align_bytes,
       .address_exposed = slot.is_address_taken,
-      .requires_home_slot = true,
-      .permanent_home_slot =
-          slot.is_address_taken || source_kind_requires_permanent_home_slot(source_kind),
+      .requires_home_slot = has_explicit_home_slot_contract,
+      .permanent_home_slot = has_explicit_home_slot_contract,
   };
 }
 
