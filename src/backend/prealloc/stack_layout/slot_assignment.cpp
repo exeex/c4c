@@ -1,6 +1,7 @@
 #include "support.hpp"
 
 #include <algorithm>
+#include <string_view>
 #include <vector>
 
 namespace c4c::backend::prepare::stack_layout {
@@ -16,7 +17,9 @@ std::vector<PreparedFrameSlot> assign_frame_slots(const std::vector<PreparedStac
   std::size_t max_alignment_bytes = 1;
 
   for (const auto& object : objects) {
-    if (!object.requires_home_slot) {
+    const bool uses_copy_coalesced_slot =
+        object.source_kind == std::string_view("copy_coalescing_candidate");
+    if (!object.requires_home_slot || uses_copy_coalesced_slot) {
       continue;
     }
 

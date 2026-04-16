@@ -41,7 +41,7 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
   bir::Module module;
 
   bir::Function function;
-  function.name = "stack_layout_dead_slot_elision";
+  function.name = "stack_layout_copy_coalescing_activation";
   function.return_type = bir::TypeKind::I32;
   function.local_slots.push_back(bir::LocalSlot{
       .name = "lv.live",
@@ -55,12 +55,29 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
       .size_bytes = 8,
       .align_bytes = 8,
   });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.copy",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .storage_kind = bir::LocalSlotStorageKind::LoweringScratch,
+  });
 
   bir::Block entry;
   entry.label = "entry";
   entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.copy",
+      .value = bir::Value::immediate_i32(40),
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "coalesced"),
+      .slot_name = "lv.copy",
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
       .slot_name = "lv.live",
-      .value = bir::Value::immediate_i32(41),
+      .value = bir::Value::named(bir::TypeKind::I32, "coalesced"),
       .align_bytes = 4,
   });
   entry.insts.push_back(bir::LoadLocalInst{
@@ -97,11 +114,12 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
   return std::move(planner.prepared());
 }
 
-int check_dead_local_slot_elision(const prepare::PreparedBirModule& prepared) {
+int check_stack_layout_activation(const prepare::PreparedBirModule& prepared) {
   const auto* live_object = find_stack_object(prepared, "lv.live");
   const auto* dead_object = find_stack_object(prepared, "lv.dead");
-  if (live_object == nullptr || dead_object == nullptr) {
-    return fail("expected stack-layout objects for both live and dead local slots");
+  const auto* copy_object = find_stack_object(prepared, "lv.copy");
+  if (live_object == nullptr || dead_object == nullptr || copy_object == nullptr) {
+    return fail("expected stack-layout objects for live, dead, and copy local slots");
   }
 
   if (!live_object->requires_home_slot) {
@@ -110,18 +128,25 @@ int check_dead_local_slot_elision(const prepare::PreparedBirModule& prepared) {
   if (dead_object->requires_home_slot) {
     return fail("expected the dead local slot to drop its home-slot requirement");
   }
+  if (copy_object->source_kind != "copy_coalescing_candidate") {
+    return fail("expected the lowering scratch slot to become a copy-coalescing candidate");
+  }
 
   const auto* live_slot = find_frame_slot(prepared, live_object->object_id);
   const auto* dead_slot = find_frame_slot(prepared, dead_object->object_id);
+  const auto* copy_slot = find_frame_slot(prepared, copy_object->object_id);
   if (live_slot == nullptr) {
     return fail("expected the live local slot to receive a frame slot");
   }
   if (dead_slot != nullptr) {
     return fail("expected the dead local slot to be elided from frame-slot assignment");
   }
+  if (copy_slot != nullptr) {
+    return fail("expected the copy-coalescing candidate to skip dedicated frame-slot assignment");
+  }
 
   if (prepared.stack_layout.frame_slots.size() != 1) {
-    return fail("expected only one frame slot after dead local-slot elision");
+    return fail("expected only one frame slot after dead-slot and copy-coalescing elision");
   }
   if (prepared.stack_layout.frame_size_bytes != 4 ||
       prepared.stack_layout.frame_alignment_bytes != 4) {
@@ -135,7 +160,7 @@ int check_dead_local_slot_elision(const prepare::PreparedBirModule& prepared) {
 
 int main() {
   const auto prepared = prepare_stack_layout_module();
-  if (const int rc = check_dead_local_slot_elision(prepared); rc != 0) {
+  if (const int rc = check_stack_layout_activation(prepared); rc != 0) {
     return rc;
   }
   return 0;

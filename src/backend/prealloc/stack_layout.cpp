@@ -60,8 +60,9 @@ void BirPreAlloc::run_stack_layout() {
 
   prepared_.notes.push_back(PrepareNote{
       .phase = "stack_layout",
-      .message = "stack layout now emits provisional stack objects and only allocates home slots "
-                 "for objects that still require frame storage",
+      .message = "stack layout now emits provisional stack objects, elides dead and copy-"
+                 "coalesced home slots, and only allocates frame storage for objects that "
+                 "still require dedicated homes",
   });
 }
 
