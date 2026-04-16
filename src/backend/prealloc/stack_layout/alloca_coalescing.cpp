@@ -164,11 +164,11 @@ void record_call_pointer_uses(const bir::CallInst& call,
     summary.use_blocks[*call.sret_storage_name].insert(block_index);
   }
   if (call.callee_value.has_value()) {
-    record_local_slot_pointer_use(
+    record_local_slot_pointer_escape(
         *call.callee_value, block_index, local_slot_names, pointer_aliases, summary);
   }
   for (const auto& arg : call.args) {
-    record_local_slot_pointer_use(arg, block_index, local_slot_names, pointer_aliases, summary);
+    record_local_slot_pointer_escape(arg, block_index, local_slot_names, pointer_aliases, summary);
   }
 }
 
@@ -190,7 +190,7 @@ void record_call_pointer_uses(const bir::CallInst& call,
         summary.use_blocks[store->slot_name].insert(block_index);
         record_memory_address_use(
             store->address, block_index, local_slot_names, pointer_aliases, summary);
-        record_local_slot_pointer_use(
+        record_local_slot_pointer_escape(
             store->value, block_index, local_slot_names, pointer_aliases, summary);
         continue;
       }
@@ -202,7 +202,7 @@ void record_call_pointer_uses(const bir::CallInst& call,
       if (const auto* store = std::get_if<bir::StoreGlobalInst>(&inst); store != nullptr) {
         record_memory_address_use(
             store->address, block_index, local_slot_names, pointer_aliases, summary);
-        record_local_slot_pointer_use(
+        record_local_slot_pointer_escape(
             store->value, block_index, local_slot_names, pointer_aliases, summary);
         continue;
       }
