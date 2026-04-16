@@ -7,26 +7,29 @@ Source Plan: plan.md
 ## Just Finished
 
 Continued Step 2 in `stack_layout` by adding focused
-`backend_prepare_stack_layout` proof for the unusual current-BIR
-pointer-typed `CondBranch` condition shape. The active C++ terminator escape
-path already kept that rooted local slot address-exposed and home-slotted, so
-the packet landed as runtime-proof coverage rather than a semantic code fix.
+`backend_prepare_stack_layout` proof for the remaining active current-BIR
+pointer-merge and pointer-transform shapes: a `PhiInst` alias path and a
+pointer-valued `BinaryInst` alias path. The active C++
+`alloca_coalescing.cpp` helper already kept those rooted local-slot aliases
+address-exposed and home-slotted when they later escaped, so the packet landed
+as runtime-proof coverage rather than a semantic code fix.
 
 ## Suggested Next
 
-Continue Step 2 in `stack_layout`: compare the remaining active current-BIR
-pointer-address and pointer-transform sites against `alloca_coalescing.rs` and
-take the next bounded parity gain only where a real active shape still lacks
-either semantic alignment or focused proof, instead of broadening into
-speculative instruction families that current BIR does not model.
+Continue Step 2 in `stack_layout`: compare the active C++
+`alloca_coalescing.cpp` helper responsibilities against
+`stack_layout/alloca_coalescing.rs` now that the current-BIR pointer-address,
+pointer-merge, and pointer-transform shapes have focused runtime proof, and
+take the next bounded packet only where that comparison exposes a real
+semantic gap or a missing active-shape proof.
 
 ## Watchouts
 
 - the active C++ route now has focused proof for return, pointer-typed
   cond-branch, call-operand, indirect-callee, pointer-address, select, cast,
-  and store-of-pointer escape sites, but Step 2 acceptance still needs the
-  broader `.cpp` vs `.rs` comparison rather than treating testcase coverage as
-  convergence by itself
+  store-of-pointer, `PhiInst`, and pointer-valued `BinaryInst` escape sites,
+  but Step 2 acceptance still needs the broader `.cpp` vs `.rs` comparison
+  rather than treating testcase coverage as convergence by itself
 - derived pointer aliases still keep local-slot roots live through the current
   BIR `CastInst` / `PhiInst` / `SelectInst` / pointer-shaped `BinaryInst`
   bridge, but the remaining Rust-vs-C++ comparison should stay tied to real

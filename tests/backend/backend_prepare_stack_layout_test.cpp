@@ -671,6 +671,148 @@ prepare::PreparedBirModule prepare_store_escaped_local_slot_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_phi_escaped_local_slot_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_phi_escaped_local_slot_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.phi.root",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::immediate_i32(1),
+      .true_label = "left",
+      .false_label = "right",
+  };
+
+  bir::Block left;
+  left.label = "left";
+  left.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "lv.phi.left.alias"),
+      .operand = bir::Value::named(bir::TypeKind::Ptr, "lv.phi.root"),
+  });
+  left.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block right;
+  right.label = "right";
+  right.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "lv.phi.alias"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "left",
+              .value = bir::Value::named(bir::TypeKind::Ptr, "lv.phi.left.alias"),
+          },
+          bir::PhiIncoming{
+              .label = "right",
+              .value = bir::Value::named(bir::TypeKind::Ptr, "lv.phi.root"),
+          },
+      },
+  });
+  join.insts.push_back(bir::CallInst{
+      .callee = "sink_ptr",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "lv.phi.alias")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  join.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(left));
+  function.blocks.push_back(std::move(right));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
+prepare::PreparedBirModule prepare_pointer_binary_escaped_local_slot_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_pointer_binary_escaped_local_slot_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.binary.root",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "lv.binary.alias"),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "lv.binary.root"),
+      .rhs = bir::Value::immediate_i64(0),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "sink_ptr",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "lv.binary.alias")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 int check_stack_layout_activation(const prepare::PreparedBirModule& prepared) {
   const auto* live_object = find_stack_object(prepared, "lv.live");
   const auto* dead_object = find_stack_object(prepared, "lv.dead");
@@ -967,6 +1109,54 @@ int check_store_escaped_local_slot_activation(const prepare::PreparedBirModule& 
   return 0;
 }
 
+int check_phi_escaped_local_slot_activation(const prepare::PreparedBirModule& prepared) {
+  const auto* root_object = find_stack_object(prepared, "lv.phi.root");
+  if (root_object == nullptr) {
+    return fail("expected the phi-escaped root local slot to produce a stack-layout object");
+  }
+  if (!root_object->address_exposed) {
+    return fail("expected a pointer phi alias that later escapes to expose the root slot");
+  }
+  if (!root_object->requires_home_slot) {
+    return fail(
+        "expected a pointer phi alias that later escapes to keep a dedicated home-slot requirement");
+  }
+
+  const auto* root_slot = find_frame_slot(prepared, root_object->object_id);
+  if (root_slot == nullptr) {
+    return fail("expected the phi-escaped root local slot to receive frame-slot storage");
+  }
+  if (root_slot->size_bytes != 8 || root_slot->align_bytes != 8) {
+    return fail("expected the phi-escaped root local slot to preserve its frame-slot layout");
+  }
+
+  return 0;
+}
+
+int check_pointer_binary_escaped_local_slot_activation(const prepare::PreparedBirModule& prepared) {
+  const auto* root_object = find_stack_object(prepared, "lv.binary.root");
+  if (root_object == nullptr) {
+    return fail("expected the pointer-binary root local slot to produce a stack-layout object");
+  }
+  if (!root_object->address_exposed) {
+    return fail("expected a pointer-valued binary alias that later escapes to expose the root slot");
+  }
+  if (!root_object->requires_home_slot) {
+    return fail(
+        "expected a pointer-valued binary alias that later escapes to keep a dedicated home-slot requirement");
+  }
+
+  const auto* root_slot = find_frame_slot(prepared, root_object->object_id);
+  if (root_slot == nullptr) {
+    return fail("expected the pointer-binary root local slot to receive frame-slot storage");
+  }
+  if (root_slot->size_bytes != 8 || root_slot->align_bytes != 8) {
+    return fail("expected the pointer-binary root local slot to preserve its frame-slot layout");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -1034,6 +1224,18 @@ int main() {
 
   const auto store_escaped_prepared = prepare_store_escaped_local_slot_module();
   if (const int rc = check_store_escaped_local_slot_activation(store_escaped_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto phi_escaped_prepared = prepare_phi_escaped_local_slot_module();
+  if (const int rc = check_phi_escaped_local_slot_activation(phi_escaped_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto pointer_binary_escaped_prepared = prepare_pointer_binary_escaped_local_slot_module();
+  if (const int rc =
+          check_pointer_binary_escaped_local_slot_activation(pointer_binary_escaped_prepared);
+      rc != 0) {
     return rc;
   }
 
