@@ -57,6 +57,35 @@ struct PreparedStackLayout {
   std::size_t frame_alignment_bytes = 0;
 };
 
+namespace stack_layout {
+
+struct FunctionInlineAsmSummary {
+  std::size_t instruction_count = 0;
+  bool has_side_effects = false;
+};
+
+std::vector<PreparedStackObject> collect_function_stack_objects(const bir::Function& function,
+                                                                PreparedObjectId& next_object_id);
+
+void apply_alloca_coalescing_hints(const bir::Function& function,
+                                   std::vector<PreparedStackObject>& objects);
+
+void apply_copy_coalescing_hints(const bir::Function& function,
+                                 std::vector<PreparedStackObject>& objects);
+
+FunctionInlineAsmSummary summarize_inline_asm(const bir::Function& function);
+
+void apply_regalloc_hints(const bir::Function& function,
+                          const FunctionInlineAsmSummary& inline_asm_summary,
+                          std::vector<PreparedStackObject>& objects);
+
+std::vector<PreparedFrameSlot> assign_frame_slots(const std::vector<PreparedStackObject>& objects,
+                                                  PreparedFrameSlotId& next_slot_id,
+                                                  std::size_t& frame_size_bytes,
+                                                  std::size_t& frame_alignment_bytes);
+
+}  // namespace stack_layout
+
 enum class PreparedValueKind {
   StackObject,
   Parameter,
@@ -81,64 +110,10 @@ enum class PreparedValueKind {
   return "unknown";
 }
 
-enum class PreparedUseKind {
-  Read,
-  Write,
-  ReadWrite,
-  Address,
-  CallArgument,
-  ReturnValue,
-};
-
-[[nodiscard]] constexpr std::string_view prepared_use_kind_name(PreparedUseKind kind) {
-  switch (kind) {
-    case PreparedUseKind::Read:
-      return "read";
-    case PreparedUseKind::Write:
-      return "write";
-    case PreparedUseKind::ReadWrite:
-      return "read_write";
-    case PreparedUseKind::Address:
-      return "address";
-    case PreparedUseKind::CallArgument:
-      return "call_argument";
-    case PreparedUseKind::ReturnValue:
-      return "return_value";
-  }
-  return "unknown";
-}
-
-struct PreparedLivenessDefSite {
-  std::size_t block_index = 0;
-  std::size_t instruction_index = 0;
-  std::string definition_kind;
-};
-
-struct PreparedLivenessUseSite {
-  std::size_t block_index = 0;
-  std::size_t instruction_index = 0;
-  std::size_t operand_index = 0;
-  PreparedUseKind use_kind = PreparedUseKind::Read;
-};
-
-struct PreparedLivenessLiveSegment {
-  std::size_t start_block_index = 0;
-  std::size_t start_instruction_index = 0;
-  std::size_t end_block_index = 0;
-  std::size_t end_instruction_index = 0;
-};
-
-struct PreparedLivenessBlock {
-  std::string block_name;
-  std::size_t block_index = 0;
-  std::size_t instruction_start_index = 0;
-  std::size_t instruction_end_index = 0;
-  std::vector<std::size_t> predecessor_block_indices;
-  std::vector<std::size_t> successor_block_indices;
-  std::vector<PreparedValueId> defs;
-  std::vector<PreparedValueId> uses;
-  std::vector<PreparedValueId> live_in;
-  std::vector<PreparedValueId> live_out;
+struct PreparedLiveInterval {
+  PreparedValueId value_id = 0;
+  std::size_t start_point = 0;
+  std::size_t end_point = 0;
 };
 
 struct PreparedLivenessValue {
@@ -152,18 +127,15 @@ struct PreparedLivenessValue {
   bool address_taken = false;
   bool requires_home_slot = false;
   bool crosses_call = false;
-  std::optional<PreparedLivenessDefSite> definition_site;
-  std::vector<PreparedLivenessUseSite> use_sites;
-  std::vector<PreparedLivenessLiveSegment> live_segments;
-  std::vector<std::size_t> crossed_call_instruction_indices;
+  std::optional<PreparedLiveInterval> live_interval;
 };
 
 struct PreparedLivenessFunction {
   std::string function_name;
   std::size_t instruction_count = 0;
-  std::size_t call_instruction_count = 0;
-  std::vector<std::size_t> call_instruction_indices;
-  std::vector<PreparedLivenessBlock> blocks;
+  std::vector<PreparedLiveInterval> intervals;
+  std::vector<std::size_t> call_points;
+  std::vector<std::size_t> block_loop_depth;
   std::vector<PreparedLivenessValue> values;
 };
 
@@ -294,7 +266,7 @@ struct PreparedRegallocValue {
   bool crosses_call = false;
   std::size_t priority = 0;
   double spill_weight = 0.0;
-  std::vector<PreparedLivenessLiveSegment> live_segments;
+  std::optional<PreparedLiveInterval> live_interval;
   std::optional<PreparedPhysicalRegisterAssignment> assigned_register;
   std::optional<PreparedStackSlotAssignment> assigned_stack_slot;
 };
