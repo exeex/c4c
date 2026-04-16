@@ -1692,10 +1692,19 @@ int check_sret_storage_local_slot_activation(const prepare::PreparedBirModule& p
   if (!root_object->requires_home_slot) {
     return fail("expected sret-storage tracking to keep a dedicated home-slot requirement");
   }
+  if (!root_object->permanent_home_slot) {
+    return fail("expected sret-storage tracking to publish a permanent dedicated home-slot contract");
+  }
 
   const auto* root_slot = find_frame_slot(prepared, root_object->object_id);
   if (root_slot == nullptr) {
     return fail("expected the sret-storage local slot to receive frame-slot storage");
+  }
+  if (!root_slot->fixed_location) {
+    return fail("expected the sret-storage local slot to use the fixed-location tier");
+  }
+  if (root_slot->offset_bytes != 0) {
+    return fail("expected the sret-storage local slot to anchor frame offset 0");
   }
   if (root_slot->size_bytes != 8 || root_slot->align_bytes != 8) {
     return fail("expected the sret-storage local slot to preserve its frame-slot layout");

@@ -18,6 +18,7 @@ struct SlotUseSummary {
   SlotBlockSet use_blocks;
   std::unordered_set<std::string_view> addressed_slots;
   std::unordered_set<std::string_view> direct_access_slots;
+  std::unordered_set<std::string_view> sret_storage_slots;
 };
 
 void record_root_pointer_use(const RootNameSet& roots,
@@ -155,6 +156,7 @@ void record_call_pointer_uses(const bir::CallInst& call,
   if (call.sret_storage_name.has_value()) {
     summary.use_blocks[*call.sret_storage_name].insert(block_index);
     summary.direct_access_slots.insert(*call.sret_storage_name);
+    summary.sret_storage_slots.insert(*call.sret_storage_name);
   }
   if (call.callee_value.has_value()) {
     record_local_slot_pointer_escape(
@@ -365,6 +367,8 @@ void apply_alloca_coalescing_hints(const bir::Function& function,
         use_summary.addressed_slots.find(slot.name) != use_summary.addressed_slots.end();
     const bool has_direct_slot_accesses =
         use_summary.direct_access_slots.find(slot.name) != use_summary.direct_access_slots.end();
+    const bool is_sret_storage_slot =
+        use_summary.sret_storage_slots.find(slot.name) != use_summary.sret_storage_slots.end();
     const bool is_dead_local_slot =
         !has_explicit_uses && !has_addressed_local_uses && !slot.is_address_taken &&
         !slot.is_byval_copy &&
@@ -382,6 +386,10 @@ void apply_alloca_coalescing_hints(const bir::Function& function,
         (has_direct_slot_accesses || slot.is_address_taken || has_addressed_local_uses ||
          slot.is_byval_copy || slot.storage_kind == bir::LocalSlotStorageKind::LoweringScratch ||
          (!used_in_single_block && !rooted_pointer_bookkeeping_only));
+    if (is_sret_storage_slot) {
+      object.source_kind = "call_result_sret";
+      object.permanent_home_slot = true;
+    }
   }
 }
 
