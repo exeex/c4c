@@ -15,14 +15,21 @@ proves that a fixed 4-byte root, a reorderable 8-byte local, and a reorderable
 4-byte local shrink from a naive 24-byte frame to the hole-filled 16-byte
 layout without introducing testcase-shaped sharing heuristics.
 
+Finished the follow-up audit of the remaining Rust `slot_assignment.rs`
+behavior and recorded the bounded Step 2 divergence in the active C++
+documentation: Rust Tier 2 / Tier 3 shared-slot reuse, deferred slot
+finalization, and alias-style slot ownership still depend on value-level live
+intervals that the current `PreparedStackObject` / `PreparedFrameSlot`
+contract does not publish. The active route remains intentionally limited to
+dedicated home-slot packing plus fixed-tier gap filling rather than extending
+object-shaped heuristics that would impersonate Step 3 liveness.
+
 ## Suggested Next
 
-Continue Step 2 by deciding whether any remaining Rust `slot_assignment.rs`
-behavior still maps onto the active `PreparedStackObject` /
-`PreparedFrameSlot` contract, or whether the rest of the Rust slot-reuse logic
-is now cleanly blocked on Step 3 liveness-style value intervals and should be
-recorded as a bounded contract gap instead of extended with object-slot
-heuristics.
+Start Step 3 by making the public prepared-liveness contract publish the
+minimum value-identity and interval data needed to replace the newly recorded
+Step 2 slot-reuse gap with real Rust-like value ownership, rather than growing
+more stack-layout-only object heuristics.
 
 ## Watchouts
 
@@ -52,6 +59,11 @@ heuristics.
   `ParamRef` destinations, or callee-saved reg assignment, so unused
   `byval_param` / `sret_param` objects intentionally remain materialized and
   keep fixed-tier slots for now
+- Rust Tier 2 / Tier 3 shared-slot reuse is still reference-only for the
+  active C++ route: `PreparedFrameSlot` remains a dedicated object-owned slot
+  record, so do not fake value-level reuse with object names, source kinds, or
+  cross-object slot alias shortcuts before Step 3 liveness publishes the
+  required interval data
 - keep `.rs` files as references until the final comparison pass is complete
 - acceptance requires both `.cpp` vs `.rs` comparison and runtime proof in c4c
 - do not let `liveness` or `regalloc` fall back to object identity for value
@@ -67,3 +79,6 @@ after teaching `slot_assignment.cpp` to fill fixed-tier alignment holes with
 smaller reorderable home slots and adding focused activation coverage for that
 live packing path.
 Canonical proof log: `test_after.log`.
+
+The follow-up Step 2 audit was documentation-only and reused the accepted
+stack-layout proof baseline without changing executable behavior.

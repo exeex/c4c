@@ -36,7 +36,10 @@ For each non-declaration function, the C++ path currently:
 1. Collects stack objects from `bir::LocalSlot` plus `byval` / `sret` params.
 2. Applies conservative hints for alloca coalescing, copy coalescing, inline asm,
    and home-slot requirements.
-3. Assigns aligned sequential frame slots.
+3. Emits a fixed-location tier for permanent home slots, then packs the
+   remaining reorderable home slots into dedicated aligned frame slots,
+   including bounded gap filling when a smaller reorderable slot can consume
+   padding left by the fixed tier.
 4. Merges all per-function results into `PreparedStackLayout`.
 
 This data is written into:
@@ -65,8 +68,14 @@ This data is written into:
 
 - The current bridge is intentionally conservative. It prefers over-allocating
   stack slots to missing required home slots.
-- Frame-slot offsets are currently assigned sequentially per function, not by
-  interval packing.
+- `PreparedFrameSlot` is still a dedicated object-to-slot record. The active
+  contract does not represent Rust Tier 2 / Tier 3 shared-slot reuse, deferred
+  slot finalization, or value-owned slot aliases.
+- Frame-slot offsets are currently assigned as dedicated home slots per
+  function, not by value liveness or interval packing.
+- The remaining Rust `slot_assignment.rs` reuse logic depends on value-level
+  interval data that belongs with Step 3 `liveness`, not on more
+  `PreparedStackObject` heuristics.
 - The Rust files are not part of the active build; they remain as design and
   porting references only.
 
