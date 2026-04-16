@@ -1027,6 +1027,9 @@ int check_stack_layout_activation(const prepare::PreparedBirModule& prepared) {
   if (copy_object->source_kind != "copy_coalescing_candidate") {
     return fail("expected the lowering scratch slot to become a copy-coalescing candidate");
   }
+  if (copy_object->requires_home_slot) {
+    return fail("expected the copy-coalescing candidate to stop advertising a dedicated home-slot requirement");
+  }
 
   const auto* live_slot = find_frame_slot(prepared, live_object->object_id);
   const auto* dead_slot = find_frame_slot(prepared, dead_object->object_id);
