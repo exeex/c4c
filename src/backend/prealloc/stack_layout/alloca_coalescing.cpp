@@ -140,6 +140,23 @@ void handle_single_input_pointer_transform(const bir::Value& operand,
   update_pointer_alias(result, roots, pointer_aliases);
 }
 
+void record_call_pointer_uses(const bir::CallInst& call,
+                              std::size_t block_index,
+                              const SlotNameSet& local_slot_names,
+                              const PointerAliasMap& pointer_aliases,
+                              SlotUseSummary& summary) {
+  if (call.sret_storage_name.has_value()) {
+    summary.use_blocks[*call.sret_storage_name].insert(block_index);
+  }
+  if (call.callee_value.has_value()) {
+    record_local_slot_pointer_use(
+        *call.callee_value, block_index, local_slot_names, pointer_aliases, summary);
+  }
+  for (const auto& arg : call.args) {
+    record_local_slot_pointer_use(arg, block_index, local_slot_names, pointer_aliases, summary);
+  }
+}
+
 [[nodiscard]] SlotUseSummary collect_slot_use_summary(const bir::Function& function,
                                                       const SlotNameSet& local_slot_names) {
   SlotUseSummary summary;
@@ -174,20 +191,9 @@ void handle_single_input_pointer_transform(const bir::Value& operand,
             store->value, block_index, local_slot_names, pointer_aliases, summary);
         continue;
       }
-      if (const auto* call = std::get_if<bir::CallInst>(&inst);
-          call != nullptr && call->sret_storage_name.has_value()) {
-        summary.use_blocks[*call->sret_storage_name].insert(block_index);
-        for (const auto& arg : call->args) {
-          record_local_slot_pointer_use(
-              arg, block_index, local_slot_names, pointer_aliases, summary);
-        }
-        continue;
-      }
       if (const auto* call = std::get_if<bir::CallInst>(&inst); call != nullptr) {
-        for (const auto& arg : call->args) {
-          record_local_slot_pointer_use(
-              arg, block_index, local_slot_names, pointer_aliases, summary);
-        }
+        record_call_pointer_uses(
+            *call, block_index, local_slot_names, pointer_aliases, summary);
         continue;
       }
       if (const auto* cast = std::get_if<bir::CastInst>(&inst); cast != nullptr) {

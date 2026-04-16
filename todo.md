@@ -7,27 +7,28 @@ Source Plan: plan.md
 ## Just Finished
 
 Continued Step 2 in `stack_layout` by teaching the active C++ alloca/use bridge
-to treat `MemoryAddress::PointerValue` bases as rooted local-slot pointer uses.
-`alloca_coalescing.cpp` now records pointer-based load/store addresses through
-the same alias-aware root lookup used for other pointer values, and
-`backend_prepare_stack_layout` proves that a cast-derived pointer base keeps
-the root local slot address-exposed and home-slotted when the address flows
-through a BIR memory access instead of a direct local-slot base.
+to treat indirect-call `callee_value` pointers as rooted local-slot escapes.
+`alloca_coalescing.cpp` now routes indirect callees through the same alias-aware
+pointer-use path as call arguments and pointer-based memory addresses, and
+`backend_prepare_stack_layout` proves that a cast-derived callee alias keeps
+the root local slot address-exposed and home-slotted when the pointer escapes
+through an indirect BIR call target.
 
 ## Suggested Next
 
 Continue Step 2 in `stack_layout`: compare the remaining C++ pointer-alias
 bridge against `alloca_coalescing.rs` and take the next bounded parity gain in
 how pointer-preserving control-flow/value forms are classified, especially if a
-current-BIR escape site still depends on ad hoc addressed-use bookkeeping
-instead of sharing one explicit alias-to-root escape/use path.
+current-BIR root escape or use path is still open-coded instead of sharing one
+explicit alias-to-root helper across call, memory-address, terminator, and
+pointer-transform sites.
 
 ## Watchouts
 
-- the active C++ route now treats both direct `LocalSlot` addresses and
-  pointer-based `MemoryAddress::PointerValue` bases as real local-slot uses, so
-  cast-derived pointer bases keep rooted local slots live even when the memory
-  op no longer names the slot directly
+- the active C++ route now treats direct `LocalSlot` addresses, indirect-call
+  `callee_value` pointers, and pointer-based `MemoryAddress::PointerValue`
+  bases as real local-slot uses, so cast-derived pointer aliases keep rooted
+  local slots live even when the use site no longer names the slot directly
 - derived pointer aliases still keep local-slot roots live through the current
   BIR `CastInst` / `PhiInst` / `SelectInst` / pointer-shaped `BinaryInst`
   bridge, but the remaining Rust-vs-C++ comparison should stay tied to real
