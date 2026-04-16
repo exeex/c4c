@@ -7,31 +7,31 @@ Source Plan: plan.md
 ## Just Finished
 
 Continued Step 2 in `stack_layout` by adding focused
-`backend_prepare_stack_layout` proof for the active current-BIR global-memory
-address path in `alloca_coalescing.cpp`: a rooted local-slot pointer alias used
-as the `MemoryAddress::PointerValue` base for both `StoreGlobalInst` and
-`LoadGlobalInst`. The active C++ helper already marked that rooted alias family
-address-exposed and home-slotted, so this packet landed as missing runtime
-proof rather than a semantic code fix.
+`backend_prepare_stack_layout` proof for the active host-framework
+`CallInst::sret_storage_name` path in `alloca_coalescing.cpp`. The active C++
+helper already kept the referenced local slot live in stack-layout output by
+recording it as a use-site instead of letting dead-slot elision drop it, so
+this packet landed as missing runtime proof rather than a semantic code fix.
 
 ## Suggested Next
 
 Continue Step 2 in `stack_layout`: compare the active C++
 `alloca_coalescing.cpp` helper responsibilities against
-`stack_layout/alloca_coalescing.rs` now that focused proof covers both local
-and global `MemoryAddress::PointerValue` address paths, then take the next
-bounded packet only where that comparison exposes a real semantic gap or one
-remaining active host-framework path that still lacks proof, such as
-`CallInst::sret_storage_name`.
+`stack_layout/alloca_coalescing.rs` now that focused proof covers both pointer
+escape paths and the active host-framework `CallInst::sret_storage_name`
+retention path, then take the next bounded packet only where that comparison
+exposes a real semantic gap or one remaining active current-BIR shape that
+still lacks proof.
 
 ## Watchouts
 
 - the active C++ route now has focused proof for return, pointer-typed
   cond-branch, call-operand, indirect-callee, pointer-address, select, cast,
-  store-of-pointer, `PhiInst`, pointer-valued `BinaryInst`, and global
-  pointer-address escape sites, but Step 2 acceptance still needs the broader
-  `.cpp` vs `.rs` comparison rather than treating testcase coverage as
-  convergence by itself
+  store-of-pointer, `PhiInst`, pointer-valued `BinaryInst`, global
+  pointer-address escape sites, and the `CallInst::sret_storage_name`
+  retention path, but Step 2 acceptance still needs the broader `.cpp` vs
+  `.rs` comparison rather than treating testcase coverage as convergence by
+  itself
 - derived pointer aliases still keep local-slot roots live through the current
   BIR `CastInst` / `PhiInst` / `SelectInst` / pointer-shaped `BinaryInst` /
   pointer-address bridge, but the remaining Rust-vs-C++ comparison should stay
@@ -41,9 +41,9 @@ remaining active host-framework path that still lacks proof, such as
   reference covers additional instruction families that the current BIR does
   not model, so keep future parity work tied to real active instruction shapes
   instead of speculative scaffolding
-- `CallInst::sret_storage_name` is a current C++ host-framework divergence from
-  the Rust reference helper, so treat any follow-on proof there as bounded
-  host-adaptation coverage rather than one-to-one Rust parity
+- `CallInst::sret_storage_name` remains a bounded host-framework divergence
+  from the Rust reference helper, so keep it framed as host adaptation rather
+  than one-to-one Rust parity during the eventual comparison pass
 - `regalloc_helpers.cpp` still keeps most live local-slot objects conservative,
   so broader Rust-like alloca tiering is not active yet
 - keep `.rs` files as references until the final comparison pass is complete
