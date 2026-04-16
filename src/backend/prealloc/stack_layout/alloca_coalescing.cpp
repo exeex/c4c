@@ -359,11 +359,15 @@ void apply_alloca_coalescing_hints(const bir::Function& function,
 
     object.address_exposed =
         object.address_exposed || slot.is_address_taken || has_addressed_local_uses;
+    const bool rooted_pointer_bookkeeping_only =
+        has_explicit_uses && !has_direct_slot_accesses && !slot.is_address_taken &&
+        !has_addressed_local_uses;
+
     object.requires_home_slot =
         !is_dead_local_slot &&
         (has_direct_slot_accesses || slot.is_address_taken || has_addressed_local_uses ||
          slot.is_byval_copy || slot.storage_kind == bir::LocalSlotStorageKind::LoweringScratch ||
-         !used_in_single_block);
+         (!used_in_single_block && !rooted_pointer_bookkeeping_only));
   }
 }
 
