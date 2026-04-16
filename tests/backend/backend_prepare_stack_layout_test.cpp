@@ -1090,6 +1090,78 @@ prepare::PreparedBirModule prepare_phi_multi_block_local_slot_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_mixed_phi_local_slot_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_mixed_phi_local_slot_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.phi.mixed.root",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::immediate_i1(true),
+      .true_label = "left",
+      .false_label = "right",
+  };
+
+  bir::Block left;
+  left.label = "left";
+  left.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::Ptr, "lv.phi.mixed.left.alias"),
+      .operand = bir::Value::named(bir::TypeKind::Ptr, "lv.phi.mixed.root"),
+  });
+  left.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block right;
+  right.label = "right";
+  right.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "lv.phi.mixed.forwarded"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "left",
+              .value = bir::Value::named(bir::TypeKind::Ptr, "lv.phi.mixed.left.alias"),
+          },
+          bir::PhiIncoming{
+              .label = "right",
+              .value = bir::Value::named(bir::TypeKind::Ptr, "external.ptr"),
+          },
+      },
+  });
+  join.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(left));
+  function.blocks.push_back(std::move(right));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_pointer_binary_escaped_local_slot_module() {
   bir::Module module;
 
@@ -1596,6 +1668,29 @@ int check_phi_multi_block_local_slot_activation(const prepare::PreparedBirModule
   return 0;
 }
 
+int check_mixed_phi_local_slot_activation(const prepare::PreparedBirModule& prepared) {
+  const auto* root_object = find_stack_object(prepared, "lv.phi.mixed.root");
+  if (root_object == nullptr) {
+    return fail("expected the mixed-phi root local slot to produce a stack-layout object");
+  }
+  if (!root_object->address_exposed) {
+    return fail("expected a rooted-plus-unrooted pointer phi to conservatively expose the root slot");
+  }
+  if (!root_object->requires_home_slot) {
+    return fail("expected a rooted-plus-unrooted pointer phi to keep a dedicated home-slot requirement");
+  }
+
+  const auto* root_slot = find_frame_slot(prepared, root_object->object_id);
+  if (root_slot == nullptr) {
+    return fail("expected the mixed-phi root local slot to receive frame-slot storage");
+  }
+  if (root_slot->size_bytes != 8 || root_slot->align_bytes != 8) {
+    return fail("expected the mixed-phi root local slot to preserve its frame-slot layout");
+  }
+
+  return 0;
+}
+
 int check_pointer_binary_escaped_local_slot_activation(const prepare::PreparedBirModule& prepared) {
   const auto* root_object = find_stack_object(prepared, "lv.binary.root");
   if (root_object == nullptr) {
@@ -1722,6 +1817,11 @@ int main() {
   const auto phi_multi_block_prepared = prepare_phi_multi_block_local_slot_module();
   if (const int rc = check_phi_multi_block_local_slot_activation(phi_multi_block_prepared);
       rc != 0) {
+    return rc;
+  }
+
+  const auto mixed_phi_prepared = prepare_mixed_phi_local_slot_module();
+  if (const int rc = check_mixed_phi_local_slot_activation(mixed_phi_prepared); rc != 0) {
     return rc;
   }
 
