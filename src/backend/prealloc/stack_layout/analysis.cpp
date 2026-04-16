@@ -52,6 +52,12 @@ namespace {
 [[nodiscard]] std::optional<PreparedStackObject> make_param_object(const bir::Function& function,
                                                                    const bir::Param& param,
                                                                    PreparedObjectId object_id) {
+  // The active C++ BIR models aggregate params directly on `bir::Param`.
+  // Unlike the retained Rust route, this layer does not receive
+  // `param_alloca_values`, `ParamRef` destinations, or callee-saved register
+  // assignment data, so Rust `dead_param_alloca` elision is not representable
+  // here yet. Keep aggregate params materialized until the public contract
+  // grows those inputs explicitly.
   std::string_view source_kind;
   bool address_exposed = false;
   bool requires_home_slot = false;

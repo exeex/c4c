@@ -6,22 +6,23 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed the next Step 2 fixed-tier audit by comparing the active C++
-`slot_assignment.cpp` path against the retained Rust Tier 1 ordering
-expectation and correcting the one remaining mismatch: C++ collected local
-objects before params, so fixed-location locals could claim earlier offsets
-than `byval_param` or `sret_param` permanent-home objects. The fixed tier now
-keeps parameter-owned permanent-home objects ahead of later fixed-location
-locals, and the focused `backend_prepare_stack_layout` activation coverage now
-proves that ordering with a mixed byval/sret-param plus addressed-local case.
+Completed the next Step 2 parameter audit by comparing the retained Rust
+`dead_param_alloca` path against the active C++ stack-layout contract. The
+result is a bounded divergence, not a missing same-layer behavior: Rust dead
+param elision depends on `param_alloca_values`, `ParamRef` destinations, and
+callee-saved register assignment data, while the active C++ route only sees
+aggregate `bir::Param` records. `analysis.cpp` now documents that contract
+boundary explicitly, and focused `backend_prepare_stack_layout` activation
+coverage now proves that unused `byval_param` / `sret_param` objects and their
+fixed-tier slots stay materialized until the C++ prepared contract grows the
+missing Rust inputs.
 
 ## Suggested Next
 
-Continue Step 2 by auditing the remaining Rust `slot_assignment.rs`
-parameter-specific behavior that is not yet covered in the active C++ route,
-especially dead-parameter/dead-param-alloca elision and whether any surviving
-fixed-tier assumptions still depend on reference-only Tier 1 classification
-order.
+Continue Step 2 by auditing remaining Rust `slot_assignment.rs` behavior that
+does map onto the current C++ contract, especially whether reorderable-slot
+packing still hides a real shared-slot reuse gap beyond the current
+size/alignment sort-only assignment.
 
 ## Watchouts
 
@@ -53,6 +54,11 @@ order.
 - `byval_param` and `sret_param` remain explicit producers in
   `analysis.cpp`; `apply_regalloc_hints()` leaves them unchanged because they
   are not rediscovered from `bir::LocalSlot`
+- Rust `dead_param_alloca` elision is still reference-only for the active C++
+  route: current `bir::Param` inputs do not expose `param_alloca_values`,
+  `ParamRef` destinations, or callee-saved reg assignment, so unused
+  `byval_param` / `sret_param` objects intentionally remain materialized and
+  keep fixed-tier slots for now
 - plain params still do not produce `PreparedStackObject`s; any future
   parameter-slot work must come from a real contract change, not from test-only
   expectation widening
@@ -71,6 +77,7 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_stack_layout$ >
 test_after.log 2>&1`
-after adding focused parameter-vs-local fixed-tier ordering coverage for mixed
-byval/sret params, an addressed local, and a reorderable comparison local.
+after adding focused activation coverage that makes the bounded C++ vs Rust
+dead-param-alloca contract divergence explicit for unused `byval_param` /
+`sret_param` objects and their fixed-tier frame slots.
 Canonical proof log: `test_after.log`.

@@ -2153,6 +2153,28 @@ int check_param_permanent_home_slot_frame_slot_activation(
   return 0;
 }
 
+int check_unused_param_frame_slot_divergence_activation(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* byval_object = find_stack_object(prepared, "p.byval.root");
+  const auto* sret_object = find_stack_object(prepared, "p.sret.root");
+  if (byval_object == nullptr || sret_object == nullptr) {
+    return fail(
+        "expected unused byval and sret params to stay in the active prepared "
+        "stack-layout path until C++ exposes the Rust dead-param-alloca "
+        "contract");
+  }
+
+  const auto* byval_slot = find_frame_slot(prepared, byval_object->object_id);
+  const auto* sret_slot = find_frame_slot(prepared, sret_object->object_id);
+  if (byval_slot == nullptr || sret_slot == nullptr) {
+    return fail(
+        "expected unused byval and sret params to keep fixed-tier frame slots "
+        "until C++ BIR carries the Rust dead-param-alloca inputs");
+  }
+
+  return 0;
+}
+
 int check_param_fixed_location_ordering_activation(const prepare::PreparedBirModule& prepared) {
   const auto* byval_object = find_stack_object(prepared, "p.byval.fixed");
   const auto* sret_object = find_stack_object(prepared, "p.sret.fixed");
@@ -2341,6 +2363,20 @@ int check_stack_layout_param_object_collection_activation(
   if (!sret_object->address_exposed || !sret_object->requires_home_slot ||
       !sret_object->permanent_home_slot) {
     return fail("expected sret params to keep an explicit permanent home-slot contract");
+  }
+
+  return 0;
+}
+
+int check_stack_layout_unused_param_divergence_activation(
+    const std::vector<prepare::PreparedStackObject>& objects) {
+  const auto* byval_object = find_stack_object(objects, "p.analysis.byval");
+  const auto* sret_object = find_stack_object(objects, "p.analysis.sret");
+  if (byval_object == nullptr || sret_object == nullptr) {
+    return fail(
+        "expected unused byval and sret params to stay materialized until the "
+        "active C++ stack-layout contract grows the Rust dead-param-alloca "
+        "inputs");
   }
 
   return 0;
@@ -2943,6 +2979,11 @@ int main() {
       rc != 0) {
     return rc;
   }
+  if (const int rc =
+          check_stack_layout_unused_param_divergence_activation(param_analysis_objects);
+      rc != 0) {
+    return rc;
+  }
 
   const auto regalloc_hint_objects = collect_stack_layout_regalloc_hint_objects();
   if (const int rc = check_stack_layout_regalloc_hint_activation(regalloc_hint_objects);
@@ -2988,6 +3029,12 @@ int main() {
   const auto param_permanent_home_slot_prepared = prepare_param_permanent_home_slot_module();
   if (const int rc =
           check_param_permanent_home_slot_frame_slot_activation(
+              param_permanent_home_slot_prepared);
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc =
+          check_unused_param_frame_slot_divergence_activation(
               param_permanent_home_slot_prepared);
       rc != 0) {
     return rc;
