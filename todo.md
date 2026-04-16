@@ -6,20 +6,21 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed the Step 2 `regalloc_helpers.cpp` metadata cleanup packet by removing
-the last `source_kind`-based home-slot fallback from `apply_regalloc_hints()`.
-Regalloc-hint application now preserves the prepared object contract it is
-handed and only widens generic locals from real slot evidence such as
-`is_address_taken`, while the focused `backend_prepare_stack_layout` test now
-pins that helper behavior directly for generic `lowering_scratch`,
-`byval_copy`, `phi`, and addressed local-slot objects.
+Completed the next Step 2 permanent-home producer audit by proving
+`analysis.cpp` already emits explicit prepared contracts for `byval` and
+`sret` params and that the active stack-layout path preserves those contracts
+without any downstream `source_kind` re-derivation. The focused
+`backend_prepare_stack_layout` test now covers parameter-object collection,
+post-`apply_regalloc_hints()` preservation, and full frame-slot activation for
+`byval_param` plus `sret_param`, while a plain parameter remains outside the
+prepared stack-object set.
 
 ## Suggested Next
 
-Continue Step 2 by auditing the remaining explicit permanent-home producers,
-especially `call_result_sret` and parameter-owned stack objects, and add
-focused coverage proving they no longer depend on downstream `source_kind`
-re-derivation after `apply_regalloc_hints()`.
+Continue Step 2 by comparing the remaining C++ stack-layout fixed-tier behavior
+against the retained Rust `slot_assignment.rs` path, especially around
+parameter/alloca ordering and any dead-parameter elision rules that are still
+missing from the active C++ route.
 
 ## Watchouts
 
@@ -44,6 +45,12 @@ re-derivation after `apply_regalloc_hints()`.
 - `call_result_sret` still gets its permanent-home contract upstream in
   `alloca_coalescing.cpp`; keep checking that explicit producer path instead of
   reintroducing downstream `source_kind` fallbacks
+- `byval_param` and `sret_param` remain explicit producers in
+  `analysis.cpp`; `apply_regalloc_hints()` leaves them unchanged because they
+  are not rediscovered from `bir::LocalSlot`
+- plain params still do not produce `PreparedStackObject`s; any future
+  parameter-slot work must come from a real contract change, not from test-only
+  expectation widening
 - reorderable home-slot packing is still conservative size/alignment sorting;
   Rust-like shared-slot reuse is not active yet
 - do not fake shared-slot reuse or permanence widening with source-name
@@ -57,8 +64,8 @@ re-derivation after `apply_regalloc_hints()`.
 
 Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
-build -j --output-on-failure -R ^backend_prepare_stack_layout >
+build -j --output-on-failure -R ^backend_prepare_stack_layout$ >
 test_after.log 2>&1`
-after removing `apply_regalloc_hints()` source-kind home-slot fallbacks and
-adding direct helper coverage for generic vs. explicit prepared local-slot
-contracts. Canonical proof log: `test_after.log`.
+after adding focused byval/sret parameter coverage for object collection,
+regalloc-hint preservation, and active frame-slot assignment. Canonical proof
+log: `test_after.log`.

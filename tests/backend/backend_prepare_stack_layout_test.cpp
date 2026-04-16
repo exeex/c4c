@@ -94,6 +94,49 @@ std::vector<prepare::PreparedStackObject> collect_stack_layout_regalloc_hint_obj
   return objects;
 }
 
+bir::Function make_stack_layout_param_object_collection_function() {
+  bir::Function function;
+  function.name = "stack_layout_param_object_collection_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "p.analysis.byval",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .is_byval = true,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "p.analysis.sret",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .is_sret = true,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.analysis.plain",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  return function;
+}
+
+std::vector<prepare::PreparedStackObject> collect_stack_layout_param_objects() {
+  bir::Function function = make_stack_layout_param_object_collection_function();
+
+  prepare::PreparedObjectId next_object_id = 0;
+  return prepare::stack_layout::collect_function_stack_objects(function, next_object_id);
+}
+
+std::vector<prepare::PreparedStackObject> collect_stack_layout_param_regalloc_hint_objects() {
+  bir::Function function = make_stack_layout_param_object_collection_function();
+  prepare::PreparedObjectId next_object_id = 0;
+  auto objects = prepare::stack_layout::collect_function_stack_objects(function, next_object_id);
+  prepare::stack_layout::apply_regalloc_hints(function, prepare::FunctionInlineAsmSummary{}, objects);
+  return objects;
+}
+
 const prepare::PreparedStackObject* find_stack_object(
     const std::vector<prepare::PreparedStackObject>& objects,
     std::string_view source_name) {
@@ -162,6 +205,73 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
   });
   entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "sum"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
+prepare::PreparedBirModule prepare_param_permanent_home_slot_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_param_permanent_home_slot_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "p.byval.root",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .is_byval = true,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "p.sret.root",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .is_sret = true,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.plain",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.param.wide",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.param.wide",
+      .value = bir::Value::immediate_i64(9),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "loaded"),
+      .slot_name = "lv.param.wide",
+      .align_bytes = 8,
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::immediate_i32(0),
   };
 
   function.blocks.push_back(std::move(entry));
@@ -1921,6 +2031,55 @@ int check_permanent_home_slot_frame_slot_activation(const prepare::PreparedBirMo
   return 0;
 }
 
+int check_param_permanent_home_slot_frame_slot_activation(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* byval_object = find_stack_object(prepared, "p.byval.root");
+  const auto* sret_object = find_stack_object(prepared, "p.sret.root");
+  const auto* wide_object = find_stack_object(prepared, "lv.param.wide");
+  const auto* plain_object = find_stack_object(prepared, "p.plain");
+  if (byval_object == nullptr || sret_object == nullptr || wide_object == nullptr) {
+    return fail("expected parameter permanent-home activation to produce byval, sret, and comparison objects");
+  }
+  if (plain_object != nullptr) {
+    return fail("expected plain params to stay out of the prepared stack-layout objects");
+  }
+
+  if (byval_object->source_kind != "byval_param" || !byval_object->address_exposed ||
+      !byval_object->requires_home_slot || !byval_object->permanent_home_slot) {
+    return fail("expected the byval param to keep its explicit permanent-home contract in the active stack-layout path");
+  }
+  if (sret_object->source_kind != "sret_param" || !sret_object->address_exposed ||
+      !sret_object->requires_home_slot || !sret_object->permanent_home_slot) {
+    return fail("expected the sret param to keep its explicit permanent-home contract in the active stack-layout path");
+  }
+  if (wide_object->permanent_home_slot) {
+    return fail("expected the comparison local slot to remain reorderable");
+  }
+
+  const auto* byval_slot = find_frame_slot(prepared, byval_object->object_id);
+  const auto* sret_slot = find_frame_slot(prepared, sret_object->object_id);
+  const auto* wide_slot = find_frame_slot(prepared, wide_object->object_id);
+  if (byval_slot == nullptr || sret_slot == nullptr || wide_slot == nullptr) {
+    return fail("expected parameter permanent-home activation to assign frame-slot storage");
+  }
+  if (!byval_slot->fixed_location || !sret_slot->fixed_location) {
+    return fail("expected byval and sret params to use the fixed-location tier");
+  }
+  if (wide_slot->fixed_location) {
+    return fail("expected the comparison local slot to stay reorderable");
+  }
+  if (byval_slot->offset_bytes != 0 || sret_slot->offset_bytes != 8 ||
+      wide_slot->offset_bytes != 16) {
+    return fail("expected byval and sret param slots to anchor the fixed tier before the reorderable local slot");
+  }
+  if (prepared.stack_layout.frame_size_bytes != 24 ||
+      prepared.stack_layout.frame_alignment_bytes != 8) {
+    return fail("expected parameter permanent-home activation to preserve the fixed-tier frame metrics");
+  }
+
+  return 0;
+}
+
 int check_lowering_scratch_frame_slot_activation(const prepare::PreparedBirModule& prepared) {
   const auto* scratch_object = find_stack_object(prepared, "lv.scratch.root");
   const auto* wide_object = find_stack_object(prepared, "lv.scratch.wide");
@@ -2040,6 +2199,37 @@ int check_stack_layout_analysis_object_collection_activation(
   return 0;
 }
 
+int check_stack_layout_param_object_collection_activation(
+    const std::vector<prepare::PreparedStackObject>& objects) {
+  const auto* byval_object = find_stack_object(objects, "p.analysis.byval");
+  const auto* sret_object = find_stack_object(objects, "p.analysis.sret");
+  const auto* plain_object = find_stack_object(objects, "p.analysis.plain");
+  if (byval_object == nullptr || sret_object == nullptr) {
+    return fail("expected byval and sret params to publish prepared stack objects");
+  }
+  if (plain_object != nullptr) {
+    return fail("expected plain params to stay out of stack-layout object collection");
+  }
+
+  if (byval_object->source_kind != "byval_param") {
+    return fail("expected byval params to publish their explicit prepared source kind");
+  }
+  if (!byval_object->address_exposed || !byval_object->requires_home_slot ||
+      !byval_object->permanent_home_slot) {
+    return fail("expected byval params to keep an explicit permanent home-slot contract");
+  }
+
+  if (sret_object->source_kind != "sret_param") {
+    return fail("expected sret params to publish their explicit prepared source kind");
+  }
+  if (!sret_object->address_exposed || !sret_object->requires_home_slot ||
+      !sret_object->permanent_home_slot) {
+    return fail("expected sret params to keep an explicit permanent home-slot contract");
+  }
+
+  return 0;
+}
+
 int check_stack_layout_regalloc_hint_activation(
     const std::vector<prepare::PreparedStackObject>& objects) {
   const auto* scratch_object = find_stack_object(objects, "lv.analysis.scratch");
@@ -2068,6 +2258,30 @@ int check_stack_layout_regalloc_hint_activation(
   if (!addressed_object->requires_home_slot || !addressed_object->permanent_home_slot ||
       !addressed_object->address_exposed) {
     return fail("expected address-taken regalloc-hint objects to keep their explicit home-slot contract");
+  }
+
+  return 0;
+}
+
+int check_stack_layout_param_regalloc_hint_activation(
+    const std::vector<prepare::PreparedStackObject>& objects) {
+  const auto* byval_object = find_stack_object(objects, "p.analysis.byval");
+  const auto* sret_object = find_stack_object(objects, "p.analysis.sret");
+  const auto* plain_object = find_stack_object(objects, "p.analysis.plain");
+  if (byval_object == nullptr || sret_object == nullptr) {
+    return fail("expected regalloc hints to preserve byval and sret parameter objects");
+  }
+  if (plain_object != nullptr) {
+    return fail("expected regalloc hints to keep plain params out of stack-layout object collection");
+  }
+
+  if (!byval_object->address_exposed || !byval_object->requires_home_slot ||
+      !byval_object->permanent_home_slot) {
+    return fail("expected byval params to keep their explicit permanent-home contract through regalloc hints");
+  }
+  if (!sret_object->address_exposed || !sret_object->requires_home_slot ||
+      !sret_object->permanent_home_slot) {
+    return fail("expected sret params to keep their explicit permanent-home contract through regalloc hints");
   }
 
   return 0;
@@ -2607,8 +2821,22 @@ int main() {
     return rc;
   }
 
+  const auto param_analysis_objects = collect_stack_layout_param_objects();
+  if (const int rc =
+          check_stack_layout_param_object_collection_activation(param_analysis_objects);
+      rc != 0) {
+    return rc;
+  }
+
   const auto regalloc_hint_objects = collect_stack_layout_regalloc_hint_objects();
   if (const int rc = check_stack_layout_regalloc_hint_activation(regalloc_hint_objects);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto param_regalloc_hint_objects = collect_stack_layout_param_regalloc_hint_objects();
+  if (const int rc =
+          check_stack_layout_param_regalloc_hint_activation(param_regalloc_hint_objects);
       rc != 0) {
     return rc;
   }
@@ -2637,6 +2865,14 @@ int main() {
   const auto permanent_home_slot_prepared = prepare_permanent_home_slot_frame_slot_module();
   if (const int rc =
           check_permanent_home_slot_frame_slot_activation(permanent_home_slot_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto param_permanent_home_slot_prepared = prepare_param_permanent_home_slot_module();
+  if (const int rc =
+          check_param_permanent_home_slot_frame_slot_activation(
+              param_permanent_home_slot_prepared);
       rc != 0) {
     return rc;
   }
