@@ -6,17 +6,18 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended `stmt_emitter_expr.cpp` so remaining `DeclRef`-based function
-consumers now prefer semantic `LinkNameId` lookup before raw-name fallback,
-covering function-designator rvalue emission plus the call-result/signature
-inference helpers used by nested call lowering.
+Extended `lower_var_expr` so non-call `DeclRef` nodes now copy existing
+semantic `LinkNameId` values from emitted function/global carriers when HIR
+already resolves those bindings, covering ordinary function designators and
+decl-backed global refs without changing locals, params, temps, or builtin
+alias fallback behavior.
 
 ## Suggested Next
 
-Decide whether to widen the bounded semantic route by materializing
-`LinkNameId` on additional non-call `DeclRef` construction paths in HIR, so
-the remaining raw-name fallback in expr emission becomes rarer without
-collapsing `LinkNameId` back into string keys.
+Inspect the remaining explicit `DeclRef` builders outside `lower_var_expr`
+such as range-for/operator/object helper paths, and only propagate
+`LinkNameId` where they already recover a real emitted function/global carrier
+instead of re-interning by raw string.
 
 ## Watchouts
 
@@ -37,6 +38,9 @@ collapsing `LinkNameId` back into string keys.
   intact instead of collapsing `LinkNameId` back into string keys
 - builtin alias calls still intentionally stay on the raw-name fallback path
   because they do not originate from HIR semantic carriers
+- `lower_var_expr` now copies ids only from existing `Function`/`GlobalVar`
+  carriers; do not widen that helper into raw-string interning or local/param
+  naming paths
 - plain `foo()` direct-call lowering now patches the callee `DeclRef` in place
   after `lower_expr`, so this route stays bounded to call sites instead of
   teaching every `DeclRef` construction path about `LinkNameId`
@@ -62,11 +66,13 @@ collapsing `LinkNameId` back into string keys.
   source of truth
 - avoid testcase-overfit proof or brittle emitted-text substring matching as a
   substitute for a real id path
+- the new HIR regression now checks both function-designator and global decl
+  refs for copied semantic ids; extend coverage along the same semantic-carrier
+  rule if more HIR builders are migrated
 
 ## Proof
 
 Build: `cmake --build --preset default -j4`
-Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^backend_'`
+Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
 Result: passed
 Log: `test_after.log`
-Supplemental: `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'` passed

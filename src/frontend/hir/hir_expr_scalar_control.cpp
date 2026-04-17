@@ -28,6 +28,22 @@ const HirStructField* find_struct_instance_field_including_bases(
   return nullptr;
 }
 
+void attach_decl_ref_link_name_id(const Module& module, DeclRef& ref) {
+  if (ref.link_name_id != kInvalidLinkName) return;
+  if (ref.global) {
+    if (const GlobalVar* gv = module.find_global(*ref.global)) {
+      ref.link_name_id = gv->link_name_id;
+      return;
+    }
+  }
+  if (ref.local || ref.param_index) return;
+  const auto fit = module.fn_index.find(ref.name);
+  if (fit == module.fn_index.end()) return;
+  if (const Function* fn = module.find_function(fit->second)) {
+    ref.link_name_id = fn->link_name_id;
+  }
+}
+
 }  // namespace
 
 ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
@@ -214,6 +230,7 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       var_ts.is_fn_ptr = true;
     }
   }
+  attach_decl_ref_link_name_id(*module_, r);
   ExprId ref_id = append_expr(n, r, var_ts, ValueCategory::LValue);
   if (ctx) {
     if (auto storage_ts = storage_type_for_declref(ctx, r); storage_ts && is_any_ref_ts(*storage_ts)) {

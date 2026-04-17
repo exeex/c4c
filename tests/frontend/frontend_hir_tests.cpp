@@ -208,6 +208,70 @@ int use_template() { return id<int>(add_one(global_value)); }
               "template-instantiation metadata and lowered HIR functions should share one LinkNameId");
 }
 
+void test_hir_materializes_decl_ref_link_name_ids_for_emitted_refs() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+int global_value = 7;
+
+int helper(int value) { return value + global_value; }
+
+int (*pick_helper(void))(int) { return helper; }
+)cpp");
+
+  const auto helper_it = hir_module.fn_index.find("helper");
+  expect_true(helper_it != hir_module.fn_index.end(),
+              "fixture helper should be present in the HIR function index");
+  const c4c::hir::Function* helper = hir_module.find_function(helper_it->second);
+  expect_true(helper != nullptr && helper->link_name_id != c4c::kInvalidLinkName,
+              "fixture helper should carry a stable function LinkNameId");
+
+  const auto picker_it = hir_module.fn_index.find("pick_helper");
+  expect_true(picker_it != hir_module.fn_index.end(),
+              "fixture picker should be present in the HIR function index");
+  const c4c::hir::Function* picker = hir_module.find_function(picker_it->second);
+  expect_true(picker != nullptr,
+              "fixture picker should resolve through the HIR function lookup");
+
+  const c4c::hir::DeclRef* helper_ref = nullptr;
+  for (const auto& block : picker->blocks) {
+    for (const auto& stmt : block.stmts) {
+      const auto* ret = std::get_if<c4c::hir::ReturnStmt>(&stmt.payload);
+      if (ret == nullptr || !ret->expr) {
+        continue;
+      }
+      helper_ref = std::get_if<c4c::hir::DeclRef>(&hir_module.expr_pool[ret->expr->value].payload);
+      if (helper_ref != nullptr) {
+        break;
+      }
+    }
+    if (helper_ref != nullptr) {
+      break;
+    }
+  }
+  expect_true(helper_ref != nullptr,
+              "fixture picker should retain the helper function designator as a decl-ref");
+  expect_true(helper_ref->link_name_id == helper->link_name_id,
+              "function designator decl-refs should copy the emitted function LinkNameId");
+
+  const auto global_it = hir_module.global_index.find("global_value");
+  expect_true(global_it != hir_module.global_index.end(),
+              "fixture global should be present in the HIR global index");
+  const c4c::hir::GlobalVar* global = hir_module.find_global(global_it->second);
+  expect_true(global != nullptr && global->link_name_id != c4c::kInvalidLinkName,
+              "fixture global should carry a stable global LinkNameId");
+
+  const auto global_ref_it = std::find_if(
+      hir_module.expr_pool.begin(), hir_module.expr_pool.end(),
+      [&](const c4c::hir::Expr& expr) {
+        const auto* ref = std::get_if<c4c::hir::DeclRef>(&expr.payload);
+        return ref != nullptr && ref->global && ref->global->value == global->id.value;
+      });
+  expect_true(global_ref_it != hir_module.expr_pool.end(),
+              "fixture helper should lower at least one global decl-ref");
+  const auto* global_ref = std::get_if<c4c::hir::DeclRef>(&global_ref_it->payload);
+  expect_true(global_ref != nullptr && global_ref->link_name_id == global->link_name_id,
+              "global decl-refs should copy the emitted global LinkNameId");
+}
+
 void test_hir_to_lir_forwards_function_link_name_ids() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 template<typename T>
@@ -381,9 +445,8 @@ int (*pick_helper(void))(int) { return helper; }
   }
   expect_true(returned_ref != nullptr,
               "fixture picker should return the helper through a decl-ref designator");
-  returned_ref->link_name_id = helper->link_name_id;
   expect_true(returned_ref->link_name_id == helper->link_name_id,
-              "fixture decl-ref designator should carry the helper LinkNameId on the bounded semantic route");
+              "fixture decl-ref designator should already carry the helper LinkNameId");
 
   returned_ref->name = "broken_helper_designator_name";
 
@@ -462,9 +525,8 @@ int call_helper(int value) { return pick_helper()(value); }
   }
   expect_true(picker_ref != nullptr,
               "fixture caller should retain the picker callee before LIR lowering");
-  picker_ref->link_name_id = picker->link_name_id;
   expect_true(picker_ref->link_name_id == picker->link_name_id,
-              "fixture nested decl-ref callee should carry the picker LinkNameId on the bounded semantic route");
+              "fixture nested decl-ref callee should already carry the picker LinkNameId");
 
   picker_ref->name = "broken_pick_helper_declref_name";
 
@@ -944,6 +1006,7 @@ int main() {
   test_dense_id_map_supports_local_type_storage();
   test_optional_dense_id_map_supports_function_id_counters();
   test_hir_materializes_link_name_ids_for_emitted_symbols();
+  test_hir_materializes_decl_ref_link_name_ids_for_emitted_refs();
   test_hir_to_lir_forwards_function_link_name_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();
