@@ -164,7 +164,8 @@ void Lowerer::instantiate_template_struct_body(
 
   HirStructDef def;
   def.tag = mangled;
-  def.ns_qual = make_ns_qual(tpl_def);
+  def.ns_qual = make_ns_qual(
+      tpl_def, module_ ? module_->link_name_texts.get() : nullptr);
   def.is_union = tpl_def->is_union;
   def.pack_align = tpl_def->pack_align;
   def.struct_align = tpl_def->struct_align;

@@ -308,6 +308,30 @@ void test_parser_parse_qualified_name_populates_atom_symbol_ids() {
             "base atom id should resolve back to its spelling");
 }
 
+void test_parser_apply_qualified_name_preserves_text_ids_on_ast_nodes() {
+  c4c::Lexer lexer("::ns::inner::Type value;\n", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  const c4c::Parser::QualifiedNameRef qn = parser.parse_qualified_name();
+  c4c::Node* ref = parser.make_node(c4c::NK_VAR, 1);
+  parser.apply_qualified_name(ref, qn);
+
+  expect_true(ref->unqualified_text_id == qn.base_text_id,
+              "AST qualified-name handoff should keep the parser TextId for the base name");
+  expect_true(ref->qualifier_text_ids != nullptr,
+              "AST qualified-name handoff should allocate parallel qualifier TextIds");
+  expect_true(ref->qualifier_text_ids[0] == qn.qualifier_text_ids[0] &&
+                  ref->qualifier_text_ids[1] == qn.qualifier_text_ids[1],
+              "AST qualified-name handoff should preserve parser TextIds for qualifier segments");
+  expect_eq(lexer.text_table().lookup(ref->qualifier_text_ids[0]), "ns",
+            "AST qualifier TextIds should resolve through the shared parser text table");
+  expect_eq(lexer.text_table().lookup(ref->qualifier_text_ids[1]), "inner",
+            "AST qualifier TextIds should resolve through the shared parser text table");
+}
+
 void test_parser_injected_token_helpers_preserve_qualified_name_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -752,6 +776,7 @@ int main() {
   test_parser_heavy_snapshot_restores_symbol_id_keyed_tables();
   test_parser_keeps_qualified_bindings_string_keyed();
   test_parser_parse_qualified_name_populates_atom_symbol_ids();
+  test_parser_apply_qualified_name_preserves_text_ids_on_ast_nodes();
   test_parser_injected_token_helpers_preserve_qualified_name_spelling();
   test_parser_value_like_template_lookahead_uses_token_spelling();
   test_parser_capture_template_arg_expr_uses_token_spelling();

@@ -28,14 +28,17 @@ SourceSpan make_span(const Node* n) {
 }
 
 /// Build a NamespaceQualifier from an AST node's structured qualifier fields.
-NamespaceQualifier make_ns_qual(const Node* n) {
+NamespaceQualifier make_ns_qual(const Node* n, TextTable* texts) {
   NamespaceQualifier q;
   if (!n) return q;
   q.is_global_qualified = n->is_global_qualified;
   q.context_id = n->namespace_context_id;
   for (int i = 0; i < n->n_qualifier_segments; ++i) {
-    if (n->qualifier_segments[i])
+    if (n->qualifier_segments[i]) {
       q.segments.emplace_back(n->qualifier_segments[i]);
+      q.segment_text_ids.push_back(
+          texts ? texts->intern(n->qualifier_segments[i]) : kInvalidText);
+    }
   }
   return q;
 }

@@ -52,7 +52,7 @@ InitialHirBuildResult build_initial_hir(
 
 // Cross-TU syntax and source-location helpers.
 SourceSpan make_span(const Node* n);
-NamespaceQualifier make_ns_qual(const Node* n);
+NamespaceQualifier make_ns_qual(const Node* n, TextTable* texts = nullptr);
 std::string decode_string_node(const Node* n);
 std::string strip_quoted_string(const char* raw);
 

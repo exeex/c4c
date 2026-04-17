@@ -273,6 +273,61 @@ int (*pick_helper(void))(int) { return helper; }
               "global decl-refs should copy the emitted global LinkNameId");
 }
 
+void test_hir_namespace_qualifiers_preserve_text_ids_for_qualified_decl_refs() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+namespace ns {
+namespace inner {
+int helper(int value) { return value + 1; }
+}
+
+int call_inner(int value) { return inner::helper(value); }
+}
+)cpp");
+
+  const auto caller_it = hir_module.fn_index.find("ns::call_inner");
+  expect_true(caller_it != hir_module.fn_index.end(),
+              "fixture caller should be present in the HIR function index");
+  const c4c::hir::Function* caller = hir_module.find_function(caller_it->second);
+  expect_true(caller != nullptr,
+              "fixture caller should resolve through the HIR function lookup");
+
+  const c4c::hir::DeclRef* callee_ref = nullptr;
+  for (const auto& block : caller->blocks) {
+    for (const auto& stmt : block.stmts) {
+      const auto* ret = std::get_if<c4c::hir::ReturnStmt>(&stmt.payload);
+      if (ret == nullptr || !ret->expr) {
+        continue;
+      }
+      const auto* call =
+          std::get_if<c4c::hir::CallExpr>(&hir_module.expr_pool[ret->expr->value].payload);
+      if (call == nullptr) {
+        continue;
+      }
+      callee_ref = std::get_if<c4c::hir::DeclRef>(&hir_module.expr_pool[call->callee.value].payload);
+      if (callee_ref != nullptr) {
+        break;
+      }
+    }
+    if (callee_ref != nullptr) {
+      break;
+    }
+  }
+  expect_true(callee_ref != nullptr,
+              "qualified calls should preserve a decl-ref callee in HIR");
+  expect_true(callee_ref->ns_qual.segments.size() == 1,
+              "qualified decl-refs should preserve one namespace qualifier segment");
+  expect_eq(callee_ref->ns_qual.segments[0], "inner",
+            "qualified decl-refs should preserve namespace qualifier spelling");
+  expect_true(callee_ref->ns_qual.segment_text_ids.size() == 1,
+              "qualified decl-refs should preserve parallel NamespaceQualifier TextIds");
+  expect_true(callee_ref->ns_qual.segment_text_ids[0] != c4c::kInvalidText,
+              "qualified decl-refs should materialize a valid NamespaceQualifier TextId");
+  expect_true(hir_module.link_name_texts != nullptr,
+              "HIR modules should own the text table used by NamespaceQualifier TextIds");
+  expect_eq(hir_module.link_name_texts->lookup(callee_ref->ns_qual.segment_text_ids[0]), "inner",
+            "qualified decl-ref NamespaceQualifier TextIds should resolve through the HIR text table");
+}
+
 void test_hir_to_lir_forwards_function_link_name_ids() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 template<typename T>
@@ -1237,6 +1292,7 @@ int main() {
   test_optional_dense_id_map_supports_function_id_counters();
   test_hir_materializes_link_name_ids_for_emitted_symbols();
   test_hir_materializes_decl_ref_link_name_ids_for_emitted_refs();
+  test_hir_namespace_qualifiers_preserve_text_ids_for_qualified_decl_refs();
   test_hir_to_lir_forwards_function_link_name_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();

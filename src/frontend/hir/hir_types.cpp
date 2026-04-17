@@ -1175,7 +1175,7 @@ void Lowerer::lower_struct_def(const Node* sd) {
 
   HirStructDef def;
   def.tag = tag;
-  def.ns_qual = make_ns_qual(sd);
+  def.ns_qual = make_ns_qual(sd, module_ ? module_->link_name_texts.get() : nullptr);
   def.is_union = sd->is_union;
   def.pack_align = sd->pack_align;
   def.struct_align = sd->struct_align;
@@ -1550,7 +1550,7 @@ void Lowerer::lower_global(const Node* gv,
   g.id = next_global_id();
   g.name = name_override ? *name_override : (gv->name ? gv->name : "<anon_global>");
   g.link_name_id = module_->link_names.intern(g.name);
-  g.ns_qual = make_ns_qual(gv);
+  g.ns_qual = make_ns_qual(gv, module_ ? module_->link_name_texts.get() : nullptr);
   {
     TypeSpec global_ts = gv->type;
     seed_and_resolve_pending_template_type_if_needed(

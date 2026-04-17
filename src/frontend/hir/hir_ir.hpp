@@ -134,6 +134,7 @@ class OptionalDenseIdMap {
 /// and whether the reference was global-qualified (::foo).
 struct NamespaceQualifier {
   std::vector<std::string> segments;  // qualifier path (empty = unqualified)
+  std::vector<TextId> segment_text_ids;  // TU-scoped text identity for qualifier segments
   bool is_global_qualified = false;   // true for ::name or ::ns::name
   int context_id = -1;               // owning namespace context id (-1 = global/unknown)
 

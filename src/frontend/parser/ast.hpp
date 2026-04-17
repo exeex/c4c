@@ -18,6 +18,7 @@
 #include <string>
 
 #include "../builtin.hpp"
+#include "../string_id_table.hpp"
 
 namespace c4c {
 
@@ -288,7 +289,9 @@ struct Node {
     //           NK_GOTO, NK_LABEL, NK_MEMBER, NK_STRUCT_DEF, NK_ENUM_DEF) ---
     const char* name;
     const char* unqualified_name; // source spelling base name before namespace canonicalization
+    TextId unqualified_text_id;   // parser-owned text identity for unqualified_name
     const char** qualifier_segments; // structured qualifier path from source spelling
+    TextId* qualifier_text_ids;      // parser-owned text identity for qualifier_segments
     int n_qualifier_segments;        // qualifier segment count (excludes base name)
     bool is_global_qualified;        // true when the source spelling started with ::
     BuiltinId builtin_id;

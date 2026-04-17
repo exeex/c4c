@@ -438,7 +438,8 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   fn.id = next_fn_id();
   fn.name = mangled_name;
   fn.link_name_id = module_->link_names.intern(fn.name);
-  fn.ns_qual = make_ns_qual(method_node);
+  fn.ns_qual = make_ns_qual(
+      method_node, module_ ? module_->link_name_texts.get() : nullptr);
   {
     TypeSpec ret_ts = prepare_callable_return_type(
         method_node->type, tpl_bindings, nttp_bindings, method_node,

@@ -135,7 +135,7 @@ void Lowerer::lower_function(const Node* fn_node,
   fn.name = name_override ? *name_override
                           : (fn_node->name ? fn_node->name : "<anon_fn>");
   fn.link_name_id = module_->link_names.intern(fn.name);
-  fn.ns_qual = make_ns_qual(fn_node);
+  fn.ns_qual = make_ns_qual(fn_node, module_ ? module_->link_name_texts.get() : nullptr);
   {
     TypeSpec ret_ts = fn_node->type;
     if ((fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic) &&

@@ -1612,6 +1612,7 @@ void Parser::apply_qualified_name(Node* node, const QualifiedNameRef& qn,
                                   const char* resolved_name) {
     if (!node) return;
     node->is_global_qualified = qn.is_global_qualified;
+    node->unqualified_text_id = qn.base_text_id;
     node->unqualified_name =
         arena_.strdup(std::string(token_texts_ && qn.base_text_id != kInvalidText
                                       ? token_texts_->lookup(qn.base_text_id)
@@ -1620,6 +1621,7 @@ void Parser::apply_qualified_name(Node* node, const QualifiedNameRef& qn,
     node->n_qualifier_segments = static_cast<int>(qn.qualifier_segments.size());
     if (node->n_qualifier_segments > 0) {
         node->qualifier_segments = arena_.alloc_array<const char*>(node->n_qualifier_segments);
+        node->qualifier_text_ids = arena_.alloc_array<TextId>(node->n_qualifier_segments);
         for (int i = 0; i < node->n_qualifier_segments; ++i) {
             const std::string_view segment =
                 token_texts_ && i < static_cast<int>(qn.qualifier_text_ids.size()) &&
@@ -1628,6 +1630,10 @@ void Parser::apply_qualified_name(Node* node, const QualifiedNameRef& qn,
                     : std::string_view(qn.qualifier_segments[i]);
             node->qualifier_segments[i] =
                 arena_.strdup(std::string(segment).c_str());
+            node->qualifier_text_ids[i] =
+                i < static_cast<int>(qn.qualifier_text_ids.size())
+                    ? qn.qualifier_text_ids[i]
+                    : parser_text_id_for_token(kInvalidText, segment);
         }
     }
     if (resolved_name && resolved_name[0]) {
@@ -1640,6 +1646,8 @@ void Parser::apply_decl_namespace(Node* node, int context_id, const char* unqual
     if (!node) return;
     node->namespace_context_id = context_id;
     node->unqualified_name = unqualified_name;
+    node->unqualified_text_id =
+        parser_text_id_for_token(kInvalidText, unqualified_name ? unqualified_name : "");
 
     std::vector<const char*> segments;
     for (int walk = context_id; walk > 0; walk = namespace_contexts_[walk].parent_id) {
@@ -1650,8 +1658,11 @@ void Parser::apply_decl_namespace(Node* node, int context_id, const char* unqual
     node->n_qualifier_segments = static_cast<int>(segments.size());
     if (node->n_qualifier_segments > 0) {
         node->qualifier_segments = arena_.alloc_array<const char*>(node->n_qualifier_segments);
+        node->qualifier_text_ids = arena_.alloc_array<TextId>(node->n_qualifier_segments);
         for (int i = 0; i < node->n_qualifier_segments; ++i) {
             node->qualifier_segments[i] = segments[node->n_qualifier_segments - 1 - i];
+            node->qualifier_text_ids[i] = parser_text_id_for_token(
+                kInvalidText, node->qualifier_segments[i] ? node->qualifier_segments[i] : "");
         }
     }
 }

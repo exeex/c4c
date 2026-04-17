@@ -154,7 +154,7 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
   }
   DeclRef r{};
   r.name = n->name ? n->name : "<anon_var>";
-  r.ns_qual = make_ns_qual(n);
+  r.ns_qual = make_ns_qual(n, module_ ? module_->link_name_texts.get() : nullptr);
   bool has_local_binding = false;
   if (ctx) {
     auto lit = ctx->locals.find(r.name);

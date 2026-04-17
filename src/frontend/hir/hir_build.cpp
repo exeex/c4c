@@ -487,7 +487,7 @@ void Lowerer::lower_non_method_functions_and_globals(
         ce_fn.name = item->name ? item->name : "<anon_consteval>";
         ce_fn.link_name_id = m.link_names.intern(ce_fn.name);
         ce_fn.execution_domain = item->execution_domain;
-        ce_fn.ns_qual = make_ns_qual(item);
+        ce_fn.ns_qual = make_ns_qual(item, m.link_name_texts.get());
         ce_fn.return_type = qtype_from(item->type);
         ce_fn.consteval_only = true;
         ce_fn.span = make_span(item);
