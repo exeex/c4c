@@ -6,29 +6,32 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended Step 3 from the first emitted-function path into the direct emitted
-global path: `codegen::lir::LirGlobal` now carries a parallel
-`link_name_id`, HIR-to-LIR lowering forwards `hir::GlobalVar.link_name_id`
-through both standard and flexible-array global lowering, and
-`tests/frontend/frontend_hir_tests.cpp` proves the forwarded id survives on
-both the function and global LIR carriers in one real HIR fixture.
+Started Step 4 at a real late text-emitting boundary: `codegen::lir::LirModule`
+now retains the shared HIR link-name table during lowering, `lir::print_llvm`
+resolves emitted function signatures and global definitions through
+`LinkNameId` lookup when available, and
+`tests/frontend/frontend_hir_tests.cpp` proves the printer still emits the
+semantic names after the raw LIR function/global string carriers are
+deliberately corrupted.
 
 ## Suggested Next
 
-Decide whether Step 3 needs one more explicit LIR carrier for
-template-specialization metadata, or whether the route is now strong enough to
-start Step 4 by threading shared link-name lookup into a late text-emitting
-consumer boundary.
+Extend the same late-consumer lookup contract to the remaining link-visible
+printer surfaces that still spell names from raw strings, or choose the next
+backend/text consumer boundary that should resolve `LinkNameId` instead of
+trusting legacy string fields.
 
 ## Watchouts
 
-- `hir::Module` currently owns the link-name text table for this slice; keep
-  the source-idea goal in view and avoid hardening that into a permanent
-  second string store once the shared TU text-table boundary is available
+- `LirModule` currently shares HIR’s link-name table to make the printer route
+  real; keep the source-idea goal in view and avoid hardening that into a
+  permanent second string store once the shared TU text-table boundary is
+  available
 - keep `LinkNameId` distinct from both `TextId` and parser/source-atom
   `SymbolId`; the new HIR fields are parallel carriers, not replacements
-- late consumer lookup is still string-based today even though both direct
-  emitted function/global LIR carriers now preserve `LinkNameId`
+- extern declarations and specialization metadata still print names from raw
+  strings today even though the emitted function/global route now resolves at
+  the printer boundary
 - keep forwarding explicit ids through LIR carriers rather than treating
   `name` strings as the semantic source of truth
 - avoid testcase-overfit proof or brittle emitted-text substring matching as a

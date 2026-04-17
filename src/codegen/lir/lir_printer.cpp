@@ -16,6 +16,37 @@ std::string llvm_global_sym(const std::string& raw) {
   return "@" + c4c::codegen::llvm_helpers::quote_llvm_ident(raw);
 }
 
+std::string_view resolve_link_name(const c4c::LinkNameTable& link_names,
+                                   LinkNameId id) {
+  if (id == c4c::kInvalidLinkName) return {};
+  const std::string_view spelling = link_names.spelling(id);
+  return spelling.empty() ? std::string_view{} : spelling;
+}
+
+std::string render_signature_with_link_name(std::string_view signature_text,
+                                            std::string_view resolved_name) {
+  if (resolved_name.empty()) return std::string(signature_text);
+
+  const std::size_t header_pos = signature_text.rfind("define ");
+  const std::size_t decl_pos = signature_text.rfind("declare ");
+  const std::size_t start_pos =
+      header_pos == std::string_view::npos ? decl_pos
+                                           : (decl_pos == std::string_view::npos
+                                                  ? header_pos
+                                                  : std::max(header_pos, decl_pos));
+  if (start_pos == std::string_view::npos) return std::string(signature_text);
+
+  const std::size_t at_pos = signature_text.find('@', start_pos);
+  if (at_pos == std::string_view::npos) return std::string(signature_text);
+
+  const std::size_t paren_pos = signature_text.find('(', at_pos);
+  if (paren_pos == std::string_view::npos) return std::string(signature_text);
+
+  std::string rendered(signature_text);
+  rendered.replace(at_pos, paren_pos - at_pos, llvm_global_sym(std::string(resolved_name)));
+  return rendered;
+}
+
 // Render a single LirInst to text.
 void render_inst(std::ostringstream& os, const LirInst& inst) {
   if (const auto* op = std::get_if<LirAllocaOp>(&inst)) {
@@ -410,10 +441,12 @@ void render_terminator(std::ostringstream& os, const LirTerminator& term) {
 }
 
 // Render a LirFunction to LLVM IR text.
-std::string render_fn(const LirFunction& f) {
-  if (f.is_declaration) return f.signature_text;
+std::string render_fn(const LirFunction& f, std::string_view resolved_name) {
+  const std::string signature =
+      render_signature_with_link_name(f.signature_text, resolved_name);
+  if (f.is_declaration) return signature;
   std::ostringstream fout;
-  fout << f.signature_text;
+  fout << signature;
   fout << "{\n";
   for (size_t i = 0; i < f.blocks.size(); ++i) {
     const auto& blk = f.blocks[i];
@@ -458,7 +491,9 @@ std::string print_llvm(const LirModule& mod) {
 
   // Global variable definitions.
   for (const auto& g : mod.globals) {
-    out << llvm_global_sym(g.name) << " = " << g.linkage_vis << g.qualifier
+    const std::string_view resolved_name = resolve_link_name(mod.link_names, g.link_name_id);
+    out << llvm_global_sym(resolved_name.empty() ? g.name : std::string(resolved_name))
+        << " = " << g.linkage_vis << g.qualifier
         << g.llvm_type;
     if (!g.is_extern_decl) out << " " << g.init_text;
     if (g.align_bytes > 1) out << ", align " << g.align_bytes;
@@ -495,7 +530,7 @@ std::string print_llvm(const LirModule& mod) {
   // Dead internal functions have already been removed by the lowering pass
   // (eliminate_dead_internals); the printer renders everything it receives.
   for (const auto& f : mod.functions) {
-    out << render_fn(f);
+    out << render_fn(f, resolve_link_name(mod.link_names, f.link_name_id));
   }
 
   // Specialization metadata.

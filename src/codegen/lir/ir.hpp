@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -538,6 +539,8 @@ struct LirSpecEntry {
 struct LirModule {
   c4c::TargetProfile target_profile{};
   std::string data_layout;
+  std::shared_ptr<c4c::TextTable> link_name_texts;
+  c4c::LinkNameTable link_names;
 
   std::vector<LirGlobal> globals;
   std::vector<LirFunction> functions;

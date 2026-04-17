@@ -1,6 +1,7 @@
 #include "arena.hpp"
 #include "hir_to_lir.hpp"
 #include "hir/hir_ir.hpp"
+#include "lir_printer.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "sema.hpp"
@@ -47,6 +48,18 @@ c4c::hir::Module lower_hir_module(std::string_view source,
   expect_true(result.hir_module.has_value(),
               "HIR fixture source should lower to a module");
   return *result.hir_module;
+}
+
+void overwrite_signature_name(std::string* signature_text,
+                              std::string_view replacement_name) {
+  const std::size_t at_pos = signature_text->find('@');
+  expect_true(at_pos != std::string::npos,
+              "fixture signature should contain an LLVM global symbol");
+  const std::size_t paren_pos = signature_text->find('(', at_pos);
+  expect_true(paren_pos != std::string::npos,
+              "fixture signature should contain an argument list");
+  signature_text->replace(at_pos, paren_pos - at_pos,
+                          "@" + std::string(replacement_name));
 }
 
 void test_dense_id_map_tracks_assigned_dense_ids() {
@@ -236,6 +249,43 @@ int use_template() { return id<int>(add_one(global_value)); }
               "LIR globals should forward the HIR LinkNameId on the direct emitted-global path");
 }
 
+void test_lir_printer_resolves_link_names_at_emission_boundary() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+int global_value = 7;
+
+int add_one(int value) { return value + global_value; }
+)cpp");
+  c4c::codegen::lir::LirModule lir_module =
+      c4c::codegen::lir::lower(hir_module);
+
+  auto lir_fn_it = std::find_if(lir_module.functions.begin(), lir_module.functions.end(),
+                                [](const c4c::codegen::lir::LirFunction& fn) {
+                                  return fn.link_name_id != c4c::kInvalidLinkName;
+                                });
+  expect_true(lir_fn_it != lir_module.functions.end(),
+              "fixture should lower at least one emitted function with a LinkNameId");
+  lir_fn_it->name = "broken_add_one_name";
+  overwrite_signature_name(&lir_fn_it->signature_text, "broken_add_one_signature");
+
+  auto lir_global_it = std::find_if(lir_module.globals.begin(), lir_module.globals.end(),
+                                    [](const c4c::codegen::lir::LirGlobal& global) {
+                                      return global.link_name_id != c4c::kInvalidLinkName;
+                                    });
+  expect_true(lir_global_it != lir_module.globals.end(),
+              "fixture should lower at least one emitted global with a LinkNameId");
+  lir_global_it->name = "broken_global_value";
+
+  const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
+  expect_true(llvm_ir.find("@add_one(") != std::string::npos,
+              "printer should recover the function spelling from LinkNameId lookup");
+  expect_true(llvm_ir.find("@global_value = ") != std::string::npos,
+              "printer should recover the global spelling from LinkNameId lookup");
+  expect_true(llvm_ir.find("broken_add_one_signature") == std::string::npos,
+              "printer should not trust a corrupted function signature name");
+  expect_true(llvm_ir.find("broken_global_value") == std::string::npos,
+              "printer should not trust a corrupted global name carrier");
+}
+
 }  // namespace
 
 int main() {
@@ -245,6 +295,7 @@ int main() {
   test_optional_dense_id_map_supports_function_id_counters();
   test_hir_materializes_link_name_ids_for_emitted_symbols();
   test_hir_to_lir_forwards_function_link_name_ids();
+  test_lir_printer_resolves_link_names_at_emission_boundary();
 
   std::cout << "PASS: frontend_hir_tests\n";
   return 0;

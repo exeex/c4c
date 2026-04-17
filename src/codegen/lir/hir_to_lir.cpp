@@ -836,6 +836,8 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
   module.data_layout = !hir_mod.data_layout.empty()
       ? hir_mod.data_layout
       : llvm_default_datalayout(target_profile);
+  module.link_name_texts = hir_mod.link_name_texts;
+  module.link_names = hir_mod.link_names;
   module.type_decls = build_type_decls(hir_mod);
   module.prefer_semantic_va_ops = options.preserve_semantic_va_ops;
 
