@@ -61,9 +61,8 @@ struct BackendAssembleResult {
     const c4c::backend::bir::Module& module,
     Target target);
 
-// Current public BIR entrypoint. X86_64 now enters the target-local x86 direct
-// BIR emitter for its supported prepared-BIR subset; other targets still render
-// prepared semantic BIR text until their target-local handoff is wired in.
+// Current public BIR entrypoint. For x86_64 today this renders prepared
+// semantic BIR text; it does not enter the target-local x86 backend emitter yet.
 std::string emit_target_bir_module(const bir::Module& module, Target public_target);
 
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
