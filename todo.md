@@ -6,24 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended the Step 4 allocator so named `CallInst.args` now publish call-site
-`move_resolution` records when the consumed argument storage kind differs from
-the assigned source storage, while reusing the existing
+Extended the Step 4 allocator so named `CallInst.result` values now publish
+call-result `move_resolution` records when the assigned result storage differs
+from the ABI-consumed return storage kind, again using the existing
 `(from_value_id, to_value_id, block_index, instruction_index)` surface by
-self-keying non-result call-argument transfers to the consumed source value.
+self-keying the non-phi transfer to the produced result value.
 
-Focused `backend_prepare_liveness` coverage now proves the exact call-site
-behavior: the new `call_arg_move_resolution` shape keeps `carry0`/`carry1` in
-callee-saved `s1`/`s2`, assigns `keep.arg` to caller-saved `t0`, forces
-`spill.arg` into a real stack slot under the same call-site pressure, and
-therefore records a `call_arg_stack_to_register` move at the call instruction.
+Focused `backend_prepare_liveness` coverage now proves the new call-result
+surface directly: the `call_result_move_resolution` shape returns an `F32`
+value whose active regalloc assignment falls back to a real stack slot while
+the call ABI still models a register return, and therefore records a
+`call_result_stack_to_register` move at the call instruction.
 
 ## Suggested Next
 
-Extend Step 4 move planning from register-vs-stack call-argument materialization
-into the remaining non-result consumer surfaces, starting with return-site
-transfers or call-argument cases whose consumed location needs more precision
-than the current register-vs-stack ABI kind split.
+Extend Step 4 move planning into function return terminators or expose a more
+precise destination surface for call-site moves so call-argument and
+call-result bookkeeping can eventually distinguish real physical ABI
+destinations instead of only storage-kind mismatches.
 
 ## Watchouts
 
@@ -39,8 +39,9 @@ than the current register-vs-stack ABI kind split.
   are now emitted per later use point, but this is still bounded bookkeeping
   rather than true split-interval placement
 - `move_resolution` now covers phi joins plus result-producing
-  binary/select/cast consumers plus call-site argument materialization, but it
-  still does not model return-site transfers or other non-result consumer sites
+  binary/select/cast consumers plus call-site argument/result materialization,
+  but it still does not model function return-site transfers or other
+  non-result consumer sites
 - consumer-keyed move records intentionally skip redundant entries when the
   source and produced result already share the same assigned register or stack
   slot, and the current dedupe key is `(from_value_id, to_value_id,
@@ -49,6 +50,14 @@ than the current register-vs-stack ABI kind split.
   the ABI storage kind from `CallArgAbiInfo` and self-key the move record to
   the consumed source value because the current public contract does not expose
   a separate per-argument destination value or physical arg-register identity
+- call-result move records currently compare assigned result storage against
+  the ABI storage kind from `CallResultAbiInfo` and self-key the move record to
+  the produced result value because the current public contract does not expose
+  a separate physical return-register identity
+- the focused call-result proof currently uses an `F32` value on the active
+  RISC-V target because the general-register seed pools are active while float
+  register pools are still absent; if float allocation becomes active later,
+  this test shape will need a different pressure source
 - `PreparedAllocationConstraint.preferred_register_names` now carries the
   caller-vs-callee preference split, while `cannot_cross_call` is reserved for
   the stronger call-spanning prohibition; downstream consumers should keep
@@ -74,7 +83,7 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_liveness$ > test_after.log
 2>&1`
-after teaching `run_regalloc()` to publish call-site move-resolution
-bookkeeping for named call arguments whose assigned storage and ABI-consumed
+after teaching `run_regalloc()` to publish call-result move-resolution
+bookkeeping for named call results whose assigned storage and ABI-consumed
 storage kind differ.
 Canonical proof log: `test_after.log`.

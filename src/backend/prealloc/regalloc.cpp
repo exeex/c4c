@@ -547,6 +547,21 @@ void append_consumer_move_resolution(const bir::Function& function,
   return AssignedStorageKind::None;
 }
 
+[[nodiscard]] AssignedStorageKind call_result_storage_kind(const bir::CallInst& call) {
+  if (!call.result.has_value() || !call.result_abi.has_value() || call.result->kind != bir::Value::Kind::Named) {
+    return AssignedStorageKind::None;
+  }
+
+  const auto& abi = *call.result_abi;
+  if (abi.returned_in_memory || abi.primary_class == bir::AbiValueClass::Memory) {
+    return AssignedStorageKind::StackSlot;
+  }
+  if (abi.type != bir::TypeKind::Void) {
+    return AssignedStorageKind::Register;
+  }
+  return AssignedStorageKind::None;
+}
+
 void append_call_arg_move_resolution(const bir::Function& function,
                                      PreparedRegallocFunction& regalloc_function) {
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
@@ -580,6 +595,36 @@ void append_call_arg_move_resolution(const bir::Function& function,
                                                               assigned_storage_kind(*source),
                                                               consumed_kind));
       }
+    }
+  }
+}
+
+void append_call_result_move_resolution(const bir::Function& function,
+                                        PreparedRegallocFunction& regalloc_function) {
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    for (std::size_t instruction_index = 0; instruction_index < block.insts.size(); ++instruction_index) {
+      const auto* call = std::get_if<bir::CallInst>(&block.insts[instruction_index]);
+      if (call == nullptr || !call->result.has_value() || call->result->kind != bir::Value::Kind::Named) {
+        continue;
+      }
+
+      const auto* result = find_regalloc_value(regalloc_function, call->result->name);
+      if (result == nullptr) {
+        continue;
+      }
+
+      const AssignedStorageKind consumed_kind = call_result_storage_kind(*call);
+      append_move_resolution_record(regalloc_function,
+                                    result->value_id,
+                                    result->value_id,
+                                    assigned_storage_kind(*result),
+                                    consumed_kind,
+                                    block_index,
+                                    instruction_index,
+                                    storage_transfer_reason("call_result",
+                                                            assigned_storage_kind(*result),
+                                                            consumed_kind));
     }
   }
 }
@@ -882,6 +927,7 @@ void BirPreAlloc::run_regalloc() {
       append_phi_move_resolution(*function, regalloc_function);
       append_consumer_move_resolution(*function, regalloc_function);
       append_call_arg_move_resolution(*function, regalloc_function);
+      append_call_result_move_resolution(*function, regalloc_function);
     }
 
     prepared_.stack_layout.frame_size_bytes =
