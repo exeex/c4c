@@ -319,6 +319,52 @@ int use_template() { return id<int>(7); }
               "printer should not trust a corrupted specialization metadata name");
 }
 
+void test_lir_printer_resolves_direct_call_link_names_at_emission_boundary() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+int helper(int value) { return value + 1; }
+
+int call_helper(int value) { return helper(value); }
+)cpp");
+  c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  auto caller_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(fn.link_name_id) == "call_helper";
+      });
+  expect_true(caller_it != lir_module.functions.end(),
+              "fixture should lower call_helper with a LinkNameId before printer emission");
+
+  c4c::codegen::lir::LirCallOp* direct_call = nullptr;
+  for (auto& block : caller_it->blocks) {
+    auto inst_it = std::find_if(block.insts.begin(), block.insts.end(),
+                                [](c4c::codegen::lir::LirInst& inst) {
+                                  return std::holds_alternative<c4c::codegen::lir::LirCallOp>(inst);
+                                });
+    if (inst_it == block.insts.end()) {
+      continue;
+    }
+    direct_call = std::get_if<c4c::codegen::lir::LirCallOp>(&*inst_it);
+    if (direct_call != nullptr) {
+      break;
+    }
+  }
+  expect_true(direct_call != nullptr,
+              "fixture should lower the helper call into a concrete direct-call carrier");
+  expect_true(direct_call->direct_callee_link_name_id != c4c::kInvalidLinkName,
+              "resolved direct calls should carry a LinkNameId into printer emission");
+  expect_eq(lir_module.link_names.spelling(direct_call->direct_callee_link_name_id), "helper",
+            "direct-call LinkNameId should resolve to the semantic callee spelling");
+  direct_call->callee = c4c::codegen::lir::LirOperand("@broken_direct_call_callee");
+
+  const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
+  expect_true(llvm_ir.find("@helper(") != std::string::npos,
+              "printer should recover the direct callee spelling from LinkNameId lookup");
+  expect_true(llvm_ir.find("broken_direct_call_callee") == std::string::npos,
+              "printer should not trust a corrupted raw direct-call operand");
+}
+
 void test_lir_to_bir_resolves_link_names_at_backend_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -495,6 +541,7 @@ int main() {
   test_hir_to_lir_forwards_function_link_name_ids();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
+  test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();
   test_lir_to_bir_resolves_link_names_at_backend_boundary();
   test_lir_to_bir_analysis_resolves_link_names_at_backend_boundary();
   test_lir_to_bir_resolves_direct_call_link_names_at_backend_boundary();

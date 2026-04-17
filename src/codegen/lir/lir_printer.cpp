@@ -47,8 +47,23 @@ std::string render_signature_with_link_name(std::string_view signature_text,
   return rendered;
 }
 
+std::string resolve_direct_call_callee(const LirCallOp& call,
+                                       const c4c::LinkNameTable& link_names) {
+  if (!parse_lir_direct_global_callee(call.callee).has_value()) {
+    return call.callee;
+  }
+
+  const std::string_view resolved_name =
+      resolve_link_name(link_names, call.direct_callee_link_name_id);
+  if (resolved_name.empty()) {
+    return call.callee;
+  }
+  return llvm_global_sym(std::string(resolved_name));
+}
+
 // Render a single LirInst to text.
-void render_inst(std::ostringstream& os, const LirInst& inst) {
+void render_inst(std::ostringstream& os, const LirInst& inst,
+                 const c4c::LinkNameTable& link_names) {
   if (const auto* op = std::get_if<LirAllocaOp>(&inst)) {
     const auto& result =
         require_operand_kind(op->result, "LirAllocaOp.result",
@@ -257,6 +272,7 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
     validated.callee = require_operand_kind(op->callee, "LirCallOp.callee",
                                             {LirOperandKind::SsaValue,
                                              LirOperandKind::Global});
+    validated.callee = resolve_direct_call_callee(validated, link_names);
     os << format_lir_call_site(validated) << "\n";
   } else if (const auto* op = std::get_if<LirBinOp>(&inst)) {
     os << "  "
@@ -440,8 +456,8 @@ void render_terminator(std::ostringstream& os, const LirTerminator& term) {
   // LirIndirectBr is handled via LirIndirectBrOp instruction, not terminator.
 }
 
-// Render a LirFunction to LLVM IR text.
-std::string render_fn(const LirFunction& f, std::string_view resolved_name) {
+std::string render_fn(const LirFunction& f, std::string_view resolved_name,
+                      const c4c::LinkNameTable& link_names) {
   const std::string signature =
       render_signature_with_link_name(f.signature_text, resolved_name);
   if (f.is_declaration) return signature;
@@ -453,9 +469,9 @@ std::string render_fn(const LirFunction& f, std::string_view resolved_name) {
     fout << blk.label << ":\n";
     // Alloca instructions are hoisted to the start of the entry block.
     if (i == 0) {
-      for (const auto& inst : f.alloca_insts) render_inst(fout, inst);
+      for (const auto& inst : f.alloca_insts) render_inst(fout, inst, link_names);
     }
-    for (const auto& inst : blk.insts) render_inst(fout, inst);
+    for (const auto& inst : blk.insts) render_inst(fout, inst, link_names);
     render_terminator(fout, blk.terminator);
   }
   fout << "}\n\n";
@@ -530,7 +546,7 @@ std::string print_llvm(const LirModule& mod) {
   // Dead internal functions have already been removed by the lowering pass
   // (eliminate_dead_internals); the printer renders everything it receives.
   for (const auto& f : mod.functions) {
-    out << render_fn(f, resolve_link_name(mod.link_names, f.link_name_id));
+    out << render_fn(f, resolve_link_name(mod.link_names, f.link_name_id), mod.link_names);
   }
 
   // Specialization metadata.

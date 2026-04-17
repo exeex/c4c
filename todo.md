@@ -6,18 +6,18 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Forwarded `LinkNameId` through resolved direct-call LIR carriers and taught
-backend direct-call lowering to prefer that semantic callee identity over a
-corrupted raw `@name` operand; `tests/frontend/frontend_hir_tests.cpp` now
-proves BIR call lowering still emits `helper` after the legacy direct-call
-carrier is deliberately corrupted.
+Taught the LIR printer to resolve direct global-call callees through
+`direct_callee_link_name_id` at the late text-emission boundary instead of
+trusting the raw `@name` operand; `tests/frontend/frontend_hir_tests.cpp` now
+proves LLVM text emission still prints `@helper(...)` after the legacy
+direct-call operand is deliberately corrupted.
 
 ## Suggested Next
 
-Review the remaining late-consumer paths that still surface raw direct-call or
-declaration-oriented names despite existing carriers, especially any LIR-side
-text-emission or backend diagnostic/reporting surfaces, while continuing to
-avoid fake ids for unresolved extern-call declarations.
+Review the remaining late-consumer surfaces that still expose raw
+declaration-oriented names despite existing carriers, especially unresolved
+extern-call declarations and any backend diagnostic/reporting paths, while
+continuing to avoid fake ids where HIR has no real semantic source of truth.
 
 ## Watchouts
 
@@ -43,4 +43,5 @@ avoid fake ids for unresolved extern-call declarations.
 
 Build: `cmake --build --preset default -j4`
 Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
+Result: passed
 Log: `test_after.log`
