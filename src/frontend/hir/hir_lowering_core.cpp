@@ -43,6 +43,22 @@ NamespaceQualifier make_ns_qual(const Node* n, TextTable* texts) {
   return q;
 }
 
+TextId make_text_id(std::string_view text, TextTable* texts) {
+  if (!texts || text.empty()) return kInvalidText;
+  return texts->intern(text);
+}
+
+TextId make_unqualified_text_id(const Node* n, TextTable* texts) {
+  if (!n || !texts) return kInvalidText;
+  if (n->unqualified_name && n->unqualified_name[0]) {
+    return make_text_id(n->unqualified_name, texts);
+  }
+  if (n->name && n->name[0]) {
+    return make_text_id(n->name, texts);
+  }
+  return kInvalidText;
+}
+
 std::string decode_string_node(const Node* n) {
   if (!n || n->kind != NK_STR_LIT || !n->sval) return {};
   std::string raw = n->sval;

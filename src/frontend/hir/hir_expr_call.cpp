@@ -36,6 +36,7 @@ DeclRef make_direct_call_decl_ref(Module& mod, std::string name,
                                   LinkNameId link_name_id = kInvalidLinkName) {
   DeclRef dr{};
   dr.name = std::move(name);
+  dr.name_text_id = make_text_id(dr.name, mod.link_name_texts.get());
   dr.link_name_id = (link_name_id != kInvalidLinkName)
       ? link_name_id
       : find_direct_call_carrier_link_name_id(mod, dr.name);

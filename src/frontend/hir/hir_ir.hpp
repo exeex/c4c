@@ -289,6 +289,7 @@ struct CharLiteral {
 
 struct DeclRef {
   SymbolName name;
+  TextId name_text_id = kInvalidText;
   LinkNameId link_name_id = kInvalidLinkName;
   std::optional<LocalId> local;
   std::optional<uint32_t> param_index;

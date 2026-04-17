@@ -314,6 +314,10 @@ int call_inner(int value) { return inner::helper(value); }
   }
   expect_true(callee_ref != nullptr,
               "qualified calls should preserve a decl-ref callee in HIR");
+  expect_true(callee_ref->name_text_id != c4c::kInvalidText,
+              "qualified decl-refs should preserve a parallel base-name TextId");
+  expect_eq(hir_module.link_name_texts->lookup(callee_ref->name_text_id), "helper",
+            "qualified decl-ref base-name TextIds should resolve through the HIR text table");
   expect_true(callee_ref->ns_qual.segments.size() == 1,
               "qualified decl-refs should preserve one namespace qualifier segment");
   expect_eq(callee_ref->ns_qual.segments[0], "inner",

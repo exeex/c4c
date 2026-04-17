@@ -6,31 +6,31 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed the first parser-to-HIR `TextId` handoff slice on qualified-name
-namespace qualifiers.
+Completed `plan.md` Step 3 / Step 4 for the next bounded qualified decl-ref
+carrier adjacent to the namespace-qualifier route.
 
-- Added parallel AST `TextId` fields for `Node::unqualified_name` and
-  `Node::qualifier_segments` so parser `QualifiedNameRef` identity survives the
-  parser/AST boundary.
-- Added parallel HIR `NamespaceQualifier::segment_text_ids` and threaded
-  `make_ns_qual(...)` through the module text table so qualified decl-ref and
-  declaration namespace qualifiers are no longer string-only on the migrated
-  route.
-- Added focused parser and HIR tests covering AST qualified-name handoff and a
-  qualified decl-ref lowering path (`inner::helper`) that now preserves HIR
-  qualifier `TextId`s.
+- Added parallel HIR `DeclRef::name_text_id` storage so the qualified decl-ref
+  base name is no longer string-only on the migrated parser-to-HIR route.
+- Added shared lowering helpers that intern HIR-side text into the module text
+  table instead of reusing parser-owned `TextId` values across table
+  boundaries.
+- Extended focused HIR proof for `inner::helper` so the decl-ref now preserves
+  both qualifier-segment `TextId`s and the unqualified base-name `TextId`
+  alongside the existing `LinkNameId` path.
 
 ## Suggested Next
 
-Start Step 3 from `plan.md`: inspect the new `NamespaceQualifier` consumers and
-confirm they continue to treat qualifier text as `TextId`-backed TU identity
-without collapsing into `SymbolId` or `LinkNameId`, then choose the next
-bounded HIR string carrier adjacent to this route (for example a decl/tag base
-name field) instead of broadening into general string cleanup.
+Keep Step 3 bounded: extend `DeclRef::name_text_id` coverage to the other
+AST-origin decl-ref construction sites that do not flow through
+`lower_var_expr(...)`, or stop and choose the next nearby HIR declaration/tag
+base-name carrier if that broader decl-ref sweep would widen too far.
 
 ## Watchouts
 
 - Do not collapse `TextId`, `SymbolId`, and `LinkNameId`.
+- HIR must intern its own spellings into `module.link_name_texts`; parser-owned
+  `TextId`s cannot be copied directly into HIR because they belong to a
+  different table.
 - Keep diagnostic/debug/serialization strings out of scope.
 - Do not absorb unrelated EASTL lifecycle churn into this plan.
 
