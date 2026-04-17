@@ -61,7 +61,7 @@ Always preserve these invariants:
 
 When new information appears during execution, apply this ladder in order:
 
-1. update [`todo.md`](/workspaces/c4c/todo.md) for current slice state,
+1. update [`todo.md`](/workspaces/c4c/todo.md) for current packet state,
    progress notes, blockers, proof commands, and temporary sequencing
 2. update [`plan.md`](/workspaces/c4c/plan.md) only when the active runbook
    contract, ordering, or proof expectations changed within the same source
@@ -106,6 +106,9 @@ body should be framed with:
 - `## Watchouts`
 - `## Proof`
 
+`## Just Finished` should be written as a short overwrite-style summary of the
+latest completed packet, and should identify which `plan.md` step it advanced.
+
 ### `ideas/open/*.md` and `ideas/closed/*.md`
 
 When touched as part of lifecycle work, path already carries most status:
@@ -146,8 +149,8 @@ Do this:
    without requiring a plan-owner rewrite
 4. if new ideas are discovered, do not silently absorb them into the active plan
 5. either:
-   - record them in [`todo.md`](/workspaces/c4c/todo.md) if they are execution
-     notes for the active slice
+  - record them in [`todo.md`](/workspaces/c4c/todo.md) if they are execution
+     notes for the active packet
    - update [`plan.md`](/workspaces/c4c/plan.md) if the active runbook needs a
      clearer contract or stronger proof
    - create a separate file in `ideas/open/` and request a lifecycle

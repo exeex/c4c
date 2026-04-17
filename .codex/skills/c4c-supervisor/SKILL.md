@@ -47,6 +47,7 @@ state, and creates the final commit. It does not own lifecycle rewrites or imple
 - decide whether `c4c-reviewer` is needed and whether delegated `c4c-executor`
   or `c4c-reviewer` packets should explicitly use `c4c-clang-tools` to save
   token on C++ exploration
+- flush completed ready slices before delegating new work
 
 ## Hard Boundaries
 
@@ -61,6 +62,9 @@ state, and creates the final commit. It does not own lifecycle rewrites or imple
 7. Do not accept or commit a slice whose main effect is testcase-overfit:
    downgraded expectations, testcase-shaped matcher growth, or named-case-only
    backend shortcuts without real capability gain.
+8. Do not issue a new specialist packet while a previously completed coherent
+   slice is already sitting ready in the worktree; validate and commit or
+   explicitly reject it first.
 
 ## Stable Handoff
 
@@ -87,6 +91,7 @@ Executor packet shape:
 ```text
 to_subagent: c4c-executor
 Objective: <one-sentence goal>
+Plan Step: <step number and short label from plan.md>
 Owned Files: <comma-separated paths, normally including todo.md>
 Do Not Touch: <comma-separated paths>
 Tooling: <`use c4c-clang-tools` or `no clang-tools needed`, with a short reason>
@@ -96,6 +101,8 @@ If Blocked: stop and report the exact blocker
 ```
 
 For code packets, the supervisor chooses `Proof`. The executor runs it.
+Include `Plan Step` whenever the packet is implementing or proving a concrete
+runbook step so the executor can mirror that reference in `todo.md`.
 
 Reviewer packet shape:
 
@@ -227,6 +234,8 @@ After a specialist returns:
 Commit guidance:
 
 - prefer code-plus-`todo.md` commits for routine execution
+- if the worktree already contains a completed ready slice before delegation,
+  validate and flush it before sending a new packet
 - do not leave ready slices piled up unless the current `todo.md` item is still incomplete or blocked
 - treat `plan.md` rewrites as infrequent route checkpoints, not per-packet
   scratch updates

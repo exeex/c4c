@@ -35,7 +35,7 @@ Preserve:
 - important helper/function names
 - validation intent
 
-It is acceptable for the runbook to be more concrete about slice boundaries,
+It is acceptable for the runbook to be more concrete about packet boundaries,
 build proof, and broader validation checkpoints than the source idea, as long
 as source intent does not change.
 
@@ -43,6 +43,9 @@ Change the shape:
 
 - from idea memo / proposal / package list
 - into ordered execution guidance with explicit steps and completion checks
+
+Use `step` as the canonical unit name inside `plan.md`. Do not mix `step`,
+`slice`, `phase`, or `stage` when describing runbook units.
 
 ## Output Contract
 

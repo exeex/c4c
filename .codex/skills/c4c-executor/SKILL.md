@@ -57,6 +57,9 @@ The executor should:
 2. preserve `test_after.log`
 3. report if the delegated proof is missing a build step, missing a test step,
    or cannot credibly prove the owned slice
+4. report and stop if the delegated proof contract does not yield
+   `test_after.log`; do not invent a replacement proof or silently use another
+   root-level log name
 
 Do not choose a different subset on your own unless the packet explicitly
 delegates proof selection.
@@ -70,7 +73,9 @@ When updating [`todo.md`](/workspaces/c4c/todo.md):
 - edit only the relevant section for the active packet
 - use Markdown headings for the packet body: `# Current Packet`, then
   `## Just Finished`, `## Suggested Next`, `## Watchouts`, and `## Proof`
-- record `## Just Finished`: what this packet actually completed
+- record `## Just Finished`: what this packet actually completed, including the
+  referenced `plan.md` step number and the concrete work item completed within
+  that step
 - keep `Just Finished` as a short overwrite-style summary for the latest packet,
   not an accumulating history list
 - record `## Suggested Next`: the next coherent packet the executor recommends
@@ -99,6 +104,10 @@ Do not repave the whole file. Do not rewrite plan structure. Do not convert rout
    as task selection.
 6. If you discover a separate initiative, stop and report it instead of
    silently mutating the packet.
+7. If completing the packet would require expectation downgrades,
+   testcase-shaped matching, or other named-case-only shortcuts instead of a
+   real capability repair, stop and report the overfit risk instead of
+   implementing it.
 
 ## Packet Shape
 
@@ -107,6 +116,7 @@ Assume delegated packets look like:
 ```text
 to_subagent: c4c-executor
 Objective: <one-sentence goal>
+Plan Step: <step number and short label from plan.md>
 Owned Files: <comma-separated paths, normally including todo.md>
 Do Not Touch: <comma-separated paths>
 Tooling: <optional; `use c4c-clang-tools` or `no clang-tools needed`, with a short reason>
@@ -116,6 +126,8 @@ If Blocked: stop and report the exact blocker
 ```
 
 If the packet also names a transient file such as `todoA.md`, treat that file as the worker packet only. Canonical progress still belongs in [`todo.md`](/workspaces/c4c/todo.md) when the packet allows it.
+
+If `Plan Step` is present, mirror that step reference in `## Just Finished`.
 
 If `Tooling` says to use `c4c-clang-tools`, use that skill first for AST-backed
 C++ queries before reading large files by raw text.
@@ -132,6 +144,9 @@ C++ queries before reading large files by raw text.
 8. Do not create the final commit.
 9. Do not take over lifecycle closure, regression policy, or commit readiness
    judgment.
+10. Do not satisfy the packet through testcase-overfit tactics such as
+    expectation downgrades or named-case-only shortcuts; report that route
+    conflict to the supervisor instead.
 
 ## Result Format
 

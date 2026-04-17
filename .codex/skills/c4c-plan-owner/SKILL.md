@@ -73,7 +73,9 @@ When activation or repair requires writing `plan.md`:
 6. Do not create a second `todo.md` protocol. When `todo.md` must be created or
    reset, use the same Markdown section shape the executor updates:
    `# Current Packet`, then `## Just Finished`, `## Suggested Next`,
-   `## Watchouts`, and `## Proof`.
+   `## Watchouts`, and `## Proof`. `Just Finished` should remain an
+   overwrite-style latest-packet summary that can name the relevant `plan.md`
+   step once execution begins.
 
 ## Lifecycle Rules
 

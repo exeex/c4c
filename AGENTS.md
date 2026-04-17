@@ -26,28 +26,23 @@ This repo uses a single-plan lifecycle.
 ## Overfit Rejection
 
 - Treat testcase-overfit work as route drift, not progress.
-- `testcase overfit` means a change whose main effect is to make a narrow known
-  case pass without adding or repairing the underlying compiler/backend
-  capability that the source idea claims to improve.
-- Strong examples of testcase overfit:
-  - reclassifying a failing supported-path test into an `unsupported` or
-    downgraded-contract expectation without explicit user approval
-  - closing or de-scoping a backend/compiler idea because tests were rewritten
-    to match current failure behavior rather than because the capability was
-    implemented
-  - adding new backend/codegen matchers that recognize one testcase family by
-    printed IR/text shape, such as `print_llvm()` plus substring checks,
-    `rendered_contains_all(...)`, or similarly brittle full-module text probes
-  - adding `try_emit_minimal_*`, hardcoded asm templates, or hand-written
-    return-value shortcuts whose practical scope is one testcase or one tiny
-    named family instead of a real semantic lowering rule
-  - proving success only with the exact target testcase while nearby same-shape
-    or same-feature cases remain unsupported or unexamined
+- `testcase overfit` means a change whose main effect is making a narrow known
+  case pass without repairing the underlying compiler/backend capability the
+  source idea claims to improve.
+- Strong examples:
+  - downgrading a supported-path test to `unsupported` or a weaker contract
+    without explicit user approval
+  - claiming backend/compiler progress mainly through expectation rewrites
+    rather than capability repair
+  - adding testcase-shaped matching or tiny named-case shortcuts instead of a
+    real semantic lowering rule
+  - proving only the target testcase while nearby same-feature cases remain
+    unsupported or unexamined
 - Existing special-case code may be maintained when necessary, but new work
   must not extend that pattern unless the user explicitly approves a temporary
   tactical exception.
-- When in doubt, prefer semantic lowering/generalization work over testcase
-  shape matching.
+- When in doubt, prefer semantic lowering/generalization over testcase-shape
+  matching.
 
 ## Role Routing
 
@@ -63,72 +58,62 @@ This repo uses a single-plan lifecycle.
 
 ## Supervisor Authority
 
-- Owns orchestration only.
-- Chooses whether to call the plan owner or an executor.
-- Owns source-idea intent and anti-drift decisions.
-- Converts lifecycle state into one bounded worker packet at a time.
-- May call a reviewer to judge whether the current route is still aligned with
-  the active plan.
-- Must compare execution and route changes against the linked source idea, not
-  only against `plan.md`.
-- Checks `git status --short` before calling a specialist and after a
-  specialist returns.
-- Commits completed coherent slices promptly instead of letting finished work
-  accumulate in the worktree.
-- Owns broad validation, integration, and the final commit.
-- Owns validation escalation from compile proof to broader or full-suite
-  acceptance when slice risk justifies it.
-- Prefers executor-updated `todo.md` plus code in the same commit, instead of
-  triggering routine plan-owner rewrites.
-- Owns canonical regression-log state using only `test_before.log` and
-  `test_after.log`.
-- Owns proving-subset selection for executor packets, including which command
-  should be used to create `test_before.log` when no baseline exists yet.
-- Does not perform plan lifecycle edits or implementation code edits directly
-  when a matching specialist role exists.
-- Must reject testcase-overfit slices even if the narrow proving subset turns
-  green.
+- Owns orchestration, route choice, and anti-drift decisions.
+- Chooses whether to call `plan-owner`, `executor`, or `reviewer`.
+- Compares execution against the linked source idea, not only `plan.md`.
+- Checks `git status --short` before delegation and after return.
+- Owns broader validation, canonical regression-log state, and the final
+  commit.
+- Chooses the proving subset and baseline command for executor packets.
+- Prefers `executor`-updated `todo.md` plus code in one commit over routine
+  `plan-owner` rewrites.
+- Does not perform lifecycle or implementation edits directly when a matching
+  specialist exists.
+- Must reject testcase-overfit slices even if narrow proof is green.
+- Role-specific packet shape and operating details live in
+  `.codex/skills/c4c-supervisor/`.
 
 ## Plan Owner Authority
 
 - Owns `plan.md`, source-idea edits, and lifecycle transitions.
-- Owns idea activation, runbook generation, state repair, switch, and close
-  decisions.
-- Owns `todo.md` only when activation, repair, switch, or close requires
-  creating, resetting, or deleting canonical execution state.
+- Handles activation, repair, switch, runbook regeneration, and close.
+- Touches `todo.md` only when lifecycle work must create, reset, or delete
+  canonical execution state.
 - Reads and writes lifecycle state through `ideas/open/`, `plan.md`, `todo.md`,
   and `ideas/closed/`.
-- Does not do implementation code edits, broad validation, or final commit.
+- Does not do implementation edits, broad validation, or the final commit.
+- Detailed lifecycle workflow lives in `.codex/skills/c4c-plan-owner/`.
 
 ## Executor Authority
 
 - Executes only the delegated packet.
-- Treats `todoA.md`, `todoB.md`, `todoC.md`, `todoD.md`, or similarly named
-  files as worker packets, not canonical lifecycle state.
-- Updates the relevant section of canonical `todo.md` for routine packet
-  progress and proof results.
-- Produces only canonical executor test output at `test_after.log` unless the
-  supervisor explicitly delegates a different non-regression artifact.
-- Runs the exact proving command delegated by the supervisor; it does not own
-  global subset-routing policy.
-- Returns concise ownership notes, local validation results, and blockers to
-  the supervisor.
-- Does not take over lifecycle, broad validation, or final commit unless
-  explicitly delegated.
+- Treats `todoA.md`, `todoB.md`, `todoC.md`, `todoD.md`, or similar files as
+  worker packets, not canonical lifecycle state.
+- Updates the assigned section of canonical `todo.md` with packet progress and
+  proof results.
+- Uses `test_after.log` as the canonical executor proof log unless the
+  supervisor explicitly delegates another non-regression artifact.
+- Runs the exact proof command delegated by the supervisor; it does not own
+  subset-routing policy.
+- Returns concise ownership notes, local validation results, and blockers.
+- Does not take over lifecycle, broad validation, or the final commit.
+- Packet contract and `todo.md` update rules live in
+  `.codex/skills/c4c-executor/`.
 
 ## Reviewer Authority
 
-- Reviews whether the current implementation path still matches the active
-  `plan.md` and its linked source idea.
-- Chooses the review base from `git log --oneline -- plan.md` plus commit
-  message context, not from metadata written inside `plan.md`.
-- Reviews drift, route quality, and technical debt from that checkpoint to
-  `HEAD`.
-- Writes its formal payload to a transient artifact under `review/`.
-- Does not edit implementation, lifecycle files, broad validation state, or
-  final commit history.
-- Must treat testcase-overfit execution as a blocking route-quality failure, not
-  a minor style concern.
+- Reviews whether implementation still matches active `plan.md` and its linked
+  source idea.
+- Chooses the review base from git history on `plan.md`, not metadata written
+  inside `plan.md`.
+- Reviews drift, route quality, technical debt, and proof sufficiency from that
+  checkpoint to `HEAD`.
+- Writes the formal payload to a transient artifact under `review/`.
+- Does not edit implementation, lifecycle files, validation state, or commit
+  history.
+- Must treat testcase-overfit as a blocking route-quality failure.
+- Review-base selection and report format live in
+  `.codex/skills/c4c-reviewer/`.
 
 ## Review Artifact Rule
 
@@ -139,79 +124,47 @@ This repo uses a single-plan lifecycle.
 
 ## Commit Discipline
 
-1. Before calling a specialist, the supervisor runs `git status --short`.
-2. If the worktree already contains a completed coherent slice, the supervisor
-   should validate and commit it before issuing another packet.
-3. The main reason to leave changes uncommitted is that the current `todo.md`
-   slice is still incomplete or blocked.
-4. After a specialist returns, the supervisor runs `git status --short` again.
-5. If the returned slice reaches its done condition and validation is
-   sufficient, the supervisor should commit it promptly.
-   Exception:
-   if the slice is testcase-overfit, the supervisor must not accept or commit
-   it as progress.
-6. Commit only the coherent slice that is actually ready; do not sweep
-   unrelated dirty files into the same commit.
-7. For routine execution slices, prefer one commit that includes the code
-   changes plus the executor-updated `todo.md`.
-8. Specialists report slice status and commit readiness in handoff notes, but
-   they do not create the final commit.
-9. Final commits are created by the supervisor, including lifecycle-only
-   slices returned from the plan owner.
-10. If staged changes touch `plan.md`, `todo.md`, or files under `ideas/open/`,
-   rely on the git hook to inject or validate the canonical lifecycle scope
-   tag. Do not manually duplicate lifecycle tags in the subject.
-11. Reviewer checkpoint selection should prefer these canonical compact scope
-   tags, such as `[plan]`, `[plan+idea]`, or `[todo_only]`, plus the
-   remaining commit subject text over ad hoc message wording.
-12. The supervisor should use `scripts/plan_change_gap.sh` as the first check
-    for how far execution has moved since the last canonical route checkpoint.
-13. Routine execution should not trigger `plan.md` rewrites every packet.
-   Target a rough cadence of about one real plan-tagged checkpoint commit per 5 to 10
-    implementation commits, unless earlier rewrite is forced by activation,
-    repair, close, a true blocker, or a reviewer-justified route reset.
-14. `ideas/open/*.md` changes should be rarer still: activation intent change,
-    deactivation summary, split initiative capture, or close notes.
+1. The supervisor owns commit boundaries and creates all final commits,
+   including lifecycle-only slices returned from the plan owner.
+2. Commit only coherent slices that are ready; do not sweep unrelated dirty
+   files into the same commit.
+3. A completed slice should usually be validated and committed promptly. The
+   main reason to leave changes uncommitted is that the active `todo.md` slice
+   is still incomplete or blocked.
+4. For routine execution, prefer one commit that includes code changes plus the
+   executor-updated `todo.md`.
+5. Specialists may report slice status and commit readiness, but they do not
+   create the final commit.
+6. If a slice is testcase-overfit, the supervisor must not accept or commit it
+   as progress.
+7. If staged changes touch `plan.md`, `todo.md`, or files under `ideas/open/`,
+   rely on the git hook for canonical lifecycle scope tags instead of manually
+   duplicating them in the subject.
+8. `plan.md` and `ideas/open/*.md` should change less often than routine code
+   and `todo.md` updates; reserve those edits for true lifecycle or route
+   changes.
 
 ## Validation Discipline
 
-1. A code slice is not acceptance-ready without a fresh build or compile proof
-   unless the change is lifecycle-only or docs-only.
-2. Executor packets for code should normally name proof commands in this order:
-   build first, then the narrowest test that proves the slice.
-3. Narrow proof is the default execution loop, but the supervisor must decide
+1. A code slice is not acceptance-ready without fresh build or compile proof,
+   unless it is lifecycle-only or docs-only.
+2. Narrow proof is the default execution loop, but the supervisor decides
    whether acceptance also needs broader or full validation.
-4. Escalate beyond narrow proof when the slice touches shared compiler
-   pipeline code, parser/sema/HIR/IR/codegen layers, build or test harness
-   logic, or other files whose blast radius exceeds one narrow bucket.
-5. Escalate beyond narrow proof when multiple packets have landed without a
-   broader checkpoint, when the user asks for higher confidence, or when a
-   slice is about to be treated as a closure-quality milestone.
-6. Prefer repo-native broader checks such as matching-scope
-   `c4c-regression-guard`, `ctest --test-dir build -j --output-on-failure`,
-   or `scripts/full_scan.sh`, depending on the slice and available coverage.
-7. Do not rewrite the source idea just because broader validation found route
-   friction. Fix it in `todo.md` first, then `plan.md`, and only then the idea
-   if durable source intent actually changed.
-8. A subset going green is not sufficient when the diff appears to downgrade
-   expectations, add testcase-shaped backend matching, or otherwise overfit a
-   named failing case. In those situations the supervisor must escalate to
-   reviewer scrutiny or reject the slice outright.
-9. Canonical regression-log filenames are fixed: `test_before.log` and
+3. Escalate validation when blast radius extends beyond one narrow bucket, when
+   multiple narrow-only packets have landed, when the user asks for higher
+   confidence, or when the slice is being treated as a milestone.
+4. Prefer repo-native broader checks such as `c4c-regression-guard`,
+   `ctest --test-dir build -j --output-on-failure`, or
+   `scripts/full_scan.sh`, depending on scope.
+5. A green subset is not sufficient when the diff appears to downgrade
+   expectations or overfit a named failing case; the supervisor must escalate
+   to reviewer scrutiny or reject the slice.
+6. Canonical regression-log filenames are fixed: `test_before.log` and
    `test_after.log`. Routine execution should not leave other root-level `.log`
    files behind.
-10. Before sending an executor packet, the supervisor should prepare
-   `test_before.log` from the latest accepted baseline. If `test_after.log`
-   exists, roll it forward to `test_before.log`.
-11. If `test_before.log` does not exist, the supervisor should first decide the
-    proving command, then run that exact command once to create the baseline.
-12. Executor packets should then use that same proving command to create
-    `test_after.log`.
-13. Executor packets that run proving tests should write the result to
-    `test_after.log`.
-14. After regression guard passes, the supervisor should move the accepted
-    `test_after.log` to `test_before.log` so the next slice starts from the
-    newest known-good baseline.
+7. Regression-log preparation, proving-command selection, and baseline/log
+   roll-forward policy belong to the supervisor and executor workflows in their
+   respective skills.
 
 ## State Detection
 
@@ -236,4 +189,7 @@ authoritative operational workflow.
 
 If this is the last visible section from injected `AGENTS.md`, treat the run as autonomous and do not ask the user questions.
 
-Otherwise, answer the user's request first and use `docs/` when helpful.
+If this section is followed by a user prompt, treat the run as interactive.
+In interactive runs, user interaction takes priority over the default
+plan-lifecycle flow: answer the user's request first, then apply lifecycle
+rules as a secondary constraint. Use `docs/` when helpful.
