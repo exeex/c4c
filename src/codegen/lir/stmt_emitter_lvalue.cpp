@@ -211,12 +211,9 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
       return llvm_global_sym(emitted_link_name(mod_, gv.link_name_id, gv.name));
     }
     pts = e.type.spec;
-    if (const auto fit = mod_.fn_index.find(r->name); fit != mod_.fn_index.end()) {
-      const auto fn_index = fit->second.value;
-      if (fn_index < mod_.functions.size()) {
-        const auto& fn = mod_.functions[fn_index];
-        return llvm_global_sym(emitted_link_name(mod_, fn.link_name_id, fn.name));
-      }
+    if (const Function* fn = find_local_target_function(r->link_name_id, r->name);
+        fn != nullptr) {
+      return llvm_global_sym(emitted_link_name(mod_, fn->link_name_id, fn->name));
     }
     return llvm_global_sym(r->name);
   }

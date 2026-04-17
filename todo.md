@@ -6,16 +6,16 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Changed LIR extern declaration bookkeeping to dedup and filter by
-`LinkNameId` when available, while retaining raw-name fallback only for
-carriers that still have `kInvalidLinkName`.
+Changed stmt-emitter local-function resolution to prefer semantic
+`LinkNameId` lookup before raw-name fallback on the bounded direct-call route,
+including direct call-target recovery and decl-ref function lvalue emission.
 
 ## Suggested Next
 
-Audit the remaining direct-name consumers that still look up or index local
-functions by raw `name` strings after late-emission routes became id-driven,
-starting with bounded direct-call target resolution rather than a repo-wide
-`DeclRef` migration.
+Extend the same bounded semantic lookup split into the remaining decl-backed
+function consumers that still key off raw `name` strings in
+`stmt_emitter_expr.cpp`, especially call-result type inference and function
+designator rvalue emission, before considering broader `DeclRef` cleanup.
 
 ## Watchouts
 
@@ -39,6 +39,9 @@ starting with bounded direct-call target resolution rather than a repo-wide
 - plain `foo()` direct-call lowering now patches the callee `DeclRef` in place
   after `lower_expr`, so this route stays bounded to call sites instead of
   teaching every `DeclRef` construction path about `LinkNameId`
+- direct-call target resolution now suppresses redundant extern-decl
+  bookkeeping when a local declaration/definition can be recovered by
+  `LinkNameId`; keep builtin-alias and invalid-id fallback behavior intact
 - `build_fn_signature` now resolves emitted function spellings late from
   `fn.link_name_id`, but dedup/index selection in HIR and lowering still keys
   off legacy `name` strings and should not be conflated with emission-time
@@ -62,3 +65,4 @@ Build: `cmake --build --preset default -j4`
 Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^backend_'`
 Result: passed
 Log: `test_after.log`
+Supplemental: `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'` passed

@@ -400,6 +400,8 @@ class StmtEmitter {
   // The AST doesn't annotate types on NK_BINOP/NK_VAR nodes, so we infer.
   TypeSpec resolve_expr_type(FnCtx& ctx, ExprId id);
   TypeSpec resolve_expr_type(FnCtx& ctx, const Expr& e);
+  const Function* find_local_target_function(LinkNameId link_name_id,
+                                             std::string_view fallback_name) const;
   const FnPtrSig* resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& callee_e);
   CallTargetInfo resolve_call_target_info(FnCtx& ctx, const CallExpr& call, const Expr& e);
   TypeSpec resolve_payload_type(FnCtx& ctx, const DeclRef& r);

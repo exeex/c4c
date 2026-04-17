@@ -259,6 +259,89 @@ int use_template() { return id<int>(add_one(global_value)); }
               "LIR globals should forward the HIR LinkNameId on the direct emitted-global path");
 }
 
+void test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids() {
+  c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+int helper(int value) { return value + 1; }
+
+int call_helper(int value) { return helper(value); }
+)cpp");
+
+  const auto helper_it = hir_module.fn_index.find("helper");
+  expect_true(helper_it != hir_module.fn_index.end(),
+              "fixture helper should be present in the HIR function index");
+  const c4c::hir::Function* helper = hir_module.find_function(helper_it->second);
+  expect_true(helper != nullptr && helper->link_name_id != c4c::kInvalidLinkName,
+              "fixture helper should carry a stable HIR LinkNameId before call lowering");
+
+  const auto caller_it = hir_module.fn_index.find("call_helper");
+  expect_true(caller_it != hir_module.fn_index.end(),
+              "fixture caller should be present in the HIR function index");
+  c4c::hir::Function* caller = hir_module.find_function(caller_it->second);
+  expect_true(caller != nullptr,
+              "fixture caller should resolve through the HIR function lookup");
+
+  c4c::hir::DeclRef* callee_ref = nullptr;
+  for (auto& block : caller->blocks) {
+    for (auto& stmt : block.stmts) {
+      auto* ret = std::get_if<c4c::hir::ReturnStmt>(&stmt.payload);
+      if (ret == nullptr || !ret->expr) {
+        continue;
+      }
+      auto* call = std::get_if<c4c::hir::CallExpr>(&hir_module.expr_pool[ret->expr->value].payload);
+      if (call == nullptr) {
+        continue;
+      }
+      callee_ref = std::get_if<c4c::hir::DeclRef>(&hir_module.expr_pool[call->callee.value].payload);
+      if (callee_ref != nullptr) {
+        break;
+      }
+    }
+    if (callee_ref != nullptr) {
+      break;
+    }
+  }
+  expect_true(callee_ref != nullptr,
+              "fixture caller should retain a decl-ref callee before LIR lowering");
+  expect_true(callee_ref->link_name_id == helper->link_name_id,
+              "fixture decl-ref callee should already carry the helper LinkNameId");
+
+  callee_ref->name = "broken_helper_declref_name";
+
+  const c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  const auto lir_caller_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(fn.link_name_id) == "call_helper";
+      });
+  expect_true(lir_caller_it != lir_module.functions.end(),
+              "fixture caller should still lower through the semantic LinkNameId route");
+
+  const c4c::codegen::lir::LirCallOp* direct_call = nullptr;
+  for (const auto& block : lir_caller_it->blocks) {
+    auto inst_it = std::find_if(block.insts.begin(), block.insts.end(),
+                                [](const c4c::codegen::lir::LirInst& inst) {
+                                  return std::holds_alternative<c4c::codegen::lir::LirCallOp>(inst);
+                                });
+    if (inst_it == block.insts.end()) {
+      continue;
+    }
+    direct_call = std::get_if<c4c::codegen::lir::LirCallOp>(&*inst_it);
+    if (direct_call != nullptr) {
+      break;
+    }
+  }
+  expect_true(direct_call != nullptr,
+              "fixture caller should still lower the direct call after the raw decl-ref name is corrupted");
+  expect_true(direct_call->direct_callee_link_name_id == helper->link_name_id,
+              "direct-call lowering should preserve the semantic LinkNameId from the HIR decl-ref");
+  expect_true(direct_call->callee == "@helper",
+              "direct-call lowering should recover the semantic callee symbol from LinkNameId");
+  expect_true(direct_call->callee != "@broken_helper_declref_name",
+              "direct-call lowering should not trust a corrupted raw decl-ref name when LinkNameId is available");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -693,6 +776,7 @@ int main() {
   test_optional_dense_id_map_supports_function_id_counters();
   test_hir_materializes_link_name_ids_for_emitted_symbols();
   test_hir_to_lir_forwards_function_link_name_ids();
+  test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();

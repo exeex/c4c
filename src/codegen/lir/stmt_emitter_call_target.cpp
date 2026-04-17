@@ -6,6 +6,38 @@ namespace c4c::codegen::lir {
 
 using namespace stmt_emitter_detail;
 
+namespace {
+
+std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
+                              std::string_view fallback) {
+  const std::string_view resolved = mod.link_names.spelling(id);
+  return resolved.empty() ? std::string(fallback) : std::string(resolved);
+}
+
+}  // namespace
+
+const Function* StmtEmitter::find_local_target_function(
+    LinkNameId link_name_id, std::string_view fallback_name) const {
+  if (link_name_id != kInvalidLinkName) {
+    const auto it = std::find_if(mod_.functions.begin(), mod_.functions.end(),
+                                 [&](const Function& fn) {
+                                   return fn.link_name_id == link_name_id;
+                                 });
+    if (it != mod_.functions.end()) {
+      return &*it;
+    }
+  }
+
+  if (fallback_name.empty()) {
+    return nullptr;
+  }
+  const auto fit = mod_.fn_index.find(std::string(fallback_name));
+  if (fit == mod_.fn_index.end() || fit->second.value >= mod_.functions.size()) {
+    return nullptr;
+  }
+  return &mod_.functions[fit->second.value];
+}
+
 CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr& call,
                                                      const Expr& e) {
   CallTargetInfo info;
@@ -36,12 +68,6 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
       info.ret_spec.array_rank == 0) {
     info.ret_spec = e.type.spec;
   }
-  info.ret_ty = llvm_ret_ty(info.ret_spec);
-  info.builtin_special =
-      info.builtin && info.builtin->lowering != BuiltinLoweringKind::AliasCall;
-  if (unresolved_external_callee && !info.builtin_special) {
-    record_extern_call_decl(unresolved_external_name, info.ret_ty, info.callee_link_name_id);
-  }
 
   if (info.builtin_id != BuiltinId::Unknown) {
     info.fn_name = std::string(builtin_name_from_id(info.builtin_id));
@@ -49,12 +75,26 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
     info.fn_name = r->name;
   }
 
-  if (!info.fn_name.empty()) {
-    const auto fit = mod_.fn_index.find(info.fn_name);
-    if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
-      info.target_fn = &mod_.functions[fit->second.value];
-      info.callee_link_name_id = info.target_fn->link_name_id;
+  info.target_fn = find_local_target_function(info.callee_link_name_id, info.fn_name);
+  if (info.target_fn != nullptr) {
+    info.callee_link_name_id = info.target_fn->link_name_id;
+    info.fn_name = emitted_link_name(mod_, info.target_fn->link_name_id, info.target_fn->name);
+    if (!info.fn_name.empty()) {
+      info.callee_val = llvm_global_sym(info.fn_name);
     }
+    info.ret_spec = info.target_fn->return_type.spec;
+    if ((info.ret_spec.is_lvalue_ref || info.ret_spec.is_rvalue_ref) &&
+        info.ret_spec.ptr_level == 0) {
+      info.ret_spec.ptr_level++;
+    }
+    unresolved_external_callee = false;
+  }
+
+  info.ret_ty = llvm_ret_ty(info.ret_spec);
+  info.builtin_special =
+      info.builtin && info.builtin->lowering != BuiltinLoweringKind::AliasCall;
+  if (unresolved_external_callee && !info.builtin_special) {
+    record_extern_call_decl(unresolved_external_name, info.ret_ty, info.callee_link_name_id);
   }
   info.callee_fn_ptr_sig = info.target_fn ? nullptr : resolve_callee_fn_ptr_sig(ctx, callee_e);
   if (info.target_fn) {
