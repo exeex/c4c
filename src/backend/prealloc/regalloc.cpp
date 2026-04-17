@@ -399,8 +399,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    std::size_t block_index,
                                    std::size_t instruction_index,
                                    std::string reason) {
-  if (from_kind == PreparedMoveStorageKind::None || to_kind == PreparedMoveStorageKind::None ||
-      from_kind == to_kind) {
+  if (from_kind == PreparedMoveStorageKind::None || to_kind == PreparedMoveStorageKind::None) {
     return;
   }
 
@@ -749,23 +748,29 @@ void append_call_arg_move_resolution(Target target,
         }
 
         const PreparedMoveStorageKind consumed_kind = call_arg_storage_kind(*call, arg_index);
+        const PreparedMoveStorageKind source_kind = assigned_storage_kind(*source);
         const auto destination_register_name = arg_index < call->arg_abi.size()
                                                    ? call_arg_destination_register_name(target,
                                                                                        call->arg_abi[arg_index],
                                                                                        arg_index)
                                                    : std::nullopt;
+        if (source_kind == PreparedMoveStorageKind::Register &&
+            consumed_kind == PreparedMoveStorageKind::Register && source->assigned_register.has_value() &&
+            destination_register_name == std::optional<std::string>{source->assigned_register->register_name}) {
+          continue;
+        }
         append_move_resolution_record(regalloc_function,
                                       source->value_id,
                                       source->value_id,
                                       PreparedMoveDestinationKind::CallArgumentAbi,
-                                      assigned_storage_kind(*source),
+                                      source_kind,
                                       consumed_kind,
                                       arg_index,
                                       destination_register_name,
                                       block_index,
                                       instruction_index,
                                       storage_transfer_reason("call_arg",
-                                                              assigned_storage_kind(*source),
+                                                              source_kind,
                                                               consumed_kind));
       }
     }
@@ -789,22 +794,28 @@ void append_call_result_move_resolution(Target target,
       }
 
       const PreparedMoveStorageKind consumed_kind = call_result_storage_kind(*call);
+      const PreparedMoveStorageKind source_kind = assigned_storage_kind(*result);
       const auto destination_register_name = call->result_abi.has_value()
                                                  ? call_result_destination_register_name(
                                                        target, *call->result_abi)
                                                  : std::nullopt;
+      if (source_kind == PreparedMoveStorageKind::Register &&
+          consumed_kind == PreparedMoveStorageKind::Register && result->assigned_register.has_value() &&
+          destination_register_name == std::optional<std::string>{result->assigned_register->register_name}) {
+        continue;
+      }
       append_move_resolution_record(regalloc_function,
                                     result->value_id,
                                     result->value_id,
                                     PreparedMoveDestinationKind::CallResultAbi,
-                                    assigned_storage_kind(*result),
+                                    source_kind,
                                     consumed_kind,
                                     std::nullopt,
                                     destination_register_name,
                                     block_index,
                                     instruction_index,
                                     storage_transfer_reason("call_result",
-                                                            assigned_storage_kind(*result),
+                                                            source_kind,
                                                             consumed_kind));
     }
   }
@@ -830,22 +841,28 @@ void append_return_move_resolution(Target target,
       continue;
     }
 
+    const PreparedMoveStorageKind source_kind = assigned_storage_kind(*source);
     const auto destination_register_name = function.return_abi.has_value()
                                                ? call_result_destination_register_name(
                                                      target, *function.return_abi)
                                                : std::nullopt;
+    if (source_kind == PreparedMoveStorageKind::Register &&
+        consumed_kind == PreparedMoveStorageKind::Register && source->assigned_register.has_value() &&
+        destination_register_name == std::optional<std::string>{source->assigned_register->register_name}) {
+      continue;
+    }
     append_move_resolution_record(regalloc_function,
                                   source->value_id,
                                   source->value_id,
                                   PreparedMoveDestinationKind::FunctionReturnAbi,
-                                  assigned_storage_kind(*source),
+                                  source_kind,
                                   consumed_kind,
                                   std::nullopt,
                                   destination_register_name,
                                   block_index,
                                   block.insts.size(),
                                   storage_transfer_reason("return",
-                                                          assigned_storage_kind(*source),
+                                                          source_kind,
                                                           consumed_kind));
   }
 }

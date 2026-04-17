@@ -151,6 +151,9 @@ bool BirFunctionLowerer::is_void_param_sentinel(const c4c::TypeSpec& type) {
 }
 
 std::optional<bir::TypeKind> BirFunctionLowerer::lower_param_type(const c4c::TypeSpec& type) {
+  if (type.ptr_level != 0 || type.array_rank != 0) {
+    return bir::TypeKind::Ptr;
+  }
   if (type.base == TB_BOOL && type.ptr_level == 0 && type.array_rank == 0) {
     return bir::TypeKind::I1;
   }
@@ -666,9 +669,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
                    .primary_class = bir::AbiValueClass::Memory,
                    .sret_pointer = true,
                },
-               bir::CallArgAbiInfo{
-                   .type = bir::TypeKind::Ptr,
-               }},
+               *lower_call_arg_abi(bir::TypeKind::Ptr)},
           .return_type_name = "void",
           .return_type = bir::TypeKind::Void,
       });

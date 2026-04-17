@@ -6,20 +6,20 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended focused `backend_prepare_liveness` activation coverage across the
-remaining helper-built variadic routes that already publish lowering-owned ABI
-metadata: `llvm.va_copy.p0.p0` now proves both pointer arguments survive into
-active regalloc move resolution with concrete `a0`/`a1` destinations, and
-helper-built aggregate `llvm.va_arg.aggregate` now proves both its stack-backed
-sret/result storage and live `va_list` pointer argument survive into the
-prepare/regalloc ABI-consumption surface.
+Finished the remaining helper-built non-scalar ABI activation packet in the
+focused `backend_prepare_liveness` lane: aggregate byval/sret helper calls now
+prove stack-backed ABI consumption through active regalloc move resolution,
+helper-built pointer parameters (`va_copy`, aggregate `va_arg`) now lower
+through the canonical pointer-param route instead of falling into the byval
+aggregate fallback, and same-kind ABI handoffs now publish real
+register-to-register or stack-to-stack move-resolution records when the ABI
+destination differs from the source storage identity.
 
 ## Suggested Next
 
-Use the new helper-call ABI activation checks as a base for the next honest
-packet: prove a helper-built memory-return or byval-copy path all the way
-through active regalloc move resolution so the remaining non-scalar helper ABI
-shapes are covered by prepare semantics instead of only by lowering metadata.
+Checkpoint this helper-call ABI lane before extending it further: run a broader
+backend checkpoint against the new pointer/byval helper coverage and refresh
+route state instead of adding more narrow helper-specific packets immediately.
 
 ## Watchouts
 
@@ -53,10 +53,18 @@ shapes are covered by prepare semantics instead of only by lowering metadata.
   from `LoweredReturnInfo.abi`, and helper-built scalar/pointer runtime call
   sites in `lir_to_bir_calling.cpp` now also set concrete `arg_abi`/`result_abi`
   where the lowering already knows the active ABI class; the focused coverage
-  now includes helper-built `va_copy` pointer arguments and aggregate
-  `va_arg` sret/ap arguments, but other memory-shaped helper paths still need
-  their own prepare/regalloc proof before assuming full helper call-site ABI
-  coverage
+  now includes helper-built `va_copy` pointer arguments, aggregate
+  `va_arg` sret/ap arguments, and helper-built aggregate call byval/sret
+  destinations, but future packets should prefer broader checkpointing over
+  adding more helper-only shapes
+- `BirFunctionLowerer::lower_param_type` now treats pointer/array-shaped
+  function params as canonical `Ptr` inputs before the byval aggregate fallback;
+  if pointer-param lowering rules change again, helper-built runtime calls will
+  regress first
+- ABI move-resolution consumers should distinguish redundant same-register
+  handoffs from real ABI-surface transfers: identical source/destination
+  registers still skip records, but stack-backed ABI destinations and
+  non-matching register ABI destinations now legitimately produce move records
 - lowered aggregate/sret functions can now legitimately carry
   `return_abi={type=Void, primary_class=Memory, returned_in_memory=true}`;
   prepare legalize must preserve that metadata instead of treating all
@@ -91,6 +99,10 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_liveness$ > test_after.log
 2>&1`
-after extending focused helper-call ABI activation coverage to `llvm.va_copy`
-and helper-built aggregate `llvm.va_arg` in the active prepare/regalloc route.
+after rebuilding `backend_prepare_liveness_test` locally to refresh the test
+binary for the touched focused test file. The delegated `c4c_backend` build
+target alone does not rebuild `tests/backend/backend_prepare_liveness_test.cpp`
+after test-only edits, so future packets touching that file need the test
+target rebuilt before trusting the delegated ctest step. Canonical proof still
+ran through the delegated command and passed.
 Canonical proof log: `test_after.log`.
