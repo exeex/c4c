@@ -481,6 +481,8 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   {
     Param this_param{};
     this_param.name = "this";
+    this_param.name_text_id = make_text_id(
+        this_param.name, module_ ? module_->link_name_texts.get() : nullptr);
     TypeSpec this_ts{};
     this_ts.base = TB_STRUCT;
     auto sit = module_->struct_defs.find(struct_tag);

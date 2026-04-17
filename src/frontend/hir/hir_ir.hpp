@@ -207,6 +207,7 @@ struct FnPtrSig {
 
 struct Param {
   SymbolName name;
+  TextId name_text_id = kInvalidText;
   QualType type;
   std::optional<FnPtrSig> fn_ptr_sig;
   SourceSpan span{};

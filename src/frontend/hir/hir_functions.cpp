@@ -417,6 +417,8 @@ void Lowerer::append_explicit_callable_param(
 
   Param param{};
   param.name = emitted_name;
+  param.name_text_id = make_text_id(
+      param.name, module_ ? module_->link_name_texts.get() : nullptr);
   param.type = qtype_from(reference_storage_ts(param_ts), ValueCategory::LValue);
   param.fn_ptr_sig = fn_ptr_sig_from_decl_node(param_node);
   param.span = make_span(param_node);

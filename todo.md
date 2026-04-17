@@ -6,24 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 2 / Step 4 for the bounded HIR struct/tag carrier
-route in `hir_types.cpp` and `hir_templates_struct_instantiation.cpp`.
+Completed `plan.md` Step 2 / Step 4 for the bounded HIR parameter-name carrier
+route in `hir_ir.hpp`, `hir_functions.cpp`, `hir_build.cpp`, and
+`hir_stmt.cpp`.
 
-- Added parallel HIR `HirStructDef::tag_text_id` and `base_tag_text_ids`
-  storage so non-template and instantiated-template struct definitions are no
-  longer string-only for their stable TU-scoped tag identity.
-- Threaded HIR-owned text interning through both struct-definition
-  construction sites, keeping the sidecar ids aligned with `tag` and
-  `base_tags` without touching `SymbolId` or `LinkNameId` policy.
-- Extended focused HIR proof with a derived-struct plus instantiated-template
-  fixture so both direct struct tags and inherited base tags resolve through
-  the HIR text table on the migrated route.
+- Added parallel HIR `Param::name_text_id` storage so ordinary lowered
+  functions, bodyless consteval functions, and synthetic method `this`
+  parameters are no longer string-only for their stable HIR-owned spelling.
+- Threaded HIR-owned text interning through each parameter construction site
+  without collapsing `TextId`, `SymbolId`, or `LinkNameId`.
+- Extended focused HIR proof so ordinary function params, consteval params,
+  and method params all resolve their parallel `TextId`s through the module
+  text table.
 
 ## Suggested Next
 
 Keep Step 2 bounded: choose one nearby declaration-side HIR carrier that still
-stores stable TU text as `std::string`, such as `Param.name` or
-`HirTemplateDef.name`, instead of widening into broader registry/index churn.
+stores stable TU text as `std::string`, such as `HirTemplateDef.name`, instead
+of widening into broader registry/index churn.
 
 ## Watchouts
 
@@ -31,11 +31,11 @@ stores stable TU text as `std::string`, such as `Param.name` or
 - HIR must intern its own spellings into `module.link_name_texts`; parser-owned
   `TextId`s cannot be copied directly into HIR because they belong to a
   different table.
-- `HirStructDef::base_tag_text_ids` is a sidecar vector and must stay
-  index-aligned with `base_tags` anywhere new base-tag producers are added.
-- Template-struct instantiation has its own base-tag construction helper, so
-  future struct/tag `TextId` work needs to cover both ordinary and instantiated
-  definition paths together.
+- `Param::name_text_id` now needs to stay aligned anywhere new synthetic or
+  bodyless parameter construction paths are introduced.
+- Method-function lookup names are not a stable proof surface here; prefer
+  matching the lowered parameter shape in tests instead of assuming one
+  emitted constructor spelling.
 - Keep diagnostic/debug/serialization strings out of scope.
 - Do not absorb unrelated EASTL lifecycle churn into this plan.
 

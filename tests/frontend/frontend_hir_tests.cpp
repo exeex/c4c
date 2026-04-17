@@ -73,6 +73,28 @@ c4c::codegen::lir::LirModule make_link_name_aware_lir_module() {
   return module;
 }
 
+const c4c::hir::Param* find_param_by_name(const c4c::hir::Function& fn,
+                                          std::string_view name) {
+  const auto it = std::find_if(fn.params.begin(), fn.params.end(),
+                               [&](const c4c::hir::Param& param) {
+                                 return param.name == name;
+                               });
+  return it == fn.params.end() ? nullptr : &(*it);
+}
+
+const c4c::hir::Function* find_function_with_param_names(
+    const c4c::hir::Module& module,
+    std::string_view first_name,
+    std::string_view second_name) {
+  const auto it = std::find_if(
+      module.functions.begin(), module.functions.end(),
+      [&](const c4c::hir::Function& fn) {
+        return find_param_by_name(fn, first_name) != nullptr &&
+               find_param_by_name(fn, second_name) != nullptr;
+      });
+  return it == module.functions.end() ? nullptr : &(*it);
+}
+
 void test_dense_id_map_tracks_assigned_dense_ids() {
   c4c::hir::DenseIdMap<c4c::hir::LocalId, std::string> names;
 
@@ -271,6 +293,68 @@ int (*pick_helper(void))(int) { return helper; }
   const auto* global_ref = std::get_if<c4c::hir::DeclRef>(&global_ref_it->payload);
   expect_true(global_ref != nullptr && global_ref->link_name_id == global->link_name_id,
               "global decl-refs should copy the emitted global LinkNameId");
+}
+
+void test_hir_function_params_preserve_text_ids() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+consteval int fold(int value, int scale) { return value * scale; }
+
+struct Widget {
+  Widget(int other) {}
+};
+
+int use_params(int input) { return input + 1; }
+)cpp");
+
+  const auto use_it = hir_module.fn_index.find("use_params");
+  expect_true(use_it != hir_module.fn_index.end(),
+              "fixture function should be present in the HIR function index");
+  const c4c::hir::Function* use_fn = hir_module.find_function(use_it->second);
+  expect_true(use_fn != nullptr,
+              "fixture function should resolve through the HIR function lookup");
+  const c4c::hir::Param* input_param = find_param_by_name(*use_fn, "input");
+  expect_true(input_param != nullptr,
+              "ordinary lowered functions should retain their parameter metadata");
+  expect_true(input_param->name_text_id != c4c::kInvalidText,
+              "ordinary lowered parameters should preserve a parallel TextId");
+  expect_eq(hir_module.link_name_texts->lookup(input_param->name_text_id), "input",
+            "ordinary lowered parameter TextIds should resolve through the HIR text table");
+
+  const auto fold_it = hir_module.fn_index.find("fold");
+  expect_true(fold_it != hir_module.fn_index.end(),
+              "consteval fixture should be present in the HIR function index");
+  const c4c::hir::Function* fold_fn = hir_module.find_function(fold_it->second);
+  expect_true(fold_fn != nullptr && fold_fn->consteval_only,
+              "consteval fixture should lower through the bodyless consteval path");
+  const c4c::hir::Param* value_param = find_param_by_name(*fold_fn, "value");
+  const c4c::hir::Param* scale_param = find_param_by_name(*fold_fn, "scale");
+  expect_true(value_param != nullptr && scale_param != nullptr,
+              "consteval lowering should retain all declared parameter metadata");
+  expect_true(value_param->name_text_id != c4c::kInvalidText,
+              "consteval parameters should preserve a parallel TextId");
+  expect_true(scale_param->name_text_id != c4c::kInvalidText,
+              "consteval parameters should preserve TextIds for later parameters too");
+  expect_eq(hir_module.link_name_texts->lookup(value_param->name_text_id), "value",
+            "consteval parameter TextIds should resolve through the HIR text table");
+  expect_eq(hir_module.link_name_texts->lookup(scale_param->name_text_id), "scale",
+            "consteval parameter TextIds should resolve through the HIR text table");
+
+  const c4c::hir::Function* ctor_fn =
+      find_function_with_param_names(hir_module, "this", "other");
+  expect_true(ctor_fn != nullptr,
+              "method fixture should lower at least one function carrying both this and other params");
+  const c4c::hir::Param* this_param = find_param_by_name(*ctor_fn, "this");
+  const c4c::hir::Param* other_param = find_param_by_name(*ctor_fn, "other");
+  expect_true(this_param != nullptr && other_param != nullptr,
+              "method lowering should retain both synthetic and declared params");
+  expect_true(this_param->name_text_id != c4c::kInvalidText,
+              "synthetic this parameters should preserve a parallel TextId");
+  expect_true(other_param->name_text_id != c4c::kInvalidText,
+              "method parameters should preserve a parallel TextId");
+  expect_eq(hir_module.link_name_texts->lookup(this_param->name_text_id), "this",
+            "synthetic this parameter TextIds should resolve through the HIR text table");
+  expect_eq(hir_module.link_name_texts->lookup(other_param->name_text_id), "other",
+            "method parameter TextIds should resolve through the HIR text table");
 }
 
 void test_hir_namespace_qualifiers_preserve_text_ids_for_qualified_decl_refs() {
@@ -1459,6 +1543,7 @@ int main() {
   test_optional_dense_id_map_supports_function_id_counters();
   test_hir_materializes_link_name_ids_for_emitted_symbols();
   test_hir_materializes_decl_ref_link_name_ids_for_emitted_refs();
+  test_hir_function_params_preserve_text_ids();
   test_hir_namespace_qualifiers_preserve_text_ids_for_qualified_decl_refs();
   test_hir_decl_stmt_decl_refs_preserve_text_ids_for_ctor_and_dtor_routes();
   test_hir_stmt_decl_refs_preserve_text_ids_for_this_param_and_ctor_callees();

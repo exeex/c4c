@@ -496,6 +496,7 @@ void Lowerer::lower_non_method_functions_and_globals(
           if (!p) continue;
           Param param{};
           param.name = p->name ? p->name : "<anon_param>";
+          param.name_text_id = make_text_id(param.name, m.link_name_texts.get());
           param.type = qtype_from(p->type, ValueCategory::LValue);
           param.span = make_span(p);
           ce_fn.params.push_back(std::move(param));
