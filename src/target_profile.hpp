@@ -13,6 +13,13 @@ enum class TargetArch {
   Riscv64,
 };
 
+enum class TargetOs {
+  Unknown,
+  Linux,
+  Darwin,
+  Windows,
+};
+
 enum class BackendAbiKind {
   Unknown,
   SysV_X86_64,
@@ -26,6 +33,7 @@ enum class BackendAbiKind {
 struct TargetProfile {
   std::string triple;
   TargetArch arch = TargetArch::Unknown;
+  TargetOs os = TargetOs::Unknown;
   BackendAbiKind backend_abi = BackendAbiKind::Unknown;
   bool has_float_arg_registers = false;
   bool has_float_return_registers = false;
@@ -35,6 +43,7 @@ std::string default_host_target_triple();
 TargetProfile default_target_profile(TargetArch arch);
 TargetProfile target_profile_from_triple(std::string_view target_triple);
 const char* target_arch_name(TargetArch arch);
+const char* target_os_name(TargetOs os);
 const char* backend_abi_name(BackendAbiKind abi);
 
 }  // namespace c4c

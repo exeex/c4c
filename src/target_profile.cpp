@@ -18,6 +18,20 @@ std::string_view arch_from_triple(std::string_view target_triple) {
   return target_triple.substr(0, dash);
 }
 
+TargetOs os_from_triple(std::string_view triple) {
+  if (triple_contains(triple, "apple") || triple_contains(triple, "darwin")) {
+    return TargetOs::Darwin;
+  }
+  if (triple_contains(triple, "linux")) {
+    return TargetOs::Linux;
+  }
+  if (triple_contains(triple, "windows") || triple_contains(triple, "mingw") ||
+      triple_contains(triple, "msvc")) {
+    return TargetOs::Windows;
+  }
+  return TargetOs::Unknown;
+}
+
 BackendAbiKind backend_abi_from_triple(TargetArch arch, std::string_view triple) {
   switch (arch) {
     case TargetArch::X86_64:
@@ -121,6 +135,7 @@ TargetProfile target_profile_from_triple(std::string_view target_triple) {
     throw std::invalid_argument("unsupported target triple: " + std::string(target_triple));
   }
 
+  profile.os = os_from_triple(target_triple);
   profile.backend_abi = backend_abi_from_triple(profile.arch, target_triple);
   profile.has_float_arg_registers = abi_has_float_arg_registers(profile.backend_abi);
   profile.has_float_return_registers = abi_has_float_arg_registers(profile.backend_abi);
@@ -139,6 +154,20 @@ const char* target_arch_name(TargetArch arch) {
       return "aarch64";
     case TargetArch::Riscv64:
       return "riscv64";
+  }
+  return "unknown";
+}
+
+const char* target_os_name(TargetOs os) {
+  switch (os) {
+    case TargetOs::Unknown:
+      return "unknown";
+    case TargetOs::Linux:
+      return "linux";
+    case TargetOs::Darwin:
+      return "darwin";
+    case TargetOs::Windows:
+      return "windows";
   }
   return "unknown";
 }
