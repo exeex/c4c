@@ -1063,7 +1063,7 @@ inline std::string emit_prepared_module(
     }
     return nullptr;
   };
-  const auto try_render_param_derived_return =
+  const auto try_render_param_derived_value =
       [&](const c4c::backend::bir::Value& value,
           const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>&
               named_binaries,
@@ -1073,13 +1073,13 @@ inline std::string emit_prepared_module(
     }
     if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
       return "    mov eax, " + std::to_string(static_cast<std::int32_t>(value.immediate)) +
-             "\n    ret\n";
+             "\n";
     }
     if (value.kind != c4c::backend::bir::Value::Kind::Named) {
       return std::nullopt;
     }
     if (value.name == param.name) {
-      return std::string("    mov eax, edi\n    ret\n");
+      return std::string("    mov eax, edi\n");
     }
 
     const auto binary_it = named_binaries.find(value.name);
@@ -1111,44 +1111,109 @@ inline std::string emit_prepared_module(
         lhs_is_param_rhs_is_imm ? binary.rhs.immediate : binary.lhs.immediate;
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Add) {
       return "    mov eax, edi\n    add eax, " +
-             std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
+             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Sub && lhs_is_param_rhs_is_imm) {
       return "    mov eax, edi\n    sub eax, " +
-             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n    ret\n";
+             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Mul) {
       return "    mov eax, edi\n    imul eax, " +
-             std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
+             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::And) {
       return "    mov eax, edi\n    and eax, " +
-             std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
+             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Or) {
       return "    mov eax, edi\n    or eax, " +
-             std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
+             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Xor) {
       return "    mov eax, edi\n    xor eax, " +
-             std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
+             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Shl && lhs_is_param_rhs_is_imm) {
       return "    mov eax, edi\n    shl eax, " +
-             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) +
-             "\n    ret\n";
+             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::LShr && lhs_is_param_rhs_is_imm) {
       return "    mov eax, edi\n    shr eax, " +
-             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) +
-             "\n    ret\n";
+             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::AShr && lhs_is_param_rhs_is_imm) {
       return "    mov eax, edi\n    sar eax, " +
-             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) +
-             "\n    ret\n";
+             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
     }
     return std::nullopt;
+  };
+  const auto apply_supported_immediate_binary =
+      [&](const c4c::backend::bir::BinaryInst& binary,
+          std::string_view source_name) -> std::optional<std::string> {
+    if (binary.operand_type != c4c::backend::bir::TypeKind::I32 ||
+        binary.result.type != c4c::backend::bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+
+    const bool lhs_is_source_rhs_is_imm =
+        binary.lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+        binary.lhs.name == source_name &&
+        binary.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+        binary.rhs.type == c4c::backend::bir::TypeKind::I32;
+    const bool rhs_is_source_lhs_is_imm =
+        binary.rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+        binary.rhs.name == source_name &&
+        binary.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+        binary.lhs.type == c4c::backend::bir::TypeKind::I32;
+    if (!lhs_is_source_rhs_is_imm && !rhs_is_source_lhs_is_imm) {
+      return std::nullopt;
+    }
+
+    const auto immediate =
+        lhs_is_source_rhs_is_imm ? binary.rhs.immediate : binary.lhs.immediate;
+    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Add) {
+      return "    add eax, " + std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
+    }
+    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Sub && lhs_is_source_rhs_is_imm) {
+      return "    sub eax, " +
+             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
+    }
+    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Mul) {
+      return "    imul eax, " + std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
+    }
+    if (binary.opcode == c4c::backend::bir::BinaryOpcode::And) {
+      return "    and eax, " + std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
+    }
+    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Or) {
+      return "    or eax, " + std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
+    }
+    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Xor) {
+      return "    xor eax, " + std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
+    }
+    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Shl && lhs_is_source_rhs_is_imm) {
+      return "    shl eax, " +
+             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
+    }
+    if (binary.opcode == c4c::backend::bir::BinaryOpcode::LShr && lhs_is_source_rhs_is_imm) {
+      return "    shr eax, " +
+             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
+    }
+    if (binary.opcode == c4c::backend::bir::BinaryOpcode::AShr && lhs_is_source_rhs_is_imm) {
+      return "    sar eax, " +
+             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
+    }
+    return std::nullopt;
+  };
+  const auto try_render_param_derived_return =
+      [&](const c4c::backend::bir::Value& value,
+          const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>&
+              named_binaries,
+          const c4c::backend::bir::Param& param) -> std::optional<std::string> {
+    const auto value_render = try_render_param_derived_value(value, named_binaries, param);
+    if (!value_render.has_value()) {
+      return std::nullopt;
+    }
+    return *value_render + "    ret\n";
   };
   const auto try_render_minimal_compare_branch = [&]() -> std::optional<std::string> {
     if (function.blocks.size() != 3 || function.params.size() != 1 ||
@@ -1262,13 +1327,27 @@ inline std::string emit_prepared_module(
       return std::nullopt;
     }
 
+    std::size_t select_index = join_block->insts.size() - 1;
+    const c4c::backend::bir::BinaryInst* trailing_binary = nullptr;
+    if (const auto* trailing =
+            std::get_if<c4c::backend::bir::BinaryInst>(&join_block->insts.back());
+        trailing != nullptr &&
+        join_block->terminator.value->kind == c4c::backend::bir::Value::Kind::Named &&
+        join_block->terminator.value->name == trailing->result.name) {
+      if (join_block->insts.size() < 2) {
+        return std::nullopt;
+      }
+      trailing_binary = trailing;
+      select_index = join_block->insts.size() - 2;
+    }
+
     const auto* select =
-        std::get_if<c4c::backend::bir::SelectInst>(&join_block->insts.back());
+        std::get_if<c4c::backend::bir::SelectInst>(&join_block->insts[select_index]);
     if (select == nullptr || select->predicate != c4c::backend::bir::BinaryOpcode::Eq ||
         select->compare_type != c4c::backend::bir::TypeKind::I32 ||
         select->result.type != c4c::backend::bir::TypeKind::I32 ||
         join_block->terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
-        join_block->terminator.value->name != select->result.name) {
+        (trailing_binary == nullptr && join_block->terminator.value->name != select->result.name)) {
       return std::nullopt;
     }
 
@@ -1297,7 +1376,7 @@ inline std::string emit_prepared_module(
     }
 
     std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*> named_binaries;
-    for (std::size_t inst_index = 0; inst_index + 1 < join_block->insts.size(); ++inst_index) {
+    for (std::size_t inst_index = 0; inst_index < select_index; ++inst_index) {
       const auto* binary =
           std::get_if<c4c::backend::bir::BinaryInst>(&join_block->insts[inst_index]);
       if (binary == nullptr) {
@@ -1306,10 +1385,25 @@ inline std::string emit_prepared_module(
       named_binaries.emplace(binary->result.name, binary);
     }
 
-    const auto true_return =
-        try_render_param_derived_return(select->true_value, named_binaries, param);
-    const auto false_return =
-        try_render_param_derived_return(select->false_value, named_binaries, param);
+    const auto render_join_return =
+        [&](const c4c::backend::bir::Value& selected_value) -> std::optional<std::string> {
+      const auto value_render =
+          try_render_param_derived_value(selected_value, named_binaries, param);
+      if (!value_render.has_value()) {
+        return std::nullopt;
+      }
+      if (trailing_binary == nullptr) {
+        return *value_render + "    ret\n";
+      }
+      const auto trailing_render =
+          apply_supported_immediate_binary(*trailing_binary, select->result.name);
+      if (!trailing_render.has_value()) {
+        return std::nullopt;
+      }
+      return *value_render + *trailing_render + "    ret\n";
+    };
+    const auto true_return = render_join_return(select->true_value);
+    const auto false_return = render_join_return(select->false_value);
     if (!true_return.has_value() || !false_return.has_value()) {
       return std::nullopt;
     }

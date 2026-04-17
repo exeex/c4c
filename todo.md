@@ -6,24 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended `x86::emit_prepared_module(...)` to support one more honest
-prepared-module control-flow family on the canonical x86 handoff boundary: a
-minimal x86_64 single-parameter `i32` compare-against-zero branch whose two
-leaf blocks feed a shared join return after prepare legalizes the join phi
-into one `bir.select`, with each select arm resolving to a supported
-parameter-derived `i32` value. The focused handoff proof now covers that
-joined add/sub case while still proving prepared/public/generic route equality
-against the same canonical x86 assembly.
+Extended `x86::emit_prepared_module(...)` to support one more honest joined
+prepared-module control-flow shape on the canonical x86 handoff boundary: a
+minimal x86_64 single-parameter `i32` compare-against-zero branch whose join
+block contains one legalized `bir.select` plus one trailing supported
+parameter-immediate arithmetic op on that select result. The focused handoff
+proof now covers the joined add/sub-then-add case while still proving
+prepared/public/generic route equality against the same canonical x86
+assembly.
 
 ## Suggested Next
 
 Extend `x86::emit_prepared_module(...)` only if it can honestly support the
 next bounded joined prepared-module shape behind the same canonical boundary:
 one x86_64 single-parameter `i32` compare-against-zero branch whose prepared
-join block contains exactly one legalized `bir.select` plus one trailing
-supported parameter-derived arithmetic return in that same block, without
-adding forwarded-join traversal, phi emulation, raw-BIR, or public-entry
-fallback rendering.
+join block still contains exactly one legalized `bir.select`, but the trailing
+join-local op is a different already-supported immediate arithmetic family
+such as `xor` or `and`, only if that can stay inside the same explicit join
+consumer without nested selects, forwarded joins, or fallback rendering.
 
 ## Watchouts
 
@@ -46,6 +46,9 @@ fallback rendering.
 - the joined branch support only accepts select arms that resolve to the sole
   parameter, an immediate, or one supported parameter-immediate binary already
   materialized into the join block by prepare legalize
+- the joined branch support now also accepts one trailing join-local supported
+  parameter-immediate binary whose named operand is exactly the select result;
+  do not widen beyond one trailing op in the same block
 - keep control-flow proof route-oriented by comparing prepared/public/generic
   outputs against the same canonical assembly instead of falling back to loose
   substring assertions
