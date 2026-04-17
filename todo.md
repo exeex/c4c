@@ -6,17 +6,16 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Added a parallel `DeclRef.link_name_id` carrier for direct-call callees in HIR
-and threaded it into `StmtEmitter` so unresolved extern-call declarations and
-direct call sites now preserve upstream semantic names instead of depending
-only on raw fallback strings.
+Changed LIR extern declaration bookkeeping to dedup and filter by
+`LinkNameId` when available, while retaining raw-name fallback only for
+carriers that still have `kInvalidLinkName`.
 
 ## Suggested Next
 
-Audit the remaining direct-name consumers that still key lookup or dedup by raw
-`name` strings even though call lowering and late emission now have real
-parallel `LinkNameId` carriers; keep the next slice semantic and avoid turning
-`DeclRef` into a repo-wide migration.
+Audit the remaining direct-name consumers that still look up or index local
+functions by raw `name` strings after late-emission routes became id-driven,
+starting with bounded direct-call target resolution rather than a repo-wide
+`DeclRef` migration.
 
 ## Watchouts
 
@@ -30,15 +29,13 @@ parallel `LinkNameId` carriers; keep the next slice semantic and avoid turning
   lowering, but builtin alias calls still intentionally use
   `kInvalidLinkName` because they do not originate from an HIR semantic
   carrier
-- this packet only hardened function-level backend failure notes; other
-  reporting surfaces should still be audited individually before assuming the
-  backend is fully id-driven, but within the owned `lir_to_bir` module,
-  analysis, and calling files the remaining declaration/global/function paths
-  already route through resolved semantic names before they report or lower
-- `lower_extern_decl` and `lower_decl_function` still copy `decl.name` /
-  `function.name`, but their only owned caller is `lower_module`, which
-  resolves semantic names first; do not duplicate fallback lookup inside those
-  helpers unless a new direct caller appears
+- extern declaration dedup now has two paths: semantic `LinkNameId` keys when
+  present, raw-name fallback only when the carrier still lacks a semantic id
+- module finalization now filters local function declarations by semantic id
+  before falling back to `hir_mod.fn_index` name checks; keep that split
+  intact instead of collapsing `LinkNameId` back into string keys
+- builtin alias calls still intentionally stay on the raw-name fallback path
+  because they do not originate from HIR semantic carriers
 - plain `foo()` direct-call lowering now patches the callee `DeclRef` in place
   after `lower_expr`, so this route stays bounded to call sites instead of
   teaching every `DeclRef` construction path about `LinkNameId`

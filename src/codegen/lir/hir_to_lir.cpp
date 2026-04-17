@@ -394,16 +394,43 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
 
 static void finalize_module(LirModule& module,
                             const c4c::hir::Module& hir_mod) {
-  // Convert extern_decl_map (dedup map) into extern_decls vector,
-  // filtering out functions defined in this TU.
-  for (const auto& [name, decl_info] : module.extern_decl_map) {
-    if (hir_mod.fn_index.count(name)) continue;
+  std::unordered_set<LinkNameId> local_fn_link_names;
+  local_fn_link_names.reserve(hir_mod.functions.size());
+  for (const auto& fn : hir_mod.functions) {
+    if (fn.link_name_id != kInvalidLinkName) {
+      local_fn_link_names.insert(fn.link_name_id);
+    }
+  }
+
+  auto push_extern_decl = [&](const LirModule::ExternDeclInfo& decl_info) {
+    const std::string fallback_name = decl_info.name.empty()
+        ? emitted_link_name(hir_mod, decl_info.link_name_id, "")
+        : decl_info.name;
+    if (decl_info.link_name_id != kInvalidLinkName &&
+        local_fn_link_names.count(decl_info.link_name_id)) {
+      return;
+    }
+    if (decl_info.link_name_id == kInvalidLinkName &&
+        hir_mod.fn_index.count(fallback_name)) {
+      return;
+    }
+
     LirExternDecl ed;
-    ed.name = name;
+    ed.name = fallback_name;
     ed.return_type_str = decl_info.return_type_str;
     ed.return_type = c4c::codegen::lir::LirTypeRef(decl_info.return_type_str);
     ed.link_name_id = decl_info.link_name_id;
     module.extern_decls.push_back(std::move(ed));
+  };
+
+  // Convert extern declaration dedup state into the printer vector, filtering
+  // out functions defined in this TU by semantic link name when available.
+  for (const auto& [_, decl_info] : module.extern_decl_link_name_map) {
+    push_extern_decl(decl_info);
+  }
+  for (const auto& [name, decl_info] : module.extern_decl_name_map) {
+    (void)name;
+    push_extern_decl(decl_info);
   }
 }
 

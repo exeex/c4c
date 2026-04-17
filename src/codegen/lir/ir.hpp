@@ -541,6 +541,7 @@ struct LirSpecEntry {
 
 struct LirModule {
   struct ExternDeclInfo {
+    std::string name;
     std::string return_type_str;
     LinkNameId link_name_id = kInvalidLinkName;
   };
@@ -555,26 +556,55 @@ struct LirModule {
   std::vector<LirStringConst> string_pool;
   std::vector<LirExternDecl> extern_decls;
 
-  // Dedup map for extern call declarations (name → return type string).
-  // Lowering writes here via record_extern_decl(); finalize converts to extern_decls vector.
-  std::unordered_map<std::string, ExternDeclInfo> extern_decl_map;
+  // Extern call declarations dedup first by semantic link-visible identity,
+  // then by raw fallback spelling only when no LinkNameId exists yet.
+  std::unordered_map<LinkNameId, ExternDeclInfo> extern_decl_link_name_map;
+  std::unordered_map<std::string, ExternDeclInfo> extern_decl_name_map;
 
-  /// Record an extern function call declaration.  Deduplicates by name and
-  /// upgrades void returns to concrete types when a non-void call is seen.
+  void merge_extern_decl_info(ExternDeclInfo& info, const std::string& name,
+                              const std::string& ret_ty,
+                              LinkNameId link_name_id) {
+    if (info.name.empty()) info.name = name;
+    if (info.return_type_str == "void" && ret_ty != "void") {
+      info.return_type_str = ret_ty;
+    }
+    if (info.link_name_id == kInvalidLinkName &&
+        link_name_id != kInvalidLinkName) {
+      info.link_name_id = link_name_id;
+    }
+  }
+
+  /// Record an extern function call declaration. Prefer semantic dedup by
+  /// LinkNameId and fall back to raw-name dedup only when no semantic id
+  /// exists. Upgrades void returns to concrete types when a non-void call is
+  /// seen.
   void record_extern_decl(const std::string& name, const std::string& ret_ty,
                           LinkNameId link_name_id = kInvalidLinkName) {
-    auto it = extern_decl_map.find(name);
-    if (it == extern_decl_map.end()) {
-      extern_decl_map.emplace(name, ExternDeclInfo{ret_ty, link_name_id});
+    if (link_name_id != kInvalidLinkName) {
+      auto it = extern_decl_link_name_map.find(link_name_id);
+      if (it == extern_decl_link_name_map.end()) {
+        auto by_name = extern_decl_name_map.find(name);
+        if (by_name != extern_decl_name_map.end()) {
+          ExternDeclInfo info = std::move(by_name->second);
+          extern_decl_name_map.erase(by_name);
+          merge_extern_decl_info(info, name, ret_ty, link_name_id);
+          extern_decl_link_name_map.emplace(link_name_id, std::move(info));
+          return;
+        }
+        extern_decl_link_name_map.emplace(
+            link_name_id, ExternDeclInfo{name, ret_ty, link_name_id});
+        return;
+      }
+      merge_extern_decl_info(it->second, name, ret_ty, link_name_id);
       return;
     }
-    if (it->second.return_type_str == "void" && ret_ty != "void") {
-      it->second.return_type_str = ret_ty;
+
+    auto it = extern_decl_name_map.find(name);
+    if (it == extern_decl_name_map.end()) {
+      extern_decl_name_map.emplace(name, ExternDeclInfo{name, ret_ty, link_name_id});
+      return;
     }
-    if (it->second.link_name_id == kInvalidLinkName &&
-        link_name_id != kInvalidLinkName) {
-      it->second.link_name_id = link_name_id;
-    }
+    merge_extern_decl_info(it->second, name, ret_ty, link_name_id);
   }
 
   // Type declarations (struct definitions) needed by the output.
