@@ -4,6 +4,16 @@ namespace c4c::codegen::lir {
 
 using namespace stmt_emitter_detail;
 
+namespace {
+
+std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
+                              std::string_view fallback) {
+  const std::string_view resolved = mod.link_names.spelling(id);
+  return resolved.empty() ? std::string(fallback) : std::string(resolved);
+}
+
+}  // namespace
+
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const Expr& e) {
   if (u.op == UnaryOp::AddrOf) {
     TypeSpec pts{};
@@ -279,7 +289,9 @@ std::string StmtEmitter::emit_rval_payload(FnCtx&, const SizeofTypeExpr& s, cons
 }
 
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const LabelAddrExpr& la, const Expr&) {
-  return "blockaddress(@" + ctx.fn->name + ", %ulbl_" + la.label_name + ")";
+  const std::string fn_name =
+      ctx.fn ? emitted_link_name(mod_, ctx.fn->link_name_id, ctx.fn->name) : std::string();
+  return "blockaddress(@" + fn_name + ", %ulbl_" + la.label_name + ")";
 }
 
 std::string StmtEmitter::emit_rval_payload(FnCtx&, const PendingConstevalExpr& p, const Expr&) {
