@@ -1174,6 +1174,86 @@ inline std::string emit_prepared_module(
     }
     return render_stack_memory_operand(static_cast<std::size_t>(signed_byte_offset), size_name);
   };
+  const auto resolved_target_triple =
+      module.module.target_triple.empty() ? c4c::default_host_target_triple()
+                                          : module.module.target_triple;
+  const auto render_asm_symbol_name = [&](std::string_view logical_name) -> std::string {
+    if (resolved_target_triple.find("apple-darwin") != std::string::npos) {
+      return "_" + std::string(logical_name);
+    }
+    return std::string(logical_name);
+  };
+  const auto emit_defined_global_prelude =
+      [&](std::string_view symbol_name, std::size_t align_bytes, bool is_zero_init) -> std::string {
+    std::string prelude = is_zero_init ? ".bss\n" : ".data\n";
+    prelude += ".globl " + std::string(symbol_name) + "\n";
+    if (resolved_target_triple.find("apple-darwin") == std::string::npos) {
+      prelude += ".type " + std::string(symbol_name) + ", @object\n";
+    }
+    if (align_bytes > 1) {
+      prelude += ".p2align " + std::to_string(align_bytes == 2 ? 1 : 2) + "\n";
+    }
+    prelude += std::string(symbol_name) + ":\n";
+    return prelude;
+  };
+  const auto find_same_module_defined_global =
+      [&](std::string_view name) -> const c4c::backend::bir::Global* {
+    for (const auto& global : module.module.globals) {
+      if (global.name == name) {
+        if (global.is_extern || global.is_thread_local || global.initializer_symbol_name.has_value()) {
+          return nullptr;
+        }
+        return &global;
+      }
+    }
+    return nullptr;
+  };
+  const auto defined_global_i32_extent =
+      [&](const c4c::backend::bir::Global& global) -> std::optional<std::size_t> {
+    if (global.initializer.has_value()) {
+      if (global.initializer->kind != c4c::backend::bir::Value::Kind::Immediate ||
+          global.initializer->type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      return std::max<std::size_t>(global.size_bytes, 4);
+    }
+    if (!global.initializer_elements.empty()) {
+      for (const auto& element : global.initializer_elements) {
+        if (element.kind != c4c::backend::bir::Value::Kind::Immediate ||
+            element.type != c4c::backend::bir::TypeKind::I32) {
+          return std::nullopt;
+        }
+      }
+      return std::max<std::size_t>(global.size_bytes, global.initializer_elements.size() * 4);
+    }
+    return std::nullopt;
+  };
+  const auto emit_defined_global_i32_data =
+      [&](const c4c::backend::bir::Global& global) -> std::optional<std::string> {
+    const auto symbol_name = render_asm_symbol_name(global.name);
+    std::string data =
+        emit_defined_global_prelude(symbol_name, global.align_bytes > 0 ? global.align_bytes : 4, false);
+    if (global.initializer.has_value()) {
+      if (global.initializer->kind != c4c::backend::bir::Value::Kind::Immediate ||
+          global.initializer->type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      data += "    .long " +
+              std::to_string(static_cast<std::int32_t>(global.initializer->immediate)) + "\n";
+      return data;
+    }
+    if (global.initializer_elements.empty()) {
+      return std::nullopt;
+    }
+    for (const auto& element : global.initializer_elements) {
+      if (element.kind != c4c::backend::bir::Value::Kind::Immediate ||
+          element.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      data += "    .long " + std::to_string(static_cast<std::int32_t>(element.immediate)) + "\n";
+    }
+    return data;
+  };
   const auto try_render_minimal_local_slot_return = [&]() -> std::optional<std::string> {
     if (function.params.empty() == false || function.blocks.size() != 1 ||
         entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
@@ -1333,6 +1413,7 @@ inline std::string emit_prepared_module(
       rendered += "    ret\n";
       return rendered;
     };
+    std::optional<std::string_view> same_module_defined_global_name;
 
     std::unordered_set<std::string_view> rendered_blocks;
     std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
@@ -1399,6 +1480,37 @@ inline std::string emit_prepared_module(
                 return "    movsx eax, " + *memory + "\n";
               }
               return std::nullopt;
+            }
+
+            if (const auto* load = std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst)) {
+              if (load->result.type != c4c::backend::bir::TypeKind::I32 ||
+                  load->result.kind != c4c::backend::bir::Value::Kind::Named) {
+                return std::nullopt;
+              }
+              const auto* global = find_same_module_defined_global(load->global_name);
+              if (global == nullptr) {
+                return std::nullopt;
+              }
+              const auto global_extent = defined_global_i32_extent(*global);
+              if (!global_extent.has_value() || load->byte_offset % 4 != 0 ||
+                  load->byte_offset + 4 > *global_extent) {
+                return std::nullopt;
+              }
+              if (same_module_defined_global_name.has_value() &&
+                  *same_module_defined_global_name != load->global_name) {
+                return std::nullopt;
+              }
+              same_module_defined_global_name = load->global_name;
+              *current_materialized_compare = std::nullopt;
+              *current_i32_name = load->result.name;
+              *current_i8_name = std::nullopt;
+              *current_ptr_name = std::nullopt;
+              std::string memory = "DWORD PTR [rip + " + render_asm_symbol_name(load->global_name);
+              if (load->byte_offset != 0) {
+                memory += " + " + std::to_string(load->byte_offset);
+              }
+              memory += "]";
+              return "    mov eax, " + memory + "\n";
             }
 
             const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
@@ -1979,6 +2091,17 @@ inline std::string emit_prepared_module(
     const auto rendered_entry = render_block(entry, std::nullopt);
     if (!rendered_entry.has_value()) {
       return std::nullopt;
+    }
+    if (same_module_defined_global_name.has_value()) {
+      const auto* emitted_global = find_same_module_defined_global(*same_module_defined_global_name);
+      if (emitted_global == nullptr) {
+        return std::nullopt;
+      }
+      const auto rendered_global_data = emit_defined_global_i32_data(*emitted_global);
+      if (!rendered_global_data.has_value()) {
+        return std::nullopt;
+      }
+      asm_text = *rendered_global_data + asm_text;
     }
     asm_text += *rendered_entry;
     return asm_text;
@@ -2609,7 +2732,7 @@ inline std::string emit_prepared_module(
       return *rendered_local_slot_guard_chain;
     }
     throw std::invalid_argument(
-        "x86 backend emitter only supports a minimal single-block i32 return terminator, a bounded equality-against-immediate guard family with immediate return leaves, or one bounded compare-against-zero branch family through the canonical prepared-module handoff");
+        "x86 backend emitter only supports a minimal single-block i32 return terminator, a bounded equality-against-immediate guard family with immediate return leaves including fixed-offset same-module defined-global i32 loads, or one bounded compare-against-zero branch family through the canonical prepared-module handoff");
   }
 
   const auto& returned = *entry.terminator.value;
