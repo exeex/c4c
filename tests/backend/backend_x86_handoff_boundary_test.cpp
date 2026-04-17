@@ -108,6 +108,59 @@ std::string expected_minimal_param_passthrough_asm(const char* function_name) {
          minimal_i32_param_register() + "\n    ret\n";
 }
 
+std::string expected_minimal_local_pointer_chain_asm(const char* function_name) {
+  return asm_header(function_name) + "    sub rsp, 32\n"
+         "    mov DWORD PTR [rsp], 0\n"
+         "    lea rax, [rsp]\n"
+         "    mov QWORD PTR [rsp + 8], rax\n"
+         "    lea rax, [rsp + 8]\n"
+         "    mov QWORD PTR [rsp + 16], rax\n"
+         "    mov rax, QWORD PTR [rsp + 16]\n"
+         "    mov rax, QWORD PTR [rsp + 8]\n"
+         "    mov eax, DWORD PTR [rsp]\n"
+         "    add rsp, 32\n"
+         "    ret\n";
+}
+
+std::string expected_minimal_local_pointer_guard_chain_asm(const char* function_name) {
+  return asm_header(function_name) + "    sub rsp, 32\n"
+         "    mov DWORD PTR [rsp], 0\n"
+         "    lea rax, [rsp]\n"
+         "    mov QWORD PTR [rsp + 8], rax\n"
+         "    lea rax, [rsp + 8]\n"
+         "    mov QWORD PTR [rsp + 16], rax\n"
+         "    mov rax, QWORD PTR [rsp + 8]\n"
+         "    mov eax, DWORD PTR [rsp]\n"
+         "    test eax, eax\n"
+         "    je .Lmain_block_2\n"
+         "    mov eax, 1\n"
+         "    add rsp, 32\n"
+         "    ret\n"
+         ".Lmain_block_2:\n"
+         "    mov rax, QWORD PTR [rsp + 16]\n"
+         "    mov rax, QWORD PTR [rsp + 8]\n"
+         "    mov eax, DWORD PTR [rsp]\n"
+         "    test eax, eax\n"
+         "    je .Lmain_block_4\n"
+         "    mov eax, 1\n"
+         "    add rsp, 32\n"
+         "    ret\n"
+         ".Lmain_block_4:\n"
+         "    mov rax, QWORD PTR [rsp + 16]\n"
+         "    mov rax, QWORD PTR [rsp + 8]\n"
+         "    mov DWORD PTR [rsp], 1\n"
+         "    mov eax, DWORD PTR [rsp]\n"
+         "    test eax, eax\n"
+         "    je .Lmain_block_7\n"
+         "    mov eax, 0\n"
+         "    add rsp, 32\n"
+         "    ret\n"
+         ".Lmain_block_7:\n"
+         "    mov eax, 1\n"
+         "    add rsp, 32\n"
+         "    ret\n";
+}
+
 std::string expected_minimal_param_add_immediate_asm(const char* function_name, int immediate) {
   return expected_minimal_param_binary_asm(function_name, "add", immediate);
 }
@@ -1540,6 +1593,256 @@ lir::LirModule make_x86_param_add_immediate_lir_module() {
   return module;
 }
 
+lir::LirModule make_x86_local_pointer_chain_lir_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  lir::LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.x"),
+      .type_str = "i32",
+      .count = lir::LirOperand(""),
+      .align = 4,
+  });
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.p"),
+      .type_str = "ptr",
+      .count = lir::LirOperand(""),
+      .align = 8,
+  });
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.pp"),
+      .type_str = "ptr",
+      .count = lir::LirOperand(""),
+      .align = 8,
+  });
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = "i32",
+      .val = lir::LirOperand("0"),
+      .ptr = lir::LirOperand("%lv.x"),
+  });
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = "ptr",
+      .val = lir::LirOperand("%lv.x"),
+      .ptr = lir::LirOperand("%lv.p"),
+  });
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = "ptr",
+      .val = lir::LirOperand("%lv.p"),
+      .ptr = lir::LirOperand("%lv.pp"),
+  });
+  entry.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t0"),
+      .type_str = "ptr",
+      .ptr = lir::LirOperand("%lv.pp"),
+  });
+  entry.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t1"),
+      .type_str = "ptr",
+      .ptr = lir::LirOperand("%t0"),
+  });
+  entry.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t2"),
+      .type_str = "i32",
+      .ptr = lir::LirOperand("%t1"),
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::string("%t2"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+lir::LirModule make_x86_local_pointer_guard_chain_lir_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  lir::LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.x"),
+      .type_str = "i32",
+      .count = lir::LirOperand(""),
+      .align = 4,
+  });
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.p"),
+      .type_str = "ptr",
+      .count = lir::LirOperand(""),
+      .align = 8,
+  });
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.pp"),
+      .type_str = "ptr",
+      .count = lir::LirOperand(""),
+      .align = 8,
+  });
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = "i32",
+      .val = lir::LirOperand("0"),
+      .ptr = lir::LirOperand("%lv.x"),
+  });
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = "ptr",
+      .val = lir::LirOperand("%lv.x"),
+      .ptr = lir::LirOperand("%lv.p"),
+  });
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = "ptr",
+      .val = lir::LirOperand("%lv.p"),
+      .ptr = lir::LirOperand("%lv.pp"),
+  });
+  entry.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t0"),
+      .type_str = "ptr",
+      .ptr = lir::LirOperand("%lv.p"),
+  });
+  entry.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t1"),
+      .type_str = "i32",
+      .ptr = lir::LirOperand("%t0"),
+  });
+  entry.insts.push_back(lir::LirCmpOp{
+      .result = lir::LirOperand("%t2"),
+      .is_float = false,
+      .predicate = "ne",
+      .type_str = "i32",
+      .lhs = lir::LirOperand("%t1"),
+      .rhs = lir::LirOperand("0"),
+  });
+  entry.terminator = lir::LirCondBr{
+      .cond_name = "%t2",
+      .true_label = "block_1",
+      .false_label = "block_2",
+  };
+
+  lir::LirBlock block_1;
+  block_1.label = "block_1";
+  block_1.terminator = lir::LirRet{
+      .value_str = std::string("1"),
+      .type_str = "i32",
+  };
+
+  lir::LirBlock block_2;
+  block_2.label = "block_2";
+  block_2.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t3"),
+      .type_str = "ptr",
+      .ptr = lir::LirOperand("%lv.pp"),
+  });
+  block_2.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t4"),
+      .type_str = "ptr",
+      .ptr = lir::LirOperand("%t3"),
+  });
+  block_2.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t5"),
+      .type_str = "i32",
+      .ptr = lir::LirOperand("%t4"),
+  });
+  block_2.insts.push_back(lir::LirCmpOp{
+      .result = lir::LirOperand("%t6"),
+      .is_float = false,
+      .predicate = "ne",
+      .type_str = "i32",
+      .lhs = lir::LirOperand("%t5"),
+      .rhs = lir::LirOperand("0"),
+  });
+  block_2.terminator = lir::LirCondBr{
+      .cond_name = "%t6",
+      .true_label = "block_3",
+      .false_label = "block_4",
+  };
+
+  lir::LirBlock block_3;
+  block_3.label = "block_3";
+  block_3.terminator = lir::LirRet{
+      .value_str = std::string("1"),
+      .type_str = "i32",
+  };
+
+  lir::LirBlock block_4;
+  block_4.label = "block_4";
+  block_4.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t7"),
+      .type_str = "ptr",
+      .ptr = lir::LirOperand("%lv.pp"),
+  });
+  block_4.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t8"),
+      .type_str = "ptr",
+      .ptr = lir::LirOperand("%t7"),
+  });
+  block_4.insts.push_back(lir::LirStoreOp{
+      .type_str = "i32",
+      .val = lir::LirOperand("1"),
+      .ptr = lir::LirOperand("%t8"),
+  });
+  block_4.terminator = lir::LirBr{
+      .target_label = "block_5",
+  };
+
+  lir::LirBlock block_5;
+  block_5.label = "block_5";
+  block_5.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t9"),
+      .type_str = "i32",
+      .ptr = lir::LirOperand("%lv.x"),
+  });
+  block_5.insts.push_back(lir::LirCmpOp{
+      .result = lir::LirOperand("%t10"),
+      .is_float = false,
+      .predicate = "ne",
+      .type_str = "i32",
+      .lhs = lir::LirOperand("%t9"),
+      .rhs = lir::LirOperand("0"),
+  });
+  block_5.terminator = lir::LirCondBr{
+      .cond_name = "%t10",
+      .true_label = "block_6",
+      .false_label = "block_7",
+  };
+
+  lir::LirBlock block_6;
+  block_6.label = "block_6";
+  block_6.terminator = lir::LirRet{
+      .value_str = std::string("0"),
+      .type_str = "i32",
+  };
+
+  lir::LirBlock block_7;
+  block_7.label = "block_7";
+  block_7.terminator = lir::LirRet{
+      .value_str = std::string("1"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  function.blocks.push_back(std::move(block_3));
+  function.blocks.push_back(std::move(block_4));
+  function.blocks.push_back(std::move(block_5));
+  function.blocks.push_back(std::move(block_6));
+  function.blocks.push_back(std::move(block_7));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 lir::LirModule make_unsupported_x86_inline_asm_lir_module() {
   lir::LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -1909,6 +2212,22 @@ int main() {
           check_lir_route_outputs(make_x86_param_add_immediate_lir_module(),
                                   expected_minimal_param_add_immediate_asm("add_one", 1),
                                   "minimal i32 parameter add-immediate LIR route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_lir_route_outputs(make_x86_local_pointer_chain_lir_module(),
+                                  expected_minimal_local_pointer_chain_asm("main"),
+                                  "minimal local-slot pointer-chain LIR route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_lir_route_outputs(make_x86_local_pointer_guard_chain_lir_module(),
+                                  expected_minimal_local_pointer_guard_chain_asm("main"),
+                                  "minimal local-slot compare-against-zero guard-chain LIR route");
       status != 0) {
     return status;
   }

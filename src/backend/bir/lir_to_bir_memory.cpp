@@ -2840,6 +2840,36 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       if (local_slot_ptr_it->second.value_type != *value_type) {
         return fail_load();
       }
+      if (*value_type == bir::TypeKind::Ptr && local_slot_ptr_it->second.byte_offset == 0) {
+        if (const auto nested_local_slot_it =
+                local_slot_address_slots.find(local_slot_ptr_it->second.slot_name);
+            nested_local_slot_it != local_slot_address_slots.end()) {
+          local_slot_pointer_values[load->result.str()] = nested_local_slot_it->second;
+        }
+        if (const auto nested_global_it = local_address_slots.find(local_slot_ptr_it->second.slot_name);
+            nested_global_it != local_address_slots.end()) {
+          const bool preserve_loaded_pointer_provenance =
+              local_indirect_pointer_slots.find(local_slot_ptr_it->second.slot_name) !=
+              local_indirect_pointer_slots.end();
+          if (!preserve_loaded_pointer_provenance) {
+            if (nested_global_it->second.byte_offset == 0 &&
+                is_known_function_symbol(nested_global_it->second.global_name, function_symbols)) {
+              value_aliases[load->result.str()] =
+                  bir::Value::named(bir::TypeKind::Ptr, "@" + nested_global_it->second.global_name);
+              global_pointer_slots[load->result.str()] = nested_global_it->second;
+            } else if (const auto honest_base =
+                           resolve_honest_pointer_base(nested_global_it->second, global_types);
+                       honest_base.has_value() && honest_base->byte_offset == 0) {
+              value_aliases[load->result.str()] =
+                  bir::Value::named(bir::TypeKind::Ptr, "@" + honest_base->global_name);
+              global_pointer_slots[load->result.str()] = *honest_base;
+            }
+          }
+          if (global_pointer_slots.find(load->result.str()) == global_pointer_slots.end()) {
+            global_pointer_slots[load->result.str()] = nested_global_it->second;
+          }
+        }
+      }
       if (local_slot_ptr_it->second.byte_offset == 0) {
         lowered_insts->push_back(bir::LoadLocalInst{
             .result = bir::Value::named(*value_type, load->result.str()),
