@@ -6,50 +6,52 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Steps 1-2 by re-baselining the next frontier around the
-delegated `00057` / `00124` / `00189` evidence subset and naming one bounded
-next family. The honest next lane is the single-function prepared-module
-boundary at the x86 prepared handoff/emitter edge, with
-`c_testsuite_x86_backend_src_00189_c` as the proving anchor because both
-backend boundary tests already pass and `00189` fails only on the emitter's
-current `functions.size() != 1` gate. Nearby neighbors remain out of scope for
-this lane: `00057` is still a minimal single-block emitter/control-flow family
-and `00124` is still a scalar-control-flow semantic family.
+Investigated the expanded `plan.md` Step 3 `00210` packet across
+`x86_codegen.hpp`, `calls.cpp`, and `mod.cpp` and confirmed it is still
+blocked before a coherent owned-file code change. The direct-call multi-function
+piece is only part of the lane: in the prepared-module handoff, `00210`'s
+external `printf` calls arrive with pointer args as named temps (`%t2`, `%t7`)
+rather than explicit global or string-constant addresses, and the owned x86
+prepared-module surface does not carry enough provenance to recover which
+string/global symbol those pointer values denote. The split x86 call/data
+helpers can cover call ABI setup and function/data preludes, but they do not
+solve the missing prepared-BIR address-origin representation needed to emit the
+`printf` string arguments honestly.
 
 ## Suggested Next
 
-Implement the smallest shared multi-function prepared-module lane that admits
-`00189` through the canonical prepared x86 handoff without widening into
-generic control flow, bootstrap-global work, or runtime-heavy multi-function
-programs. The first implementation packet should stay on prepared-module
-ownership and direct-call / global-function-pointer plumbing, then prove the
-lane with `00189` plus any immediately adjacent same-family probe that fails
-for the same prepared-module reason.
+Implement the repaired `plan.md` Step 3 route with `00210` as the proving
+anchor. The next executor packet should own the prepared-BIR or lowering
+surface that preserves string/global-address provenance for direct-call pointer
+args plus the canonical x86 prepared-module consumer and its shared call/data
+helpers. Keep `00189`, `00057`, and `00124` out of scope unless the packet
+explicitly re-opens the route.
 
 ## Watchouts
 
 - Do not weaken `x86_backend` expectations to accept fallback LLVM IR.
 - Do not add testcase-named shortcuts or rendered-text recognizers.
-- Do not treat `00057` or `00124` as regressions in this lane; they are the
-  neighboring emitter/control-flow and scalar-control-flow semantic families
-  that Step 1 separated on purpose.
+- `00210` still does not prove global function-pointer plumbing: semantic BIR
+  folds its casted function-pointer calls to direct `@actual_function` calls.
+- The external `printf` calls in `00210` still require string/global-address
+  provenance for pointer args even though the same-module helper call is direct.
+- The x86 split codegen already has generic call ABI and symbol-prelude helpers
+  in sibling translation units, but the canonical prepared-module consumer does
+  not receive enough address-origin information to use them honestly for
+  `00210` today.
 - Do not satisfy the next packet by merely deleting the
-  `functions.size() != 1` rejection. The route must keep prepared-module
-  ownership honest for declarations, helper functions, and the one function
-  whose body is actually emitted.
-- Keep bootstrap globals, generic multi-block control flow, and broad
-  multi-function/runtime surfaces out of scope unless the next packet proves
-  they are required by the chosen prepared-module lane.
+  `functions.size() != 1` rejection or by adding a testcase-shaped `00210`
+  matcher. The route must admit a reusable direct-call prepared-module family.
+- Keep `00189`, `00057`, and `00124` out of this packet; they remain adjacent
+  indirect-runtime, emitter/control-flow, and scalar-control-flow families.
 
 ## Proof
 
-Baseline capture before the route-selection packet:
-`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00057_c|c_testsuite_x86_backend_src_00124_c|c_testsuite_x86_backend_src_00189_c)$' | tee test_before.log`
+Baseline capture for the narrowed `00210` packet is in `test_before.log`:
+`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00210_c)$' | tee test_before.log`
 
-Delegated proof rerun for this packet:
-`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00057_c|c_testsuite_x86_backend_src_00124_c|c_testsuite_x86_backend_src_00189_c)$' | tee test_after.log`
-
-The delegated subset is sufficient for Steps 1-2 route evidence: both backend
-boundary tests pass, while `00057`, `00124`, and `00189` fail in three
-different families, which makes `00189` the cleanest next bounded
-single-function prepared-module probe. Proof log path: `test_after.log`.
+Step 3 blocker investigation reused the existing semantic-BIR dumps for
+`00189` and `00210` plus owned-file inspection of the x86 prepared-module
+consumer and sibling call/data helpers. The delegated proof command was not
+rerun because the packet blocked before any owned-file code change. No
+`test_after.log` was produced for this blocked packet.
