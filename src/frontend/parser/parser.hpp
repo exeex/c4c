@@ -62,15 +62,12 @@ class Parser {
 
     SymbolId find_identifier(TextId text_id) const {
       if (!texts_ || text_id == kInvalidText) return kInvalidSymbol;
-      const auto it = symbol_ids_.id_by_key_.find(text_id);
-      return it == symbol_ids_.id_by_key_.end() ? kInvalidSymbol : it->second;
+      return symbol_ids_.find(text_id);
     }
 
     SymbolId find_identifier(std::string_view text) const {
       if (!texts_ || text.empty()) return kInvalidSymbol;
-      const auto text_it = texts_->id_by_key_.find(std::string(text));
-      if (text_it == texts_->id_by_key_.end()) return kInvalidSymbol;
-      return find_identifier(text_it->second);
+      return find_identifier(texts_->find(text));
     }
 
     SymbolId intern_identifier(TextId text_id) {

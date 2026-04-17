@@ -19,10 +19,16 @@ constexpr MemberSymbolId kInvalidMemberSymbol = 0;
 // Generic stable-id table keyed by a caller-provided value type.
 template <typename Id, Id InvalidId, typename Key>
 struct KeyIdTable {
-  Id intern(const Key& key) {
+  Id find(const Key& key) const {
     if (key == Key{}) return InvalidId;
     const auto it = id_by_key_.find(key);
-    if (it != id_by_key_.end()) return it->second;
+    return it == id_by_key_.end() ? InvalidId : it->second;
+  }
+
+  Id intern(const Key& key) {
+    const Id existing = find(key);
+    if (existing != InvalidId) return existing;
+    if (key == Key{}) return InvalidId;
     key_by_id_.push_back(key);
     const Id id = static_cast<Id>(key_by_id_.size());
     id_by_key_.emplace(key_by_id_.back(), id);
@@ -44,17 +50,48 @@ struct KeyIdTable {
 // underlying strings so higher-level tables can reuse them without maintaining
 // duplicate spelling storage.
 template <typename Id, Id InvalidId>
-struct StringIdTable : KeyIdTable<Id, InvalidId, std::string> {
+struct StringIdTable {
+  struct Slice {
+    size_t offset = 0;
+    size_t len = 0;
+  };
+
+  Id find(std::string_view text) const {
+    if (text.empty()) return InvalidId;
+    const auto hash = std::hash<std::string_view>{}(text);
+    const auto bucket_it = ids_by_hash_.find(hash);
+    if (bucket_it == ids_by_hash_.end()) return InvalidId;
+    for (const Id id : bucket_it->second) {
+      if (lookup(id) == text) return id;
+    }
+    return InvalidId;
+  }
+
   Id intern(std::string_view text) {
     if (text.empty()) return InvalidId;
-    return KeyIdTable<Id, InvalidId, std::string>::intern(std::string(text));
+    const Id existing = find(text);
+    if (existing != InvalidId) return existing;
+
+    const size_t offset = bytes_.size();
+    bytes_.insert(bytes_.end(), text.begin(), text.end());
+    slices_by_id_.push_back(Slice{offset, text.size()});
+
+    const Id id = static_cast<Id>(slices_by_id_.size());
+    ids_by_hash_[std::hash<std::string_view>{}(text)].push_back(id);
+    return id;
   }
 
   std::string_view lookup(Id id) const {
-    const std::string* stored =
-        KeyIdTable<Id, InvalidId, std::string>::lookup(id);
-    return stored ? std::string_view(*stored) : std::string_view{};
+    if (id == InvalidId || id > slices_by_id_.size()) return {};
+    const Slice& slice = slices_by_id_[id - 1];
+    return std::string_view(bytes_.data() + slice.offset, slice.len);
   }
+
+  size_t size() const { return slices_by_id_.size(); }
+
+  std::vector<char> bytes_;
+  std::vector<Slice> slices_by_id_;
+  std::unordered_map<size_t, std::vector<Id>> ids_by_hash_;
 };
 
 // Immutable string storage for paths / file labels. Unlike StringIdTable, this
@@ -63,8 +100,8 @@ struct StringIdTable : KeyIdTable<Id, InvalidId, std::string> {
 template <typename Id, Id InvalidId>
 struct PathIdTable : KeyIdTable<Id, InvalidId, std::string> {
   Id intern(std::string_view text) {
-    const auto it = this->id_by_key_.find(std::string(text));
-    if (it != this->id_by_key_.end()) return it->second;
+    const Id existing = this->find(std::string(text));
+    if (existing != InvalidId) return existing;
     this->key_by_id_.push_back(std::string(text));
     const Id id = static_cast<Id>(this->key_by_id_.size());
     this->id_by_key_.emplace(this->key_by_id_.back(), id);
@@ -89,16 +126,12 @@ struct LinkNameTable {
 
   LinkNameId find(TextId text_id) const {
     if (!texts_ || text_id == kInvalidText) return kInvalidLinkName;
-    const auto it = link_name_ids_.id_by_key_.find(text_id);
-    return it == link_name_ids_.id_by_key_.end() ? kInvalidLinkName
-                                                 : it->second;
+    return link_name_ids_.find(text_id);
   }
 
   LinkNameId find(std::string_view text) const {
     if (!texts_ || text.empty()) return kInvalidLinkName;
-    const auto text_it = texts_->id_by_key_.find(std::string(text));
-    if (text_it == texts_->id_by_key_.end()) return kInvalidLinkName;
-    return find(text_it->second);
+    return find(texts_->find(text));
   }
 
   LinkNameId intern(TextId text_id) {
@@ -137,16 +170,12 @@ struct MemberSymbolTable {
 
   MemberSymbolId find(TextId text_id) const {
     if (!texts_ || text_id == kInvalidText) return kInvalidMemberSymbol;
-    const auto it = member_symbol_ids_.id_by_key_.find(text_id);
-    return it == member_symbol_ids_.id_by_key_.end() ? kInvalidMemberSymbol
-                                                     : it->second;
+    return member_symbol_ids_.find(text_id);
   }
 
   MemberSymbolId find(std::string_view text) const {
     if (!texts_ || text.empty()) return kInvalidMemberSymbol;
-    const auto text_it = texts_->id_by_key_.find(std::string(text));
-    if (text_it == texts_->id_by_key_.end()) return kInvalidMemberSymbol;
-    return find(text_it->second);
+    return find(texts_->find(text));
   }
 
   MemberSymbolId intern(TextId text_id) {
