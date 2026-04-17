@@ -6872,7 +6872,10 @@ std::optional<std::string> render_bir_module_if_supported(
 }
 
 std::string emit_module(const c4c::backend::bir::Module& module) {
-  return c4c::backend::emit_target_bir_module(module, c4c::backend::Target::Aarch64);
+  const auto target_profile = c4c::target_profile_from_triple(
+      module.target_triple.empty() ? c4c::default_host_target_triple() : module.target_triple);
+  return c4c::backend::emit_target_bir_module(
+      module, target_profile);
 }
 
 std::string emit_direct_bir_module(const c4c::backend::bir::Module& module) {
@@ -6903,13 +6906,21 @@ std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module)
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
-  return c4c::backend::emit_target_lir_module(module, c4c::backend::Target::Aarch64);
+  const auto target_profile = c4c::target_profile_from_triple(
+      module.target_triple.empty() ? c4c::default_host_target_triple() : module.target_triple);
+  return c4c::backend::emit_target_lir_module(
+      module, target_profile);
 }
 
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,
                                           const std::string& output_path) {
   const auto assembled =
-      c4c::backend::assemble_target_lir_module(module, c4c::backend::Target::Aarch64, output_path);
+      c4c::backend::assemble_target_lir_module(
+          module,
+          c4c::target_profile_from_triple(
+              module.target_triple.empty() ? c4c::default_host_target_triple()
+                                           : module.target_triple),
+          output_path);
   return assembler::AssembleResult{
       .staged_text = assembled.staged_text,
       .output_path = assembled.output_path,

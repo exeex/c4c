@@ -1,6 +1,7 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/codegen/lir/ir.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -10,9 +11,17 @@
 namespace {
 
 namespace bir = c4c::backend::bir;
+namespace lir = c4c::codegen::lir;
 using c4c::backend::BackendModuleInput;
 using c4c::backend::BackendOptions;
 using c4c::backend::Target;
+
+const c4c::TargetProfile& target_profile_from_module_triple(std::string_view target_triple,
+                                                            c4c::TargetProfile& storage) {
+  storage = c4c::target_profile_from_triple(
+      target_triple.empty() ? c4c::default_host_target_triple() : target_triple);
+  return storage;
+}
 
 int fail(const char* message) {
   std::cerr << message << "\n";
@@ -225,14 +234,64 @@ bir::Module make_x86_param_and_immediate_module() {
   return module;
 }
 
+lir::LirModule make_x86_return_constant_lir_module() {
+  lir::LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  lir::LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = lir::LirRet{
+      .value_str = std::string("7"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+lir::LirModule make_x86_param_add_immediate_lir_module() {
+  lir::LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  lir::LirFunction function;
+  function.name = "add_one";
+  function.signature_text = "define i32 @add_one(i32 %x)";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+  function.params.emplace_back("%x", c4c::TypeSpec{.base = c4c::TB_INT});
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirBinOp{
+      .result = lir::LirOperand("%sum"),
+      .opcode = "add",
+      .type_str = "i32",
+      .lhs = lir::LirOperand("%x"),
+      .rhs = lir::LirOperand("1"),
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::string("%sum"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 int check_route_outputs(const bir::Module& module,
                         const std::string& expected_asm,
                         const std::string& expected_bir_fragment,
                         const char* failure_context) {
+  c4c::TargetProfile target_profile;
   const auto prepared =
       c4c::backend::prepare::prepare_semantic_bir_module_with_options(
-          module, c4c::backend::target_profile_from_backend_target(Target::X86_64,
-                                                                   module.target_triple));
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
   const auto prepared_bir_text = bir::print(prepared.module);
 
   const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
@@ -242,7 +301,7 @@ int check_route_outputs(const bir::Module& module,
                     .c_str());
   }
 
-  const auto public_asm = c4c::backend::emit_target_bir_module(module, Target::X86_64);
+  const auto public_asm = c4c::backend::emit_target_bir_module(module, target_profile);
   if (public_asm != prepared_asm) {
     return fail((std::string(failure_context) +
                  ": public x86 BIR entry no longer routes through the x86 prepared-module consumer")
@@ -260,6 +319,31 @@ int check_route_outputs(const bir::Module& module,
   if (prepared_bir_text.find(expected_bir_fragment) == std::string::npos) {
     return fail((std::string(failure_context) +
                  ": test fixture no longer prepares the expected semantic BIR shape before routing into x86")
+                    .c_str());
+  }
+
+  return 0;
+}
+
+int check_lir_route_outputs(const lir::LirModule& module,
+                            const std::string& expected_asm,
+                            const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  const auto public_asm =
+      c4c::backend::emit_target_lir_module(module,
+                                           target_profile_from_module_triple(module.target_triple,
+                                                                            target_profile));
+  if (public_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": public x86 LIR entry did not route through the canonical x86 prepared-module consumer")
+                    .c_str());
+  }
+
+  const auto generic_asm = c4c::backend::emit_module(
+      BackendModuleInput{module}, BackendOptions{.target = Target::X86_64});
+  if (generic_asm != public_asm) {
+    return fail((std::string(failure_context) +
+                 ": generic backend emit path no longer routes x86 LIR input through emit_target_lir_module")
                     .c_str());
   }
 
@@ -319,6 +403,22 @@ int main() {
                               expected_minimal_param_and_immediate_asm("mask_low_bits", 15),
                               "bir.func @mask_low_bits(i32 p.x) -> i32 {",
                               "minimal i32 parameter and-immediate route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_lir_route_outputs(make_x86_return_constant_lir_module(),
+                                  expected_minimal_constant_return_asm("main", 7),
+                                  "minimal immediate return LIR route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_lir_route_outputs(make_x86_param_add_immediate_lir_module(),
+                                  expected_minimal_param_add_immediate_asm("add_one", 1),
+                                  "minimal i32 parameter add-immediate LIR route");
       status != 0) {
     return status;
   }

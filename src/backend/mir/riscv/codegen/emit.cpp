@@ -127,7 +127,12 @@ namespace c4c::backend::riscv {
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,
                                           const std::string& output_path) {
   const auto assembled =
-      c4c::backend::assemble_target_lir_module(module, c4c::backend::Target::Riscv64, output_path);
+      c4c::backend::assemble_target_lir_module(
+          module,
+          c4c::target_profile_from_triple(
+              module.target_triple.empty() ? c4c::default_host_target_triple()
+                                           : module.target_triple),
+          output_path);
   return assembler::AssembleResult{
       .staged_text = assembled.staged_text,
       .output_path = assembled.output_path,

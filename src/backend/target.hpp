@@ -6,7 +6,7 @@
 
 namespace c4c::backend {
 
-enum class Target {
+enum class [[deprecated("use c4c::TargetArch via c4c::TargetProfile instead")]] Target {
   X86_64,
   I686,
   Aarch64,
