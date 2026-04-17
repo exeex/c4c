@@ -926,6 +926,7 @@ struct ConstevalCallInfo {
 /// instead, this captures the template metadata and the list of instantiations produced.
 struct HirTemplateDef {
   SymbolName name;                                  // generic name (e.g. "add")
+  TextId name_text_id = kInvalidText;               // stable template name in module.link_name_texts
   std::vector<std::string> template_params;         // parameter names (e.g. ["T"])
   std::vector<bool> param_is_nttp;                  // true if param is non-type (int N)
   bool is_consteval = false;                        // consteval template functions

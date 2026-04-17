@@ -214,6 +214,10 @@ int use_template() { return id<int>(add_one(global_value)); }
   const auto tpl_it = module.template_defs.find("id");
   expect_true(tpl_it != module.template_defs.end(),
               "template metadata should still be recorded in HIR");
+  expect_true(tpl_it->second.name_text_id != c4c::kInvalidText,
+              "template metadata should materialize a stable TextId for the template name");
+  expect_eq(module.link_name_texts->lookup(tpl_it->second.name_text_id), tpl_it->second.name,
+            "template metadata TextId should resolve through the HIR module text table");
   expect_true(!tpl_it->second.instances.empty(),
               "template metadata should capture realized instantiations");
   const c4c::hir::HirTemplateInstantiation& instance = tpl_it->second.instances.front();

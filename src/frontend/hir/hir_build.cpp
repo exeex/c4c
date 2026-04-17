@@ -377,6 +377,7 @@ void Lowerer::materialize_hir_template_defs(Module& m) {
   ct_state_->for_each_template_def([&](const std::string& name, const Node* fn_def) {
     HirTemplateDef tdef;
     tdef.name = name;
+    tdef.name_text_id = make_text_id(tdef.name, m.link_name_texts.get());
     tdef.is_consteval = fn_def->is_consteval;
     tdef.span = make_span(fn_def);
     for (int i = 0; i < fn_def->n_template_params; ++i) {
