@@ -179,10 +179,10 @@ std::string expected_minimal_local_i32_immediate_guard_asm(const char* function_
 
 std::string expected_minimal_local_i32_byte_storage_asm(const char* function_name,
                                                         int immediate) {
-  return asm_header(function_name) + "    sub rsp, 16\n"
+  return asm_header(function_name) + "    sub rsp, 32\n"
          "    mov DWORD PTR [rsp], " + std::to_string(immediate) + "\n"
          "    mov eax, DWORD PTR [rsp]\n"
-         "    add rsp, 16\n"
+         "    add rsp, 32\n"
          "    ret\n";
 }
 
@@ -204,6 +204,29 @@ std::string expected_minimal_local_i8_address_guard_asm(const char* function_nam
          "    add rsp, 16\n"
          "    ret\n"
          ".L" + function_name + "_block_4:\n"
+         "    mov eax, 0\n"
+         "    add rsp, 16\n"
+         "    ret\n";
+}
+
+std::string expected_minimal_local_i32_short_circuit_or_guard_asm(const char* function_name) {
+  return asm_header(function_name) + "    sub rsp, 16\n"
+         "    mov DWORD PTR [rsp], 1\n"
+         "    mov DWORD PTR [rsp], 3\n"
+         "    mov eax, DWORD PTR [rsp]\n"
+         "    cmp eax, 3\n"
+         "    je .L" + function_name + "_logic.rhs.7\n"
+         "    mov eax, 1\n"
+         "    add rsp, 16\n"
+         "    ret\n"
+         ".L" + function_name + "_logic.rhs.7:\n"
+         "    mov eax, DWORD PTR [rsp]\n"
+         "    cmp eax, 3\n"
+         "    je .L" + function_name + "_block_2\n"
+         "    mov eax, 1\n"
+         "    add rsp, 16\n"
+         "    ret\n"
+         ".L" + function_name + "_block_2:\n"
          "    mov eax, 0\n"
          "    add rsp, 16\n"
          "    ret\n";
@@ -1741,6 +1764,138 @@ bir::Module make_x86_local_i8_address_guard_module() {
   return module;
 }
 
+bir::Module make_x86_local_i32_short_circuit_or_guard_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.u.0",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_address_taken = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%t0.addr",
+      .value = bir::Value::immediate_i32(1),
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.u.0",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%t1.addr",
+      .value = bir::Value::immediate_i32(3),
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.u.0",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t3"),
+      .slot_name = "%t3.addr",
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.u.0",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t4"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t3"),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "%t4"),
+      .true_label = "logic.skip.8",
+      .false_label = "logic.rhs.7",
+  };
+
+  bir::Block logic_rhs;
+  logic_rhs.label = "logic.rhs.7";
+  logic_rhs.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t12"),
+      .slot_name = "%t12.addr",
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.u.0",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  logic_rhs.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t13"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t12"),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  logic_rhs.terminator = bir::BranchTerminator{.target_label = "logic.rhs.end.9"};
+
+  bir::Block logic_rhs_end;
+  logic_rhs_end.label = "logic.rhs.end.9";
+  logic_rhs_end.terminator = bir::BranchTerminator{.target_label = "logic.end.10"};
+
+  bir::Block logic_skip;
+  logic_skip.label = "logic.skip.8";
+  logic_skip.terminator = bir::BranchTerminator{.target_label = "logic.end.10"};
+
+  bir::Block logic_end;
+  logic_end.label = "logic.end.10";
+  logic_end.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t17"),
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t3"),
+      .rhs = bir::Value::immediate_i32(3),
+      .true_value = bir::Value::immediate_i32(1),
+      .false_value = bir::Value::named(bir::TypeKind::I32, "%t13"),
+  });
+  logic_end.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t18"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t17"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  logic_end.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "%t18"),
+      .true_label = "block_1",
+      .false_label = "block_2",
+  };
+
+  bir::Block block_1;
+  block_1.label = "block_1";
+  block_1.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+
+  bir::Block block_2;
+  block_2.label = "block_2";
+  block_2.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(logic_rhs));
+  function.blocks.push_back(std::move(logic_rhs_end));
+  function.blocks.push_back(std::move(logic_skip));
+  function.blocks.push_back(std::move(logic_end));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 lir::LirModule make_x86_return_constant_lir_module() {
   lir::LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -2455,6 +2610,15 @@ int main() {
                               expected_minimal_local_i8_address_guard_asm("main", 2),
                               "bir.load_local i8 %t.addr, addr %lv.arr.0+7",
                               "minimal local-slot byte addressed-guard route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(make_x86_local_i32_short_circuit_or_guard_module(),
+                              expected_minimal_local_i32_short_circuit_or_guard_asm("main"),
+                              "select ne i32 %t3, 3, i32 1, %t13",
+                              "minimal local-slot short-circuit or-guard route");
       status != 0) {
     return status;
   }

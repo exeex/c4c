@@ -1191,7 +1191,7 @@ inline std::string emit_prepared_module(
         returned.type != c4c::backend::bir::TypeKind::I32 ||
         final_load->result.name != returned.name ||
         final_load->result.type != c4c::backend::bir::TypeKind::I32 ||
-        final_load->byte_offset != 0 || final_load->address.has_value()) {
+        final_load->byte_offset != 0) {
       return std::nullopt;
     }
 
@@ -1202,20 +1202,31 @@ inline std::string emit_prepared_module(
 
     for (const auto& inst : entry.insts) {
       if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
-        if (store->byte_offset != 0 || store->address.has_value()) {
+        if (store->byte_offset != 0) {
           return std::nullopt;
         }
-        const auto slot_it = layout->offsets.find(store->slot_name);
-        if (slot_it == layout->offsets.end()) {
+        std::optional<std::string> memory;
+        if (store->address.has_value()) {
+          memory = try_render_local_address_operand(
+              *layout,
+              store->address,
+              store->value.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
+                                                                     : "DWORD");
+        } else {
+          const auto slot_it = layout->offsets.find(store->slot_name);
+          if (slot_it == layout->offsets.end()) {
+            return std::nullopt;
+          }
+          memory = render_stack_memory_operand(
+              slot_it->second,
+              store->value.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD" : "DWORD");
+        }
+        if (!memory.has_value()) {
           return std::nullopt;
         }
-        const auto memory =
-            render_stack_memory_operand(slot_it->second,
-                                        store->value.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
-                                                                                               : "DWORD");
         if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate &&
             store->value.type == c4c::backend::bir::TypeKind::I32) {
-          asm_text += "    mov " + memory + ", " +
+          asm_text += "    mov " + *memory + ", " +
                       std::to_string(static_cast<std::int32_t>(store->value.immediate)) + "\n";
           continue;
         }
@@ -1228,26 +1239,40 @@ inline std::string emit_prepared_module(
           asm_text += "    lea rax, " +
                       render_stack_memory_operand(pointee_slot_it->second, "QWORD").substr(10) +
                       "\n";
-          asm_text += "    mov " + memory + ", rax\n";
+          asm_text += "    mov " + *memory + ", rax\n";
           continue;
         }
         return std::nullopt;
       }
 
       const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
-      if (load == nullptr || load->byte_offset != 0 || load->address.has_value()) {
+      if (load == nullptr || load->byte_offset != 0) {
         return std::nullopt;
       }
-      const auto slot_it = layout->offsets.find(load->slot_name);
-      if (slot_it == layout->offsets.end()) {
+      std::optional<std::string> memory;
+      if (load->address.has_value()) {
+        memory = try_render_local_address_operand(
+            *layout,
+            load->address,
+            load->result.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD" : "DWORD");
+      } else {
+        const auto slot_it = layout->offsets.find(load->slot_name);
+        if (slot_it == layout->offsets.end()) {
+          return std::nullopt;
+        }
+        memory = render_stack_memory_operand(
+            slot_it->second,
+            load->result.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD" : "DWORD");
+      }
+      if (!memory.has_value()) {
         return std::nullopt;
       }
       if (load->result.type == c4c::backend::bir::TypeKind::Ptr) {
-        asm_text += "    mov rax, " + render_stack_memory_operand(slot_it->second, "QWORD") + "\n";
+        asm_text += "    mov rax, " + *memory + "\n";
         continue;
       }
       if (load->result.type == c4c::backend::bir::TypeKind::I32) {
-        asm_text += "    mov eax, " + render_stack_memory_operand(slot_it->second, "DWORD") + "\n";
+        asm_text += "    mov eax, " + *memory + "\n";
         continue;
       }
       return std::nullopt;
@@ -1268,6 +1293,30 @@ inline std::string emit_prepared_module(
     if (!layout.has_value()) {
       return std::nullopt;
     }
+    struct GuardJoinContinuation {
+      std::string_view join_label;
+      const c4c::backend::bir::Block* true_block = nullptr;
+      const c4c::backend::bir::Block* false_block = nullptr;
+      const c4c::backend::bir::BinaryInst* hoisted_compare = nullptr;
+    };
+    struct ShortCircuitPlan {
+      const c4c::backend::bir::Block* on_compare_true = nullptr;
+      bool on_compare_true_uses_continuation = false;
+      const c4c::backend::bir::Block* on_compare_false = nullptr;
+      bool on_compare_false_uses_continuation = false;
+      GuardJoinContinuation continuation;
+    };
+    const auto resolve_empty_branch_chain =
+        [&](std::string_view label) -> const c4c::backend::bir::Block* {
+      std::unordered_set<std::string_view> visited;
+      const auto* current = find_block(label);
+      while (current != nullptr && visited.insert(current->label).second &&
+             current->insts.empty() &&
+             current->terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
+        current = find_block(current->terminator.target_label);
+      }
+      return current;
+    };
 
     const auto render_function_return =
         [&](std::int32_t returned_imm) -> std::string {
@@ -1280,9 +1329,14 @@ inline std::string emit_prepared_module(
     };
 
     std::unordered_set<std::string_view> rendered_blocks;
-    std::function<std::optional<std::string>(const c4c::backend::bir::Block&)> render_block =
-        [&](const c4c::backend::bir::Block& block) -> std::optional<std::string> {
-          if (!rendered_blocks.insert(block.label).second) {
+    std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
+                                             const std::optional<GuardJoinContinuation>&)>
+        render_block =
+            [&](const c4c::backend::bir::Block& block,
+                const std::optional<GuardJoinContinuation>& continuation)
+        -> std::optional<std::string> {
+          if (!rendered_blocks.insert(block.label).second &&
+              block.terminator.kind != c4c::backend::bir::TerminatorKind::Return) {
             return std::nullopt;
           }
 
@@ -1340,11 +1394,29 @@ inline std::string emit_prepared_module(
             }
 
             const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
-            if (store == nullptr || store->byte_offset != 0 || store->address.has_value()) {
+            if (store == nullptr || store->byte_offset != 0) {
               return std::nullopt;
             }
-            const auto slot_it = layout->offsets.find(store->slot_name);
-            if (slot_it == layout->offsets.end()) {
+            std::optional<std::string> memory;
+            if (store->address.has_value()) {
+              memory = try_render_local_address_operand(
+                  *layout,
+                  store->address,
+                  store->value.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
+                  : store->value.type == c4c::backend::bir::TypeKind::I8 ? "BYTE"
+                                                                         : "DWORD");
+            } else {
+              const auto slot_it = layout->offsets.find(store->slot_name);
+              if (slot_it == layout->offsets.end()) {
+                return std::nullopt;
+              }
+              memory = render_stack_memory_operand(
+                  slot_it->second,
+                  store->value.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
+                  : store->value.type == c4c::backend::bir::TypeKind::I8 ? "BYTE"
+                                                                         : "DWORD");
+            }
+            if (!memory.has_value()) {
               return std::nullopt;
             }
             if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate &&
@@ -1352,7 +1424,7 @@ inline std::string emit_prepared_module(
               *current_i32_name = std::nullopt;
               *current_i8_name = std::nullopt;
               *current_ptr_name = std::nullopt;
-              return "    mov " + render_stack_memory_operand(slot_it->second, "DWORD") + ", " +
+              return "    mov " + *memory + ", " +
                      std::to_string(static_cast<std::int32_t>(store->value.immediate)) + "\n";
             }
             if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
@@ -1361,15 +1433,14 @@ inline std::string emit_prepared_module(
               *current_i32_name = std::nullopt;
               *current_i8_name = std::nullopt;
               *current_ptr_name = std::nullopt;
-              return "    mov " + render_stack_memory_operand(slot_it->second, "DWORD") +
-                     ", eax\n";
+              return "    mov " + *memory + ", eax\n";
             }
             if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate &&
                 store->value.type == c4c::backend::bir::TypeKind::I8) {
               *current_i32_name = std::nullopt;
               *current_i8_name = std::nullopt;
               *current_ptr_name = std::nullopt;
-              return "    mov " + render_stack_memory_operand(slot_it->second, "BYTE") + ", " +
+              return "    mov " + *memory + ", " +
                      std::to_string(static_cast<std::int8_t>(store->value.immediate)) + "\n";
             }
             if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
@@ -1378,8 +1449,7 @@ inline std::string emit_prepared_module(
               *current_i8_name = std::nullopt;
               if (current_ptr_name->has_value() && *current_ptr_name == store->value.name) {
                 *current_ptr_name = std::nullopt;
-                return "    mov " + render_stack_memory_operand(slot_it->second, "QWORD") +
-                       ", rax\n";
+                return "    mov " + *memory + ", rax\n";
               }
               const auto pointee_slot_it = layout->offsets.find(store->value.name);
               if (pointee_slot_it == layout->offsets.end()) {
@@ -1388,8 +1458,7 @@ inline std::string emit_prepared_module(
               }
               *current_ptr_name = std::nullopt;
               return "    lea rax, " + render_stack_address_expr(pointee_slot_it->second) +
-                     "\n    mov " + render_stack_memory_operand(slot_it->second, "QWORD") +
-                     ", rax\n";
+                     "\n    mov " + *memory + ", rax\n";
             }
             return std::nullopt;
           };
@@ -1404,6 +1473,19 @@ inline std::string emit_prepared_module(
               return std::nullopt;
             }
             compare_index = block.insts.size() - 1;
+          } else if (continuation.has_value() &&
+                     block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch &&
+                     !block.insts.empty()) {
+            const auto* branch_compare =
+                std::get_if<c4c::backend::bir::BinaryInst>(&block.insts.back());
+            if (branch_compare != nullptr &&
+                (branch_compare->opcode == c4c::backend::bir::BinaryOpcode::Eq ||
+                 branch_compare->opcode == c4c::backend::bir::BinaryOpcode::Ne) &&
+                branch_compare->operand_type == c4c::backend::bir::TypeKind::I32 &&
+                (branch_compare->result.type == c4c::backend::bir::TypeKind::I1 ||
+                 branch_compare->result.type == c4c::backend::bir::TypeKind::I32)) {
+              compare_index = block.insts.size() - 1;
+            }
           }
 
           for (std::size_t index = 0; index < compare_index; ++index) {
@@ -1452,6 +1534,58 @@ inline std::string emit_prepared_module(
           }
 
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
+            if (continuation.has_value()) {
+              const auto* chained_target = resolve_empty_branch_chain(block.terminator.target_label);
+              if (chained_target != nullptr && chained_target->label == continuation->join_label) {
+                const c4c::backend::bir::BinaryInst* compare = nullptr;
+                if (compare_index + 1 == block.insts.size()) {
+                  compare = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts.back());
+                } else if (compare_index == block.insts.size()) {
+                  compare = continuation->hoisted_compare;
+                }
+                if (compare == nullptr ||
+                    (compare->opcode != c4c::backend::bir::BinaryOpcode::Eq &&
+                     compare->opcode != c4c::backend::bir::BinaryOpcode::Ne) ||
+                    compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
+                    (compare->result.type != c4c::backend::bir::TypeKind::I1 &&
+                     compare->result.type != c4c::backend::bir::TypeKind::I32) ||
+                    !current_i32_name.has_value()) {
+                  return std::nullopt;
+                }
+                const bool lhs_is_current_rhs_is_imm =
+                    compare->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+                    compare->lhs.name == *current_i32_name &&
+                    compare->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+                    compare->rhs.type == c4c::backend::bir::TypeKind::I32;
+                const bool rhs_is_current_lhs_is_imm =
+                    compare->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+                    compare->rhs.name == *current_i32_name &&
+                    compare->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+                    compare->lhs.type == c4c::backend::bir::TypeKind::I32;
+                if (!lhs_is_current_rhs_is_imm && !rhs_is_current_lhs_is_imm) {
+                  return std::nullopt;
+                }
+                const auto compare_immediate = lhs_is_current_rhs_is_imm ? compare->rhs.immediate
+                                                                         : compare->lhs.immediate;
+                const auto rendered_true = render_block(*continuation->true_block, std::nullopt);
+                const auto rendered_false = render_block(*continuation->false_block, std::nullopt);
+                if (!rendered_true.has_value() || !rendered_false.has_value()) {
+                  return std::nullopt;
+                }
+                const std::string false_label =
+                    ".L" + function.name + "_" + std::string(continuation->false_block->label);
+                const char* branch_opcode =
+                    compare->opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je";
+                const auto compare_setup =
+                    compare_immediate == 0
+                        ? std::string("    test eax, eax\n")
+                        : "    cmp eax, " +
+                              std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
+                return body + compare_setup + "    " + std::string(branch_opcode) + " " +
+                       false_label + "\n" + *rendered_true + false_label + ":\n" +
+                       *rendered_false;
+              }
+            }
             if (compare_index != block.insts.size()) {
               return std::nullopt;
             }
@@ -1459,7 +1593,7 @@ inline std::string emit_prepared_module(
             if (target == nullptr || target == &block) {
               return std::nullopt;
             }
-            const auto rendered_target = render_block(*target);
+            const auto rendered_target = render_block(*target, continuation);
             if (!rendered_target.has_value()) {
               return std::nullopt;
             }
@@ -1507,8 +1641,222 @@ inline std::string emit_prepared_module(
             return std::nullopt;
           }
 
-          const auto rendered_true = render_block(*true_block);
-          const auto rendered_false = render_block(*false_block);
+          const auto detect_short_circuit_plan = [&]() -> std::optional<ShortCircuitPlan> {
+            const auto* direct_true_join = resolve_empty_branch_chain(true_block->label);
+            const auto* direct_false_join = resolve_empty_branch_chain(false_block->label);
+            const bool true_short_circuits =
+                direct_true_join != nullptr && direct_true_join != true_block;
+            const bool false_short_circuits =
+                direct_false_join != nullptr && direct_false_join != false_block;
+            if (true_short_circuits == false_short_circuits) {
+              return std::nullopt;
+            }
+            const auto* join_block = true_short_circuits ? direct_true_join : direct_false_join;
+            const auto* rhs_entry = true_short_circuits ? false_block : true_block;
+            if (join_block == nullptr ||
+                join_block->terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
+                join_block->insts.size() < 2 || join_block->insts.size() > 3) {
+              return std::nullopt;
+            }
+
+            const c4c::backend::bir::BinaryInst* hoisted_compare = nullptr;
+            std::size_t select_index = 0;
+            if (join_block->insts.size() == 3) {
+              hoisted_compare =
+                  std::get_if<c4c::backend::bir::BinaryInst>(&join_block->insts.front());
+              if (hoisted_compare == nullptr ||
+                  (hoisted_compare->opcode != c4c::backend::bir::BinaryOpcode::Eq &&
+                   hoisted_compare->opcode != c4c::backend::bir::BinaryOpcode::Ne) ||
+                  hoisted_compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
+                  (hoisted_compare->result.type != c4c::backend::bir::TypeKind::I1 &&
+                   hoisted_compare->result.type != c4c::backend::bir::TypeKind::I32)) {
+                return std::nullopt;
+              }
+              select_index = 1;
+            }
+            const auto* select =
+                std::get_if<c4c::backend::bir::SelectInst>(&join_block->insts[select_index]);
+            if (select == nullptr || select->compare_type != c4c::backend::bir::TypeKind::I32 ||
+                select->predicate != compare->opcode) {
+              return std::nullopt;
+            }
+            const bool select_matches_compare =
+                (select->lhs == compare->lhs && select->rhs == compare->rhs) ||
+                (select->lhs == compare->rhs && select->rhs == compare->lhs);
+            if (!select_matches_compare) {
+              return std::nullopt;
+            }
+
+            const c4c::backend::bir::BinaryInst* branch_compare = nullptr;
+            branch_compare =
+                std::get_if<c4c::backend::bir::BinaryInst>(&join_block->insts.back());
+            if (branch_compare == nullptr ||
+                (branch_compare->opcode != c4c::backend::bir::BinaryOpcode::Eq &&
+                 branch_compare->opcode != c4c::backend::bir::BinaryOpcode::Ne) ||
+                branch_compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
+                join_block->terminator.condition.kind != c4c::backend::bir::Value::Kind::Named ||
+                join_block->terminator.condition.name != branch_compare->result.name) {
+              return std::nullopt;
+            }
+            const bool lhs_is_select_rhs_zero =
+                branch_compare->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+                branch_compare->lhs.name == select->result.name &&
+                branch_compare->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+                branch_compare->rhs.type == c4c::backend::bir::TypeKind::I32 &&
+                branch_compare->rhs.immediate == 0;
+            const bool rhs_is_select_lhs_zero =
+                branch_compare->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+                branch_compare->rhs.name == select->result.name &&
+                branch_compare->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+                branch_compare->lhs.type == c4c::backend::bir::TypeKind::I32 &&
+                branch_compare->lhs.immediate == 0;
+            if (!lhs_is_select_rhs_zero && !rhs_is_select_lhs_zero) {
+              return std::nullopt;
+            }
+
+            const auto* join_true = find_block(join_block->terminator.true_label);
+            const auto* join_false = find_block(join_block->terminator.false_label);
+            if (join_true == nullptr || join_false == nullptr || join_true == join_block ||
+                join_false == join_block) {
+              return std::nullopt;
+            }
+
+            GuardJoinContinuation continuation_plan{
+                .join_label = join_block->label,
+                .true_block = nullptr,
+                .false_block = nullptr,
+                .hoisted_compare = nullptr,
+            };
+            if (branch_compare->opcode == c4c::backend::bir::BinaryOpcode::Ne) {
+              continuation_plan.true_block = join_true;
+              continuation_plan.false_block = join_false;
+            } else {
+              continuation_plan.true_block = join_false;
+              continuation_plan.false_block = join_true;
+            }
+
+            const auto classify_bool_value =
+                [&](const c4c::backend::bir::Value& value)
+                -> std::variant<std::monostate, bool, std::string_view> {
+              if (value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+                  value.type == c4c::backend::bir::TypeKind::I32 &&
+                  (value.immediate == 0 || value.immediate == 1)) {
+                return value.immediate != 0;
+              }
+              if (value.kind == c4c::backend::bir::Value::Kind::Named) {
+                return value.name;
+              }
+              return std::monostate{};
+            };
+
+            const auto true_value_kind = classify_bool_value(select->true_value);
+            const auto false_value_kind = classify_bool_value(select->false_value);
+            const bool true_is_bool = std::holds_alternative<bool>(true_value_kind);
+            const bool false_is_bool = std::holds_alternative<bool>(false_value_kind);
+            const bool true_is_named = std::holds_alternative<std::string_view>(true_value_kind);
+            const bool false_is_named = std::holds_alternative<std::string_view>(false_value_kind);
+            if (!((true_is_bool && false_is_named) || (true_is_named && false_is_bool))) {
+              return std::nullopt;
+            }
+            const auto named_value =
+                true_is_named ? std::get<std::string_view>(true_value_kind)
+                              : std::get<std::string_view>(false_value_kind);
+            if (hoisted_compare != nullptr && hoisted_compare->result.name == named_value) {
+              continuation_plan.hoisted_compare = hoisted_compare;
+            } else if (hoisted_compare != nullptr) {
+              return std::nullopt;
+            }
+
+            ShortCircuitPlan plan;
+            plan.continuation = continuation_plan;
+            auto assign_short_circuit = [&](bool compare_truth, bool bool_value) {
+              const auto* target =
+                  bool_value ? continuation_plan.true_block : continuation_plan.false_block;
+              if (compare_truth) {
+                plan.on_compare_true = target;
+                plan.on_compare_true_uses_continuation = false;
+              } else {
+                plan.on_compare_false = target;
+                plan.on_compare_false_uses_continuation = false;
+              }
+            };
+            auto assign_rhs = [&](bool compare_truth) {
+              if (compare_truth) {
+                plan.on_compare_true = rhs_entry;
+                plan.on_compare_true_uses_continuation = true;
+              } else {
+                plan.on_compare_false = rhs_entry;
+                plan.on_compare_false_uses_continuation = true;
+              }
+            };
+
+            if (true_is_bool) {
+              assign_short_circuit(true, std::get<bool>(true_value_kind));
+              assign_rhs(false);
+            } else {
+              assign_rhs(true);
+              assign_short_circuit(false, std::get<bool>(false_value_kind));
+            }
+            if (plan.on_compare_true == nullptr || plan.on_compare_false == nullptr) {
+              return std::nullopt;
+            }
+            return plan;
+          };
+          if (const auto short_circuit_plan = detect_short_circuit_plan();
+              short_circuit_plan.has_value()) {
+            if (short_circuit_plan->on_compare_true_uses_continuation &&
+                short_circuit_plan->on_compare_false ==
+                    short_circuit_plan->continuation.false_block) {
+              const auto rendered_rhs = render_block(
+                  *short_circuit_plan->on_compare_true,
+                  std::optional<GuardJoinContinuation>(short_circuit_plan->continuation));
+              if (!rendered_rhs.has_value()) {
+                return std::nullopt;
+              }
+              const std::string false_label =
+                  ".L" + function.name + "_" +
+                  std::string(short_circuit_plan->on_compare_false->label);
+              const char* branch_opcode =
+                  compare->opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je";
+              const auto compare_setup =
+                  compare_immediate == 0
+                      ? std::string("    test eax, eax\n")
+                      : "    cmp eax, " +
+                            std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
+              return body + compare_setup + "    " + std::string(branch_opcode) + " " +
+                     false_label + "\n" + *rendered_rhs;
+            }
+            const auto rendered_true =
+                render_block(*short_circuit_plan->on_compare_true,
+                             short_circuit_plan->on_compare_true_uses_continuation
+                                 ? std::optional<GuardJoinContinuation>(
+                                       short_circuit_plan->continuation)
+                                 : std::nullopt);
+            const auto rendered_false =
+                render_block(*short_circuit_plan->on_compare_false,
+                             short_circuit_plan->on_compare_false_uses_continuation
+                                 ? std::optional<GuardJoinContinuation>(
+                                       short_circuit_plan->continuation)
+                                 : std::nullopt);
+            if (!rendered_true.has_value() || !rendered_false.has_value()) {
+              return std::nullopt;
+            }
+            const std::string false_label =
+                ".L" + function.name + "_" + std::string(short_circuit_plan->on_compare_false->label);
+            const char* branch_opcode =
+                compare->opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je";
+            const auto compare_setup =
+                compare_immediate == 0
+                    ? std::string("    test eax, eax\n")
+                    : "    cmp eax, " +
+                          std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
+            return body + compare_setup + "    " + std::string(branch_opcode) + " " +
+                   false_label + "\n" + *rendered_true + false_label + ":\n" +
+                   *rendered_false;
+          }
+
+          const auto rendered_true = render_block(*true_block, std::nullopt);
+          const auto rendered_false = render_block(*false_block, std::nullopt);
           if (!rendered_true.has_value() || !rendered_false.has_value()) {
             return std::nullopt;
           }
@@ -1530,7 +1878,7 @@ inline std::string emit_prepared_module(
     if (layout->frame_size != 0) {
       asm_text += "    sub rsp, " + std::to_string(layout->frame_size) + "\n";
     }
-    const auto rendered_entry = render_block(entry);
+    const auto rendered_entry = render_block(entry, std::nullopt);
     if (!rendered_entry.has_value()) {
       return std::nullopt;
     }

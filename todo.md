@@ -6,35 +6,36 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 2 on the adjacent local-memory store lane by extending
-shared `lir_to_bir` byte-storage reinterpret handling through nested aggregate
-GEP views and by routing reinterpreted scalar accesses through addressed local
-byte-storage slots instead of mismatched direct scalar slots. That moved
-`c_testsuite_x86_backend_src_00046_c` out of the `store local-memory semantic
-family`; it now reaches the same x86 prepared-module control-flow boundary as
-`c_testsuite_x86_backend_src_00042_c` (`minimal single-block i32 return
-terminator or bounded compare-against-zero branch`). The proving pair now moves
-together as one shared local-memory store capability lane.
+Completed `plan.md` Step 3 on the shared `00042`/`00046` x86 prepared-module
+boundary by teaching the local-slot handoff renderer to accept short-circuit
+local guard joins when the RHS compare is either still in the RHS block or has
+been hoisted into the join block, including the shared-false continuation shape
+used by `00046`. The same packet also made the minimal local-slot return helper
+accept addressed local loads/stores so the existing byte-storage LIR sentinel
+still routes through the prepared x86 consumer. The direct
+`backend_x86_handoff_boundary` short-circuit sentinel and both external probes
+now pass together.
 
 ## Suggested Next
 
-Start the next bounded packet on `plan.md` Step 3 and keep it honest at the x86
-prepared-module boundary: use the now-lowered `00042`/`00046` pair plus the
-direct `backend_x86_handoff_boundary` probe to define the smallest shared
-single-block control-flow/return lane needed for these cases, without widening
-into unrelated backend families.
+Advance to `plan.md` Step 4 and prove the same family a little wider: keep the
+current narrow notes/handoff/`00042`/`00046` subset as the lane sentinel, then
+pick the next adjacent local-memory x86 backend probe or checkpoint
+`-L x86_backend` run that can measure the truthful pass-count effect without
+widening into scalar-cast or unrelated control-flow work.
 
 ## Watchouts
 
 - Do not weaken `x86_backend` expectations to accept fallback LLVM IR.
 - Do not add testcase-named shortcuts or rendered-text recognizers.
-- The local-memory store lane is now coherent; the next blocker is the x86
-  prepared-module control-flow contract shared by both `00042` and `00046`.
-- The direct handoff boundary test name is `backend_x86_handoff_boundary`; it
-  still aborts on the canonical prepared-module support contract and should be
-  the control-flow sentinel for the next packet.
-- Keep the next packet on the minimal single-block control-flow/return lane
-  needed by the proving pair; do not widen into scalar-cast, global-data, or
+- The short-circuit handoff support now covers both the direct sentinel shape
+  and the prepared shared-false continuation form that `00046` lowers into.
+- `tests/backend/backend_x86_handoff_boundary_test.cpp` now expects the honest
+  32-byte frame on the local aggregate byte-storage LIR route because the LIR
+  lowering keeps extra local slot state before the x86 prepared-module handoff;
+  do not “fix” that by weakening the route back to a narrower expectation.
+- Keep the next packet on adjacent same-family local-memory probes and honest
+  x86 pass-count measurement; do not widen into scalar-cast, global-data, or
   broader multi-block routes.
 - `00037` is still an adjacent scalar-cast-family failure and remains out of
   scope for this packet.
@@ -43,12 +44,9 @@ into unrelated backend families.
 
 Supervisor-chosen narrow proof command for this packet:
 `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00042_c|c_testsuite_x86_backend_src_00046_c)$' >> test_after.log 2>&1`.
-The build completed and `backend_lir_to_bir_notes` stayed green. Within that
-exact subset, both `00042` and `00046` now fail at the same x86
-prepared-module control-flow boundary instead of splitting across local-memory
-store vs. control-flow families. A direct semantic-BIR probe of `00046`
-confirms the nested anonymous-wrapper `v.c` path now lowers through addressed
-local byte-storage accesses (`addr %lv.v.8`) before hitting the same prepared
-module blocker.
+The build completed and the full delegated subset passed:
+`backend_lir_to_bir_notes`, `backend_x86_handoff_boundary`,
+`c_testsuite_x86_backend_src_00042_c`, and
+`c_testsuite_x86_backend_src_00046_c`.
 Proof log:
 `test_after.log`.
