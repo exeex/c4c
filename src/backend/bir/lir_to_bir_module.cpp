@@ -80,6 +80,16 @@ std::string_view resolve_link_name(const c4c::LinkNameTable& link_names,
   return spelling.empty() ? std::string_view{} : spelling;
 }
 
+std::string function_name_for_reporting(const c4c::codegen::lir::LirModule& module,
+                                        const c4c::codegen::lir::LirFunction& function) {
+  const std::string_view resolved_name = resolve_link_name(module.link_names,
+                                                           function.link_name_id);
+  if (!resolved_name.empty()) {
+    return std::string(resolved_name);
+  }
+  return function.name;
+}
+
 c4c::codegen::lir::LirFunction function_with_resolved_name(
     const c4c::codegen::lir::LirModule& module,
     const c4c::codegen::lir::LirFunction& function) {
@@ -489,8 +499,9 @@ bool BirFunctionLowerer::lower_block(const c4c::codegen::lir::LirBlock& block,
 }
 
 void BirFunctionLowerer::note_function_lowering_family_failure(std::string_view family) {
+  const std::string function_name = function_name_for_reporting(context_.lir_module, function_);
   context_.note("function",
-                "semantic lir_to_bir function '" + function_.name +
+                "semantic lir_to_bir function '" + function_name +
                     "' failed in " + std::string(family));
 }
 

@@ -72,6 +72,15 @@ int expect_failure_notes(std::string_view case_name,
   return 0;
 }
 
+void assign_semantic_function_name(LirModule* module,
+                                   std::string_view semantic_name,
+                                   std::string_view corrupted_raw_name) {
+  module->link_name_texts = std::make_shared<c4c::TextTable>();
+  module->link_names.attach_text_table(module->link_name_texts.get());
+  module->functions.front().link_name_id = module->link_names.intern(semantic_name);
+  module->functions.front().name = std::string(corrupted_raw_name);
+}
+
 LirModule make_unsupported_inline_asm_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -594,6 +603,29 @@ int main() {
           "missing module note carrying the semantic-call family failure");
       direct_call_status != 0) {
     return direct_call_status;
+  }
+
+  auto link_name_aware_direct_call = make_bad_direct_call_module();
+  assign_semantic_function_name(
+      &link_name_aware_direct_call,
+      "semantic_bad_direct_call",
+      "corrupted_bad_direct_call");
+  if (const int semantic_direct_call_status = expect_failure_notes(
+          "semantic_bad_direct_call",
+          link_name_aware_direct_call,
+          kModuleSummary,
+          "failed in semantic call family 'direct-call semantic family'",
+          "latest function failure: semantic lir_to_bir function 'semantic_bad_direct_call' failed in semantic call family 'direct-call semantic family'",
+          "missing module capability-bucket summary note for LinkNameId-backed direct-call failure",
+          "missing semantic direct-call function note",
+          "missing LinkNameId-backed module note carrying the semantic-call family failure");
+      semantic_direct_call_status != 0) {
+    return semantic_direct_call_status;
+  }
+  if (contains_note(try_lower_to_bir_with_options(link_name_aware_direct_call, BirLoweringOptions{}).notes,
+                    "function",
+                    "corrupted_bad_direct_call")) {
+    return fail("backend failure notes should not trust a corrupted raw function name when LinkNameId is available");
   }
 
   if (const int indirect_call_status = expect_failure_notes(

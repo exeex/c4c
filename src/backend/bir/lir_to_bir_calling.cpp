@@ -6,6 +6,23 @@ namespace c4c::backend {
 
 namespace {
 
+std::string_view resolve_link_name(const c4c::LinkNameTable& link_names,
+                                   c4c::LinkNameId id) {
+  if (id == c4c::kInvalidLinkName) return {};
+  const std::string_view spelling = link_names.spelling(id);
+  return spelling.empty() ? std::string_view{} : spelling;
+}
+
+std::string function_name_for_reporting(const c4c::codegen::lir::LirModule& module,
+                                        const c4c::codegen::lir::LirFunction& function) {
+  const std::string_view resolved_name = resolve_link_name(module.link_names,
+                                                           function.link_name_id);
+  if (!resolved_name.empty()) {
+    return std::string(resolved_name);
+  }
+  return function.name;
+}
+
 std::optional<std::string> parse_byval_pointee_type(std::string_view type_text) {
   constexpr std::string_view kPrefix = "ptr byval(";
 
@@ -1009,14 +1026,16 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
 }
 
 void BirFunctionLowerer::note_semantic_call_family_failure(std::string_view family) {
+  const std::string function_name = function_name_for_reporting(context_.lir_module, function_);
   context_.note("function",
-                "semantic lir_to_bir function '" + function_.name +
+                "semantic lir_to_bir function '" + function_name +
                     "' failed in semantic call family '" + std::string(family) + "'");
 }
 
 void BirFunctionLowerer::note_runtime_intrinsic_family_failure(std::string_view family) {
+  const std::string function_name = function_name_for_reporting(context_.lir_module, function_);
   context_.note("function",
-                "semantic lir_to_bir function '" + function_.name +
+                "semantic lir_to_bir function '" + function_name +
                     "' failed in runtime/intrinsic family '" + std::string(family) + "'");
 }
 

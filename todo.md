@@ -6,15 +6,15 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Carried `LinkNameId` through `LirExternDecl` so late consumer boundaries now
-resolve extern declaration spellings from ids when one is already present on
-the carrier, while leaving unresolved externs without a real source of truth
-at `kInvalidLinkName`.
+Hardened backend `lir_to_bir` failure-note reporting so function-level
+diagnostic paths resolve semantic names from `LinkNameId` when present instead
+of trusting a possibly corrupted raw LIR `name`, and added backend notes
+coverage that proves the reported function name comes from the id-backed path.
 
 ## Suggested Next
 
-Review backend diagnostic and reporting paths that still look at raw LIR
-names instead of the resolved module view, and only extend `LinkNameId`
+Review whether any remaining backend module-level or non-failure reporting
+surfaces still depend on raw LIR symbol names, and only extend `LinkNameId`
 carriers further when a real HIR or LIR semantic source exists.
 
 ## Watchouts
@@ -31,6 +31,9 @@ carriers further when a real HIR or LIR semantic source exists.
 - the new direct-call carrier only becomes valid when the callee resolves to an
   existing HIR `Function`; intrinsic/builtin aliases and unresolved extern
   calls should continue to flow with `kInvalidLinkName`
+- this packet only hardened function-level backend failure notes; other
+  reporting surfaces should still be audited individually before assuming the
+  backend is fully id-driven
 - keep forwarding explicit ids through LIR carriers and resolve them only at
   late consumers rather than treating legacy `name` strings as the semantic
   source of truth
@@ -40,6 +43,6 @@ carriers further when a real HIR or LIR semantic source exists.
 ## Proof
 
 Build: `cmake --build --preset default -j4`
-Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
+Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^backend_'`
 Result: passed
 Log: `test_after.log`
