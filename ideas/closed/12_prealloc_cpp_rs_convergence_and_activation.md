@@ -142,3 +142,16 @@ Take `stack_layout` first: tighten the C++ stack-layout contract so it matches
 the retained Rust phase responsibilities more closely, then add a bounded test
 that proves the active C++ path changes prepared stack-layout output for a real
 function shape inside the c4c framework.
+
+## Closure Notes
+
+- Closed on 2026-04-17 after the active C++ `stack_layout`, `liveness`, and
+  `regalloc` routes were all runtime-proven in the backend pipeline and each
+  phase gained explicit C++ vs Rust comparison coverage under
+  `src/backend/prealloc/*_comparison.md`.
+- Step 5 acceptance finished with bounded divergences called out explicitly
+  instead of hidden in the code: retained Rust-only behavior still exists, but
+  the active c4c route is no longer placeholder-driven.
+- Close-time backend regression guard passed against the last plan checkpoint
+  `bcefa36b`: `^backend_` improved from `70/70` passing tests to `71/71` with
+  no new failures.
