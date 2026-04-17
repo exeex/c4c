@@ -6,21 +6,18 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 1 `Name The First Prepared Guard Lane` by classifying
-the next x86 prepared-handoff family as straight-line `i32` equality guards
-with immediate-coded early returns over already-prepared operands. The core
-proving cluster is `00047`, `00048`, `00054`, and `00055`; `00049` remains an
-adjacent pointer-indirect variant that fails at the same emitter boundary but
-is not required to name the first lane.
+Completed `plan.md` Step 3 `Keep The Boundary Truthful` by tightening the
+current equality-against-immediate guard slice to the honest non-global
+prepared x86 lane, adding handoff coverage for an immediate-only guard chain,
+and leaving global-backed equality guards explicitly rejected. The accepted
+same-family proving cluster for this slice is now `00054` and `00055`.
 
 ## Suggested Next
 
-Start `plan.md` Step 2 by widening the prepared x86 guard path from the current
-compare-against-zero route to straight-line equality-against-immediate guard
-chains with immediate return leaves. Prove against the core cluster
-`00047`/`00048`/`00054`/`00055`, and only pull in `00049` if the shared operand
-rendering covers pointer-indirect prepared values without separate global-data
-work.
+Stay on `plan.md` Step 4 and prove the narrowed non-global equality-guard lane
+as a coherent family around `00054`/`00055`. If the supervisor wants a broader
+checkpoint after this slice, keep `00047`/`00048`/`00049` out of the proving
+cluster unless the route is explicitly widened to same-module global emission.
 
 ## Watchouts
 
@@ -28,18 +25,18 @@ work.
 - Do not add testcase-named shortcuts or rendered-text recognizers.
 - Keep this route at the prepared x86 handoff boundary; do not reopen semantic
   local-memory work as routine follow-up.
+- The accepted lane is non-global only; do not reintroduce partial prepared-
+  global operand support without an honest same-module global emission route.
+- `00047` and `00048` remain nearby global-backed equality-guard cases, and
+  `00049` remains an adjacent pointer-indirect/global variant on top of that
+  same dependency.
 - `00045` is still the bootstrap global-data family, `00037` is still a
   scalar-cast family, and `00051` is still multi-block control-flow.
-- `00049` shares the same minimal return/guard failure note, but it adds a
-  pointer-indirect prepared input and should stay adjacent until the core
-  equality-guard lane lands honestly.
 
 ## Proof
 
-Executed the delegated Step 1 proof command:
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|backend_lir_to_bir_notes|c_testsuite_x86_backend_src_00047_c|c_testsuite_x86_backend_src_00048_c|c_testsuite_x86_backend_src_00049_c|c_testsuite_x86_backend_src_00054_c|c_testsuite_x86_backend_src_00055_c)$' >> test_after.log 2>&1`.
-`backend_lir_to_bir_notes` and `backend_x86_handoff_boundary` passed. The
-sampled c-tests `00047`, `00048`, `00049`, `00054`, and `00055` all failed
-with the same x86 emitter note stating that only the minimal single-block
-return terminator or bounded compare-against-zero branch family is currently
-supported. Proof log: `test_after.log`.
+Executed the delegated Step 3 proof command:
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|backend_lir_to_bir_notes|c_testsuite_x86_backend_src_00054_c|c_testsuite_x86_backend_src_00055_c)$' >> test_after.log 2>&1`.
+`backend_lir_to_bir_notes`, `backend_x86_handoff_boundary`,
+`c_testsuite_x86_backend_src_00054_c`, and
+`c_testsuite_x86_backend_src_00055_c` all passed. Proof log: `test_after.log`.

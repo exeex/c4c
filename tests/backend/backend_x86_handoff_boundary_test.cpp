@@ -268,6 +268,23 @@ std::string expected_minimal_local_i32_short_circuit_or_guard_asm(const char* fu
          "    ret\n";
 }
 
+std::string expected_minimal_i32_immediate_guard_chain_asm(const char* function_name) {
+  return asm_header(function_name) + "    mov eax, 0\n"
+         "    cmp eax, 0\n"
+         "    je .L" + std::string(function_name) + "_block_2\n"
+         "    mov eax, 1\n"
+         "    ret\n"
+         ".L" + function_name + "_block_2:\n"
+         "    mov eax, 1\n"
+         "    cmp eax, 1\n"
+         "    je .L" + std::string(function_name) + "_block_4\n"
+         "    mov eax, 2\n"
+         "    ret\n"
+         ".L" + function_name + "_block_4:\n"
+         "    mov eax, 0\n"
+         "    ret\n";
+}
+
 std::string expected_minimal_param_add_immediate_asm(const char* function_name, int immediate) {
   return expected_minimal_param_binary_asm(function_name, "add", immediate);
 }
@@ -2092,6 +2109,115 @@ bir::Module make_x86_local_i32_short_circuit_or_guard_module() {
   return module;
 }
 
+bir::Module make_x86_immediate_i32_guard_chain_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cmp.entry"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(0),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cmp.entry"),
+      .true_label = "block_1",
+      .false_label = "block_2",
+  };
+
+  bir::Block block_1;
+  block_1.label = "block_1";
+  block_1.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+
+  bir::Block block_2;
+  block_2.label = "block_2";
+  block_2.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cmp.second"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  block_2.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cmp.second"),
+      .true_label = "block_3",
+      .false_label = "block_4",
+  };
+
+  bir::Block block_3;
+  block_3.label = "block_3";
+  block_3.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(2)};
+
+  bir::Block block_4;
+  block_4.label = "block_4";
+  block_4.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  function.blocks.push_back(std::move(block_3));
+  function.blocks.push_back(std::move(block_4));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_unsupported_x86_global_i32_guard_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.globals.push_back(bir::Global{
+      .name = "s",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(1),
+  });
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded"),
+      .global_name = "s",
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cmp.global"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "loaded"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cmp.global"),
+      .true_label = "block_1",
+      .false_label = "block_2",
+  };
+
+  bir::Block block_1;
+  block_1.label = "block_1";
+  block_1.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+
+  bir::Block block_2;
+  block_2.label = "block_2";
+  block_2.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 lir::LirModule make_x86_return_constant_lir_module() {
   lir::LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -2513,6 +2639,57 @@ int check_route_outputs(const bir::Module& module,
   return 0;
 }
 
+int check_route_rejection(const bir::Module& module,
+                          std::string_view expected_message_fragment,
+                          const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  const auto prepared =
+      c4c::backend::prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted an out-of-scope route")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find(expected_message_fragment) == std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the out-of-scope route with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  try {
+    (void)c4c::backend::emit_target_bir_module(module, target_profile);
+    return fail((std::string(failure_context) +
+                 ": public x86 BIR entry unexpectedly kept a mixed bootstrap fallback alive")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find(expected_message_fragment) == std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": public x86 BIR entry rejected the out-of-scope route with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  try {
+    (void)c4c::backend::emit_module(
+        BackendModuleInput{module}, BackendOptions{.target_profile = x86_target_profile()});
+    return fail((std::string(failure_context) +
+                 ": generic x86 backend emit path unexpectedly kept a mixed bootstrap fallback alive")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find(expected_message_fragment) == std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": generic x86 backend emit path rejected the out-of-scope route with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_lir_route_outputs(const lir::LirModule& module,
                             const std::string& expected_asm,
                             const char* failure_context) {
@@ -2833,6 +3010,24 @@ int main() {
                               expected_minimal_local_i32_short_circuit_or_guard_asm("main"),
                               "select ne i32 %t3, 3, i32 1, %t13",
                               "minimal local-slot short-circuit or-guard route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(make_x86_immediate_i32_guard_chain_module(),
+                              expected_minimal_i32_immediate_guard_chain_asm("main"),
+                              "cmp.second = bir.ne i32 1, 1",
+                              "minimal non-global equality-against-immediate guard-chain route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_rejection(
+              make_unsupported_x86_global_i32_guard_module(),
+              "bounded equality-against-immediate guard family",
+              "global-backed equality-against-immediate guard route");
       status != 0) {
     return status;
   }
