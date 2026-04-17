@@ -645,6 +645,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .args = {*lowered_ap},
         .arg_types = {bir::TypeKind::Ptr},
         .return_type = *lowered_type,
+        .result_abi = lower_function_return_abi(*lowered_type, false),
     });
     return true;
   };
@@ -673,6 +674,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         return fail_runtime_family("inline-asm placeholder family");
       }
       lowered_call.result = bir::Value::named(*lowered_type, inline_asm.result.str());
+      lowered_call.result_abi = lower_function_return_abi(*lowered_type, false);
       lowered_call.return_type = *lowered_type;
     } else if (!inline_asm.result.empty()) {
       return fail_runtime_family("inline-asm placeholder family");
@@ -776,6 +778,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .args = {*lowered_arg},
         .arg_types = {value_type},
         .return_type = value_type,
+        .result_abi = lower_function_return_abi(value_type, false),
     });
     return true;
   };
@@ -826,6 +829,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .result = bir::Value::named(bir::TypeKind::Ptr, stacksave->result.str()),
         .callee = "llvm.stacksave",
         .return_type = bir::TypeKind::Ptr,
+        .result_abi = lower_function_return_abi(bir::TypeKind::Ptr, false),
     });
     return true;
   }

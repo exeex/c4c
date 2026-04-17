@@ -6,23 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Threaded lowering-owned call result ABI through the shared direct/indirect
-call lowering path by copying `LoweredReturnInfo.abi` into
-`bir::CallInst.result_abi`, so real lowered calls now carry explicit result ABI
-metadata instead of leaving the active prealloc route to cope with a missing
-call-site contract.
+Threaded lowering-owned call result ABI through helper-emitted
+runtime/intrinsic call builders in `lir_to_bir_calling.cpp`, so scalar/pointer
+helpers that bypass the shared direct/indirect lowering path now publish
+explicit `bir::CallInst.result_abi` metadata instead of leaving the active
+prealloc route to infer or guess the call-site contract.
 
 Focused `backend_prepare_liveness` coverage now proves that a real lowered
-RISC-V float call keeps explicit `result_abi` metadata in BIR and publishes the
-expected `call_result_stack_to_register` move into `fa0` after legalize,
-liveness, and regalloc run through the active prepare pipeline.
+helper-built `llvm.fabs.float` call keeps explicit `result_abi` metadata in
+BIR and publishes the expected `call_result_stack_to_register` move into `fa0`
+after legalize, liveness, and regalloc run through the active prepare
+pipeline.
 
 ## Suggested Next
 
-Apply the same ownership rule to helper-emitted call forms that still bypass
-the shared call-lowering handoff, especially runtime/intrinsic call builders in
-`lir_to_bir_calling.cpp` and any call-argument ABI fields whose memory/sret
-shape is already known at lowering time.
+Audit helper-emitted call-argument ABI fields whose memory/sret shape is
+already known at lowering time, especially variadic aggregate/runtime builders
+and any remaining helper-built call sites outside the shared call-lowering
+handoff.
 
 ## Watchouts
 
@@ -53,9 +54,10 @@ shape is already known at lowering time.
   resolution consumes; it is currently synthesized during legalization from the
   legalized function return type when the route has no better source ABI data
 - shared direct/indirect call lowering now sets `bir::CallInst.result_abi`
-  from `LoweredReturnInfo.abi`; helper-emitted call sites outside
-  `lir_to_bir_memory.cpp` still need their own audit before assuming full
-  call-site ABI coverage
+  from `LoweredReturnInfo.abi`, and helper-built scalar/pointer runtime call
+  sites in `lir_to_bir_calling.cpp` now do the same; helper-emitted
+  call-argument ABI fields and any remaining helper-built call sites still need
+  their own audit before assuming full call-site ABI coverage
 - lowered aggregate/sret functions can now legitimately carry
   `return_abi={type=Void, primary_class=Memory, returned_in_memory=true}`;
   prepare legalize must preserve that metadata instead of treating all
@@ -90,7 +92,7 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_liveness$ > test_after.log
 2>&1`
-after threading lowering-owned call result ABI metadata into the shared
-`bir::CallInst` lowering path and proving it on a real lowered float call in
-the active prepare/regalloc route.
+after threading lowering-owned call result ABI metadata into helper-built
+runtime/intrinsic `bir::CallInst` lowering paths and proving it on a real
+lowered helper-built float call in the active prepare/regalloc route.
 Canonical proof log: `test_after.log`.
