@@ -381,8 +381,11 @@ void Lowerer::materialize_hir_template_defs(Module& m) {
     tdef.is_consteval = fn_def->is_consteval;
     tdef.span = make_span(fn_def);
     for (int i = 0; i < fn_def->n_template_params; ++i) {
-      if (fn_def->template_param_names[i])
+      if (fn_def->template_param_names[i]) {
         tdef.template_params.emplace_back(fn_def->template_param_names[i]);
+        tdef.template_param_text_ids.push_back(
+            make_text_id(tdef.template_params.back(), m.link_name_texts.get()));
+      }
       tdef.param_is_nttp.push_back(
           fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]);
     }

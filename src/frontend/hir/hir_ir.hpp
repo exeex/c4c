@@ -928,6 +928,7 @@ struct HirTemplateDef {
   SymbolName name;                                  // generic name (e.g. "add")
   TextId name_text_id = kInvalidText;               // stable template name in module.link_name_texts
   std::vector<std::string> template_params;         // parameter names (e.g. ["T"])
+  std::vector<TextId> template_param_text_ids;      // stable template parameter spellings in module.link_name_texts
   std::vector<bool> param_is_nttp;                  // true if param is non-type (int N)
   bool is_consteval = false;                        // consteval template functions
   std::vector<HirTemplateInstantiation> instances;  // instantiations produced

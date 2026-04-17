@@ -7,24 +7,24 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed `plan.md` Step 2 / Step 4 for the bounded HIR template-definition
-name carrier route in `hir_ir.hpp`, `hir_build.cpp`, and
+parameter-spelling route in `hir_ir.hpp`, `hir_build.cpp`, and
 `frontend_hir_tests.cpp`.
 
-- Added parallel HIR `HirTemplateDef::name_text_id` storage so preserved
-  template definitions are no longer string-only for their stable HIR-owned
-  spelling.
-- Threaded template-definition name interning through
+- Added parallel HIR `HirTemplateDef::template_param_text_ids` storage so
+  preserved template parameter spellings are no longer string-only in template
+  metadata.
+- Threaded template-parameter interning through
   `materialize_hir_template_defs()` using `module.link_name_texts` without
   collapsing `TextId`, `SymbolId`, or `LinkNameId`.
-- Extended focused HIR proof so preserved template metadata resolves its
-  parallel `TextId` through the HIR module text table.
+- Extended focused HIR proof so preserved template parameter metadata resolves
+  its parallel `TextId`s through the HIR module text table.
 
 ## Suggested Next
 
-Keep Step 2 bounded: choose one nearby declaration-side HIR carrier that still
-stores stable TU text as `std::string`, such as a template parameter spelling
-or another preserved declaration name, instead of widening into broader
-registry/index churn.
+Keep Step 2 bounded: choose one nearby HIR metadata carrier that still stores
+stable TU text as `std::string`, such as
+`TemplateCallInfo::source_template` or `ConstevalCallInfo::fn_name`, instead of
+widening into broader registry/index churn.
 
 ## Watchouts
 
@@ -32,10 +32,12 @@ registry/index churn.
 - HIR must intern its own spellings into `module.link_name_texts`; parser-owned
   `TextId`s cannot be copied directly into HIR because they belong to a
   different table.
-- `HirTemplateDef::name_text_id` now needs to stay aligned anywhere template
-  metadata gets synthesized or rewritten after `materialize_hir_template_defs()`.
+- `HirTemplateDef::template_param_text_ids` now needs to stay aligned with
+  `template_params` anywhere template metadata gets synthesized or rewritten
+  after `materialize_hir_template_defs()`.
 - The `template_defs` map is still keyed by string for untouched consumers, so
-  keep this slice limited to parallel storage rather than registry churn.
+  keep this slice limited to parallel storage; compile-time consumers still use
+  `template_params` string spellings for binding lookup.
 - Keep diagnostic/debug/serialization strings out of scope.
 - Do not absorb unrelated EASTL lifecycle churn into this plan.
 

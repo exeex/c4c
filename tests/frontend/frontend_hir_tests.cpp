@@ -218,6 +218,16 @@ int use_template() { return id<int>(add_one(global_value)); }
               "template metadata should materialize a stable TextId for the template name");
   expect_eq(module.link_name_texts->lookup(tpl_it->second.name_text_id), tpl_it->second.name,
             "template metadata TextId should resolve through the HIR module text table");
+  expect_true(tpl_it->second.template_param_text_ids.size() ==
+                  tpl_it->second.template_params.size(),
+              "template metadata should preserve one parallel TextId per template parameter");
+  expect_true(!tpl_it->second.template_param_text_ids.empty(),
+              "template metadata should materialize TextIds for preserved template parameter spellings");
+  expect_true(tpl_it->second.template_param_text_ids.front() != c4c::kInvalidText,
+              "template parameter metadata should preserve a valid TextId");
+  expect_eq(module.link_name_texts->lookup(tpl_it->second.template_param_text_ids.front()),
+            tpl_it->second.template_params.front(),
+            "template parameter TextIds should resolve through the HIR module text table");
   expect_true(!tpl_it->second.instances.empty(),
               "template metadata should capture realized instantiations");
   const c4c::hir::HirTemplateInstantiation& instance = tpl_it->second.instances.front();
