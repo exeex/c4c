@@ -53,6 +53,7 @@ These are intentionally different tables even when the underlying text matches.
 
 The semantic split is:
 
+- `TextId("foo")` means the TU-global text entry for the bytes `"foo"`
 - `SymbolId("foo")` means source-atom identity
 - `LinkNameId("foo")` means final logical symbol identity for emitted code
 
@@ -66,28 +67,69 @@ The semantic split is:
   wherever the data represents a final link-visible name
 - backend-private temporary names are out of scope for the first slice
 
+## Existing Repo Shape
+
+This idea should follow the repo's current string-id architecture rather than
+inventing a second owning string store.
+
+Relevant existing files:
+
+- [src/frontend/string_id_table.hpp](/workspaces/c4c/src/frontend/string_id_table.hpp)
+- [src/frontend/parser/parser.hpp](/workspaces/c4c/src/frontend/parser/parser.hpp)
+
+Current useful properties already exist:
+
+- `StringIdTable` is TU-scoped immutable string storage
+- the table owns the underlying strings
+- it is append-only during the TU lifetime
+- the table does not model scope or symbol semantics; equal text just means
+  equal text
+- parser `SymbolTable` already follows the pattern `SymbolId -> TextId`
+
+That means the natural design here is not "a new table that owns a second copy
+of link-name strings". It is "a new semantic id space backed by the existing TU
+text table".
+
 ## Data Model
 
+The first version should be `TextTable`-backed:
+
 ```cpp
+using TextId = uint32_t;
 using LinkNameId = uint32_t;
 constexpr LinkNameId kInvalidLinkName = 0;
 
 class LinkNameTable {
  public:
+  explicit LinkNameTable(TextTable* texts = nullptr);
+
+  LinkNameId intern(TextId text_id);
   LinkNameId intern(std::string_view logical_name);
-  std::string_view lookup(LinkNameId id) const;
+
+  TextId text_id(LinkNameId id) const;
+  std::string_view spelling(LinkNameId id) const;
 
  private:
-  std::vector<std::string> text_by_id_;
-  std::unordered_map<std::string, LinkNameId> id_by_text_;
+  TextTable* texts_ = nullptr;
+  KeyIdTable<LinkNameId, kInvalidLinkName, TextId> link_name_ids_;
 };
 ```
+
+This keeps one clear separation:
+
+- `TextTable` owns bytes
+- `LinkNameTable` owns only the semantic id space for final logical names
 
 This table is separate from:
 
 - source-atom symbol tables
-- raw token/text tables
+- raw token/text ownership
 - file tables
+
+And it should **not** collapse `LinkNameId` into `TextId`.
+
+The fact that two final logical symbols happen to share the same text does not
+mean the semantic role of `TextId` and `LinkNameId` should merge.
 
 ## Correct Boundary
 
@@ -139,6 +181,13 @@ A good first rule is:
 - later consumers that need text lookup use that same table rather than
   reconstructing names ad hoc
 
+Because this repo already has a TU-global text table model, that ownership
+should look more like:
+
+- TU text table owns bytes
+- HIR/LIR/module boundary owns or references `LinkNameTable`
+- `LinkNameTable` references the same TU text table
+
 ### 3. Final String Lookup Happens At The Last Consumer Boundary
 
 The backend is the most obvious consumer of final symbol strings, but it is not
@@ -169,6 +218,7 @@ The first slice should not absorb:
 - define `LinkNameId`
 - define `LinkNameTable`
 - add a clear invalid sentinel
+- make it explicitly `TextTable`-backed rather than a second owning string pool
 
 ### 2. Extend HIR Symbol Carriers
 
@@ -200,11 +250,22 @@ Suggested ownership shape:
 ```cpp
 struct LoweringTables {
   LinkNameTable* link_names = nullptr;
+  TextTable* texts = nullptr;
 };
 ```
 
 The point is not this exact type shape, but the rule that HIR symbol
 materialization owns the interning boundary.
+
+For template instantiations specifically, the intended rule is:
+
+1. HIR materializes the canonical mangled name text
+2. that text is interned into the TU text table
+3. HIR interns the resulting `TextId` into `LinkNameTable`
+4. HIR stores the resulting `LinkNameId`
+
+That is the right layer for mangling because HIR template instantiation is the
+first point where the final emitted name is actually known.
 
 ### 4. Forward Ids Into LIR
 
@@ -240,6 +301,12 @@ The intended rule is:
 2. apply target decoration only in the backend when target spelling differs
 3. emit text/asm/object-facing names from that late consumer boundary
 
+In practice the lookup path is:
+
+1. `LinkNameId -> TextId`
+2. `TextId -> std::string_view`
+3. final text consumer emits or decorates that spelling
+
 ## Candidate Carriers
 
 Likely HIR-side carriers:
@@ -262,6 +329,7 @@ Likely LIR-side carriers:
 ## Constraints
 
 - do not merge `LinkNameId` into source-atom `SymbolId`
+- do not merge `LinkNameId` into `TextId`
 - do not treat parser/source spelling as the same contract as emitted-link
   identity
 - do not force backend-private temporary names into the first slice
@@ -304,3 +372,7 @@ Add `LinkNameId` and `LinkNameTable`, thread them into HIR symbol
 materialization, add parallel id fields for `hir::Function` and
 `hir::GlobalVar`, then forward one bounded HIR->LIR direct-symbol path through
 those ids without trying to rewrite every backend-private name at once.
+
+Use the existing TU text table as the only owning byte store from the start, so
+the first landing proves semantic separation without introducing duplicate
+string ownership.
