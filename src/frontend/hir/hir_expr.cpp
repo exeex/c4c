@@ -59,6 +59,7 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
         LabelAddrExpr la{};
         la.label_name = n->name;
         la.fn_name = ctx ? ctx->fn->name : "";
+        la.fn_link_name_id = ctx ? ctx->fn->link_name_id : kInvalidLinkName;
         TypeSpec void_ptr{};
         void_ptr.base = TB_VOID;
         void_ptr.ptr_level = 1;

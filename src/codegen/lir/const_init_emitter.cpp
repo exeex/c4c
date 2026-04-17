@@ -535,6 +535,10 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
     const auto& fn = mod_.functions[fn_index];
     return emitted_link_name(mod_, fn.link_name_id, fn.name);
   };
+  const auto resolve_function_link_name = [&](LinkNameId id,
+                                              std::string_view fallback) -> std::string {
+    return emitted_link_name(mod_, id, fallback);
+  };
   const auto resolve_decl_name = [&](std::string_view name) -> std::string {
     if (auto global_name = resolve_global_decl_name(name)) return *global_name;
     if (auto function_name = resolve_function_decl_name(name)) return *function_name;
@@ -906,7 +910,8 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
           return std::visit([&](const auto& q) -> std::optional<std::string> {
             using U = std::decay_t<decltype(q)>;
             if constexpr (std::is_same_v<U, LabelAddrExpr>) {
-              return "ptrtoint (ptr blockaddress(@" + resolve_decl_name(q.fn_name) +
+              return "ptrtoint (ptr blockaddress(@" +
+                     resolve_function_link_name(q.fn_link_name_id, q.fn_name) +
                      ", %ulbl_" + q.label_name + ") to i64)";
             } else if constexpr (std::is_same_v<U, CastExpr>) {
               return self(self, q.expr);
@@ -937,7 +942,8 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
       }
       return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
     } else if constexpr (std::is_same_v<T, LabelAddrExpr>) {
-      return "blockaddress(@" + resolve_decl_name(p.fn_name) + ", %ulbl_" + p.label_name + ")";
+      return "blockaddress(@" + resolve_function_link_name(p.fn_link_name_id, p.fn_name) +
+             ", %ulbl_" + p.label_name + ")";
     } else if constexpr (std::is_same_v<T, CallExpr>) {
       const BuiltinId builtin_id = p.builtin_id;
       switch (builtin_constant_fp_kind(builtin_id)) {

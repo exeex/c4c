@@ -6,19 +6,17 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Updated the remaining current-function late consumer in
-`codegen/lir/stmt_emitter_expr_misc.cpp` so `LabelAddrExpr` now spells
-`blockaddress(@...)` from the current function’s existing `LinkNameId` when
-available, and audited adjacent unresolved-extern recording to confirm it
-should stay unchanged until a real upstream semantic carrier exists.
+Added a parallel `LabelAddrExpr.fn_link_name_id` carrier in HIR and updated
+`const_init_emitter.cpp` so constant-initializer `blockaddress(@...)` emission
+now resolves the enclosing function spelling late from that semantic id rather
+than depending only on `fn_name` strings.
 
 ## Suggested Next
 
 Audit whether any remaining late consumer still emits link-visible names from
-legacy strings where an existing HIR/LIR carrier already has a real
-`LinkNameId`; if not, the next route question is whether unresolved extern
-calls need a new semantic carrier rather than more fallback-side string
-plumbing.
+legacy strings without a real parallel semantic carrier; if the remaining gap
+is unresolved extern calls, decide whether to add an upstream carrier rather
+than extending fallback-side string plumbing.
 
 ## Watchouts
 
@@ -55,10 +53,10 @@ plumbing.
   from `LinkNameId`, including `blockaddress` and constant-expression GEP
   spellings, but its raw decl strings still remain the lookup key used to find
   those semantic carriers
-- `LabelAddrExpr` now resolves the current function spelling late from
-  `ctx.fn->link_name_id`, but unresolved extern-call recording still has no
-  semantic carrier to forward and should stay string-backed until the route
-  explicitly adds one
+- `LabelAddrExpr` now carries its own parallel `fn_link_name_id` for late
+  `blockaddress` spelling in both statement and constant-initializer emission,
+  but unresolved extern-call recording still has no semantic carrier to
+  forward and should stay string-backed until the route explicitly adds one
 - keep forwarding explicit ids through LIR carriers and resolve them only at
   late consumers rather than treating legacy `name` strings as the semantic
   source of truth

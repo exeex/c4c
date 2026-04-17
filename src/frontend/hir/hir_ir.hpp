@@ -278,6 +278,7 @@ struct StringLiteral {
 struct LabelAddrExpr {
   SymbolName label_name;  // GCC &&label extension
   SymbolName fn_name;     // enclosing function (for blockaddress)
+  LinkNameId fn_link_name_id = kInvalidLinkName;
 };
 
 struct CharLiteral {
