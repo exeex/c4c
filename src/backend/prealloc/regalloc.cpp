@@ -562,6 +562,13 @@ void append_consumer_move_resolution(const bir::Function& function,
   return AssignedStorageKind::None;
 }
 
+[[nodiscard]] AssignedStorageKind function_return_storage_kind(const bir::Function& function) {
+  if (function.return_type == bir::TypeKind::Void) {
+    return AssignedStorageKind::None;
+  }
+  return AssignedStorageKind::Register;
+}
+
 void append_call_arg_move_resolution(const bir::Function& function,
                                      PreparedRegallocFunction& regalloc_function) {
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
@@ -626,6 +633,38 @@ void append_call_result_move_resolution(const bir::Function& function,
                                                             assigned_storage_kind(*result),
                                                             consumed_kind));
     }
+  }
+}
+
+void append_return_move_resolution(const bir::Function& function,
+                                   PreparedRegallocFunction& regalloc_function) {
+  const AssignedStorageKind consumed_kind = function_return_storage_kind(function);
+  if (consumed_kind == AssignedStorageKind::None) {
+    return;
+  }
+
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    if (block.terminator.kind != bir::TerminatorKind::Return || !block.terminator.value.has_value() ||
+        block.terminator.value->kind != bir::Value::Kind::Named) {
+      continue;
+    }
+
+    const auto* source = find_regalloc_value(regalloc_function, block.terminator.value->name);
+    if (source == nullptr) {
+      continue;
+    }
+
+    append_move_resolution_record(regalloc_function,
+                                  source->value_id,
+                                  source->value_id,
+                                  assigned_storage_kind(*source),
+                                  consumed_kind,
+                                  block_index,
+                                  block.insts.size(),
+                                  storage_transfer_reason("return",
+                                                          assigned_storage_kind(*source),
+                                                          consumed_kind));
   }
 }
 
@@ -928,6 +967,7 @@ void BirPreAlloc::run_regalloc() {
       append_consumer_move_resolution(*function, regalloc_function);
       append_call_arg_move_resolution(*function, regalloc_function);
       append_call_result_move_resolution(*function, regalloc_function);
+      append_return_move_resolution(*function, regalloc_function);
     }
 
     prepared_.stack_layout.frame_size_bytes =

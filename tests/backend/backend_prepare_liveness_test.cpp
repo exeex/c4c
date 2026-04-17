@@ -722,6 +722,80 @@ prepare::PreparedBirModule prepare_call_result_move_module_with_regalloc() {
   return planner.run();
 }
 
+prepare::PreparedBirModule prepare_return_move_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "return_move_resolution";
+  function.return_type = bir::TypeKind::F32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "ret.value"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::immediate_f32_bits(0x3f800000U),
+      .rhs = bir::Value::immediate_f32_bits(0x40000000U),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::F32, "ret.value"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
+prepare::PreparedBirModule prepare_return_same_storage_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "return_same_storage_resolution";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "ret.value"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(10),
+      .rhs = bir::Value::immediate_i32(32),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "ret.value"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
 prepare::PreparedBirModule prepare_evicted_spill_module_with_regalloc() {
   bir::Module module;
 
@@ -1283,6 +1357,50 @@ int check_call_result_move_resolution(const prepare::PreparedBirModule& prepared
   return 0;
 }
 
+int check_return_move_resolution(const prepare::PreparedBirModule& prepared) {
+  const auto* function = find_regalloc_function(prepared, "return_move_resolution");
+  if (function == nullptr) {
+    return fail("expected regalloc output for return_move_resolution");
+  }
+
+  const auto* ret_value = find_regalloc_value(*function, "ret.value");
+  if (ret_value == nullptr) {
+    return fail("expected ret.value to appear in regalloc output");
+  }
+  if (ret_value->allocation_status != prepare::PreparedAllocationStatus::AssignedStackSlot ||
+      !ret_value->assigned_stack_slot.has_value() || ret_value->assigned_register.has_value()) {
+    return fail("expected the float return value to fall back to a stack slot when no float register seed exists");
+  }
+
+  const auto* move = find_move_resolution(*function, ret_value->value_id, ret_value->value_id);
+  if (move == nullptr || move->block_index != 0 || move->instruction_index != 1 ||
+      move->reason != "return_stack_to_register") {
+    return fail("expected the stack-backed return value to publish a return-site stack-to-register move");
+  }
+
+  return 0;
+}
+
+int check_return_same_storage_resolution(const prepare::PreparedBirModule& prepared) {
+  const auto* function = find_regalloc_function(prepared, "return_same_storage_resolution");
+  if (function == nullptr) {
+    return fail("expected regalloc output for return_same_storage_resolution");
+  }
+
+  const auto* ret_value = find_regalloc_value(*function, "ret.value");
+  if (ret_value == nullptr) {
+    return fail("expected ret.value to appear in regalloc output");
+  }
+  if (!ret_value->assigned_register.has_value() || ret_value->assigned_stack_slot.has_value()) {
+    return fail("expected the integer return value to stay register-backed");
+  }
+  if (find_move_resolution(*function, ret_value->value_id, ret_value->value_id) != nullptr) {
+    return fail("expected matching register-backed returns to skip redundant return-site move resolution");
+  }
+
+  return 0;
+}
+
 int check_loop_weighted_priority(const prepare::PreparedBirModule& prepared) {
   const auto* liveness = find_liveness_function(prepared, "loop_weighted_priority");
   const auto* regalloc = find_regalloc_function(prepared, "loop_weighted_priority");
@@ -1350,6 +1468,16 @@ int main() {
 
   const auto call_result_move_prepared = prepare_call_result_move_module_with_regalloc();
   if (const int rc = check_call_result_move_resolution(call_result_move_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto return_move_prepared = prepare_return_move_module_with_regalloc();
+  if (const int rc = check_return_move_resolution(return_move_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto return_same_storage_prepared = prepare_return_same_storage_module_with_regalloc();
+  if (const int rc = check_return_same_storage_resolution(return_same_storage_prepared); rc != 0) {
     return rc;
   }
 
