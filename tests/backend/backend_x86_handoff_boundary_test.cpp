@@ -25,6 +25,12 @@ std::string expected_minimal_constant_return_asm(const char* function_name, int 
          ":\n    mov eax, " + std::to_string(returned_value) + "\n    ret\n";
 }
 
+std::string expected_minimal_param_passthrough_asm(const char* function_name) {
+  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
+         "\n.type " + function_name + ", @function\n" + function_name +
+         ":\n    mov eax, edi\n    ret\n";
+}
+
 bir::Module make_x86_return_constant_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -42,34 +48,89 @@ bir::Module make_x86_return_constant_module() {
   return module;
 }
 
-}  // namespace
+bir::Module make_x86_param_passthrough_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
 
-int main() {
-  const auto module = make_x86_return_constant_module();
+  bir::Function function;
+  function.name = "id_i32";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "p.x"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int check_route_outputs(const bir::Module& module,
+                        const std::string& expected_asm,
+                        const std::string& expected_bir_fragment,
+                        const char* failure_context) {
   const auto prepared =
       c4c::backend::prepare::prepare_semantic_bir_module_with_options(module, Target::X86_64);
   const auto prepared_bir_text = bir::print(prepared.module);
-  const auto expected_asm = expected_minimal_constant_return_asm("main", 7);
 
   const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
-    return fail("x86 prepared-module consumer did not emit the canonical minimal return asm");
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer did not emit the canonical asm")
+                    .c_str());
   }
 
-  const auto public_asm =
-      c4c::backend::emit_target_bir_module(module, Target::X86_64);
+  const auto public_asm = c4c::backend::emit_target_bir_module(module, Target::X86_64);
   if (public_asm != prepared_asm) {
-    return fail("public x86 BIR entry no longer routes through the x86 prepared-module consumer");
+    return fail((std::string(failure_context) +
+                 ": public x86 BIR entry no longer routes through the x86 prepared-module consumer")
+                    .c_str());
   }
 
   const auto generic_asm = c4c::backend::emit_module(
       BackendModuleInput{module}, BackendOptions{.target = Target::X86_64});
   if (generic_asm != public_asm) {
-    return fail("generic backend emit path no longer routes x86 BIR input through emit_target_bir_module");
+    return fail((std::string(failure_context) +
+                 ": generic backend emit path no longer routes x86 BIR input through emit_target_bir_module")
+                    .c_str());
   }
 
-  if (prepared_bir_text.find("bir.func @main() -> i32 {") == std::string::npos) {
-    return fail("test fixture no longer prepares semantic BIR before routing into x86");
+  if (prepared_bir_text.find(expected_bir_fragment) == std::string::npos) {
+    return fail((std::string(failure_context) +
+                 ": test fixture no longer prepares the expected semantic BIR shape before routing into x86")
+                    .c_str());
+  }
+
+  return 0;
+}
+
+}  // namespace
+
+int main() {
+  if (const auto status =
+          check_route_outputs(make_x86_return_constant_module(),
+                              expected_minimal_constant_return_asm("main", 7),
+                              "bir.func @main() -> i32 {",
+                              "minimal immediate return route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(make_x86_param_passthrough_module(),
+                              expected_minimal_param_passthrough_asm("id_i32"),
+                              "bir.func @id_i32(i32 p.x) -> i32 {",
+                              "minimal i32 parameter passthrough route");
+      status != 0) {
+    return status;
   }
 
   return 0;

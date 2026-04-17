@@ -6,18 +6,19 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Implemented the first real prepared-module consumer slice inside
-`x86::emit_prepared_module(...)` for a minimal single-function `return i32
-<imm32>` case. `backend_x86_handoff_boundary` now proves that the canonical
-prepared-module consumer succeeds and that the public/generic x86 BIR routes
-return the same canonical x86 assembly through that boundary.
+Extended `x86::emit_prepared_module(...)` to support one additional honest
+prepared value-flow family: a minimal x86_64 single-function `i32` parameter
+returned directly through the canonical prepared-module boundary. The focused
+handoff proof now covers both the existing immediate-return case and the new
+single-parameter passthrough case by checking prepared/public/generic route
+equality against the same canonical x86 assembly per shape.
 
 ## Suggested Next
 
 Extend `x86::emit_prepared_module(...)` to the next honest prepared-module
 shapes behind the same canonical boundary, starting with additional minimal
-prepared return/value-flow cases that still avoid reintroducing any
-direct-BIR/public-entry fallback path.
+single-block prepared value-flow cases that still consume the shared prepared
+contract and avoid reintroducing any direct-BIR/public-entry fallback path.
 
 ## Watchouts
 
@@ -32,7 +33,8 @@ direct-BIR/public-entry fallback path.
   new work should extend `x86::emit_prepared_module(...)` rather than adding
   new public/backend-side fallback renderers
 - keep the current support semantic and minimal: one prepared function, one
-  block, direct immediate `i32` return, no hidden mixed fallback
+  block, and only direct `i32` return families already modeled by the
+  canonical prepared boundary, with no hidden mixed fallback
 
 ## Proof
 
