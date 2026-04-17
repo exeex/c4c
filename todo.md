@@ -10,8 +10,8 @@ Proved one more honest joined prepared-module control-flow shape on the
 canonical x86 handoff boundary without widening the emitter contract: a
 minimal x86_64 single-parameter `i32` compare-against-zero branch whose join
 block contains one legalized `bir.select` plus one trailing supported
-parameter-immediate `mul` on that select result. The focused handoff proof now
-also covers the joined add/sub-then-`mul` case while still proving
+parameter-immediate `shl` on that select result. The focused handoff proof now
+also covers the joined add/sub-then-`shl` case while still proving
 prepared/public/generic route equality against the same canonical x86
 assembly, and it did so without needing any new fallback or emitter-side
 special-case logic because the existing bounded prepared-module consumer
@@ -19,13 +19,14 @@ already handled that immediate family.
 
 ## Suggested Next
 
-Extend `x86::emit_prepared_module(...)` only if it can honestly support the
-next bounded joined prepared-module shape behind the same canonical boundary:
+Extend focused proof only if the same bounded prepared-module consumer already
+honestly supports the next joined shift family behind the canonical boundary:
 one x86_64 single-parameter `i32` compare-against-zero branch whose prepared
 join block still contains exactly one legalized `bir.select`, but the trailing
-join-local op is the next bounded immediate family such as `shl`, only if that
-can stay inside the same explicit join consumer without nested selects,
-forwarded joins, commuted shift forms, or fallback rendering.
+join-local op is the next bounded right-shift immediate family such as
+`lshr` or `ashr`, only if that can stay inside the same explicit join consumer
+without nested selects, forwarded joins, commuted shift forms, or fallback
+rendering.
 
 ## Watchouts
 
@@ -49,9 +50,10 @@ forwarded joins, commuted shift forms, or fallback rendering.
   parameter, an immediate, or one supported parameter-immediate binary already
   materialized into the join block by prepare legalize
 - the joined branch support now has focused proof for two trailing join-local
-  supported parameter-immediate arithmetic cases (`add` and `mul`) and three
-  logical cases (`xor`, `and`, and `or`) whose named operand is exactly the
-  select result; do not widen beyond one trailing op in the same block
+  supported parameter-immediate arithmetic cases (`add` and `mul`), three
+  logical cases (`xor`, `and`, and `or`), and one left-shift case (`shl`)
+  whose named operand is exactly the select result; do not widen beyond one
+  trailing op in the same block
 - keep control-flow proof route-oriented by comparing prepared/public/generic
   outputs against the same canonical assembly instead of falling back to loose
   substring assertions
