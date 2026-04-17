@@ -977,6 +977,90 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_stackrestore_
   return planner.run();
 }
 
+std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_va_copy_arg_module() {
+  lir::LirModule module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  lir::LirFunction function;
+  function.name = "lowered_helper_va_copy_arg_metadata";
+  function.signature_text = "define void @lowered_helper_va_copy_arg_metadata(ptr %dst, ptr %src)";
+  function.params.push_back({"%dst", c4c::TypeSpec{.base = TB_VOID, .ptr_level = 1}});
+  function.params.push_back({"%src", c4c::TypeSpec{.base = TB_VOID, .ptr_level = 1}});
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirVaCopyOp{
+      .dst_ptr = lir::LirOperand("%dst"),
+      .src_ptr = lir::LirOperand("%src"),
+  });
+  entry.terminator = lir::LirRet{
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto lowered = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return std::nullopt;
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(*lowered.module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
+std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_va_arg_aggregate_module() {
+  lir::LirModule module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  lir::LirFunction function;
+  function.name = "lowered_helper_va_arg_aggregate_metadata";
+  function.signature_text = "define void @lowered_helper_va_arg_aggregate_metadata(ptr %ap)";
+  function.params.push_back({"%ap", c4c::TypeSpec{.base = TB_VOID, .ptr_level = 1}});
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirVaArgOp{
+      .result = lir::LirOperand("%pair"),
+      .ap_ptr = lir::LirOperand("%ap"),
+      .type_str = "{ i32, i32 }",
+  });
+  entry.terminator = lir::LirRet{
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto lowered = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return std::nullopt;
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(*lowered.module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
 prepare::PreparedBirModule prepare_evicted_spill_module_with_regalloc() {
   bir::Module module;
 
@@ -1793,6 +1877,110 @@ int check_lowered_helper_stackrestore_arg_abi(const prepare::PreparedBirModule& 
   return 0;
 }
 
+int check_lowered_helper_va_copy_arg_abi(const prepare::PreparedBirModule& prepared) {
+  const auto* module_function = find_module_function(prepared, "lowered_helper_va_copy_arg_metadata");
+  if (module_function == nullptr || module_function->blocks.size() != 1 ||
+      module_function->blocks.front().insts.size() != 1) {
+    return fail("expected lowered_helper_va_copy_arg_metadata BIR output with one va_copy call");
+  }
+
+  const auto* va_copy = std::get_if<bir::CallInst>(&module_function->blocks.front().insts.front());
+  if (va_copy == nullptr || va_copy->callee != "llvm.va_copy.p0.p0" || va_copy->arg_abi.size() != 2 ||
+      va_copy->arg_abi[0].type != bir::TypeKind::Ptr ||
+      va_copy->arg_abi[1].type != bir::TypeKind::Ptr ||
+      va_copy->arg_abi[0].primary_class != bir::AbiValueClass::Integer ||
+      va_copy->arg_abi[1].primary_class != bir::AbiValueClass::Integer ||
+      !va_copy->arg_abi[0].passed_in_register || !va_copy->arg_abi[1].passed_in_register) {
+    return fail("expected helper-built va_copy call to preserve explicit pointer argument ABI metadata");
+  }
+
+  const auto* function = find_regalloc_function(prepared, "lowered_helper_va_copy_arg_metadata");
+  if (function == nullptr) {
+    return fail("expected regalloc output for lowered_helper_va_copy_arg_metadata");
+  }
+
+  const auto* dst_ptr = find_regalloc_value(*function, "%dst");
+  const auto* src_ptr = find_regalloc_value(*function, "%src");
+  if (dst_ptr == nullptr || src_ptr == nullptr) {
+    return fail("expected helper-built va_copy arguments to appear in regalloc output");
+  }
+
+  const auto* dst_move = find_move_resolution(*function, dst_ptr->value_id, dst_ptr->value_id);
+  if (dst_move == nullptr || dst_move->reason != "call_arg_register_to_register" ||
+      dst_move->destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      dst_move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      dst_move->destination_abi_index != std::optional<std::size_t>{0} ||
+      dst_move->destination_register_name != std::optional<std::string>{"a0"}) {
+    return fail("expected helper-built va_copy destination pointer to publish the concrete ABI argument destination");
+  }
+
+  const auto* src_move = find_move_resolution(*function, src_ptr->value_id, src_ptr->value_id);
+  if (src_move == nullptr || src_move->reason != "call_arg_register_to_register" ||
+      src_move->destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      src_move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      src_move->destination_abi_index != std::optional<std::size_t>{1} ||
+      src_move->destination_register_name != std::optional<std::string>{"a1"}) {
+    return fail("expected helper-built va_copy source pointer to publish the concrete ABI argument destination");
+  }
+
+  return 0;
+}
+
+int check_lowered_helper_va_arg_aggregate_abi(const prepare::PreparedBirModule& prepared) {
+  const auto* module_function =
+      find_module_function(prepared, "lowered_helper_va_arg_aggregate_metadata");
+  if (module_function == nullptr || module_function->blocks.size() != 1 ||
+      module_function->blocks.front().insts.size() != 1) {
+    return fail("expected lowered_helper_va_arg_aggregate_metadata BIR output with one aggregate va_arg call");
+  }
+
+  const auto* va_arg = std::get_if<bir::CallInst>(&module_function->blocks.front().insts.front());
+  if (va_arg == nullptr || va_arg->callee != "llvm.va_arg.aggregate" || va_arg->arg_abi.size() != 2) {
+    return fail("expected helper-built aggregate va_arg BIR output");
+  }
+  if (va_arg->arg_abi[0].type != bir::TypeKind::Ptr || !va_arg->arg_abi[0].sret_pointer ||
+      va_arg->arg_abi[0].primary_class != bir::AbiValueClass::Memory ||
+      va_arg->arg_abi[0].size_bytes != 8 || va_arg->arg_abi[0].align_bytes != 4) {
+    return fail("expected aggregate va_arg result storage to preserve explicit sret-style ABI metadata");
+  }
+  if (va_arg->arg_abi[1].type != bir::TypeKind::Ptr ||
+      va_arg->arg_abi[1].primary_class != bir::AbiValueClass::Integer ||
+      !va_arg->arg_abi[1].passed_in_register) {
+    return fail("expected aggregate va_arg ap pointer to preserve explicit pointer argument ABI metadata");
+  }
+
+  const auto* function = find_regalloc_function(prepared, "lowered_helper_va_arg_aggregate_metadata");
+  if (function == nullptr) {
+    return fail("expected regalloc output for lowered_helper_va_arg_aggregate_metadata");
+  }
+
+  const auto* pair_ptr = find_regalloc_value(*function, "%pair");
+  const auto* ap_ptr = find_regalloc_value(*function, "%ap");
+  if (pair_ptr == nullptr || ap_ptr == nullptr) {
+    return fail("expected helper-built aggregate va_arg values to appear in regalloc output");
+  }
+
+  const auto* pair_move = find_move_resolution(*function, pair_ptr->value_id, pair_ptr->value_id);
+  if (pair_move == nullptr || pair_move->reason != "call_arg_stack_to_stack" ||
+      pair_move->destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      pair_move->destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
+      pair_move->destination_abi_index != std::optional<std::size_t>{0} ||
+      pair_move->destination_register_name.has_value()) {
+    return fail("expected helper-built aggregate va_arg result storage to publish stack-backed ABI consumption");
+  }
+
+  const auto* ap_move = find_move_resolution(*function, ap_ptr->value_id, ap_ptr->value_id);
+  if (ap_move == nullptr || ap_move->reason != "call_arg_register_to_register" ||
+      ap_move->destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      ap_move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      ap_move->destination_abi_index != std::optional<std::size_t>{1} ||
+      ap_move->destination_register_name != std::optional<std::string>{"a1"}) {
+    return fail("expected helper-built aggregate va_arg ap pointer to publish the concrete ABI argument destination");
+  }
+
+  return 0;
+}
+
 int check_loop_weighted_priority(const prepare::PreparedBirModule& prepared) {
   const auto* liveness = find_liveness_function(prepared, "loop_weighted_priority");
   const auto* regalloc = find_regalloc_function(prepared, "loop_weighted_priority");
@@ -1903,6 +2091,25 @@ int main() {
     return fail("expected lowered helper stackrestore-arg module to succeed");
   }
   if (const int rc = check_lowered_helper_stackrestore_arg_abi(*lowered_helper_stackrestore_arg_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto lowered_helper_va_copy_arg_prepared = lower_and_prepare_helper_va_copy_arg_module();
+  if (!lowered_helper_va_copy_arg_prepared.has_value()) {
+    return fail("expected lowered helper va_copy-arg module to succeed");
+  }
+  if (const int rc = check_lowered_helper_va_copy_arg_abi(*lowered_helper_va_copy_arg_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto lowered_helper_va_arg_aggregate_prepared = lower_and_prepare_helper_va_arg_aggregate_module();
+  if (!lowered_helper_va_arg_aggregate_prepared.has_value()) {
+    return fail("expected lowered helper aggregate va_arg module to succeed");
+  }
+  if (const int rc =
+          check_lowered_helper_va_arg_aggregate_abi(*lowered_helper_va_arg_aggregate_prepared);
       rc != 0) {
     return rc;
   }

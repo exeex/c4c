@@ -6,26 +6,20 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Threaded lowering-owned helper call-argument ABI through
-`src/backend/bir/lir_to_bir_calling.cpp`, so helper-built
-runtime/intrinsic calls that bypass the shared direct/indirect call-lowering
-handoff now publish explicit `bir::CallInst.arg_abi` metadata for active
-scalar and pointer arguments instead of leaving prealloc/regalloc blind to the
-call-site destination contract.
-
-Focused `backend_prepare_liveness` coverage now proves two active helper-built
-paths in the prepare pipeline: `llvm.fabs.float` preserves float argument ABI
-metadata and publishes a concrete `call_arg_stack_to_register` move into
-`fa0`, and `llvm.stackrestore` preserves pointer argument ABI metadata and
-publishes a concrete `call_arg_register_to_register` move into `a0`.
+Extended focused `backend_prepare_liveness` activation coverage across the
+remaining helper-built variadic routes that already publish lowering-owned ABI
+metadata: `llvm.va_copy.p0.p0` now proves both pointer arguments survive into
+active regalloc move resolution with concrete `a0`/`a1` destinations, and
+helper-built aggregate `llvm.va_arg.aggregate` now proves both its stack-backed
+sret/result storage and live `va_list` pointer argument survive into the
+prepare/regalloc ABI-consumption surface.
 
 ## Suggested Next
 
-Extend focused activation coverage across the remaining helper-built variadic
-paths whose ABI shape is already known at lowering time, especially
-`llvm.va_copy.*` and `llvm.va_arg.aggregate`, so pointer and memory/sret-style
-helper arguments are proven through the active legalize/liveness/regalloc
-route rather than only populated in lowering.
+Use the new helper-call ABI activation checks as a base for the next honest
+packet: prove a helper-built memory-return or byval-copy path all the way
+through active regalloc move resolution so the remaining non-scalar helper ABI
+shapes are covered by prepare semantics instead of only by lowering metadata.
 
 ## Watchouts
 
@@ -58,9 +52,11 @@ route rather than only populated in lowering.
 - shared direct/indirect call lowering now sets `bir::CallInst.result_abi`
   from `LoweredReturnInfo.abi`, and helper-built scalar/pointer runtime call
   sites in `lir_to_bir_calling.cpp` now also set concrete `arg_abi`/`result_abi`
-  where the lowering already knows the active ABI class; variadic aggregate and
-  other memory-shaped helper paths still need their own focused proof before
-  assuming full helper call-site ABI coverage
+  where the lowering already knows the active ABI class; the focused coverage
+  now includes helper-built `va_copy` pointer arguments and aggregate
+  `va_arg` sret/ap arguments, but other memory-shaped helper paths still need
+  their own prepare/regalloc proof before assuming full helper call-site ABI
+  coverage
 - lowered aggregate/sret functions can now legitimately carry
   `return_abi={type=Void, primary_class=Memory, returned_in_memory=true}`;
   prepare legalize must preserve that metadata instead of treating all
@@ -95,7 +91,6 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_liveness$ > test_after.log
 2>&1`
-after threading helper-built call-argument ABI metadata through
-runtime/intrinsic lowering and proving active float and pointer helper-call ABI
-move resolution in the prepare/regalloc route.
+after extending focused helper-call ABI activation coverage to `llvm.va_copy`
+and helper-built aggregate `llvm.va_arg` in the active prepare/regalloc route.
 Canonical proof log: `test_after.log`.
