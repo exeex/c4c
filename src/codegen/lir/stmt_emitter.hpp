@@ -57,13 +57,13 @@ struct FieldStep {
 
 struct MemberFieldAccess {
   TypeSpec base_ts{};
-  const char* tag = nullptr;
+  std::string tag;
   std::vector<FieldStep> chain;
   TypeSpec field_ts{};
   BitfieldAccess bf{};
   bool field_found = false;
 
-  bool has_tag() const { return tag && tag[0]; }
+  bool has_tag() const { return !tag.empty(); }
 };
 
 struct AssignableLValue {

@@ -468,6 +468,16 @@ class Lowerer {
       PendingTemplateTypeKind kind,
       const std::string& context_name);
 
+  bool recover_template_struct_identity_from_tag(TypeSpec* ts) const;
+
+  std::optional<std::string> resolve_member_lookup_owner_tag(
+      TypeSpec base_ts,
+      bool is_arrow,
+      const TypeBindings* tpl_bindings,
+      const NttpBindings* nttp_bindings,
+      const Node* span_node,
+      const std::string& context_name);
+
   bool resolve_ast_template_value_arg(
       const Node* owner_tpl,
       const Node* ref,

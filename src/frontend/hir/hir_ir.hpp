@@ -395,6 +395,7 @@ struct IndexExpr {
 struct MemberExpr {
   ExprId base{};
   SymbolName field;
+  SymbolName resolved_owner_tag;
   bool is_arrow = false;
 };
 
@@ -932,6 +933,10 @@ struct Module {
   // Struct/union definitions (populated by build_hir)
   std::unordered_map<SymbolName, HirStructDef> struct_defs;
   std::vector<SymbolName> struct_def_order;  // insertion order for deterministic emission
+  // Shared template-instance resolution surfaces for later consumers that only
+  // see partially concrete tags or typed template-origin payloads.
+  std::unordered_map<SymbolName, SymbolName> template_struct_tag_aliases;
+  std::unordered_map<SymbolName, SymbolName> template_struct_lookup_keys;
 
   // Template function definitions (populated by build_hir)
   std::unordered_map<SymbolName, HirTemplateDef> template_defs;
@@ -1175,5 +1180,10 @@ struct ModuleDag {
 };
 
 }  // namespace dag
+
+std::string encode_template_type_arg_ref_hir(const TypeSpec& ts);
+std::optional<SymbolName> resolve_template_struct_concrete_tag(
+    const Module& module,
+    const TypeSpec& ts);
 
 }  // namespace c4c::hir

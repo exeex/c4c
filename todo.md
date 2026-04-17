@@ -17,23 +17,43 @@ exposed `eastl::pair<int, int>` failure route.
   and member lookup.
 - Rewrote `plan.md` around the shared-helper route instead of continuing the
   old external-suite expansion runbook.
+- Added a shared late-lookup fallback surface in HIR/codegen so member access
+  can reuse template-instance aliases and family-level layout lookup instead of
+  only raw `struct_defs[tag]`.
+- Proved the focused `/tmp/eastl_pair_member.cpp` repro now compiles through
+  the repaired member path.
+- Bound resolved member-owner layout tags into HIR `MemberExpr` nodes so the
+  `GetPair`/pair helper path now tells LIR which realized struct layout to use
+  instead of asking LIR to infer it from placeholder template tags.
+- Re-ran the reduced EASTL utility smoke successfully after the HIR-side owner
+  binding change.
+- Extended the HIR-side owner binding to more construction paths, including
+  defaulted member copies and initializer-list helper field stores, and added
+  AST-type fallbacks so templated assignment-style member accesses keep their
+  owner layout in dumps.
 
 ## Suggested Next
 
-- Start from the current `realize_template_struct(...)` flow and extract the
-  smallest reusable helper that exposes selected pattern, resolved bindings,
-  and concrete instance tag.
-- Integrate that helper into
-  `StmtEmitter::resolve_member_field_access(...)` before direct
-  `struct_defs[tag]` failure.
-- Keep a focused repro around `eastl::pair<int, int>` member access as the
-  acceptance surface before deciding whether to re-enable the external utility
-  case in the same slice.
+- Chase the remaining `pair::swap`-style `&p.first` / `&p.second` member path
+  that still prints without `resolved_owner_tag`; until that route is fixed,
+  the codegen-side `resolve_template_struct_concrete_tag(...)` fallback still
+  has real coverage value.
+- After that last HIR gap is closed, tighten the contract by reducing or
+  removing the codegen-side `resolve_template_struct_concrete_tag(...)`
+  fallback.
+- Add a targeted HIR/LIR regression test that asserts the `GetPair`-style
+  member path keeps its HIR-bound owner layout instead of regressing back to
+  placeholder tag lookup.
+- Decide whether this slice is broad enough to checkpoint now or whether the
+  next packet should first finish removing the remaining codegen-side template
+  recovery path.
 
 ## Watchouts
 
 - Do not solve this with `pair`-specific aliases or emitted-name string
   rewrites.
+- Do not “fix” the remaining `pair::swap` route by teaching LIR more template
+  inference; keep that investigation on the HIR side.
 - Do not silently expand the patch into a repo-wide ABI-mangling redesign.
 - Keep the active EASTL bootstrap idea open; this switch is a route split, not
   a closure.
@@ -43,3 +63,5 @@ exposed `eastl::pair<int, int>` failure route.
 - `cmake -S . -B build`
 - `cmake --build build --target c4cll -j8`
 - `build/c4cll -I ref/EASTL/include -I ref/EABase/include/Common /tmp/eastl_pair_member.cpp -o /tmp/eastl_pair_member.ll`
+- `build/c4cll -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/external/eastl/utility/frontend_basic.cpp -o /tmp/eastl_utility_frontend_basic.ll`
+- `build/c4cll --dump-hir -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/external/eastl/utility/frontend_basic.cpp`

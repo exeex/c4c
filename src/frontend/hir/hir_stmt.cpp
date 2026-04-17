@@ -58,6 +58,7 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
         lhs_me.base = this_id;
         lhs_me.field = field.name;
         lhs_me.is_arrow = true;
+        lhs_me.resolved_owner_tag = struct_tag;
         ExprId lhs_member =
             append_expr(method_node, lhs_me, field_ts, ValueCategory::LValue);
 
@@ -65,6 +66,7 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
         rhs_me.base = other_id;
         rhs_me.field = field.name;
         rhs_me.is_arrow = true;
+        rhs_me.resolved_owner_tag = struct_tag;
         ExprId rhs_member =
             append_expr(method_node, rhs_me, field_ts, ValueCategory::LValue);
 
@@ -122,6 +124,7 @@ void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
     me.base = this_ptr_id;
     me.field = field.name;
     me.is_arrow = true;
+    me.resolved_owner_tag = struct_tag;
     TypeSpec field_ts = field.elem_type;
     ExprId member_id = append_expr(span_node, me, field_ts, ValueCategory::LValue);
     UnaryExpr addr{};
@@ -708,6 +711,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       me.base = this_id;
       me.field = mem_name;
       me.is_arrow = true;
+      me.resolved_owner_tag = struct_tag;
       ExprId lhs_id = append_expr(method_node, me, field_ts, ValueCategory::LValue);
 
       bool did_ctor_call = false;

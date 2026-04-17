@@ -87,7 +87,92 @@ void assign_template_arg_refs_from_hir_args(
   }
 }
 
+void assign_template_arg_refs_from_struct_node(
+    TypeSpec* ts,
+    const Node* owner) {
+  if (!ts) return;
+  ts->tpl_struct_args.data = nullptr;
+  ts->tpl_struct_args.size = 0;
+  if (!owner || owner->n_template_args <= 0) return;
+
+  ts->tpl_struct_args.data = new TemplateArgRef[owner->n_template_args]();
+  ts->tpl_struct_args.size = owner->n_template_args;
+  for (int i = 0; i < owner->n_template_args; ++i) {
+    TemplateArgRef& out = ts->tpl_struct_args.data[i];
+    const bool is_value =
+        owner->template_arg_is_value && owner->template_arg_is_value[i];
+    out.kind = is_value ? TemplateArgKind::Value : TemplateArgKind::Type;
+    if (is_value) {
+      out.value = owner->template_arg_values ? owner->template_arg_values[i] : 0;
+      const std::string debug_text = std::to_string(out.value);
+      out.debug_text = ::strdup(debug_text.c_str());
+    } else if (owner->template_arg_types) {
+      out.type = owner->template_arg_types[i];
+      const std::string debug_text = encode_template_type_arg_ref_hir(out.type);
+      out.debug_text =
+          debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
+    }
+  }
+}
+
 }  // namespace
+
+bool Lowerer::recover_template_struct_identity_from_tag(TypeSpec* ts) const {
+  if (!ts || (ts->tpl_struct_origin && ts->tpl_struct_origin[0]) ||
+      !ts->tag || !ts->tag[0]) {
+    return false;
+  }
+  auto it = struct_def_nodes_.find(ts->tag);
+  if (it == struct_def_nodes_.end() || !it->second) return false;
+  const Node* owner = it->second;
+  const char* origin = nullptr;
+  if (owner->template_origin_name && owner->template_origin_name[0]) {
+    origin = owner->template_origin_name;
+  } else if (is_primary_template_struct_def(owner) && owner->name && owner->name[0]) {
+    origin = owner->name;
+  }
+  if (!origin) return false;
+  ts->tpl_struct_origin = origin;
+  assign_template_arg_refs_from_struct_node(ts, owner);
+  return true;
+}
+
+std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
+    TypeSpec base_ts,
+    bool is_arrow,
+    const TypeBindings* tpl_bindings,
+    const NttpBindings* nttp_bindings,
+    const Node* span_node,
+    const std::string& context_name) {
+  if (is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level--;
+  while (resolve_struct_member_typedef_if_ready(&base_ts)) {
+  }
+  resolve_typedef_to_struct(base_ts);
+  if (base_ts.base != TB_STRUCT || base_ts.ptr_level != 0 || base_ts.array_rank != 0) {
+    return std::nullopt;
+  }
+
+  const bool recovered_identity = recover_template_struct_identity_from_tag(&base_ts);
+  if (tpl_bindings && base_ts.tpl_struct_origin) {
+    NttpBindings empty_nttp;
+    seed_and_resolve_pending_template_type_if_needed(
+        base_ts,
+        *tpl_bindings,
+        nttp_bindings ? *nttp_bindings : empty_nttp,
+        span_node,
+        PendingTemplateTypeKind::OwnerStruct,
+        context_name);
+  } else if (recovered_identity) {
+    TypeBindings empty_tb;
+    NttpBindings empty_nb;
+    realize_template_struct_if_needed(base_ts, empty_tb, empty_nb);
+  }
+
+  if (base_ts.tag && base_ts.tag[0] && module_->struct_defs.count(base_ts.tag)) {
+    return std::string(base_ts.tag);
+  }
+  return std::nullopt;
+}
 
 void Lowerer::assign_template_arg_refs_from_ast_args(
     TypeSpec* ts,

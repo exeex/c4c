@@ -159,6 +159,76 @@ std::string encode_template_type_arg_ref_hir(const TypeSpec& ts) {
   return ref;
 }
 
+std::optional<SymbolName> resolve_template_struct_concrete_tag(
+    const Module& module,
+    const TypeSpec& ts) {
+  auto family_root = [](const std::string& tag) -> std::string {
+    const size_t scope_sep = tag.rfind("::");
+    const size_t search_from = (scope_sep == std::string::npos) ? 0 : (scope_sep + 2);
+    const size_t tpl_sep = tag.find("_T", search_from);
+    return (tpl_sep == std::string::npos) ? tag : tag.substr(0, tpl_sep);
+  };
+
+  auto find_family_layout = [&](const std::string& family_tag, bool prefer_generic)
+      -> std::optional<SymbolName> {
+    std::optional<SymbolName> best_tag;
+    int best_unknown_fields = prefer_generic ? -1 : INT_MAX;
+    for (const auto& [candidate_tag, def] : module.struct_defs) {
+      const size_t scope_sep = candidate_tag.rfind("::");
+      const std::string unqualified =
+          (scope_sep == std::string::npos)
+              ? candidate_tag
+              : candidate_tag.substr(scope_sep + 2);
+      const bool qualified_match =
+          candidate_tag.size() > family_tag.size() + 2 &&
+          candidate_tag.compare(0, family_tag.size(), family_tag) == 0 &&
+          candidate_tag.compare(family_tag.size(), 2, "_T") == 0;
+      const bool unqualified_match =
+          unqualified.size() > family_tag.size() + 2 &&
+          unqualified.compare(0, family_tag.size(), family_tag) == 0 &&
+          unqualified.compare(family_tag.size(), 2, "_T") == 0;
+      if (!qualified_match && !unqualified_match) continue;
+
+      int unknown_fields = 0;
+      for (const auto& field : def.fields) {
+        if (!has_concrete_type(field.elem_type) && !field.elem_type.tpl_struct_origin) {
+          ++unknown_fields;
+        }
+      }
+      const bool is_better = prefer_generic
+                                 ? (unknown_fields > best_unknown_fields)
+                                 : (unknown_fields < best_unknown_fields);
+      if (is_better) {
+        best_unknown_fields = unknown_fields;
+        best_tag = candidate_tag;
+      }
+    }
+    return best_tag;
+  };
+
+  if (ts.tag && ts.tag[0]) {
+    const std::string tag = ts.tag;
+    if (module.struct_defs.count(tag)) return tag;
+    auto alias_it = module.template_struct_tag_aliases.find(tag);
+    if (alias_it != module.template_struct_tag_aliases.end() &&
+        module.struct_defs.count(alias_it->second)) {
+      return alias_it->second;
+    }
+    const std::string root = family_root(tag);
+    const bool prefer_generic = (root == tag);
+    if (auto family_layout = find_family_layout(root, prefer_generic)) {
+      return family_layout;
+    }
+  }
+
+  if (!ts.tpl_struct_origin || !ts.tpl_struct_origin[0]) return std::nullopt;
+  const std::string lookup_key = encode_template_type_arg_ref_hir(ts);
+  auto key_it = module.template_struct_lookup_keys.find(lookup_key);
+  if (key_it == module.template_struct_lookup_keys.end()) return std::nullopt;
+  if (!module.struct_defs.count(key_it->second)) return std::nullopt;
+  return key_it->second;
+}
+
 bool eval_struct_static_member_value_hir(
     const Node* sdef,
     const std::unordered_map<std::string, const Node*>& struct_defs,
@@ -556,9 +626,21 @@ void Lowerer::realize_template_struct(
   if (!primary_tpl) return;
   if (!origin) origin = primary_tpl->name;
   if (primary_tpl->name) ts.tpl_struct_origin = primary_tpl->name;
+  const std::string incoming_tag =
+      (ts.tag && ts.tag[0]) ? std::string(ts.tag) : std::string{};
+  const std::string lookup_key =
+      (ts.tpl_struct_origin && ts.tpl_struct_origin[0])
+          ? encode_template_type_arg_ref_hir(ts)
+          : std::string{};
 
   ResolvedTemplateArgs resolved =
       materialize_template_args(primary_tpl, ts, tpl_bindings, nttp_bindings);
+  bool has_generic_type_arg = false;
+  for (const auto& arg : resolved.concrete_args) {
+    if (!arg.is_value && !has_concrete_type(arg.type) && !arg.type.tpl_struct_origin) {
+      has_generic_type_arg = true;
+    }
+  }
 
   for (const auto& arg : resolved.concrete_args) {
     if (!arg.is_value && arg.type.tpl_struct_origin) return;
@@ -585,6 +667,21 @@ void Lowerer::realize_template_struct(
 
   std::string mangled = build_template_mangled_name(
       primary_tpl, tpl_def, origin, resolved);
+
+  if (!incoming_tag.empty() && incoming_tag != mangled) {
+    module_->template_struct_tag_aliases[incoming_tag] = mangled;
+  }
+  if (has_generic_type_arg && origin && origin[0]) {
+    module_->template_struct_tag_aliases[origin] = mangled;
+    const std::string qualified_origin = origin;
+    const size_t scope_sep = qualified_origin.rfind("::");
+    if (scope_sep != std::string::npos && scope_sep + 2 < qualified_origin.size()) {
+      module_->template_struct_tag_aliases[qualified_origin.substr(scope_sep + 2)] = mangled;
+    }
+  }
+  if (!lookup_key.empty()) {
+    module_->template_struct_lookup_keys[lookup_key] = mangled;
+  }
 
   instantiate_template_struct_body(
       mangled, primary_tpl, tpl_def, selected_pattern,
