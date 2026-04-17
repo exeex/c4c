@@ -6,20 +6,20 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Finished the remaining helper-built non-scalar ABI activation packet in the
-focused `backend_prepare_liveness` lane: aggregate byval/sret helper calls now
-prove stack-backed ABI consumption through active regalloc move resolution,
-helper-built pointer parameters (`va_copy`, aggregate `va_arg`) now lower
-through the canonical pointer-param route instead of falling into the byval
-aggregate fallback, and same-kind ABI handoffs now publish real
-register-to-register or stack-to-stack move-resolution records when the ABI
-destination differs from the source storage identity.
+Checkpointed the helper-call ABI lane with the deferred broader backend pause
+and repaired the stack-layout test compile blocker that surfaced during that
+checkpoint. `backend_prepare_stack_layout_test.cpp` now references
+`prepare::stack_layout::FunctionInlineAsmSummary` at the active public
+namespace boundary again, the focused `backend_prepare_stack_layout` proof
+passes, and the broader `^backend_` checkpoint passes on the repaired tree.
 
 ## Suggested Next
 
-Checkpoint this helper-call ABI lane before extending it further: run a broader
-backend checkpoint against the new pointer/byval helper coverage and refresh
-route state instead of adding more narrow helper-specific packets immediately.
+Choose the next packet from the active prealloc runbook rather than extending
+this helper-call ABI lane by inertia. The route review says the plan and source
+idea still align, broader proof is now refreshed, and the next bounded packet
+should either advance a real convergence gap or start the explicit Step 5
+acceptance/comparison work instead of adding more helper-only proofs.
 
 ## Watchouts
 
@@ -69,6 +69,10 @@ route state instead of adding more narrow helper-specific packets immediately.
   `return_abi={type=Void, primary_class=Memory, returned_in_memory=true}`;
   prepare legalize must preserve that metadata instead of treating all
   `Void` return ABI entries as empty
+- the broader backend pause exposed a build-sensitive namespace contract in
+  `backend_prepare_stack_layout_test.cpp`: callers must use
+  `prepare::stack_layout::FunctionInlineAsmSummary`, not the old
+  `prepare::FunctionInlineAsmSummary` spelling
 - the focused call-result proof currently uses an `F32` value on the active
   RISC-V target because the general-register seed pools are active while float
   register pools are still absent; if float allocation becomes active later,
@@ -95,14 +99,15 @@ route state instead of adding more narrow helper-specific packets immediately.
 
 ## Proof
 
-Ran the delegated proof command successfully:
-`cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
-build -j --output-on-failure -R ^backend_prepare_liveness$ > test_after.log
-2>&1`
-after rebuilding `backend_prepare_liveness_test` locally to refresh the test
-binary for the touched focused test file. The delegated `c4c_backend` build
-target alone does not rebuild `tests/backend/backend_prepare_liveness_test.cpp`
-after test-only edits, so future packets touching that file need the test
-target rebuilt before trusting the delegated ctest step. Canonical proof still
-ran through the delegated command and passed.
-Canonical proof log: `test_after.log`.
+Focused repair proof passed:
+`cmake --build --preset default -j4 && ctest --test-dir build -j
+--output-on-failure -R '^backend_prepare_stack_layout$' > test_after.log 2>&1`
+
+Broader checkpoint also passed afterward:
+`cmake --build --preset default -j4 && ctest --test-dir build -j
+--output-on-failure -R '^backend_' > test_after.log 2>&1`
+
+The active canonical proof log is `test_after.log` from the broader backend
+checkpoint. The older `test_before.log` came from a narrower
+`backend_prepare_liveness` run, so it is not a matching regression-guard pair
+for this broader scope and should not be treated as one.

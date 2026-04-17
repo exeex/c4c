@@ -90,7 +90,9 @@ std::vector<prepare::PreparedStackObject> collect_stack_layout_regalloc_hint_obj
   bir::Function function = make_stack_layout_analysis_object_collection_function();
   prepare::PreparedObjectId next_object_id = 0;
   auto objects = prepare::stack_layout::collect_function_stack_objects(function, next_object_id);
-  prepare::stack_layout::apply_regalloc_hints(function, prepare::FunctionInlineAsmSummary{}, objects);
+  prepare::stack_layout::apply_regalloc_hints(function,
+                                              prepare::stack_layout::FunctionInlineAsmSummary{},
+                                              objects);
   return objects;
 }
 
@@ -133,7 +135,9 @@ std::vector<prepare::PreparedStackObject> collect_stack_layout_param_regalloc_hi
   bir::Function function = make_stack_layout_param_object_collection_function();
   prepare::PreparedObjectId next_object_id = 0;
   auto objects = prepare::stack_layout::collect_function_stack_objects(function, next_object_id);
-  prepare::stack_layout::apply_regalloc_hints(function, prepare::FunctionInlineAsmSummary{}, objects);
+  prepare::stack_layout::apply_regalloc_hints(function,
+                                              prepare::stack_layout::FunctionInlineAsmSummary{},
+                                              objects);
   return objects;
 }
 
