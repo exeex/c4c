@@ -1,6 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
-#include "src/backend/target.hpp"
+#include "src/target_profile.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -8,9 +8,12 @@
 
 namespace {
 
-using c4c::backend::Target;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
+
+c4c::TargetProfile riscv_target_profile() {
+  return c4c::default_target_profile(c4c::TargetArch::Riscv64);
+}
 
 int fail(const char* message) {
   std::cerr << message << "\n";
@@ -216,7 +219,7 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -283,7 +286,7 @@ prepare::PreparedBirModule prepare_param_permanent_home_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -356,7 +359,7 @@ prepare::PreparedBirModule prepare_param_fixed_location_ordering_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -434,7 +437,7 @@ prepare::PreparedBirModule prepare_addressed_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -520,7 +523,7 @@ prepare::PreparedBirModule prepare_packed_frame_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -577,7 +580,7 @@ prepare::PreparedBirModule prepare_fixed_location_frame_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -652,7 +655,7 @@ prepare::PreparedBirModule prepare_fixed_location_gap_fill_frame_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -711,7 +714,7 @@ prepare::PreparedBirModule prepare_permanent_home_slot_frame_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -782,7 +785,7 @@ prepare::PreparedBirModule prepare_lowering_scratch_frame_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -836,7 +839,7 @@ prepare::PreparedBirModule prepare_dead_lowering_scratch_frame_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -903,7 +906,7 @@ prepare::PreparedBirModule prepare_phi_permanent_home_slot_frame_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -952,7 +955,7 @@ prepare::PreparedBirModule prepare_call_escaped_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -993,7 +996,7 @@ prepare::PreparedBirModule prepare_sret_storage_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1039,7 +1042,7 @@ prepare::PreparedBirModule prepare_indirect_call_escaped_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1097,7 +1100,7 @@ prepare::PreparedBirModule prepare_select_escaped_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1141,7 +1144,7 @@ prepare::PreparedBirModule prepare_mixed_select_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1185,7 +1188,7 @@ prepare::PreparedBirModule prepare_rooted_select_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1236,7 +1239,7 @@ prepare::PreparedBirModule prepare_select_compare_escaped_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1287,7 +1290,7 @@ prepare::PreparedBirModule prepare_rooted_select_compare_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1327,7 +1330,7 @@ prepare::PreparedBirModule prepare_cast_escaped_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1364,7 +1367,7 @@ prepare::PreparedBirModule prepare_return_escaped_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1413,7 +1416,7 @@ prepare::PreparedBirModule prepare_cond_branch_escaped_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1471,7 +1474,7 @@ prepare::PreparedBirModule prepare_pointer_addressed_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1541,7 +1544,7 @@ prepare::PreparedBirModule prepare_global_pointer_addressed_local_slot_module() 
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1588,7 +1591,7 @@ prepare::PreparedBirModule prepare_store_escaped_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1674,7 +1677,7 @@ prepare::PreparedBirModule prepare_phi_escaped_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1733,7 +1736,7 @@ prepare::PreparedBirModule prepare_phi_single_block_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1810,7 +1813,7 @@ prepare::PreparedBirModule prepare_phi_multi_block_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1882,7 +1885,7 @@ prepare::PreparedBirModule prepare_mixed_phi_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1938,7 +1941,7 @@ prepare::PreparedBirModule prepare_pointer_binary_escaped_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1980,7 +1983,7 @@ prepare::PreparedBirModule prepare_rooted_pointer_binary_local_slot_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;

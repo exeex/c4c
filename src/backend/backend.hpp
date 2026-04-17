@@ -3,7 +3,6 @@
 #include "bir/bir.hpp"
 #include "bir/lir_to_bir.hpp"
 #include "prealloc/prealloc.hpp"
-#include "target.hpp"
 
 #include <functional>
 #include <string>
@@ -46,7 +45,7 @@ struct BackendModuleInput {
 };
 
 struct BackendOptions {
-  Target target;
+  c4c::TargetProfile target_profile{};
   bool emit_semantic_bir = false;
 };
 
@@ -61,36 +60,18 @@ struct BackendAssembleResult {
     const c4c::backend::bir::Module& module,
     const c4c::TargetProfile& target_profile);
 
-[[deprecated("use prepare_bir_module_for_target(module, TargetProfile) instead")]]
-[[nodiscard]] c4c::backend::bir::Module prepare_bir_module_for_target(
-    const c4c::backend::bir::Module& module,
-    Target target);
-
 // Current public BIR entrypoint. x86 now routes prepared backend data into the
 // target-local prepared-module consumer boundary instead of returning prepared
 // semantic BIR text directly.
 std::string emit_target_bir_module(const bir::Module& module,
                                    const c4c::TargetProfile& target_profile);
 
-[[deprecated("use emit_target_bir_module(module, TargetProfile) instead")]]
-std::string emit_target_bir_module(const bir::Module& module, Target public_target);
-
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
                                    const c4c::TargetProfile& target_profile);
-
-[[deprecated("use emit_target_lir_module(module, TargetProfile) instead")]]
-std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
-                                   Target public_target);
 
 BackendAssembleResult assemble_target_lir_module(
     const c4c::codegen::lir::LirModule& module,
     const c4c::TargetProfile& target_profile,
-    const std::string& output_path);
-
-[[deprecated("use assemble_target_lir_module(module, TargetProfile, output_path) instead")]]
-BackendAssembleResult assemble_target_lir_module(
-    const c4c::codegen::lir::LirModule& module,
-    Target public_target,
     const std::string& output_path);
 
 std::string emit_module(const BackendModuleInput& input,

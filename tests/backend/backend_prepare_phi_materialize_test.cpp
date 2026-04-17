@@ -1,6 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
-#include "src/backend/target.hpp"
+#include "src/target_profile.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -10,9 +10,12 @@
 
 namespace {
 
-using c4c::backend::Target;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
+
+c4c::TargetProfile riscv_target_profile() {
+  return c4c::default_target_profile(c4c::TargetArch::Riscv64);
+}
 
 int fail(const char* message) {
   std::cerr << message << "\n";
@@ -259,7 +262,7 @@ prepare::PreparedBirModule legalize_call_abi_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_stack_layout = false;
@@ -365,7 +368,7 @@ prepare::PreparedBirModule legalize_memory_access_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_stack_layout = false;
@@ -453,7 +456,7 @@ prepare::PreparedBirModule legalize_merge3_module(bool add_trailing_use) {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_stack_layout = false;
@@ -541,7 +544,7 @@ prepare::PreparedBirModule legalize_merge3_successor_use_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_stack_layout = false;
@@ -638,7 +641,7 @@ prepare::PreparedBirModule legalize_merge3_forwarded_successor_use_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_stack_layout = false;
@@ -746,7 +749,7 @@ prepare::PreparedBirModule legalize_merge3_conditional_successor_use_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_stack_layout = false;

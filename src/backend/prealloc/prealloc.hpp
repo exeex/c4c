@@ -2,7 +2,6 @@
 
 #include "../bir/bir.hpp"
 #include "../../target_profile.hpp"
-#include "../target.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -348,7 +347,6 @@ enum class PreparedBirInvariant {
 
 struct PreparedBirModule {
   c4c::backend::bir::Module module;
-  Target target = Target::X86_64;
   c4c::TargetProfile target_profile{};
   PrepareRoute route = PrepareRoute::SemanticBirShared;
   std::vector<PreparedBirInvariant> invariants;
@@ -367,7 +365,6 @@ class BirPreAlloc {
       : options_(options),
         prepared_{
             .module = module,
-            .target = c4c::backend::target_from_profile(target_profile),
             .target_profile = target_profile,
             .route = PrepareRoute::SemanticBirShared,
             .completed_phases = {},
@@ -377,22 +374,9 @@ class BirPreAlloc {
                        const PrepareOptions& options = {})
       : options_(options), prepared_(std::move(prepared)) {
     if (prepared_.target_profile.arch == c4c::TargetArch::Unknown) {
-      const auto resolved_triple = [&]() -> std::string_view {
-        if (!prepared_.module.target_triple.empty()) {
-          return prepared_.module.target_triple;
-        }
-        switch (prepared_.target) {
-          case Target::X86_64:
-            return "x86_64-unknown-linux-gnu";
-          case Target::I686:
-            return "i386-unknown-linux-gnu";
-          case Target::Aarch64:
-            return "aarch64-unknown-linux-gnu";
-          case Target::Riscv64:
-            return "riscv64gc-unknown-linux-gnu";
-        }
-        return "x86_64-unknown-linux-gnu";
-      }();
+      const auto resolved_triple =
+          prepared_.module.target_triple.empty() ? c4c::default_host_target_triple()
+                                                 : prepared_.module.target_triple;
       prepared_.target_profile = c4c::target_profile_from_triple(resolved_triple);
     }
   }

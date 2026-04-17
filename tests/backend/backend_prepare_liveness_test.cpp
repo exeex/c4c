@@ -2,7 +2,7 @@
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/codegen/lir/ir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
-#include "src/backend/target.hpp"
+#include "src/target_profile.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -11,12 +11,20 @@
 
 namespace {
 
-using c4c::backend::Target;
 using c4c::backend::BirLoweringOptions;
 using c4c::backend::try_lower_to_bir_with_options;
 namespace bir = c4c::backend::bir;
 namespace lir = c4c::codegen::lir;
 namespace prepare = c4c::backend::prepare;
+
+c4c::TargetProfile riscv_target_profile(
+    std::string_view target_triple = "riscv64gc-unknown-linux-gnu") {
+  return c4c::target_profile_from_triple(target_triple);
+}
+
+c4c::TargetProfile x86_target_profile() {
+  return c4c::default_target_profile(c4c::TargetArch::X86_64);
+}
 
 int fail(const char* message) {
   std::cerr << message << "\n";
@@ -202,7 +210,7 @@ prepare::PreparedBirModule prepare_phi_module() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -393,7 +401,7 @@ prepare::PreparedBirModule prepare_phi_join_move_module_with_regalloc() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -437,7 +445,7 @@ prepare::PreparedBirModule prepare_byval_home_slot_module_with_regalloc() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -516,7 +524,7 @@ prepare::PreparedBirModule prepare_call_crossing_module_with_regalloc() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -616,7 +624,7 @@ prepare::PreparedBirModule prepare_weighted_post_call_module_with_regalloc() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -719,7 +727,7 @@ prepare::PreparedBirModule prepare_call_arg_move_module_with_regalloc() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -759,7 +767,7 @@ prepare::PreparedBirModule prepare_call_result_move_module_with_regalloc() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -796,7 +804,7 @@ prepare::PreparedBirModule prepare_return_move_module_with_regalloc() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = true;
@@ -833,7 +841,7 @@ prepare::PreparedBirModule prepare_return_same_storage_module_with_regalloc() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = true;
@@ -862,7 +870,7 @@ std::optional<prepare::PreparedBirModule> lower_and_legalize_aggregate_return_de
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(*lowered.module);
-  prepared.target = Target::X86_64;
+  prepared.target_profile = x86_target_profile();
 
   prepare::PrepareOptions options;
   options.run_stack_layout = false;
@@ -912,7 +920,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_call_result_module()
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(*lowered.module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = true;
@@ -957,7 +965,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_call_result_m
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(*lowered.module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = true;
@@ -1002,7 +1010,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_soft_float_helper_ca
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(*lowered.module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile(module.target_triple);
 
   prepare::PrepareOptions options;
   options.run_legalize = true;
@@ -1044,7 +1052,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_stackrestore_
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(*lowered.module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = true;
@@ -1086,7 +1094,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_va_copy_arg_m
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(*lowered.module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = true;
@@ -1128,7 +1136,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_va_arg_aggreg
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(*lowered.module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = true;
@@ -1177,7 +1185,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_aggregate_cal
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(*lowered.module);
-  prepared.target = Target::X86_64;
+  prepared.target_profile = x86_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = true;
@@ -1306,7 +1314,7 @@ prepare::PreparedBirModule prepare_evicted_spill_module_with_regalloc() {
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -1385,7 +1393,7 @@ prepare::PreparedBirModule prepare_loop_weighted_priority_module_with_regalloc()
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
-  prepared.target = Target::Riscv64;
+  prepared.target_profile = riscv_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -2107,11 +2115,16 @@ int check_lowered_helper_call_result_soft_float_abi(const prepare::PreparedBirMo
     return fail("expected soft-float helper-built fabs argument to appear in regalloc output");
   }
   const auto* arg_move = find_move_resolution(*function, call_arg->value_id, call_arg->value_id);
-  if (arg_move == nullptr || arg_move->reason != "call_arg_stack_to_register" ||
-      arg_move->destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-      arg_move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-      arg_move->destination_abi_index != std::optional<std::size_t>{0} ||
-      arg_move->destination_register_name != std::optional<std::string>{"a0"}) {
+  const bool arg_already_in_a0 =
+      call_arg->assigned_register.has_value() && !call_arg->assigned_stack_slot.has_value() &&
+      call_arg->assigned_register->register_name == "a0";
+  const bool arg_move_targets_a0 =
+      arg_move != nullptr && arg_move->reason == "call_arg_stack_to_register" &&
+      arg_move->destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      arg_move->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      arg_move->destination_abi_index == std::optional<std::size_t>{0} &&
+      arg_move->destination_register_name == std::optional<std::string>{"a0"};
+  if (!arg_already_in_a0 && !arg_move_targets_a0) {
     return fail("expected soft-float helper-built fabs argument to publish the concrete integer ABI destination");
   }
 

@@ -32,6 +32,7 @@ struct TargetProfile {
 };
 
 std::string default_host_target_triple();
+TargetProfile default_target_profile(TargetArch arch);
 TargetProfile target_profile_from_triple(std::string_view target_triple);
 const char* target_arch_name(TargetArch arch);
 const char* backend_abi_name(BackendAbiKind abi);

@@ -88,6 +88,22 @@ std::string default_host_target_triple() {
 #endif
 }
 
+TargetProfile default_target_profile(TargetArch arch) {
+  switch (arch) {
+    case TargetArch::X86_64:
+      return target_profile_from_triple("x86_64-unknown-linux-gnu");
+    case TargetArch::I686:
+      return target_profile_from_triple("i386-unknown-linux-gnu");
+    case TargetArch::Aarch64:
+      return target_profile_from_triple("aarch64-unknown-linux-gnu");
+    case TargetArch::Riscv64:
+      return target_profile_from_triple("riscv64gc-unknown-linux-gnu");
+    case TargetArch::Unknown:
+      break;
+  }
+  return target_profile_from_triple(default_host_target_triple());
+}
+
 TargetProfile target_profile_from_triple(std::string_view target_triple) {
   TargetProfile profile;
   profile.triple = std::string(target_triple);

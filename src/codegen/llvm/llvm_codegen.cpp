@@ -1,7 +1,7 @@
 #include "llvm_codegen.hpp"
 #include "backend.hpp"
 #include "bir/lir_to_bir.hpp"
-#include "target.hpp"
+#include "../target_profile.hpp"
 #include "hir_to_lir.hpp"
 #include "lir_printer.hpp"
 
@@ -19,10 +19,9 @@ std::string emit_legacy(const lir::LirModule& lir_mod) {
 std::string emit_via_backend(const lir::LirModule& lir_mod,
                              std::string_view target_triple,
                              bool emit_semantic_bir) {
-  const auto target = backend::target_from_triple(target_triple);
   return backend::emit_module(backend::BackendModuleInput{lir_mod},
                               backend::BackendOptions{
-                                  .target = target,
+                                  .target_profile = c4c::target_profile_from_triple(target_triple),
                                   .emit_semantic_bir = emit_semantic_bir,
                               });
 }

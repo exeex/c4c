@@ -11,27 +11,41 @@ namespace c4c::backend {
 
 namespace {
 
-Target resolve_public_lir_target(const c4c::codegen::lir::LirModule& module,
-                                 Target public_target) {
-  if (public_target != Target::X86_64) {
-    return public_target;
+const c4c::TargetProfile& profile_or_default(const c4c::TargetProfile& target_profile,
+                                             c4c::TargetProfile& storage,
+                                             std::string_view module_triple) {
+  if (target_profile.arch != c4c::TargetArch::Unknown) {
+    return target_profile;
+  }
+  storage = c4c::target_profile_from_triple(
+      module_triple.empty() ? c4c::default_host_target_triple() : module_triple);
+  return storage;
+}
+
+c4c::TargetProfile resolve_public_lir_target_profile(const c4c::codegen::lir::LirModule& module,
+                                                     const c4c::TargetProfile& public_target) {
+  c4c::TargetProfile module_profile_storage;
+  const auto& requested =
+      profile_or_default(public_target, module_profile_storage, module.target_triple);
+  if (requested.arch != c4c::TargetArch::X86_64) {
+    return requested;
   }
 
-  auto target = target_from_triple(module.target_triple);
-  if (target != Target::I686) {
-    target = Target::X86_64;
+  if (module.target_triple.empty()) {
+    return requested;
   }
-  return target;
+
+  const auto module_profile = c4c::target_profile_from_triple(module.target_triple);
+  if (module_profile.arch == c4c::TargetArch::I686) {
+    return module_profile;
+  }
+  return requested;
 }
 
 std::string emit_bootstrap_lir_module(const c4c::codegen::lir::LirModule& module,
-                                      Target target) {
-  (void)target;
+                                      const c4c::TargetProfile& target_profile) {
+  (void)target_profile;
   return c4c::codegen::lir::print_llvm(module);
-}
-
-bool is_x86_target(Target target) {
-  return target == Target::X86_64 || target == Target::I686;
 }
 
 bool is_x86_target(const c4c::TargetProfile& target_profile) {
@@ -43,13 +57,6 @@ bool is_x86_target(const c4c::TargetProfile& target_profile) {
 // Keep this helper name honest until x86 is wired to a real backend-side handoff.
 std::string render_prepared_bir_text(const c4c::backend::bir::Module& module) {
   return c4c::backend::bir::print(module);
-}
-
-c4c::backend::prepare::PreparedBirModule prepare_semantic_bir_pipeline(
-    const c4c::backend::bir::Module& module,
-    Target target) {
-  return c4c::backend::prepare::prepare_semantic_bir_module_with_options(
-      module, c4c::backend::target_profile_from_backend_target(target, module.target_triple));
 }
 
 c4c::backend::prepare::PreparedBirModule prepare_semantic_bir_pipeline(
@@ -72,12 +79,6 @@ c4c::backend::bir::Module prepare_bir_module_for_target(
   return prepare_semantic_bir_pipeline(module, target_profile).module;
 }
 
-c4c::backend::bir::Module prepare_bir_module_for_target(
-    const c4c::backend::bir::Module& module,
-    Target target) {
-  return prepare_semantic_bir_pipeline(module, target).module;
-}
-
 std::string emit_target_bir_module(const bir::Module& module,
                                    const c4c::TargetProfile& target_profile) {
   const auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
@@ -85,11 +86,6 @@ std::string emit_target_bir_module(const bir::Module& module,
     return c4c::backend::x86::emit_prepared_module(prepared);
   }
   return render_prepared_bir_text(prepared.module);
-}
-
-std::string emit_target_bir_module(const bir::Module& module, Target public_target) {
-  return emit_target_bir_module(
-      module, c4c::backend::target_profile_from_backend_target(public_target, module.target_triple));
 }
 
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
@@ -103,15 +99,7 @@ std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
     }
     return render_prepared_bir_text(prepared_bir.module);
   }
-  return emit_bootstrap_lir_module(module, target_from_profile(target_profile));
-}
-
-std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
-                                   Target public_target) {
-  const auto target = resolve_public_lir_target(module, public_target);
-  return emit_target_lir_module(module,
-                                c4c::backend::target_profile_from_backend_target(
-                                    target, module.target_triple));
+  return emit_bootstrap_lir_module(module, target_profile);
 }
 
 BackendAssembleResult assemble_target_lir_module(
@@ -127,30 +115,22 @@ BackendAssembleResult assemble_target_lir_module(
   };
 }
 
-BackendAssembleResult assemble_target_lir_module(
-    const c4c::codegen::lir::LirModule& module,
-    Target public_target,
-    const std::string& output_path) {
-  return assemble_target_lir_module(
-      module,
-      c4c::backend::target_profile_from_backend_target(public_target, module.target_triple),
-      output_path);
-}
-
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options) {
   if (input.holds_bir_module()) {
     if (options.emit_semantic_bir) {
       return c4c::backend::bir::print(input.bir_module());
     }
+    c4c::TargetProfile target_profile_storage;
     return emit_target_bir_module(
         input.bir_module(),
-        c4c::backend::target_profile_from_backend_target(options.target,
-                                                         input.bir_module().target_triple));
+        profile_or_default(options.target_profile,
+                           target_profile_storage,
+                           input.bir_module().target_triple));
   }
 
   const auto& lir_module = input.lir_module();
-  const auto target = resolve_public_lir_target(lir_module, options.target);
+  const auto target_profile = resolve_public_lir_target_profile(lir_module, options.target_profile);
 
   c4c::backend::BirLoweringOptions lowering_options{};
   lowering_options.preserve_dynamic_alloca = options.emit_semantic_bir;
@@ -160,13 +140,13 @@ std::string emit_module(const BackendModuleInput& input,
     if (options.emit_semantic_bir) {
       return c4c::backend::bir::print(*lowering.module);
     }
-    const auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target);
-    if (is_x86_target(target)) {
+    const auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
+    if (is_x86_target(target_profile)) {
       return c4c::backend::x86::emit_prepared_module(prepared_bir);
     }
     return render_prepared_bir_text(prepared_bir.module);
   }
-  return emit_bootstrap_lir_module(lir_module, target);
+  return emit_bootstrap_lir_module(lir_module, target_profile);
 }
 
 }  // namespace c4c::backend

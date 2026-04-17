@@ -1030,9 +1030,11 @@ inline std::string emit_prepared_module(
     const c4c::backend::prepare::PreparedBirModule& module) {
   const auto prepared_arch = module.target_profile.arch != c4c::TargetArch::Unknown
                                  ? module.target_profile.arch
-                                 : (module.target == c4c::backend::Target::I686
-                                        ? c4c::TargetArch::I686
-                                        : c4c::TargetArch::X86_64);
+                                 : c4c::target_profile_from_triple(
+                                       module.module.target_triple.empty()
+                                           ? c4c::default_host_target_triple()
+                                           : module.module.target_triple)
+                                       .arch;
   if (prepared_arch != c4c::TargetArch::X86_64 && prepared_arch != c4c::TargetArch::I686) {
     throw std::invalid_argument(
         "x86 backend emitter requires an x86 target for the canonical prepared-module handoff");

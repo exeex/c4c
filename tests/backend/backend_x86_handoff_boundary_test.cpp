@@ -14,13 +14,16 @@ namespace bir = c4c::backend::bir;
 namespace lir = c4c::codegen::lir;
 using c4c::backend::BackendModuleInput;
 using c4c::backend::BackendOptions;
-using c4c::backend::Target;
 
 const c4c::TargetProfile& target_profile_from_module_triple(std::string_view target_triple,
                                                             c4c::TargetProfile& storage) {
   storage = c4c::target_profile_from_triple(
       target_triple.empty() ? c4c::default_host_target_triple() : target_triple);
   return storage;
+}
+
+c4c::TargetProfile x86_target_profile() {
+  return c4c::default_target_profile(c4c::TargetArch::X86_64);
 }
 
 int fail(const char* message) {
@@ -309,7 +312,7 @@ int check_route_outputs(const bir::Module& module,
   }
 
   const auto generic_asm = c4c::backend::emit_module(
-      BackendModuleInput{module}, BackendOptions{.target = Target::X86_64});
+      BackendModuleInput{module}, BackendOptions{.target_profile = x86_target_profile()});
   if (generic_asm != public_asm) {
     return fail((std::string(failure_context) +
                  ": generic backend emit path no longer routes x86 BIR input through emit_target_bir_module")
@@ -340,7 +343,7 @@ int check_lir_route_outputs(const lir::LirModule& module,
   }
 
   const auto generic_asm = c4c::backend::emit_module(
-      BackendModuleInput{module}, BackendOptions{.target = Target::X86_64});
+      BackendModuleInput{module}, BackendOptions{.target_profile = x86_target_profile()});
   if (generic_asm != public_asm) {
     return fail((std::string(failure_context) +
                  ": generic backend emit path no longer routes x86 LIR input through emit_target_lir_module")
