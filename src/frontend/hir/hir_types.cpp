@@ -1311,6 +1311,8 @@ void Lowerer::lower_struct_def(const Node* sd) {
 
     HirStructField hf;
     hf.name = f->name;
+    hf.field_text_id = make_text_id(
+        f->name, module_ ? module_->link_name_texts.get() : nullptr);
     hf.member_symbol_id = module_->member_symbols.intern(
         std::string(tag) + "::" + f->name);
     TypeSpec ft = f->type;

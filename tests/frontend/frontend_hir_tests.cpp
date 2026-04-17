@@ -535,9 +535,11 @@ struct Widget {
 }
 
 void test_hir_struct_defs_preserve_text_ids_for_tags_and_bases() {
-  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+  c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 struct Base {};
-struct Derived : Base {};
+struct Derived : Base {
+  int member;
+};
 
 template<typename T>
 struct Box : Derived {
@@ -550,7 +552,7 @@ Box<int> make_box() { return {}; }
   const auto derived_it = hir_module.struct_defs.find("Derived");
   expect_true(derived_it != hir_module.struct_defs.end(),
               "fixture should lower the non-template derived struct definition");
-  const c4c::hir::HirStructDef& derived = derived_it->second;
+  c4c::hir::HirStructDef& derived = derived_it->second;
   expect_true(derived.tag_text_id != c4c::kInvalidText,
               "non-template struct defs should preserve a parallel tag TextId");
   expect_eq(hir_module.link_name_texts->lookup(derived.tag_text_id), "Derived",
@@ -563,6 +565,17 @@ Box<int> make_box() { return {}; }
               "non-template struct base tags should preserve parallel TextIds");
   expect_eq(hir_module.link_name_texts->lookup(derived.base_tag_text_ids.front()), "Base",
             "non-template struct base-tag TextIds should resolve through the HIR text table");
+  expect_true(derived.fields.size() == 1,
+              "fixture should lower one named field on the derived struct");
+  expect_true(derived.fields.front().field_text_id != c4c::kInvalidText,
+              "struct defs should preserve a parallel TextId for lowered field names");
+  expect_eq(hir_module.link_name_texts->lookup(derived.fields.front().field_text_id), "member",
+            "struct field TextIds should resolve through the HIR text table");
+
+  derived.fields.front().name = "__corrupted_field_name__";
+  const std::string rendered_hir = c4c::hir::format_hir(hir_module);
+  expect_true(rendered_hir.find("field member: int") != std::string::npos,
+              "HIR printer should prefer struct field TextIds over corrupted raw field strings");
 
   const auto instantiated_it = std::find_if(
       hir_module.struct_defs.begin(), hir_module.struct_defs.end(),

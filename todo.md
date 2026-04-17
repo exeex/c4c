@@ -6,24 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 2 / Step 4 for the bounded parser
-`last_using_alias_name_` route in template using-alias bookkeeping and
-`frontend_parser_tests.cpp`.
+Completed `plan.md` Step 2 / Step 4 for the bounded HIR struct-definition
+field-name route in `HirStructField`, `hir_printer.cpp`, and
+`frontend_hir_tests.cpp`.
 
-- Added parser-side `last_using_alias_name_text_id_` storage and helper accessors
-  so the alias-template wrapper no longer depends on raw string ownership alone
-  for that persistent parser state.
-- Switched template using-alias metadata capture to resolve the alias name
-  through the new `TextId` carrier before typedef lookup and alias-template map
-  insertion.
-- Added focused parser proof that corrupting the legacy raw alias string does
-  not break the visible alias spelling while the `TextId` carrier is present.
+- Added parallel `HirStructField::field_text_id` storage and populated it while
+  lowering non-template struct definitions so stable field spellings no longer
+  depend on raw string ownership alone on that route.
+- Switched HIR struct printing to prefer the new field-name `TextId` carrier
+  before falling back to the legacy raw field spelling.
+- Added focused HIR proof that corrupting the legacy raw struct field string
+  does not break the printed field spelling while the `TextId` carrier is
+  present.
 
 ## Suggested Next
 
-Use the same bounded pattern on one remaining parser or HIR persistent text
-carrier with live consumers, such as `current_namespace_` or a struct-field
-name path, rather than widening into registry churn.
+Extend the same bounded struct-field-name pattern to template-instantiated
+`HirStructField` construction so instantiated struct defs preserve parallel
+field `TextId`s too, then keep proof in `frontend_hir_tests`.
 
 ## Watchouts
 
@@ -31,9 +31,10 @@ name path, rather than widening into registry churn.
 - HIR must intern its own spellings into `module.link_name_texts`; parser-owned
   `TextId`s cannot be copied directly into HIR because they belong to a
   different table.
-- `last_using_alias_name_text_id_` must stay aligned anywhere template using
-  aliases clear, overwrite, or read the parser-side bookkeeping slot.
-- Parser-side `TextId` tests should keep proving the route still works after the
+- `HirStructField::field_text_id` is only populated on the non-template
+  `lower_struct_def` route so far; template-instantiated field construction
+  still needs the same parallel carrier.
+- HIR-side `TextId` tests should keep proving the route still works after the
   legacy string sidecar is intentionally corrupted, so the migration is not
   passive storage only.
 - Keep diagnostic/debug/serialization strings out of scope.
@@ -42,10 +43,10 @@ name path, rather than widening into registry churn.
 ## Proof
 
 Baseline:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
 
 Packet proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
 
 Result:
 Passed on 2026-04-17 via `test_after.log`.

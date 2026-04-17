@@ -191,6 +191,13 @@ class Printer {
  private:
   const Module& m_;
 
+  std::string_view struct_field_name_text(const HirStructField& field) const {
+    if (field.field_text_id != kInvalidText && m_.link_name_texts) {
+      return m_.link_name_texts->lookup(field.field_text_id);
+    }
+    return field.name;
+  }
+
   std::string_view init_list_field_designator_text(const InitListItem& item) const {
     if (item.field_designator_text_id != kInvalidText && m_.link_name_texts) {
       return m_.link_name_texts->lookup(item.field_designator_text_id);
@@ -258,7 +265,7 @@ class Printer {
         << " align=" << sd.align_bytes
         << ns_qual_str(sd.ns_qual) << "\n";
     for (const auto& field : sd.fields) {
-      out << "    field " << field.name << ": " << ts_str(field.elem_type);
+      out << "    field " << struct_field_name_text(field) << ": " << ts_str(field.elem_type);
       if (field.array_first_dim >= 0) out << "[" << field.array_first_dim << "]";
       if (field.is_flexible_array) out << " flexible";
       out << " llvm_idx=" << field.llvm_idx

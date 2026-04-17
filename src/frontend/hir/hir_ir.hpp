@@ -770,6 +770,7 @@ struct ProgramSummary {
 
 struct HirStructField {
   SymbolName name;
+  TextId field_text_id = kInvalidText;
   MemberSymbolId member_symbol_id = kInvalidMemberSymbol;
   TypeSpec elem_type;           // element type (first array dim cleared into array_first_dim)
   long long array_first_dim = -1;  // >=0 if field is an array type
