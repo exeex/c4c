@@ -6,6 +6,7 @@
 #include "parser.hpp"
 #include "sema.hpp"
 #include "source_profile.hpp"
+#include "backend/bir/lir_to_bir.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -318,6 +319,63 @@ int use_template() { return id<int>(7); }
               "printer should not trust a corrupted specialization metadata name");
 }
 
+void test_lir_to_bir_resolves_link_names_at_backend_boundary() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+int global_value = 7;
+
+int add_one(int value) { return value + global_value; }
+)cpp");
+  c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  auto lir_fn_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(fn.link_name_id) == "add_one";
+      });
+  expect_true(lir_fn_it != lir_module.functions.end(),
+              "fixture should lower add_one with a LinkNameId before backend emission");
+  lir_fn_it->name = "broken_add_one_name";
+
+  auto lir_global_it = std::find_if(
+      lir_module.globals.begin(), lir_module.globals.end(),
+      [&](const c4c::codegen::lir::LirGlobal& global) {
+        return global.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(global.link_name_id) == "global_value";
+      });
+  expect_true(lir_global_it != lir_module.globals.end(),
+              "fixture should lower global_value with a LinkNameId before backend emission");
+  lir_global_it->name = "broken_global_value";
+
+  const auto lowering =
+      c4c::backend::try_lower_to_bir_with_options(lir_module, c4c::backend::BirLoweringOptions{});
+  expect_true(lowering.module.has_value(),
+              "backend lir_to_bir lowering should still succeed after raw LIR names are corrupted");
+
+  const auto bir_fn_it = std::find_if(
+      lowering.module->functions.begin(), lowering.module->functions.end(),
+      [](const c4c::backend::bir::Function& function) { return function.name == "add_one"; });
+  expect_true(bir_fn_it != lowering.module->functions.end(),
+              "backend lir_to_bir should recover the function spelling from LinkNameId lookup");
+
+  const auto bir_global_it = std::find_if(
+      lowering.module->globals.begin(), lowering.module->globals.end(),
+      [](const c4c::backend::bir::Global& global) { return global.name == "global_value"; });
+  expect_true(bir_global_it != lowering.module->globals.end(),
+              "backend lir_to_bir should recover the global spelling from LinkNameId lookup");
+
+  expect_true(std::none_of(lowering.module->functions.begin(), lowering.module->functions.end(),
+                           [](const c4c::backend::bir::Function& function) {
+                             return function.name == "broken_add_one_name";
+                           }),
+              "backend lir_to_bir should not trust a corrupted raw function name carrier");
+  expect_true(std::none_of(lowering.module->globals.begin(), lowering.module->globals.end(),
+                           [](const c4c::backend::bir::Global& global) {
+                             return global.name == "broken_global_value";
+                           }),
+              "backend lir_to_bir should not trust a corrupted raw global name carrier");
+}
+
 }  // namespace
 
 int main() {
@@ -329,6 +387,7 @@ int main() {
   test_hir_to_lir_forwards_function_link_name_ids();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
+  test_lir_to_bir_resolves_link_names_at_backend_boundary();
 
   std::cout << "PASS: frontend_hir_tests\n";
   return 0;

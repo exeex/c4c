@@ -6,20 +6,19 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended Step 4 through another late text-emitting boundary: LIR
-specialization metadata now carries `mangled_link_name_id` alongside the legacy
-string, `lir::print_llvm` resolves metadata-emitted mangled names through the
-shared `LinkNameId` table when available, and
-`tests/frontend/frontend_hir_tests.cpp` proves the printer still emits the
-semantic specialization name after the raw metadata string is deliberately
-corrupted.
+Extended Step 4 into an active backend-side consumer: semantic `lir_to_bir`
+lowering now resolves function/global symbol spelling from existing
+`LinkNameId` carriers before it keys backend-facing BIR state, and
+`tests/frontend/frontend_hir_tests.cpp` proves backend lowering still emits the
+semantic names after the legacy raw LIR function/global name carriers are
+deliberately corrupted.
 
 ## Suggested Next
 
-Review the remaining link-visible late-consumer surfaces to decide whether the
-next bounded slice should migrate another printer-emitted metadata/declaration
-path or move from LLVM text emission into a backend-side symbol spelling
-boundary that can resolve `LinkNameId` instead of trusting legacy strings.
+Review the remaining link-visible late-consumer surfaces and pick the next
+bounded active backend consumer that already has a real `LinkNameId` carrier,
+such as declaration-lowering or another prepared backend-facing module path,
+without inventing ids for unresolved extern-call declarations.
 
 ## Watchouts
 
@@ -32,13 +31,14 @@ boundary that can resolve `LinkNameId` instead of trusting legacy strings.
 - unresolved extern-call declarations still print names from raw strings today
   because this route does not yet have a real `LinkNameId` source of truth;
   avoid faking that boundary with ad hoc interning
-- keep forwarding explicit ids through LIR carriers rather than treating
-  `name` strings as the semantic source of truth
+- keep forwarding explicit ids through LIR carriers and resolve them only at
+  late consumers rather than treating legacy `name` strings as the semantic
+  source of truth
 - avoid testcase-overfit proof or brittle emitted-text substring matching as a
   substitute for a real id path
 
 ## Proof
 
 Build: `cmake --build --preset default -j4`
-Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$|^cpp_llvm_.*specialization_metadata'`
+Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
 Log: `test_after.log`

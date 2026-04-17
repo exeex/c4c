@@ -73,6 +73,37 @@ std::optional<std::string_view> latest_function_failure_note(const BirLoweringCo
   return std::nullopt;
 }
 
+std::string_view resolve_link_name(const c4c::LinkNameTable& link_names,
+                                   c4c::LinkNameId id) {
+  if (id == c4c::kInvalidLinkName) return {};
+  const std::string_view spelling = link_names.spelling(id);
+  return spelling.empty() ? std::string_view{} : spelling;
+}
+
+c4c::codegen::lir::LirFunction function_with_resolved_name(
+    const c4c::codegen::lir::LirModule& module,
+    const c4c::codegen::lir::LirFunction& function) {
+  c4c::codegen::lir::LirFunction resolved = function;
+  const std::string_view resolved_name = resolve_link_name(module.link_names,
+                                                           function.link_name_id);
+  if (!resolved_name.empty()) {
+    resolved.name = std::string(resolved_name);
+  }
+  return resolved;
+}
+
+c4c::codegen::lir::LirGlobal global_with_resolved_name(
+    const c4c::codegen::lir::LirModule& module,
+    const c4c::codegen::lir::LirGlobal& global) {
+  c4c::codegen::lir::LirGlobal resolved = global;
+  const std::string_view resolved_name = resolve_link_name(module.link_names,
+                                                           global.link_name_id);
+  if (!resolved_name.empty()) {
+    resolved.name = std::string(resolved_name);
+  }
+  return resolved;
+}
+
 }  // namespace
 
 BirFunctionLowerer::BirFunctionLowerer(BirLoweringContext& context,
@@ -534,12 +565,13 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     function_symbols.insert(decl.name);
   }
   for (const auto& function : context.lir_module.functions) {
-    function_symbols.insert(function.name);
+    function_symbols.insert(function_with_resolved_name(context.lir_module, function).name);
   }
   const auto type_decls = build_type_decl_map(context.lir_module.type_decls);
   for (const auto& global : context.lir_module.globals) {
+    const auto resolved_global = global_with_resolved_name(context.lir_module, global);
     GlobalInfo info;
-    auto lowered_global = lower_minimal_global(global, type_decls, &info);
+    auto lowered_global = lower_minimal_global(resolved_global, type_decls, &info);
     if (!lowered_global.has_value()) {
       context.note(
           "module",
@@ -594,9 +626,10 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   }
 
   for (const auto& function : context.lir_module.functions) {
-    if (function.is_declaration) {
+    const auto resolved_function = function_with_resolved_name(context.lir_module, function);
+    if (resolved_function.is_declaration) {
       auto lowered_decl =
-          BirFunctionLowerer::lower_decl_function(function, context.target_profile);
+          BirFunctionLowerer::lower_decl_function(resolved_function, context.target_profile);
       if (!lowered_decl.has_value()) {
         continue;
       }
@@ -605,7 +638,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     }
 
     BirFunctionLowerer function_lowerer(
-        context, function, global_types, function_symbols, type_decls);
+        context, resolved_function, global_types, function_symbols, type_decls);
     auto lowered_function = function_lowerer.lower();
     if (!lowered_function.has_value()) {
       std::string message = "semantic lir_to_bir failed outside the ";

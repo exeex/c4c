@@ -4,7 +4,7 @@ foreach(target IN ITEMS frontend_hir_tests frontend_lexer_tests frontend_parser_
   set_target_properties(${target} PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 endforeach()
 
-target_link_libraries(frontend_hir_tests PRIVATE c4c_codegen)
+target_link_libraries(frontend_hir_tests PRIVATE c4c_codegen c4c_backend)
 
 add_test(NAME frontend_hir_tests    COMMAND frontend_hir_tests)
 add_test(NAME frontend_lexer_tests  COMMAND frontend_lexer_tests)
