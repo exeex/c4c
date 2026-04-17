@@ -295,11 +295,11 @@ std::optional<ExprId> Lowerer::try_lower_member_call_expr(FunctionCtx* ctx,
     if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
       resolved_method = resolve_ref_overload(ovit->first, n, ctx);
     }
-    const LinkNameId resolved_link_name_id =
-        find_struct_method_link_name_id(tag, method_name, base_ts.is_const)
-            .value_or(kInvalidLinkName);
-    DeclRef dr = make_direct_call_decl_ref(
-        *module_, resolved_method, resolved_link_name_id);
+    // `resolved_method` is already the concrete overload body selected for this
+    // call. Bind the direct-call carrier from that exact callee name instead of
+    // re-looking up the coarse `tag::method` registry key, which can collapse
+    // ref-qualified overloads onto the last-registered symbol.
+    DeclRef dr = make_direct_call_decl_ref(*module_, resolved_method);
     TypeSpec fn_ts{};
     fn_ts.base = TB_VOID;
     if (const Function* fn = find_direct_call_target(*module_, dr.link_name_id, dr.name)) {
