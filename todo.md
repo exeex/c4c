@@ -6,18 +6,18 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Taught the LIR printer to resolve direct global-call callees through
-`direct_callee_link_name_id` at the late text-emission boundary instead of
-trusting the raw `@name` operand; `tests/frontend/frontend_hir_tests.cpp` now
-proves LLVM text emission still prints `@helper(...)` after the legacy
-direct-call operand is deliberately corrupted.
+Added focused backend coverage proving declaration-backed direct calls and
+their lowered declarations still resolve through `LinkNameId` at the backend
+boundary even after both the raw LIR declaration name and the raw direct-call
+operand are deliberately corrupted.
 
 ## Suggested Next
 
 Review the remaining late-consumer surfaces that still expose raw
 declaration-oriented names despite existing carriers, especially unresolved
-extern-call declarations and any backend diagnostic/reporting paths, while
-continuing to avoid fake ids where HIR has no real semantic source of truth.
+extern-call declarations and any backend diagnostic/reporting paths that do
+not already pass through the resolved-module boundary, while continuing to
+avoid fake ids where HIR has no real semantic source of truth.
 
 ## Watchouts
 

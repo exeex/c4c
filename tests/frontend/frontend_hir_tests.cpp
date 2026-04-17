@@ -530,6 +530,101 @@ int call_helper(int value) { return helper(value); }
               "backend lir_to_bir should not trust a corrupted raw direct-call symbol");
 }
 
+void test_lir_to_bir_resolves_decl_backed_direct_call_link_names_at_backend_boundary() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+extern int helper(int value);
+
+int call_helper(int value) { return helper(value); }
+)cpp");
+  c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  auto decl_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.is_declaration && fn.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(fn.link_name_id) == "helper";
+      });
+  expect_true(decl_it != lir_module.functions.end(),
+              "fixture should lower the extern helper declaration with a LinkNameId");
+  decl_it->name = "broken_helper_decl_name";
+
+  auto caller_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return !fn.is_declaration && fn.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(fn.link_name_id) == "call_helper";
+      });
+  expect_true(caller_it != lir_module.functions.end(),
+              "fixture should lower call_helper with a LinkNameId before backend call lowering");
+
+  c4c::codegen::lir::LirCallOp* direct_call = nullptr;
+  for (auto& block : caller_it->blocks) {
+    auto inst_it = std::find_if(block.insts.begin(), block.insts.end(),
+                                [](c4c::codegen::lir::LirInst& inst) {
+                                  return std::holds_alternative<c4c::codegen::lir::LirCallOp>(inst);
+                                });
+    if (inst_it == block.insts.end()) {
+      continue;
+    }
+    direct_call = std::get_if<c4c::codegen::lir::LirCallOp>(&*inst_it);
+    if (direct_call != nullptr) {
+      break;
+    }
+  }
+  expect_true(direct_call != nullptr,
+              "fixture should lower the helper call into a concrete decl-backed direct-call carrier");
+  expect_true(direct_call->direct_callee_link_name_id != c4c::kInvalidLinkName,
+              "decl-backed direct calls should still carry a LinkNameId into backend lowering");
+  direct_call->callee = c4c::codegen::lir::LirOperand("@broken_decl_backed_direct_call");
+
+  const auto lowering =
+      c4c::backend::try_lower_to_bir_with_options(lir_module, c4c::backend::BirLoweringOptions{});
+  expect_true(lowering.module.has_value(),
+              "backend lir_to_bir lowering should still succeed after declaration-backed names are corrupted");
+
+  const auto bir_decl_it = std::find_if(
+      lowering.module->functions.begin(), lowering.module->functions.end(),
+      [](const c4c::backend::bir::Function& function) {
+        return function.is_declaration && function.name == "helper";
+      });
+  expect_true(bir_decl_it != lowering.module->functions.end(),
+              "backend lir_to_bir should recover the semantic declaration name from LinkNameId");
+  expect_true(std::none_of(lowering.module->functions.begin(), lowering.module->functions.end(),
+                           [](const c4c::backend::bir::Function& function) {
+                             return function.name == "broken_helper_decl_name";
+                           }),
+              "backend lir_to_bir should not trust a corrupted raw declaration name carrier");
+
+  const auto bir_fn_it = std::find_if(
+      lowering.module->functions.begin(), lowering.module->functions.end(),
+      [](const c4c::backend::bir::Function& function) {
+        return !function.is_declaration && function.name == "call_helper";
+      });
+  expect_true(bir_fn_it != lowering.module->functions.end(),
+              "backend lir_to_bir should still lower the caller function with its semantic name");
+
+  const c4c::backend::bir::CallInst* bir_call = nullptr;
+  for (const auto& block : bir_fn_it->blocks) {
+    auto inst_it = std::find_if(block.insts.begin(), block.insts.end(),
+                                [](const c4c::backend::bir::Inst& inst) {
+                                  return std::holds_alternative<c4c::backend::bir::CallInst>(inst);
+                                });
+    if (inst_it == block.insts.end()) {
+      continue;
+    }
+    bir_call = std::get_if<c4c::backend::bir::CallInst>(&*inst_it);
+    if (bir_call != nullptr) {
+      break;
+    }
+  }
+  expect_true(bir_call != nullptr,
+              "backend lir_to_bir should preserve the decl-backed direct call in the lowered BIR body");
+  expect_true(!bir_call->is_indirect && bir_call->callee == "helper",
+              "backend lir_to_bir should recover the semantic decl-backed direct callee name from LinkNameId");
+  expect_true(bir_call->callee != "broken_decl_backed_direct_call",
+              "backend lir_to_bir should not trust a corrupted raw decl-backed direct-call symbol");
+}
+
 }  // namespace
 
 int main() {
@@ -545,6 +640,7 @@ int main() {
   test_lir_to_bir_resolves_link_names_at_backend_boundary();
   test_lir_to_bir_analysis_resolves_link_names_at_backend_boundary();
   test_lir_to_bir_resolves_direct_call_link_names_at_backend_boundary();
+  test_lir_to_bir_resolves_decl_backed_direct_call_link_names_at_backend_boundary();
 
   std::cout << "PASS: frontend_hir_tests\n";
   return 0;
