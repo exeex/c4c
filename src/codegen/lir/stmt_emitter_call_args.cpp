@@ -137,7 +137,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
     TypeSpec ap_ts{};
     const std::string src_ptr = emit_va_list_obj_ptr(ctx, call.args[arg_index], ap_ts);
     const std::string tmp_addr = fresh_tmp(ctx);
-    const int va_align = llvm_va_list_alignment(mod_.target_triple);
+    const int va_align = llvm_va_list_alignment(mod_.target_profile);
     ctx.alloca_insts.push_back(
         lir::LirAllocaOp{tmp_addr, llvm_va_list_storage_ty(), {}, va_align});
     module_->need_memcpy = true;
@@ -163,13 +163,13 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       obj_ptr = tmp_addr;
     }
 
-    if (llvm_target_is_amd64_sysv(mod_.target_triple)) {
+    if (llvm_target_is_amd64_sysv(mod_.target_profile)) {
       return prepare_amd64_variadic_aggregate_arg(ctx, arg_ts, obj_ptr, payload_sz, amd64_state);
     }
 
     module_->need_memcpy = true;
-    if (llvm_target_is_aarch64(mod_.target_triple) &&
-        !llvm_target_is_apple(mod_.target_triple)) {
+    if (llvm_target_is_aarch64(mod_.target_profile) &&
+        !llvm_target_is_apple(mod_.target_profile)) {
       if (const auto hfa = classify_aarch64_hfa(mod_, arg_ts)) {
         const std::string coerced_ty =
             "[" + std::to_string(hfa->elem_count) + " x " + hfa->elem_ty + "]";
@@ -330,7 +330,7 @@ std::vector<OwnedLirTypedCallArg> StmtEmitter::prepare_call_args(
   Amd64CallArgState amd64_state;
   amd64_state.sse_bytes = kAmd64GpAreaBytes;
   Amd64CallArgState* amd64_state_ptr = nullptr;
-  if (llvm_target_is_amd64_sysv(mod_.target_triple)) {
+  if (llvm_target_is_amd64_sysv(mod_.target_profile)) {
     amd64_state_ptr = &amd64_state;
   }
   for (size_t i = 0; i < call.args.size(); ++i) {

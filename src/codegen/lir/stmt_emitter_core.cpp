@@ -44,7 +44,7 @@ void amd64_account_type_if_needed(const hir::Module& mod, const TypeSpec& ts,
 }
 
 bool amd64_fixed_aggregate_byval(const hir::Module& mod, const TypeSpec& ts) {
-  return llvm_target_is_amd64_sysv(mod.target_triple) &&
+  return llvm_target_is_amd64_sysv(mod.target_profile) &&
          llvm_cc::amd64_fixed_aggregate_passed_byval(ts, mod);
 }
 
@@ -346,7 +346,7 @@ int object_align_bytes(const Module& mod, const TypeSpec& ts) {
     const auto it = mod.struct_defs.find(ts.tag);
     align = (it != mod.struct_defs.end()) ? std::max(1, it->second.align_bytes) : 8;
   } else if (ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0) {
-    align = llvm_va_list_alignment(mod.target_triple);
+    align = llvm_va_list_alignment(mod.target_profile);
   } else {
     switch (ts.base) {
       case TB_BOOL:

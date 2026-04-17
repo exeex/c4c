@@ -10,13 +10,13 @@ namespace c4c::sema {
 // Base C analysis: validate + lower to HIR.
 static AnalyzeResult analyze_program_base(const Node* root,
                                           SourceProfile source_profile,
-                                          const std::string& target_triple) {
+                                          const c4c::TargetProfile& target_profile) {
   AnalyzeResult result{};
   result.validation = validate_program(root);
   if (!result.validation.ok) return result;
   result.canonical = build_canonical_symbols(root, source_profile);
   result.hir_module = hir::build_hir(
-      root, &result.canonical.resolved_types, source_profile, target_triple);
+      root, &result.canonical.resolved_types, source_profile, target_profile);
   if (result.hir_module && !result.hir_module->ct_info.diagnostics.empty()) {
     result.validation.ok = false;
     result.validation.diagnostics.clear();
@@ -53,7 +53,7 @@ static void apply_c4_extensions(AnalyzeResult& /*result*/) {
 }
 
 AnalyzeResult analyze_program(const Node* root, SemaProfile profile,
-                              const std::string& target_triple) {
+                              const c4c::TargetProfile& target_profile) {
   SourceProfile source_profile = SourceProfile::C;
   switch (profile) {
     case SemaProfile::C:
@@ -67,7 +67,7 @@ AnalyzeResult analyze_program(const Node* root, SemaProfile profile,
       break;
   }
 
-  AnalyzeResult result = analyze_program_base(root, source_profile, target_triple);
+  AnalyzeResult result = analyze_program_base(root, source_profile, target_profile);
   if (!result.validation.ok) return result;
 
   switch (profile) {

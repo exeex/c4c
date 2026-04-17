@@ -28,6 +28,7 @@ enum class HirPipelineStage {
 
 #include "ast.hpp"
 #include "source_profile.hpp"
+#include "../../target_profile.hpp"
 
 namespace c4c::sema {
 struct CanonicalType;
@@ -482,6 +483,7 @@ struct InlineAsmStmt {
   std::string asm_template;
   std::string constraints;
   std::optional<ExprId> output;
+  bool output_is_readwrite = false;
   QualType output_type{};
   std::vector<ExprId> inputs;
   bool has_side_effects = true;
@@ -918,7 +920,7 @@ struct HirTemplateDef {
 
 struct Module {
   SourceProfile source_profile = SourceProfile::C;
-  std::string target_triple;
+  c4c::TargetProfile target_profile{};
   std::string data_layout;
   std::vector<Function> functions;
   std::vector<GlobalVar> globals;

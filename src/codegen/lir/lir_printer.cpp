@@ -433,13 +433,14 @@ std::string render_fn(const LirFunction& f) {
 
 std::string print_llvm(const LirModule& mod) {
   verify_module(mod);
-  c4c::codegen::llvm_helpers::set_active_target_triple(mod.target_triple);
+  c4c::codegen::llvm_helpers::set_active_target_profile(mod.target_profile);
+  const std::string target_triple = c4c::llvm_target_triple(mod.target_profile);
 
   std::ostringstream out;
 
   if (!mod.data_layout.empty()) out << "target datalayout = \"" << mod.data_layout << "\"\n";
-  if (!mod.target_triple.empty()) out << "target triple = \"" << mod.target_triple << "\"\n";
-  if (!mod.data_layout.empty() || !mod.target_triple.empty()) out << "\n";
+  if (!target_triple.empty()) out << "target triple = \"" << target_triple << "\"\n";
+  if (!mod.data_layout.empty() || !target_triple.empty()) out << "\n";
 
   // Type declarations (struct/union definitions).
   for (const auto& td : mod.type_decls) out << td << "\n";

@@ -4,9 +4,9 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-tag_pattern="${1:-\\[plan_change\\]}"
+tag_pattern="${1:-\\[[^]]*plan[^]]*\\]}"
 
-last_commit_line="$(git log --format='%H%x09%h%x09%s' --grep="$tag_pattern" -n 1)"
+last_commit_line="$(git log --format='%H%x09%h%x09%s' --extended-regexp --grep="$tag_pattern" -n 1)"
 
 if [[ -z "$last_commit_line" ]]; then
   printf 'LAST_PLAN_CHANGE_MISSING\n'

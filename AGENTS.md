@@ -159,14 +159,15 @@ This repo uses a single-plan lifecycle.
 9. Final commits are created by the supervisor, including lifecycle-only
    slices returned from the plan owner.
 10. If staged changes touch `plan.md`, `todo.md`, or files under `ideas/open/`,
-   the commit subject must include the matching scope tags:
-   `[plan_change]`, `[todo_change]`, `[idea_open_change]`.
-11. Reviewer checkpoint selection should prefer these scope tags plus the
-    remaining commit subject text over ad hoc message wording.
+   rely on the git hook to inject or validate the canonical lifecycle scope
+   tag. Do not manually duplicate lifecycle tags in the subject.
+11. Reviewer checkpoint selection should prefer these canonical compact scope
+   tags, such as `[plan]`, `[plan+idea]`, or `[todo_only]`, plus the
+   remaining commit subject text over ad hoc message wording.
 12. The supervisor should use `scripts/plan_change_gap.sh` as the first check
     for how far execution has moved since the last canonical route checkpoint.
 13. Routine execution should not trigger `plan.md` rewrites every packet.
-    Target a rough cadence of about one real `plan_change` per 5 to 10
+   Target a rough cadence of about one real plan-tagged checkpoint commit per 5 to 10
     implementation commits, unless earlier rewrite is forced by activation,
     repair, close, a true blocker, or a reviewer-justified route reset.
 14. `ideas/open/*.md` changes should be rarer still: activation intent change,

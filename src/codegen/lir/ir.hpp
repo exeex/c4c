@@ -26,6 +26,7 @@
 #include "operands.hpp"
 #include "types.hpp"
 #include "ast.hpp"  // TypeSpec, TypeBase
+#include "../../target_profile.hpp"
 
 namespace c4c::codegen::lir {
 
@@ -532,7 +533,7 @@ struct LirSpecEntry {
 // ── Module ───────────────────────────────────────────────────────────────────
 
 struct LirModule {
-  std::string target_triple;
+  c4c::TargetProfile target_profile{};
   std::string data_layout;
 
   std::vector<LirGlobal> globals;
@@ -570,6 +571,7 @@ struct LirModule {
   bool need_stackrestore = false;
   bool need_abs = false;
   bool need_ptrmask = false;
+  bool prefer_semantic_va_ops = false;
 
   // Specialization metadata for cross-TU serialization.
   std::vector<LirSpecEntry> spec_entries;

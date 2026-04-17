@@ -1,7 +1,7 @@
 #include "llvm_codegen.hpp"
 #include "backend.hpp"
-#include "lowering/lir_to_bir.hpp"
-#include "target.hpp"
+#include "bir/lir_to_bir.hpp"
+#include "../target_profile.hpp"
 #include "hir_to_lir.hpp"
 #include "lir_printer.hpp"
 
@@ -17,12 +17,11 @@ std::string emit_legacy(const lir::LirModule& lir_mod) {
 }
 
 std::string emit_via_backend(const lir::LirModule& lir_mod,
-                             std::string_view target_triple,
+                             const c4c::TargetProfile& target_profile,
                              bool emit_semantic_bir) {
-  const auto target = backend::target_from_triple(target_triple);
   return backend::emit_module(backend::BackendModuleInput{lir_mod},
                               backend::BackendOptions{
-                                  .target = target,
+                                  .target_profile = target_profile,
                                   .emit_semantic_bir = emit_semantic_bir,
                               });
 }
@@ -30,10 +29,12 @@ std::string emit_via_backend(const lir::LirModule& lir_mod,
 }  // namespace
 
 std::string emit_module_native(const Module& mod,
-                               std::string_view target_triple,
+                               const c4c::TargetProfile& target_profile,
                                CodegenPath path,
                                bool emit_semantic_bir) {
-  auto lir_mod = lir::lower(mod);
+  auto lir_mod = lir::lower(mod, lir::LowerOptions{
+                                   .preserve_semantic_va_ops = emit_semantic_bir,
+                               });
   if (path == CodegenPath::Llvm) {
     return emit_legacy(lir_mod);
   }
@@ -44,7 +45,7 @@ std::string emit_module_native(const Module& mod,
     return result;
   }
 
-  auto result = emit_via_backend(lir_mod, target_triple, emit_semantic_bir);
+  auto result = emit_via_backend(lir_mod, target_profile, emit_semantic_bir);
   return result;
 }
 

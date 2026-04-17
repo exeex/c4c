@@ -54,8 +54,8 @@ endfunction()
 
 add_executable(backend_prepare_phi_materialize_test
     "${BACKEND_TEST_ROOT}/backend_prepare_phi_materialize_test.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/bir.cpp"
-    "${PROJECT_SOURCE_DIR}/src/backend/prepare/legalize.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prealloc/legalize.cpp"
 )
 target_include_directories(backend_prepare_phi_materialize_test PRIVATE
     "${PROJECT_SOURCE_DIR}"
@@ -73,6 +73,106 @@ add_test(
   COMMAND $<TARGET_FILE:backend_prepare_phi_materialize_test>
 )
 set_tests_properties(backend_prepare_phi_materialize PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
+add_executable(backend_lir_to_bir_notes_test
+    "${BACKEND_TEST_ROOT}/backend_lir_to_bir_notes_test.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_aggregate.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_analysis.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_calling.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_cfg.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_context.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_globals.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_memory.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_module.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_scalar.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_types.cpp"
+)
+target_include_directories(backend_lir_to_bir_notes_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_lir_to_bir_notes_test PRIVATE
+    c4c_codegen
+)
+set_target_properties(backend_lir_to_bir_notes_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_lir_to_bir_notes
+  COMMAND $<TARGET_FILE:backend_lir_to_bir_notes_test>
+)
+set_tests_properties(backend_lir_to_bir_notes PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
+add_executable(backend_prepare_liveness_test
+    "${BACKEND_TEST_ROOT}/backend_prepare_liveness_test.cpp"
+)
+target_include_directories(backend_prepare_liveness_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_prepare_liveness_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_prepare_liveness_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_prepare_liveness
+  COMMAND $<TARGET_FILE:backend_prepare_liveness_test>
+)
+set_tests_properties(backend_prepare_liveness PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
+add_executable(backend_prepare_stack_layout_test
+    "${BACKEND_TEST_ROOT}/backend_prepare_stack_layout_test.cpp"
+)
+target_include_directories(backend_prepare_stack_layout_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_prepare_stack_layout_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_prepare_stack_layout_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_prepare_stack_layout
+  COMMAND $<TARGET_FILE:backend_prepare_stack_layout_test>
+)
+set_tests_properties(backend_prepare_stack_layout PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
+add_executable(backend_x86_handoff_boundary_test
+    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_test.cpp"
+)
+target_include_directories(backend_x86_handoff_boundary_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_x86_handoff_boundary_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_x86_handoff_boundary_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_x86_handoff_boundary
+  COMMAND $<TARGET_FILE:backend_x86_handoff_boundary_test>
+)
+set_tests_properties(backend_x86_handoff_boundary PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
@@ -142,4 +242,668 @@ c4c_add_backend_codegen_route_test(
   EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
   REQUIRED_SNIPPETS "bir.func @id_pair(ptr sret(size=8, align=4) %ret.sret, ptr byval(size=8, align=4) %p.p) -> void {|bir.store_local %lv.p.0, i32 4|bir.call void @id_pair(ptr sret(size=8, align=4) %t4, ptr byval(size=8, align=4) %lv.p)|bir.ret i32 %t6"
   FORBIDDEN_SNIPPETS "define %struct.Pair @id_pair(%struct.Pair %p.p)|call %struct.Pair (%struct.Pair) %t2(%struct.Pair %t3)"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_function_pointer_param_direct_arg_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/function_pointer_param_direct_arg.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/function_pointer_param_direct_arg_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @apply(ptr %p.fn, i32 %p.x) -> i32 {|%t0 = bir.call i32 %p.fn(i32 %p.x)|bir.call i32 apply(ptr @inc, i32 4)|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (ptr, i32) @apply(ptr @inc, i32 4)"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_aggregate_member_function_pointer_call_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/aggregate_member_function_pointer_call.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/aggregate_member_function_pointer_call_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @apply(ptr %p.h, i32 %p.x) -> i32 {|%t1 = bir.load_local ptr %t1.addr, addr %p.h|%t2 = bir.call i32 %t1(i32 %p.x)|bir.store_local %lv.h.0, ptr @inc|bir.call i32 apply(ptr %lv.h, i32 4)|bir.ret i32 %t1"
+  FORBIDDEN_SNIPPETS "call i32 (ptr, i32) @apply("
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_global_aggregate_function_pointer_call_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/global_aggregate_function_pointer_call.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/global_aggregate_function_pointer_call_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t1 = bir.load_global ptr @g|%t2 = bir.call i32 %t1(i32 4)|bir.ret i32 %t2"
+  FORBIDDEN_SNIPPETS "call i32 (ptr, i32) @g.fn|addr @inc+"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_global_aggregate_array_function_pointer_call_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/global_aggregate_array_function_pointer_call.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/global_aggregate_array_function_pointer_call_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t4 = bir.load_global ptr @gs, offset 8|%t5 = bir.call i32 %t4(i32 4)|bir.ret i32 %t5"
+  FORBIDDEN_SNIPPETS "call i32 (ptr, i32) %t|addr @inc+8"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_global_nested_aggregate_function_pointer_call_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/global_nested_aggregate_function_pointer_call.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/global_nested_aggregate_function_pointer_call_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t2 = bir.load_global ptr @g, offset 8|%t3 = bir.call i32 %t2(i32 4)|bir.ret i32 %t3"
+  FORBIDDEN_SNIPPETS "call i32 (ptr, i32) @g.inner.fn|addr @inc+8"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_global_nested_aggregate_array_function_pointer_call_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/global_nested_aggregate_array_function_pointer_call.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/global_nested_aggregate_array_function_pointer_call_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t5 = bir.load_global ptr @g, offset 16|%t6 = bir.call i32 %t5(i32 4)|bir.ret i32 %t6"
+  FORBIDDEN_SNIPPETS "call i32 (ptr, i32) @g.inner.1.fn|addr @inc+16"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_global_function_pointer_value_call_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/global_function_pointer_value_call.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/global_function_pointer_value_call_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_global ptr @gp|%t1 = bir.load_local ptr %lv.p|%t2 = bir.call i32 %t1(i32 4)|bir.ret i32 %t2"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (i32)"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_local_arg_call_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/local_arg_call.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/local_arg_call_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @add_one(i32 %p.x) -> i32 {|%t0 = bir.add i32 %p.x, 1|bir.func @main() -> i32 {|bir.store_local %lv.x, i32 5|%t0 = bir.load_local i32 %lv.x|%t1 = bir.call i32 add_one(i32 %t0)|bir.ret i32 %t1"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (i32) @add_one(i32 %t0)"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_call_helper_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/call_helper.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/call_helper_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @helper() -> i32|bir.func @main() -> i32 {|%t0 = bir.call i32 helper()|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 @helper()"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_pointer_return_direct_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/pointer_return_direct.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/pointer_return_direct_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @id_ptr(ptr %p.p) -> ptr {|bir.func @forward(ptr %p.p) -> ptr {|%t0 = bir.call ptr id_ptr(ptr %p.p)|bir.ret ptr %t0"
+  FORBIDDEN_SNIPPETS "define ptr @forward(ptr %p.p)|call ptr (ptr) @id_ptr(ptr %p.p)"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_local_pointer_deref_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/local_pointer_deref.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/local_pointer_deref_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.x, i32 7|bir.store_local %lv.p, ptr %lv.x|%t0 = bir.load_local ptr %lv.p|%t1 = bir.load_local i32 %lv.x|bir.ret i32 %t1"
+  FORBIDDEN_SNIPPETS "define i32 @main()|store i32 7, ptr %lv.x|%t1 = load i32, ptr %t0"
+)
+
+add_test(
+  NAME backend_codegen_route_x86_64_builtin_abs_observe_semantic_bir
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DSRC_A=${BACKEND_CASE_ROOT}/builtin_abs_i32.c
+          -DOUT_A=${CMAKE_BINARY_DIR}/backend_route/builtin_abs_i32_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_A=bir.func @take_abs_int(i32 %p.x) -> i32 {|%t0.neg = bir.sub i32 0, %p.x|%t0 = bir.select slt i32 %p.x, 0, i32 %t0.neg, %p.x|bir.ret i32 %t0"
+          "-DFORBIDDEN_SNIPPETS_A=@llvm.abs.i32|bir.call i32 @llvm.abs.i32"
+          -DSRC_B=${BACKEND_CASE_ROOT}/builtin_abs_i64.c
+          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/builtin_abs_i64_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_B=bir.func @take_abs_long(i64 %p.x) -> i64 {|%t0.neg = bir.sub i64 0, %p.x|%t0 = bir.select slt i64 %p.x, 0, i64 %t0.neg, %p.x|bir.ret i64 %t0"
+          "-DFORBIDDEN_SNIPPETS_B=@llvm.abs.i64|bir.call i64 @llvm.abs.i64"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
+)
+c4c_set_backend_test_labels(
+  "backend_codegen_route_x86_64_builtin_abs_observe_semantic_bir"
+  backend_route
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_fabs_f64_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_fabs_f64.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_fabs_f64_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @take_fabs(double %p.x) -> double {|%t0 = bir.call double llvm.fabs.double(double %p.x)|bir.ret double %t0"
+  FORBIDDEN_SNIPPETS "define double @take_fabs|call double @llvm.fabs.double"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_fabs_f32_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_fabs_f32.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_fabs_f32_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @take_fabsf(float %p.x) -> float {|%t0 = bir.call float llvm.fabs.float(float %p.x)|bir.ret float %t0"
+  FORBIDDEN_SNIPPETS "define float @take_fabsf|call float @llvm.fabs.float"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_fabsl_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_fabsl.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_fabsl_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @take_fabsl(f128 %p.x) -> f128 {|%t0 = bir.call f128 llvm.fabs.x86_fp80(f128 %p.x)|bir.ret f128 %t0"
+  FORBIDDEN_SNIPPETS "define x86_fp80 @take_fabsl|call x86_fp80 @llvm.fabs.x86_fp80"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_variadic_sum2_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/variadic_sum2.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/variadic_sum2_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @sum2(i32 %p.first) -> i32 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|%t0 = bir.call i32 llvm.va_arg.i32(ptr %lv.ap)|bir.call void llvm.va_end.p0(ptr %lv.ap)|bir.ret i32 %t2|bir.func @main() -> i32 {|bir.call i32 sum2(i32 10, i32 32)|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "define i32 @sum2|call void @llvm.va_start.p0|call void @llvm.va_end.p0|call void @llvm.memcpy.p0.p0.i64"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/variadic_double_bytes.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/variadic_double_bytes_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @variadic_double_bytes(i32 %p.seed) -> i32 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|%t0 = bir.call double llvm.va_arg.double(ptr %lv.ap)|bir.store_local %lv.second, double %t0|bir.call void llvm.va_end.p0(ptr %lv.ap)|bir.store_local %lv.bytes, ptr %lv.second|%t1 = bir.load_local ptr %lv.bytes|%t4 = bir.load_local i8 %t4.addr, addr %lv.second+6|%t7 = bir.load_local ptr %lv.bytes|%t10 = bir.load_local i8 %t10.addr, addr %lv.second+7|bir.ret i32 %t12|bir.func @main() -> i32 {|bir.call i32 variadic_double_bytes(i32 1, double 0x4002000000000000)|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "define i32 @variadic_double_bytes|call void @llvm.va_start.p0|call void @llvm.va_end.p0|va_arg ptr %lv.ap, double"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/variadic_pair_second.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/variadic_pair_second_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @variadic_pair_second(i32 %p.seed) -> i32 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|bir.call void llvm.va_arg.aggregate(ptr sret(size=8, align=4) %t0, ptr %lv.ap)|%lv.second.aggregate.copy.0 = bir.load_local i32 %t0.0|bir.store_local %lv.second.0, i32 %lv.second.aggregate.copy.0|%lv.second.aggregate.copy.4 = bir.load_local i32 %t0.4|bir.store_local %lv.second.4, i32 %lv.second.aggregate.copy.4|bir.call void llvm.va_end.p0(ptr %lv.ap)|%t2 = bir.load_local i32 %lv.second.4|bir.ret i32 %t3|bir.func @main() -> i32 {|%t4.memcpy.copy.0 = bir.load_local i32 %lv.pair.0|bir.store_local %lv.pair.0, i32 %t4.memcpy.copy.0, addr %t4|%t4.memcpy.copy.4 = bir.load_local i32 %lv.pair.4|bir.store_local %lv.pair.4, i32 %t4.memcpy.copy.4, addr %t4+4|bir.call i32 variadic_pair_second(i32 1, i64 %t5)|bir.ret i32 %t6"
+  FORBIDDEN_SNIPPETS "define i32 @variadic_pair_second|call void @llvm.va_start.p0|call void @llvm.va_end.p0|va_arg ptr %lv.ap, %struct.Pair|call void @llvm.memcpy.p0.p0.i64|call void @llvm.memset.p0.i64|bir.call ptr memcpy|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_variadic_va_copy_accumulate_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/variadic_va_copy_accumulate.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/variadic_va_copy_accumulate_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @variadic_va_copy_accumulate(i32 %p.seed) -> i64 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|bir.call void llvm.va_copy.p0.p0(ptr %lv.copy, ptr %lv.ap)|%t0 = bir.call i64 llvm.va_arg.i64(ptr %lv.ap)|%t1 = bir.call i64 llvm.va_arg.i64(ptr %lv.copy)|bir.call void llvm.va_end.p0(ptr %lv.copy)|bir.call void llvm.va_end.p0(ptr %lv.ap)|bir.ret i64 %t6|bir.func @main() -> i32 {|%t0 = bir.call i64 variadic_va_copy_accumulate(i32 1, i64 10)|bir.ret i32 %t2"
+  FORBIDDEN_SNIPPETS "define i64 @variadic_va_copy_accumulate|call void @llvm.va_copy.p0.p0|call void @llvm.va_start.p0|call void @llvm.va_end.p0|va_arg ptr %lv.ap, i64|va_arg ptr %lv.copy, i64|bir.call ptr memcpy|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_indirect_variadic_sum2_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/indirect_variadic_sum2.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/indirect_variadic_sum2_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @sum2(i32 %p.first) -> i32 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|%t0 = bir.call i32 llvm.va_arg.i32(ptr %lv.ap)|bir.call void llvm.va_end.p0(ptr %lv.ap)|bir.ret i32 %t2|bir.func @apply(ptr %p.fn) -> i32 {|%t0 = bir.call i32 %p.fn(i32 10, i32 32)|bir.ret i32 %t0|bir.func @main() -> i32 {|bir.call i32 apply(ptr @sum2)|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "define i32 @sum2|define i32 @apply|define i32 @main()|call void @llvm.va_start.p0|call void @llvm.va_end.p0|va_arg ptr %lv.ap, i32|call i32 (i32, ...) %p.fn(i32 10, i32 32)"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_indirect_variadic_pair_second_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/indirect_variadic_pair_second.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/indirect_variadic_pair_second_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @variadic_pair_second(i32 %p.seed) -> i32 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|bir.call void llvm.va_arg.aggregate(ptr sret(size=8, align=4) %t0, ptr %lv.ap)|%lv.second.aggregate.copy.0 = bir.load_local i32 %t0.0|bir.store_local %lv.second.0, i32 %lv.second.aggregate.copy.0|%lv.second.aggregate.copy.4 = bir.load_local i32 %t0.4|bir.store_local %lv.second.4, i32 %lv.second.aggregate.copy.4|bir.call void llvm.va_end.p0(ptr %lv.ap)|bir.ret i32 %t3|bir.func @apply(ptr %p.fn, ptr byval(size=8, align=4) %p.pair) -> i32 {|%t0 = bir.call i32 %p.fn(i32 1, ptr byval(size=8, align=4) %lv.param.p.pair)|bir.ret i32 %t0|bir.func @main() -> i32 {|%t3 = bir.call i32 apply(ptr @variadic_pair_second, ptr byval(size=8, align=4) %lv.pair)|bir.ret i32 %t3"
+  FORBIDDEN_SNIPPETS "define i32 @variadic_pair_second|define i32 @apply|define i32 @main()|call void @llvm.va_start.p0|call void @llvm.va_end.p0|va_arg ptr %lv.ap, %struct.Pair|call i32 (i32, ...) %p.fn(i32 1, i64 %t3)"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_vla_goto_stackrestore_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/vla_goto_stackrestore.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/vla_goto_stackrestore_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @accumulate_vla(i32 %p.n) -> i32 {|%t0 = bir.call ptr llvm.stacksave()|%t3 = bir.call ptr llvm.dynamic_alloca.i32(i64 %t2)|bir.call void llvm.stackrestore(ptr %t0)|bir.ret i32|bir.func @main() -> i32 {|bir.call i32 accumulate_vla(i32 3)|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "define i32 @accumulate_vla|call ptr @llvm.stacksave()|call void @llvm.stackrestore(ptr %t0)|alloca i32, i64 %t2"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_inline_asm_nop_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/inline_asm_nop.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/inline_asm_nop_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.call void llvm.inline_asm() [asm=\"nop\", constraints=\"\", sideeffect]|bir.ret i32 0"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call void asm sideeffect \"nop\", \"\"()"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_inline_asm_input_i32_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/inline_asm_input_i32.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/inline_asm_input_i32_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.x, i32 7|%t0 = bir.load_local i32 %lv.x|bir.call void llvm.inline_asm(i32 %t0) [asm=\"\", constraints=\"r\", sideeffect]|%t1 = bir.load_local i32 %lv.x|bir.ret i32 %t1"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call void asm sideeffect \"\", \"r\"(i32 %t0)|raw_args="
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_inline_asm_input_two_i32_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/inline_asm_input_two_i32.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/inline_asm_input_two_i32_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.x, i32 7|bir.store_local %lv.y, i32 9|%t0 = bir.load_local i32 %lv.x|%t1 = bir.load_local i32 %lv.y|bir.call void llvm.inline_asm(i32 %t0, i32 %t1) [asm=\"\", constraints=\"r,r\", sideeffect]|%t2 = bir.load_local i32 %lv.x|%t3 = bir.load_local i32 %lv.y|%t4 = bir.add i32 %t2, %t3|bir.ret i32 %t4"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call void asm sideeffect \"\", \"r,r\"(i32 %t0, i32 %t1)|raw_args="
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_inline_asm_input_ptr_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/inline_asm_input_ptr.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/inline_asm_input_ptr_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @touch(ptr %p.p) -> i32 {|bir.call void llvm.inline_asm(ptr %p.p) [asm=\"\", constraints=\"r\", sideeffect]|bir.ret i32 0|bir.func @main() -> i32 {|bir.store_local %lv.x, i32 7|%t0 = bir.call i32 touch(ptr %lv.x)|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "define i32 @touch|call void asm sideeffect \"\", \"r\"(ptr %p.p)|raw_args="
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_inline_asm_input_local_ptr_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/inline_asm_input_local_ptr.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/inline_asm_input_local_ptr_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.x, i32 7|bir.store_local %lv.p, ptr %lv.x|%t0 = bir.load_local ptr %lv.p|bir.call void llvm.inline_asm(ptr %t0) [asm=\"\", constraints=\"r\", sideeffect]|%t1 = bir.load_local ptr %lv.p|%t2 = bir.load_local i32 %lv.x|bir.ret i32 %t2"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call void asm sideeffect \"\", \"r\"(ptr %t0)|raw_args=|load i32, ptr %t1"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_inline_asm_output_i32_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/inline_asm_output_i32.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/inline_asm_output_i32_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.x, i32 7|bir.store_local %lv.y, i32 0|%t0 = bir.load_local i32 %lv.x|%t1 = bir.call i32 llvm.inline_asm(i32 %t0) [asm=\"\", constraints=\"=r,r\", sideeffect]|bir.store_local %lv.y, i32 %t1|%t2 = bir.load_local i32 %lv.y|bir.ret i32 %t2"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 asm sideeffect \"\", \"=r,r\"(i32 %t0)|raw_args=|bir.ret i32 0"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_inline_asm_output_readwrite_i32_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/inline_asm_output_readwrite_i32.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/inline_asm_output_readwrite_i32_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.x, i32 7|%t0 = bir.load_local i32 %lv.x|%t1 = bir.call i32 llvm.inline_asm(i32 %t0) [asm=\"\", constraints=\"+r\", sideeffect]|bir.store_local %lv.x, i32 %t1|%t2 = bir.load_local i32 %lv.x|bir.ret i32 %t2"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 asm sideeffect \"\", \"+r\"(i32 %t0)|raw_args=|bir.call i32 llvm.inline_asm() [asm=\"\", constraints=\"+r\", sideeffect]"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_inline_asm_output_ptr_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/inline_asm_output_ptr.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/inline_asm_output_ptr_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.x, i32 7|bir.store_local %lv.p, ptr %lv.x|%t0 = bir.load_local ptr %lv.p|%t1 = bir.call ptr llvm.inline_asm(ptr %t0) [asm=\"\", constraints=\"=r,r\", sideeffect]|bir.store_local %lv.q, ptr %t1|bir.ret i32 0"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr asm sideeffect \"\", \"=r,r\"(ptr %t0)|raw_args=|bir.call ptr llvm.inline_asm() [asm=\"\", constraints=\"=r,r\", sideeffect]"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_inline_asm_output_readwrite_ptr_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/inline_asm_output_readwrite_ptr.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/inline_asm_output_readwrite_ptr_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.x, i32 7|bir.store_local %lv.p, ptr %lv.x|%t0 = bir.load_local ptr %lv.p|%t1 = bir.call ptr llvm.inline_asm(ptr %t0) [asm=\"\", constraints=\"+r\", sideeffect]|bir.store_local %lv.p, ptr %t1|bir.ret i32 0"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr asm sideeffect \"\", \"+r\"(ptr %t0)|raw_args=|bir.call ptr llvm.inline_asm() [asm=\"\", constraints=\"+r\", sideeffect]"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memcpy_local_pair_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_local_pair.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_local_pair_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%lv.dst.memcpy.copy.0 = bir.load_local i32 %lv.src.0|bir.store_local %lv.dst.0, i32 %lv.dst.memcpy.copy.0|%lv.dst.memcpy.copy.4 = bir.load_local i32 %lv.src.4|bir.store_local %lv.dst.4, i32 %lv.dst.memcpy.copy.4|bir.ret i32 %t7"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memcpy_nested_pair_field_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_nested_pair_field.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_nested_pair_field_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t10.memcpy.copy.0 = bir.load_local i32 %lv.src.4|bir.store_local %lv.dst.4, i32 %t10.memcpy.copy.0|%t10.memcpy.copy.4 = bir.load_local i32 %lv.src.8|bir.store_local %lv.dst.8, i32 %t10.memcpy.copy.4|bir.ret i32 %t22"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memcpy_local_i32_array_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_local_i32_array.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_local_i32_array_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t36.memcpy.copy.0 = bir.load_local i32 %lv.src.0|bir.store_local %lv.dst.0, i32 %t36.memcpy.copy.0|%t36.memcpy.copy.4 = bir.load_local i32 %lv.src.1|bir.store_local %lv.dst.1, i32 %t36.memcpy.copy.4|%t36.memcpy.copy.8 = bir.load_local i32 %lv.src.2|bir.store_local %lv.dst.2, i32 %t36.memcpy.copy.8|bir.ret i32 %t52"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memcpy_nested_i32_array_field_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_nested_i32_array_field.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_nested_i32_array_field_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t26.memcpy.copy.0 = bir.load_local i32 %lv.w.4|bir.store_local %lv.w.16, i32 %t26.memcpy.copy.0|%t26.memcpy.copy.4 = bir.load_local i32 %lv.w.8|bir.store_local %lv.w.20, i32 %t26.memcpy.copy.4|%t26.memcpy.copy.8 = bir.load_local i32 %lv.w.12|bir.store_local %lv.w.24, i32 %t26.memcpy.copy.8|bir.ret i32 %t49"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memcpy_local_i32_array_to_pair_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_local_i32_array_to_pair.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_local_i32_array_to_pair_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%lv.dst.memcpy.copy.0 = bir.load_local i32 %lv.src.0|bir.store_local %lv.dst.0, i32 %lv.dst.memcpy.copy.0|%lv.dst.memcpy.copy.4 = bir.load_local i32 %lv.src.1|bir.store_local %lv.dst.4, i32 %lv.dst.memcpy.copy.4|bir.ret i32 %t20"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memcpy_local_pair_to_i32_array_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_local_pair_to_i32_array.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_local_pair_to_i32_array_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|memcpy.copy.0 = bir.load_local i32 %lv.src.0|bir.store_local %lv.dst.0, i32 %t14.memcpy.copy.0|memcpy.copy.4 = bir.load_local i32 %lv.src.4|bir.store_local %lv.dst.1, i32 %t14.memcpy.copy.4|bir.ret i32 %t24"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memcpy_prefix_local_i32_array_to_pair_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_prefix_local_i32_array_to_pair.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_prefix_local_i32_array_to_pair_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%lv.dst.memcpy.copy.0 = bir.load_local i32 %lv.src.4|bir.store_local %lv.dst.0, i32 %lv.dst.memcpy.copy.0|%lv.dst.memcpy.copy.4 = bir.load_local i32 %lv.src.8|bir.store_local %lv.dst.4, i32 %lv.dst.memcpy.copy.4|bir.ret i32 %t31"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memcpy_prefix_local_pair_to_i32_array_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_prefix_local_pair_to_i32_array.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_prefix_local_pair_to_i32_array_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|memcpy.copy.0 = bir.load_local i32 %lv.src.4|bir.store_local %lv.dst.8|memcpy.copy.4 = bir.load_local i32 %lv.src.8|bir.store_local %lv.dst.12|bir.ret i32"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memcpy_prefix_local_i32_subarray_to_nested_pair_field_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memcpy_prefix_local_i32_subarray_to_nested_pair_field.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memcpy_prefix_local_i32_subarray_to_nested_pair_field_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t30.memcpy.copy.0 = bir.load_local i32 %lv.src.8|bir.store_local %lv.dst.8, i32 %t30.memcpy.copy.0|%t30.memcpy.copy.4 = bir.load_local i32 %lv.src.12|bir.store_local %lv.dst.12, i32 %t30.memcpy.copy.4|bir.ret i32 %t60"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memcpy|bir.call ptr memcpy"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memset_local_pair_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memset_local_pair.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_local_pair_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 1|bir.store_local %lv.dst.4, i32 2|bir.store_local %lv.dst.0, i32 0|bir.store_local %lv.dst.4, i32 0|bir.ret i32 %t7"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memset_local_i32_array_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memset_local_i32_array.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_local_i32_array_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 1|bir.store_local %lv.dst.1, i32 2|bir.store_local %lv.dst.2, i32 3|bir.store_local %lv.dst.0, i32 0|bir.store_local %lv.dst.1, i32 0|bir.store_local %lv.dst.2, i32 0|bir.ret i32 %t33"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memset_nonzero_local_pair_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memset_nonzero_local_pair.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nonzero_local_pair_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 1|bir.store_local %lv.dst.4, i32 2|bir.store_local %lv.dst.0, i32 -1|bir.store_local %lv.dst.4, i32 -1|bir.ret i32 %t27"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memset_nonzero_local_i32_array_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memset_nonzero_local_i32_array.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nonzero_local_i32_array_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 1|bir.store_local %lv.dst.1, i32 2|bir.store_local %lv.dst.2, i32 3|bir.store_local %lv.dst.0, i32 -1|bir.store_local %lv.dst.1, i32 -1|bir.store_local %lv.dst.2, i32 -1|bir.ret i32 %t63"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memset_nonzero_local_i32_scalar_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memset_nonzero_local_i32_scalar.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nonzero_local_i32_scalar_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst, i32 7|bir.store_local %lv.dst, i32 -1|bir.load_local i32 %lv.dst|bir.ret i32"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memset_nonzero_nested_i32_scalar_field_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memset_nonzero_nested_i32_scalar_field.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nonzero_nested_i32_scalar_field_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 7|bir.store_local %lv.dst.4, i32 5|bir.store_local %lv.dst.8, i32 9|bir.store_local %lv.dst.4, i32 -1|%t33 = bir.load_local i32 %lv.dst.8|%t34 = bir.eq i32 %t33, 9|bir.ret i32 %t45"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memset_nested_i32_array_field_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memset_nested_i32_array_field.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nested_i32_array_field_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 7|bir.store_local %lv.dst.4, i32 1|bir.store_local %lv.dst.8, i32 2|bir.store_local %lv.dst.12, i32 3|bir.store_local %lv.dst.4, i32 0|bir.store_local %lv.dst.8, i32 0|bir.store_local %lv.dst.12, i32 0|bir.ret i32 %t35"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memset_nonzero_nested_i32_array_field_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memset_nonzero_nested_i32_array_field.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nonzero_nested_i32_array_field_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 7|bir.store_local %lv.dst.4, i32 1|bir.store_local %lv.dst.8, i32 2|bir.store_local %lv.dst.12, i32 3|bir.store_local %lv.dst.4, i32 -1|bir.store_local %lv.dst.8, i32 -1|bir.store_local %lv.dst.12, i32 -1|bir.ret i32 %t74"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memset_nonzero_prefix_nested_i32_subarray_field_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memset_nonzero_prefix_nested_i32_subarray_field.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nonzero_prefix_nested_i32_subarray_field_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 7|bir.store_local %lv.dst.4, i32 1|bir.store_local %lv.dst.8, i32 2|bir.store_local %lv.dst.12, i32 3|bir.store_local %lv.dst.16, i32 4|bir.store_local %lv.dst.20, i32 9|bir.store_local %lv.dst.8, i32 -1|bir.store_local %lv.dst.12, i32 -1|%t38 = bir.load_local i32 %lv.dst.4|%t53 = bir.load_local i32 %lv.dst.8|%t69 = bir.load_local i32 %lv.dst.12|%t85 = bir.load_local i32 %lv.dst.16|%t97 = bir.load_local i32 %lv.dst.20|bir.ret i32 %t109"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_builtin_memset_nonzero_prefix_local_i32_subarray_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/builtin_memset_nonzero_prefix_local_i32_subarray.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/builtin_memset_nonzero_prefix_local_i32_subarray_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.dst.0, i32 1|bir.store_local %lv.dst.1, i32 2|bir.store_local %lv.dst.2, i32 3|bir.store_local %lv.dst.3, i32 4|bir.store_local %lv.dst.4, i32 9|bir.store_local %lv.dst.1, i32 -1|bir.store_local %lv.dst.2, i32 -1|bir.load_local i32 %lv.dst.0|bir.load_local i32 %lv.dst.1|bir.load_local i32 %lv.dst.2|bir.load_local i32 %lv.dst.3|bir.load_local i32 %lv.dst.4|bir.ret i32"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call ptr @memset|bir.call ptr memset"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_pointer_param_direct_global_arg_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/pointer_param_direct_global_arg.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/pointer_param_direct_global_arg_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @consume(ptr %p.p) -> i32 {|bir.call i32 consume(ptr @g)|bir.ret i32 %t0"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (ptr) @consume(ptr @g)"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_pointer_param_global_pointer_value_arg_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/pointer_param_global_pointer_value_arg.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/pointer_param_global_pointer_value_arg_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @consume(ptr %p.p) -> i32 {|%t0 = bir.load_global ptr @gp|%t1 = bir.load_local ptr %lv.p|bir.call i32 consume(ptr %t1)|bir.ret i32 %t2"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (ptr) @consume("
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_pointer_return_fn_param_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/pointer_return_fn_param.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/pointer_return_fn_param_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @id_ptr(ptr %p.p) -> ptr {|bir.func @use(ptr %p.fn, ptr %p.p) -> ptr {|%t0 = bir.call ptr %p.fn(ptr %p.p)|bir.ret ptr %t0"
+  FORBIDDEN_SNIPPETS "define ptr @use(ptr %p.fn, ptr %p.p)|call ptr (ptr) %p.fn(ptr %p.p)"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_pointer_return_global_pointer_value_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/pointer_return_global_pointer_value.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/pointer_return_global_pointer_value_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @id_ptr(ptr %p.p) -> ptr {|bir.func @use() -> ptr {|%t0 = bir.load_global ptr @gp|%t1 = bir.load_local ptr %lv.p|bir.call ptr id_ptr(ptr %t1)|bir.ret ptr %t2"
+  FORBIDDEN_SNIPPETS "define ptr @use()|call ptr (ptr) @id_ptr("
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_aggregate_param_return_pair_fn_param_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/aggregate_param_return_pair_fn_param.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/aggregate_param_return_pair_fn_param_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @use(ptr %p.fn, ptr byval(size=8, align=4) %p.p) -> i32 {|bir.call void %p.fn(ptr sret(size=8, align=4) %t0, ptr byval(size=8, align=4) %lv.param.p.p)|%t3 = bir.call i32 use(ptr @id_pair, ptr byval(size=8, align=4) %lv.p)|bir.ret i32 %t3"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (ptr, %struct.Pair) @use(ptr @id_pair, %struct.Pair %t2)|call %struct.Pair (%struct.Pair) %p.fn(%struct.Pair %p.p)"
+)
+
+add_test(
+  NAME backend_codegen_route_x86_64_nested_member_pointer_array_observe_semantic_bir
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DSRC_A=${BACKEND_CASE_ROOT}/nested_member_pointer_array.c
+          -DOUT_A=${CMAKE_BINARY_DIR}/backend_route/nested_member_pointer_array_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_A=bir.func @get_second(ptr %p.o) -> i32 {|%t1 = bir.load_local ptr %t1.addr, addr %p.o|%t6 = bir.load_local i32 %t6.addr, addr %t1+4|bir.store_local %lv.outer.0, ptr %lv.inner|bir.call i32 get_second(ptr %lv.outer)|bir.ret i32 %t9"
+          -DSRC_B=${BACKEND_CASE_ROOT}/local_array.c
+          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/nested_member_pointer_array_local_array_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_B=bir.func @main() -> i32 {|bir.store_local %lv.xs.0, i32 4|bir.store_local %lv.xs.1, i32 3|%t14 = bir.add i32 %t9, %t13|bir.ret i32 %t14"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
+)
+c4c_set_backend_test_labels(
+  "backend_codegen_route_x86_64_nested_member_pointer_array_observe_semantic_bir"
+  backend_route
+)
+
+add_test(
+  NAME backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DSRC_A=${BACKEND_CASE_ROOT}/local_dynamic_member_array.c
+          -DOUT_A=${CMAKE_BINARY_DIR}/backend_route/local_dynamic_member_array_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_A=bir.func @get_at(ptr %p.p, i32 %p.i) -> i32 {|%t4.elt0 = bir.load_local i32 %t4.elt0.addr, addr %p.p|%t4.elt1 = bir.load_local i32 %t4.elt1.addr, addr %p.p+4|%t4.elt2 = bir.load_local i32 %t4.elt2.addr, addr %p.p+8|%t4 = bir.select eq i64 %t2, 0, i32 %t4.elt0, %t4.sel1|bir.call i32 get_at(ptr %lv.p, i32 2)|bir.ret i32 %t12"
+          "-DFORBIDDEN_SNIPPETS_A=define i32 @get_at|getelementptr [3 x i32], ptr"
+          -DSRC_B=${BACKEND_CASE_ROOT}/local_array.c
+          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/local_dynamic_member_array_local_array_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_B=bir.func @main() -> i32 {|bir.store_local %lv.xs.0, i32 4|bir.store_local %lv.xs.1, i32 3|%t14 = bir.add i32 %t9, %t13|bir.ret i32 %t14"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
+)
+c4c_set_backend_test_labels(
+  "backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir"
+  backend_route
+)
+
+add_test(
+  NAME backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DSRC_A=${BACKEND_CASE_ROOT}/local_dynamic_member_array_store.c
+          -DOUT_A=${CMAKE_BINARY_DIR}/backend_route/local_dynamic_member_array_store_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_A=bir.func @set_at(ptr %p.p, i32 %p.i, i32 %p.v) -> void {|%t2 = bir.sext i32 %p.i to i64|%t3.elt0 = bir.load_local i32 %t3.elt0.load.addr, addr %p.p|%t3.store0 = bir.select eq i64 %t2, 0, i32 %p.v, %t3.elt0|bir.store_local %t3.elt0.store.addr, i32 %t3.store0, addr %p.p|%t3.elt1 = bir.load_local i32 %t3.elt1.load.addr, addr %p.p+4|%t3.store1 = bir.select eq i64 %t2, 1, i32 %p.v, %t3.elt1|bir.store_local %t3.elt1.store.addr, i32 %t3.store1, addr %p.p+4|%t3.elt2 = bir.load_local i32 %t3.elt2.load.addr, addr %p.p+8|%t3.store2 = bir.select eq i64 %t2, 2, i32 %p.v, %t3.elt2|bir.store_local %t3.elt2.store.addr, i32 %t3.store2, addr %p.p+8|bir.ret"
+          "-DFORBIDDEN_SNIPPETS_A=define void @set_at|store i32 %p.v, ptr|getelementptr [3 x i32], ptr"
+          -DSRC_B=${BACKEND_CASE_ROOT}/local_dynamic_member_array.c
+          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/local_dynamic_member_array_store_neighbor_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_B=bir.func @get_at(ptr %p.p, i32 %p.i) -> i32 {|%t4.elt0 = bir.load_local i32 %t4.elt0.addr, addr %p.p|%t4.elt1 = bir.load_local i32 %t4.elt1.addr, addr %p.p+4|%t4.elt2 = bir.load_local i32 %t4.elt2.addr, addr %p.p+8|%t4 = bir.select eq i64 %t2, 0, i32 %t4.elt0, %t4.sel1|bir.call i32 get_at(ptr %lv.p, i32 2)|bir.ret i32 %t12"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
+)
+c4c_set_backend_test_labels(
+  "backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir"
+  backend_route
+)
+
+add_test(
+  NAME backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DSRC_A=${BACKEND_CASE_ROOT}/local_direct_dynamic_member_array_store.c
+          -DOUT_A=${CMAKE_BINARY_DIR}/backend_route/local_direct_dynamic_member_array_store_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_A=bir.func @main() -> i32 {|bir.store_local %lv.p.0, i32 4|bir.store_local %lv.p.4, i32 8|bir.store_local %lv.p.8, i32 11|bir.store_local %lv.i, i32 1|%t16.elt0 = bir.load_local i32 %lv.p.0|%t16.store1 = bir.select eq i64 %t15, 1, i32 13, %t16.elt1|bir.store_local %lv.p.8, i32 %t16.store2|%t21 = bir.load_local i32 %lv.p.4|bir.ret i32 %t21"
+          "-DFORBIDDEN_SNIPPETS_A=define i32 @main()|store i32 13, ptr|getelementptr [3 x i32], ptr"
+          -DSRC_B=${BACKEND_CASE_ROOT}/local_array.c
+          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/local_direct_dynamic_member_array_store_local_array_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_B=bir.func @main() -> i32 {|bir.store_local %lv.xs.0, i32 4|bir.store_local %lv.xs.1, i32 3|%t14 = bir.add i32 %t9, %t13|bir.ret i32 %t14"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
+)
+c4c_set_backend_test_labels(
+  "backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir"
+  backend_route
+)
+
+add_test(
+  NAME backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DSRC_A=${BACKEND_CASE_ROOT}/local_direct_dynamic_member_array_load.c
+          -DOUT_A=${CMAKE_BINARY_DIR}/backend_route/local_direct_dynamic_member_array_load_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_A=bir.func @main() -> i32 {|bir.store_local %lv.p.0, i32 4|bir.store_local %lv.p.4, i32 8|bir.store_local %lv.p.8, i32 11|bir.store_local %lv.i, i32 1|%t14 = bir.load_local i32 %lv.i|%t15 = bir.sext i32 %t14 to i64|%t17.elt0 = bir.load_local i32 %lv.p.0|%t17.elt1 = bir.load_local i32 %lv.p.4|%t17.elt2 = bir.load_local i32 %lv.p.8|%t17 = bir.select eq i64 %t15, 0, i32 %t17.elt0, %t17.sel1|bir.ret i32 %t17"
+          "-DFORBIDDEN_SNIPPETS_A=define i32 @main()|load i32, ptr|getelementptr [3 x i32], ptr"
+          -DSRC_B=${BACKEND_CASE_ROOT}/local_array.c
+          -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/local_direct_dynamic_member_array_load_local_array_semantic_bir_x86_64.ll
+          "-DREQUIRED_SNIPPETS_B=bir.func @main() -> i32 {|bir.store_local %lv.xs.0, i32 4|bir.store_local %lv.xs.1, i32 3|%t14 = bir.add i32 %t9, %t13|bir.ret i32 %t14"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dual_codegen_route_case.cmake"
+)
+c4c_set_backend_test_labels(
+  "backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir"
+  backend_route
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_local_direct_dynamic_struct_array_call_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/local_direct_dynamic_struct_array_call.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/local_direct_dynamic_struct_array_call_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.pairs.0, i32 1|bir.store_local %lv.pairs.12, i32 4|%t17 = bir.load_local i32 %lv.i|%t18 = bir.sext i32 %t17 to i64|%t19 = bir.select eq i64 %t18, 0, ptr %t19.elt0, %t19.elt1|bir.call i32 get_y(ptr %t19)|bir.ret i32 %t20"
+  FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (ptr) @get_y|getelementptr [2 x %struct.Pair], ptr"
 )

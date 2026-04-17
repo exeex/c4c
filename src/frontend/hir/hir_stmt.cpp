@@ -233,6 +233,10 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
         s.output = lower_expr(&ctx, n->children[0]);
         s.output_type.spec = n->children[0]->type;
         s.output_type.category = ValueCategory::LValue;
+        if (n->asm_n_constraints > 0 && n->asm_constraints && n->asm_constraints[0]) {
+          s.output_is_readwrite =
+              strip_quoted_string(n->asm_constraints[0]).find('+') != std::string::npos;
+        }
       }
       for (int i = 0; i < n->asm_num_inputs; ++i) {
         const Node* input = n->children[n->asm_num_outputs + i];

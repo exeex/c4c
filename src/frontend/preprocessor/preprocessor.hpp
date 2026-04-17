@@ -3,6 +3,7 @@
 
 #include "pp_macro_def.hpp"
 #include "source_profile.hpp"
+#include "../../target_profile.hpp"
 
 #include <map>
 #include <set>
@@ -41,8 +42,8 @@ public:
   // Controls header inclusion policy (.hpp rejection under C mode).
   void set_source_profile(SourceProfile profile);
   SourceProfile source_profile() const { return source_profile_; }
-  void set_target_triple(const std::string& triple);
-  const std::string& target_triple() const { return target_triple_; }
+  void set_target_profile(const c4c::TargetProfile& target_profile);
+  const c4c::TargetProfile& target_profile() const { return target_profile_; }
 
   // Define/undefine macros from driver (for -D/-U command-line flags).
   // define_macro("FOO") defines FOO as 1.
@@ -117,7 +118,7 @@ private:
   std::vector<PreprocessorDiagnostic> warnings_;
 
   SourceProfile source_profile_ = SourceProfile::C;
-  std::string target_triple_;
+  c4c::TargetProfile target_profile_{};
 
   bool needs_external_fallback_ = false;
   std::string base_file_;

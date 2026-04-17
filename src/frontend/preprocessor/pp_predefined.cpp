@@ -1,5 +1,7 @@
 #include "pp_predefined.hpp"
 
+#include "../../target_profile.hpp"
+
 namespace c4c {
 
 namespace {
@@ -8,65 +10,41 @@ void def(MacroTable& t, const char* name, const char* body) {
   t[name] = MacroDef{name, false, false, {}, body};
 }
 
-bool triple_contains(const std::string& triple, const char* needle) {
-  return !triple.empty() && triple.find(needle) != std::string::npos;
+bool target_is_apple(const TargetProfile& target_profile) {
+  return target_profile.os == TargetOs::Darwin &&
+         target_profile.triple.find("apple") != std::string::npos;
 }
 
-bool target_is_apple(const std::string& triple) {
-  return triple_contains(triple, "apple");
+bool target_is_darwin(const TargetProfile& target_profile) {
+  return target_profile.os == TargetOs::Darwin;
 }
 
-bool target_is_darwin(const std::string& triple) {
-  return target_is_apple(triple) || triple_contains(triple, "darwin");
+bool target_is_linux(const TargetProfile& target_profile) {
+  return target_profile.os == TargetOs::Linux;
 }
 
-bool target_is_linux(const std::string& triple) {
-  return triple_contains(triple, "linux");
+bool target_is_windows(const TargetProfile& target_profile) {
+  return target_profile.os == TargetOs::Windows;
 }
 
-bool target_is_aarch64(const std::string& triple) {
-  return triple_contains(triple, "aarch64") || triple_contains(triple, "arm64");
+bool target_is_aarch64(const TargetProfile& target_profile) {
+  return target_profile.arch == TargetArch::Aarch64;
 }
 
-bool target_is_x86_64(const std::string& triple) {
-  return triple_contains(triple, "x86_64") || triple_contains(triple, "amd64");
+bool target_is_x86_64(const TargetProfile& target_profile) {
+  return target_profile.arch == TargetArch::X86_64;
 }
 
-bool target_is_i386(const std::string& triple) {
-  return triple_contains(triple, "i386") || triple_contains(triple, "i686") ||
-         triple_contains(triple, "x86");
+bool target_is_i386(const TargetProfile& target_profile) {
+  return target_profile.arch == TargetArch::I686;
 }
 
-std::string default_host_target_triple() {
-#if defined(__aarch64__) || defined(_M_ARM64)
-#if defined(__APPLE__)
-  return "aarch64-apple-darwin";
-#elif defined(__linux__)
-  return "aarch64-unknown-linux-gnu";
-#else
-  return "aarch64-unknown-unknown";
-#endif
-#elif defined(__x86_64__) || defined(_M_X64)
-#if defined(__APPLE__)
-  return "x86_64-apple-darwin";
-#elif defined(__linux__)
-  return "x86_64-unknown-linux-gnu";
-#else
-  return "x86_64-unknown-unknown";
-#endif
-#elif defined(__i386__) || defined(_M_IX86)
-#if defined(__linux__)
-  return "i386-unknown-linux-gnu";
-#else
-  return "i386-unknown-unknown";
-#endif
-#else
-  return "unknown-unknown-unknown";
-#endif
+bool target_is_riscv64(const TargetProfile& target_profile) {
+  return target_profile.arch == TargetArch::Riscv64;
 }
 
-void add_apple_target_predefines(MacroTable& table, const std::string& triple) {
-  if (!target_is_apple(triple)) return;
+void add_apple_target_predefines(MacroTable& table, const TargetProfile& target_profile) {
+  if (!target_is_apple(target_profile)) return;
   def(table, "__APPLE__", "1");
   def(table, "__MACH__", "1");
   def(table, "__APPLE_CC__", "6000");
@@ -91,12 +69,12 @@ void add_apple_target_predefines(MacroTable& table, const std::string& triple) {
   def(table, "TARGET_RT_64_BIT", "1");
   def(table, "TARGET_RT_MAC_MACHO", "1");
   def(table, "TARGET_RT_MAC_CFM", "0");
-  if (target_is_aarch64(triple)) {
+  if (target_is_aarch64(target_profile)) {
   def(table, "TARGET_CPU_ARM64", "1");
   def(table, "TARGET_CPU_ARM", "0");
   def(table, "TARGET_CPU_X86", "0");
   def(table, "TARGET_CPU_X86_64", "0");
-  } else if (target_is_x86_64(triple)) {
+  } else if (target_is_x86_64(target_profile)) {
   def(table, "TARGET_CPU_ARM64", "0");
   def(table, "TARGET_CPU_ARM", "0");
   def(table, "TARGET_CPU_X86", "0");
@@ -107,9 +85,7 @@ void add_apple_target_predefines(MacroTable& table, const std::string& triple) {
 
 }  // namespace
 
-void init_predefined_macros(MacroTable& table, const std::string& requested_target_triple) {
-  const std::string target_triple =
-      requested_target_triple.empty() ? default_host_target_triple() : requested_target_triple;
+void init_predefined_macros(MacroTable& table, const c4c::TargetProfile& target_profile) {
   def(table, "__STDC__", "1");
   def(table, "__STDC_VERSION__", "201710L");
   def(table, "__LP64__", "1");
@@ -227,7 +203,7 @@ void init_predefined_macros(MacroTable& table, const std::string& requested_targ
   def(table, "__STDC_HOSTED__", "1");
 
   // Target architecture macros.
-  if (target_is_aarch64(target_triple)) {
+  if (target_is_aarch64(target_profile)) {
   def(table, "__aarch64__", "1");
   def(table, "__arm64__", "1");
   def(table, "__AARCH64EL__", "1");
@@ -254,7 +230,7 @@ void init_predefined_macros(MacroTable& table, const std::string& requested_targ
   def(table, "__ARM_PCS_AAPCS64", "1");
   def(table, "__ARM_SIZEOF_MINIMAL_ENUM", "4");
   def(table, "__ARM_SIZEOF_WCHAR_T", "4");
-  } else if (target_is_x86_64(target_triple)) {
+  } else if (target_is_x86_64(target_profile)) {
   def(table, "__x86_64__", "1");
   def(table, "__x86_64", "1");
   def(table, "__amd64__", "1");
@@ -270,37 +246,37 @@ void init_predefined_macros(MacroTable& table, const std::string& requested_targ
   def(table, "__SEG_GS", "1");
   def(table, "__GCC_HAVE_DWARF2_CFI_ASM", "1");
   def(table, "__REGISTER_PREFIX__", "");
-  } else if (target_is_i386(target_triple)) {
+  } else if (target_is_i386(target_profile)) {
   def(table, "__i386__", "1");
   def(table, "__i386", "1");
   def(table, "__code_model_32__", "1");
   def(table, "__NO_MATH_INLINES", "1");
   def(table, "__REGISTER_PREFIX__", "");
-  } else if (triple_contains(target_triple, "riscv")) {
+  } else if (target_is_riscv64(target_profile)) {
   def(table, "__riscv", "1");
   def(table, "__riscv_xlen", "64");
   }
 
   // OS macros
-  if (target_is_linux(target_triple)) {
+  if (target_is_linux(target_profile)) {
   def(table, "__linux__", "1");
   def(table, "__linux", "1");
   def(table, "linux", "1");
   def(table, "__gnu_linux__", "1");
   }
-  if (target_is_linux(target_triple) || target_is_darwin(target_triple)) {
+  if (target_is_linux(target_profile) || target_is_darwin(target_profile)) {
   def(table, "__unix__", "1");
   def(table, "__unix", "1");
   def(table, "unix", "1");
   }
-  add_apple_target_predefines(table, target_triple);
-  if (triple_contains(target_triple, "windows")) {
+  add_apple_target_predefines(table, target_profile);
+  if (target_is_windows(target_profile)) {
   def(table, "_WIN32", "1");
-    if (target_is_x86_64(target_triple)) def(table, "_WIN64", "1");
+    if (target_is_x86_64(target_profile)) def(table, "_WIN64", "1");
   }
 
   // ELF target (common on Linux)
-  if (target_is_linux(target_triple)) def(table, "__ELF__", "1");
+  if (target_is_linux(target_profile)) def(table, "__ELF__", "1");
 
   // Atomic memory order constants (used by <stdatomic.h> and __atomic builtins)
   def(table, "__ATOMIC_RELAXED", "0");
@@ -311,13 +287,13 @@ void init_predefined_macros(MacroTable& table, const std::string& requested_targ
   def(table, "__ATOMIC_SEQ_CST", "5");
 
   // GCC sync builtins availability (arch-dependent)
-  if (target_is_aarch64(target_triple) || target_is_x86_64(target_triple)) {
+  if (target_is_aarch64(target_profile) || target_is_x86_64(target_profile)) {
   def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1", "1");
   def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2", "1");
   def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_4", "1");
   def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8", "1");
   def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_16", "1");
-  } else if (target_is_i386(target_triple)) {
+  } else if (target_is_i386(target_profile)) {
   def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1", "1");
   def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2", "1");
   def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_4", "1");

@@ -45,12 +45,16 @@ When activation or repair requires writing `plan.md`:
 2. use `idea-to-runbook-plan` to derive the runbook structure
 3. preserve the lifecycle metadata required by `plan-lifecycle`
 4. keep `todo.md` aligned to the regenerated `plan.md`
+5. when creating or resetting `todo.md`, write only the canonical skeleton
+   expected by the executor protocol; do not invent a separate packet format
 
 ## Responsibilities
 
 - activate one idea from `ideas/open/` into `plan.md`
 - create, repair, or reset `todo.md` during activation, switch, repair, or
   close flows
+- keep `todo.md` creation/reset limited to metadata plus executor-compatible
+  skeleton sections
 - preserve lifecycle invariants
 - protect source-idea stability by preferring `todo.md` edits first,
   `plan.md` edits second, and idea edits last
@@ -66,6 +70,10 @@ When activation or repair requires writing `plan.md`:
 3. Do not run broad code validation.
 4. Do not create the final commit.
 5. Do not take over routine executor progress tracking in `todo.md`.
+6. Do not create a second `todo.md` protocol. When `todo.md` must be created or
+   reset, use the same Markdown section shape the executor updates:
+   `# Current Packet`, then `## Just Finished`, `## Suggested Next`,
+   `## Watchouts`, and `## Proof`.
 
 ## Lifecycle Rules
 
@@ -94,6 +102,9 @@ When activation or repair requires writing `plan.md`:
 12. Do not close a source idea just because the current runbook or `todo.md`
     slice is exhausted. Close only when the source idea itself is satisfied or
     intentionally concluded as complete.
+13. If activation, repair, or switch must create or reset `todo.md`, keep it to
+    metadata plus empty or placeholder executor fields. Do not pre-fill routine
+    progress narratives on behalf of the executor.
 
 ## Close Gate
 

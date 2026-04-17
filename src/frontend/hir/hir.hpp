@@ -21,6 +21,7 @@
 
 #include <string>
 
+#include "../../target_profile.hpp"
 #include "ast.hpp"
 #include "canonical_symbol.hpp"
 #include "hir_printer.hpp"
@@ -32,7 +33,7 @@ namespace c4c::hir {
 Module build_hir(const Node* program_root,
                  const sema::ResolvedTypeTable* resolved_types = nullptr,
                  SourceProfile source_profile = SourceProfile::C,
-                 const std::string& target_triple = "");
+                 const c4c::TargetProfile& target_profile = {});
 std::string format_summary(const Module& module);
 
 }  // namespace c4c::hir

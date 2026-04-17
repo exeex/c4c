@@ -1,9 +1,8 @@
 #pragma once
 
-#include "bir.hpp"
-#include "lowering/lir_to_bir.hpp"
-#include "prepare/prepare.hpp"
-#include "target.hpp"
+#include "bir/bir.hpp"
+#include "bir/lir_to_bir.hpp"
+#include "prealloc/prealloc.hpp"
 
 #include <functional>
 #include <string>
@@ -46,7 +45,7 @@ struct BackendModuleInput {
 };
 
 struct BackendOptions {
-  Target target;
+  c4c::TargetProfile target_profile{};
   bool emit_semantic_bir = false;
 };
 
@@ -57,22 +56,22 @@ struct BackendAssembleResult {
   std::string error;
 };
 
-[[nodiscard]] c4c::codegen::lir::LirModule prepare_lir_module_for_target(
-    const c4c::codegen::lir::LirModule& module,
-    Target target);
-
 [[nodiscard]] c4c::backend::bir::Module prepare_bir_module_for_target(
     const c4c::backend::bir::Module& module,
-    Target target);
+    const c4c::TargetProfile& target_profile);
 
-std::string emit_target_bir_module(const bir::Module& module, Target public_target);
+// Current public BIR entrypoint. x86 now routes prepared backend data into the
+// target-local prepared-module consumer boundary instead of returning prepared
+// semantic BIR text directly.
+std::string emit_target_bir_module(const bir::Module& module,
+                                   const c4c::TargetProfile& target_profile);
 
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
-                                   Target public_target);
+                                   const c4c::TargetProfile& target_profile);
 
 BackendAssembleResult assemble_target_lir_module(
     const c4c::codegen::lir::LirModule& module,
-    Target public_target,
+    const c4c::TargetProfile& target_profile,
     const std::string& output_path);
 
 std::string emit_module(const BackendModuleInput& input,

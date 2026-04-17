@@ -21,25 +21,39 @@ Reviewer payload should be written into repo-local transient files under
 
 1. Confirm the first delegated line is `to_subagent: c4c-reviewer`.
 2. Read [`AGENTS.md`](/workspaces/c4c/AGENTS.md).
-3. Read the current [`plan.md`](/workspaces/c4c/plan.md) and
+3. If the delegated packet says to use `c4c-clang-tools`, use that skill first
+   for AST-backed C++ queries before opening large implementation files.
+4. Read the current [`plan.md`](/workspaces/c4c/plan.md) and
    [`todo.md`](/workspaces/c4c/todo.md) so you know the active goal,
    guardrails, and current slice.
-4. Read the source idea linked from [`plan.md`](/workspaces/c4c/plan.md).
-5. Run [`scripts/plan_change_gap.sh`](/workspaces/c4c/scripts/plan_change_gap.sh)
+5. Read the source idea linked from [`plan.md`](/workspaces/c4c/plan.md).
+6. Run [`scripts/plan_change_gap.sh`](/workspaces/c4c/scripts/plan_change_gap.sh)
    as the quick checkpoint probe.
-6. Determine the review base from git history on `plan.md`, not from metadata
+7. Determine the review base from git history on `plan.md`, not from metadata
    written inside `plan.md`.
+
+Assume delegated packets may include:
+
+```text
+to_subagent: c4c-reviewer
+Objective: <one-sentence review goal>
+Focus: <scope or file families>
+Tooling: <optional; `use c4c-clang-tools` or `no clang-tools needed`, with a short reason>
+Review Question: <what to judge>
+Report Path: review/<name>.md
+If Blocked: stop and report the exact history ambiguity
+```
 
 ## Review Base Rule
 
 The review base must come from git history.
 
 1. Run `scripts/plan_change_gap.sh` first, then inspect
-   `git log --oneline --grep='\[plan_change\]' -- plan.md todo.md ideas/open/`.
-2. Prefer commits whose subjects use the canonical lifecycle scope tags such as
-   `[plan_change]`, `[todo_change]`, and `[idea_open_change]`, then use the
-   remaining subject text to find the commit that began the current active plan
-   or the last reviewer checkpoint for that same plan.
+   `git log --oneline --extended-regexp --grep='\[[^]]*plan[^]]*\]' -- plan.md todo.md ideas/open/`.
+2. Prefer commits whose subjects use the canonical compact lifecycle scope tags
+   such as `[plan]`, `[plan+idea]`, and `[todo_only]`, then use the remaining
+   subject text to find the commit that began the current active plan or the
+   last reviewer checkpoint for that same plan.
 3. If `plan.md` was later edited for housekeeping, do not use the latest
    `plan.md` commit blindly; keep walking history until you find the commit
    that actually reset, activated, or reviewer-checkpointed the current plan.
