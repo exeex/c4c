@@ -1047,10 +1047,10 @@ inline std::string emit_prepared_module(
   }
 
   const auto& entry = function.blocks.front();
-  if (!entry.insts.empty() || entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+  if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !entry.terminator.value.has_value()) {
     throw std::invalid_argument(
-        "x86 backend emitter only supports a direct i32 return terminator through the canonical prepared-module handoff");
+        "x86 backend emitter only supports a minimal single-block i32 return terminator through the canonical prepared-module handoff");
   }
 
   const auto& returned = *entry.terminator.value;
@@ -1061,25 +1061,57 @@ inline std::string emit_prepared_module(
 
   const auto asm_prefix = ".intel_syntax noprefix\n.text\n.globl " + function.name +
                           "\n.type " + function.name + ", @function\n" + function.name + ":\n";
-  if (returned.kind == c4c::backend::bir::Value::Kind::Immediate) {
-    if (!function.params.empty()) {
-      throw std::invalid_argument(
-          "x86 backend emitter only supports parameter-free immediate i32 returns through the canonical prepared-module handoff");
+  if (entry.insts.empty()) {
+    if (returned.kind == c4c::backend::bir::Value::Kind::Immediate) {
+      if (!function.params.empty()) {
+        throw std::invalid_argument(
+            "x86 backend emitter only supports parameter-free immediate i32 returns through the canonical prepared-module handoff");
+      }
+      return asm_prefix + "    mov eax, " +
+             std::to_string(static_cast<std::int32_t>(returned.immediate)) + "\n    ret\n";
     }
-    return asm_prefix + "    mov eax, " +
-           std::to_string(static_cast<std::int32_t>(returned.immediate)) + "\n    ret\n";
+
+    if (function.params.size() == 1 && module.target == c4c::backend::Target::X86_64) {
+      const auto& param = function.params.front();
+      if (param.type == c4c::backend::bir::TypeKind::I32 && !param.is_varargs &&
+          !param.is_sret && !param.is_byval && returned.name == param.name) {
+        return asm_prefix + "    mov eax, edi\n    ret\n";
+      }
+    }
   }
 
-  if (function.params.size() == 1 && module.target == c4c::backend::Target::X86_64) {
+  if (entry.insts.size() == 1 && function.params.size() == 1 &&
+      returned.kind == c4c::backend::bir::Value::Kind::Named &&
+      module.target == c4c::backend::Target::X86_64) {
     const auto& param = function.params.front();
-    if (param.type == c4c::backend::bir::TypeKind::I32 && !param.is_varargs &&
-        !param.is_sret && !param.is_byval && returned.name == param.name) {
-      return asm_prefix + "    mov eax, edi\n    ret\n";
+    const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.front());
+    if (binary != nullptr && param.type == c4c::backend::bir::TypeKind::I32 && !param.is_varargs &&
+        !param.is_sret && !param.is_byval &&
+        binary->opcode == c4c::backend::bir::BinaryOpcode::Add &&
+        binary->operand_type == c4c::backend::bir::TypeKind::I32 &&
+        binary->result.type == c4c::backend::bir::TypeKind::I32 &&
+        returned.name == binary->result.name) {
+      const bool lhs_is_param_rhs_is_imm =
+          binary->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+          binary->lhs.name == param.name &&
+          binary->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+          binary->rhs.type == c4c::backend::bir::TypeKind::I32;
+      const bool rhs_is_param_lhs_is_imm =
+          binary->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+          binary->rhs.name == param.name &&
+          binary->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+          binary->lhs.type == c4c::backend::bir::TypeKind::I32;
+      if (lhs_is_param_rhs_is_imm || rhs_is_param_lhs_is_imm) {
+        const auto immediate =
+            lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
+        return asm_prefix + "    mov eax, edi\n    add eax, " +
+               std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
+      }
     }
   }
 
   throw std::invalid_argument(
-      "x86 backend emitter only supports direct immediate i32 returns or direct single-parameter i32 passthrough returns through the canonical prepared-module handoff");
+      "x86 backend emitter only supports direct immediate i32 returns, direct single-parameter i32 passthrough returns, or single-parameter i32 add-immediate returns through the canonical prepared-module handoff");
 }
 std::string emit_module(const c4c::backend::bir::Module& module);
 std::string emit_module(const c4c::codegen::lir::LirModule& module);
