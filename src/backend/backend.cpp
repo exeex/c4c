@@ -1,6 +1,7 @@
 #include "backend.hpp"
 
 #include "bir/bir_printer.hpp"
+#include "mir/x86/codegen/x86_codegen.hpp"
 
 #include "../codegen/lir/lir_printer.hpp"
 
@@ -29,8 +30,8 @@ std::string emit_bootstrap_lir_module(const c4c::codegen::lir::LirModule& module
   return c4c::codegen::lir::print_llvm(module);
 }
 
-// The active public backend entry still stops at prepared semantic BIR text.
-// Keep this helper name honest until x86 is wired to a real backend-side handoff.
+// Non-x86 targets still expose prepared semantic BIR text while their
+// target-local direct-BIR route is not wired into the public backend entry.
 std::string render_prepared_bir_text(const c4c::backend::bir::Module& module) {
   return c4c::backend::bir::print(module);
 }
@@ -57,6 +58,9 @@ c4c::backend::bir::Module prepare_bir_module_for_target(
 
 std::string emit_target_bir_module(const bir::Module& module, Target public_target) {
   const auto prepared = prepare_semantic_bir_pipeline(module, public_target);
+  if (public_target == Target::X86_64) {
+    return c4c::backend::x86::emit_module(prepared.module);
+  }
   return render_prepared_bir_text(prepared.module);
 }
 
