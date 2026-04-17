@@ -6,28 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 2 / Step 3 / Step 4 for the remaining bounded
-manual statement-lowering decl-ref sites in `hir_stmt.cpp`.
+Completed `plan.md` Step 2 / Step 4 for the bounded HIR struct/tag carrier
+route in `hir_types.cpp` and `hir_templates_struct_instantiation.cpp`.
 
-- Added parallel HIR `DeclRef::name_text_id` storage for statement-built
-  parameter-backed refs such as `this` and the defaulted-method `other`
-  carrier, so these manual `hir_stmt.cpp` decl-refs are no longer string-only
-  on the migrated route.
-- Added parallel HIR `DeclRef::name_text_id` storage for delegating-constructor
-  and member-constructor callee decl-refs emitted by statement lowering,
-  keeping the emitted `LinkNameId` path separate while giving the carrier its
-  own TU-scoped text identity.
-- Extended focused HIR proof with a constructor/delegation/defaulted-assignment
-  fixture so the statement-lowering route now proves `this`, parameter-backed
-  decl-refs, and ctor callee decl-refs preserve `TextId` identity through the
-  HIR-owned text table.
+- Added parallel HIR `HirStructDef::tag_text_id` and `base_tag_text_ids`
+  storage so non-template and instantiated-template struct definitions are no
+  longer string-only for their stable TU-scoped tag identity.
+- Threaded HIR-owned text interning through both struct-definition
+  construction sites, keeping the sidecar ids aligned with `tag` and
+  `base_tags` without touching `SymbolId` or `LinkNameId` policy.
+- Extended focused HIR proof with a derived-struct plus instantiated-template
+  fixture so both direct struct tags and inherited base tags resolve through
+  the HIR text table on the migrated route.
 
 ## Suggested Next
 
-Keep Step 2 bounded: choose the next nearby HIR declaration/tag base-name
-carrier that still stores stable TU text as `std::string`, rather than widening
-into a broader decl-ref sweep outside the already-covered parser/expr/stmt
-routes.
+Keep Step 2 bounded: choose one nearby declaration-side HIR carrier that still
+stores stable TU text as `std::string`, such as `Param.name` or
+`HirTemplateDef.name`, instead of widening into broader registry/index churn.
 
 ## Watchouts
 
@@ -35,9 +31,11 @@ routes.
 - HIR must intern its own spellings into `module.link_name_texts`; parser-owned
   `TextId`s cannot be copied directly into HIR because they belong to a
   different table.
-- Manual statement-lowering decl-ref builders can bypass `lower_var_expr(...)`,
-  so future `DeclRef` additions in `hir_stmt.cpp` or adjacent helpers need
-  their own explicit `name_text_id` interning when they carry stable TU text.
+- `HirStructDef::base_tag_text_ids` is a sidecar vector and must stay
+  index-aligned with `base_tags` anywhere new base-tag producers are added.
+- Template-struct instantiation has its own base-tag construction helper, so
+  future struct/tag `TextId` work needs to cover both ordinary and instantiated
+  definition paths together.
 - Keep diagnostic/debug/serialization strings out of scope.
 - Do not absorb unrelated EASTL lifecycle churn into this plan.
 

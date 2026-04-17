@@ -1175,6 +1175,7 @@ void Lowerer::lower_struct_def(const Node* sd) {
 
   HirStructDef def;
   def.tag = tag;
+  def.tag_text_id = make_text_id(def.tag, module_ ? module_->link_name_texts.get() : nullptr);
   def.ns_qual = make_ns_qual(sd, module_ ? module_->link_name_texts.get() : nullptr);
   def.is_union = sd->is_union;
   def.pack_align = sd->pack_align;
@@ -1209,7 +1210,11 @@ void Lowerer::lower_struct_def(const Node* sd) {
           base, empty_tb, empty_nb, sd, PendingTemplateTypeKind::MemberTypedef,
           std::string("struct-base-member:") + (tag ? tag : ""));
     }
-    if (base.tag && base.tag[0]) def.base_tags.push_back(base.tag);
+    if (base.tag && base.tag[0]) {
+      def.base_tags.push_back(base.tag);
+      def.base_tag_text_ids.push_back(
+          make_text_id(base.tag, module_ ? module_->link_name_texts.get() : nullptr));
+    }
   }
 
   int llvm_idx = 0;

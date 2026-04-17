@@ -58,7 +58,11 @@ void Lowerer::append_instantiated_template_struct_bases(
         base_ts = resolved_member;
       }
     }
-    if (base_ts.tag && base_ts.tag[0]) def.base_tags.push_back(base_ts.tag);
+    if (base_ts.tag && base_ts.tag[0]) {
+      def.base_tags.push_back(base_ts.tag);
+      def.base_tag_text_ids.push_back(
+          make_text_id(base_ts.tag, module_ ? module_->link_name_texts.get() : nullptr));
+    }
   }
 }
 
@@ -164,6 +168,7 @@ void Lowerer::instantiate_template_struct_body(
 
   HirStructDef def;
   def.tag = mangled;
+  def.tag_text_id = make_text_id(def.tag, module_ ? module_->link_name_texts.get() : nullptr);
   def.ns_qual = make_ns_qual(
       tpl_def, module_ ? module_->link_name_texts.get() : nullptr);
   def.is_union = tpl_def->is_union;

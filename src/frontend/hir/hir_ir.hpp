@@ -785,6 +785,7 @@ struct HirStructField {
 
 struct HirStructDef {
   SymbolName tag;
+  TextId tag_text_id = kInvalidText;
   NamespaceQualifier ns_qual;  // owning namespace context from AST
   bool is_union = false;
   int size_bytes = 0;
@@ -793,6 +794,7 @@ struct HirStructDef {
   int struct_align = 0;  // __attribute__((aligned(N))) on struct (0 = default)
   std::vector<HirStructField> fields;
   std::vector<SymbolName> base_tags;
+  std::vector<TextId> base_tag_text_ids;
 };
 
 // ── Template function definition metadata (populated by hir build) ───────────

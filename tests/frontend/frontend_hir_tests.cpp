@@ -435,6 +435,66 @@ struct Widget {
               "fixture should lower at least one statement-built constructor callee decl-ref");
 }
 
+void test_hir_struct_defs_preserve_text_ids_for_tags_and_bases() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+struct Base {};
+struct Derived : Base {};
+
+template<typename T>
+struct Box : Derived {
+  T value;
+};
+
+Box<int> make_box() { return {}; }
+)cpp");
+
+  const auto derived_it = hir_module.struct_defs.find("Derived");
+  expect_true(derived_it != hir_module.struct_defs.end(),
+              "fixture should lower the non-template derived struct definition");
+  const c4c::hir::HirStructDef& derived = derived_it->second;
+  expect_true(derived.tag_text_id != c4c::kInvalidText,
+              "non-template struct defs should preserve a parallel tag TextId");
+  expect_eq(hir_module.link_name_texts->lookup(derived.tag_text_id), "Derived",
+            "non-template struct tag TextIds should resolve through the HIR text table");
+  expect_true(derived.base_tags.size() == 1,
+              "fixture should lower one direct base tag on the derived struct");
+  expect_true(derived.base_tag_text_ids.size() == derived.base_tags.size(),
+              "struct defs should preserve one base-tag TextId per lowered base tag");
+  expect_true(derived.base_tag_text_ids.front() != c4c::kInvalidText,
+              "non-template struct base tags should preserve parallel TextIds");
+  expect_eq(hir_module.link_name_texts->lookup(derived.base_tag_text_ids.front()), "Base",
+            "non-template struct base-tag TextIds should resolve through the HIR text table");
+
+  const auto instantiated_it = std::find_if(
+      hir_module.struct_defs.begin(), hir_module.struct_defs.end(),
+      [](const auto& entry) {
+        return entry.first != "Base" && entry.first != "Derived" &&
+               std::find(entry.second.base_tags.begin(), entry.second.base_tags.end(), "Derived") !=
+                   entry.second.base_tags.end();
+      });
+  expect_true(instantiated_it != hir_module.struct_defs.end(),
+              "fixture should instantiate a template struct definition that inherits from Derived");
+  const c4c::hir::HirStructDef& instantiated = instantiated_it->second;
+  expect_true(instantiated.tag_text_id != c4c::kInvalidText,
+              "instantiated template struct defs should preserve a parallel tag TextId");
+  expect_eq(hir_module.link_name_texts->lookup(instantiated.tag_text_id), instantiated.tag,
+            "instantiated template struct tag TextIds should resolve to the lowered HIR tag");
+  expect_true(instantiated.base_tag_text_ids.size() == instantiated.base_tags.size(),
+              "instantiated template struct defs should preserve one base-tag TextId per lowered base");
+  const auto derived_base_it =
+      std::find(instantiated.base_tags.begin(), instantiated.base_tags.end(), "Derived");
+  expect_true(derived_base_it != instantiated.base_tags.end(),
+              "instantiated template struct should preserve its inherited base tag");
+  const size_t derived_base_index =
+      static_cast<size_t>(derived_base_it - instantiated.base_tags.begin());
+  expect_true(instantiated.base_tag_text_ids[derived_base_index] != c4c::kInvalidText,
+              "instantiated template struct base tags should preserve parallel TextIds");
+  expect_eq(hir_module.link_name_texts->lookup(
+                instantiated.base_tag_text_ids[derived_base_index]),
+            "Derived",
+            "instantiated template struct base-tag TextIds should resolve through the HIR text table");
+}
+
 void test_hir_to_lir_forwards_function_link_name_ids() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 template<typename T>
@@ -1402,6 +1462,7 @@ int main() {
   test_hir_namespace_qualifiers_preserve_text_ids_for_qualified_decl_refs();
   test_hir_decl_stmt_decl_refs_preserve_text_ids_for_ctor_and_dtor_routes();
   test_hir_stmt_decl_refs_preserve_text_ids_for_this_param_and_ctor_callees();
+  test_hir_struct_defs_preserve_text_ids_for_tags_and_bases();
   test_hir_to_lir_forwards_function_link_name_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();
