@@ -6,25 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended the bounded Step 4 allocator with weight-sensitive same-pool
-replacement using the existing liveness-derived `priority` / `spill_weight`
-data. When the current caller or spillover callee pools overflow, a stronger
-interval can now evict a weaker in-pool assignment instead of spilling
-immediately, while call-crossing callee assignments remain protected from
-non-call spillover.
+Extended the bounded Step 4 allocator so regalloc ranking now incorporates the
+existing liveness loop-depth data instead of raw use counts alone, and explicit
+spill bookkeeping is published when an evicted register value really falls back
+to a stack slot.
 
-Focused `backend_prepare_liveness` coverage now proves that behavior on a
-post-call pressure shape: the call-spanning `carry` value keeps `s1`, the
-higher-priority `hot` interval evicts into caller-saved `t0`, the displaced
-lower-priority `low0` interval falls back to `s2`, and the remaining
-lower-priority `low1` interval falls back to a real stack slot.
+Focused `backend_prepare_liveness` coverage now proves both additions: a
+loop-carried `loop.hot` value publishes loop-depth-weighted priority /
+spill-weight above its raw non-loop floor, and an `evicted_value_spill_ops`
+shape records explicit `spill` / `reload` operations when a hotter post-call
+interval takes the lone caller-saved seed while both callee-saved registers are
+already protected by call-crossing values.
 
 ## Suggested Next
 
-Extend Step 4 from bounded replacement into more Rust-like eviction policy:
-record explicit spill/reload consequences for displaced intervals and incorporate
-loop-depth or call-pressure bias into the ranking so tied same-bank intervals
-are no longer ordered only by the current generic priority fields.
+Extend Step 4 from bounded spill bookkeeping into more Rust-like move/reload
+planning: when stack-backed values and register-backed values meet at joins or
+late uses, publish `move_resolution` and more precise reload points instead of
+only the first spill/reload markers for fully evicted intervals.
 
 ## Watchouts
 
@@ -32,10 +31,13 @@ are no longer ordered only by the current generic priority fields.
   while `live_interval` still represents the CFG-extended range after
   live-through propagation; downstream consumers must not collapse those into
   one concept
-- the new bounded replacement policy is still seed-pool oriented: it chooses
-  among current caller/callee seeds using existing `priority` / `spill_weight`,
-  but it does not yet publish explicit spill/reload ops for displaced
-  intervals or model full Rust-style tiering
+- loop-depth weighting now depends on mapping liveness use points back through
+  `PreparedLivenessBlock` ranges; if program-point numbering changes, regalloc
+  weighting and spill-op locations need to stay in lockstep with that contract
+- the new spill bookkeeping only records real eviction-to-stack fallout for
+  values that actually lose a register and stay stack-backed afterward; it does
+  not yet publish join moves or repeated reload/store traffic for split
+  intervals
 - `PreparedAllocationConstraint.preferred_register_names` now carries the
   caller-vs-callee preference split, while `cannot_cross_call` is reserved for
   the stronger call-spanning prohibition; downstream consumers should keep
@@ -59,9 +61,9 @@ are no longer ordered only by the current generic priority fields.
 
 Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
-build -j --output-on-failure -R ^backend_prepare_liveness$ >
-test_after.log 2>&1`
-after teaching `run_regalloc()` to use bounded weight-sensitive replacement
-inside the current caller/callee split and adding focused post-call pressure
-coverage for the new behavior.
+build -j --output-on-failure -R ^backend_prepare_liveness$ > test_after.log
+2>&1`
+after teaching `run_regalloc()` to weight liveness uses by loop depth and to
+publish explicit spill/reload bookkeeping for values that are evicted from a
+register and finish stack-backed.
 Canonical proof log: `test_after.log`.

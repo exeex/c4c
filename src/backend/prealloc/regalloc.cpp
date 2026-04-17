@@ -18,6 +18,11 @@ struct ActiveRegisterAssignment {
   std::string register_name;
 };
 
+struct ProgramPointLocation {
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+};
+
 [[nodiscard]] PreparedRegisterClass classify_register_class(const PreparedLivenessValue& value) {
   switch (value.type) {
     case bir::TypeKind::I1:
@@ -54,6 +59,50 @@ struct ActiveRegisterAssignment {
     priority += 1U;
   }
   return priority;
+}
+
+[[nodiscard]] std::size_t loop_depth_weight(std::size_t loop_depth) {
+  switch (loop_depth) {
+    case 0:
+      return 1U;
+    case 1:
+      return 10U;
+    case 2:
+      return 100U;
+    case 3:
+      return 1000U;
+    default:
+      return 10000U;
+  }
+}
+
+[[nodiscard]] std::optional<ProgramPointLocation> locate_program_point(
+    const PreparedLivenessFunction& function,
+    std::size_t point) {
+  for (const auto& block : function.blocks) {
+    if (point < block.start_point || point > block.end_point) {
+      continue;
+    }
+    return ProgramPointLocation{
+        .block_index = block.block_index,
+        .instruction_index = point - block.start_point,
+    };
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::size_t weighted_use_score(const PreparedLivenessFunction& function,
+                                             const PreparedLivenessValue& value) {
+  std::size_t weighted_uses = 0;
+  for (const std::size_t use_point : value.use_points) {
+    std::size_t weight = 1U;
+    if (const auto location = locate_program_point(function, use_point); location.has_value() &&
+        location->block_index < function.block_loop_depth.size()) {
+      weight = loop_depth_weight(function.block_loop_depth[location->block_index]);
+    }
+    weighted_uses += weight;
+  }
+  return weighted_uses;
 }
 
 [[nodiscard]] std::vector<std::string_view> caller_saved_registers(Target target,
@@ -260,7 +309,12 @@ void BirPreAlloc::run_regalloc() {
       const bool eligible_for_register_seed =
           register_class != PreparedRegisterClass::None &&
           liveness_value.value_kind != PreparedValueKind::StackObject;
-      const std::size_t priority = value_priority(liveness_value);
+      const std::size_t base_priority = value_priority(liveness_value);
+      const std::size_t weighted_use_priority = weighted_use_score(liveness_function, liveness_value);
+      const std::size_t priority = weighted_use_priority +
+                                   (base_priority >= liveness_value.use_points.size()
+                                        ? base_priority - liveness_value.use_points.size()
+                                        : 0U);
       const auto caller_saved_names = caller_saved_registers(prepared_.target, register_class);
       const auto callee_saved_names = callee_saved_registers(prepared_.target, register_class);
 
@@ -358,6 +412,7 @@ void BirPreAlloc::run_regalloc() {
     active_caller_saved_assignments.reserve(regalloc_function.values.size());
     std::vector<ActiveRegisterAssignment> active_callee_saved_assignments;
     active_callee_saved_assignments.reserve(regalloc_function.values.size());
+    std::vector<std::optional<std::size_t>> spill_points(regalloc_function.values.size(), std::nullopt);
     std::size_t assigned_register_count = 0;
     std::size_t assigned_stack_count = 0;
 
@@ -401,6 +456,7 @@ void BirPreAlloc::run_regalloc() {
         }
 
         auto& evicted_value = regalloc_function.values[active_assignments[*eviction_index].value_index];
+        spill_points[active_assignments[*eviction_index].value_index] = value.live_interval->start_point;
         value.assigned_register = PreparedPhysicalRegisterAssignment{
             .reg_class = value.register_class,
             .register_name = active_assignments[*eviction_index].register_name,
@@ -480,6 +536,41 @@ void BirPreAlloc::run_regalloc() {
                                                       frame_alignment_bytes);
       value.allocation_status = PreparedAllocationStatus::AssignedStackSlot;
       ++assigned_stack_count;
+    }
+
+    for (std::size_t value_index = 0; value_index < regalloc_function.values.size(); ++value_index) {
+      const auto spill_point = spill_points[value_index];
+      const auto& value = regalloc_function.values[value_index];
+      if (!spill_point.has_value() || !value.assigned_stack_slot.has_value()) {
+        continue;
+      }
+
+      if (const auto spill_location = locate_program_point(liveness_function, *spill_point);
+          spill_location.has_value()) {
+        regalloc_function.spill_reload_ops.push_back(PreparedSpillReloadOp{
+            .value_id = value.value_id,
+            .op_kind = PreparedSpillReloadOpKind::Spill,
+            .block_index = spill_location->block_index,
+            .instruction_index = spill_location->instruction_index,
+        });
+      }
+
+      const auto reload_use = std::find_if(
+          liveness_function.values[value_index].use_points.begin(),
+          liveness_function.values[value_index].use_points.end(),
+          [spill_point](std::size_t use_point) { return use_point > *spill_point; });
+      if (reload_use == liveness_function.values[value_index].use_points.end()) {
+        continue;
+      }
+      if (const auto reload_location = locate_program_point(liveness_function, *reload_use);
+          reload_location.has_value()) {
+        regalloc_function.spill_reload_ops.push_back(PreparedSpillReloadOp{
+            .value_id = value.value_id,
+            .op_kind = PreparedSpillReloadOpKind::Reload,
+            .block_index = reload_location->block_index,
+            .instruction_index = reload_location->instruction_index,
+        });
+      }
     }
 
     prepared_.stack_layout.frame_size_bytes =

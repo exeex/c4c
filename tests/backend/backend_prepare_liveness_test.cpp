@@ -85,6 +85,17 @@ bool has_interference_edge(const prepare::PreparedRegallocFunction& function,
   return false;
 }
 
+bool has_spill_reload_op(const prepare::PreparedRegallocFunction& function,
+                         prepare::PreparedValueId value_id,
+                         prepare::PreparedSpillReloadOpKind kind) {
+  for (const auto& op : function.spill_reload_ops) {
+    if (op.value_id == value_id && op.op_kind == kind) {
+      return true;
+    }
+  }
+  return false;
+}
+
 prepare::PreparedBirModule prepare_phi_module() {
   bir::Module module;
 
@@ -414,6 +425,193 @@ prepare::PreparedBirModule prepare_weighted_post_call_module_with_regalloc() {
   return planner.run();
 }
 
+prepare::PreparedBirModule prepare_evicted_spill_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "evicted_value_spill_ops";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(10),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(11),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "sink_pair",
+      .args = {bir::Value::named(bir::TypeKind::I32, "carry0"),
+               bir::Value::named(bir::TypeKind::I32, "carry1")},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+                      .type = bir::TypeKind::I32,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .primary_class = bir::AbiValueClass::Integer,
+                      .passed_in_register = true,
+                  },
+                  bir::CallArgAbiInfo{
+                      .type = bir::TypeKind::I32,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .primary_class = bir::AbiValueClass::Integer,
+                      .passed_in_register = true,
+                  }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "local0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(2),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "carry0"),
+      .rhs = bir::Value::immediate_i32(5),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot.mix0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "hot"),
+      .rhs = bir::Value::immediate_i32(7),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot.mix1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "hot.mix0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "hot"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "local0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "hot.mix1"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "result"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "carry1"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "result"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
+prepare::PreparedBirModule prepare_loop_weighted_priority_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "loop_weighted_priority";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "seed"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  entry.terminator = bir::BranchTerminator{.target_label = "loop"};
+
+  bir::Block loop;
+  loop.label = "loop";
+  loop.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "loop.hot"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "seed"),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  loop.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "loop.keep"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "loop.hot"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "seed"),
+  });
+  loop.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "loop.cond"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "loop.hot"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  loop.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "loop.cond"),
+      .true_label = "exit",
+      .false_label = "loop",
+  };
+
+  bir::Block exit;
+  exit.label = "exit";
+  exit.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "result"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "loop.keep"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "seed"),
+  });
+  exit.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "result"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(loop));
+  function.blocks.push_back(std::move(exit));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
 int check_phi_predecessor_edge_liveness(const prepare::PreparedBirModule& prepared) {
   if (!prepared.stack_layout.objects.empty()) {
     return fail("expected no stack-layout objects for the phi-only test function");
@@ -642,6 +840,66 @@ int check_weighted_post_call_regalloc(const prepare::PreparedBirModule& prepared
   return 0;
 }
 
+int check_evicted_value_spill_ops(const prepare::PreparedBirModule& prepared) {
+  const auto* function = find_regalloc_function(prepared, "evicted_value_spill_ops");
+  if (function == nullptr) {
+    return fail("expected regalloc output for evicted_value_spill_ops");
+  }
+
+  const auto* carry0 = find_regalloc_value(*function, "carry0");
+  const auto* carry1 = find_regalloc_value(*function, "carry1");
+  const auto* local0 = find_regalloc_value(*function, "local0");
+  const auto* hot = find_regalloc_value(*function, "hot");
+  if (carry0 == nullptr || carry1 == nullptr || local0 == nullptr || hot == nullptr) {
+    return fail("expected carry0, carry1, local0, and hot in evicted spill output");
+  }
+
+  if (!carry0->assigned_register.has_value() || carry0->assigned_register->register_name != "s1" ||
+      !carry1->assigned_register.has_value() || carry1->assigned_register->register_name != "s2") {
+    return fail("expected the call-crossing carries to occupy the protected callee-saved pool");
+  }
+  if (!hot->assigned_register.has_value() || hot->assigned_register->register_name != "t0") {
+    return fail("expected the stronger hot interval to evict into the lone caller-saved seed register");
+  }
+  if (local0->allocation_status != prepare::PreparedAllocationStatus::AssignedStackSlot ||
+      !local0->assigned_stack_slot.has_value() || local0->assigned_register.has_value()) {
+    return fail("expected the evicted local0 value to fall back to a real stack slot");
+  }
+  if (!has_spill_reload_op(*function, local0->value_id, prepare::PreparedSpillReloadOpKind::Spill) ||
+      !has_spill_reload_op(*function, local0->value_id, prepare::PreparedSpillReloadOpKind::Reload)) {
+    return fail("expected the evicted local0 value to publish explicit spill and reload bookkeeping");
+  }
+
+  return 0;
+}
+
+int check_loop_weighted_priority(const prepare::PreparedBirModule& prepared) {
+  const auto* liveness = find_liveness_function(prepared, "loop_weighted_priority");
+  const auto* regalloc = find_regalloc_function(prepared, "loop_weighted_priority");
+  if (liveness == nullptr || regalloc == nullptr) {
+    return fail("expected liveness and regalloc output for loop_weighted_priority");
+  }
+  if (liveness->block_loop_depth.size() < 2 || liveness->block_loop_depth[1] == 0) {
+    return fail("expected the loop block to publish nonzero loop depth");
+  }
+
+  const auto* liveness_hot = find_liveness_value(*liveness, "loop.hot");
+  const auto* regalloc_hot = find_regalloc_value(*regalloc, "loop.hot");
+  if (liveness_hot == nullptr || regalloc_hot == nullptr || !liveness_hot->live_interval.has_value()) {
+    return fail("expected loop.hot to appear in both liveness and regalloc output with a live interval");
+  }
+
+  const std::size_t raw_priority_floor =
+      liveness_hot->use_points.size() +
+      (liveness_hot->live_interval->end_point - liveness_hot->live_interval->start_point) + 1U;
+  if (regalloc_hot->priority <= raw_priority_floor ||
+      regalloc_hot->spill_weight <= static_cast<double>(raw_priority_floor)) {
+    return fail("expected loop.hot priority and spill weight to include loop-depth-weighted uses");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -667,6 +925,16 @@ int main() {
 
   const auto weighted_post_call_prepared = prepare_weighted_post_call_module_with_regalloc();
   if (const int rc = check_weighted_post_call_regalloc(weighted_post_call_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto evicted_spill_prepared = prepare_evicted_spill_module_with_regalloc();
+  if (const int rc = check_evicted_value_spill_ops(evicted_spill_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto loop_weighted_prepared = prepare_loop_weighted_priority_module_with_regalloc();
+  if (const int rc = check_loop_weighted_priority(loop_weighted_prepared); rc != 0) {
     return rc;
   }
   return 0;
