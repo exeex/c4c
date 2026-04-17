@@ -6,25 +6,25 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended the bounded Step 4 allocator so regalloc now publishes join-time
-`move_resolution` entries when phi inputs and phi results land in different
-storage, and spill bookkeeping emits reload operations for each later use after
-an interval is evicted to a stack slot instead of only the first post-spill
-use.
+Extended the Step 4 allocator so regalloc now publishes non-phi,
+consumption-keyed `move_resolution` records for binary/select/cast consumers
+when a named source value and the produced result land in different assigned
+storage, reusing the existing `(from_value_id, to_value_id, block_index,
+instruction_index)` contract instead of inventing a new surface mid-packet.
 
-Focused `backend_prepare_liveness` coverage now proves both additions: a new
-`phi_join_move_resolution` shape forces one phi incoming onto a stack slot
-while the joined phi result remains register-backed and therefore publishes a
-`phi_join_stack_to_register` move record, and the expanded
-`evicted_value_spill_ops` shape records one spill plus a reload for each later
-`local0` use after eviction.
+Focused `backend_prepare_liveness` coverage now proves that a call-crossing
+value reused after the call can publish a non-phi transfer record: the
+`weighted_post_call_pressure` shape keeps `carry` in callee-saved `s1`, assigns
+the post-call `hot` result to caller-saved `t0`, and therefore records a
+`consumer_register_to_register` move at the consuming instruction site.
 
 ## Suggested Next
 
-Extend Step 4 from bounded phi/join bookkeeping into broader consumption-aware
-move planning: when values stay register-backed across non-phi copies or
-call-adjacent late uses, publish transfer records keyed to the consuming site
-instead of only phi joins and fully evicted stack reloads.
+Extend Step 4 move planning from result-producing non-phi consumers into
+call/result and stack-backed late-use surfaces so regalloc can publish
+consumption-keyed transfer records when a named value must be materialized for
+call arguments or other non-result consumer sites, not only for phi joins and
+result-producing instructions.
 
 ## Watchouts
 
@@ -39,10 +39,13 @@ instead of only phi joins and fully evicted stack reloads.
   values that actually lose a register and stay stack-backed afterward; reloads
   are now emitted per later use point, but this is still bounded bookkeeping
   rather than true split-interval placement
-- `move_resolution` is currently a phi-join storage-reconciliation surface: it
-  compares the assigned storage of named phi incomings against the phi result
-  and intentionally skips redundant entries when both sides already share the
-  same register or stack slot
+- `move_resolution` now covers phi joins plus result-producing
+  binary/select/cast consumers, but it still does not model call-argument
+  materialization, return-site transfers, or non-result consumer sites
+- consumer-keyed move records intentionally skip redundant entries when the
+  source and produced result already share the same assigned register or stack
+  slot, and the current dedupe key is `(from_value_id, to_value_id,
+  block_index, instruction_index)`
 - `PreparedAllocationConstraint.preferred_register_names` now carries the
   caller-vs-callee preference split, while `cannot_cross_call` is reserved for
   the stronger call-spanning prohibition; downstream consumers should keep
@@ -68,7 +71,7 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_liveness$ > test_after.log
 2>&1`
-after teaching `run_regalloc()` to publish phi-join move-resolution bookkeeping
-for storage mismatches and to emit reload bookkeeping for each later use of an
-evicted stack-backed value.
+after teaching `run_regalloc()` to publish non-phi, consumer-keyed
+move-resolution bookkeeping for result-producing instructions whose named
+operands and produced values land in different assigned storage.
 Canonical proof log: `test_after.log`.

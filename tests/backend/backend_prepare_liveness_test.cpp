@@ -1036,6 +1036,11 @@ int check_weighted_post_call_regalloc(const prepare::PreparedBirModule& prepared
       !low1->assigned_stack_slot.has_value() || low1->assigned_register.has_value()) {
     return fail("expected the remaining lower-priority local to fall back to a real stack slot");
   }
+  const auto* carry_to_hot = find_move_resolution(*function, carry->value_id, hot->value_id);
+  if (carry_to_hot == nullptr || carry_to_hot->block_index != 0 || carry_to_hot->instruction_index != 4 ||
+      carry_to_hot->reason != "consumer_register_to_register") {
+    return fail("expected the post-call carry use to publish a consumer-keyed register-to-register move record");
+  }
 
   return 0;
 }

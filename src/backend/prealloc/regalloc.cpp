@@ -193,23 +193,56 @@ enum class AssignedStorageKind {
   return false;
 }
 
-[[nodiscard]] std::string phi_move_resolution_reason(const PreparedRegallocValue& from,
-                                                     const PreparedRegallocValue& to) {
+[[nodiscard]] std::string storage_transfer_reason(std::string_view prefix,
+                                                  const PreparedRegallocValue& from,
+                                                  const PreparedRegallocValue& to) {
   const AssignedStorageKind from_kind = assigned_storage_kind(from);
   const AssignedStorageKind to_kind = assigned_storage_kind(to);
   if (from_kind == AssignedStorageKind::StackSlot && to_kind == AssignedStorageKind::Register) {
-    return "phi_join_stack_to_register";
+    return std::string(prefix) + "_stack_to_register";
   }
   if (from_kind == AssignedStorageKind::Register && to_kind == AssignedStorageKind::StackSlot) {
-    return "phi_join_register_to_stack";
+    return std::string(prefix) + "_register_to_stack";
   }
   if (from_kind == AssignedStorageKind::Register && to_kind == AssignedStorageKind::Register) {
-    return "phi_join_register_to_register";
+    return std::string(prefix) + "_register_to_register";
   }
   if (from_kind == AssignedStorageKind::StackSlot && to_kind == AssignedStorageKind::StackSlot) {
-    return "phi_join_stack_to_stack";
+    return std::string(prefix) + "_stack_to_stack";
   }
-  return "phi_join_storage_resolution";
+  return std::string(prefix) + "_storage_resolution";
+}
+
+void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
+                                   const PreparedRegallocValue& source,
+                                   const PreparedRegallocValue& destination,
+                                   std::size_t block_index,
+                                   std::size_t instruction_index,
+                                   std::string reason) {
+  if (assigned_storage_kind(source) == AssignedStorageKind::None ||
+      assigned_storage_kind(destination) == AssignedStorageKind::None ||
+      assigned_storage_matches(source, destination)) {
+    return;
+  }
+
+  const auto duplicate = std::find_if(
+      regalloc_function.move_resolution.begin(),
+      regalloc_function.move_resolution.end(),
+      [&](const PreparedMoveResolution& move) {
+        return move.from_value_id == source.value_id && move.to_value_id == destination.value_id &&
+               move.block_index == block_index && move.instruction_index == instruction_index;
+      });
+  if (duplicate != regalloc_function.move_resolution.end()) {
+    return;
+  }
+
+  regalloc_function.move_resolution.push_back(PreparedMoveResolution{
+      .from_value_id = source.value_id,
+      .to_value_id = destination.value_id,
+      .block_index = block_index,
+      .instruction_index = instruction_index,
+      .reason = std::move(reason),
+  });
 }
 
 void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
@@ -391,14 +424,71 @@ void append_phi_move_resolution(const bir::Function& function,
           continue;
         }
 
-        regalloc_function.move_resolution.push_back(PreparedMoveResolution{
-            .from_value_id = source->value_id,
-            .to_value_id = destination->value_id,
-            .block_index = block_index,
-            .instruction_index = instruction_index,
-            .reason = phi_move_resolution_reason(*source, *destination),
-        });
+        append_move_resolution_record(regalloc_function,
+                                      *source,
+                                      *destination,
+                                      block_index,
+                                      instruction_index,
+                                      storage_transfer_reason("phi_join", *source, *destination));
       }
+    }
+  }
+}
+
+void append_consumer_move_resolution(const bir::Function& function,
+                                     PreparedRegallocFunction& regalloc_function) {
+  auto append_for_instruction = [&](const bir::Value& result,
+                                    std::initializer_list<const bir::Value*> operands,
+                                    std::size_t block_index,
+                                    std::size_t instruction_index) {
+    if (result.kind != bir::Value::Kind::Named) {
+      return;
+    }
+
+    const auto* destination = find_regalloc_value(regalloc_function, result.name);
+    if (destination == nullptr) {
+      return;
+    }
+
+    for (const bir::Value* operand : operands) {
+      if (operand == nullptr || operand->kind != bir::Value::Kind::Named) {
+        continue;
+      }
+      const auto* source = find_regalloc_value(regalloc_function, operand->name);
+      if (source == nullptr) {
+        continue;
+      }
+
+      append_move_resolution_record(regalloc_function,
+                                    *source,
+                                    *destination,
+                                    block_index,
+                                    instruction_index,
+                                    storage_transfer_reason("consumer", *source, *destination));
+    }
+  };
+
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    for (std::size_t instruction_index = 0; instruction_index < block.insts.size(); ++instruction_index) {
+      std::visit(
+          [&](const auto& inst) {
+            using Inst = std::decay_t<decltype(inst)>;
+            if constexpr (std::is_same_v<Inst, bir::BinaryInst>) {
+              append_for_instruction(inst.result,
+                                     {&inst.lhs, &inst.rhs},
+                                     block_index,
+                                     instruction_index);
+            } else if constexpr (std::is_same_v<Inst, bir::SelectInst>) {
+              append_for_instruction(inst.result,
+                                     {&inst.lhs, &inst.rhs, &inst.true_value, &inst.false_value},
+                                     block_index,
+                                     instruction_index);
+            } else if constexpr (std::is_same_v<Inst, bir::CastInst>) {
+              append_for_instruction(inst.result, {&inst.operand}, block_index, instruction_index);
+            }
+          },
+          block.insts[instruction_index]);
     }
   }
 }
@@ -699,6 +789,7 @@ void BirPreAlloc::run_regalloc() {
     if (const auto* function = find_bir_function(prepared_.module, regalloc_function.function_name);
         function != nullptr) {
       append_phi_move_resolution(*function, regalloc_function);
+      append_consumer_move_resolution(*function, regalloc_function);
     }
 
     prepared_.stack_layout.frame_size_bytes =
