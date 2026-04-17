@@ -1,89 +1,103 @@
-# Ref-Overload Method Link-Name Binding
+# Remaining C++ Positive Cast And Specialization Member Fixes
 
 Status: Active
-Source Idea: ideas/open/16_ref_overload_method_link_name_binding.md
+Source Idea: ideas/open/17_remaining_cpp_positive_cast_and_specialization_member_fixes.md
+Supersedes: ideas/open/16_ref_overload_method_link_name_binding.md
 
 ## Purpose
 
-Repair the direct-call binding path for resolved ref-qualified member calls so
-the selected overload's concrete symbol identity survives into emitted call
-metadata and runtime behavior.
+Finish the remaining two positive-case failures by repairing one bounded
+cast/reference lowering bug and one bounded specialized-member owner/type bug.
 
 ## Goal
 
-Make resolved member calls use the exact selected overload link name instead of
-re-looking up a generic method key that can collapse `&` and `&&` overloads.
+Make the function-pointer cast testcase and the template-struct specialization
+member testcase both execute with the intended semantics.
 
 ## Core Rule
 
-Do not "fix" this by weakening tests, removing ref-qualified distinctions, or
-adding testcase-specific dispatch hacks. The patch must preserve the real
-selected overload end-to-end.
+Do not downgrade expectations or add testcase-shaped shortcuts. Each fix must
+restore the underlying lowering/owner recovery behavior.
 
 ## Read First
 
-- [ideas/open/16_ref_overload_method_link_name_binding.md](/workspaces/c4c/ideas/open/16_ref_overload_method_link_name_binding.md)
-- [src/frontend/hir/hir_expr_call.cpp](/workspaces/c4c/src/frontend/hir/hir_expr_call.cpp)
-- [src/frontend/hir/hir_types.cpp](/workspaces/c4c/src/frontend/hir/hir_types.cpp)
+- [ideas/open/17_remaining_cpp_positive_cast_and_specialization_member_fixes.md](/workspaces/c4c/ideas/open/17_remaining_cpp_positive_cast_and_specialization_member_fixes.md)
+- [src/frontend/hir/hir_expr_operator.cpp](/workspaces/c4c/src/frontend/hir/hir_expr_operator.cpp)
+- [src/frontend/hir/hir_stmt_decl.cpp](/workspaces/c4c/src/frontend/hir/hir_stmt_decl.cpp)
+- [src/frontend/hir/hir_templates_value_args.cpp](/workspaces/c4c/src/frontend/hir/hir_templates_value_args.cpp)
 
 ## Current Targets
 
-- member-call lowering in `src/frontend/hir/hir_expr_call.cpp`
-- direct-call carrier construction for already-resolved method overloads
-- focused runtime-positive C++ regressions covering ref-qualified method calls
+- `try_lower_rvalue_ref_storage_addr` for cast/reference local-init handling
+- member-expression owner/type recovery for realized template struct instances
+- focused runtime-positive proof for the remaining two failures
 
 ## Non-Goals
 
-- parser/declarator fixes
-- template specialization field/type fixes
-- broad struct-method registry refactors unless this narrow repair proves
-  insufficient
+- ref-overload method dispatch fixes already proven in the previous slice
+- unrelated parser cleanup
+- template-system refactors beyond what these two failing paths require
 
 ## Working Model
 
-- ref-overload resolution already chooses a concrete mangled callee name in the
-  affected member-call path
-- a later generic `find_struct_method_link_name_id(tag, method, ...)` lookup
-  can return the wrong overload's symbol id because the registry key is too
-  coarse for ref-overloaded methods
-- the narrow fix is to bind direct-call metadata from the already-resolved
-  concrete callee name in the affected path
+- the cast testcase regresses because rvalue-reference storage-address lowering
+  unwraps a cast that should remain a casted callable/pointer value
+- the specialization testcase regresses because member owner/type recovery can
+  overwrite an already-realized struct tag or trust a stale AST field type
+  instead of the realized HIR struct field contract
 
 ## Execution Rules
 
-- keep the patch inside the smallest lowering surface that preserves the chosen
-  overload identity
-- do not rewrite unrelated call-lowering paths unless the focused proof shows
-  they share the same bug
-- validate with `build -> focused ref-qualified runtime subset`
+- keep each repair local to the failing lowering surface
+- preserve already-realized struct tags before attempting template-family
+  recovery
+- validate with `build -> focused two-test subset`
 
 ## Steps
 
 ### Step 1
 
-Goal: patch resolved member-call lowering to keep the chosen overload link name.
+Goal: keep callable/function-pointer cast initializers from collapsing into
+address-of-operand artifacts.
 
-Primary Target:
-- [src/frontend/hir/hir_expr_call.cpp](/workspaces/c4c/src/frontend/hir/hir_expr_call.cpp)
+Primary Targets:
+- [src/frontend/hir/hir_expr_operator.cpp](/workspaces/c4c/src/frontend/hir/hir_expr_operator.cpp)
+- [src/frontend/hir/hir_stmt_decl.cpp](/workspaces/c4c/src/frontend/hir/hir_stmt_decl.cpp)
 
 Actions:
-- inspect the member-call path that already computes `resolved_method`
-- replace the generic method-key link lookup with direct carrier binding from
-  the concrete resolved callee name
-- keep fallback behavior unchanged for non-overloaded or unresolved paths
+- narrow the `NK_CAST` fast path in `try_lower_rvalue_ref_storage_addr`
+- let callable/function-pointer casts lower as values instead of unwrapping to
+  the raw operand storage address
 
 Completion Check:
-- emitted direct calls for resolved `&` member calls no longer point at the
-  `__rref` overload
+- the cast testcase no longer lowers `raw` into `&raw` for the local init path
 
 ### Step 2
 
-Goal: prove the narrow runtime regressions pass.
+Goal: preserve realized specialization owner/type information for member
+expressions.
+
+Primary Targets:
+- [src/frontend/hir/hir_templates_value_args.cpp](/workspaces/c4c/src/frontend/hir/hir_templates_value_args.cpp)
+- [src/frontend/hir/hir_expr_operator.cpp](/workspaces/c4c/src/frontend/hir/hir_expr_operator.cpp)
+
+Actions:
+- short-circuit owner recovery when the current tag already names a realized
+  struct in `module_->struct_defs`
+- when a member owner is resolved, use the realized field type from that owner
+  instead of blindly trusting stale AST member types
+
+Completion Check:
+- `sizeof(a.value)` / `sizeof(b.value)` use the specialized field contract
+
+### Step 3
+
+Goal: prove the remaining targeted regressions pass.
 
 Actions:
 - rebuild the compiler
-- run the focused CTest subset:
-  `cpp_positive_sema_c_style_cast_base_ref_qualified_method_cpp|cpp_positive_sema_c_style_cast_ref_qualified_method_cpp|cpp_positive_sema_forwarding_ref_qualified_member_dispatch_cpp|cpp_positive_sema_function_return_temporary_member_call_runtime_cpp|cpp_positive_sema_ref_overload_method_basic_cpp|cpp_positive_sema_ref_overload_method_reads_arg_cpp`
+- run:
+  `ctest --test-dir build --output-on-failure -R 'cpp_positive_sema_(c_style_cast_template_fn_ptr_rvalue_ref_return_type_parse|template_struct_specialization_runtime)_cpp'`
 
 Completion Check:
-- the focused subset passes without changing test expectations
+- both tests pass without test changes

@@ -17,7 +17,11 @@ std::optional<ExprId> Lowerer::try_lower_rvalue_ref_storage_addr(
   ExprId storage_expr{};
   switch (n->kind) {
     case NK_CAST:
-      if (!n->type.is_rvalue_ref || !n->left) return std::nullopt;
+      // Preserve callable/function-pointer casts as values. Unwrapping them to
+      // the operand storage address turns `(T (*)(...))raw` into `&raw`.
+      if (!n->type.is_rvalue_ref || !n->left || n->type.is_fn_ptr) {
+        return std::nullopt;
+      }
       storage_expr = lower_expr(ctx, n->left);
       break;
     case NK_MEMBER:
@@ -284,6 +288,32 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
 }
 
 ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
+  auto resolved_member_type = [&](const MemberExpr& member,
+                                  const TypeSpec& fallback) -> TypeSpec {
+    if (member.resolved_owner_tag.empty()) return fallback;
+
+    std::function<const HirStructField*(const std::string&, const std::string&)> find_field =
+        [&](const std::string& tag, const std::string& field) -> const HirStructField* {
+      auto it = module_->struct_defs.find(tag);
+      if (it == module_->struct_defs.end()) return nullptr;
+      for (const auto& candidate : it->second.fields) {
+        if (candidate.name == field) return &candidate;
+      }
+      for (const auto& base_tag : it->second.base_tags) {
+        if (const HirStructField* inherited = find_field(base_tag, field)) {
+          return inherited;
+        }
+      }
+      return nullptr;
+    };
+
+    if (const HirStructField* field =
+            find_field(member.resolved_owner_tag, member.field)) {
+      return field_type_of(*field);
+    }
+    return fallback;
+  };
+
   if (n->is_arrow && n->left) {
     ExprId arrow_ptr = try_lower_operator_call(ctx, n, n->left, "operator_arrow", {});
     if (arrow_ptr.valid()) {
@@ -369,7 +399,7 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
           m.member_symbol_id = find_struct_member_symbol_id(*owner_tag, m.field);
         }
       }
-      return append_expr(n, m, n->type, ValueCategory::LValue);
+      return append_expr(n, m, resolved_member_type(m, n->type), ValueCategory::LValue);
     }
   }
 
@@ -406,7 +436,7 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
       (n->is_arrow || is_ast_lvalue(n->left, ctx))
           ? ValueCategory::LValue
           : ValueCategory::RValue;
-  return append_expr(n, m, n->type, category);
+  return append_expr(n, m, resolved_member_type(m, n->type), category);
 }
 
 ExprId Lowerer::maybe_bool_convert(FunctionCtx* ctx, ExprId expr, const Node* n) {

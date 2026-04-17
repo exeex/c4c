@@ -221,6 +221,10 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
     return std::nullopt;
   }
 
+  if (base_ts.tag && base_ts.tag[0] && module_->struct_defs.count(base_ts.tag)) {
+    return std::string(base_ts.tag);
+  }
+
   if ((!base_ts.tpl_struct_origin || !base_ts.tpl_struct_origin[0]) &&
       base_ts.tag && base_ts.tag[0] &&
       current_struct_tag && !current_struct_tag->empty()) {

@@ -59,6 +59,13 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         PendingTemplateTypeKind::DeclarationType,
         std::string("local-decl:") + d.name);
     resolve_typedef_to_struct(effective_decl_ts);
+    // Parser TypeSpec currently carries function-return ref qualifiers on the
+    // surrounding function-pointer declarator. The local itself is still an
+    // ordinary function-pointer object, not a reference variable.
+    if (effective_decl_ts.is_fn_ptr) {
+      effective_decl_ts.is_lvalue_ref = false;
+      effective_decl_ts.is_rvalue_ref = false;
+    }
     d.type = qtype_from(reference_storage_ts(effective_decl_ts), ValueCategory::LValue);
   }
   d.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
