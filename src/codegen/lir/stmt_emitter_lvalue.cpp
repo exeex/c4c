@@ -592,11 +592,6 @@ MemberFieldAccess StmtEmitter::resolve_member_field_access(FnCtx& ctx, const Mem
   } else if (access.base_ts.tag && access.base_ts.tag[0]) {
     access.tag = access.base_ts.tag;
   }
-  if (!access.has_tag() || mod_.struct_defs.count(access.tag) == 0) {
-    if (auto concrete_tag = resolve_template_struct_concrete_tag(mod_, access.base_ts)) {
-      access.tag = *concrete_tag;
-    }
-  }
   if (!access.has_tag()) return access;
   access.field_found =
       resolve_field_access(access.tag, m.field, access.chain, access.field_ts, &access.bf);

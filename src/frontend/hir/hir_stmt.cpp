@@ -447,6 +447,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   ctx.fn = &fn;
   if (tpl_bindings) ctx.tpl_bindings = *tpl_bindings;
   if (nttp_bindings) ctx.nttp_bindings = *nttp_bindings;
+  ctx.method_struct_tag = struct_tag;
 
   {
     Param this_param{};
@@ -466,7 +467,6 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   append_callable_params(
       fn, ctx, method_node, tpl_bindings, nttp_bindings, "method-param:", true,
       false);
-  ctx.method_struct_tag = struct_tag;
 
   if (maybe_register_bodyless_callable(
           &fn, method_node->body != nullptr || method_node->is_defaulted)) {
@@ -684,7 +684,8 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
             }
             field_ts = substitute_signature_template_type(field_ts, &ctx.tpl_bindings);
             resolve_signature_template_type_if_needed(
-                field_ts, &ctx.tpl_bindings, &ctx.nttp_bindings, method_node,
+                field_ts, &ctx.tpl_bindings, &ctx.nttp_bindings, &ctx.method_struct_tag,
+                method_node,
                 std::string("ctor-init-member:") + mem_name);
             resolve_typedef_to_struct(field_ts);
             break;

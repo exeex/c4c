@@ -350,19 +350,22 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
       const TypeSpec base_ts = module_->expr_pool[arrow_ptr.value].type.spec;
       const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
       const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
+      const std::string* current_struct_tag =
+          (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
       if (auto owner_tag = resolve_member_lookup_owner_tag(
-              base_ts, m.is_arrow, tpl_bindings, nttp_bindings,
+              base_ts, m.is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
               n, std::string("member-owner:") + m.field)) {
         m.resolved_owner_tag = *owner_tag;
       } else if (n->left) {
         const TypeSpec ast_base_ts = infer_generic_ctrl_type(ctx, n->left);
         if (auto owner_tag = resolve_member_lookup_owner_tag(
-                ast_base_ts, m.is_arrow, tpl_bindings, nttp_bindings,
+                ast_base_ts, m.is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
                 n, std::string("member-owner-ast:") + m.field)) {
           m.resolved_owner_tag = *owner_tag;
         } else if (auto owner_tag = resolve_member_lookup_owner_tag(
                        n->left->type, m.is_arrow, tpl_bindings, nttp_bindings,
-                       n, std::string("member-owner-raw-ast:") + m.field)) {
+                       current_struct_tag, n,
+                       std::string("member-owner-raw-ast:") + m.field)) {
           m.resolved_owner_tag = *owner_tag;
         }
       }
@@ -377,19 +380,22 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
   const TypeSpec base_ts = module_->expr_pool[m.base.value].type.spec;
   const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
   const NttpBindings* nttp_bindings = ctx ? &ctx->nttp_bindings : nullptr;
+  const std::string* current_struct_tag =
+      (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr;
   if (auto owner_tag = resolve_member_lookup_owner_tag(
-          base_ts, m.is_arrow, tpl_bindings, nttp_bindings,
+          base_ts, m.is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
           n, std::string("member-owner:") + m.field)) {
     m.resolved_owner_tag = *owner_tag;
   } else if (n->left) {
     const TypeSpec ast_base_ts = infer_generic_ctrl_type(ctx, n->left);
     if (auto owner_tag = resolve_member_lookup_owner_tag(
-            ast_base_ts, m.is_arrow, tpl_bindings, nttp_bindings,
+            ast_base_ts, m.is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
             n, std::string("member-owner-ast:") + m.field)) {
       m.resolved_owner_tag = *owner_tag;
     } else if (auto owner_tag = resolve_member_lookup_owner_tag(
                    n->left->type, m.is_arrow, tpl_bindings, nttp_bindings,
-                   n, std::string("member-owner-raw-ast:") + m.field)) {
+                   current_struct_tag, n,
+                   std::string("member-owner-raw-ast:") + m.field)) {
       m.resolved_owner_tag = *owner_tag;
     }
   }

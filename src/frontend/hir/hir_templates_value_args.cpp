@@ -117,12 +117,52 @@ void assign_template_arg_refs_from_struct_node(
 
 }  // namespace
 
-bool Lowerer::recover_template_struct_identity_from_tag(TypeSpec* ts) const {
+namespace {
+
+std::string unqualified_name(const std::string& name) {
+  const size_t split = name.rfind("::");
+  return (split == std::string::npos) ? name : name.substr(split + 2);
+}
+
+std::string family_root(const std::string& tag) {
+  const size_t scope_sep = tag.rfind("::");
+  const size_t search_from = (scope_sep == std::string::npos) ? 0 : (scope_sep + 2);
+  const size_t tpl_sep = tag.find("_T", search_from);
+  return (tpl_sep == std::string::npos) ? tag : tag.substr(0, tpl_sep);
+}
+
+}  // namespace
+
+bool Lowerer::recover_template_struct_identity_from_tag(
+    TypeSpec* ts,
+    const std::string* current_struct_tag) const {
   if (!ts || (ts->tpl_struct_origin && ts->tpl_struct_origin[0]) ||
       !ts->tag || !ts->tag[0]) {
     return false;
   }
   auto it = struct_def_nodes_.find(ts->tag);
+  if ((it == struct_def_nodes_.end() || !it->second) && current_struct_tag &&
+      !current_struct_tag->empty()) {
+    auto current_it = struct_def_nodes_.find(*current_struct_tag);
+    if (current_it != struct_def_nodes_.end() && current_it->second) {
+      const Node* current_owner = current_it->second;
+      const std::string raw_tag = ts->tag ? ts->tag : "";
+      const std::string raw_unqualified = unqualified_name(raw_tag);
+      const std::string owner_name =
+          current_owner->name ? current_owner->name : "";
+      const std::string owner_unqualified = unqualified_name(owner_name);
+      const std::string owner_origin =
+          current_owner->template_origin_name ? current_owner->template_origin_name : "";
+      const std::string owner_origin_unqualified = unqualified_name(owner_origin);
+      if ((!owner_name.empty() &&
+           (raw_tag == owner_name || raw_unqualified == owner_unqualified)) ||
+          (!owner_origin.empty() &&
+           (raw_tag == owner_origin || raw_unqualified == owner_origin_unqualified))) {
+        ts->tag = current_struct_tag->c_str();
+        it = current_it;
+      }
+    }
+  }
   if (it == struct_def_nodes_.end() || !it->second) return false;
   const Node* owner = it->second;
   const char* origin = nullptr;
@@ -142,6 +182,7 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
     bool is_arrow,
     const TypeBindings* tpl_bindings,
     const NttpBindings* nttp_bindings,
+    const std::string* current_struct_tag,
     const Node* span_node,
     const std::string& context_name) {
   if (is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level--;
@@ -152,7 +193,19 @@ std::optional<std::string> Lowerer::resolve_member_lookup_owner_tag(
     return std::nullopt;
   }
 
-  const bool recovered_identity = recover_template_struct_identity_from_tag(&base_ts);
+  if ((!base_ts.tpl_struct_origin || !base_ts.tpl_struct_origin[0]) &&
+      base_ts.tag && base_ts.tag[0] &&
+      current_struct_tag && !current_struct_tag->empty()) {
+    const std::string raw_tag = base_ts.tag;
+    const std::string current_family = family_root(*current_struct_tag);
+    const std::string current_family_unqualified = unqualified_name(current_family);
+    if (raw_tag == current_family || raw_tag == current_family_unqualified) {
+      return *current_struct_tag;
+    }
+  }
+
+  const bool recovered_identity =
+      recover_template_struct_identity_from_tag(&base_ts, current_struct_tag);
   if (tpl_bindings && base_ts.tpl_struct_origin) {
     NttpBindings empty_nttp;
     seed_and_resolve_pending_template_type_if_needed(

@@ -304,9 +304,14 @@ void Lowerer::resolve_signature_template_type_if_needed(
     TypeSpec& ts,
     const TypeBindings* tpl_bindings,
     const NttpBindings* nttp_bindings,
+    const std::string* current_struct_tag,
     const Node* span_node,
     const std::string& context_name) {
-  if (!tpl_bindings || !ts.tpl_struct_origin) return;
+  if (!tpl_bindings) return;
+  if (!ts.tpl_struct_origin) {
+    recover_template_struct_identity_from_tag(&ts, current_struct_tag);
+  }
+  if (!ts.tpl_struct_origin) return;
   NttpBindings nttp_empty;
   seed_and_resolve_pending_template_type_if_needed(
       ts, *tpl_bindings, nttp_bindings ? *nttp_bindings : nttp_empty,
@@ -322,7 +327,7 @@ TypeSpec Lowerer::prepare_callable_return_type(
     bool resolve_typedef_struct) {
   ret_ts = substitute_signature_template_type(ret_ts, tpl_bindings);
   resolve_signature_template_type_if_needed(
-      ret_ts, tpl_bindings, nttp_bindings, span_node, context_name);
+      ret_ts, tpl_bindings, nttp_bindings, nullptr, span_node, context_name);
   while (resolve_struct_member_typedef_if_ready(&ret_ts)) {
   }
   if (ret_ts.deferred_member_type_name &&
@@ -352,6 +357,11 @@ TypeSpec Lowerer::prepare_callable_return_type(
     }
   }
   if (resolve_typedef_struct) resolve_typedef_to_struct(ret_ts);
+  resolve_signature_template_type_if_needed(
+      ret_ts, tpl_bindings, nttp_bindings, nullptr, span_node, context_name);
+  while (resolve_struct_member_typedef_if_ready(&ret_ts)) {
+  }
+  if (resolve_typedef_struct) resolve_typedef_to_struct(ret_ts);
   return ret_ts;
 }
 
@@ -366,8 +376,10 @@ void Lowerer::append_explicit_callable_param(
     const std::string& context_name,
     bool resolve_typedef_struct) {
   param_ts = substitute_signature_template_type(param_ts, tpl_bindings);
+  const std::string* current_struct_tag =
+      ctx.method_struct_tag.empty() ? nullptr : &ctx.method_struct_tag;
   resolve_signature_template_type_if_needed(
-      param_ts, tpl_bindings, nttp_bindings, param_node, context_name);
+      param_ts, tpl_bindings, nttp_bindings, current_struct_tag, param_node, context_name);
   while (resolve_struct_member_typedef_if_ready(&param_ts)) {
   }
   if (param_ts.deferred_member_type_name &&
@@ -395,6 +407,11 @@ void Lowerer::append_explicit_callable_param(
       resolve_typedef_to_struct(resolved_member);
       param_ts = resolved_member;
     }
+  }
+  if (resolve_typedef_struct) resolve_typedef_to_struct(param_ts);
+  resolve_signature_template_type_if_needed(
+      param_ts, tpl_bindings, nttp_bindings, current_struct_tag, param_node, context_name);
+  while (resolve_struct_member_typedef_if_ready(&param_ts)) {
   }
   if (resolve_typedef_struct) resolve_typedef_to_struct(param_ts);
 
