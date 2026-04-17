@@ -58,9 +58,9 @@ instead of re-interning by raw string.
 - unresolved extern-call declarations now forward the callee `DeclRef`’s
   `LinkNameId` into `record_extern_decl`, and direct call ops reuse that same
   id for late callee spelling in the LIR printer
-- the new frontend HIR regressions seed `DeclRef.link_name_id` directly on the
-  bounded function-designator and nested-call fixtures because broader HIR
-  `DeclRef` propagation is still out of scope for this packet
+- the frontend HIR regressions now expect `lower_var_expr`-built function
+  designators and global refs to arrive with semantic ids already attached;
+  keep broader builder migration under the same carrier-based rule
 - keep forwarding explicit ids through LIR carriers and resolve them only at
   late consumers rather than treating legacy `name` strings as the semantic
   source of truth
@@ -75,4 +75,4 @@ instead of re-interning by raw string.
 Build: `cmake --build --preset default -j4`
 Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
 Result: passed
-Log: `test_after.log`
+Log: `test_before.log`
