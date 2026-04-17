@@ -113,6 +113,8 @@ std::optional<HirStructField> Lowerer::instantiate_template_struct_field(
 
   HirStructField hf;
   hf.name = orig_f->name;
+  hf.field_text_id = make_text_id(
+      hf.name, module_ ? module_->link_name_texts.get() : nullptr);
   hf.member_symbol_id =
       module_->member_symbols.intern(owner_tag + "::" + orig_f->name);
   if (ft.array_rank > 0) {

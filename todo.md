@@ -6,24 +6,23 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 2 / Step 4 for the bounded HIR struct-definition
-field-name route in `HirStructField`, `hir_printer.cpp`, and
-`frontend_hir_tests.cpp`.
+Completed `plan.md` Step 2 / Step 4 for the bounded template-instantiated HIR
+struct-definition field-name route in
+`hir_templates_struct_instantiation.cpp` and `frontend_hir_tests.cpp`.
 
-- Added parallel `HirStructField::field_text_id` storage and populated it while
-  lowering non-template struct definitions so stable field spellings no longer
-  depend on raw string ownership alone on that route.
-- Switched HIR struct printing to prefer the new field-name `TextId` carrier
-  before falling back to the legacy raw field spelling.
-- Added focused HIR proof that corrupting the legacy raw struct field string
-  does not break the printed field spelling while the `TextId` carrier is
-  present.
+- Added the missing `field_text_id` assignment in
+  `instantiate_template_struct_field` so template-instantiated
+  `HirStructField` metadata now interns stable field spellings into
+  `module.link_name_texts` on the same route as non-template struct defs.
+- Extended the existing struct-definition HIR test to prove instantiated struct
+  fields preserve a valid `TextId` and still print the original field spelling
+  after the legacy raw field string is intentionally corrupted.
 
 ## Suggested Next
 
-Extend the same bounded struct-field-name pattern to template-instantiated
-`HirStructField` construction so instantiated struct defs preserve parallel
-field `TextId`s too, then keep proof in `frontend_hir_tests`.
+Choose one remaining string-only HIR text carrier outside struct-definition
+metadata, such as `PendingConstevalExpr::fn_name`, and prove it in
+`frontend_hir_tests` without widening into registry churn.
 
 ## Watchouts
 
@@ -31,9 +30,10 @@ field `TextId`s too, then keep proof in `frontend_hir_tests`.
 - HIR must intern its own spellings into `module.link_name_texts`; parser-owned
   `TextId`s cannot be copied directly into HIR because they belong to a
   different table.
-- `HirStructField::field_text_id` is only populated on the non-template
-  `lower_struct_def` route so far; template-instantiated field construction
-  still needs the same parallel carrier.
+- The struct-definition field-name route now covers both non-template and
+  template-instantiated `HirStructField` construction; keep future proof
+  focused on consumers that can survive intentional corruption of the legacy
+  raw string sidecar.
 - HIR-side `TextId` tests should keep proving the route still works after the
   legacy string sidecar is intentionally corrupted, so the migration is not
   passive storage only.

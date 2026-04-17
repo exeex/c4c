@@ -605,6 +605,19 @@ Box<int> make_box() { return {}; }
                 instantiated.base_tag_text_ids[derived_base_index]),
             "Derived",
             "instantiated template struct base-tag TextIds should resolve through the HIR text table");
+  expect_true(instantiated.fields.size() == 1,
+              "fixture should instantiate one named field on the template struct");
+  expect_true(instantiated.fields.front().field_text_id != c4c::kInvalidText,
+              "instantiated template struct fields should preserve parallel TextIds");
+  expect_eq(hir_module.link_name_texts->lookup(instantiated.fields.front().field_text_id), "value",
+            "instantiated template struct field TextIds should resolve through the HIR text table");
+
+  c4c::hir::HirStructDef instantiated_copy = instantiated;
+  instantiated_copy.fields.front().name = "__corrupted_instantiated_field_name__";
+  hir_module.struct_defs[instantiated_it->first] = instantiated_copy;
+  const std::string rendered_instantiated_hir = c4c::hir::format_hir(hir_module);
+  expect_true(rendered_instantiated_hir.find("field value: int") != std::string::npos,
+              "HIR printer should prefer instantiated struct field TextIds over corrupted raw field strings");
 }
 
 void test_hir_template_calls_preserve_text_ids_for_source_template_names() {
