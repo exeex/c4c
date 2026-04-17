@@ -17,7 +17,7 @@ using FileTable = PathIdTable<FileId, kInvalidFile>;
 // Token kinds mirroring ref/claudes-c-compiler/src/frontend/lexer/token.rs
 // Pure-C backport note: map to a plain enum + tagged union when porting.
 enum class TokenKind {
-  // Literals (raw lexeme stored in Token::lexeme)
+  // Literals (raw source text stored in TextTable and referenced by Token::text_id)
   IntLit,    // integer literal (decimal, hex, octal, binary + suffixes)
   FloatLit,  // floating-point literal (including f/l suffixes)
   StrLit,    // "..." string literal
@@ -177,10 +177,10 @@ enum class TokenKind {
   ColonColon,            // :: (C++ scope resolution)
 
   // Pragma tokens (emitted by preprocessor, consumed by parser)
-  PragmaPack,    // #pragma pack(...) — lexeme holds the arguments e.g. "1", "push,2", "pop", ""
-  PragmaWeak,    // #pragma weak symbol — lexeme holds the symbol name
-  PragmaGccVisibility, // #pragma GCC visibility push/pop — lexeme: "push,hidden", "push,default", "pop"
-  PragmaExec,    // #pragma c4 exec host/device — lexeme: "host" or "device"
+  PragmaPack,    // #pragma pack(...) — text_id payload e.g. "1", "push,2", "pop", ""
+  PragmaWeak,    // #pragma weak symbol — text_id payload is the symbol name
+  PragmaGccVisibility, // #pragma GCC visibility push/pop — text_id payload: "push,hidden", "push,default", "pop"
+  PragmaExec,    // #pragma c4 exec host/device — text_id payload: "host" or "device"
 
   // Special
   EndOfFile,
@@ -189,15 +189,10 @@ enum class TokenKind {
 
 struct Token {
   TokenKind kind;
-  [[deprecated("use text_id instead")]]
-  std::string lexeme;  // raw source text
-  [[deprecated("use file_id instead")]]
-  std::string file;    // logical source file after #line / include markers
   int line = 0;
   int column = 0;
   TextId text_id = kInvalidText;
   FileId file_id = kInvalidFile;
-  bool has_parser_owned_spelling = false;
 };
 
 // Returns a short debug name for the kind (used in --lex-only output).

@@ -518,7 +518,11 @@ int main(int argc, char **argv) {
 
     if (lex_only) {
       for (const auto &tok : tokens) {
-        std::cout << c4c::token_kind_name(tok.kind) << " '" << tok.lexeme << "'"
+        const std::string spelling =
+            tok.text_id != c4c::kInvalidText
+                ? std::string(lexer.text_table().lookup(tok.text_id))
+                : "";
+        std::cout << c4c::token_kind_name(tok.kind) << " '" << spelling << "'"
                   << " @" << tok.line << ":" << tok.column << "\n";
       }
       return 0;
@@ -526,7 +530,8 @@ int main(int argc, char **argv) {
 
     // Parse phase
     c4c::Arena arena;
-    c4c::Parser parser(std::move(tokens), arena, source_profile, input);
+    c4c::Parser parser(std::move(tokens), arena, &lexer.text_table(),
+                       &lexer.file_table(), source_profile, input);
     unsigned parser_debug_channels = c4c::Parser::ParseDebugNone;
     if (parser_debug) parser_debug_channels = c4c::Parser::ParseDebugAll;
     if (parser_debug_tentative) {

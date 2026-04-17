@@ -234,7 +234,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
     }
     if (check(TokenKind::IntLit)) {
         out_arg->is_value = true;
-        out_arg->value = parse_int_lexeme(cur().lexeme.c_str()) * sign;
+        out_arg->value = parse_int_lexeme(token_spelling(cur()).c_str()) * sign;
         out_arg->nttp_name = nullptr;
         out_arg->expr = nullptr;
         consume();
@@ -242,7 +242,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
     }
     if (check(TokenKind::Identifier)) {
         TentativeParseGuard id_guard(*this);
-        const char* name = arena_.strdup(cur().lexeme.c_str());
+        const char* name = arena_.strdup(token_spelling(cur()).c_str());
         consume();
         if (check(TokenKind::Comma) || check_template_close()) {
             out_arg->is_value = true;
@@ -379,7 +379,7 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
     }
 
     while (true) {
-        qn.base_name = cur().lexeme;
+        qn.base_name = token_spelling(cur());
         consume();
 
         if (consume_final_template_args && !consume_optional_template_args())
@@ -890,7 +890,7 @@ bool Parser::parse_operator_declarator_name(std::string* out_name) {
         if (check(TokenKind::Identifier) && !is_type_start() &&
             !can_start_parameter_type()) {
             conv_ts.base = TB_TYPEDEF;
-            conv_ts.tag = arena_.strdup(cur().lexeme);
+            conv_ts.tag = arena_.strdup(token_spelling(cur()));
             conv_ts.array_size = -1;
             conv_ts.inner_rank = -1;
             consume();
@@ -1121,7 +1121,7 @@ bool Parser::try_parse_grouped_declarator(TypeSpec& ts, const char** out_name,
 
     consume();  // (
     if (out_name && check(TokenKind::Identifier)) {
-        *out_name = arena_.strdup(cur().lexeme);
+        *out_name = arena_.strdup(token_spelling(cur()));
         consume();
     }
     parse_declarator_array_suffixes(ts, out_dims);
@@ -1150,7 +1150,7 @@ void Parser::parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,
     }
 
     if (out_name && !*out_name && check(TokenKind::Identifier)) {
-        *out_name = arena_.strdup(cur().lexeme);
+        *out_name = arena_.strdup(token_spelling(cur()));
         consume();
     }
 
@@ -1271,7 +1271,7 @@ bool Parser::parse_parenthesized_pointer_declarator_name(
     const char** out_name) {
     if (!out_name || !check(TokenKind::Identifier)) return false;
 
-    *out_name = arena_.strdup(cur().lexeme);
+    *out_name = arena_.strdup(token_spelling(cur()));
     consume();
     return true;
 }

@@ -210,12 +210,13 @@ std::string quote_debug_lexeme(const std::string& lexeme) {
 }
 
 std::string format_debug_token_entry(const Token& token,
+                                     std::string_view spelling,
                                      int index,
                                      bool highlight) {
     std::ostringstream oss;
     if (highlight) oss << ">>";
     oss << "[" << index << "] " << token_kind_name(token.kind)
-        << " '" << quote_debug_lexeme(token.lexeme) << "'";
+        << " '" << quote_debug_lexeme(std::string(spelling)) << "'";
     return oss.str();
 }
 
@@ -295,50 +296,28 @@ int resolve_namespace_id_from_stack(const std::vector<int>& namespace_stack,
 
 Parser::SymbolId Parser::symbol_id_for_token(const Token& token) {
     if (token.kind != TokenKind::Identifier) return kInvalidSymbol;
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-    return symbol_id_for_token_text(token.text_id, token.lexeme);
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+    return symbol_id_for_token_text(token.text_id);
 }
 
-std::string_view Parser::token_spelling(const Token& token) const {
-    if (token.has_parser_owned_spelling && token.text_id != kInvalidText) {
-        const auto it = parser_text_ids_.find(token.text_id);
-        if (it != parser_text_ids_.end()) {
-            return parser_texts_.lookup(it->second);
-        }
+std::string Parser::token_spelling(const Token& token) const {
+    if (token_texts_ && token.text_id != kInvalidText) {
+        return std::string(token_texts_->lookup(token.text_id));
     }
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-    return token.lexeme;
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+    throw std::runtime_error("token spelling requested without valid text_id");
+}
+
+void Parser::set_parser_owned_spelling(Token& token, std::string_view spelling) {
+    if (!token_texts_) {
+        throw std::runtime_error("parser-owned token spelling requested without text table");
+    }
+    token.text_id = token_texts_->intern(spelling);
 }
 
 Token Parser::make_injected_token(const Token& seed, TokenKind kind,
                                   std::string_view spelling) {
     Token token = seed;
     token.kind = kind;
-    token.text_id = parser_texts_.intern(spelling);
-    token.has_parser_owned_spelling = true;
-    if (token.text_id != kInvalidText) {
-        parser_text_ids_.emplace(token.text_id, token.text_id);
-    }
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-    token.lexeme = std::string(spelling);
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+    set_parser_owned_spelling(token, spelling);
     return token;
 }
 
@@ -623,12 +602,16 @@ Parser::ParseContextGuard::~ParseContextGuard() {
     if (parser) parser->pop_parse_context();
 }
 
-Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_profile,
+Parser::Parser(std::vector<Token> tokens, Arena& arena,
+               TextTable* token_texts,
+               FileTable* token_files,
+               SourceProfile source_profile,
                const std::string& source_file)
     : tokens_(std::move(tokens)), pos_(0), arena_(arena), source_profile_(source_profile),
-      source_file_(source_file),
+      source_file_(source_file), token_texts_(token_texts), token_files_(token_files),
       anon_counter_(0), had_error_(false), parsing_top_level_context_(false),
       last_enum_def_(nullptr) {
+    parser_symbols_.attach_text_table(token_texts_);
     namespace_contexts_.push_back(
         NamespaceContext{0, -1, false, arena_.strdup(""), arena_.strdup("")});
     namespace_stack_.push_back(0);
@@ -979,8 +962,9 @@ void Parser::maybe_emit_parse_debug_progress() {
             event.column);
     if (event.token_index >= 0 &&
         event.token_index < static_cast<int>(tokens_.size()) &&
-        !tokens_[event.token_index].file.empty()) {
-        fprintf(stderr, " file=%s", tokens_[event.token_index].file.c_str());
+        token_files_ && tokens_[event.token_index].file_id != kInvalidFile) {
+        fprintf(stderr, " file=%s",
+                std::string(token_files_->lookup(tokens_[event.token_index].file_id)).c_str());
     }
     if (!event.function_name.empty()) {
         fprintf(stderr, " fn=%s", event.function_name.c_str());
@@ -989,7 +973,7 @@ void Parser::maybe_emit_parse_debug_progress() {
         event.token_index < static_cast<int>(tokens_.size())) {
         fprintf(stderr, " token_kind=%s token='%s'",
                 token_kind_name(tokens_[event.token_index].kind),
-                tokens_[event.token_index].lexeme.c_str());
+                std::string(token_spelling(tokens_[event.token_index])).c_str());
     }
     fprintf(stderr, "\n");
     fflush(stderr);
@@ -1038,7 +1022,7 @@ void Parser::note_parse_failure(const char* expected,
     failure.line = !at_end() ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1);
     failure.column = !at_end() ? cur().column : 1;
     failure.expected = expected ? expected : "";
-    failure.got = at_end() ? "<eof>" : cur().lexeme;
+    failure.got = at_end() ? "<eof>" : token_spelling(cur());
     failure.detail = detail ? detail : "";
     if (!parse_context_stack_.empty()) {
         failure.function_name = parse_context_stack_.back().function_name;
@@ -1164,7 +1148,8 @@ std::string Parser::format_parse_failure_token_window(
     std::ostringstream oss;
     for (int i = start; i <= end; ++i) {
         if (i > start) oss << " | ";
-        oss << format_debug_token_entry(tokens_[i], i, i == center);
+        oss << format_debug_token_entry(tokens_[i], token_spelling(tokens_[i]),
+                                        i, i == center);
     }
     return oss.str();
 }
@@ -1238,9 +1223,10 @@ void Parser::dump_parse_debug_trace() const {
 }
 
 const char* Parser::diag_file_at(int token_index) const {
-    if (token_index >= 0 && token_index < static_cast<int>(tokens_.size())) {
-        const std::string& file = tokens_[token_index].file;
-        if (!file.empty()) return file.c_str();
+    if (token_index >= 0 && token_index < static_cast<int>(tokens_.size()) &&
+        token_files_ && tokens_[token_index].file_id != kInvalidFile) {
+        const std::string file = std::string(token_files_->lookup(tokens_[token_index].file_id));
+        if (!file.empty()) return arena_.strdup(file);
     }
     return source_file_.c_str();
 }
@@ -1272,7 +1258,11 @@ const Token& Parser::cur() const {
 const Token& Parser::peek(int offset) const {
     int idx = pos_ + offset;
     if (idx < 0 || idx >= (int)tokens_.size()) {
-        static Token eof{TokenKind::EndOfFile, "", 0, 0};
+        static Token eof = [] {
+            Token token{};
+            token.kind = TokenKind::EndOfFile;
+            return token;
+        }();
         return eof;
     }
     return tokens_[idx];
@@ -1633,7 +1623,7 @@ void Parser::expect(TokenKind k) {
         note_parse_failure(token_kind_name(k));
         std::ostringstream msg;
         msg << "expected " << token_kind_name(k) << " but got '"
-            << cur().lexeme << "' at line " << cur().line;
+            << token_spelling(cur()) << "' at line " << cur().line;
         throw std::runtime_error(msg.str());
     }
     consume();
@@ -1656,7 +1646,7 @@ bool Parser::parse_greater_than_in_template_list(bool consume_last_token) {
         // Consume one > and leave the second > in the token stream.
         token_mutations_.push_back({pos_, tokens_[pos_]});
         tokens_[pos_].kind = TokenKind::Greater;
-        tokens_[pos_].lexeme = ">";
+        set_parser_owned_spelling(tokens_[pos_], ">");
         return true;
     }
 
@@ -1664,7 +1654,7 @@ bool Parser::parse_greater_than_in_template_list(bool consume_last_token) {
         // Consume one > and leave = in the token stream.
         token_mutations_.push_back({pos_, tokens_[pos_]});
         tokens_[pos_].kind = TokenKind::Assign;
-        tokens_[pos_].lexeme = "=";
+        set_parser_owned_spelling(tokens_[pos_], "=");
         return true;
     }
 
@@ -1672,7 +1662,7 @@ bool Parser::parse_greater_than_in_template_list(bool consume_last_token) {
         // Consume one > and leave >= in the token stream.
         token_mutations_.push_back({pos_, tokens_[pos_]});
         tokens_[pos_].kind = TokenKind::GreaterEqual;
-        tokens_[pos_].lexeme = ">=";
+        set_parser_owned_spelling(tokens_[pos_], ">=");
         return true;
     }
 
@@ -1687,7 +1677,7 @@ void Parser::expect_template_close() {
     if (!match_template_close()) {
         std::ostringstream msg;
         msg << "expected " << token_kind_name(TokenKind::Greater) << " but got '"
-            << cur().lexeme << "' at line " << cur().line;
+            << token_spelling(cur()) << "' at line " << cur().line;
         throw std::runtime_error(msg.str());
     }
 }
@@ -1748,7 +1738,7 @@ Node* Parser::parse() {
             std::string diag = format_best_parse_failure();
             fprintf(stderr, "%s:%d:%d: error: unexpected token '%s'\n",
                     diag_file_at(pos_), cur().line, cur().column,
-                    cur().lexeme.c_str());
+                    std::string(token_spelling(cur())).c_str());
             if (!diag.empty()) {
                 fprintf(stderr, "%s:%d:%d: note: %s\n",
                         diag_file_at(pos_), cur().line, cur().column,
@@ -1807,8 +1797,10 @@ Node* Parser::make_node(NodeKind k, int line) {
     }
     if (loc_index >= 0 && loc_index < static_cast<int>(tokens_.size())) {
         n->column = tokens_[loc_index].column;
-        if (!tokens_[loc_index].file.empty()) {
-            n->file = arena_.strdup(tokens_[loc_index].file);
+        if (token_files_ && tokens_[loc_index].file_id != kInvalidFile) {
+            const std::string file =
+                std::string(token_files_->lookup(tokens_[loc_index].file_id));
+            if (!file.empty()) n->file = arena_.strdup(file);
         }
     }
     n->ival = -1;  // -1 = not a bitfield (for struct field declarations)

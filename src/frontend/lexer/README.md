@@ -46,17 +46,19 @@ The token representation is intentionally simple:
 ```cpp
 struct Token {
   TokenKind kind;
-  std::string lexeme;
   int line;
   int column;
+  TextId text_id;
+  FileId file_id;
 };
 ```
 
 Every token carries:
 
 - `kind`: the classified token category
-- `lexeme`: the raw source spelling
 - `line`, `column`: source position of the token start
+- `text_id`: an append-only dictionary id for the token spelling
+- `file_id`: an append-only dictionary id for the logical source file
 
 `TokenKind` covers:
 
@@ -143,7 +145,7 @@ literal token.
 
 ### Numbers
 
-`scan_number()` preserves the raw lexeme and classifies the token only at the
+`scan_number()` preserves the raw spelling in the shared text table and classifies the token only at the
 high level of integer-vs-float:
 
 - decimal integers and floats
@@ -180,7 +182,8 @@ the lexer converts them into structured token kinds:
 - `PragmaWeak`
 - `PragmaGccVisibility`
 
-The directive payload is stored in `Token::lexeme`, for example:
+The directive payload is interned in the shared text table and referenced by
+`Token::text_id`, for example:
 
 - `"push,2"`
 - `"pop"`
@@ -210,4 +213,4 @@ punctuation/operator spelling maps directly to a dedicated `TokenKind`.
   not rewrite the buffer underneath the lexer.
 - Synthetic pragma handling only applies at logical start-of-line.
 - `scan_all()` always appends one final `EndOfFile` token.
-- Literal tokens preserve raw lexemes rather than eagerly canonicalizing values.
+- Literal tokens preserve raw spellings in the shared text table rather than eagerly canonicalizing values.

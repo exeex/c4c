@@ -101,10 +101,16 @@ char Lexer::advance() {
 }
 
 Token Lexer::make_token(TokenKind kind, std::string lexeme, int line, int col) {
-  const TextId text_id = text_table_.intern(lexeme);
+  const TextId text_id =
+      lexeme.empty() ? kInvalidText : text_table_.intern(lexeme);
   const FileId file_id = file_table_.intern(current_file_);
-  return Token{kind, std::move(lexeme), current_file_, line, col, text_id,
-               file_id};
+  Token token{};
+  token.kind = kind;
+  token.line = line;
+  token.column = col;
+  token.text_id = text_id;
+  token.file_id = file_id;
+  return token;
 }
 
 // ── whitespace / comment / GCC line-marker skipping ─────────────────────────

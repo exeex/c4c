@@ -40,7 +40,8 @@ c4c::hir::Module lower_hir_module(std::string_view source,
   c4c::Lexer lexer(std::string(source), c4c::lex_profile_from(source_profile));
   const std::vector<c4c::Token> tokens = lexer.scan_all();
   c4c::Arena arena;
-  c4c::Parser parser(tokens, arena, source_profile, "frontend_hir_tests.cpp");
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     source_profile, "frontend_hir_tests.cpp");
   c4c::Node* root = parser.parse();
   auto result = c4c::sema::analyze_program(
       root, c4c::sema_profile_from(source_profile));

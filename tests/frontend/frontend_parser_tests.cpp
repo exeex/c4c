@@ -69,7 +69,7 @@ void test_parser_reuses_symbol_ids_for_repeated_identifier_text_ids() {
   c4c::Lexer lexer("typedef int Value;\nValue other;\nValue third;\n");
   const std::vector<c4c::Token> tokens = lexer.scan_all();
   c4c::Arena arena;
-  c4c::Parser parser(tokens, arena);
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table());
 
   const c4c::Parser::SymbolId first = parser.symbol_id_for_token(tokens[2]);
   const c4c::Parser::SymbolId second = parser.symbol_id_for_token(tokens[4]);
@@ -81,27 +81,36 @@ void test_parser_reuses_symbol_ids_for_repeated_identifier_text_ids() {
               "repeated identifier text ids should reuse one SymbolId");
   expect_eq(parser.symbol_spelling(first), "Value",
             "parser symbol table should recover identifier spelling");
-  expect_true(parser.parser_text_ids_.size() == 1,
-              "parser should cache one parser-owned text id for one token text id");
+  expect_true(parser.parser_symbols_.texts_ == &lexer.text_table(),
+              "parser symbol table should reuse the shared lexer text table");
 }
 
-void test_parser_symbol_helper_falls_back_to_lexeme_without_text_id() {
+void test_parser_missing_text_id_is_rejected() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena);
-  const c4c::Token token{c4c::TokenKind::Identifier, "Fallback", "", 1, 1,
-                         c4c::kInvalidText, c4c::kInvalidFile};
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files);
+  c4c::Token token{};
+  token.kind = c4c::TokenKind::Identifier;
+  token.line = 1;
+  token.column = 1;
 
-  const c4c::Parser::SymbolId symbol = parser.symbol_id_for_token(token);
+  bool threw = false;
+  try {
+    (void)parser.token_spelling(token);
+  } catch (const std::runtime_error&) {
+    threw = true;
+  }
 
-  expect_true(symbol != c4c::Parser::kInvalidSymbol,
-              "identifier fallback path should intern from lexeme when text_id is absent");
-  expect_eq(parser.symbol_spelling(symbol), "Fallback",
-            "fallback symbol path should preserve the identifier spelling");
+  expect_true(threw,
+              "tokens without a valid text_id should fail fast instead of falling back");
 }
 
 void test_parser_string_wrappers_use_symbol_id_keyed_name_tables() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files);
 
   c4c::TypeSpec typedef_ts{};
   typedef_ts.array_size = -1;
@@ -152,7 +161,9 @@ void test_parser_string_wrappers_use_symbol_id_keyed_name_tables() {
 
 void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files);
 
   c4c::TypeSpec keep_ts{};
   keep_ts.array_size = -1;
@@ -189,7 +200,9 @@ void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
 
 void test_parser_keeps_qualified_bindings_string_keyed() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files);
 
   c4c::Parser::QualifiedNameRef qn;
   qn.is_global_qualified = true;
@@ -264,7 +277,8 @@ void test_parser_parse_qualified_name_populates_atom_symbol_ids() {
   c4c::Lexer lexer("::ns::inner::Type value;\n", c4c::LexProfile::CppSubset);
   const std::vector<c4c::Token> tokens = lexer.scan_all();
   c4c::Arena arena;
-  c4c::Parser parser(tokens, arena, c4c::SourceProfile::CppSubset);
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
 
   const c4c::Parser::QualifiedNameRef qn = parser.parse_qualified_name();
 
@@ -296,7 +310,9 @@ void test_parser_parse_qualified_name_populates_atom_symbol_ids() {
 
 void test_parser_injected_token_helpers_preserve_qualified_name_spelling() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
   c4c::Token seed{};
   seed.line = 7;
@@ -327,7 +343,9 @@ void test_parser_injected_token_helpers_preserve_qualified_name_spelling() {
 
 void test_parser_value_like_template_lookahead_uses_token_spelling() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
   c4c::Token seed{};
   parser.tokens_ = {
@@ -338,22 +356,15 @@ void test_parser_value_like_template_lookahead_uses_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[5].lexeme = "bridge_only_value";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   expect_true(parser.is_clearly_value_template_arg(nullptr, 0),
               "value-like template lookahead should read parser-owned token spelling");
 }
 
 void test_parser_capture_template_arg_expr_uses_token_spelling() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
   c4c::Token seed{};
   parser.tokens_ = {
@@ -362,15 +373,6 @@ void test_parser_capture_template_arg_expr_uses_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::IntLit, "1"),
       parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[0].lexeme = "bridge_only_value";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   c4c::Parser::TemplateArgParseResult arg{};
   expect_true(parser.capture_template_arg_expr(0, &arg),
               "template arg expression capture should succeed for injected tokens");
@@ -384,7 +386,9 @@ void test_parser_capture_template_arg_expr_uses_token_spelling() {
 
 void test_parser_type_start_probes_use_token_spelling() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
   c4c::TypeSpec typedef_ts{};
   typedef_ts.array_size = -1;
@@ -397,15 +401,6 @@ void test_parser_type_start_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "TypeAlias"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[0].lexeme = "bridge_only_alias";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   expect_true(parser.is_type_start(),
               "type-start classification should use parser-owned identifier spelling");
 
@@ -414,20 +409,15 @@ void test_parser_type_start_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
   };
   parser.concept_names_.insert("ConceptName");
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  parser.tokens_[0].lexeme = "bridge_only_concept";
-#pragma GCC diagnostic pop
-#endif
-
   expect_true(!parser.looks_like_unresolved_identifier_type_head(0),
               "identifier-type probes should use parser-owned spelling when excluding concept names");
 }
 
 void test_parser_exception_specs_and_attributes_use_token_spelling() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
   parser.tokens_ = {
@@ -437,15 +427,6 @@ void test_parser_exception_specs_and_attributes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[0].lexeme = "bridge_only_noexcept";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   parser.skip_attributes();
   expect_eq_int(parser.pos_, 4,
                 "attribute skipping should consume identifier-spelled noexcept clauses");
@@ -464,16 +445,6 @@ void test_parser_exception_specs_and_attributes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[0].lexeme = "bridge_only_noexcept";
-  parser.tokens_[4].lexeme = "bridge_only_throw";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   parser.skip_exception_spec();
   expect_eq_int(parser.pos_, 8,
                 "exception-spec skipping should consume identifier-spelled noexcept/throw clauses");
@@ -495,15 +466,6 @@ void test_parser_exception_specs_and_attributes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[3].lexeme = "bridge_only_aligned";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   parser.parse_attributes(&ts);
   expect_eq_int(ts.align_bytes, 32,
                 "GNU attribute parsing should use parser-owned attribute spellings");
@@ -511,7 +473,9 @@ void test_parser_exception_specs_and_attributes_use_token_spelling() {
 
 void test_parser_typeof_like_probes_use_token_spelling() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
   c4c::TypeSpec typedef_ts{};
@@ -533,15 +497,6 @@ void test_parser_typeof_like_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[0].lexeme = "bridge_only_underlying_type";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   parser.pos_ = 0;
   (void)parser.parse_base_type();
   expect_eq_int(parser.pos_, 4,
@@ -555,15 +510,6 @@ void test_parser_typeof_like_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "nullptr"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[2].lexeme = "bridge_only_nullptr";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   parser.pos_ = 0;
   c4c::TypeSpec nullptr_ts = parser.parse_base_type();
   expect_true(nullptr_ts.base == c4c::TB_VOID && nullptr_ts.ptr_level == 1,
@@ -575,15 +521,6 @@ void test_parser_typeof_like_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[2].lexeme = "bridge_only_value";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   parser.pos_ = 0;
   c4c::TypeSpec value_operand_ts = parser.parse_base_type();
   expect_true(value_operand_ts.base == c4c::TB_DOUBLE,
@@ -595,15 +532,6 @@ void test_parser_typeof_like_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::FloatLit, "1.0f"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[2].lexeme = "bridge_only_float";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   parser.pos_ = 0;
   c4c::TypeSpec float_operand_ts = parser.parse_base_type();
   expect_true(float_operand_ts.base == c4c::TB_FLOAT,
@@ -612,22 +540,15 @@ void test_parser_typeof_like_probes_use_token_spelling() {
 
 void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
   parser.tokens_ = {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "_Float128"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[0].lexeme = "bridge_only_floatn";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   parser.pos_ = 0;
   c4c::TypeSpec floatn_ts = parser.parse_base_type();
   expect_true(floatn_ts.base == c4c::TB_LONGDOUBLE,
@@ -645,15 +566,6 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "TypeAlias"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[0].lexeme = "bridge_only_alias";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   parser.pos_ = 0;
   parser.last_resolved_typedef_.clear();
   c4c::TypeSpec alias_ts = parser.parse_base_type();
@@ -666,15 +578,6 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ForwardDecl"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[0].lexeme = "bridge_only_forward_decl";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   parser.pos_ = 0;
   c4c::TypeSpec unresolved_ts = parser.parse_base_type();
   expect_true(unresolved_ts.tag != nullptr,
@@ -690,7 +593,8 @@ void test_parser_template_member_suffix_probe_uses_token_spelling() {
       c4c::LexProfile::CppSubset);
   const std::vector<c4c::Token> tokens = lexer.scan_all();
   c4c::Arena arena;
-  c4c::Parser parser(tokens, arena, c4c::SourceProfile::CppSubset);
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
 
   (void)parser.parse_top_level();
   expect_true(parser.find_template_struct_primary("Trait") != nullptr,
@@ -705,15 +609,6 @@ void test_parser_template_member_suffix_probe_uses_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "type"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[5].lexeme = "bridge_only_type";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   parser.pos_ = 0;
   const c4c::TypeSpec member_ts = parser.parse_base_type();
   expect_true(member_ts.base == c4c::TB_INT,
@@ -722,7 +617,9 @@ void test_parser_template_member_suffix_probe_uses_token_spelling() {
 
 void test_parser_template_type_arg_probes_use_token_spelling() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
   parser.push_template_scope(
@@ -732,15 +629,6 @@ void test_parser_template_type_arg_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "T"),
       parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[0].lexeme = "bridge_only_type_param";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   c4c::Parser::TemplateArgParseResult arg{};
   expect_true(parser.try_parse_template_type_arg(&arg),
               "template type-argument probes should use parser-owned spelling");
@@ -757,7 +645,9 @@ void test_parser_template_type_arg_probes_use_token_spelling() {
 
 void test_parser_alias_template_value_probes_use_token_spelling() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
   parser.alias_template_info_["Alias"] = {};
@@ -769,19 +659,13 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[0].lexeme = "bridge_only_alias";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   expect_true(!parser.is_clearly_value_template_arg(nullptr, 0),
               "direct alias-template probes should use parser-owned spelling");
 
-  c4c::Parser resolved_parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TextTable resolved_texts;
+  c4c::FileTable resolved_files;
+  c4c::Parser resolved_parser({}, arena, &resolved_texts, &resolved_files,
+                              c4c::SourceProfile::CppSubset);
   c4c::TypeSpec alias_ts{};
   alias_ts.array_size = -1;
   alias_ts.inner_rank = -1;
@@ -797,22 +681,15 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
       resolved_parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
       resolved_parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  resolved_parser.tokens_[0].lexeme = "bridge_only_alias";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   expect_true(!resolved_parser.is_clearly_value_template_arg(nullptr, 0),
               "resolved alias-template probes should use parser-owned spelling");
 }
 
 void test_parser_typename_template_parameter_probe_uses_token_spelling() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
   parser.tokens_ = {
@@ -820,15 +697,6 @@ void test_parser_typename_template_parameter_probe_uses_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "T"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "typename"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[2].lexeme = "bridge_only_identifier";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   expect_true(parser.classify_typename_template_parameter() ==
                   c4c::Parser::TypenameTemplateParamKind::TypeParameter,
               "typename template-parameter probe should use parser-owned spelling");
@@ -836,7 +704,9 @@ void test_parser_typename_template_parameter_probe_uses_token_spelling() {
 
 void test_parser_post_pointer_qualifier_probes_use_token_spelling() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
   parser.tokens_ = {
@@ -844,16 +714,6 @@ void test_parser_post_pointer_qualifier_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "restrict"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[0].lexeme = "bridge_only_nullable";
-  parser.tokens_[1].lexeme = "bridge_only_restrict";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   parser.consume_declarator_post_pointer_qualifiers();
 
   expect_eq(parser.token_spelling(parser.cur()), "after",
@@ -862,7 +722,9 @@ void test_parser_post_pointer_qualifier_probes_use_token_spelling() {
 
 void test_parser_qualified_declarator_name_uses_token_spelling() {
   c4c::Arena arena;
-  c4c::Parser parser({}, arena, c4c::SourceProfile::CppSubset);
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
   parser.tokens_ = {
@@ -873,17 +735,6 @@ void test_parser_qualified_declarator_name_uses_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Value"),
   };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  parser.tokens_[1].lexeme = "bridge_only_ns";
-  parser.tokens_[3].lexeme = "bridge_only_inner";
-  parser.tokens_[5].lexeme = "bridge_only_value";
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   std::string qualified_name;
   expect_true(parser.parse_qualified_declarator_name(&qualified_name),
               "qualified declarator names should parse from injected token spelling");
@@ -896,7 +747,7 @@ void test_parser_qualified_declarator_name_uses_token_spelling() {
 int main() {
   test_link_name_table_reuses_text_table_storage();
   test_parser_reuses_symbol_ids_for_repeated_identifier_text_ids();
-  test_parser_symbol_helper_falls_back_to_lexeme_without_text_id();
+  test_parser_missing_text_id_is_rejected();
   test_parser_string_wrappers_use_symbol_id_keyed_name_tables();
   test_parser_heavy_snapshot_restores_symbol_id_keyed_tables();
   test_parser_keeps_qualified_bindings_string_keyed();

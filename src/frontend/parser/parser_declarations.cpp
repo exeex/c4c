@@ -120,11 +120,11 @@ namespace {
 
 const char* maybe_parse_linkage_spec(Parser* parser) {
     if (!parser->is_cpp_mode() || !parser->check(TokenKind::StrLit)) return nullptr;
-    if (parser->cur().lexeme == "\"C\"") {
+    if (parser->token_spelling(parser->cur()) == "\"C\"") {
         parser->consume();
         return "C";
     }
-    if (parser->cur().lexeme == "\"C++\"") {
+    if (parser->token_spelling(parser->cur()) == "\"C++\"") {
         parser->consume();
         return "C++";
     }
@@ -195,7 +195,7 @@ bool try_skip_cpp_concept_declaration(Parser& parser) {
     if (!parser.check(TokenKind::Identifier)) {
         throw std::runtime_error("expected concept name");
     }
-    const std::string concept_name = parser.cur().lexeme;
+    const std::string concept_name = std::string(parser.token_spelling(parser.cur()));
     parser.consume();  // concept identifier
     parser.expect(TokenKind::Assign);
 
@@ -695,7 +695,7 @@ Node* Parser::parse_local_decl() {
                 if (pos_ + 2 < static_cast<int>(tokens_.size()) &&
                     tokens_[pos_ + 1].kind == TokenKind::Identifier &&
                     tokens_[pos_ + 2].kind == TokenKind::RParen) {
-                    const std::string& arg_name = tokens_[pos_ + 1].lexeme;
+                    const std::string arg_name = std::string(token_spelling(tokens_[pos_ + 1]));
                     const std::string resolved_type_name =
                         resolve_visible_type_name(arg_name);
                     const bool arg_is_type =
@@ -739,7 +739,7 @@ Node* Parser::parse_local_decl() {
                         case TokenKind::RParen:
                             return false;
                         case TokenKind::Identifier: {
-                            const std::string& arg_name = tokens_[pos_ + 1].lexeme;
+                            const std::string arg_name = std::string(token_spelling(tokens_[pos_ + 1]));
                             const std::string resolved_type_name =
                                 resolve_visible_type_name(arg_name);
                             const bool arg_is_type =
@@ -905,7 +905,8 @@ void Parser::parse_top_level_parameter_list(
             if (!is_type_start() && !can_start_parameter_type() &&
                 check(TokenKind::Identifier)) {
                 if (out_knr_param_names)
-                    out_knr_param_names->push_back(arena_.strdup(cur().lexeme));
+                    out_knr_param_names->push_back(
+                        arena_.strdup(std::string(token_spelling(cur()))));
                 consume();
                 if (match(TokenKind::Comma)) continue;
                 break;
@@ -1061,10 +1062,10 @@ Node* Parser::parse_top_level() {
             target = "::";
             if (!check(TokenKind::Identifier))
                 throw std::runtime_error("expected identifier after '::'");
-            target += cur().lexeme;
+            target += token_spelling(cur());
             consume();
         } else {
-            std::string first_name = cur().lexeme;
+            std::string first_name = std::string(token_spelling(cur()));
             consume();
 
             if (match(TokenKind::Assign)) {
@@ -1106,7 +1107,7 @@ Node* Parser::parse_top_level() {
                         };
                         auto join_token_lexemes = [&](int start, int end) -> std::string {
                             std::string out;
-                            for (int i = start; i < end; ++i) out += tokens_[i].lexeme;
+                            for (int i = start; i < end; ++i) out += token_spelling(tokens_[i]);
                             return out;
                         };
                         auto split_template_arg_token_ranges =
@@ -1205,7 +1206,7 @@ Node* Parser::parse_top_level() {
                             while (start < end &&
                                    (tokens_[start].kind == TokenKind::Identifier ||
                                     tokens_[start].kind == TokenKind::ColonColon)) {
-                                base += tokens_[start].lexeme;
+                                base += token_spelling(tokens_[start]);
                                 ++start;
                             }
                             if (base.empty()) return join_token_lexemes(start, end);
@@ -1228,7 +1229,8 @@ Node* Parser::parse_top_level() {
                         std::string member_name;
                         while (probe < pos_) {
                             if (tokens_[probe].kind != TokenKind::Identifier) break;
-                            const std::string segment = tokens_[probe].lexeme;
+                            const std::string segment =
+                                std::string(token_spelling(tokens_[probe]));
                             ++probe;
                             if (probe < pos_ && tokens_[probe].kind == TokenKind::Less) {
                                 owner_template_arg_start = probe;
@@ -1335,7 +1337,7 @@ Node* Parser::parse_top_level() {
             if (!check(TokenKind::Identifier))
                 throw std::runtime_error("expected identifier after '::'");
             target += "::";
-            target += cur().lexeme;
+            target += token_spelling(cur());
             consume();
         }
 
@@ -1468,7 +1470,7 @@ Node* Parser::parse_top_level() {
                     std::ostringstream expr;
                     for (size_t tok_i = 0; tok_i < deferred_nttp_defaults[param_idx].size(); ++tok_i) {
                         if (tok_i > 0) expr << ' ';
-                        expr << deferred_nttp_defaults[param_idx][tok_i].lexeme;
+                        expr << token_spelling(deferred_nttp_defaults[param_idx][tok_i]);
                     }
                     template_param_default_exprs.push_back(arena_.strdup(expr.str()));
                 } else {
@@ -1481,7 +1483,7 @@ Node* Parser::parse_top_level() {
             if (check(TokenKind::Ellipsis)) { consume(); is_pack = true; }
             const char* pname = nullptr;
             if (check(TokenKind::Identifier)) {
-                pname = arena_.strdup(cur().lexeme);
+                pname = arena_.strdup(std::string(token_spelling(cur())));
                 consume();
             }
             return std::pair<bool, const char*>(is_pack, pname);
@@ -1574,7 +1576,8 @@ Node* Parser::parse_top_level() {
                         consume();
                         push_nttp_default_value(val);
                     } else if (check(TokenKind::IntLit)) {
-                        long long val = parse_int_lexeme(cur().lexeme.c_str());
+                        long long val =
+                            parse_int_lexeme(std::string(token_spelling(cur())).c_str());
                         consume();
                         push_nttp_default_value(val * sign);
                     } else {
@@ -1743,7 +1746,7 @@ Node* Parser::parse_top_level() {
 
     // Handle #pragma pack tokens
     if (check(TokenKind::PragmaPack)) {
-        handle_pragma_pack(cur().lexeme);
+        handle_pragma_pack(std::string(token_spelling(cur())));
         consume();
         return nullptr;
     }
@@ -1751,22 +1754,22 @@ Node* Parser::parse_top_level() {
     // Handle #pragma weak tokens
     if (check(TokenKind::PragmaWeak)) {
         auto* node = make_node(NK_PRAGMA_WEAK, ln);
-        node->name = arena_.strdup(cur().lexeme);
+        node->name = arena_.strdup(std::string(token_spelling(cur())));
         consume();
         return node;
     }
 
     // Handle #pragma GCC visibility push/pop tokens
     if (check(TokenKind::PragmaGccVisibility)) {
-        handle_pragma_gcc_visibility(cur().lexeme);
+        handle_pragma_gcc_visibility(std::string(token_spelling(cur())));
         consume();
         return nullptr;
     }
 
     if (check(TokenKind::PragmaExec)) {
         auto* node = make_node(NK_PRAGMA_EXEC, ln);
-        node->name = arena_.strdup(cur().lexeme);
-        handle_pragma_exec(cur().lexeme);
+        node->name = arena_.strdup(std::string(token_spelling(cur())));
+        handle_pragma_exec(std::string(token_spelling(cur())));
         consume();
         return node;
     }
@@ -1924,7 +1927,8 @@ Node* Parser::parse_top_level() {
 
                 std::string owner;
                 while (true) {
-                    const std::string seg = tokens_[probe].lexeme;
+                    const std::string seg =
+                        std::string(token_spelling(tokens_[probe]));
                     ++probe;
                     if (!probe_skip_optional_template_id(&probe)) {
                         return false;
@@ -1944,7 +1948,8 @@ Node* Parser::parse_top_level() {
                     if (probe + 1 < static_cast<int>(tokens_.size()) &&
                         tokens_[probe].kind == TokenKind::ColonColon &&
                         tokens_[probe + 1].kind == TokenKind::Identifier) {
-                        const std::string next_name = tokens_[probe + 1].lexeme;
+                        const std::string next_name =
+                            std::string(token_spelling(tokens_[probe + 1]));
                         int terminal_probe = probe + 2;
                         if (next_name == seg &&
                             terminal_probe < static_cast<int>(tokens_.size()) &&
@@ -1974,7 +1979,7 @@ Node* Parser::parse_top_level() {
                 if (!check(TokenKind::Identifier)) return false;
 
                 while (true) {
-                    const std::string seg = cur().lexeme;
+                    const std::string seg = std::string(token_spelling(cur()));
                     consume();
                     if (!consume_optional_template_id()) return false;
 
@@ -1987,7 +1992,7 @@ Node* Parser::parse_top_level() {
                     if (stop_before_ctor &&
                         check(TokenKind::ColonColon) &&
                         peek(1).kind == TokenKind::Identifier &&
-                        peek(1).lexeme == seg &&
+                        token_spelling(peek(1)) == seg &&
                         pos_ + 2 < static_cast<int>(tokens_.size()) &&
                         tokens_[pos_ + 2].kind == TokenKind::LParen) {
                         return true;
@@ -2145,7 +2150,7 @@ Node* Parser::parse_top_level() {
                 pos_ = saved_special_member_pos;
             }
             expect(TokenKind::ColonColon);
-            const std::string ctor_name = cur().lexeme;
+            const std::string ctor_name = std::string(token_spelling(cur()));
             consume();
             if (check(TokenKind::LParen)) {
                 std::string qualified_ctor_name = qualified_owner;
@@ -2187,7 +2192,8 @@ Node* Parser::parse_top_level() {
                     consume(); // :
                     while (!at_end() && !check(TokenKind::LBrace)) {
                         if (!check(TokenKind::Identifier)) break;
-                        const char* mem_name = arena_.strdup(cur().lexeme);
+                        const char* mem_name =
+                            arena_.strdup(std::string(token_spelling(cur())));
                         consume();
                         expect(TokenKind::LParen);
                         std::vector<Node*> args;
@@ -2275,7 +2281,7 @@ Node* Parser::parse_top_level() {
     if (!is_type_start()) {
         if (is_typedef) {
             if (check(TokenKind::Identifier)) {
-                const std::string spelled = cur().lexeme;
+                const std::string spelled = std::string(token_spelling(cur()));
                 if (is_template_scope_type_param(spelled)) {
                     base_ts.array_size = -1;
                     base_ts.array_rank = 0;
@@ -2292,7 +2298,9 @@ Node* Parser::parse_top_level() {
                     goto top_level_base_ready;
                 }
             }
-            std::string nm = check(TokenKind::Identifier) ? cur().lexeme : "<non-identifier>";
+            std::string nm = check(TokenKind::Identifier)
+                                 ? std::string(token_spelling(cur()))
+                                 : "<non-identifier>";
             throw std::runtime_error(std::string("typedef uses unknown base type: ") + nm);
         }
         // K&R/old-style implicit-int function at file scope:
@@ -2462,7 +2470,7 @@ top_level_base_ready:
         while (is_qualifier(cur().kind)) consume();
         // Skip nullability annotations: (* _Nullable name) or (* _Nonnull name)
         while (check(TokenKind::Identifier)) {
-            const std::string& ql = cur().lexeme;
+            const std::string ql = std::string(token_spelling(cur()));
             if (ql == "_Nullable" || ql == "_Nonnull" || ql == "_Null_unspecified" ||
                 ql == "__nullable" || ql == "__nonnull")
                 consume();
@@ -2470,7 +2478,7 @@ top_level_base_ready:
         }
         skip_attributes();
         if (check(TokenKind::Identifier)) {
-            decl_name = arena_.strdup(cur().lexeme);
+            decl_name = arena_.strdup(std::string(token_spelling(cur())));
             consume();
         }
         // Handle array-of-function-pointer: void (*func2[6])(void)
@@ -2496,13 +2504,13 @@ top_level_base_ready:
             // Skip qualifiers/nullability
             while (is_qualifier(cur().kind)) consume();
             while (check(TokenKind::Identifier)) {
-                const std::string& ql = cur().lexeme;
+                const std::string ql = std::string(token_spelling(cur()));
                 if (ql == "_Nullable" || ql == "_Nonnull" || ql == "_Null_unspecified" ||
                     ql == "__nullable" || ql == "__nonnull") { consume(); continue; }
                 break;
             }
             if (check(TokenKind::Identifier)) {
-                decl_name = arena_.strdup(cur().lexeme);
+                decl_name = arena_.strdup(std::string(token_spelling(cur())));
                 consume();
             }
             // Function's own params (pick_outer(int which))
@@ -2687,7 +2695,8 @@ top_level_base_ready:
                 // NTTP value
                 long long sign = 1;
                 if (match(TokenKind::Minus)) sign = -1;
-                long long val = parse_int_lexeme(cur().lexeme.c_str());
+                long long val =
+                    parse_int_lexeme(std::string(token_spelling(cur())).c_str());
                 if (check(TokenKind::KwTrue)) {
                     val = 1;
                     consume();
@@ -2698,7 +2707,7 @@ top_level_base_ready:
                     Node* lit = parse_primary();
                     val = lit ? lit->ival : 0;
                 } else {
-                    val = parse_int_lexeme(cur().lexeme.c_str());
+                    val = parse_int_lexeme(std::string(token_spelling(cur())).c_str());
                     consume();
                 }
                 TypeSpec dummy{};

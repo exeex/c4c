@@ -423,6 +423,8 @@ class Parser {
   // ── public parser entry points ────────────────────────────────────────────
   // All members public (required by project coding constraints).
   explicit Parser(std::vector<Token> tokens, Arena& arena,
+                  TextTable* token_texts,
+                  FileTable* token_files,
                   SourceProfile source_profile = SourceProfile::C,
                   const std::string& source_file = "<input>");
 
@@ -441,9 +443,9 @@ class Parser {
   Arena& arena_;
   SourceProfile source_profile_;
   std::string source_file_;  // source path used by diagnostics
-  mutable TextTable parser_texts_;
-  mutable std::unordered_map<TextId, TextId> parser_text_ids_;
-  SymbolTable parser_symbols_{&parser_texts_};
+  TextTable* token_texts_ = nullptr;
+  FileTable* token_files_ = nullptr;
+  SymbolTable parser_symbols_{nullptr};
   ParserNameTables parser_name_tables_{&parser_symbols_};
 
   // ── name / type knowledge accumulated during parsing ─────────────────────
@@ -641,18 +643,12 @@ class Parser {
   bool looks_like_unresolved_identifier_type_head(int pos) const;
   TextId parser_text_id_for_token(TextId token_text_id,
                                   std::string_view fallback = {}) const {
-    if (token_text_id != kInvalidText) {
-      const auto it = parser_text_ids_.find(token_text_id);
-      if (it != parser_text_ids_.end()) return it->second;
-    }
+    if (token_text_id != kInvalidText) return token_text_id;
     if (fallback.empty()) return kInvalidText;
-    const TextId parser_text_id = parser_texts_.intern(fallback);
-    if (token_text_id != kInvalidText) {
-      parser_text_ids_.emplace(token_text_id, parser_text_id);
-    }
-    return parser_text_id;
+    return token_texts_ ? token_texts_->intern(fallback) : kInvalidText;
   }
-  std::string_view token_spelling(const Token& token) const;
+  std::string token_spelling(const Token& token) const;
+  void set_parser_owned_spelling(Token& token, std::string_view spelling);
   Token make_injected_token(const Token& seed, TokenKind kind,
                             std::string_view spelling);
   SymbolId symbol_id_for_token_text(TextId token_text_id,

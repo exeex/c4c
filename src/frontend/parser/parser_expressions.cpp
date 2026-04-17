@@ -190,7 +190,7 @@ Node* Parser::parse_sizeof_pack_expr(int ln) {
 
     std::string pack_text;
     for (int i = pack_start; i < pack_end && i < static_cast<int>(tokens_.size()); ++i) {
-        pack_text += tokens_[i].lexeme;
+        pack_text += token_spelling(tokens_[i]);
     }
 
     Node* n = make_node(NK_SIZEOF_PACK, ln);
@@ -239,7 +239,8 @@ Node* Parser::parse_unary() {
             consume();
             if (check(TokenKind::Identifier)) {
                 // Emit as a null void* placeholder; computed goto not fully supported
-                const char* lbl_name = arena_.strdup(cur().lexeme);
+                const char* lbl_name =
+                    arena_.strdup(std::string(token_spelling(cur())));
                 consume();
                 Node* n = make_node(NK_INT_LIT, ln);
                 n->ival = 0;
@@ -497,13 +498,13 @@ Node* Parser::parse_postfix(Node* base) {
                 if (is_cpp_mode() && match(TokenKind::Tilde)) {
                     member_name = "~";
                     if (check(TokenKind::Identifier)) {
-                        member_name += cur().lexeme;
+                        member_name += token_spelling(cur());
                         consume();
                     } else {
                         throw std::runtime_error("expected destructor type name after '~'");
                     }
                 } else if (check(TokenKind::Identifier)) {
-                    member_name = cur().lexeme;
+                    member_name = token_spelling(cur());
                     consume();
                 } else if (!try_parse_operator_function_id(member_name)) {
                     break;
@@ -521,13 +522,13 @@ Node* Parser::parse_postfix(Node* base) {
                 if (is_cpp_mode() && match(TokenKind::Tilde)) {
                     member_name = "~";
                     if (check(TokenKind::Identifier)) {
-                        member_name += cur().lexeme;
+                        member_name += token_spelling(cur());
                         consume();
                     } else {
                         throw std::runtime_error("expected destructor type name after '~'");
                     }
                 } else if (check(TokenKind::Identifier)) {
-                    member_name = cur().lexeme;
+                    member_name = token_spelling(cur());
                     consume();
                 } else if (!try_parse_operator_function_id(member_name)) {
                     break;
@@ -751,12 +752,12 @@ Node* Parser::parse_primary() {
                pos_ + 1 < static_cast<int>(tokens_.size()) &&
                tokens_[pos_ + 1].kind == TokenKind::ColonColon) {
             if (qualifier_owner.empty())
-                qualifier_owner = cur().lexeme;
+                qualifier_owner = token_spelling(cur());
             if (!qualified_name.empty() &&
                 qualified_name.substr(qualified_name.size() - 2) != "::") {
                 qualified_name += "::";
             }
-            qualified_name += cur().lexeme;
+            qualified_name += token_spelling(cur());
             consume();
             consume();
         }
@@ -902,7 +903,7 @@ Node* Parser::parse_primary() {
             return nullptr;
         }
 
-        const std::string builtin_name = cur().lexeme;
+        const std::string builtin_name = std::string(token_spelling(cur()));
         if (!is_builtin_type_trait_name(builtin_name) ||
             builtin_name == "__builtin_types_compatible_p") {
             return nullptr;
@@ -957,9 +958,10 @@ Node* Parser::parse_primary() {
 
     // Integer literal
     if (check(TokenKind::IntLit)) {
-        long long v = parse_int_lexeme(cur().lexeme.c_str());
-        bool imag   = lexeme_is_imaginary(cur().lexeme.c_str());
-        const char* lex = arena_.strdup(cur().lexeme);
+        const std::string spelled = std::string(token_spelling(cur()));
+        long long v = parse_int_lexeme(spelled.c_str());
+        bool imag   = lexeme_is_imaginary(spelled.c_str());
+        const char* lex = arena_.strdup(spelled);
         consume();
         Node* n = make_int_lit(v, ln);
         n->sval = lex;
@@ -998,9 +1000,10 @@ Node* Parser::parse_primary() {
 
     // Float literal
     if (check(TokenKind::FloatLit)) {
-        bool imag   = lexeme_is_imaginary(cur().lexeme.c_str());
-        double v    = parse_float_lexeme(cur().lexeme.c_str());
-        const char* raw = arena_.strdup(cur().lexeme);
+        const std::string spelled = std::string(token_spelling(cur()));
+        bool imag   = lexeme_is_imaginary(spelled.c_str());
+        double v    = parse_float_lexeme(spelled.c_str());
+        const char* raw = arena_.strdup(spelled);
         consume();
         Node* n = make_float_lit(v, raw, ln);
         n->is_imaginary = imag;
@@ -1009,13 +1012,13 @@ Node* Parser::parse_primary() {
 
     // String literal (possibly multiple adjacent)
     if (check(TokenKind::StrLit)) {
-        std::string combined = cur().lexeme;
+        std::string combined = std::string(token_spelling(cur()));
         consume();
         while (check(TokenKind::StrLit)) {
             // Adjacent string concatenation: trim closing quote of first,
             // trim opening quote of second, join
             if (!combined.empty() && combined.back() == '"') combined.pop_back();
-            const std::string& next = cur().lexeme;
+            const std::string next = std::string(token_spelling(cur()));
             if (!next.empty() && next.front() == '"') {
                 combined += next.substr(1);
             } else {
@@ -1028,7 +1031,7 @@ Node* Parser::parse_primary() {
 
     // Char literal
     if (check(TokenKind::CharLit)) {
-        const std::string& lex = cur().lexeme;
+        const std::string lex = std::string(token_spelling(cur()));
         long long cv = 0;
         // lex is like 'a' or '\n' or L'\0' etc.
         // Skip wide/unicode prefix if present (L, u, U)
@@ -1435,14 +1438,14 @@ Node* Parser::parse_primary() {
             if (!check(TokenKind::Identifier)) {
                 throw std::runtime_error("expected member name in __builtin_offsetof");
             }
-            std::string field_path = cur().lexeme;
+            std::string field_path = std::string(token_spelling(cur()));
             consume();
             while (match(TokenKind::Dot)) {
                 if (!check(TokenKind::Identifier)) {
                     throw std::runtime_error("expected member name after '.' in __builtin_offsetof");
                 }
                 field_path += ".";
-                field_path += cur().lexeme;
+                field_path += token_spelling(cur());
                 consume();
             }
             expect(TokenKind::RParen);
@@ -1519,7 +1522,7 @@ Node* Parser::parse_primary() {
                         consume(); // eat ::
                         std::string member;
                         if (check(TokenKind::Identifier)) {
-                            member = cur().lexeme;
+                            member = token_spelling(cur());
                             consume();
                         } else {
                             try_parse_operator_function_id(member);
@@ -1724,8 +1727,8 @@ Node* Parser::parse_primary() {
         while (check(TokenKind::KwMutable) || check(TokenKind::KwConstexpr) ||
                check(TokenKind::KwConsteval) ||
                (check(TokenKind::Identifier) &&
-                (cur().lexeme == "mutable" || cur().lexeme == "constexpr" ||
-                 cur().lexeme == "consteval"))) consume();
+                (token_spelling(cur()) == "mutable" || token_spelling(cur()) == "constexpr" ||
+                 token_spelling(cur()) == "consteval"))) consume();
         // Skip optional noexcept(...)
         skip_exception_spec();
         // Skip optional -> return_type
@@ -1739,7 +1742,7 @@ Node* Parser::parse_primary() {
     }
 
     // Hard error for unrecognized primaries (was permissive fallback to 0).
-    std::string tok = at_end() ? "<eof>" : cur().lexeme;
+    std::string tok = at_end() ? "<eof>" : std::string(token_spelling(cur()));
     note_parse_failure_message(("unexpected token in expression: " + tok).c_str());
     throw std::runtime_error("unexpected token in expression: " + tok);
 }
@@ -1766,7 +1769,8 @@ Node* Parser::parse_init_list() {
         // Old GCC-style: `fieldname: value` (same as `.fieldname = value`)
         if (check(TokenKind::Identifier) &&
             peek(1).kind == TokenKind::Colon) {
-            item->desig_field    = arena_.strdup(cur().lexeme);
+            item->desig_field =
+                arena_.strdup(std::string(token_spelling(cur())));
             item->is_designated  = true;
             item->is_index_desig = false;
             consume();  // identifier
@@ -1780,7 +1784,8 @@ Node* Parser::parse_init_list() {
         if (check(TokenKind::Dot)) {
             consume();
             if (check(TokenKind::Identifier)) {
-                item->desig_field    = arena_.strdup(cur().lexeme);
+                item->desig_field =
+                    arena_.strdup(std::string(token_spelling(cur())));
                 item->is_designated  = true;
                 item->is_index_desig = false;
                 consume();
@@ -1794,7 +1799,8 @@ Node* Parser::parse_init_list() {
                     if (check(TokenKind::Dot)) {
                         consume();
                         if (check(TokenKind::Identifier)) {
-                            inner->desig_field    = arena_.strdup(cur().lexeme);
+                            inner->desig_field =
+                                arena_.strdup(std::string(token_spelling(cur())));
                             inner->is_designated  = true;
                             inner->is_index_desig = false;
                             consume();

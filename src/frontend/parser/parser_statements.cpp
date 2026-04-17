@@ -136,7 +136,7 @@ Node* Parser::parse_stmt() {
         if (check(TokenKind::Identifier) &&
             pos_ + 1 < static_cast<int>(tokens_.size()) &&
             tokens_[pos_ + 1].kind == TokenKind::Assign) {
-            std::string alias_name = cur().lexeme;
+            std::string alias_name = std::string(token_spelling(cur()));
             consume(); // eat name
             consume(); // eat '='
             const int alias_type_pos = pos_;
@@ -215,22 +215,22 @@ Node* Parser::parse_stmt() {
 
     switch (cur().kind) {
         case TokenKind::PragmaPack: {
-            handle_pragma_pack(cur().lexeme);
+            handle_pragma_pack(std::string(token_spelling(cur())));
             consume();
             return make_node(NK_EMPTY, ln);
         }
 
         case TokenKind::PragmaWeak: {
             auto* node = make_node(NK_PRAGMA_WEAK, ln);
-            node->name = arena_.strdup(cur().lexeme);
+            node->name = arena_.strdup(std::string(token_spelling(cur())));
             consume();
             return node;
         }
 
         case TokenKind::PragmaExec: {
             auto* node = make_node(NK_PRAGMA_EXEC, ln);
-            node->name = arena_.strdup(cur().lexeme);
-            handle_pragma_exec(cur().lexeme);
+            node->name = arena_.strdup(std::string(token_spelling(cur())));
+            handle_pragma_exec(std::string(token_spelling(cur())));
             consume();
             return node;
         }
@@ -271,9 +271,9 @@ Node* Parser::parse_stmt() {
                 }
                 if (k == TokenKind::KwTypename) return true;
                 if (k != TokenKind::Identifier) return false;
-                if (is_template_scope_type_param(cur().lexeme)) return true;
-                if (is_typedef_name(cur().lexeme)) return true;
-                return has_typedef_type(resolve_visible_type_name(cur().lexeme));
+                if (is_template_scope_type_param(token_spelling(cur()))) return true;
+                if (is_typedef_name(token_spelling(cur()))) return true;
+                return has_typedef_type(resolve_visible_type_name(token_spelling(cur())));
             };
 
             auto can_use_lite_if_condition_decl = [&]() -> bool {
@@ -573,7 +573,7 @@ Node* Parser::parse_stmt() {
             consume();
             const char* lbl = nullptr;
             if (check(TokenKind::Identifier)) {
-                lbl = arena_.strdup(cur().lexeme);
+                lbl = arena_.strdup(std::string(token_spelling(cur())));
                 consume();
             } else if (check(TokenKind::Star)) {
                 // computed goto: goto *expr;
@@ -600,7 +600,7 @@ Node* Parser::parse_stmt() {
             auto parse_asm_operand = [&]() -> AsmOperand {
                 AsmOperand op{};
                 if (check(TokenKind::StrLit)) {
-                    op.constraint = cur().lexeme;
+                    op.constraint = token_spelling(cur());
                     consume();
                 }
                 if (match(TokenKind::LParen)) {
@@ -647,7 +647,8 @@ Node* Parser::parse_stmt() {
 
             Node* asm_template = nullptr;
             if (check(TokenKind::StrLit)) {
-                asm_template = make_str_lit(arena_.strdup(cur().lexeme), cur().line);
+                asm_template = make_str_lit(
+                    arena_.strdup(std::string(token_spelling(cur()))), cur().line);
                 consume();
             } else if (!check(TokenKind::Colon) && !check(TokenKind::RParen)) {
                 asm_template = parse_expr();
@@ -663,7 +664,9 @@ Node* Parser::parse_stmt() {
                         while (!at_end() && !check(TokenKind::RParen)) {
                             if (check(TokenKind::StrLit)) {
                                 clobbers.push_back(
-                                    make_str_lit(arena_.strdup(cur().lexeme), cur().line));
+                                    make_str_lit(
+                                        arena_.strdup(std::string(token_spelling(cur()))),
+                                        cur().line));
                                 consume();
                             }
                             else if (check(TokenKind::LParen)) skip_paren_group();
@@ -761,7 +764,7 @@ Node* Parser::parse_stmt() {
 
     // GCC __label__ local label declaration — treat as no-op
     // e.g. __label__ foo, bar;
-    if (check(TokenKind::Identifier) && cur().lexeme == std::string_view("__label__")) {
+    if (check(TokenKind::Identifier) && token_spelling(cur()) == std::string_view("__label__")) {
         consume();  // consume __label__
         while (check(TokenKind::Identifier)) {
             consume();  // consume label name
@@ -773,7 +776,7 @@ Node* Parser::parse_stmt() {
 
     // Identifier followed by colon → label
     if (check(TokenKind::Identifier) && peek_next_is(TokenKind::Colon)) {
-        const char* lbl = arena_.strdup(cur().lexeme);
+        const char* lbl = arena_.strdup(std::string(token_spelling(cur())));
         consume(); consume();  // consume name and :
         Node* body_stmt = nullptr;
         if (!check(TokenKind::RBrace)) {
@@ -830,13 +833,14 @@ Node* Parser::parse_stmt() {
                    has_var_type(resolved) || has_known_fn_name(resolved);
         };
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
-            has_visible_value_binding(cur().lexeme) &&
+            has_visible_value_binding(std::string(token_spelling(cur()))) &&
             follows_assignment_operator(pos_ + 1)) {
             goto expr_stmt;
         }
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
             (peek(1).kind == TokenKind::Dot || peek(1).kind == TokenKind::Arrow)) {
-            const std::string visible_value = resolve_visible_value_name(cur().lexeme);
+            const std::string visible_value =
+                resolve_visible_value_name(std::string(token_spelling(cur())));
             if (!visible_value.empty()) {
                 goto expr_stmt;
             }

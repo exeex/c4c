@@ -14,7 +14,9 @@ class Lexer {
   explicit Lexer(std::string source,
                  LexProfile profile = LexProfile::C);
   std::vector<Token> scan_all();
+  TextTable& text_table() { return text_table_; }
   const TextTable& text_table() const { return text_table_; }
+  FileTable& file_table() { return file_table_; }
   const FileTable& file_table() const { return file_table_; }
 
  private:
