@@ -8,20 +8,22 @@ Source Plan: plan.md
 
 Extended `x86::emit_prepared_module(...)` to support one additional honest
 prepared value-flow family: a minimal x86_64 single-function `i32` parameter
-returned after a single immediate multiply through the canonical prepared-module
+returned after a single immediate bitwise-and through the canonical prepared-module
 boundary. The focused handoff proof now covers the immediate-return case, the
 direct single-parameter passthrough case, the single-parameter add-immediate
 case, the single-parameter sub-immediate case, and the single-parameter
-mul-immediate case by checking prepared/public/generic route equality against
-the same canonical x86 assembly per shape.
+mul-immediate case, and the single-parameter and-immediate case by checking
+prepared/public/generic route equality against the same canonical x86 assembly
+per shape.
 
 ## Suggested Next
 
 Extend `x86::emit_prepared_module(...)` to the next honest prepared-module
 shapes behind the same canonical boundary with another minimal single-block
 single-parameter `i32` value-flow family that still consumes the shared
-prepared contract, such as one more bitwise shape beyond add/sub/mul-immediate,
-without reintroducing any direct-BIR/public-entry fallback path.
+prepared contract, such as one more bounded bitwise shape beyond
+add/sub/mul/and-immediate, without reintroducing any direct-BIR/public-entry
+fallback path.
 
 ## Watchouts
 
@@ -38,10 +40,9 @@ without reintroducing any direct-BIR/public-entry fallback path.
 - keep the current support semantic and minimal: one prepared function, one
   block, and only direct `i32` return families already modeled by the
   canonical prepared boundary, with no hidden mixed fallback
-- arithmetic support is intentionally limited to the honest immediate forms the
-  prepared contract already models; do not widen into operand-order variants or
-  multi-instruction prep unless the canonical prepared route and proof stay
-  equally honest
+- keep commutative immediate support limited to the same one-op prepared shape;
+  do not widen into multi-instruction prep or mixed fallback behavior unless
+  the canonical prepared route and proof stay equally honest
 
 ## Proof
 
