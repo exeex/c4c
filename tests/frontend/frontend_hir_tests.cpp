@@ -342,6 +342,175 @@ int call_helper(int value) { return helper(value); }
               "direct-call lowering should not trust a corrupted raw decl-ref name when LinkNameId is available");
 }
 
+void test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids() {
+  c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+extern int helper(int value);
+
+int (*pick_helper(void))(int) { return helper; }
+)cpp");
+
+  const auto helper_it = hir_module.fn_index.find("helper");
+  expect_true(helper_it != hir_module.fn_index.end(),
+              "fixture helper declaration should be present in the HIR function index");
+  const c4c::hir::Function* helper = hir_module.find_function(helper_it->second);
+  expect_true(helper != nullptr && helper->link_name_id != c4c::kInvalidLinkName,
+              "fixture helper declaration should carry a stable HIR LinkNameId");
+
+  const auto picker_it = hir_module.fn_index.find("pick_helper");
+  expect_true(picker_it != hir_module.fn_index.end(),
+              "fixture picker should be present in the HIR function index");
+  c4c::hir::Function* picker = hir_module.find_function(picker_it->second);
+  expect_true(picker != nullptr,
+              "fixture picker should resolve through the HIR function lookup");
+
+  c4c::hir::DeclRef* returned_ref = nullptr;
+  for (auto& block : picker->blocks) {
+    for (auto& stmt : block.stmts) {
+      auto* ret = std::get_if<c4c::hir::ReturnStmt>(&stmt.payload);
+      if (ret == nullptr || !ret->expr) {
+        continue;
+      }
+      returned_ref = std::get_if<c4c::hir::DeclRef>(&hir_module.expr_pool[ret->expr->value].payload);
+      if (returned_ref != nullptr) {
+        break;
+      }
+    }
+    if (returned_ref != nullptr) {
+      break;
+    }
+  }
+  expect_true(returned_ref != nullptr,
+              "fixture picker should return the helper through a decl-ref designator");
+  returned_ref->link_name_id = helper->link_name_id;
+  expect_true(returned_ref->link_name_id == helper->link_name_id,
+              "fixture decl-ref designator should carry the helper LinkNameId on the bounded semantic route");
+
+  returned_ref->name = "broken_helper_designator_name";
+
+  const c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  const auto lir_picker_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(fn.link_name_id) == "pick_helper";
+      });
+  expect_true(lir_picker_it != lir_module.functions.end(),
+              "fixture picker should still lower through the semantic LinkNameId route");
+  expect_true(!lir_picker_it->blocks.empty(),
+              "fixture picker should still lower into a concrete LIR body");
+
+  const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&lir_picker_it->blocks.back().terminator);
+  expect_true(ret != nullptr,
+              "fixture picker should still end with a concrete LIR return terminator");
+  expect_true(ret->type_str == "ptr",
+              "function-designator return should still lower as a pointer-valued return");
+  expect_true(ret->value_str.has_value() && *ret->value_str == "@helper",
+              "function-designator lowering should recover the semantic helper symbol from LinkNameId");
+  expect_true(!ret->value_str.has_value() || *ret->value_str != "@broken_helper_designator_name",
+              "function-designator lowering should not trust a corrupted raw decl-ref name");
+}
+
+void test_hir_to_lir_decl_backed_call_result_inference_prefers_link_name_ids() {
+  c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+int helper(int value) { return value + 1; }
+
+int (*pick_helper(void))(int) { return helper; }
+
+int call_helper(int value) { return pick_helper()(value); }
+)cpp");
+
+  const auto picker_it = hir_module.fn_index.find("pick_helper");
+  expect_true(picker_it != hir_module.fn_index.end(),
+              "fixture picker should be present in the HIR function index");
+  const c4c::hir::Function* picker = hir_module.find_function(picker_it->second);
+  expect_true(picker != nullptr && picker->link_name_id != c4c::kInvalidLinkName,
+              "fixture picker should carry a stable HIR LinkNameId");
+
+  const auto caller_it = hir_module.fn_index.find("call_helper");
+  expect_true(caller_it != hir_module.fn_index.end(),
+              "fixture caller should be present in the HIR function index");
+  c4c::hir::Function* caller = hir_module.find_function(caller_it->second);
+  expect_true(caller != nullptr,
+              "fixture caller should resolve through the HIR function lookup");
+
+  c4c::hir::DeclRef* picker_ref = nullptr;
+  for (auto& block : caller->blocks) {
+    for (auto& stmt : block.stmts) {
+      auto* ret = std::get_if<c4c::hir::ReturnStmt>(&stmt.payload);
+      if (ret == nullptr || !ret->expr) {
+        continue;
+      }
+      auto* outer_call =
+          std::get_if<c4c::hir::CallExpr>(&hir_module.expr_pool[ret->expr->value].payload);
+      if (outer_call == nullptr) {
+        continue;
+      }
+      auto* inner_call =
+          std::get_if<c4c::hir::CallExpr>(&hir_module.expr_pool[outer_call->callee.value].payload);
+      if (inner_call == nullptr) {
+        continue;
+      }
+      picker_ref = std::get_if<c4c::hir::DeclRef>(&hir_module.expr_pool[inner_call->callee.value].payload);
+      if (picker_ref != nullptr) {
+        break;
+      }
+    }
+    if (picker_ref != nullptr) {
+      break;
+    }
+  }
+  expect_true(picker_ref != nullptr,
+              "fixture caller should retain the picker callee before LIR lowering");
+  picker_ref->link_name_id = picker->link_name_id;
+  expect_true(picker_ref->link_name_id == picker->link_name_id,
+              "fixture nested decl-ref callee should carry the picker LinkNameId on the bounded semantic route");
+
+  picker_ref->name = "broken_pick_helper_declref_name";
+
+  const c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  const auto lir_caller_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(fn.link_name_id) == "call_helper";
+      });
+  expect_true(lir_caller_it != lir_module.functions.end(),
+              "fixture caller should still lower through the semantic LinkNameId route");
+
+  const c4c::codegen::lir::LirCallOp* pick_call = nullptr;
+  const c4c::codegen::lir::LirCallOp* helper_call = nullptr;
+  for (const auto& block : lir_caller_it->blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst);
+      if (call == nullptr) {
+        continue;
+      }
+      if (call->direct_callee_link_name_id == picker->link_name_id) {
+        pick_call = call;
+      } else if (call->direct_callee_link_name_id == c4c::kInvalidLinkName &&
+                 !call->callee.empty() && call->callee.str().front() == '%') {
+        helper_call = call;
+      }
+    }
+  }
+
+  expect_true(pick_call != nullptr,
+              "fixture caller should still lower the picker call after the raw decl-ref name is corrupted");
+  expect_true(pick_call->callee == "@pick_helper",
+              "picker lowering should recover the semantic callee name from LinkNameId");
+  expect_true(pick_call->callee != "@broken_pick_helper_declref_name",
+              "picker lowering should not trust a corrupted raw decl-ref name");
+
+  expect_true(helper_call != nullptr,
+              "fixture caller should still lower the nested indirect helper call after call-result inference");
+  expect_true(helper_call->return_type == "i32",
+              "call-result inference should preserve the nested helper call return type");
+  expect_true(!helper_call->callee_type_suffix.empty(),
+              "call-result inference should preserve the nested helper function-pointer signature");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -777,6 +946,8 @@ int main() {
   test_hir_materializes_link_name_ids_for_emitted_symbols();
   test_hir_to_lir_forwards_function_link_name_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
+  test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();
+  test_hir_to_lir_decl_backed_call_result_inference_prefers_link_name_ids();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();

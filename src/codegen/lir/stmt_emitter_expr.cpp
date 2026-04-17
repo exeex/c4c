@@ -78,10 +78,9 @@ const FnPtrSig* StmtEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& c
     return resolve_callee_fn_ptr_sig(ctx, get_expr(idx->base));
   }
   if (const auto* call = std::get_if<CallExpr>(&callee_e.payload)) {
-    auto find_function = [&](const std::string& name) -> const Function* {
-      const auto fit = mod_.fn_index.find(name);
-      if (fit == mod_.fn_index.end() || fit->second.value >= mod_.functions.size()) return nullptr;
-      return &mod_.functions[fit->second.value];
+    auto find_function = [&](LinkNameId link_name_id, std::string_view fallback_name)
+        -> const Function* {
+      return find_local_target_function(link_name_id, fallback_name);
     };
     auto build_fn_sig = [&](const Function& fn) -> const FnPtrSig* {
       auto [it, _] = inferred_direct_fn_sigs_.try_emplace(fn.id.value);
@@ -105,27 +104,39 @@ const FnPtrSig* StmtEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& c
             if (uret->op == UnaryOp::AddrOf) {
               const Expr& inner = get_expr(uret->operand);
               if (const auto* inner_dr = std::get_if<DeclRef>(&inner.payload)) {
-                if (const Function* returned = find_function(inner_dr->name)) return returned;
+                if (const Function* returned =
+                        find_function(inner_dr->link_name_id, inner_dr->name)) {
+                  return returned;
+                }
               }
             }
           }
           if (const auto* dr2 = std::get_if<DeclRef>(&expr.payload)) {
-            if (const Function* returned = find_function(dr2->name)) return returned;
+            if (const Function* returned = find_function(dr2->link_name_id, dr2->name)) {
+              return returned;
+            }
           }
           if (const auto* ternary = std::get_if<TernaryExpr>(&expr.payload)) {
             const Expr& then_e = get_expr(ternary->then_expr);
             if (const auto* then_dr = std::get_if<DeclRef>(&then_e.payload)) {
-              if (const Function* returned = find_function(then_dr->name)) return returned;
+              if (const Function* returned =
+                      find_function(then_dr->link_name_id, then_dr->name)) {
+                return returned;
+              }
             }
             const Expr& else_e = get_expr(ternary->else_expr);
             if (const auto* else_dr = std::get_if<DeclRef>(&else_e.payload)) {
-              if (const Function* returned = find_function(else_dr->name)) return returned;
+              if (const Function* returned =
+                      find_function(else_dr->link_name_id, else_dr->name)) {
+                return returned;
+              }
             }
           }
           if (const auto* call_expr = std::get_if<CallExpr>(&expr.payload)) {
             const Expr& nested_callee = get_expr(call_expr->callee);
             if (const auto* nested_dr = std::get_if<DeclRef>(&nested_callee.payload)) {
-              if (const Function* called = find_function(nested_dr->name)) {
+              if (const Function* called =
+                      find_function(nested_dr->link_name_id, nested_dr->name)) {
                 if (const Function* returned = self(self, *called)) return returned;
               }
             }
@@ -137,7 +148,7 @@ const FnPtrSig* StmtEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& c
 
     const Expr& inner_callee = get_expr(call->callee);
     if (const auto* dr = std::get_if<DeclRef>(&inner_callee.payload)) {
-      if (const Function* target = find_function(dr->name)) {
+      if (const Function* target = find_function(dr->link_name_id, dr->name)) {
         const FnPtrSig* cached_sig = target->ret_fn_ptr_sig ? &*target->ret_fn_ptr_sig : nullptr;
         if (cached_sig && sig_has_meaningful_prototype(*cached_sig)) return cached_sig;
         if (const Function* returned = infer_returned_function(infer_returned_function, *target)) {
@@ -149,7 +160,7 @@ const FnPtrSig* StmtEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& c
     if (const auto* nested_call = std::get_if<CallExpr>(&inner_callee.payload)) {
       const Expr& nested_callee = get_expr(nested_call->callee);
       if (const auto* nested_dr = std::get_if<DeclRef>(&nested_callee.payload)) {
-        if (const Function* target = find_function(nested_dr->name)) {
+        if (const Function* target = find_function(nested_dr->link_name_id, nested_dr->name)) {
           if (const Function* returned = infer_returned_function(infer_returned_function, *target)) {
             if (const Function* nested_returned =
                     infer_returned_function(infer_returned_function, *returned)) {
@@ -303,9 +314,8 @@ TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const CallExpr& c) {
   }
   const Expr& callee_e = get_expr(c.callee);
   if (const auto* r = std::get_if<DeclRef>(&callee_e.payload)) {
-    const auto fit = mod_.fn_index.find(r->name);
-    if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
-      TypeSpec ret = mod_.functions[fit->second.value].return_type.spec;
+    if (const Function* target = find_local_target_function(r->link_name_id, r->name)) {
+      TypeSpec ret = target->return_type.spec;
       if ((ret.is_lvalue_ref || ret.is_rvalue_ref) && ret.ptr_level == 0) ret.ptr_level++;
       return ret;
     }
@@ -560,12 +570,8 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const E
     return tmp;
   }
 
-  if (const auto fit = mod_.fn_index.find(r.name); fit != mod_.fn_index.end()) {
-    const auto fn_index = fit->second.value;
-    if (fn_index < mod_.functions.size()) {
-      const auto& fn = mod_.functions[fn_index];
-      return llvm_global_sym(emitted_link_name(mod_, fn.link_name_id, fn.name));
-    }
+  if (const Function* fn = find_local_target_function(r.link_name_id, r.name)) {
+    return llvm_global_sym(emitted_link_name(mod_, fn->link_name_id, fn->name));
   }
 
   if ((r.name == "__func__" || r.name == "__FUNCTION__" || r.name == "__PRETTY_FUNCTION__") &&

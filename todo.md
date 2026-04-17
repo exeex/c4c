@@ -6,16 +6,17 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Changed stmt-emitter local-function resolution to prefer semantic
-`LinkNameId` lookup before raw-name fallback on the bounded direct-call route,
-including direct call-target recovery and decl-ref function lvalue emission.
+Extended `stmt_emitter_expr.cpp` so remaining `DeclRef`-based function
+consumers now prefer semantic `LinkNameId` lookup before raw-name fallback,
+covering function-designator rvalue emission plus the call-result/signature
+inference helpers used by nested call lowering.
 
 ## Suggested Next
 
-Extend the same bounded semantic lookup split into the remaining decl-backed
-function consumers that still key off raw `name` strings in
-`stmt_emitter_expr.cpp`, especially call-result type inference and function
-designator rvalue emission, before considering broader `DeclRef` cleanup.
+Decide whether to widen the bounded semantic route by materializing
+`LinkNameId` on additional non-call `DeclRef` construction paths in HIR, so
+the remaining raw-name fallback in expr emission becomes rarer without
+collapsing `LinkNameId` back into string keys.
 
 ## Watchouts
 
@@ -53,6 +54,9 @@ designator rvalue emission, before considering broader `DeclRef` cleanup.
 - unresolved extern-call declarations now forward the callee `DeclRef`’s
   `LinkNameId` into `record_extern_decl`, and direct call ops reuse that same
   id for late callee spelling in the LIR printer
+- the new frontend HIR regressions seed `DeclRef.link_name_id` directly on the
+  bounded function-designator and nested-call fixtures because broader HIR
+  `DeclRef` propagation is still out of scope for this packet
 - keep forwarding explicit ids through LIR carriers and resolve them only at
   late consumers rather than treating legacy `name` strings as the semantic
   source of truth
