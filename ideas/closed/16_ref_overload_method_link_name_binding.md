@@ -1,5 +1,8 @@
 # Ref-Overload Method Link-Name Binding
 
+Status: Closed
+Last Updated: 2026-04-17
+
 ## Goal
 
 Fix C++ ref-qualified method calls so once overload resolution selects the
@@ -43,13 +46,27 @@ expanding into broader parser or template work.
 
 ## Acceptance Criteria
 
-- [ ] lvalue and rvalue ref-qualified method calls keep distinct direct-call
+- [x] lvalue and rvalue ref-qualified method calls keep distinct direct-call
       link identities
-- [ ] member calls that resolve to `&` overloads no longer emit the `__rref`
+- [x] member calls that resolve to `&` overloads no longer emit the `__rref`
       callee by mistake
-- [ ] the focused ref-qualified runtime regression subset passes
+- [x] the focused ref-qualified runtime regression subset passes
 
 ## Validation
 
 - build the compiler
 - run the focused C++ runtime subset covering the ref-qualified method cases
+
+## Completion Notes
+
+- Completed in commit `79b88d68` on 2026-04-17.
+- Fixed resolved member-call direct-call binding so the selected concrete
+  overload name is used directly instead of re-looking up a coarse
+  `tag::method` key that can collapse `&` and `&&` overloads.
+- Focused validation passed for:
+  `cpp_positive_sema_c_style_cast_base_ref_qualified_method_cpp`,
+  `cpp_positive_sema_c_style_cast_ref_qualified_method_cpp`,
+  `cpp_positive_sema_forwarding_ref_qualified_member_dispatch_cpp`,
+  `cpp_positive_sema_function_return_temporary_member_call_runtime_cpp`,
+  `cpp_positive_sema_ref_overload_method_basic_cpp`, and
+  `cpp_positive_sema_ref_overload_method_reads_arg_cpp`.
