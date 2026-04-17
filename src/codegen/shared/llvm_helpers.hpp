@@ -9,108 +9,182 @@
 #include <string>
 
 #include "../../frontend/hir/hir_ir.hpp"
+#include "../../target_profile.hpp"
 
 namespace c4c::codegen::llvm_helpers {
 
 using namespace c4c;
 using namespace c4c::hir;
 
-inline bool target_triple_contains(const std::string& triple, const char* needle) {
-  return !triple.empty() && triple.find(needle) != std::string::npos;
-}
-
 inline std::string& active_target_triple_storage() {
   static thread_local std::string triple;
   return triple;
 }
 
+inline c4c::TargetProfile& active_target_profile_storage() {
+  static thread_local c4c::TargetProfile profile;
+  return profile;
+}
+
+inline c4c::TargetProfile resolve_target_profile(std::string_view target_triple) {
+  return c4c::target_profile_from_triple(
+      target_triple.empty() ? c4c::default_host_target_triple() : target_triple);
+}
+
 inline void set_active_target_triple(const std::string& target_triple) {
   active_target_triple_storage() = target_triple;
+  active_target_profile_storage() = resolve_target_profile(target_triple);
 }
 
 inline const std::string& active_target_triple() {
   return active_target_triple_storage();
 }
 
+inline void set_active_target_profile(const c4c::TargetProfile& target_profile) {
+  active_target_profile_storage() = target_profile;
+  active_target_triple_storage() = target_profile.triple;
+}
+
+inline const c4c::TargetProfile& active_target_profile() {
+  const auto& profile = active_target_profile_storage();
+  if (profile.arch != c4c::TargetArch::Unknown) {
+    return profile;
+  }
+  active_target_profile_storage() = resolve_target_profile(active_target_triple());
+  return active_target_profile_storage();
+}
+
+inline std::string llvm_long_double_ty(const c4c::TargetProfile& target_profile);
+inline bool llvm_va_list_is_pointer_object(const c4c::TargetProfile& target_profile);
+inline std::string llvm_va_list_storage_ty(const c4c::TargetProfile& target_profile);
+inline int llvm_va_list_storage_size(const c4c::TargetProfile& target_profile);
+inline int llvm_va_list_alignment(const c4c::TargetProfile& target_profile);
+inline std::string llvm_va_list_struct_decl(const c4c::TargetProfile& target_profile);
+inline std::string llvm_default_datalayout(const c4c::TargetProfile& target_profile);
+
+inline bool llvm_target_is_aarch64(const c4c::TargetProfile& target_profile) {
+  return target_profile.arch == c4c::TargetArch::Aarch64;
+}
+
 inline bool llvm_target_is_aarch64(const std::string& triple) {
-  return target_triple_contains(triple, "aarch64") || target_triple_contains(triple, "arm64");
+  return llvm_target_is_aarch64(resolve_target_profile(triple));
+}
+
+inline bool llvm_target_is_apple(const c4c::TargetProfile& target_profile) {
+  return target_profile.os == c4c::TargetOs::Darwin &&
+         target_profile.triple.find("apple") != std::string::npos;
 }
 
 inline bool llvm_target_is_apple(const std::string& triple) {
-  return target_triple_contains(triple, "apple") || target_triple_contains(triple, "darwin");
+  return llvm_target_is_apple(resolve_target_profile(triple));
+}
+
+inline bool llvm_target_is_x86_64(const c4c::TargetProfile& target_profile) {
+  return target_profile.arch == c4c::TargetArch::X86_64;
 }
 
 inline bool llvm_target_is_x86_64(const std::string& triple) {
-  return target_triple_contains(triple, "x86_64") ||
-         target_triple_contains(triple, "amd64");
+  return llvm_target_is_x86_64(resolve_target_profile(triple));
+}
+
+inline bool llvm_target_is_amd64_sysv(const c4c::TargetProfile& target_profile) {
+  return llvm_target_is_x86_64(target_profile) &&
+         target_profile.os != c4c::TargetOs::Darwin &&
+         target_profile.os != c4c::TargetOs::Windows;
 }
 
 inline bool llvm_target_is_amd64_sysv(const std::string& triple) {
-  return llvm_target_is_x86_64(triple) &&
-         !llvm_target_is_apple(triple) &&
-         !target_triple_contains(triple, "windows");
+  return llvm_target_is_amd64_sysv(resolve_target_profile(triple));
 }
 
 inline std::string llvm_long_double_ty(const std::string& triple) {
-  if (llvm_target_is_amd64_sysv(triple)) return "x86_fp80";
+  return llvm_long_double_ty(resolve_target_profile(triple));
+}
+
+inline std::string llvm_long_double_ty(const c4c::TargetProfile& target_profile) {
+  if (llvm_target_is_amd64_sysv(target_profile)) return "x86_fp80";
   return "fp128";
 }
 
 inline std::string llvm_long_double_ty() {
-  return llvm_long_double_ty(active_target_triple());
+  return llvm_long_double_ty(active_target_profile());
+}
+
+inline bool llvm_va_list_is_pointer_object(const c4c::TargetProfile& target_profile) {
+  return llvm_target_is_apple(target_profile) && llvm_target_is_aarch64(target_profile);
 }
 
 inline bool llvm_va_list_is_pointer_object(const std::string& target_triple) {
-  return llvm_target_is_apple(target_triple) && llvm_target_is_aarch64(target_triple);
+  return llvm_va_list_is_pointer_object(resolve_target_profile(target_triple));
 }
 
 inline bool llvm_va_list_is_pointer_object() {
-  return llvm_va_list_is_pointer_object(active_target_triple());
+  return llvm_va_list_is_pointer_object(active_target_profile());
 }
 
 inline std::string llvm_va_list_storage_ty(const std::string& target_triple) {
-  return llvm_va_list_is_pointer_object(target_triple) ? "ptr" : "%struct.__va_list_tag_";
+  return llvm_va_list_storage_ty(resolve_target_profile(target_triple));
+}
+
+inline std::string llvm_va_list_storage_ty(const c4c::TargetProfile& target_profile) {
+  return llvm_va_list_is_pointer_object(target_profile) ? "ptr" : "%struct.__va_list_tag_";
 }
 
 inline std::string llvm_va_list_storage_ty() {
-  return llvm_va_list_storage_ty(active_target_triple());
+  return llvm_va_list_storage_ty(active_target_profile());
 }
 
 inline int llvm_va_list_storage_size(const std::string& target_triple) {
-  if (llvm_va_list_is_pointer_object(target_triple)) return 8;
-  if (llvm_target_is_amd64_sysv(target_triple)) return 24;
+  return llvm_va_list_storage_size(resolve_target_profile(target_triple));
+}
+
+inline int llvm_va_list_storage_size(const c4c::TargetProfile& target_profile) {
+  if (llvm_va_list_is_pointer_object(target_profile)) return 8;
+  if (llvm_target_is_amd64_sysv(target_profile)) return 24;
   return 32;
 }
 
 inline int llvm_va_list_storage_size() {
-  return llvm_va_list_storage_size(active_target_triple());
+  return llvm_va_list_storage_size(active_target_profile());
 }
 
 inline int llvm_va_list_alignment(const std::string& target_triple) {
-  if (llvm_target_is_amd64_sysv(target_triple)) return 16;
+  return llvm_va_list_alignment(resolve_target_profile(target_triple));
+}
+
+inline int llvm_va_list_alignment(const c4c::TargetProfile& target_profile) {
+  if (llvm_target_is_amd64_sysv(target_profile)) return 16;
   return 8;
 }
 
 inline int llvm_va_list_alignment() {
-  return llvm_va_list_alignment(active_target_triple());
+  return llvm_va_list_alignment(active_target_profile());
 }
 
 inline std::string llvm_va_list_struct_decl(const std::string& target_triple) {
-  if (llvm_target_is_amd64_sysv(target_triple)) {
+  return llvm_va_list_struct_decl(resolve_target_profile(target_triple));
+}
+
+inline std::string llvm_va_list_struct_decl(const c4c::TargetProfile& target_profile) {
+  if (llvm_target_is_amd64_sysv(target_profile)) {
     return "%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }";
   }
   return "%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }";
 }
 
 inline std::string llvm_default_datalayout(const std::string& target_triple) {
-  if (target_triple.empty()) return "";
-  if (llvm_target_is_aarch64(target_triple) && llvm_target_is_apple(target_triple))
+  return llvm_default_datalayout(resolve_target_profile(target_triple));
+}
+
+inline std::string llvm_default_datalayout(const c4c::TargetProfile& target_profile) {
+  if (target_profile.triple.empty()) return "";
+  if (llvm_target_is_aarch64(target_profile) && llvm_target_is_apple(target_profile))
     return "e-m:o-i64:64-i128:128-n32:64-S128-Fn32";
-  if (llvm_target_is_aarch64(target_triple))
+  if (llvm_target_is_aarch64(target_profile))
     return "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32";
-  if (target_triple_contains(target_triple, "x86_64") && llvm_target_is_apple(target_triple))
+  if (llvm_target_is_x86_64(target_profile) && llvm_target_is_apple(target_profile))
     return "e-m:o-i64:64-f80:128-n8:16:32:64-S128";
-  if (target_triple_contains(target_triple, "x86_64"))
+  if (llvm_target_is_x86_64(target_profile))
     return "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
   return "";
 }
