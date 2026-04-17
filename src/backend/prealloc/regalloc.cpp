@@ -2,8 +2,10 @@
 #include "stack_layout/support.hpp"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -22,6 +24,160 @@ struct ProgramPointLocation {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
 };
+
+constexpr std::array<const char*, 6> kX86GeneralAbiRegisters = {
+    "rdi", "rsi", "rdx", "rcx", "r8", "r9",
+};
+constexpr std::array<const char*, 8> kX86FloatAbiRegisters = {
+    "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7",
+};
+constexpr std::array<const char*, 8> kAarch64GeneralAbiRegisters = {
+    "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
+};
+constexpr std::array<const char*, 8> kRiscvGeneralAbiRegisters = {
+    "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7",
+};
+constexpr std::array<const char*, 8> kRiscvFloatAbiRegisters = {
+    "fa0", "fa1", "fa2", "fa3", "fa4", "fa5", "fa6", "fa7",
+};
+
+template <std::size_t N>
+[[nodiscard]] std::optional<std::string> indexed_register_name(
+    const std::array<const char*, N>& register_names,
+    std::size_t index) {
+  if (index >= register_names.size() || register_names[index] == nullptr ||
+      register_names[index][0] == '\0') {
+    return std::nullopt;
+  }
+  return std::string(register_names[index]);
+}
+
+[[nodiscard]] bool is_float_type(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return true;
+    default:
+      return false;
+  }
+}
+
+[[nodiscard]] bool is_float_abi_class(bir::AbiValueClass abi_class) {
+  switch (abi_class) {
+    case bir::AbiValueClass::Sse:
+    case bir::AbiValueClass::X87:
+      return true;
+    default:
+      return false;
+  }
+}
+
+[[nodiscard]] std::optional<std::string> aarch64_float_register_name(bir::TypeKind type,
+                                                                     std::size_t index) {
+  if (index >= 8) {
+    return std::nullopt;
+  }
+  if (type == bir::TypeKind::F32) {
+    return "s" + std::to_string(index);
+  }
+  if (type == bir::TypeKind::F64) {
+    return "d" + std::to_string(index);
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> call_arg_destination_register_name(
+    Target target,
+    const bir::CallArgAbiInfo& abi,
+    std::size_t arg_index) {
+  if (!abi.passed_in_register) {
+    return std::nullopt;
+  }
+
+  switch (target) {
+    case Target::X86_64:
+      if (is_float_abi_class(abi.primary_class)) {
+        return indexed_register_name(kX86FloatAbiRegisters, arg_index);
+      }
+      if (abi.primary_class == bir::AbiValueClass::Integer) {
+        return indexed_register_name(kX86GeneralAbiRegisters, arg_index);
+      }
+      return std::nullopt;
+    case Target::I686:
+      return std::nullopt;
+    case Target::Aarch64:
+      if (is_float_abi_class(abi.primary_class)) {
+        return aarch64_float_register_name(abi.type, arg_index);
+      }
+      if (abi.primary_class == bir::AbiValueClass::Integer) {
+        return indexed_register_name(kAarch64GeneralAbiRegisters, arg_index);
+      }
+      return std::nullopt;
+    case Target::Riscv64:
+      if (is_float_abi_class(abi.primary_class) || is_float_type(abi.type)) {
+        return indexed_register_name(kRiscvFloatAbiRegisters, arg_index);
+      }
+      if (abi.primary_class == bir::AbiValueClass::Integer) {
+        return indexed_register_name(kRiscvGeneralAbiRegisters, arg_index);
+      }
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> call_result_destination_register_name(
+    Target target,
+    const bir::CallResultAbiInfo& abi) {
+  if (abi.returned_in_memory || abi.primary_class == bir::AbiValueClass::Memory ||
+      abi.type == bir::TypeKind::Void) {
+    return std::nullopt;
+  }
+
+  switch (target) {
+    case Target::X86_64:
+      if (is_float_abi_class(abi.primary_class) || is_float_type(abi.type)) {
+        return std::string("xmm0");
+      }
+      return std::string("rax");
+    case Target::I686:
+      return is_float_type(abi.type) ? std::nullopt : std::optional<std::string>{"eax"};
+    case Target::Aarch64:
+      if (is_float_abi_class(abi.primary_class) || is_float_type(abi.type)) {
+        return aarch64_float_register_name(abi.type, 0);
+      }
+      return std::string("x0");
+    case Target::Riscv64:
+      if (is_float_abi_class(abi.primary_class) || is_float_type(abi.type)) {
+        return std::string("fa0");
+      }
+      return std::string("a0");
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> function_return_destination_register_name(
+    Target target,
+    bir::TypeKind type) {
+  if (type == bir::TypeKind::Void) {
+    return std::nullopt;
+  }
+
+  switch (target) {
+    case Target::X86_64:
+      return is_float_type(type) ? std::optional<std::string>{"xmm0"}
+                                 : std::optional<std::string>{"rax"};
+    case Target::I686:
+      return is_float_type(type) ? std::nullopt : std::optional<std::string>{"eax"};
+    case Target::Aarch64:
+      return is_float_type(type) ? aarch64_float_register_name(type, 0)
+                                 : std::optional<std::string>{"x0"};
+    case Target::Riscv64:
+      return is_float_type(type) ? std::optional<std::string>{"fa0"}
+                                 : std::optional<std::string>{"a0"};
+  }
+  return std::nullopt;
+}
 
 [[nodiscard]] PreparedRegisterClass classify_register_class(const PreparedLivenessValue& value) {
   switch (value.type) {
@@ -234,7 +390,8 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
         return move.from_value_id == source.value_id && move.to_value_id == destination.value_id &&
                move.destination_kind == PreparedMoveDestinationKind::Value &&
                move.destination_storage_kind == assigned_storage_kind(destination) &&
-               !move.destination_abi_index.has_value() && move.block_index == block_index &&
+               !move.destination_abi_index.has_value() &&
+               !move.destination_register_name.has_value() && move.block_index == block_index &&
                move.instruction_index == instruction_index;
       });
   if (duplicate != regalloc_function.move_resolution.end()) {
@@ -247,6 +404,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .destination_kind = PreparedMoveDestinationKind::Value,
       .destination_storage_kind = assigned_storage_kind(destination),
       .destination_abi_index = std::nullopt,
+      .destination_register_name = std::nullopt,
       .block_index = block_index,
       .instruction_index = instruction_index,
       .reason = std::move(reason),
@@ -260,6 +418,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    PreparedMoveStorageKind from_kind,
                                    PreparedMoveStorageKind to_kind,
                                    std::optional<std::size_t> destination_abi_index,
+                                   std::optional<std::string> destination_register_name,
                                    std::size_t block_index,
                                    std::size_t instruction_index,
                                    std::string reason) {
@@ -276,6 +435,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                move.destination_kind == destination_kind &&
                move.destination_storage_kind == to_kind &&
                move.destination_abi_index == destination_abi_index &&
+               move.destination_register_name == destination_register_name &&
                move.block_index == block_index && move.instruction_index == instruction_index;
       });
   if (duplicate != regalloc_function.move_resolution.end()) {
@@ -288,6 +448,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .destination_kind = destination_kind,
       .destination_storage_kind = to_kind,
       .destination_abi_index = destination_abi_index,
+      .destination_register_name = std::move(destination_register_name),
       .block_index = block_index,
       .instruction_index = instruction_index,
       .reason = std::move(reason),
@@ -581,7 +742,8 @@ void append_consumer_move_resolution(const bir::Function& function,
   return PreparedMoveStorageKind::Register;
 }
 
-void append_call_arg_move_resolution(const bir::Function& function,
+void append_call_arg_move_resolution(Target target,
+                                     const bir::Function& function,
                                      PreparedRegallocFunction& regalloc_function) {
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
@@ -603,6 +765,11 @@ void append_call_arg_move_resolution(const bir::Function& function,
         }
 
         const PreparedMoveStorageKind consumed_kind = call_arg_storage_kind(*call, arg_index);
+        const auto destination_register_name = arg_index < call->arg_abi.size()
+                                                   ? call_arg_destination_register_name(target,
+                                                                                       call->arg_abi[arg_index],
+                                                                                       arg_index)
+                                                   : std::nullopt;
         append_move_resolution_record(regalloc_function,
                                       source->value_id,
                                       source->value_id,
@@ -610,6 +777,7 @@ void append_call_arg_move_resolution(const bir::Function& function,
                                       assigned_storage_kind(*source),
                                       consumed_kind,
                                       arg_index,
+                                      destination_register_name,
                                       block_index,
                                       instruction_index,
                                       storage_transfer_reason("call_arg",
@@ -620,7 +788,8 @@ void append_call_arg_move_resolution(const bir::Function& function,
   }
 }
 
-void append_call_result_move_resolution(const bir::Function& function,
+void append_call_result_move_resolution(Target target,
+                                        const bir::Function& function,
                                         PreparedRegallocFunction& regalloc_function) {
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
@@ -636,6 +805,10 @@ void append_call_result_move_resolution(const bir::Function& function,
       }
 
       const PreparedMoveStorageKind consumed_kind = call_result_storage_kind(*call);
+      const auto destination_register_name = call->result_abi.has_value()
+                                                 ? call_result_destination_register_name(
+                                                       target, *call->result_abi)
+                                                 : std::nullopt;
       append_move_resolution_record(regalloc_function,
                                     result->value_id,
                                     result->value_id,
@@ -643,6 +816,7 @@ void append_call_result_move_resolution(const bir::Function& function,
                                     assigned_storage_kind(*result),
                                     consumed_kind,
                                     std::nullopt,
+                                    destination_register_name,
                                     block_index,
                                     instruction_index,
                                     storage_transfer_reason("call_result",
@@ -652,7 +826,8 @@ void append_call_result_move_resolution(const bir::Function& function,
   }
 }
 
-void append_return_move_resolution(const bir::Function& function,
+void append_return_move_resolution(Target target,
+                                   const bir::Function& function,
                                    PreparedRegallocFunction& regalloc_function) {
   const PreparedMoveStorageKind consumed_kind = function_return_storage_kind(function);
   if (consumed_kind == PreparedMoveStorageKind::None) {
@@ -671,6 +846,8 @@ void append_return_move_resolution(const bir::Function& function,
       continue;
     }
 
+    const auto destination_register_name =
+        function_return_destination_register_name(target, function.return_type);
     append_move_resolution_record(regalloc_function,
                                   source->value_id,
                                   source->value_id,
@@ -678,6 +855,7 @@ void append_return_move_resolution(const bir::Function& function,
                                   assigned_storage_kind(*source),
                                   consumed_kind,
                                   std::nullopt,
+                                  destination_register_name,
                                   block_index,
                                   block.insts.size(),
                                   storage_transfer_reason("return",
@@ -983,9 +1161,9 @@ void BirPreAlloc::run_regalloc() {
         function != nullptr) {
       append_phi_move_resolution(*function, regalloc_function);
       append_consumer_move_resolution(*function, regalloc_function);
-      append_call_arg_move_resolution(*function, regalloc_function);
-      append_call_result_move_resolution(*function, regalloc_function);
-      append_return_move_resolution(*function, regalloc_function);
+      append_call_arg_move_resolution(prepared_.target, *function, regalloc_function);
+      append_call_result_move_resolution(prepared_.target, *function, regalloc_function);
+      append_return_move_resolution(prepared_.target, *function, regalloc_function);
     }
 
     prepared_.stack_layout.frame_size_bytes =

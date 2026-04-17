@@ -272,6 +272,7 @@ struct PreparedMoveResolution {
   PreparedMoveDestinationKind destination_kind = PreparedMoveDestinationKind::Value;
   PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
   std::optional<std::size_t> destination_abi_index;
+  std::optional<std::string> destination_register_name;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
   std::string reason;

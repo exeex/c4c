@@ -6,26 +6,27 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended the Step 4 public `PreparedMoveResolution` contract with explicit
-destination metadata: `destination_kind`, `destination_storage_kind`, and an
-optional `destination_abi_index`. `run_regalloc()` now populates that surface
-for generic value-to-value moves plus ABI-targeted call-argument, call-result,
-and return-site transfers, while preserving the existing `(from_value_id,
-to_value_id, block_index, instruction_index)` shape and tightening dedupe so
-ABI-indexed call-argument destinations do not collapse together.
+Extended the Step 4 public `PreparedMoveResolution` contract with an optional
+`destination_register_name` alongside the existing destination kind, storage
+kind, and ABI index metadata. `run_regalloc()` now keeps generic value-to-value
+moves free of target-specific naming while ABI-targeted call-argument,
+call-result, and return-site transfers publish the concrete physical
+destination register name when the active target ABI makes that destination
+determinable.
 
 Focused `backend_prepare_liveness` coverage now asserts both families: phi and
-consumer moves still publish the generic `Value` destination surface, while
-call-argument, call-result, and return-site bookkeeping now prove the concrete
-ABI destination kind and storage kind, including the argument index for the
-stack-backed fourth call argument.
+consumer moves still publish the generic `Value` destination surface without
+ABI/register decoration, while the RISC-V call-argument, call-result, and
+return-site proofs now assert the concrete destination register names (`a3`
+for the fourth integer argument and `fa0` for float call-result/return
+destinations).
 
 ## Suggested Next
 
-Thread concrete physical destination names through the new move-resolution ABI
-surface once the active BIR/prealloc path exposes per-target argument and
-return-register identities, so Step 4 can distinguish ABI classes from actual
-register targets.
+Replace the current coarse function-level return destination inference with
+explicit per-target return ABI metadata in the active BIR/prealloc contract, so
+Step 4 return-site move resolution no longer has to derive its concrete
+destination register from `bir::Function.return_type` alone.
 
 ## Watchouts
 
@@ -49,11 +50,13 @@ register targets.
   slot; the dedupe key now also includes ABI destination metadata so repeated
   self-keyed ABI moves can stay distinguishable by destination kind/index
 - call-argument, call-result, and return-site move records now publish
-  destination kind plus coarse destination storage, but the active public
-  contract still does not carry concrete physical register names
-- return-site move records still derive their destination storage from the
-  coarse function-level return type on `bir::Function`; a later packet should
-  switch that over to explicit per-target return ABI metadata once it exists
+  destination kind, storage, and concrete register name when the target ABI
+  makes that identity available, but ordinary value-destination moves must stay
+  free of ABI-specific decoration
+- return-site move records now publish a concrete destination register name,
+  but they still derive that identity from the coarse function-level return
+  type on `bir::Function`; a later packet should switch that over to explicit
+  per-target return ABI metadata once it exists
 - the focused call-result proof currently uses an `F32` value on the active
   RISC-V target because the general-register seed pools are active while float
   register pools are still absent; if float allocation becomes active later,
@@ -84,6 +87,6 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_liveness$ > test_after.log
 2>&1`
-after teaching `run_regalloc()` to publish explicit ABI destination metadata in
-`move_resolution` records for call-site and return-site transfers.
+after teaching `run_regalloc()` to publish explicit ABI destination register
+names in `move_resolution` records for call-site and return-site transfers.
 Canonical proof log: `test_after.log`.
