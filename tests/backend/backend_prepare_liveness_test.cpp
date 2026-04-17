@@ -85,15 +85,28 @@ bool has_interference_edge(const prepare::PreparedRegallocFunction& function,
   return false;
 }
 
-bool has_spill_reload_op(const prepare::PreparedRegallocFunction& function,
-                         prepare::PreparedValueId value_id,
-                         prepare::PreparedSpillReloadOpKind kind) {
+int count_spill_reload_ops(const prepare::PreparedRegallocFunction& function,
+                           prepare::PreparedValueId value_id,
+                           prepare::PreparedSpillReloadOpKind kind) {
+  int count = 0;
   for (const auto& op : function.spill_reload_ops) {
     if (op.value_id == value_id && op.op_kind == kind) {
-      return true;
+      ++count;
     }
   }
-  return false;
+  return count;
+}
+
+const prepare::PreparedMoveResolution* find_move_resolution(
+    const prepare::PreparedRegallocFunction& function,
+    prepare::PreparedValueId from_value_id,
+    prepare::PreparedValueId to_value_id) {
+  for (const auto& move : function.move_resolution) {
+    if (move.from_value_id == from_value_id && move.to_value_id == to_value_id) {
+      return &move;
+    }
+  }
+  return nullptr;
 }
 
 prepare::PreparedBirModule prepare_phi_module() {
@@ -200,6 +213,147 @@ prepare::PreparedBirModule prepare_phi_module_with_regalloc() {
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_regalloc();
   return std::move(planner.prepared());
+}
+
+prepare::PreparedBirModule prepare_phi_join_move_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "phi_join_move_resolution";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.flag",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.flag"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .true_label = "left",
+      .false_label = "right",
+  };
+
+  bir::Block left;
+  left.label = "left";
+  left.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "left.hot0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(10),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  left.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "left.hot1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(20),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  left.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "left.hot2"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(30),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  left.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "left.feed"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(40),
+      .rhs = bir::Value::immediate_i32(4),
+  });
+  left.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "left.keep0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "left.hot0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "left.hot1"),
+  });
+  left.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "left.keep1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "left.hot1"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "left.hot2"),
+  });
+  left.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "left.keep2"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "left.hot2"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "left.hot0"),
+  });
+  left.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block right;
+  right.label = "right";
+  right.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "right.feed"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(50),
+      .rhs = bir::Value::immediate_i32(5),
+  });
+  right.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "phi.move"),
+      .incomings = {
+          bir::PhiIncoming{.label = "left",
+                           .value = bir::Value::named(bir::TypeKind::I32, "left.feed")},
+          bir::PhiIncoming{.label = "right",
+                           .value = bir::Value::named(bir::TypeKind::I32, "right.feed")},
+      },
+  });
+  join.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "phi.use0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "phi.move"),
+      .rhs = bir::Value::immediate_i32(6),
+  });
+  join.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "phi.use1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "phi.use0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "phi.move"),
+  });
+  join.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "phi.use1"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(left));
+  function.blocks.push_back(std::move(right));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
 }
 
 prepare::PreparedBirModule prepare_byval_home_slot_module_with_regalloc() {
@@ -507,10 +661,17 @@ prepare::PreparedBirModule prepare_evicted_spill_module_with_regalloc() {
   });
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "late.merge"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "local0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "carry1"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "result"),
       .operand_type = bir::TypeKind::I32,
       .lhs = bir::Value::named(bir::TypeKind::I32, "merge"),
-      .rhs = bir::Value::named(bir::TypeKind::I32, "carry1"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "late.merge"),
   });
   entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "result"),
@@ -765,6 +926,45 @@ int check_byval_home_slot_regalloc(const prepare::PreparedBirModule& prepared) {
   return 0;
 }
 
+int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
+  const auto* function = find_regalloc_function(prepared, "phi_join_move_resolution");
+  if (function == nullptr) {
+    return fail("expected regalloc output for phi_join_move_resolution");
+  }
+
+  const auto* left_feed = find_regalloc_value(*function, "left.feed");
+  const auto* right_feed = find_regalloc_value(*function, "right.feed");
+  const auto* phi = find_regalloc_value(*function, "phi.move");
+  if (left_feed == nullptr || right_feed == nullptr || phi == nullptr) {
+    return fail("expected phi join values to appear in regalloc output");
+  }
+
+  if (left_feed->allocation_status != prepare::PreparedAllocationStatus::AssignedStackSlot ||
+      !left_feed->assigned_stack_slot.has_value() || left_feed->assigned_register.has_value()) {
+    return fail("expected left.feed to fall back to a stack slot under join-side pressure");
+  }
+  if (phi->allocation_status != prepare::PreparedAllocationStatus::AssignedRegister ||
+      !phi->assigned_register.has_value()) {
+    return fail("expected the joined phi value to stay register-backed");
+  }
+  if (function->move_resolution.empty()) {
+    return fail("expected the phi join to publish move-resolution bookkeeping");
+  }
+
+  const auto* move = find_move_resolution(*function, left_feed->value_id, phi->value_id);
+  if (move == nullptr || move->block_index != 3 || move->instruction_index != 0 ||
+      move->reason != "phi_join_stack_to_register") {
+    return fail("expected the stack-backed left phi incoming to publish a join-time stack-to-register move");
+  }
+  if (right_feed->assigned_register.has_value() &&
+      right_feed->assigned_register->register_name == phi->assigned_register->register_name &&
+      find_move_resolution(*function, right_feed->value_id, phi->value_id) != nullptr) {
+    return fail("expected matching register-backed phi incoming storage to skip redundant move resolution");
+  }
+
+  return 0;
+}
+
 int check_call_crossing_regalloc_spillover(const prepare::PreparedBirModule& prepared) {
   const auto* function = find_regalloc_function(prepared, "call_crossing_spillover");
   if (function == nullptr) {
@@ -865,9 +1065,9 @@ int check_evicted_value_spill_ops(const prepare::PreparedBirModule& prepared) {
       !local0->assigned_stack_slot.has_value() || local0->assigned_register.has_value()) {
     return fail("expected the evicted local0 value to fall back to a real stack slot");
   }
-  if (!has_spill_reload_op(*function, local0->value_id, prepare::PreparedSpillReloadOpKind::Spill) ||
-      !has_spill_reload_op(*function, local0->value_id, prepare::PreparedSpillReloadOpKind::Reload)) {
-    return fail("expected the evicted local0 value to publish explicit spill and reload bookkeeping");
+  if (count_spill_reload_ops(*function, local0->value_id, prepare::PreparedSpillReloadOpKind::Spill) != 1 ||
+      count_spill_reload_ops(*function, local0->value_id, prepare::PreparedSpillReloadOpKind::Reload) != 2) {
+    return fail("expected the evicted local0 value to publish one spill and a reload for each later use");
   }
 
   return 0;
@@ -915,6 +1115,11 @@ int main() {
 
   const auto byval_prepared = prepare_byval_home_slot_module_with_regalloc();
   if (const int rc = check_byval_home_slot_regalloc(byval_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto phi_join_move_prepared = prepare_phi_join_move_module_with_regalloc();
+  if (const int rc = check_phi_join_move_resolution(phi_join_move_prepared); rc != 0) {
     return rc;
   }
 

@@ -6,24 +6,25 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended the bounded Step 4 allocator so regalloc ranking now incorporates the
-existing liveness loop-depth data instead of raw use counts alone, and explicit
-spill bookkeeping is published when an evicted register value really falls back
-to a stack slot.
+Extended the bounded Step 4 allocator so regalloc now publishes join-time
+`move_resolution` entries when phi inputs and phi results land in different
+storage, and spill bookkeeping emits reload operations for each later use after
+an interval is evicted to a stack slot instead of only the first post-spill
+use.
 
-Focused `backend_prepare_liveness` coverage now proves both additions: a
-loop-carried `loop.hot` value publishes loop-depth-weighted priority /
-spill-weight above its raw non-loop floor, and an `evicted_value_spill_ops`
-shape records explicit `spill` / `reload` operations when a hotter post-call
-interval takes the lone caller-saved seed while both callee-saved registers are
-already protected by call-crossing values.
+Focused `backend_prepare_liveness` coverage now proves both additions: a new
+`phi_join_move_resolution` shape forces one phi incoming onto a stack slot
+while the joined phi result remains register-backed and therefore publishes a
+`phi_join_stack_to_register` move record, and the expanded
+`evicted_value_spill_ops` shape records one spill plus a reload for each later
+`local0` use after eviction.
 
 ## Suggested Next
 
-Extend Step 4 from bounded spill bookkeeping into more Rust-like move/reload
-planning: when stack-backed values and register-backed values meet at joins or
-late uses, publish `move_resolution` and more precise reload points instead of
-only the first spill/reload markers for fully evicted intervals.
+Extend Step 4 from bounded phi/join bookkeeping into broader consumption-aware
+move planning: when values stay register-backed across non-phi copies or
+call-adjacent late uses, publish transfer records keyed to the consuming site
+instead of only phi joins and fully evicted stack reloads.
 
 ## Watchouts
 
@@ -35,9 +36,13 @@ only the first spill/reload markers for fully evicted intervals.
   `PreparedLivenessBlock` ranges; if program-point numbering changes, regalloc
   weighting and spill-op locations need to stay in lockstep with that contract
 - the new spill bookkeeping only records real eviction-to-stack fallout for
-  values that actually lose a register and stay stack-backed afterward; it does
-  not yet publish join moves or repeated reload/store traffic for split
-  intervals
+  values that actually lose a register and stay stack-backed afterward; reloads
+  are now emitted per later use point, but this is still bounded bookkeeping
+  rather than true split-interval placement
+- `move_resolution` is currently a phi-join storage-reconciliation surface: it
+  compares the assigned storage of named phi incomings against the phi result
+  and intentionally skips redundant entries when both sides already share the
+  same register or stack slot
 - `PreparedAllocationConstraint.preferred_register_names` now carries the
   caller-vs-callee preference split, while `cannot_cross_call` is reserved for
   the stronger call-spanning prohibition; downstream consumers should keep
@@ -63,7 +68,7 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_liveness$ > test_after.log
 2>&1`
-after teaching `run_regalloc()` to weight liveness uses by loop depth and to
-publish explicit spill/reload bookkeeping for values that are evicted from a
-register and finish stack-backed.
+after teaching `run_regalloc()` to publish phi-join move-resolution bookkeeping
+for storage mismatches and to emit reload bookkeeping for each later use of an
+evicted stack-backed value.
 Canonical proof log: `test_after.log`.

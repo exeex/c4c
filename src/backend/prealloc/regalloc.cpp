@@ -23,6 +23,12 @@ struct ProgramPointLocation {
   std::size_t instruction_index = 0;
 };
 
+enum class AssignedStorageKind {
+  None,
+  Register,
+  StackSlot,
+};
+
 [[nodiscard]] PreparedRegisterClass classify_register_class(const PreparedLivenessValue& value) {
   switch (value.type) {
     case bir::TypeKind::I1:
@@ -159,6 +165,53 @@ struct ProgramPointLocation {
   return stack_layout::normalize_alignment(value.type, 0, normalized_value_size(value));
 }
 
+[[nodiscard]] AssignedStorageKind assigned_storage_kind(const PreparedRegallocValue& value) {
+  if (value.assigned_register.has_value()) {
+    return AssignedStorageKind::Register;
+  }
+  if (value.assigned_stack_slot.has_value()) {
+    return AssignedStorageKind::StackSlot;
+  }
+  return AssignedStorageKind::None;
+}
+
+[[nodiscard]] bool assigned_storage_matches(const PreparedRegallocValue& lhs,
+                                            const PreparedRegallocValue& rhs) {
+  const AssignedStorageKind lhs_kind = assigned_storage_kind(lhs);
+  const AssignedStorageKind rhs_kind = assigned_storage_kind(rhs);
+  if (lhs_kind != rhs_kind) {
+    return false;
+  }
+  switch (lhs_kind) {
+    case AssignedStorageKind::None:
+      return true;
+    case AssignedStorageKind::Register:
+      return lhs.assigned_register->register_name == rhs.assigned_register->register_name;
+    case AssignedStorageKind::StackSlot:
+      return lhs.assigned_stack_slot->slot_id == rhs.assigned_stack_slot->slot_id;
+  }
+  return false;
+}
+
+[[nodiscard]] std::string phi_move_resolution_reason(const PreparedRegallocValue& from,
+                                                     const PreparedRegallocValue& to) {
+  const AssignedStorageKind from_kind = assigned_storage_kind(from);
+  const AssignedStorageKind to_kind = assigned_storage_kind(to);
+  if (from_kind == AssignedStorageKind::StackSlot && to_kind == AssignedStorageKind::Register) {
+    return "phi_join_stack_to_register";
+  }
+  if (from_kind == AssignedStorageKind::Register && to_kind == AssignedStorageKind::StackSlot) {
+    return "phi_join_register_to_stack";
+  }
+  if (from_kind == AssignedStorageKind::Register && to_kind == AssignedStorageKind::Register) {
+    return "phi_join_register_to_register";
+  }
+  if (from_kind == AssignedStorageKind::StackSlot && to_kind == AssignedStorageKind::StackSlot) {
+    return "phi_join_stack_to_stack";
+  }
+  return "phi_join_storage_resolution";
+}
+
 void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
                                   std::size_t start_point) {
   active.erase(std::remove_if(active.begin(),
@@ -283,6 +336,110 @@ template <typename CanEvict>
     return std::numeric_limits<std::size_t>::max();
   }
   return value.live_interval->start_point;
+}
+
+[[nodiscard]] const bir::Function* find_bir_function(const bir::Module& module,
+                                                     std::string_view function_name) {
+  const auto it = std::find_if(module.functions.begin(),
+                               module.functions.end(),
+                               [function_name](const bir::Function& function) {
+                                 return function.name == function_name;
+                               });
+  if (it == module.functions.end()) {
+    return nullptr;
+  }
+  return &*it;
+}
+
+[[nodiscard]] const PreparedRegallocValue* find_regalloc_value(
+    const PreparedRegallocFunction& function,
+    std::string_view value_name) {
+  const auto it = std::find_if(function.values.begin(),
+                               function.values.end(),
+                               [value_name](const PreparedRegallocValue& value) {
+                                 return value.value_name == value_name;
+                               });
+  if (it == function.values.end()) {
+    return nullptr;
+  }
+  return &*it;
+}
+
+void append_phi_move_resolution(const bir::Function& function,
+                                PreparedRegallocFunction& regalloc_function) {
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    for (std::size_t instruction_index = 0; instruction_index < block.insts.size(); ++instruction_index) {
+      const auto* phi = std::get_if<bir::PhiInst>(&block.insts[instruction_index]);
+      if (phi == nullptr || phi->result.kind != bir::Value::Kind::Named) {
+        continue;
+      }
+
+      const auto* destination = find_regalloc_value(regalloc_function, phi->result.name);
+      if (destination == nullptr || assigned_storage_kind(*destination) == AssignedStorageKind::None) {
+        continue;
+      }
+
+      for (const auto& incoming : phi->incomings) {
+        if (incoming.value.kind != bir::Value::Kind::Named) {
+          continue;
+        }
+
+        const auto* source = find_regalloc_value(regalloc_function, incoming.value.name);
+        if (source == nullptr || assigned_storage_kind(*source) == AssignedStorageKind::None ||
+            assigned_storage_matches(*source, *destination)) {
+          continue;
+        }
+
+        regalloc_function.move_resolution.push_back(PreparedMoveResolution{
+            .from_value_id = source->value_id,
+            .to_value_id = destination->value_id,
+            .block_index = block_index,
+            .instruction_index = instruction_index,
+            .reason = phi_move_resolution_reason(*source, *destination),
+        });
+      }
+    }
+  }
+}
+
+void append_spill_reload_ops(const PreparedLivenessFunction& liveness_function,
+                             const std::vector<std::optional<std::size_t>>& spill_points,
+                             PreparedRegallocFunction& regalloc_function) {
+  for (std::size_t value_index = 0; value_index < regalloc_function.values.size(); ++value_index) {
+    const auto spill_point = spill_points[value_index];
+    const auto& value = regalloc_function.values[value_index];
+    if (!spill_point.has_value() || !value.assigned_stack_slot.has_value()) {
+      continue;
+    }
+
+    if (const auto spill_location = locate_program_point(liveness_function, *spill_point);
+        spill_location.has_value()) {
+      regalloc_function.spill_reload_ops.push_back(PreparedSpillReloadOp{
+          .value_id = value.value_id,
+          .op_kind = PreparedSpillReloadOpKind::Spill,
+          .block_index = spill_location->block_index,
+          .instruction_index = spill_location->instruction_index,
+      });
+    }
+
+    std::optional<std::size_t> last_reload_point;
+    for (const std::size_t use_point : liveness_function.values[value_index].use_points) {
+      if (use_point <= *spill_point || last_reload_point == use_point) {
+        continue;
+      }
+      if (const auto reload_location = locate_program_point(liveness_function, use_point);
+          reload_location.has_value()) {
+        regalloc_function.spill_reload_ops.push_back(PreparedSpillReloadOp{
+            .value_id = value.value_id,
+            .op_kind = PreparedSpillReloadOpKind::Reload,
+            .block_index = reload_location->block_index,
+            .instruction_index = reload_location->instruction_index,
+        });
+        last_reload_point = use_point;
+      }
+    }
+  }
 }
 
 }  // namespace
@@ -538,39 +695,10 @@ void BirPreAlloc::run_regalloc() {
       ++assigned_stack_count;
     }
 
-    for (std::size_t value_index = 0; value_index < regalloc_function.values.size(); ++value_index) {
-      const auto spill_point = spill_points[value_index];
-      const auto& value = regalloc_function.values[value_index];
-      if (!spill_point.has_value() || !value.assigned_stack_slot.has_value()) {
-        continue;
-      }
-
-      if (const auto spill_location = locate_program_point(liveness_function, *spill_point);
-          spill_location.has_value()) {
-        regalloc_function.spill_reload_ops.push_back(PreparedSpillReloadOp{
-            .value_id = value.value_id,
-            .op_kind = PreparedSpillReloadOpKind::Spill,
-            .block_index = spill_location->block_index,
-            .instruction_index = spill_location->instruction_index,
-        });
-      }
-
-      const auto reload_use = std::find_if(
-          liveness_function.values[value_index].use_points.begin(),
-          liveness_function.values[value_index].use_points.end(),
-          [spill_point](std::size_t use_point) { return use_point > *spill_point; });
-      if (reload_use == liveness_function.values[value_index].use_points.end()) {
-        continue;
-      }
-      if (const auto reload_location = locate_program_point(liveness_function, *reload_use);
-          reload_location.has_value()) {
-        regalloc_function.spill_reload_ops.push_back(PreparedSpillReloadOp{
-            .value_id = value.value_id,
-            .op_kind = PreparedSpillReloadOpKind::Reload,
-            .block_index = reload_location->block_index,
-            .instruction_index = reload_location->instruction_index,
-        });
-      }
+    append_spill_reload_ops(liveness_function, spill_points, regalloc_function);
+    if (const auto* function = find_bir_function(prepared_.module, regalloc_function.function_name);
+        function != nullptr) {
+      append_phi_move_resolution(*function, regalloc_function);
     }
 
     prepared_.stack_layout.frame_size_bytes =
