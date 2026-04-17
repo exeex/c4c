@@ -669,6 +669,96 @@ int main() {
               "object helper lowering should not trust a corrupted raw decl-ref name");
 }
 
+void test_hir_to_lir_template_call_helper_callees_prefer_carrier_link_name_ids() {
+  c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+template<typename T>
+T id(T value) { return value; }
+
+int use_template() { return id<int>(7); }
+)cpp");
+
+  const auto caller_it = hir_module.fn_index.find("use_template");
+  expect_true(caller_it != hir_module.fn_index.end(),
+              "fixture caller should be present in the HIR function index");
+  c4c::hir::Function* caller = hir_module.find_function(caller_it->second);
+  expect_true(caller != nullptr,
+              "fixture caller should resolve through the HIR function lookup");
+
+  c4c::hir::DeclRef* callee_ref = nullptr;
+  for (auto& block : caller->blocks) {
+    for (auto& stmt : block.stmts) {
+      auto* ret = std::get_if<c4c::hir::ReturnStmt>(&stmt.payload);
+      if (ret == nullptr || !ret->expr) {
+        continue;
+      }
+      auto* call = std::get_if<c4c::hir::CallExpr>(&hir_module.expr_pool[ret->expr->value].payload);
+      if (call == nullptr) {
+        continue;
+      }
+      callee_ref = std::get_if<c4c::hir::DeclRef>(&hir_module.expr_pool[call->callee.value].payload);
+      if (callee_ref != nullptr) {
+        break;
+      }
+    }
+    if (callee_ref != nullptr) {
+      break;
+    }
+  }
+  expect_true(callee_ref != nullptr,
+              "template-call lowering should synthesize a decl-ref callee");
+  expect_true(callee_ref->link_name_id != c4c::kInvalidLinkName,
+              "template-call helper decl-ref callees should copy a semantic carrier LinkNameId");
+
+  const auto callee_it = hir_module.fn_index.find(callee_ref->name);
+  expect_true(callee_it != hir_module.fn_index.end(),
+              "fixture template callee should already be materialized in the HIR function index");
+  const c4c::hir::Function* callee_fn = hir_module.find_function(callee_it->second);
+  expect_true(callee_fn != nullptr && callee_fn->link_name_id == callee_ref->link_name_id,
+              "template-call helper decl-ref callees should reuse the emitted function carrier LinkNameId");
+
+  const std::string semantic_name =
+      std::string(hir_module.link_names.spelling(callee_ref->link_name_id));
+  expect_true(!semantic_name.empty(),
+              "template-call helper LinkNameId should resolve through the shared link-name table");
+
+  callee_ref->name = "broken_template_call_declref_name";
+
+  const c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  const auto lir_caller_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(fn.link_name_id) == "use_template";
+      });
+  expect_true(lir_caller_it != lir_module.functions.end(),
+              "fixture caller should still lower through the semantic LinkNameId route");
+
+  const c4c::codegen::lir::LirCallOp* helper_call = nullptr;
+  for (const auto& block : lir_caller_it->blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst);
+      if (call == nullptr) {
+        continue;
+      }
+      if (call->direct_callee_link_name_id == callee_ref->link_name_id) {
+        helper_call = call;
+        break;
+      }
+    }
+    if (helper_call != nullptr) {
+      break;
+    }
+  }
+
+  expect_true(helper_call != nullptr,
+              "template-call lowering should preserve the helper decl-ref into a direct LIR call");
+  expect_true(helper_call->callee == "@" + semantic_name,
+              "template-call lowering should recover the semantic helper spelling from LinkNameId");
+  expect_true(helper_call->callee != "@broken_template_call_declref_name",
+              "template-call lowering should not trust a corrupted raw decl-ref name");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -1108,6 +1198,7 @@ int main() {
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();
   test_hir_to_lir_decl_backed_call_result_inference_prefers_link_name_ids();
   test_hir_to_lir_object_helper_callees_prefer_link_name_ids();
+  test_hir_to_lir_template_call_helper_callees_prefer_carrier_link_name_ids();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();

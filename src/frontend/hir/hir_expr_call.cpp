@@ -10,10 +10,18 @@ namespace c4c::hir {
 
 namespace {
 
+LinkNameId find_direct_call_carrier_link_name_id(const Module& mod,
+                                                 const std::string& name) {
+  const auto fit = mod.fn_index.find(name);
+  if (fit == mod.fn_index.end()) return kInvalidLinkName;
+  const Function* fn = mod.find_function(fit->second);
+  return fn ? fn->link_name_id : kInvalidLinkName;
+}
+
 DeclRef make_direct_call_decl_ref(Module& mod, std::string name) {
   DeclRef dr{};
   dr.name = std::move(name);
-  dr.link_name_id = mod.link_names.intern(dr.name);
+  dr.link_name_id = find_direct_call_carrier_link_name_id(mod, dr.name);
   return dr;
 }
 

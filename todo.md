@@ -6,17 +6,18 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Promoted the HIR decl-ref `LinkNameId` attachment rule into a shared lowerer
-helper and applied it to operator/object/range-for helper-generated callee
-refs, then added an object-helper regression that proves corrupted raw
-`operator_delete` decl-ref names still lower through the semantic `LinkNameId`
-path.
+Changed `hir_expr_call.cpp` helper-built direct-call callee `DeclRef`
+construction to copy `LinkNameId` only from already-materialized function
+carriers instead of raw-name interning, then added a template-call regression
+that proves corrupted helper-built callee names still lower through the
+semantic `LinkNameId` path.
 
 ## Suggested Next
 
-Audit the remaining helper-built HIR callee `DeclRef` sites outside the
-operator/object/range-for family and only copy `LinkNameId` where lowering can
-already recover a real emitted carrier instead of re-interning by raw string.
+Audit the remaining `hir_expr_call.cpp` helper families that still bypass the
+new carrier lookup boundary, especially direct-call paths that currently patch
+`DeclRef` ids after `lower_expr`, and keep builtin-alias or not-yet-materialized
+callee routes on the intentional invalid-id fallback.
 
 ## Watchouts
 
@@ -43,6 +44,10 @@ already recover a real emitted carrier instead of re-interning by raw string.
 - `lower_var_expr` now copies ids only from existing `Function`/`GlobalVar`
   carriers; do not widen that helper into raw-string interning or local/param
   naming paths
+- helper-built member-call decl refs in `hir_expr_call.cpp` can still
+  legitimately keep `kInvalidLinkName` when their method carrier is not yet in
+  `fn_index`; do not force raw-name interning there just to make the field
+  non-zero
 - plain `foo()` direct-call lowering now patches the callee `DeclRef` in place
   after `lower_expr`, so this route stays bounded to call sites instead of
   teaching every `DeclRef` construction path about `LinkNameId`
