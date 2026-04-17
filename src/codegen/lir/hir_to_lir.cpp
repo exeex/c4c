@@ -885,7 +885,8 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
 
       // Spec entries — owned by hir_to_lir.
       if (!fn.template_origin.empty() && !fn.spec_key.empty()) {
-        spec_entries.push_back({fn.spec_key.canonical, fn.template_origin, std::string(fn.name)});
+        spec_entries.push_back(
+            {fn.spec_key.canonical, fn.template_origin, std::string(fn.name), fn.link_name_id});
       }
 
       // Block iteration — owned by hir_to_lir.

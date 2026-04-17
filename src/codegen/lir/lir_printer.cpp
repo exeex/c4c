@@ -538,8 +538,12 @@ std::string print_llvm(const LirModule& mod) {
     out << "\n";
     int md_id = 0;
     for (const auto& e : mod.spec_entries) {
+      const std::string_view resolved_name =
+          resolve_link_name(mod.link_names, e.mangled_link_name_id);
       out << "!" << md_id << " = !{!\"" << e.spec_key << "\", !\""
-          << e.template_origin << "\", !\"" << e.mangled_name << "\"}\n";
+          << e.template_origin << "\", !\""
+          << (resolved_name.empty() ? e.mangled_name : std::string(resolved_name))
+          << "\"}\n";
       ++md_id;
     }
     out << "!c4c.specializations = !{";

@@ -286,6 +286,38 @@ int add_one(int value) { return value + global_value; }
               "printer should not trust a corrupted global name carrier");
 }
 
+void test_lir_printer_resolves_specialization_metadata_link_names() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+template<typename T>
+T id(T value) { return value; }
+
+int use_template() { return id<int>(7); }
+)cpp");
+  c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  const auto spec_it = std::find_if(
+      lir_module.spec_entries.begin(), lir_module.spec_entries.end(),
+      [](const c4c::codegen::lir::LirSpecEntry& entry) {
+        return entry.mangled_link_name_id != c4c::kInvalidLinkName;
+      });
+  expect_true(spec_it != lir_module.spec_entries.end(),
+              "fixture should lower at least one specialization metadata entry with a LinkNameId");
+
+  const std::string resolved_name =
+      std::string(lir_module.link_names.spelling(spec_it->mangled_link_name_id));
+  expect_true(!resolved_name.empty(),
+              "specialization metadata LinkNameId should resolve through the shared link-name table");
+
+  auto broken_spec_it = spec_it;
+  broken_spec_it->mangled_name = "broken_specialization_name";
+
+  const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
+  expect_true(llvm_ir.find("!\"" + resolved_name + "\"") != std::string::npos,
+              "printer should recover specialization metadata names from LinkNameId lookup");
+  expect_true(llvm_ir.find("broken_specialization_name") == std::string::npos,
+              "printer should not trust a corrupted specialization metadata name");
+}
+
 }  // namespace
 
 int main() {
@@ -296,6 +328,7 @@ int main() {
   test_hir_materializes_link_name_ids_for_emitted_symbols();
   test_hir_to_lir_forwards_function_link_name_ids();
   test_lir_printer_resolves_link_names_at_emission_boundary();
+  test_lir_printer_resolves_specialization_metadata_link_names();
 
   std::cout << "PASS: frontend_hir_tests\n";
   return 0;

@@ -6,20 +6,20 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Started Step 4 at a real late text-emitting boundary: `codegen::lir::LirModule`
-now retains the shared HIR link-name table during lowering, `lir::print_llvm`
-resolves emitted function signatures and global definitions through
-`LinkNameId` lookup when available, and
+Extended Step 4 through another late text-emitting boundary: LIR
+specialization metadata now carries `mangled_link_name_id` alongside the legacy
+string, `lir::print_llvm` resolves metadata-emitted mangled names through the
+shared `LinkNameId` table when available, and
 `tests/frontend/frontend_hir_tests.cpp` proves the printer still emits the
-semantic names after the raw LIR function/global string carriers are
-deliberately corrupted.
+semantic specialization name after the raw metadata string is deliberately
+corrupted.
 
 ## Suggested Next
 
-Extend the same late-consumer lookup contract to the remaining link-visible
-printer surfaces that still spell names from raw strings, or choose the next
-backend/text consumer boundary that should resolve `LinkNameId` instead of
-trusting legacy string fields.
+Review the remaining link-visible late-consumer surfaces to decide whether the
+next bounded slice should migrate another printer-emitted metadata/declaration
+path or move from LLVM text emission into a backend-side symbol spelling
+boundary that can resolve `LinkNameId` instead of trusting legacy strings.
 
 ## Watchouts
 
@@ -29,9 +29,9 @@ trusting legacy string fields.
   available
 - keep `LinkNameId` distinct from both `TextId` and parser/source-atom
   `SymbolId`; the new HIR fields are parallel carriers, not replacements
-- extern declarations and specialization metadata still print names from raw
-  strings today even though the emitted function/global route now resolves at
-  the printer boundary
+- unresolved extern-call declarations still print names from raw strings today
+  because this route does not yet have a real `LinkNameId` source of truth;
+  avoid faking that boundary with ad hoc interning
 - keep forwarding explicit ids through LIR carriers rather than treating
   `name` strings as the semantic source of truth
 - avoid testcase-overfit proof or brittle emitted-text substring matching as a
@@ -40,5 +40,5 @@ trusting legacy string fields.
 ## Proof
 
 Build: `cmake --build --preset default -j4`
-Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
+Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$|^cpp_llvm_.*specialization_metadata'`
 Log: `test_after.log`

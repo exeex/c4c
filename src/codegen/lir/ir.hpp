@@ -532,6 +532,7 @@ struct LirSpecEntry {
   std::string spec_key;
   std::string template_origin;
   std::string mangled_name;
+  LinkNameId mangled_link_name_id = kInvalidLinkName;
 };
 
 // ── Module ───────────────────────────────────────────────────────────────────
