@@ -1,5 +1,20 @@
 # Parser And HIR Text-Id Convergence
 
+Status: Closed
+Closed: 2026-04-17
+
+## Closure Summary
+
+The bounded landing slice for this idea is complete.
+
+- parser-side persistent text bookkeeping now preserves `TextId` on the chosen
+  route without collapsing parser/source identity into emitted-name identity
+- HIR struct-definition metadata now preserves parallel `TextId` carriers for
+  tags, base tags, and field names on both non-template and
+  template-instantiated routes
+- focused `frontend_parser_tests` and `frontend_hir_tests` proof stayed green,
+  and close-time regression guard passed for the combined parser/HIR scope
+
 ## Goal
 
 Continue the repo's string-identity cleanup by replacing remaining
