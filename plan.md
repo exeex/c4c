@@ -6,131 +6,129 @@ Activated from: ideas/open/54_x86_backend_c_testsuite_capability_families.md
 
 ## Purpose
 
-Turn the current x86 backend c-testsuite fail surface into capability-family
-packets, starting with one honest local-memory lane instead of testcase-shaped
-repair.
+Continue the x86 backend capability-family route after the completed first
+local-memory slice by targeting one bounded prepared-handoff guard lane.
 
 ## Goal
 
-Land one bounded local-memory capability slice that improves truthful
-`x86_backend` coverage through semantic `lir_to_bir` and the prepared x86
-handoff.
+Land one honest straight-line prepared-module guard slice that broadens
+truthful `x86_backend` coverage without reopening global-data, scalar-cast, or
+multi-block control-flow work.
 
 ## Core Rule
 
-Grow shared backend capability by family. Do not weaken expectations, do not
-reintroduce fallback LLVM IR acceptance, and do not add testcase-named or
-rendered-text recognizers.
+Grow shared x86 prepared-module capability by family. Do not weaken
+expectations, do not reintroduce fallback LLVM IR acceptance, and do not add
+testcase-named or rendered-text recognizers.
 
 ## Read First
 
 - [ideas/open/54_x86_backend_c_testsuite_capability_families.md](/workspaces/c4c/ideas/open/54_x86_backend_c_testsuite_capability_families.md)
-- [src/backend/bir/lir_to_bir.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir.cpp)
-- [src/backend/bir/lir_to_bir.hpp](/workspaces/c4c/src/backend/bir/lir_to_bir.hpp)
-- [src/backend/bir/lir_to_bir_memory.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory.cpp)
 - [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
-- [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
 - [tests/backend/backend_x86_handoff_boundary_test.cpp](/workspaces/c4c/tests/backend/backend_x86_handoff_boundary_test.cpp)
+- [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
+- [tests/c/external/c-testsuite/src/00047.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00047.c)
+- [tests/c/external/c-testsuite/src/00048.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00048.c)
+- [tests/c/external/c-testsuite/src/00049.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00049.c)
+- [tests/c/external/c-testsuite/src/00054.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00054.c)
+- [tests/c/external/c-testsuite/src/00055.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00055.c)
 
 ## Current Targets
 
-- Start with the local-memory semantic family, not control-flow or cast work.
-- Choose a small cluster of failing `x86_backend` c-testsuite cases that share
-  one straight-line stack/object addressing blocker.
-- Keep the slice honest through shared `lir_to_bir` semantics and prepared
-  module ingestion.
+- Stay within the prepared x86 handoff/emitter boundary, not another semantic
+  `lir_to_bir` expansion.
+- Choose a small cluster of `x86_backend` failures that already prepare
+  honestly but still stop at the minimal straight-line return or guard lane.
+- Prefer probes whose common blocker is a straight-line scalar compare/guard
+  chain over already-prepared operands.
 
 ## Non-Goals
 
-- Solving the full x86 backend c-testsuite fail surface in one pass.
-- Reviving adapter-growth or testcase-specific backend shortcuts.
-- Weakening `x86_backend` expectations or accepting fallback IR.
-- Expanding primarily into multi-block control flow, broad global-data work, or
-  unrelated backend families.
+- Reopening the completed first local-memory lane as routine follow-up.
+- Using this packet to repair scalar-cast, bootstrap global-data, or multi-
+  block control-flow families.
+- Accepting fallback LLVM IR or weakening `x86_backend` expectations.
+- Adding testcase-shaped emit helpers or recognizers keyed to rendered output.
 
 ## Working Model
 
-- Family naming belongs to capability boundaries, not individual tests.
-- The first slice should cover stack-object creation, addressed local
-  loads/stores, and simple constant-offset addressing in already-supported
-  control flow.
-- Shared lowering should explain the progress. Target codegen should consume an
-  honest prepared module rather than a bespoke special case.
+- The next bounded family is an x86 prepared-handoff guard lane, not another
+  semantic memory-lowering lane.
+- Candidate probes should already reach the prepared-module path and differ
+  mainly in straight-line compare/test plus early-return behavior.
+- Progress must be explained by shared emitter or handoff capability, not by
+  one testcase win.
 
 ## Execution Rules
 
-- Prefer one coherent lane across several nearby cases over one testcase win.
-- Use backend notes and handoff tests to define the supported boundary by
+- Name one guard family before widening codegen support.
+- Keep out-of-scope neighboring failures explicit in `todo.md` instead of
+  silently broadening the route.
+- Use backend notes and handoff tests to describe the supported boundary by
   family.
-- Record routine packet state in `todo.md`; do not rewrite this runbook for
-  normal execution churn.
 - Validation ladder per packet: build, narrow backend proof, selected
-  same-family c-testsuite probes, then checkpoint `x86_backend` only when the
-  slice is coherent enough to claim pass-count movement.
+  same-family c-testsuite probes, then checkpoint `x86_backend` only once a
+  coherent cluster moves together.
 
-## Step 1. Name The First Local-Memory Lane
+## Step 1. Name The First Prepared Guard Lane
 
-Goal: Choose one dominant local-memory capability lane and its proving cluster
-before code edits widen.
+Goal: Choose one dominant straight-line guard family and its proving cluster
+before x86 codegen changes widen.
 
 Primary targets:
-- failing `x86_backend` c-testsuite cases from the same local-memory family
-- existing backend notes and handoff tests that describe the current boundary
+- failing `x86_backend` c-testsuite cases that already prepare honestly
+- current x86 handoff tests that define the supported straight-line boundary
 
 Actions:
-- inspect the current `x86_backend` local-memory failures and group them by one
-  straight-line stack/object addressing shape
-- select a small proving cluster of nearby cases that should move together if
-  the lane is repaired honestly
-- record any adjacent unsupported shapes that must remain out of scope for the
-  first slice
+- inspect the current minimal return-path failures and group them by one
+  straight-line compare/test plus early-return shape
+- select a small proving cluster that should move together if the guard lane is
+  widened honestly
+- record nearby out-of-scope shapes that still require global-data,
+  scalar-cast, or multi-block control-flow work
 
 Completion check:
-- one capability lane and one same-family proving cluster are named without
+- one prepared guard lane and one same-family proving cluster are named without
   drifting into testcase-by-testcase repair
 
-## Step 2. Lower The Local-Memory Lane Honestly
+## Step 2. Extend The Prepared Guard Lane Honestly
 
-Goal: Make semantic `lir_to_bir` produce the prepared-module form needed by the
-selected local-memory lane.
-
-Primary targets:
-- `src/backend/bir/lir_to_bir_memory.cpp`
-- `src/backend/bir/lir_to_bir.cpp`
-- `src/backend/bir/lir_to_bir.hpp`
-
-Actions:
-- implement the smallest shared lowering needed for stack-object creation,
-  addressed local loads/stores, and simple constant-offset addressing on the
-  chosen lane
-- keep unsupported notes truthful for nearby out-of-scope shapes
-- do not add named-case shortcuts or expectation rewrites
-
-Completion check:
-- the chosen local-memory lane lowers through shared semantic BIR logic without
-  testcase-shaped recognition
-
-## Step 3. Keep The X86 Prepared Handoff Honest
-
-Goal: Ensure the prepared x86 path accepts the new lane and still rejects
-unsupported families truthfully.
+Goal: Teach the x86 prepared-module path to accept the chosen straight-line
+guard family.
 
 Primary targets:
 - `src/backend/mir/x86/codegen/x86_codegen.hpp`
-- `tests/backend/backend_lir_to_bir_notes_test.cpp`
-- `tests/backend/backend_x86_handoff_boundary_test.cpp`
 
 Actions:
-- update the prepared-module handoff only where the new lane requires honest
-  ingestion
-- add or revise backend notes and handoff tests so the capability boundary is
-  described by family, not by testcase name
-- keep unsupported notes for control-flow, cast, or broader memory shapes that
-  remain out of scope
+- implement the smallest shared prepared-handoff/codegen widening needed for
+  the chosen straight-line scalar compare/test plus early-return lane
+- keep unsupported notes truthful for neighboring out-of-scope families
+- do not add testcase-named shortcuts or rendered-text recognizers
 
 Completion check:
-- backend notes and handoff tests prove the selected lane is supported and the
-  nearby unsupported boundary remains explicit
+- the chosen guard lane is accepted through shared x86 prepared-module logic
+  without testcase-shaped recognition
+
+## Step 3. Keep The Boundary Truthful
+
+Goal: Describe the supported prepared guard family and the remaining nearby
+unsupported boundary explicitly.
+
+Primary targets:
+- `tests/backend/backend_x86_handoff_boundary_test.cpp`
+- `tests/backend/backend_lir_to_bir_notes_test.cpp`
+
+Actions:
+- revise handoff coverage so the new guard lane is described by family rather
+  than testcase name
+- keep nearby unsupported notes or handoff expectations explicit for
+  scalar-cast, bootstrap global-data, and multi-block control-flow families
+- ensure the tests still prove prepared-module honesty rather than legacy
+  adapter growth
+
+Completion check:
+- backend notes and handoff tests prove the new guard lane is supported and
+  the nearby unsupported boundary remains explicit
 
 ## Step 4. Prove Nearby Same-Family Cases
 
@@ -144,4 +142,4 @@ Actions:
 
 Completion check:
 - the proving cluster moves together or the packet stops with an explicit
-  capability blocker instead of pretending success
+  family blocker instead of pretending success
