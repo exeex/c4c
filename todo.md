@@ -6,25 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended the Step 4 allocator so regalloc now publishes non-phi,
-consumption-keyed `move_resolution` records for binary/select/cast consumers
-when a named source value and the produced result land in different assigned
-storage, reusing the existing `(from_value_id, to_value_id, block_index,
-instruction_index)` contract instead of inventing a new surface mid-packet.
+Extended the Step 4 allocator so named `CallInst.args` now publish call-site
+`move_resolution` records when the consumed argument storage kind differs from
+the assigned source storage, while reusing the existing
+`(from_value_id, to_value_id, block_index, instruction_index)` surface by
+self-keying non-result call-argument transfers to the consumed source value.
 
-Focused `backend_prepare_liveness` coverage now proves that a call-crossing
-value reused after the call can publish a non-phi transfer record: the
-`weighted_post_call_pressure` shape keeps `carry` in callee-saved `s1`, assigns
-the post-call `hot` result to caller-saved `t0`, and therefore records a
-`consumer_register_to_register` move at the consuming instruction site.
+Focused `backend_prepare_liveness` coverage now proves the exact call-site
+behavior: the new `call_arg_move_resolution` shape keeps `carry0`/`carry1` in
+callee-saved `s1`/`s2`, assigns `keep.arg` to caller-saved `t0`, forces
+`spill.arg` into a real stack slot under the same call-site pressure, and
+therefore records a `call_arg_stack_to_register` move at the call instruction.
 
 ## Suggested Next
 
-Extend Step 4 move planning from result-producing non-phi consumers into
-call/result and stack-backed late-use surfaces so regalloc can publish
-consumption-keyed transfer records when a named value must be materialized for
-call arguments or other non-result consumer sites, not only for phi joins and
-result-producing instructions.
+Extend Step 4 move planning from register-vs-stack call-argument materialization
+into the remaining non-result consumer surfaces, starting with return-site
+transfers or call-argument cases whose consumed location needs more precision
+than the current register-vs-stack ABI kind split.
 
 ## Watchouts
 
@@ -40,12 +39,16 @@ result-producing instructions.
   are now emitted per later use point, but this is still bounded bookkeeping
   rather than true split-interval placement
 - `move_resolution` now covers phi joins plus result-producing
-  binary/select/cast consumers, but it still does not model call-argument
-  materialization, return-site transfers, or non-result consumer sites
+  binary/select/cast consumers plus call-site argument materialization, but it
+  still does not model return-site transfers or other non-result consumer sites
 - consumer-keyed move records intentionally skip redundant entries when the
   source and produced result already share the same assigned register or stack
   slot, and the current dedupe key is `(from_value_id, to_value_id,
   block_index, instruction_index)`
+- call-argument move records currently compare assigned source storage against
+  the ABI storage kind from `CallArgAbiInfo` and self-key the move record to
+  the consumed source value because the current public contract does not expose
+  a separate per-argument destination value or physical arg-register identity
 - `PreparedAllocationConstraint.preferred_register_names` now carries the
   caller-vs-callee preference split, while `cannot_cross_call` is reserved for
   the stronger call-spanning prohibition; downstream consumers should keep
@@ -71,7 +74,7 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_liveness$ > test_after.log
 2>&1`
-after teaching `run_regalloc()` to publish non-phi, consumer-keyed
-move-resolution bookkeeping for result-producing instructions whose named
-operands and produced values land in different assigned storage.
+after teaching `run_regalloc()` to publish call-site move-resolution
+bookkeeping for named call arguments whose assigned storage and ABI-consumed
+storage kind differ.
 Canonical proof log: `test_after.log`.

@@ -579,6 +579,109 @@ prepare::PreparedBirModule prepare_weighted_post_call_module_with_regalloc() {
   return planner.run();
 }
 
+prepare::PreparedBirModule prepare_call_arg_move_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "call_arg_move_resolution";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(10),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(20),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "keep.arg"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(30),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "spill.arg"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(40),
+      .rhs = bir::Value::immediate_i32(4),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "sink_quad",
+      .args = {bir::Value::named(bir::TypeKind::I32, "carry0"),
+               bir::Value::named(bir::TypeKind::I32, "carry1"),
+               bir::Value::named(bir::TypeKind::I32, "keep.arg"),
+               bir::Value::named(bir::TypeKind::I32, "spill.arg")},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32, bir::TypeKind::I32, bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+                      .type = bir::TypeKind::I32,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .primary_class = bir::AbiValueClass::Integer,
+                      .passed_in_register = true,
+                  },
+                  bir::CallArgAbiInfo{
+                      .type = bir::TypeKind::I32,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .primary_class = bir::AbiValueClass::Integer,
+                      .passed_in_register = true,
+                  },
+                  bir::CallArgAbiInfo{
+                      .type = bir::TypeKind::I32,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .primary_class = bir::AbiValueClass::Integer,
+                      .passed_in_register = true,
+                  },
+                  bir::CallArgAbiInfo{
+                      .type = bir::TypeKind::I32,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .primary_class = bir::AbiValueClass::Integer,
+                      .passed_in_register = true,
+                  }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "result"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "carry0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "carry1"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "result"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
 prepare::PreparedBirModule prepare_evicted_spill_module_with_regalloc() {
   bir::Module module;
 
@@ -1078,6 +1181,44 @@ int check_evicted_value_spill_ops(const prepare::PreparedBirModule& prepared) {
   return 0;
 }
 
+int check_call_arg_move_resolution(const prepare::PreparedBirModule& prepared) {
+  const auto* function = find_regalloc_function(prepared, "call_arg_move_resolution");
+  if (function == nullptr) {
+    return fail("expected regalloc output for call_arg_move_resolution");
+  }
+
+  const auto* carry0 = find_regalloc_value(*function, "carry0");
+  const auto* carry1 = find_regalloc_value(*function, "carry1");
+  const auto* keep_arg = find_regalloc_value(*function, "keep.arg");
+  const auto* spill_arg = find_regalloc_value(*function, "spill.arg");
+  if (carry0 == nullptr || carry1 == nullptr || keep_arg == nullptr || spill_arg == nullptr) {
+    return fail("expected call_arg_move_resolution values to appear in regalloc output");
+  }
+
+  if (!carry0->assigned_register.has_value() || carry0->assigned_register->register_name != "s1" ||
+      !carry1->assigned_register.has_value() || carry1->assigned_register->register_name != "s2") {
+    return fail("expected the call-crossing carry values to occupy the protected callee-saved pool");
+  }
+  if (!keep_arg->assigned_register.has_value() || keep_arg->assigned_register->register_name != "t0") {
+    return fail("expected keep.arg to take the caller-saved argument register seed");
+  }
+  if (spill_arg->allocation_status != prepare::PreparedAllocationStatus::AssignedStackSlot ||
+      !spill_arg->assigned_stack_slot.has_value() || spill_arg->assigned_register.has_value()) {
+    return fail("expected spill.arg to fall back to a stack slot under call-argument pressure");
+  }
+
+  const auto* spill_move = find_move_resolution(*function, spill_arg->value_id, spill_arg->value_id);
+  if (spill_move == nullptr || spill_move->block_index != 0 || spill_move->instruction_index != 4 ||
+      spill_move->reason != "call_arg_stack_to_register") {
+    return fail("expected the stack-backed named call argument to publish a call-site stack-to-register move");
+  }
+  if (find_move_resolution(*function, keep_arg->value_id, keep_arg->value_id) != nullptr) {
+    return fail("expected register-backed call arguments to skip redundant call-site move resolution");
+  }
+
+  return 0;
+}
+
 int check_loop_weighted_priority(const prepare::PreparedBirModule& prepared) {
   const auto* liveness = find_liveness_function(prepared, "loop_weighted_priority");
   const auto* regalloc = find_regalloc_function(prepared, "loop_weighted_priority");
@@ -1135,6 +1276,11 @@ int main() {
 
   const auto weighted_post_call_prepared = prepare_weighted_post_call_module_with_regalloc();
   if (const int rc = check_weighted_post_call_regalloc(weighted_post_call_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto call_arg_move_prepared = prepare_call_arg_move_module_with_regalloc();
+  if (const int rc = check_call_arg_move_resolution(call_arg_move_prepared); rc != 0) {
     return rc;
   }
 
