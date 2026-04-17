@@ -625,7 +625,12 @@ Node* Parser::parse_local_decl() {
                                      !is_internal_typedef_name(tdname));
             // Phase C: store fn_ptr param info for typedef'd function pointers.
             if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
-                typedef_fn_ptr_info_[tdname] = {td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
+                const TextId typedef_name_id =
+                    parser_text_id_for_token(kInvalidText, tdname);
+                if (typedef_name_id != kInvalidText) {
+                    typedef_fn_ptr_info_[typedef_name_id] = {
+                        td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
+                }
             }
         }
         // multiple declarators in typedef
@@ -644,7 +649,12 @@ Node* Parser::parse_local_decl() {
                 register_typedef_binding(tdn2, ts2,
                                          !is_internal_typedef_name(tdn2));
                 if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
-                    typedef_fn_ptr_info_[tdn2] = {td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
+                    const TextId typedef_name_id =
+                        parser_text_id_for_token(kInvalidText, tdn2);
+                    if (typedef_name_id != kInvalidText) {
+                        typedef_fn_ptr_info_[typedef_name_id] = {
+                            td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
+                    }
                 }
             }
         }
@@ -853,11 +863,10 @@ Node* Parser::parse_local_decl() {
         d->ret_fn_ptr_variadic = ret_fn_ptr_variadic;
         // Phase C: propagate fn_ptr params from typedef if not set by declarator.
         if (ts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
-            auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
-            if (tdit != typedef_fn_ptr_info_.end()) {
-                d->fn_ptr_params = tdit->second.params;
-                d->n_fn_ptr_params = tdit->second.n_params;
-                d->fn_ptr_variadic = tdit->second.variadic;
+            if (const FnPtrTypedefInfo* info = find_current_typedef_fn_ptr_info()) {
+                d->fn_ptr_params = info->params;
+                d->n_fn_ptr_params = info->n_params;
+                d->fn_ptr_variadic = info->variadic;
             }
         }
         if (vname && !suppress_local_var_bindings_) {
@@ -2360,7 +2369,7 @@ top_level_base_ready:
     }
 
     // Phase C: save the return-type typedef name for fn_ptr propagation to NK_FUNCTION.
-    const std::string ret_typedef_name = last_resolved_typedef_;
+    const TextId ret_typedef_name_id = last_resolved_typedef_text_id_;
 
     auto is_incomplete_object_type = [&](const TypeSpec& ts) -> bool {
         if (ts.ptr_level > 0) return false;
@@ -2405,8 +2414,14 @@ top_level_base_ready:
             if (scoped_tdname != tdname) {
                 register_typedef_binding(scoped_tdname, ts_copy, false);
             }
-            if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic))
-                typedef_fn_ptr_info_[tdname] = {td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
+            if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
+                const TextId typedef_name_id =
+                    parser_text_id_for_token(kInvalidText, tdname);
+                if (typedef_name_id != kInvalidText) {
+                    typedef_fn_ptr_info_[typedef_name_id] = {
+                        td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
+                }
+            }
         }
         while (match(TokenKind::Comma)) {
             TypeSpec ts2 = base_ts;
@@ -2426,8 +2441,14 @@ top_level_base_ready:
                 if (scoped_tdn2 != tdn2) {
                     register_typedef_binding(scoped_tdn2, ts2, false);
                 }
-                if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic))
-                    typedef_fn_ptr_info_[tdn2] = {td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
+                if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
+                    const TextId typedef_name_id =
+                        parser_text_id_for_token(kInvalidText, tdn2);
+                    if (typedef_name_id != kInvalidText) {
+                        typedef_fn_ptr_info_[typedef_name_id] = {
+                            td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
+                    }
+                }
             }
         }
         match(TokenKind::Semi);
@@ -3030,12 +3051,12 @@ top_level_base_ready:
 
         // Phase C: helper lambda to propagate return type fn_ptr params to NK_FUNCTION.
         auto propagate_ret_fn_ptr = [&](Node* fn) {
-            if (ts.is_fn_ptr && !ret_typedef_name.empty()) {
-                auto tdit = typedef_fn_ptr_info_.find(ret_typedef_name);
-                if (tdit != typedef_fn_ptr_info_.end()) {
-                    fn->ret_fn_ptr_params   = tdit->second.params;
-                    fn->n_ret_fn_ptr_params = tdit->second.n_params;
-                    fn->ret_fn_ptr_variadic = tdit->second.variadic;
+            if (ts.is_fn_ptr) {
+                if (const FnPtrTypedefInfo* info =
+                        find_typedef_fn_ptr_info(ret_typedef_name_id)) {
+                    fn->ret_fn_ptr_params   = info->params;
+                    fn->n_ret_fn_ptr_params = info->n_params;
+                    fn->ret_fn_ptr_variadic = info->variadic;
                 }
             }
         };
@@ -3142,11 +3163,10 @@ top_level_base_ready:
         gv->ret_fn_ptr_variadic = ret_fn_ptr_variadic;
         // Phase C: propagate fn_ptr params from typedef if not set by declarator.
         if (gts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
-            auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
-            if (tdit != typedef_fn_ptr_info_.end()) {
-                gv->fn_ptr_params = tdit->second.params;
-                gv->n_fn_ptr_params = tdit->second.n_params;
-                gv->fn_ptr_variadic = tdit->second.variadic;
+            if (const FnPtrTypedefInfo* info = find_current_typedef_fn_ptr_info()) {
+                gv->fn_ptr_params = info->params;
+                gv->n_fn_ptr_params = info->n_params;
+                gv->fn_ptr_variadic = info->variadic;
             }
         }
         if (gname) register_var_type_binding(gname, gts);

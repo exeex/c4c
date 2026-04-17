@@ -468,9 +468,10 @@ class Parser {
     int n_params = 0;
     bool variadic = false;
   };
-  std::unordered_map<std::string, FnPtrTypedefInfo> typedef_fn_ptr_info_;
+  std::unordered_map<TextId, FnPtrTypedefInfo> typedef_fn_ptr_info_;
   // Last resolved typedef name from parse_base_type() (for fn_ptr propagation).
   std::string last_resolved_typedef_;
+  TextId last_resolved_typedef_text_id_ = kInvalidText;
 
   // Enum constants: name → value (populated as enums are parsed).
   // Used to evaluate enum initializers that reference previously-defined constants.
@@ -657,6 +658,22 @@ class Parser {
   TextId find_parser_text_id(std::string_view text) const {
     if (text.empty() || !token_texts_) return kInvalidText;
     return token_texts_->find(text);
+  }
+  void clear_last_resolved_typedef() {
+    last_resolved_typedef_.clear();
+    last_resolved_typedef_text_id_ = kInvalidText;
+  }
+  void set_last_resolved_typedef(std::string_view name) {
+    last_resolved_typedef_ = std::string(name);
+    last_resolved_typedef_text_id_ = parser_text_id_for_token(kInvalidText, name);
+  }
+  const FnPtrTypedefInfo* find_typedef_fn_ptr_info(TextId text_id) const {
+    if (text_id == kInvalidText) return nullptr;
+    const auto it = typedef_fn_ptr_info_.find(text_id);
+    return it == typedef_fn_ptr_info_.end() ? nullptr : &it->second;
+  }
+  const FnPtrTypedefInfo* find_current_typedef_fn_ptr_info() const {
+    return find_typedef_fn_ptr_info(last_resolved_typedef_text_id_);
   }
   std::string_view token_spelling(const Token& token) const;
   void set_parser_owned_spelling(Token& token, std::string_view spelling);

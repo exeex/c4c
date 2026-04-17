@@ -1148,7 +1148,7 @@ TypeSpec Parser::parse_base_type() {
                 ts.is_const   |= save_const;
                 ts.is_volatile |= save_vol;
                 // Phase C: remember the typedef name for fn_ptr param propagation.
-                last_resolved_typedef_ = tname;
+                set_last_resolved_typedef(tname);
                 // Alias template application: e.g. bool_constant<expr> → integral_constant<bool, expr>
                 if (is_cpp_mode() && check(TokenKind::Less)) {
                     auto ati_it = alias_template_info_.find(tname);

@@ -679,8 +679,12 @@ bool Parser::try_parse_record_typedef_member(
                                        bool fn_ptr_variadic) {
         register_typedef_binding(name, type, true);
         if (type.is_fn_ptr && (n_fn_ptr_params > 0 || fn_ptr_variadic)) {
-            typedef_fn_ptr_info_[name] = {
-                fn_ptr_params, n_fn_ptr_params, fn_ptr_variadic};
+            const TextId typedef_name_id =
+                parser_text_id_for_token(kInvalidText, name);
+            if (typedef_name_id != kInvalidText) {
+                typedef_fn_ptr_info_[typedef_name_id] = {
+                    fn_ptr_params, n_fn_ptr_params, fn_ptr_variadic};
+            }
         }
         member_typedef_names->push_back(name);
         member_typedef_types->push_back(type);
@@ -1557,11 +1561,10 @@ bool Parser::try_parse_record_method_or_field_member(
             f->n_fn_ptr_params = n_fn_ptr_params;
             f->fn_ptr_variadic = fn_ptr_variadic;
             if (cur_fts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
-                auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
-                if (tdit != typedef_fn_ptr_info_.end()) {
-                    f->fn_ptr_params = tdit->second.params;
-                    f->n_fn_ptr_params = tdit->second.n_params;
-                    f->fn_ptr_variadic = tdit->second.variadic;
+                if (const FnPtrTypedefInfo* info = find_current_typedef_fn_ptr_info()) {
+                    f->fn_ptr_params = info->params;
+                    f->n_fn_ptr_params = info->n_params;
+                    f->fn_ptr_variadic = info->variadic;
                 }
             }
             check_dup_field(fname);
@@ -2342,11 +2345,10 @@ Node* Parser::parse_param() {
     p->is_parameter_pack = is_parameter_pack;
     // Phase C: propagate fn_ptr params from typedef if not set by declarator.
     if (pts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
-        auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
-        if (tdit != typedef_fn_ptr_info_.end()) {
-            p->fn_ptr_params = tdit->second.params;
-            p->n_fn_ptr_params = tdit->second.n_params;
-            p->fn_ptr_variadic = tdit->second.variadic;
+        if (const FnPtrTypedefInfo* info = find_current_typedef_fn_ptr_info()) {
+            p->fn_ptr_params = info->params;
+            p->n_fn_ptr_params = info->n_params;
+            p->fn_ptr_variadic = info->variadic;
         }
     }
     return p;

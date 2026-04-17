@@ -1185,12 +1185,11 @@ Node* Parser::parse_primary() {
                 n->type = cast_ts;
                 n->left = operand;
                 // Phase C: propagate fn_ptr params from typedef onto cast node.
-                if (cast_ts.is_fn_ptr && !last_resolved_typedef_.empty()) {
-                    auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
-                    if (tdit != typedef_fn_ptr_info_.end()) {
-                        n->fn_ptr_params = tdit->second.params;
-                        n->n_fn_ptr_params = tdit->second.n_params;
-                        n->fn_ptr_variadic = tdit->second.variadic;
+                if (cast_ts.is_fn_ptr) {
+                    if (const FnPtrTypedefInfo* info = find_current_typedef_fn_ptr_info()) {
+                        n->fn_ptr_params = info->params;
+                        n->n_fn_ptr_params = info->n_params;
+                        n->fn_ptr_variadic = info->variadic;
                     }
                 }
                 return n;
@@ -1272,7 +1271,7 @@ Node* Parser::parse_primary() {
                 find_typedef_type(direct_resolved_type_name);
             if (direct_typedef) {
                 TypeSpec cast_ts = *direct_typedef;
-                last_resolved_typedef_ = direct_resolved_type_name;
+                set_last_resolved_typedef(direct_resolved_type_name);
                 consume();
                 std::vector<Node*> args;
                 if (!check(TokenKind::RParen)) {
@@ -1306,12 +1305,11 @@ Node* Parser::parse_primary() {
                 Node* n = make_node(NK_CAST, ln);
                 n->type = cast_ts;
                 n->left = operand;
-                if (cast_ts.is_fn_ptr && !last_resolved_typedef_.empty()) {
-                    auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
-                    if (tdit != typedef_fn_ptr_info_.end()) {
-                        n->fn_ptr_params = tdit->second.params;
-                        n->n_fn_ptr_params = tdit->second.n_params;
-                        n->fn_ptr_variadic = tdit->second.variadic;
+                if (cast_ts.is_fn_ptr) {
+                    if (const FnPtrTypedefInfo* info = find_current_typedef_fn_ptr_info()) {
+                        n->fn_ptr_params = info->params;
+                        n->n_fn_ptr_params = info->n_params;
+                        n->fn_ptr_variadic = info->variadic;
                     }
                 }
                 return parse_postfix(n);
@@ -1340,6 +1338,7 @@ Node* Parser::parse_primary() {
                 pos_ = ident_start;
                 std::vector<Token> saved_tokens = tokens_;
                 std::string saved_typedef = last_resolved_typedef_;
+                TextId saved_typedef_text_id = last_resolved_typedef_text_id_;
                 TypeSpec cast_ts = parse_base_type();
                 while (check(TokenKind::Star)) {
                     consume();
@@ -1357,6 +1356,7 @@ Node* Parser::parse_primary() {
                     pos_ = ident_start;
                     tokens_ = saved_tokens;
                     last_resolved_typedef_ = saved_typedef;
+                    last_resolved_typedef_text_id_ = saved_typedef_text_id;
                     qn = parse_qualified_name(false);
                 } else if (check(TokenKind::LParen)) {
                     consume();
@@ -1387,12 +1387,11 @@ Node* Parser::parse_primary() {
                     Node* n = make_node(NK_CAST, ln);
                     n->type = cast_ts;
                     n->left = operand;
-                    if (cast_ts.is_fn_ptr && !last_resolved_typedef_.empty()) {
-                        auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
-                        if (tdit != typedef_fn_ptr_info_.end()) {
-                            n->fn_ptr_params = tdit->second.params;
-                            n->n_fn_ptr_params = tdit->second.n_params;
-                            n->fn_ptr_variadic = tdit->second.variadic;
+                    if (cast_ts.is_fn_ptr) {
+                        if (const FnPtrTypedefInfo* info = find_current_typedef_fn_ptr_info()) {
+                            n->fn_ptr_params = info->params;
+                            n->n_fn_ptr_params = info->n_params;
+                            n->fn_ptr_variadic = info->variadic;
                         }
                     }
                     return parse_postfix(n);
@@ -1400,6 +1399,7 @@ Node* Parser::parse_primary() {
                 pos_ = ident_start;
                 tokens_ = saved_tokens;
                 last_resolved_typedef_ = saved_typedef;
+                last_resolved_typedef_text_id_ = saved_typedef_text_id;
                 qn = parse_qualified_name(false);
             }
         }
@@ -1694,12 +1694,11 @@ Node* Parser::parse_primary() {
             Node* n = make_node(NK_CAST, ln);
             n->type = cast_ts;
             n->left = operand;
-            if (cast_ts.is_fn_ptr && !last_resolved_typedef_.empty()) {
-                auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
-                if (tdit != typedef_fn_ptr_info_.end()) {
-                    n->fn_ptr_params = tdit->second.params;
-                    n->n_fn_ptr_params = tdit->second.n_params;
-                    n->fn_ptr_variadic = tdit->second.variadic;
+            if (cast_ts.is_fn_ptr) {
+                if (const FnPtrTypedefInfo* info = find_current_typedef_fn_ptr_info()) {
+                    n->fn_ptr_params = info->params;
+                    n->n_fn_ptr_params = info->n_params;
+                    n->fn_ptr_variadic = info->variadic;
                 }
             }
             guard.commit();
