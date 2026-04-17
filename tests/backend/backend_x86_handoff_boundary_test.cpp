@@ -286,10 +286,7 @@ std::string expected_minimal_i32_immediate_guard_chain_asm(const char* function_
 }
 
 std::string expected_minimal_same_module_global_i32_guard_chain_asm(const char* function_name) {
-  return std::string(".data\n.globl s\n.type s, @object\n.p2align 2\ns:\n")
-         + "    .long 1\n"
-           "    .long 2\n"
-         + asm_header(function_name)
+  return asm_header(function_name)
          + "    mov eax, DWORD PTR [rip + s]\n"
            "    cmp eax, 1\n"
            "    je .L" + std::string(function_name) + "_block_2\n"
@@ -303,7 +300,66 @@ std::string expected_minimal_same_module_global_i32_guard_chain_asm(const char* 
            "    ret\n"
            ".L" + function_name + "_block_4:\n"
            "    mov eax, 0\n"
-           "    ret\n";
+           "    ret\n"
+           ".data\n.globl s\n.type s, @object\n.p2align 2\ns:\n"
+           "    .long 1\n"
+           "    .long 2\n";
+}
+
+std::string expected_minimal_pointer_backed_same_module_global_guard_chain_asm(
+    const char* function_name) {
+  return asm_header(function_name)
+         + "    mov rax, QWORD PTR [rip + s]\n"
+           "    mov eax, DWORD PTR [rip + s_backing]\n"
+           "    cmp eax, 1\n"
+           "    je .L" + std::string(function_name) + "_block_2\n"
+           "    mov eax, 1\n"
+           "    ret\n"
+           ".L" + function_name + "_block_2:\n"
+           "    mov eax, DWORD PTR [rip + s_backing + 4]\n"
+           "    cmp eax, 2\n"
+           "    je .L" + function_name + "_block_4\n"
+           "    mov eax, 2\n"
+           "    ret\n"
+           ".L" + function_name + "_block_4:\n"
+           "    mov rax, QWORD PTR [rip + s_backing + 8]\n"
+           "    mov eax, DWORD PTR [rip + gs1]\n"
+           "    cmp eax, 1\n"
+           "    je .L" + function_name + "_block_6\n"
+           "    mov eax, 3\n"
+           "    ret\n"
+           ".L" + function_name + "_block_6:\n"
+           "    mov eax, DWORD PTR [rip + gs1 + 4]\n"
+           "    cmp eax, 2\n"
+           "    je .L" + function_name + "_block_8\n"
+           "    mov eax, 4\n"
+           "    ret\n"
+           ".L" + function_name + "_block_8:\n"
+           "    mov eax, DWORD PTR [rip + s_backing + 16]\n"
+           "    cmp eax, 1\n"
+           "    je .L" + function_name + "_block_10\n"
+           "    mov eax, 5\n"
+           "    ret\n"
+           ".L" + function_name + "_block_10:\n"
+           "    mov eax, DWORD PTR [rip + s_backing + 20]\n"
+           "    cmp eax, 2\n"
+           "    je .L" + function_name + "_block_12\n"
+           "    mov eax, 6\n"
+           "    ret\n"
+           ".L" + function_name + "_block_12:\n"
+           "    mov eax, 0\n"
+           "    ret\n"
+           ".data\n.globl s\n.type s, @object\n.p2align 2\ns:\n"
+           "    .quad s_backing\n"
+           ".data\n.globl s_backing\n.type s_backing, @object\n.p2align 2\ns_backing:\n"
+           "    .long 1\n"
+           "    .long 2\n"
+           "    .quad gs1\n"
+           "    .long 1\n"
+           "    .long 2\n"
+           ".data\n.globl gs1\n.type gs1, @object\n.p2align 2\ngs1:\n"
+           "    .long 1\n"
+           "    .long 2\n";
 }
 
 std::string expected_minimal_param_add_immediate_asm(const char* function_name, int immediate) {
@@ -2266,23 +2322,33 @@ bir::Module make_x86_same_module_global_i32_guard_chain_module() {
   return module;
 }
 
-bir::Module make_unsupported_x86_pointer_indirect_global_guard_module() {
+bir::Module make_x86_pointer_backed_same_module_global_guard_chain_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
   module.globals.push_back(bir::Global{
-      .name = "x",
-      .type = bir::TypeKind::I32,
-      .size_bytes = 4,
-      .align_bytes = 4,
-      .initializer = bir::Value::immediate_i32(10),
-  });
-  module.globals.push_back(bir::Global{
       .name = "s",
       .type = bir::TypeKind::Ptr,
-      .size_bytes = 16,
+      .size_bytes = 8,
       .align_bytes = 8,
-      .initializer_elements = {bir::Value::immediate_i32(1), bir::Value::immediate_i32(0),
-                               bir::Value::immediate_i32(0), bir::Value::immediate_i32(0)},
+      .initializer_symbol_name = std::string("s_backing"),
+  });
+  module.globals.push_back(bir::Global{
+      .name = "s_backing",
+      .type = bir::TypeKind::I8,
+      .size_bytes = 24,
+      .align_bytes = 8,
+      .initializer_elements = {bir::Value::immediate_i32(1),
+                               bir::Value::immediate_i32(2),
+                               bir::Value::named(bir::TypeKind::Ptr, "@gs1"),
+                               bir::Value::immediate_i32(1),
+                               bir::Value::immediate_i32(2)},
+  });
+  module.globals.push_back(bir::Global{
+      .name = "gs1",
+      .type = bir::TypeKind::I8,
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .initializer_elements = {bir::Value::immediate_i32(1), bir::Value::immediate_i32(2)},
   });
 
   bir::Function function;
@@ -2292,8 +2358,13 @@ bir::Module make_unsupported_x86_pointer_indirect_global_guard_module() {
   bir::Block entry;
   entry.label = "entry";
   entry.insts.push_back(bir::LoadGlobalInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "loaded.first"),
+      .result = bir::Value::named(bir::TypeKind::Ptr, "loaded.root"),
       .global_name = "s",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded.first"),
+      .global_name = "s_backing",
       .align_bytes = 4,
   });
   entry.insts.push_back(bir::BinaryInst{
@@ -2316,14 +2387,9 @@ bir::Module make_unsupported_x86_pointer_indirect_global_guard_module() {
   bir::Block block_2;
   block_2.label = "block_2";
   block_2.insts.push_back(bir::LoadGlobalInst{
-      .result = bir::Value::named(bir::TypeKind::Ptr, "loaded.ptr"),
-      .global_name = "s",
-      .byte_offset = 8,
-      .align_bytes = 8,
-  });
-  block_2.insts.push_back(bir::LoadGlobalInst{
       .result = bir::Value::named(bir::TypeKind::I32, "loaded.second"),
-      .global_name = "x",
+      .global_name = "s_backing",
+      .byte_offset = 4,
       .align_bytes = 4,
   });
   block_2.insts.push_back(bir::BinaryInst{
@@ -2331,7 +2397,7 @@ bir::Module make_unsupported_x86_pointer_indirect_global_guard_module() {
       .result = bir::Value::named(bir::TypeKind::I32, "cmp.second"),
       .operand_type = bir::TypeKind::I32,
       .lhs = bir::Value::named(bir::TypeKind::I32, "loaded.second"),
-      .rhs = bir::Value::immediate_i32(10),
+      .rhs = bir::Value::immediate_i32(2),
   });
   block_2.terminator = bir::CondBranchTerminator{
       .condition = bir::Value::named(bir::TypeKind::I32, "cmp.second"),
@@ -2345,13 +2411,126 @@ bir::Module make_unsupported_x86_pointer_indirect_global_guard_module() {
 
   bir::Block block_4;
   block_4.label = "block_4";
-  block_4.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+  block_4.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "loaded.ptr"),
+      .global_name = "s_backing",
+      .byte_offset = 8,
+      .align_bytes = 8,
+  });
+  block_4.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded.third"),
+      .global_name = "gs1",
+      .align_bytes = 4,
+  });
+  block_4.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cmp.third"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "loaded.third"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  block_4.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cmp.third"),
+      .true_label = "block_5",
+      .false_label = "block_6",
+  };
+
+  bir::Block block_5;
+  block_5.label = "block_5";
+  block_5.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(3)};
+
+  bir::Block block_6;
+  block_6.label = "block_6";
+  block_6.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded.fourth"),
+      .global_name = "gs1",
+      .byte_offset = 4,
+      .align_bytes = 4,
+  });
+  block_6.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cmp.fourth"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "loaded.fourth"),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  block_6.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cmp.fourth"),
+      .true_label = "block_7",
+      .false_label = "block_8",
+  };
+
+  bir::Block block_7;
+  block_7.label = "block_7";
+  block_7.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(4)};
+
+  bir::Block block_8;
+  block_8.label = "block_8";
+  block_8.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded.fifth"),
+      .global_name = "s_backing",
+      .byte_offset = 16,
+      .align_bytes = 4,
+  });
+  block_8.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cmp.fifth"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "loaded.fifth"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  block_8.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cmp.fifth"),
+      .true_label = "block_9",
+      .false_label = "block_10",
+  };
+
+  bir::Block block_9;
+  block_9.label = "block_9";
+  block_9.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(5)};
+
+  bir::Block block_10;
+  block_10.label = "block_10";
+  block_10.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded.sixth"),
+      .global_name = "s_backing",
+      .byte_offset = 20,
+      .align_bytes = 4,
+  });
+  block_10.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cmp.sixth"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "loaded.sixth"),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  block_10.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cmp.sixth"),
+      .true_label = "block_11",
+      .false_label = "block_12",
+  };
+
+  bir::Block block_11;
+  block_11.label = "block_11";
+  block_11.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(6)};
+
+  bir::Block block_12;
+  block_12.label = "block_12";
+  block_12.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
 
   function.blocks.push_back(std::move(entry));
   function.blocks.push_back(std::move(block_1));
   function.blocks.push_back(std::move(block_2));
   function.blocks.push_back(std::move(block_3));
   function.blocks.push_back(std::move(block_4));
+  function.blocks.push_back(std::move(block_5));
+  function.blocks.push_back(std::move(block_6));
+  function.blocks.push_back(std::move(block_7));
+  function.blocks.push_back(std::move(block_8));
+  function.blocks.push_back(std::move(block_9));
+  function.blocks.push_back(std::move(block_10));
+  function.blocks.push_back(std::move(block_11));
+  function.blocks.push_back(std::move(block_12));
   module.functions.push_back(std::move(function));
   return module;
 }
@@ -3171,10 +3350,11 @@ int main() {
   }
 
   if (const auto status =
-          check_route_rejection(
-              make_unsupported_x86_pointer_indirect_global_guard_module(),
-              "fixed-offset same-module defined-global i32 loads",
-              "pointer-indirect global-backed equality-against-immediate guard route");
+          check_route_outputs(
+              make_x86_pointer_backed_same_module_global_guard_chain_module(),
+              expected_minimal_pointer_backed_same_module_global_guard_chain_asm("main"),
+              "loaded.ptr = bir.load_global ptr @s_backing, offset 8",
+              "pointer-backed same-module global equality-against-immediate guard route");
       status != 0) {
     return status;
   }

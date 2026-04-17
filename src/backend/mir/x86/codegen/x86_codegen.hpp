@@ -1196,11 +1196,11 @@ inline std::string emit_prepared_module(
     prelude += std::string(symbol_name) + ":\n";
     return prelude;
   };
-  const auto find_same_module_defined_global =
+  const auto find_same_module_global =
       [&](std::string_view name) -> const c4c::backend::bir::Global* {
     for (const auto& global : module.module.globals) {
       if (global.name == name) {
-        if (global.is_extern || global.is_thread_local || global.initializer_symbol_name.has_value()) {
+        if (global.is_extern || global.is_thread_local) {
           return nullptr;
         }
         return &global;
@@ -1208,49 +1208,124 @@ inline std::string emit_prepared_module(
     }
     return nullptr;
   };
-  const auto defined_global_i32_extent =
-      [&](const c4c::backend::bir::Global& global) -> std::optional<std::size_t> {
-    if (global.initializer.has_value()) {
-      if (global.initializer->kind != c4c::backend::bir::Value::Kind::Immediate ||
-          global.initializer->type != c4c::backend::bir::TypeKind::I32) {
+  const auto same_module_global_scalar_size =
+      [&](c4c::backend::bir::TypeKind type) -> std::optional<std::size_t> {
+    switch (type) {
+      case c4c::backend::bir::TypeKind::I8:
+        return 1;
+      case c4c::backend::bir::TypeKind::I32:
+        return 4;
+      case c4c::backend::bir::TypeKind::Ptr:
+        return 8;
+      default:
         return std::nullopt;
-      }
-      return std::max<std::size_t>(global.size_bytes, 4);
     }
-    if (!global.initializer_elements.empty()) {
-      for (const auto& element : global.initializer_elements) {
-        if (element.kind != c4c::backend::bir::Value::Kind::Immediate ||
-            element.type != c4c::backend::bir::TypeKind::I32) {
-          return std::nullopt;
-        }
-      }
-      return std::max<std::size_t>(global.size_bytes, global.initializer_elements.size() * 4);
-    }
-    return std::nullopt;
   };
-  const auto emit_defined_global_i32_data =
+  const auto same_module_global_supports_scalar_load =
+      [&](const c4c::backend::bir::Global& global,
+          c4c::backend::bir::TypeKind type,
+          std::size_t byte_offset) -> bool {
+    if (!same_module_global_scalar_size(type).has_value()) {
+      return false;
+    }
+    if (global.initializer_symbol_name.has_value()) {
+      return type == c4c::backend::bir::TypeKind::Ptr && byte_offset == 0;
+    }
+    if (global.initializer.has_value()) {
+      const auto init_size = same_module_global_scalar_size(global.initializer->type);
+      return global.initializer->kind == c4c::backend::bir::Value::Kind::Immediate &&
+             init_size.has_value() && global.initializer->type == type && byte_offset == 0;
+    }
+    std::size_t current_offset = 0;
+    for (const auto& element : global.initializer_elements) {
+      const auto element_size = same_module_global_scalar_size(element.type);
+      if (!element_size.has_value()) {
+        return false;
+      }
+      if (current_offset == byte_offset && element.type == type) {
+        return true;
+      }
+      current_offset += *element_size;
+    }
+    return false;
+  };
+  const auto same_module_global_is_zero_initialized =
+      [&](const c4c::backend::bir::Global& global) -> bool {
+    if (global.initializer_symbol_name.has_value()) {
+      return false;
+    }
+    if (global.initializer.has_value()) {
+      if (global.initializer->kind != c4c::backend::bir::Value::Kind::Immediate) {
+        return false;
+      }
+      return global.initializer->immediate == 0 && global.initializer->immediate_bits == 0;
+    }
+    if (global.initializer_elements.empty()) {
+      return false;
+    }
+    for (const auto& element : global.initializer_elements) {
+      if (element.kind == c4c::backend::bir::Value::Kind::Named) {
+        return false;
+      }
+      if (element.immediate != 0 || element.immediate_bits != 0) {
+        return false;
+      }
+    }
+    return true;
+  };
+  const auto emit_same_module_global_data =
       [&](const c4c::backend::bir::Global& global) -> std::optional<std::string> {
     const auto symbol_name = render_asm_symbol_name(global.name);
-    std::string data =
-        emit_defined_global_prelude(symbol_name, global.align_bytes > 0 ? global.align_bytes : 4, false);
+    const auto append_initializer_value = [&](std::string* data,
+                                              const c4c::backend::bir::Value& value) -> bool {
+      if (value.kind == c4c::backend::bir::Value::Kind::Named) {
+        if (value.type != c4c::backend::bir::TypeKind::Ptr || value.name.empty() ||
+            value.name.front() != '@') {
+          return false;
+        }
+        *data += "    .quad " + render_asm_symbol_name(value.name.substr(1)) + "\n";
+        return true;
+      }
+      switch (value.type) {
+        case c4c::backend::bir::TypeKind::I8:
+          *data += "    .byte " + std::to_string(static_cast<std::int32_t>(
+                                      static_cast<std::int8_t>(value.immediate))) +
+                   "\n";
+          return true;
+        case c4c::backend::bir::TypeKind::I32:
+          *data += "    .long " +
+                   std::to_string(static_cast<std::int32_t>(value.immediate)) + "\n";
+          return true;
+        case c4c::backend::bir::TypeKind::Ptr:
+          if (value.immediate != 0 || value.immediate_bits != 0) {
+            return false;
+          }
+          *data += "    .quad 0\n";
+          return true;
+        default:
+          return false;
+      }
+    };
+    std::string data = emit_defined_global_prelude(symbol_name,
+                                                   global.align_bytes > 0 ? global.align_bytes : 4,
+                                                   same_module_global_is_zero_initialized(global));
+    if (global.initializer_symbol_name.has_value()) {
+      data += "    .quad " + render_asm_symbol_name(*global.initializer_symbol_name) + "\n";
+      return data;
+    }
     if (global.initializer.has_value()) {
-      if (global.initializer->kind != c4c::backend::bir::Value::Kind::Immediate ||
-          global.initializer->type != c4c::backend::bir::TypeKind::I32) {
+      if (!append_initializer_value(&data, *global.initializer)) {
         return std::nullopt;
       }
-      data += "    .long " +
-              std::to_string(static_cast<std::int32_t>(global.initializer->immediate)) + "\n";
       return data;
     }
     if (global.initializer_elements.empty()) {
       return std::nullopt;
     }
     for (const auto& element : global.initializer_elements) {
-      if (element.kind != c4c::backend::bir::Value::Kind::Immediate ||
-          element.type != c4c::backend::bir::TypeKind::I32) {
+      if (!append_initializer_value(&data, element)) {
         return std::nullopt;
       }
-      data += "    .long " + std::to_string(static_cast<std::int32_t>(element.immediate)) + "\n";
     }
     return data;
   };
@@ -1413,7 +1488,7 @@ inline std::string emit_prepared_module(
       rendered += "    ret\n";
       return rendered;
     };
-    std::optional<std::string_view> same_module_defined_global_name;
+    std::unordered_set<std::string_view> same_module_global_names;
 
     std::unordered_set<std::string_view> rendered_blocks;
     std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
@@ -1483,33 +1558,35 @@ inline std::string emit_prepared_module(
             }
 
             if (const auto* load = std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst)) {
-              if (load->result.type != c4c::backend::bir::TypeKind::I32 ||
+              if ((load->result.type != c4c::backend::bir::TypeKind::I32 &&
+                   load->result.type != c4c::backend::bir::TypeKind::Ptr) ||
                   load->result.kind != c4c::backend::bir::Value::Kind::Named) {
                 return std::nullopt;
               }
-              const auto* global = find_same_module_defined_global(load->global_name);
-              if (global == nullptr) {
+              const auto* global = find_same_module_global(load->global_name);
+              if (global == nullptr ||
+                  !same_module_global_supports_scalar_load(
+                      *global, load->result.type, load->byte_offset)) {
                 return std::nullopt;
               }
-              const auto global_extent = defined_global_i32_extent(*global);
-              if (!global_extent.has_value() || load->byte_offset % 4 != 0 ||
-                  load->byte_offset + 4 > *global_extent) {
-                return std::nullopt;
-              }
-              if (same_module_defined_global_name.has_value() &&
-                  *same_module_defined_global_name != load->global_name) {
-                return std::nullopt;
-              }
-              same_module_defined_global_name = load->global_name;
+              same_module_global_names.insert(global->name);
               *current_materialized_compare = std::nullopt;
-              *current_i32_name = load->result.name;
               *current_i8_name = std::nullopt;
-              *current_ptr_name = std::nullopt;
-              std::string memory = "DWORD PTR [rip + " + render_asm_symbol_name(load->global_name);
+              std::string memory =
+                  (load->result.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD PTR [rip + "
+                                                                          : "DWORD PTR [rip + ") +
+                  render_asm_symbol_name(load->global_name);
               if (load->byte_offset != 0) {
                 memory += " + " + std::to_string(load->byte_offset);
               }
               memory += "]";
+              if (load->result.type == c4c::backend::bir::TypeKind::Ptr) {
+                *current_i32_name = std::nullopt;
+                *current_ptr_name = load->result.name;
+                return "    mov rax, " + memory + "\n";
+              }
+              *current_i32_name = load->result.name;
+              *current_ptr_name = std::nullopt;
               return "    mov eax, " + memory + "\n";
             }
 
@@ -2092,18 +2169,19 @@ inline std::string emit_prepared_module(
     if (!rendered_entry.has_value()) {
       return std::nullopt;
     }
-    if (same_module_defined_global_name.has_value()) {
-      const auto* emitted_global = find_same_module_defined_global(*same_module_defined_global_name);
-      if (emitted_global == nullptr) {
-        return std::nullopt;
+    std::string rendered_same_module_globals;
+    for (const auto& global : module.module.globals) {
+      if (same_module_global_names.find(global.name) == same_module_global_names.end()) {
+        continue;
       }
-      const auto rendered_global_data = emit_defined_global_i32_data(*emitted_global);
+      const auto rendered_global_data = emit_same_module_global_data(global);
       if (!rendered_global_data.has_value()) {
         return std::nullopt;
       }
-      asm_text = *rendered_global_data + asm_text;
+      rendered_same_module_globals += *rendered_global_data;
     }
     asm_text += *rendered_entry;
+    asm_text += rendered_same_module_globals;
     return asm_text;
   };
   const auto try_render_local_i32_arithmetic_guard = [&]() -> std::optional<std::string> {
@@ -2732,7 +2810,7 @@ inline std::string emit_prepared_module(
       return *rendered_local_slot_guard_chain;
     }
     throw std::invalid_argument(
-        "x86 backend emitter only supports a minimal single-block i32 return terminator, a bounded equality-against-immediate guard family with immediate return leaves including fixed-offset same-module defined-global i32 loads, or one bounded compare-against-zero branch family through the canonical prepared-module handoff");
+        "x86 backend emitter only supports a minimal single-block i32 return terminator, a bounded equality-against-immediate guard family with immediate return leaves including fixed-offset same-module global i32 loads and pointer-backed same-module global roots, or one bounded compare-against-zero branch family through the canonical prepared-module handoff");
   }
 
   const auto& returned = *entry.terminator.value;

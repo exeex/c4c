@@ -6,16 +6,17 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Lifecycle retarget only: the completed same-module defined-global runbook was
-replaced with a new bounded pointer-backed same-module global runbook. No
-implementation packet has started on this retargeted runbook yet.
+Completed `plan.md` Step 1-2 by confirming that `00049`, `00149`, and `00150`
+move together as the first honest pointer-backed same-module global lane, then
+widening the x86 prepared-module guard-chain route to accept pointer-valued
+same-module global roots, aggregate-backed same-module data with pointer
+fields, and the matching handoff coverage for that family.
 
 ## Suggested Next
 
-Start `plan.md` Step 1 by confirming whether `00049`, `00149`, and `00150`
-form the first honest pointer-backed same-module global proving cluster. Keep
-`00045`, `00189`, and `00051` out of scope unless the route is explicitly
-widened with a durable plan change.
+Start `plan.md` Step 4 with the truthful `x86_backend` checkpoint to measure
+the pass-count effect of the new pointer-backed same-module global lane before
+choosing the next bounded family packet.
 
 ## Watchouts
 
@@ -26,8 +27,11 @@ widened with a durable plan change.
 - Treat bootstrap scalar globals (`00045`), multi-function prepared-module
   routes (`00189`), and multi-block control flow (`00051`) as adjacent but
   currently out of scope.
+- Keep future widening within same-module pointer-backed roots plus fixed-
+  offset scalar reads; broader relocation or pointer-write families still need
+  an explicit route change.
 
 ## Proof
 
-Lifecycle retarget only. No proof command has been run for this new runbook
-yet.
+Ran the delegated proof command and wrote fresh results to `test_after.log`:
+`cmake --build --preset default`, `ctest --test-dir /workspaces/c4c/build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary)$'`, then the targeted backend external probes for `00049`, `00149`, and `00150` via `tests/c/external/c-testsuite/RunCase.cmake`. The delegated proof was sufficient for this packet and all selected checks passed.
