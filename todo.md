@@ -6,22 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended `x86::emit_prepared_module(...)` to support the next bounded
+Extended `x86::emit_prepared_module(...)` to support one more honest
 prepared-module control-flow family on the canonical x86 handoff boundary: a
 minimal x86_64 single-parameter `i32` compare-against-zero branch whose two
-leaf blocks return the parameter itself versus an immediate. The focused
-handoff proof now covers both immediate/immediate and parameter/immediate leaf
-return variants while still proving prepared/public/generic route equality
+leaf blocks feed a shared join return after prepare legalizes the join phi
+into one `bir.select`, with each select arm resolving to a supported
+parameter-derived `i32` value. The focused handoff proof now covers that
+joined add/sub case while still proving prepared/public/generic route equality
 against the same canonical x86 assembly.
 
 ## Suggested Next
 
-Extend `x86::emit_prepared_module(...)` to the next honest prepared-module
-control-flow shape behind the same canonical boundary: one bounded x86_64
-single-parameter `i32` compare-against-zero branch whose two leaf blocks
-return distinct parameter-derived values through a shared join only if that
-can still be modeled semantically inside the prepared-module consumer without
-adding phi emulation, raw-BIR, or public-entry fallback rendering.
+Extend `x86::emit_prepared_module(...)` only if it can honestly support the
+next bounded joined prepared-module shape behind the same canonical boundary:
+one x86_64 single-parameter `i32` compare-against-zero branch whose prepared
+join block contains exactly one legalized `bir.select` plus one trailing
+supported parameter-derived arithmetic return in that same block, without
+adding forwarded-join traversal, phi emulation, raw-BIR, or public-entry
+fallback rendering.
 
 ## Watchouts
 
@@ -35,19 +37,21 @@ adding phi emulation, raw-BIR, or public-entry fallback rendering.
 - the canonical x86 handoff is now the prepared-module consumer boundary, so
   new work should extend `x86::emit_prepared_module(...)` rather than adding
   new public/backend-side fallback renderers
-- keep the current branch support equally bounded: one prepared function, one
-  entry compare, one `cond_br`, and two leaf return blocks with no join/phi or
-  hidden mixed fallback
+- the current join support is still tightly bounded: one prepared function, one
+  entry compare, two empty branch-to-join leaf blocks, and one join block whose
+  phi has already been legalized into a single `bir.select`
 - the branch support currently assumes `BinaryOpcode::Eq` against zero with the
-  sole parameter as the compared value and leaf `i32` returns limited to the
-  sole parameter or immediates; widen only if the prepared-module consumer can
-  stay semantic and explicit
+  sole parameter as the compared value; widen only if the prepared-module
+  consumer can stay semantic and explicit
+- the joined branch support only accepts select arms that resolve to the sole
+  parameter, an immediate, or one supported parameter-immediate binary already
+  materialized into the join block by prepare legalize
 - keep control-flow proof route-oriented by comparing prepared/public/generic
   outputs against the same canonical assembly instead of falling back to loose
   substring assertions
-- if the next packet adds join/phi-like flow or more than one live leaf value
-  source, preserve the canonical prepared-module boundary and avoid sneaking in
-  a second renderer or direct-BIR shortcut around the prepared consumer
+- do not widen into nested select trees, forwarded successor joins, or any case
+  that requires interpreting raw phi structure instead of the canonical
+  prepared-module output
 
 ## Proof
 
