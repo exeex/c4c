@@ -156,29 +156,6 @@ template <std::size_t N>
   return std::nullopt;
 }
 
-[[nodiscard]] std::optional<std::string> function_return_destination_register_name(
-    Target target,
-    bir::TypeKind type) {
-  if (type == bir::TypeKind::Void) {
-    return std::nullopt;
-  }
-
-  switch (target) {
-    case Target::X86_64:
-      return is_float_type(type) ? std::optional<std::string>{"xmm0"}
-                                 : std::optional<std::string>{"rax"};
-    case Target::I686:
-      return is_float_type(type) ? std::nullopt : std::optional<std::string>{"eax"};
-    case Target::Aarch64:
-      return is_float_type(type) ? aarch64_float_register_name(type, 0)
-                                 : std::optional<std::string>{"x0"};
-    case Target::Riscv64:
-      return is_float_type(type) ? std::optional<std::string>{"fa0"}
-                                 : std::optional<std::string>{"a0"};
-  }
-  return std::nullopt;
-}
-
 [[nodiscard]] PreparedRegisterClass classify_register_class(const PreparedLivenessValue& value) {
   switch (value.type) {
     case bir::TypeKind::I1:
@@ -736,10 +713,17 @@ void append_consumer_move_resolution(const bir::Function& function,
 }
 
 [[nodiscard]] PreparedMoveStorageKind function_return_storage_kind(const bir::Function& function) {
-  if (function.return_type == bir::TypeKind::Void) {
+  if (!function.return_abi.has_value()) {
     return PreparedMoveStorageKind::None;
   }
-  return PreparedMoveStorageKind::Register;
+  const auto& abi = *function.return_abi;
+  if (abi.returned_in_memory || abi.primary_class == bir::AbiValueClass::Memory) {
+    return PreparedMoveStorageKind::StackSlot;
+  }
+  if (abi.type != bir::TypeKind::Void) {
+    return PreparedMoveStorageKind::Register;
+  }
+  return PreparedMoveStorageKind::None;
 }
 
 void append_call_arg_move_resolution(Target target,
@@ -846,8 +830,10 @@ void append_return_move_resolution(Target target,
       continue;
     }
 
-    const auto destination_register_name =
-        function_return_destination_register_name(target, function.return_type);
+    const auto destination_register_name = function.return_abi.has_value()
+                                               ? call_result_destination_register_name(
+                                                     target, *function.return_abi)
+                                               : std::nullopt;
     append_move_resolution_record(regalloc_function,
                                   source->value_id,
                                   source->value_id,

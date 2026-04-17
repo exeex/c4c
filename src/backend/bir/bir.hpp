@@ -348,6 +348,7 @@ struct Function {
   TypeKind return_type = TypeKind::Void;
   std::size_t return_size_bytes = 0;
   std::size_t return_align_bytes = 0;
+  std::optional<CallResultAbiInfo> return_abi;
   CallingConv calling_convention = CallingConv::C;
   bool is_variadic = false;
   std::vector<Param> params;

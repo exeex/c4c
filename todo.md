@@ -6,27 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended the Step 4 public `PreparedMoveResolution` contract with an optional
-`destination_register_name` alongside the existing destination kind, storage
-kind, and ABI index metadata. `run_regalloc()` now keeps generic value-to-value
-moves free of target-specific naming while ABI-targeted call-argument,
-call-result, and return-site transfers publish the concrete physical
-destination register name when the active target ABI makes that destination
-determinable.
+Added explicit `bir::Function.return_abi` metadata to the active prealloc
+route and taught legalization to populate or normalize it from the function
+return contract before regalloc runs. Step 4 return-site move resolution now
+consumes that explicit ABI surface instead of deriving storage/register
+identity straight from `bir::Function.return_type`.
 
-Focused `backend_prepare_liveness` coverage now asserts both families: phi and
-consumer moves still publish the generic `Value` destination surface without
-ABI/register decoration, while the RISC-V call-argument, call-result, and
-return-site proofs now assert the concrete destination register names (`a3`
-for the fourth integer argument and `fa0` for float call-result/return
-destinations).
+Focused `backend_prepare_liveness` coverage now proves both return paths:
+legalized RISC-V float-return functions publish explicit `return_abi` metadata
+and still expose the expected `fa0` return move, while same-storage integer
+returns also keep explicit integer return ABI metadata without emitting a
+redundant move.
 
 ## Suggested Next
 
-Replace the current coarse function-level return destination inference with
-explicit per-target return ABI metadata in the active BIR/prealloc contract, so
-Step 4 return-site move resolution no longer has to derive its concrete
-destination register from `bir::Function.return_type` alone.
+Start replacing the remaining ad hoc ABI-class inference in function-level
+return metadata with lowering-owned/source ABI information where available, so
+`return_abi` stops being synthesized from only the legalized scalar return
+type inside prealloc.
 
 ## Watchouts
 
@@ -53,10 +50,9 @@ destination register from `bir::Function.return_type` alone.
   destination kind, storage, and concrete register name when the target ABI
   makes that identity available, but ordinary value-destination moves must stay
   free of ABI-specific decoration
-- return-site move records now publish a concrete destination register name,
-  but they still derive that identity from the coarse function-level return
-  type on `bir::Function`; a later packet should switch that over to explicit
-  per-target return ABI metadata once it exists
+- `bir::Function.return_abi` is now the contract that return-site move
+  resolution consumes; it is currently synthesized during legalization from the
+  legalized function return type when the route has no better source ABI data
 - the focused call-result proof currently uses an `F32` value on the active
   RISC-V target because the general-register seed pools are active while float
   register pools are still absent; if float allocation becomes active later,
@@ -87,6 +83,6 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_liveness$ > test_after.log
 2>&1`
-after teaching `run_regalloc()` to publish explicit ABI destination register
-names in `move_resolution` records for call-site and return-site transfers.
+after adding explicit `bir::Function.return_abi` metadata to the active route
+and switching return-site move resolution over to that contract.
 Canonical proof log: `test_after.log`.

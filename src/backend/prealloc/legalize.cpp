@@ -75,6 +75,36 @@ void legalize_call_result_abi(Target target, bir::CallResultAbiInfo& abi) {
   abi.type = legalize_type(target, abi.type);
 }
 
+std::optional<bir::CallResultAbiInfo> infer_function_return_abi(const bir::Function& function) {
+  if (function.return_type == bir::TypeKind::Void) {
+    return std::nullopt;
+  }
+
+  bir::CallResultAbiInfo abi;
+  abi.type = function.return_type;
+  switch (function.return_type) {
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      abi.primary_class = bir::AbiValueClass::Sse;
+      break;
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      abi.primary_class = bir::AbiValueClass::Integer;
+      break;
+    case bir::TypeKind::I128:
+      abi.primary_class = bir::AbiValueClass::Memory;
+      abi.returned_in_memory = true;
+      break;
+    case bir::TypeKind::Void:
+      return std::nullopt;
+  }
+  return abi;
+}
+
 void legalize_memory_access_metadata(Target target,
                                      bir::TypeKind original_type,
                                      std::size_t& align_bytes,
@@ -751,6 +781,15 @@ void legalize_module(Target target, bir::Module& module) {
     lower_phi_nodes(&function);
     legalize_sized_type(
         target, function.return_type, function.return_size_bytes, function.return_align_bytes);
+    if (!function.return_abi.has_value()) {
+      function.return_abi = infer_function_return_abi(function);
+    }
+    if (function.return_abi.has_value()) {
+      legalize_call_result_abi(target, *function.return_abi);
+      if (function.return_abi->type == bir::TypeKind::Void) {
+        function.return_abi.reset();
+      }
+    }
     for (auto& param : function.params) {
       legalize_sized_type(target, param.type, param.size_bytes, param.align_bytes);
     }

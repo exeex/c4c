@@ -62,6 +62,16 @@ const prepare::PreparedRegallocValue* find_regalloc_value(
   return nullptr;
 }
 
+const bir::Function* find_module_function(const prepare::PreparedBirModule& prepared,
+                                          std::string_view function_name) {
+  for (const auto& function : prepared.module.functions) {
+    if (function.name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
 const prepare::PreparedAllocationConstraint* find_constraint(
     const prepare::PreparedRegallocFunction& function,
     prepare::PreparedValueId value_id) {
@@ -750,7 +760,7 @@ prepare::PreparedBirModule prepare_return_move_module_with_regalloc() {
   prepared.target = Target::Riscv64;
 
   prepare::PrepareOptions options;
-  options.run_legalize = false;
+  options.run_legalize = true;
   options.run_stack_layout = true;
   options.run_liveness = true;
   options.run_regalloc = true;
@@ -787,7 +797,7 @@ prepare::PreparedBirModule prepare_return_same_storage_module_with_regalloc() {
   prepared.target = Target::Riscv64;
 
   prepare::PrepareOptions options;
-  options.run_legalize = false;
+  options.run_legalize = true;
   options.run_stack_layout = true;
   options.run_liveness = true;
   options.run_regalloc = true;
@@ -1381,6 +1391,16 @@ int check_call_result_move_resolution(const prepare::PreparedBirModule& prepared
 }
 
 int check_return_move_resolution(const prepare::PreparedBirModule& prepared) {
+  const auto* module_function = find_module_function(prepared, "return_move_resolution");
+  if (module_function == nullptr) {
+    return fail("expected BIR output for return_move_resolution");
+  }
+  if (!module_function->return_abi.has_value() ||
+      module_function->return_abi->type != bir::TypeKind::F32 ||
+      module_function->return_abi->primary_class != bir::AbiValueClass::Sse) {
+    return fail("expected return_move_resolution to publish explicit function return ABI metadata");
+  }
+
   const auto* function = find_regalloc_function(prepared, "return_move_resolution");
   if (function == nullptr) {
     return fail("expected regalloc output for return_move_resolution");
@@ -1411,6 +1431,14 @@ int check_return_move_resolution(const prepare::PreparedBirModule& prepared) {
 }
 
 int check_return_same_storage_resolution(const prepare::PreparedBirModule& prepared) {
+  const auto* module_function = find_module_function(prepared, "return_same_storage_resolution");
+  if (module_function == nullptr || !module_function->return_abi.has_value() ||
+      module_function->return_abi->type != bir::TypeKind::I32 ||
+      module_function->return_abi->primary_class != bir::AbiValueClass::Integer) {
+    return fail(
+        "expected return_same_storage_resolution to preserve explicit function return ABI metadata");
+  }
+
   const auto* function = find_regalloc_function(prepared, "return_same_storage_resolution");
   if (function == nullptr) {
     return fail("expected regalloc output for return_same_storage_resolution");
