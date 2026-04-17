@@ -34,7 +34,9 @@ bool parse_single_identifier(const std::string& text, std::string* ident) {
 }  // namespace
 
 Preprocessor::Preprocessor() {
-  init_predefined_macros(macros_, target_triple_);
+  target_profile_ = c4c::target_profile_from_triple(c4c::default_host_target_triple());
+  target_triple_ = target_profile_.triple;
+  init_predefined_macros(macros_, target_profile_);
 }
 
 void Preprocessor::set_source_profile(SourceProfile profile) {
@@ -57,11 +59,19 @@ void Preprocessor::set_source_profile(SourceProfile profile) {
   }
 }
 
-void Preprocessor::set_target_triple(const std::string& triple) {
-  target_triple_ = triple;
+void Preprocessor::set_target_profile(const c4c::TargetProfile& target_profile) {
+  target_profile_ = target_profile.arch == c4c::TargetArch::Unknown
+                        ? c4c::target_profile_from_triple(c4c::default_host_target_triple())
+                        : target_profile;
+  target_triple_ = target_profile_.triple;
   macros_.clear();
-  init_predefined_macros(macros_, target_triple_);
+  init_predefined_macros(macros_, target_profile_);
   set_source_profile(source_profile_);
+}
+
+void Preprocessor::set_target_triple(const std::string& triple) {
+  set_target_profile(c4c::target_profile_from_triple(
+      triple.empty() ? c4c::default_host_target_triple() : triple));
 }
 
 std::string Preprocessor::preprocess_file(const std::string& path) {

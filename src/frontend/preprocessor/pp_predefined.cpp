@@ -85,9 +85,7 @@ void add_apple_target_predefines(MacroTable& table, const TargetProfile& target_
 
 }  // namespace
 
-void init_predefined_macros(MacroTable& table, const std::string& requested_target_triple) {
-  const auto target_profile = c4c::target_profile_from_triple(
-      requested_target_triple.empty() ? c4c::default_host_target_triple() : requested_target_triple);
+void init_predefined_macros(MacroTable& table, const c4c::TargetProfile& target_profile) {
   def(table, "__STDC__", "1");
   def(table, "__STDC_VERSION__", "201710L");
   def(table, "__LP64__", "1");
@@ -312,6 +310,14 @@ void init_predefined_macros(MacroTable& table, const std::string& requested_targ
   def(table, "__STDC_UTF_32__", "1");
   def(table, "__USER_LABEL_PREFIX__", "");
   def(table, "__GCC_ASM_FLAG_OUTPUTS__", "1");
+}
+
+void init_predefined_macros(MacroTable& table, const std::string& requested_target_triple) {
+  init_predefined_macros(
+      table,
+      c4c::target_profile_from_triple(
+          requested_target_triple.empty() ? c4c::default_host_target_triple()
+                                          : requested_target_triple));
 }
 
 }  // namespace c4c

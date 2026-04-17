@@ -477,7 +477,7 @@ int main(int argc, char **argv) {
     seed_default_system_include_paths(source_profile, system_include_paths);
 
     c4c::Preprocessor preprocessor;
-    preprocessor.set_target_triple(target_profile.triple);
+    preprocessor.set_target_profile(target_profile);
     preprocessor.set_source_profile(source_profile);
     // Apply optimization / PIC / PIE config toggles.
     if (opt_level > 0) {
