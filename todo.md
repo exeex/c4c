@@ -11,10 +11,11 @@ canonical x86 handoff boundary without widening the emitter contract: a
 minimal x86_64 single-parameter `i32` compare-against-zero branch whose join
 block contains one legalized `bir.select` plus one trailing supported
 parameter-immediate logical op on that select result. The focused handoff
-proof now also covers the joined add/sub-then-`and` case while still proving
+proof now also covers the joined add/sub-then-`or` case while still proving
 prepared/public/generic route equality against the same canonical x86
 assembly, and it did so without needing any new fallback or emitter-side
-special-case logic.
+special-case logic because the existing bounded prepared-module consumer
+already handled that immediate family.
 
 ## Suggested Next
 
@@ -22,7 +23,7 @@ Extend `x86::emit_prepared_module(...)` only if it can honestly support the
 next bounded joined prepared-module shape behind the same canonical boundary:
 one x86_64 single-parameter `i32` compare-against-zero branch whose prepared
 join block still contains exactly one legalized `bir.select`, but the trailing
-join-local op is a different already-supported immediate family such as `or`,
+join-local op is the next already-supported immediate family such as `mul`,
 only if that can stay inside the same explicit join consumer without nested
 selects, forwarded joins, or fallback rendering.
 
@@ -48,9 +49,9 @@ selects, forwarded joins, or fallback rendering.
   parameter, an immediate, or one supported parameter-immediate binary already
   materialized into the join block by prepare legalize
 - the joined branch support now has focused proof for one trailing join-local
-  supported parameter-immediate arithmetic case (`add`) and two logical cases
-  (`xor` and `and`) whose named operand is exactly the select result; do not
-  widen beyond one trailing op in the same block
+  supported parameter-immediate arithmetic case (`add`) and three logical cases
+  (`xor`, `and`, and `or`) whose named operand is exactly the select result; do
+  not widen beyond one trailing op in the same block
 - keep control-flow proof route-oriented by comparing prepared/public/generic
   outputs against the same canonical assembly instead of falling back to loose
   substring assertions
