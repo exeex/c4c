@@ -6,27 +6,23 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Moved function-level return ABI ownership earlier into BIR lowering by adding
-ABI payload to lowered return info and threading it into `bir::Function` for
-declarations, normal function lowering, and the canonical-select fast path.
-Prealloc legalization now preserves explicit memory-return ABI metadata even
-when the lowered function storage return type is `Void`, instead of dropping
-that contract during normalization.
+Threaded lowering-owned call result ABI through the shared direct/indirect
+call lowering path by copying `LoweredReturnInfo.abi` into
+`bir::CallInst.result_abi`, so real lowered calls now carry explicit result ABI
+metadata instead of leaving the active prealloc route to cope with a missing
+call-site contract.
 
-Focused `backend_prepare_liveness` coverage now proves the contract at both
-ends: legalized RISC-V float and integer returns still publish explicit
-function `return_abi` metadata for regalloc move resolution, and a lowered
-aggregate-return declaration keeps an explicit memory/sret `return_abi`
-through BIR lowering plus prepare legalize instead of forcing prealloc to
-synthesize it from `return_type`.
+Focused `backend_prepare_liveness` coverage now proves that a real lowered
+RISC-V float call keeps explicit `result_abi` metadata in BIR and publishes the
+expected `call_result_stack_to_register` move into `fa0` after legalize,
+liveness, and regalloc run through the active prepare pipeline.
 
 ## Suggested Next
 
-Audit the remaining call-site ABI surfaces against the same ownership rule:
-thread lowering-owned/source metadata into `bir::CallInst.arg_abi` and
-`result_abi` wherever the lowering path already knows more than prealloc’s
-target-local legalization fallback, especially for declaration and aggregate
-routes.
+Apply the same ownership rule to helper-emitted call forms that still bypass
+the shared call-lowering handoff, especially runtime/intrinsic call builders in
+`lir_to_bir_calling.cpp` and any call-argument ABI fields whose memory/sret
+shape is already known at lowering time.
 
 ## Watchouts
 
@@ -56,6 +52,10 @@ routes.
 - `bir::Function.return_abi` is now the contract that return-site move
   resolution consumes; it is currently synthesized during legalization from the
   legalized function return type when the route has no better source ABI data
+- shared direct/indirect call lowering now sets `bir::CallInst.result_abi`
+  from `LoweredReturnInfo.abi`; helper-emitted call sites outside
+  `lir_to_bir_memory.cpp` still need their own audit before assuming full
+  call-site ABI coverage
 - lowered aggregate/sret functions can now legitimately carry
   `return_abi={type=Void, primary_class=Memory, returned_in_memory=true}`;
   prepare legalize must preserve that metadata instead of treating all
@@ -90,11 +90,7 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_liveness$ > test_after.log
 2>&1`
-after threading lowering-owned function return ABI metadata into
-`bir::Function` and preserving explicit memory-return ABI through prepare
-legalize.
-Supervisor acceptance check:
-`ctest --test-dir build --output-on-failure -L backend -LE c_testsuite`
-passed (71/71). A full `-L backend` sweep still hits the pre-existing
-`c_testsuite` x86 backend asm/fallback cluster outside this packet.
+after threading lowering-owned call result ABI metadata into the shared
+`bir::CallInst` lowering path and proving it on a real lowered float call in
+the active prepare/regalloc route.
 Canonical proof log: `test_after.log`.

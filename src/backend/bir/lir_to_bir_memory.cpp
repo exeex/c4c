@@ -4383,6 +4383,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     lowered_call.return_type_name =
         return_info->returned_via_sret ? "void" : std::string(call->return_type.str());
     lowered_call.return_type = return_info->type;
+    lowered_call.result_abi = return_info->abi;
     lowered_call.is_indirect = is_indirect_call;
     lowered_call.is_variadic = is_variadic_call;
     if (sret_slot_name.has_value()) {

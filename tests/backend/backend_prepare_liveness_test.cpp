@@ -840,6 +840,56 @@ std::optional<prepare::PreparedBirModule> lower_and_legalize_aggregate_return_de
   return std::move(planner.prepared());
 }
 
+std::optional<prepare::PreparedBirModule> lower_and_prepare_call_result_module() {
+  lir::LirModule module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  lir::LirExternDecl decl;
+  decl.name = "source_f32";
+  decl.return_type_str = "float";
+  decl.return_type = "float";
+  module.extern_decls.push_back(std::move(decl));
+
+  lir::LirFunction function;
+  function.name = "lowered_call_result_metadata";
+  function.signature_text = "define float @lowered_call_result_metadata()";
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirCallOp{
+      .result = lir::LirOperand("%call.result"),
+      .return_type = "float",
+      .callee = lir::LirOperand("@source_f32"),
+      .callee_type_suffix = "()",
+      .args_str = "",
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::string("%call.result"),
+      .type_str = "float",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto lowered = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return std::nullopt;
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(*lowered.module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
 prepare::PreparedBirModule prepare_evicted_spill_module_with_regalloc() {
   bir::Module module;
 
@@ -1510,6 +1560,52 @@ int check_lowered_aggregate_return_abi(const prepare::PreparedBirModule& prepare
   return 0;
 }
 
+int check_lowered_call_result_abi(const prepare::PreparedBirModule& prepared) {
+  const auto* module_function = find_module_function(prepared, "lowered_call_result_metadata");
+  if (module_function == nullptr || module_function->blocks.size() != 1 ||
+      module_function->blocks.front().insts.size() != 1) {
+    return fail("expected lowered_call_result_metadata BIR output with one call");
+  }
+
+  const auto* call = std::get_if<bir::CallInst>(&module_function->blocks.front().insts.front());
+  if (call == nullptr || !call->result_abi.has_value() ||
+      call->result_abi->type != bir::TypeKind::F32 ||
+      call->result_abi->primary_class != bir::AbiValueClass::Sse) {
+    return fail("expected lowered call to preserve explicit float result ABI metadata");
+  }
+
+  const auto* function = find_regalloc_function(prepared, "lowered_call_result_metadata");
+  if (function == nullptr) {
+    return fail("expected regalloc output for lowered_call_result_metadata");
+  }
+
+  const auto* call_result = find_regalloc_value(*function, "%call.result");
+  if (call_result == nullptr) {
+    return fail("expected lowered call result to appear in regalloc output");
+  }
+
+  bool saw_call_result_move = false;
+  for (const auto& move : function->move_resolution) {
+    if (move.from_value_id != call_result->value_id || move.to_value_id != call_result->value_id ||
+        move.reason != "call_result_stack_to_register") {
+      continue;
+    }
+    if (move.destination_kind != prepare::PreparedMoveDestinationKind::CallResultAbi ||
+        move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+        move.destination_abi_index.has_value() ||
+        move.destination_register_name != std::optional<std::string>{"fa0"}) {
+      return fail("expected lowered call-result move to target the concrete ABI return register");
+    }
+    saw_call_result_move = true;
+    break;
+  }
+  if (!saw_call_result_move) {
+    return fail("expected lowered call result to publish call-result move resolution");
+  }
+
+  return 0;
+}
+
 int check_loop_weighted_priority(const prepare::PreparedBirModule& prepared) {
   const auto* liveness = find_liveness_function(prepared, "loop_weighted_priority");
   const auto* regalloc = find_regalloc_function(prepared, "loop_weighted_priority");
@@ -1595,6 +1691,14 @@ int main() {
     return fail("expected aggregate declaration lowering to succeed");
   }
   if (const int rc = check_lowered_aggregate_return_abi(*aggregate_return_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto lowered_call_result_prepared = lower_and_prepare_call_result_module();
+  if (!lowered_call_result_prepared.has_value()) {
+    return fail("expected lowered call-result module to succeed");
+  }
+  if (const int rc = check_lowered_call_result_abi(*lowered_call_result_prepared); rc != 0) {
     return rc;
   }
 
