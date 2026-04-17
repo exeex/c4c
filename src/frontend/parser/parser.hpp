@@ -544,6 +544,7 @@ class Parser {
   // ── active parse context ──────────────────────────────────────────────────
   // Tag of the struct currently being parsed (empty if not in struct body).
   std::string current_struct_tag_;
+  TextId current_struct_tag_text_id_ = kInvalidText;
   // True while parsing a file-scope declaration in parse_top_level().
   bool parsing_top_level_context_;
   // True while parsing an explicit template specialization (template<>).
@@ -665,6 +666,17 @@ class Parser {
                                std::string_view fallback = {}) const {
     if (token_texts_ && text_id != kInvalidText) return token_texts_->lookup(text_id);
     return fallback;
+  }
+  void clear_current_struct_tag() {
+    current_struct_tag_.clear();
+    current_struct_tag_text_id_ = kInvalidText;
+  }
+  void set_current_struct_tag(std::string_view tag) {
+    current_struct_tag_ = std::string(tag);
+    current_struct_tag_text_id_ = parser_text_id_for_token(kInvalidText, tag);
+  }
+  std::string_view current_struct_tag_text() const {
+    return parser_text(current_struct_tag_text_id_, current_struct_tag_);
   }
   void clear_last_resolved_typedef() {
     last_resolved_typedef_.clear();

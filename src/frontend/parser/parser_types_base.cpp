@@ -94,7 +94,7 @@ bool Parser::is_type_start() const {
             tokens_[pos_ + 1].kind == TokenKind::Less &&
             (find_template_struct_primary(name) ||
              find_template_struct_primary(resolve_visible_type_name(name)) ||
-             !current_struct_tag_.empty())) return true;
+             !current_struct_tag_text().empty())) return true;
         // Keep declaration probes aligned with parse_base_type(): even when
         // template-type registration was lost, `Identifier<...>` should still
         // be allowed to enter type parsing so the unresolved-template fallback

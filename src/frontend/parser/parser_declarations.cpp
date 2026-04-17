@@ -588,7 +588,7 @@ Node* Parser::parse_local_decl() {
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
         if (!ts.tag) return true;
         if (is_cpp_mode() && !current_struct_tag_.empty()) {
-            const std::string current_tag = current_struct_tag_;
+            const std::string current_tag(current_struct_tag_text());
             const std::string qualified_current_tag = qualify_name(current_tag);
             const std::string spelled_tag = ts.tag;
             const std::string qualified_spelled_tag = qualify_name(spelled_tag);
@@ -2036,7 +2036,7 @@ Node* Parser::parse_top_level() {
 
             // Enter owner scope for out-of-class operator definition.
             std::string saved_tag_op = current_struct_tag_;
-            current_struct_tag_ = qualified_owner;
+            set_current_struct_tag(qualified_owner);
             if (!template_scope_stack_.empty() &&
                 template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate &&
                 (find_template_struct_primary(qualified_owner) ||
@@ -2151,7 +2151,7 @@ Node* Parser::parse_top_level() {
                 match(TokenKind::Semi);
             }
             known_fn_names_.insert(qualified_op_name);
-            current_struct_tag_ = saved_tag_op;
+            set_current_struct_tag(saved_tag_op);
             return fn;
         }
 
@@ -2170,7 +2170,7 @@ Node* Parser::parse_top_level() {
 
                 // Enter owner scope for out-of-class constructor definition.
                 std::string saved_tag_ctor = current_struct_tag_;
-                current_struct_tag_ = qualified_owner;
+                set_current_struct_tag(qualified_owner);
                 if (!template_scope_stack_.empty() &&
                     template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate &&
                     (find_template_struct_primary(qualified_owner) ||
@@ -2281,7 +2281,7 @@ Node* Parser::parse_top_level() {
                     match(TokenKind::Semi);
                 }
                 known_fn_names_.insert(qualified_ctor_name);
-                current_struct_tag_ = saved_tag_ctor;
+                set_current_struct_tag(saved_tag_ctor);
                 return fn;
             }
         }
@@ -2377,7 +2377,7 @@ top_level_base_ready:
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
         if (!ts.tag) return true;
         if (is_cpp_mode() && !current_struct_tag_.empty()) {
-            const std::string current_tag = current_struct_tag_;
+            const std::string current_tag(current_struct_tag_text());
             const std::string qualified_current_tag = qualify_name(current_tag);
             const std::string spelled_tag = ts.tag;
             const std::string qualified_spelled_tag = qualify_name(spelled_tag);
@@ -2674,7 +2674,7 @@ top_level_base_ready:
         auto sep = dn.rfind("::");
         if (sep == std::string::npos || sep == 0) return;
         qualified_owner_tag = dn.substr(0, sep);
-        current_struct_tag_ = qualified_owner_tag;
+        set_current_struct_tag(qualified_owner_tag);
         // If the owner is a known template struct and we have an active
         // FreeFunctionTemplate scope, relabel it as EnclosingClass.
         if (!template_scope_stack_.empty() &&
@@ -2691,7 +2691,7 @@ top_level_base_ready:
     // Helper to restore struct tag before returning from this function.
     auto restore_owner_scope = [&]() {
         if (!qualified_owner_tag.empty())
-            current_struct_tag_ = saved_struct_tag_for_qualified;
+            set_current_struct_tag(saved_struct_tag_for_qualified);
     };
 
     // Explicit template specialization: parse <type_args> after function name.

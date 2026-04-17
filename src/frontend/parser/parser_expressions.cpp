@@ -771,10 +771,14 @@ Node* Parser::parse_primary() {
             qualified_name.clear();
         if (!qualifier_owner.empty() && !current_struct_tag_.empty() &&
             check(TokenKind::LParen)) {
+            const std::string current_tag(current_struct_tag_text());
             const std::string resolved_owner =
                 resolve_visible_type_name(qualifier_owner);
             if (has_typedef_type(qualifier_owner) ||
-                (!resolved_owner.empty() && has_typedef_type(resolved_owner))) {
+                (!resolved_owner.empty() &&
+                 (has_typedef_type(resolved_owner) ||
+                  resolved_owner == current_tag ||
+                  qualifier_owner == current_tag))) {
                 // Inside a method body, `BaseAlias::operator...(args)` names a
                 // qualified member call on the current object rather than a
                 // free function symbol. Collapse the owner spelling here so

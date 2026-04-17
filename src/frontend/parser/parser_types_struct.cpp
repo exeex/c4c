@@ -650,7 +650,7 @@ bool Parser::try_parse_record_using_member(
         member_typedef_names->push_back(arena_.strdup(alias_name.c_str()));
         member_typedef_types->push_back(alias_ts);
         if (!current_struct_tag_.empty()) {
-            std::string scoped = current_struct_tag_ + "::" + alias_name;
+            std::string scoped = std::string(current_struct_tag_text()) + "::" + alias_name;
             register_struct_member_typedef_binding(scoped, alias_ts);
         }
         return true;
@@ -689,7 +689,7 @@ bool Parser::try_parse_record_typedef_member(
         member_typedef_names->push_back(name);
         member_typedef_types->push_back(type);
         if (!current_struct_tag_.empty()) {
-            std::string scoped = current_struct_tag_ + "::" + name;
+            std::string scoped = std::string(current_struct_tag_text()) + "::" + name;
             register_struct_member_typedef_binding(scoped, type);
         }
     };
@@ -839,7 +839,7 @@ bool Parser::try_parse_record_enum_member(
 
 bool Parser::is_record_special_member_name(
     const std::string& lex, const std::string& struct_source_name) const {
-    if (lex == current_struct_tag_) return true;
+    if (lex == current_struct_tag_text()) return true;
     return !struct_source_name.empty() && lex == struct_source_name;
 }
 
@@ -1700,7 +1700,11 @@ void Parser::begin_record_body_context(const char* tag,
 
     if (saved_struct_tag)
         *saved_struct_tag = current_struct_tag_;
-    current_struct_tag_ = (tag && tag[0]) ? tag : "";
+    if (tag && tag[0]) {
+        set_current_struct_tag(tag);
+    } else {
+        clear_current_struct_tag();
+    }
 
     if (struct_source_name)
         struct_source_name->clear();
@@ -1750,7 +1754,7 @@ void Parser::parse_record_body_with_context(
 
 void Parser::finish_record_body_context(const std::string& saved_struct_tag) {
     expect(TokenKind::RBrace);
-    current_struct_tag_ = saved_struct_tag;
+    set_current_struct_tag(saved_struct_tag);
 }
 
 void Parser::parse_record_definition_prelude(
