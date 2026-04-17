@@ -26,6 +26,7 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
     info.callee_ts = resolve_payload_type(ctx, *r);
     unresolved_external_callee = true;
     unresolved_external_name = r->name;
+    info.callee_link_name_id = r->link_name_id;
   } else {
     info.callee_val = emit_rval_id(ctx, call.callee, info.callee_ts);
   }
@@ -39,7 +40,7 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
   info.builtin_special =
       info.builtin && info.builtin->lowering != BuiltinLoweringKind::AliasCall;
   if (unresolved_external_callee && !info.builtin_special) {
-    record_extern_call_decl(unresolved_external_name, info.ret_ty);
+    record_extern_call_decl(unresolved_external_name, info.ret_ty, info.callee_link_name_id);
   }
 
   if (info.builtin_id != BuiltinId::Unknown) {

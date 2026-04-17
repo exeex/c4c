@@ -8,6 +8,26 @@
 
 namespace c4c::hir {
 
+namespace {
+
+DeclRef make_direct_call_decl_ref(Module& mod, std::string name) {
+  DeclRef dr{};
+  dr.name = std::move(name);
+  dr.link_name_id = mod.link_names.intern(dr.name);
+  return dr;
+}
+
+void intern_direct_call_callee_link_name(Module& mod, Expr& expr) {
+  auto* ref = std::get_if<DeclRef>(&expr.payload);
+  if (!ref || ref->local || ref->param_index || ref->global ||
+      ref->link_name_id != kInvalidLinkName) {
+    return;
+  }
+  ref->link_name_id = mod.link_names.intern(ref->name);
+}
+
+}  // namespace
+
 std::optional<ExprId> Lowerer::try_lower_template_struct_call(FunctionCtx* ctx,
                                                               const Node* n) {
   if (!ctx || !n || !n->left || n->left->kind != NK_VAR || !n->left->name ||
@@ -51,8 +71,7 @@ std::optional<ExprId> Lowerer::try_lower_template_struct_call(FunctionCtx* ctx,
 
   std::string resolved_mangled = *resolved;
   CallExpr oc{};
-  DeclRef dr{};
-  dr.name = resolved_mangled;
+  DeclRef dr = make_direct_call_decl_ref(*module_, resolved_mangled);
   auto fit = module_->fn_index.find(dr.name);
   TypeSpec fn_ts{};
   fn_ts.base = TB_VOID;
@@ -183,8 +202,7 @@ bool Lowerer::try_expand_pack_call_arg(FunctionCtx* ctx,
     }
     const std::string callee_name = mangle_template_name("forward", forward_bindings);
 
-    DeclRef callee_ref{};
-    callee_ref.name = callee_name;
+    DeclRef callee_ref = make_direct_call_decl_ref(*module_, callee_name);
     TypeSpec callee_ts = pattern->left->type;
     if (const Function* callee_fn = direct_callee_fn(callee_name)) {
       callee_ts = callee_fn->return_type.spec;
@@ -243,7 +261,6 @@ std::optional<ExprId> Lowerer::try_lower_member_call_expr(FunctionCtx* ctx,
 
   if (auto resolved_method_opt = find_struct_method_mangled(tag, method_name, base_ts.is_const)) {
     CallExpr call{};
-    DeclRef dr{};
     std::string resolved_method = *resolved_method_opt;
     const std::string base_key = std::string(tag) + "::" + method_name;
     auto ovit = ref_overload_set_.find(base_key);
@@ -253,7 +270,7 @@ std::optional<ExprId> Lowerer::try_lower_member_call_expr(FunctionCtx* ctx,
     if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
       resolved_method = resolve_ref_overload(ovit->first, n, ctx);
     }
-    dr.name = resolved_method;
+    DeclRef dr = make_direct_call_decl_ref(*module_, resolved_method);
     auto fit = module_->fn_index.find(dr.name);
     TypeSpec fn_ts{};
     fn_ts.base = TB_VOID;
@@ -388,8 +405,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
         }
       }
     }
-    DeclRef dr{};
-    dr.name = resolved_callee_name;
+    DeclRef dr = make_direct_call_decl_ref(*module_, resolved_callee_name);
     auto fit = module_->fn_index.find(dr.name);
     if (fit != module_->fn_index.end() &&
         fit->second.value < module_->functions.size()) {
@@ -412,8 +428,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
   } else if (auto ded_it = deduced_template_calls_.find(n);
              ded_it != deduced_template_calls_.end()) {
     resolved_callee_name = ded_it->second.mangled_name;
-    DeclRef dr{};
-    dr.name = resolved_callee_name;
+    DeclRef dr = make_direct_call_decl_ref(*module_, resolved_callee_name);
     auto fit = module_->fn_index.find(dr.name);
     if (fit != module_->fn_index.end() &&
         fit->second.value < module_->functions.size()) {
@@ -447,8 +462,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
     if (n->left && n->left->kind == NK_VAR && n->left->name &&
         ref_overload_set_.count(n->left->name)) {
       resolved_callee_name = resolve_ref_overload(n->left->name, n, ctx);
-      DeclRef dr{};
-      dr.name = resolved_callee_name;
+      DeclRef dr = make_direct_call_decl_ref(*module_, resolved_callee_name);
       auto fit = module_->fn_index.find(dr.name);
       if (fit != module_->fn_index.end() &&
           fit->second.value < module_->functions.size()) {
@@ -471,8 +485,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
                 find_struct_method_mangled(ctx->method_struct_tag, callee_name, true);
           if (resolved_method) {
             resolved_callee_name = *resolved_method;
-            DeclRef dr{};
-            dr.name = resolved_callee_name;
+            DeclRef dr = make_direct_call_decl_ref(*module_, resolved_callee_name);
             auto fit = module_->fn_index.find(dr.name);
             TypeSpec fn_ts{};
             fn_ts.base = TB_VOID;
@@ -500,8 +513,10 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
           }
         }
       }
-      if (!resolved_as_method)
+      if (!resolved_as_method) {
         c.callee = lower_expr(ctx, n->left);
+        intern_direct_call_callee_link_name(*module_, module_->expr_pool[c.callee.value]);
+      }
     }
   }
   c.builtin_id = n->builtin_id;

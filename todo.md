@@ -6,17 +6,17 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Added a parallel `LabelAddrExpr.fn_link_name_id` carrier in HIR and updated
-`const_init_emitter.cpp` so constant-initializer `blockaddress(@...)` emission
-now resolves the enclosing function spelling late from that semantic id rather
-than depending only on `fn_name` strings.
+Added a parallel `DeclRef.link_name_id` carrier for direct-call callees in HIR
+and threaded it into `StmtEmitter` so unresolved extern-call declarations and
+direct call sites now preserve upstream semantic names instead of depending
+only on raw fallback strings.
 
 ## Suggested Next
 
-Audit whether any remaining late consumer still emits link-visible names from
-legacy strings without a real parallel semantic carrier; if the remaining gap
-is unresolved extern calls, decide whether to add an upstream carrier rather
-than extending fallback-side string plumbing.
+Audit the remaining direct-name consumers that still key lookup or dedup by raw
+`name` strings even though call lowering and late emission now have real
+parallel `LinkNameId` carriers; keep the next slice semantic and avoid turning
+`DeclRef` into a repo-wide migration.
 
 ## Watchouts
 
@@ -26,12 +26,10 @@ than extending fallback-side string plumbing.
   available
 - keep `LinkNameId` distinct from both `TextId` and parser/source-atom
   `SymbolId`; the new HIR fields are parallel carriers, not replacements
-- unresolved extern-call declarations still only get semantic names if an
-  upstream carrier already has a real `LinkNameId`; do not fake that boundary
-  by interning raw fallback names during lowering
-- the new direct-call carrier only becomes valid when the callee resolves to an
-  existing HIR `Function`; intrinsic/builtin aliases and unresolved extern
-  calls should continue to flow with `kInvalidLinkName`
+- unresolved direct-call decl refs now intern `LinkNameId` in HIR call
+  lowering, but builtin alias calls still intentionally use
+  `kInvalidLinkName` because they do not originate from an HIR semantic
+  carrier
 - this packet only hardened function-level backend failure notes; other
   reporting surfaces should still be audited individually before assuming the
   backend is fully id-driven, but within the owned `lir_to_bir` module,
@@ -41,10 +39,9 @@ than extending fallback-side string plumbing.
   `function.name`, but their only owned caller is `lower_module`, which
   resolves semantic names first; do not duplicate fallback lookup inside those
   helpers unless a new direct caller appears
-- `stmt_emitter_expr` and `stmt_emitter_lvalue` now prefer `LinkNameId` only
-  for resolved direct globals/functions already present in HIR; unresolved
-  extern-call paths still intentionally flow through raw fallback names because
-  no upstream semantic carrier exists there yet
+- plain `foo()` direct-call lowering now patches the callee `DeclRef` in place
+  after `lower_expr`, so this route stays bounded to call sites instead of
+  teaching every `DeclRef` construction path about `LinkNameId`
 - `build_fn_signature` now resolves emitted function spellings late from
   `fn.link_name_id`, but dedup/index selection in HIR and lowering still keys
   off legacy `name` strings and should not be conflated with emission-time
@@ -53,10 +50,9 @@ than extending fallback-side string plumbing.
   from `LinkNameId`, including `blockaddress` and constant-expression GEP
   spellings, but its raw decl strings still remain the lookup key used to find
   those semantic carriers
-- `LabelAddrExpr` now carries its own parallel `fn_link_name_id` for late
-  `blockaddress` spelling in both statement and constant-initializer emission,
-  but unresolved extern-call recording still has no semantic carrier to
-  forward and should stay string-backed until the route explicitly adds one
+- unresolved extern-call declarations now forward the callee `DeclRef`’s
+  `LinkNameId` into `record_extern_decl`, and direct call ops reuse that same
+  id for late callee spelling in the LIR printer
 - keep forwarding explicit ids through LIR carriers and resolve them only at
   late consumers rather than treating legacy `name` strings as the semantic
   source of truth

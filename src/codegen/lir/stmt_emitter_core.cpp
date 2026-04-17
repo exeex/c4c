@@ -462,9 +462,10 @@ void StmtEmitter::emit_fallthrough_lbl(FnCtx& ctx, const std::string& lbl) {
 
 std::string StmtEmitter::fresh_tmp(FnCtx& ctx) { return "%t" + std::to_string(ctx.tmp_idx++); }
 
-void StmtEmitter::record_extern_call_decl(const std::string& name, const std::string& ret_ty) {
+void StmtEmitter::record_extern_call_decl(const std::string& name, const std::string& ret_ty,
+                                          LinkNameId link_name_id) {
   if (name.empty() || mod_.fn_index.count(name)) return;
-  module_->record_extern_decl(name, ret_ty);
+  module_->record_extern_decl(name, ret_ty, link_name_id);
 }
 
 std::string StmtEmitter::fresh_lbl(FnCtx& ctx, const std::string& pfx) {
