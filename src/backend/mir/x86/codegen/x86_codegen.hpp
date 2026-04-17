@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -1043,114 +1042,7 @@ inline std::string emit_prepared_module(
         "x86 backend emitter requires an x86 target for the canonical prepared-module handoff");
   }
 
-  const auto resolved_target_triple =
-      module.module.target_triple.empty() ? c4c::default_host_target_triple()
-                                          : module.module.target_triple;
-  const auto try_emit_same_module_direct_call_lane = [&]() -> std::optional<std::string> {
-    if (prepared_arch != c4c::TargetArch::X86_64 || !module.module.globals.empty() ||
-        !module.module.string_constants.empty() || module.module.functions.size() != 2) {
-      return std::nullopt;
-    }
-
-    const c4c::backend::bir::Function* caller = nullptr;
-    const c4c::backend::bir::Function* callee = nullptr;
-    for (const auto& function : module.module.functions) {
-      if (function.is_declaration) {
-        return std::nullopt;
-      }
-      if (function.name == "main") {
-        caller = &function;
-      } else if (callee == nullptr) {
-        callee = &function;
-      } else {
-        return std::nullopt;
-      }
-    }
-    if (caller == nullptr || callee == nullptr || caller->params.size() != 0 ||
-        caller->return_type != c4c::backend::bir::TypeKind::I32 || caller->blocks.size() != 1) {
-      return std::nullopt;
-    }
-
-    const auto& caller_block = caller->blocks.front();
-    if (caller_block.insts.size() != 1 ||
-        caller_block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-        !caller_block.terminator.value.has_value()) {
-      return std::nullopt;
-    }
-
-    const auto* call =
-        std::get_if<c4c::backend::bir::CallInst>(&caller_block.insts.front());
-    if (call == nullptr || !call->result.has_value() || call->is_indirect || call->is_variadic ||
-        call->is_noreturn || call->inline_asm.has_value() || call->sret_storage_name.has_value() ||
-        call->callee != callee->name || call->return_type != c4c::backend::bir::TypeKind::I32 ||
-        caller_block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
-        caller_block.terminator.value->type != c4c::backend::bir::TypeKind::I32 ||
-        caller_block.terminator.value->name != call->result->name) {
-      return std::nullopt;
-    }
-
-    if (call->args.size() != callee->params.size() || call->args.size() > 1) {
-      return std::nullopt;
-    }
-
-    if (call->args.size() == 1) {
-      if (call->args.front().kind != c4c::backend::bir::Value::Kind::Immediate ||
-          call->args.front().type != c4c::backend::bir::TypeKind::I32) {
-        return std::nullopt;
-      }
-      if (callee->params.front().type != c4c::backend::bir::TypeKind::I32) {
-        return std::nullopt;
-      }
-    }
-
-    auto single_function_module = module;
-    single_function_module.module.functions = {*callee};
-
-    std::string callee_asm;
-    try {
-      callee_asm = emit_prepared_module(single_function_module);
-    } catch (const std::invalid_argument&) {
-      return std::nullopt;
-    }
-
-    constexpr std::string_view kAsmModuleHeader = ".intel_syntax noprefix\n.text\n";
-    if (callee_asm.compare(0, kAsmModuleHeader.size(), kAsmModuleHeader) != 0) {
-      return std::nullopt;
-    }
-
-    const auto render_asm_symbol_name = [&](std::string_view logical_name) -> std::string {
-      if (resolved_target_triple.find("apple-darwin") != std::string::npos) {
-        return "_" + std::string(logical_name);
-      }
-      return std::string(logical_name);
-    };
-    const auto emit_function_prelude = [&](std::string_view symbol_name) -> std::string {
-      std::ostringstream prelude;
-      prelude << ".globl " << symbol_name << "\n";
-      if (resolved_target_triple.find("apple-darwin") == std::string::npos) {
-        prelude << ".type " << symbol_name << ", @function\n";
-      }
-      prelude << symbol_name << ":\n";
-      return prelude.str();
-    };
-
-    std::ostringstream out;
-    out << kAsmModuleHeader << callee_asm.substr(kAsmModuleHeader.size());
-    out << emit_function_prelude(render_asm_symbol_name(caller->name));
-    out << "    sub rsp, 8\n";
-    if (!call->args.empty()) {
-      out << "    mov edi, " << call->args.front().immediate << "\n";
-    }
-    out << "    call " << render_asm_symbol_name(callee->name) << "\n";
-    out << "    add rsp, 8\n";
-    out << "    ret\n";
-    return out.str();
-  };
-
   if (module.module.functions.size() != 1) {
-    if (const auto asm_text = try_emit_same_module_direct_call_lane(); asm_text.has_value()) {
-      return *asm_text;
-    }
     throw std::invalid_argument(
         "x86 backend emitter only supports a single-function prepared module through the canonical prepared-module handoff");
   }
@@ -1282,6 +1174,9 @@ inline std::string emit_prepared_module(
     }
     return render_stack_memory_operand(static_cast<std::size_t>(signed_byte_offset), size_name);
   };
+  const auto resolved_target_triple =
+      module.module.target_triple.empty() ? c4c::default_host_target_triple()
+                                          : module.module.target_triple;
   const auto render_asm_symbol_name = [&](std::string_view logical_name) -> std::string {
     if (resolved_target_triple.find("apple-darwin") != std::string::npos) {
       return "_" + std::string(logical_name);

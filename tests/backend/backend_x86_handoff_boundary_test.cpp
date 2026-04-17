@@ -82,11 +82,6 @@ std::string asm_header(const char* function_name) {
          "\n.type " + function_name + ", @function\n" + function_name + ":\n";
 }
 
-std::string asm_function_prelude(const char* function_name) {
-  return std::string(".globl ") + function_name + "\n.type " + function_name +
-         ", @function\n" + function_name + ":\n";
-}
-
 std::string expected_minimal_param_binary_asm(const char* function_name,
                                               const char* mnemonic,
                                               int immediate) {
@@ -111,29 +106,6 @@ std::string expected_minimal_constant_return_asm(const char* function_name, int 
 std::string expected_minimal_param_passthrough_asm(const char* function_name) {
   return asm_header(function_name) + "    mov " + minimal_i32_return_register() + ", " +
          minimal_i32_param_register() + "\n    ret\n";
-}
-
-std::string expected_minimal_same_module_direct_call_constant_return_asm(
-    const char* caller_name,
-    const char* callee_name,
-    int returned_value) {
-  return expected_minimal_constant_return_asm(callee_name, returned_value) +
-         asm_function_prelude(caller_name) + "    sub rsp, 8\n"
-         "    call " + std::string(callee_name) + "\n"
-         "    add rsp, 8\n"
-         "    ret\n";
-}
-
-std::string expected_minimal_same_module_direct_call_param_passthrough_asm(
-    const char* caller_name,
-    const char* callee_name,
-    int immediate) {
-  return expected_minimal_param_passthrough_asm(callee_name) + asm_function_prelude(caller_name) +
-         "    sub rsp, 8\n"
-         "    mov " + minimal_i32_param_register() + ", " + std::to_string(immediate) + "\n"
-         "    call " + std::string(callee_name) + "\n"
-         "    add rsp, 8\n"
-         "    ret\n";
 }
 
 std::string expected_minimal_local_pointer_chain_asm(const char* function_name) {
@@ -627,86 +599,6 @@ bir::Module make_x86_param_passthrough_module() {
 
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
-  return module;
-}
-
-bir::Module make_x86_same_module_direct_call_constant_return_module() {
-  bir::Module module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
-
-  bir::Function helper;
-  helper.name = "callee";
-  helper.return_type = bir::TypeKind::I32;
-
-  bir::Block helper_entry;
-  helper_entry.label = "entry";
-  helper_entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
-
-  helper.blocks.push_back(std::move(helper_entry));
-  module.functions.push_back(std::move(helper));
-
-  bir::Function caller;
-  caller.name = "main";
-  caller.return_type = bir::TypeKind::I32;
-
-  bir::Block caller_entry;
-  caller_entry.label = "entry";
-  caller_entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "call.result"),
-      .callee = "callee",
-      .return_type = bir::TypeKind::I32,
-  });
-  caller_entry.terminator = bir::ReturnTerminator{
-      .value = bir::Value::named(bir::TypeKind::I32, "call.result"),
-  };
-
-  caller.blocks.push_back(std::move(caller_entry));
-  module.functions.push_back(std::move(caller));
-  return module;
-}
-
-bir::Module make_x86_same_module_direct_call_param_passthrough_module() {
-  bir::Module module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
-
-  bir::Function helper;
-  helper.name = "id_i32";
-  helper.return_type = bir::TypeKind::I32;
-  helper.params.push_back(bir::Param{
-      .type = bir::TypeKind::I32,
-      .name = "p.x",
-      .size_bytes = 4,
-      .align_bytes = 4,
-  });
-
-  bir::Block helper_entry;
-  helper_entry.label = "entry";
-  helper_entry.terminator = bir::ReturnTerminator{
-      .value = bir::Value::named(bir::TypeKind::I32, "p.x"),
-  };
-
-  helper.blocks.push_back(std::move(helper_entry));
-  module.functions.push_back(std::move(helper));
-
-  bir::Function caller;
-  caller.name = "main";
-  caller.return_type = bir::TypeKind::I32;
-
-  bir::Block caller_entry;
-  caller_entry.label = "entry";
-  caller_entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "call.result"),
-      .callee = "id_i32",
-      .args = {bir::Value::immediate_i32(0)},
-      .arg_types = {bir::TypeKind::I32},
-      .return_type = bir::TypeKind::I32,
-  });
-  caller_entry.terminator = bir::ReturnTerminator{
-      .value = bir::Value::named(bir::TypeKind::I32, "call.result"),
-  };
-
-  caller.blocks.push_back(std::move(caller_entry));
-  module.functions.push_back(std::move(caller));
   return module;
 }
 
@@ -3463,26 +3355,6 @@ int main() {
               expected_minimal_pointer_backed_same_module_global_guard_chain_asm("main"),
               "loaded.ptr = bir.load_global ptr @s_backing, offset 8",
               "pointer-backed same-module global equality-against-immediate guard route");
-      status != 0) {
-    return status;
-  }
-
-  if (const auto status =
-          check_route_outputs(make_x86_same_module_direct_call_constant_return_module(),
-                              expected_minimal_same_module_direct_call_constant_return_asm(
-                                  "main", "callee", 0),
-                              "call.result = bir.call i32 callee()",
-                              "same-module direct call into minimal immediate-return helper route");
-      status != 0) {
-    return status;
-  }
-
-  if (const auto status =
-          check_route_outputs(make_x86_same_module_direct_call_param_passthrough_module(),
-                              expected_minimal_same_module_direct_call_param_passthrough_asm(
-                                  "main", "id_i32", 0),
-                              "call.result = bir.call i32 id_i32(i32 0)",
-                              "same-module direct call into minimal single-parameter helper route");
       status != 0) {
     return status;
   }
