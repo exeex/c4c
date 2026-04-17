@@ -6,27 +6,27 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Proved one more honest joined prepared-module control-flow shape on the
-canonical x86 handoff boundary without widening the emitter contract: a
-minimal x86_64 single-parameter `i32` compare-against-zero branch whose join
-block contains one legalized `bir.select` plus one trailing supported
-parameter-immediate `shl` on that select result. The focused handoff proof now
-also covers the joined add/sub-then-`shl` case while still proving
+Proved the rest of the bounded joined right-shift family already present in the
+canonical x86 prepared-module consumer: minimal x86_64 single-parameter `i32`
+compare-against-zero branches whose join block contains one legalized
+`bir.select` plus one trailing supported parameter-immediate `lshr` or `ashr`
+on that select result. The focused handoff proof now covers joined add/sub
+followed by `shl`, `lshr`, and `ashr` while still proving
 prepared/public/generic route equality against the same canonical x86
-assembly, and it did so without needing any new fallback or emitter-side
-special-case logic because the existing bounded prepared-module consumer
-already handled that immediate family.
+assembly, and it did so without adding any fallback or widening the emitter
+boundary because the existing bounded prepared-module consumer already handled
+those shift families.
 
 ## Suggested Next
 
 Extend focused proof only if the same bounded prepared-module consumer already
-honestly supports the next joined shift family behind the canonical boundary:
-one x86_64 single-parameter `i32` compare-against-zero branch whose prepared
-join block still contains exactly one legalized `bir.select`, but the trailing
-join-local op is the next bounded right-shift immediate family such as
-`lshr` or `ashr`, only if that can stay inside the same explicit join consumer
-without nested selects, forwarded joins, commuted shift forms, or fallback
-rendering.
+honestly supports another single trailing join-local parameter-immediate op on
+the legalized select result behind the canonical boundary, and only if that
+still stays inside the same explicit join consumer with no nested selects,
+forwarded joins, commuted forms, or fallback rendering. If no similarly
+bounded family remains, the next packet should pivot from proof expansion back
+to retiring mixed ownership or other active-route cleanup required by the
+source idea.
 
 ## Watchouts
 
@@ -51,9 +51,9 @@ rendering.
   materialized into the join block by prepare legalize
 - the joined branch support now has focused proof for two trailing join-local
   supported parameter-immediate arithmetic cases (`add` and `mul`), three
-  logical cases (`xor`, `and`, and `or`), and one left-shift case (`shl`)
-  whose named operand is exactly the select result; do not widen beyond one
-  trailing op in the same block
+  logical cases (`xor`, `and`, and `or`), and three shift cases (`shl`,
+  `lshr`, and `ashr`) whose named operand is exactly the select result; do not
+  widen beyond one trailing op in the same block
 - keep control-flow proof route-oriented by comparing prepared/public/generic
   outputs against the same canonical assembly instead of falling back to loose
   substring assertions
