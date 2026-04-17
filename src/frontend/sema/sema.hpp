@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 
+#include "../../target_profile.hpp"
 #include "canonical_symbol.hpp"
 #include "hir_ir.hpp"
 #include "source_profile.hpp"
@@ -20,7 +21,7 @@ struct AnalyzeResult {
 
 AnalyzeResult analyze_program(const Node* root,
                               SemaProfile profile = SemaProfile::C,
-                              const std::string& target_triple = "");
+                              const c4c::TargetProfile& target_profile = {});
 
 
 }  // namespace c4c::sema

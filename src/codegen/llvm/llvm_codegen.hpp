@@ -3,6 +3,7 @@
 #include <string>
 #include <string_view>
 
+#include "../target_profile.hpp"
 #include "hir_ir.hpp"
 
 namespace c4c::codegen::llvm_backend {
@@ -17,7 +18,7 @@ enum class CodegenPath {
 };
 
 std::string emit_module_native(const Module& mod,
-                               std::string_view target_triple,
+                               const c4c::TargetProfile& target_profile,
                                CodegenPath path = CodegenPath::Llvm,
                                bool emit_semantic_bir = false);
 

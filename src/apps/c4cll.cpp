@@ -94,9 +94,9 @@ bool execution_domain_matches(c4c::ExecutionDomain domain, bool want_device) {
 
 c4c::hir::Module filter_hir_module_for_domain(const c4c::hir::Module& input,
                                               c4c::ExecutionDomain domain,
-                                              std::string target_triple) {
+                                              const c4c::TargetProfile& target_profile) {
   c4c::hir::Module filtered = input;
-  filtered.target_triple = std::move(target_triple);
+  filtered.target_triple = target_profile.triple;
   filtered.data_layout.clear();
   filtered.functions.clear();
   filtered.globals.clear();
@@ -311,8 +311,9 @@ int main(int argc, char **argv) {
     bool        emit_split_llvm = false;
     std::string input;
     std::string output;
-    std::string target_triple = c4c::default_host_target_triple();
-    std::string device_target_triple;
+    c4c::TargetProfile target_profile =
+        c4c::target_profile_from_triple(c4c::default_host_target_triple());
+    std::optional<c4c::TargetProfile> device_target_profile;
     std::string host_output;
     std::string device_output;
     bool emit_semantic_bir = false;
@@ -353,9 +354,9 @@ int main(int argc, char **argv) {
       } else if (arg == "-o") {
         if (i + 1 < args.size()) output = args[++i];
       } else if (arg == "--target" && i + 1 < args.size()) {
-        target_triple = args[++i];
+        target_profile = c4c::target_profile_from_triple(args[++i]);
       } else if (arg == "--device-target" && i + 1 < args.size()) {
-        device_target_triple = args[++i];
+        device_target_profile = c4c::target_profile_from_triple(args[++i]);
       } else if (arg == "--host-out" && i + 1 < args.size()) {
         host_output = args[++i];
       } else if (arg == "--device-out" && i + 1 < args.size()) {
@@ -439,7 +440,7 @@ int main(int argc, char **argv) {
       return 1;
     }
     if (emit_split_llvm) {
-      if (device_target_triple.empty()) {
+      if (!device_target_profile.has_value()) {
         std::cerr << "--emit-split-llvm requires --device-target <triple>\n";
         return 2;
       }
@@ -476,7 +477,7 @@ int main(int argc, char **argv) {
     seed_default_system_include_paths(source_profile, system_include_paths);
 
     c4c::Preprocessor preprocessor;
-    preprocessor.set_target_triple(target_triple);
+    preprocessor.set_target_triple(target_profile.triple);
     preprocessor.set_source_profile(source_profile);
     // Apply optimization / PIC / PIE config toggles.
     if (opt_level > 0) {
@@ -550,7 +551,7 @@ int main(int argc, char **argv) {
     }
 
     c4c::sema::AnalyzeResult sema_result =
-        c4c::sema::analyze_program(prog, sema_profile, target_triple);
+        c4c::sema::analyze_program(prog, sema_profile, target_profile);
     if (!sema_result.validation.ok) {
       c4c::sema::print_diagnostics(sema_result.validation.diagnostics, input);
       return 1;
@@ -593,16 +594,16 @@ int main(int argc, char **argv) {
 
     if (emit_split_llvm) {
       auto host_module = filter_hir_module_for_domain(
-          *sema_result.hir_module, c4c::ExecutionDomain::Host, target_triple);
+          *sema_result.hir_module, c4c::ExecutionDomain::Host, target_profile);
       auto device_module = filter_hir_module_for_domain(
-          *sema_result.hir_module, c4c::ExecutionDomain::Device, device_target_triple);
+          *sema_result.hir_module, c4c::ExecutionDomain::Device, *device_target_profile);
       const std::string host_ir = c4c::codegen::llvm_backend::emit_module_native(
           host_module,
-          target_triple,
+          target_profile,
           c4c::codegen::llvm_backend::CodegenPath::Llvm);
       const std::string device_ir = c4c::codegen::llvm_backend::emit_module_native(
           device_module,
-          device_target_triple,
+          *device_target_profile,
           c4c::codegen::llvm_backend::CodegenPath::Llvm);
       const auto host_parent = std::filesystem::path(host_output).parent_path();
       const auto device_parent = std::filesystem::path(device_output).parent_path();
@@ -620,7 +621,7 @@ int main(int argc, char **argv) {
     }
 
     std::string ir = c4c::codegen::llvm_backend::emit_module_native(
-        *sema_result.hir_module, target_triple, codegen_path, emit_semantic_bir);
+        *sema_result.hir_module, target_profile, codegen_path, emit_semantic_bir);
 
     const bool wants_asm_output =
         output.empty() || has_suffix(output, ".s") || has_suffix(output, ".S");
