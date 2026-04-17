@@ -142,6 +142,8 @@ void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
       CallExpr c{};
       DeclRef callee_ref{};
       callee_ref.name = dit->second.mangled_name;
+      callee_ref.name_text_id = make_text_id(
+          callee_ref.name, module_ ? module_->link_name_texts.get() : nullptr);
       callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
       TypeSpec fn_ts{};
       fn_ts.base = TB_VOID;
@@ -180,6 +182,8 @@ void Lowerer::emit_dtor_calls(FunctionCtx& ctx, size_t since, const Node* span_n
       CallExpr c{};
       DeclRef callee_ref{};
       callee_ref.name = dit->second.mangled_name;
+      callee_ref.name_text_id = make_text_id(
+          callee_ref.name, module_ ? module_->link_name_texts.get() : nullptr);
       callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
       TypeSpec fn_ts{};
       fn_ts.base = TB_VOID;

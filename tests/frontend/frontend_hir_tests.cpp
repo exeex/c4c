@@ -332,6 +332,55 @@ int call_inner(int value) { return inner::helper(value); }
             "qualified decl-ref NamespaceQualifier TextIds should resolve through the HIR text table");
 }
 
+void test_hir_decl_stmt_decl_refs_preserve_text_ids_for_ctor_and_dtor_routes() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+struct Widget {
+  Widget() {}
+  ~Widget() {}
+};
+
+int make_widget() {
+  Widget widget;
+  return 0;
+}
+)cpp");
+
+  const auto fn_it = hir_module.fn_index.find("make_widget");
+  expect_true(fn_it != hir_module.fn_index.end(),
+              "fixture function should be present in the HIR function index");
+  const c4c::hir::Function* function = hir_module.find_function(fn_it->second);
+  expect_true(function != nullptr,
+              "fixture function should resolve through the HIR function lookup");
+
+  bool saw_local_widget_ref = false;
+  bool saw_link_named_callee_ref = false;
+  for (const auto& expr : hir_module.expr_pool) {
+    const auto* ref = std::get_if<c4c::hir::DeclRef>(&expr.payload);
+    if (ref == nullptr) {
+      continue;
+    }
+    if (ref->local.has_value() && ref->name == "widget") {
+      saw_local_widget_ref = true;
+      expect_true(ref->name_text_id != c4c::kInvalidText,
+                  "decl-stmt local decl-refs should preserve a parallel TextId");
+      expect_eq(hir_module.link_name_texts->lookup(ref->name_text_id), "widget",
+                "decl-stmt local decl-ref TextIds should resolve through the HIR text table");
+    }
+    if (ref->link_name_id != c4c::kInvalidLinkName) {
+      saw_link_named_callee_ref = true;
+      expect_true(ref->name_text_id != c4c::kInvalidText,
+                  "decl-stmt constructor and destructor callees should preserve a parallel TextId");
+      expect_eq(hir_module.link_name_texts->lookup(ref->name_text_id), ref->name,
+                "decl-stmt callee TextIds should resolve to the same emitted spelling");
+    }
+  }
+
+  expect_true(saw_local_widget_ref,
+              "fixture should lower at least one local decl-ref for the constructed object");
+  expect_true(saw_link_named_callee_ref,
+              "fixture should lower at least one constructor or destructor callee decl-ref");
+}
+
 void test_hir_to_lir_forwards_function_link_name_ids() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 template<typename T>
@@ -1297,6 +1346,7 @@ int main() {
   test_hir_materializes_link_name_ids_for_emitted_symbols();
   test_hir_materializes_decl_ref_link_name_ids_for_emitted_refs();
   test_hir_namespace_qualifiers_preserve_text_ids_for_qualified_decl_refs();
+  test_hir_decl_stmt_decl_refs_preserve_text_ids_for_ctor_and_dtor_routes();
   test_hir_to_lir_forwards_function_link_name_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();

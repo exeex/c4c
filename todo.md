@@ -6,24 +6,29 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 3 / Step 4 for the next bounded qualified decl-ref
-carrier adjacent to the namespace-qualifier route.
+Completed `plan.md` Step 3 / Step 4 for the next bounded decl-stmt-owned
+decl-ref carrier adjacent to the qualified decl-ref route.
 
-- Added parallel HIR `DeclRef::name_text_id` storage so the qualified decl-ref
-  base name is no longer string-only on the migrated parser-to-HIR route.
-- Added shared lowering helpers that intern HIR-side text into the module text
-  table instead of reusing parser-owned `TextId` values across table
-  boundaries.
-- Extended focused HIR proof for `inner::helper` so the decl-ref now preserves
-  both qualifier-segment `TextId`s and the unqualified base-name `TextId`
-  alongside the existing `LinkNameId` path.
+- Added parallel HIR `DeclRef::name_text_id` storage for local-declaration
+  constructor/copy-constructor `var_ref` carriers and array/local indexing refs
+  built in `hir_stmt_decl.cpp`, so these AST-origin decl-refs are no longer
+  string-only on the migrated route.
+- Added parallel HIR `DeclRef::name_text_id` storage for constructor and
+  destructor callee decl-refs emitted by declaration/dtor lowering, keeping the
+  emitted `LinkNameId` path separate while giving the carrier its own TU-scoped
+  text identity.
+- Extended focused HIR proof with a local `Widget widget;` fixture so the
+  declaration-lowering route now proves both local-object decl-refs and
+  ctor/dtor callee decl-refs preserve `TextId` identity alongside the existing
+  link-name path.
 
 ## Suggested Next
 
-Keep Step 3 bounded: extend `DeclRef::name_text_id` coverage to the other
-AST-origin decl-ref construction sites that do not flow through
-`lower_var_expr(...)`, or stop and choose the next nearby HIR declaration/tag
-base-name carrier if that broader decl-ref sweep would widen too far.
+Keep Step 3 bounded: finish the remaining manual statement-lowering decl-ref
+sites in `hir_stmt.cpp` that still bypass `lower_var_expr(...)` for stable
+names such as `this`/parameter-backed refs, or stop and choose the next nearby
+HIR declaration/tag base-name carrier if that would widen less than a broader
+decl-ref sweep.
 
 ## Watchouts
 

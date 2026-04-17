@@ -262,6 +262,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         CallExpr c{};
         DeclRef callee_ref{};
         callee_ref.name = best->mangled_name;
+        callee_ref.name_text_id = make_text_id(
+            callee_ref.name, module_ ? module_->link_name_texts.get() : nullptr);
         callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
         TypeSpec fn_ts{};
         fn_ts.base = TB_VOID;
@@ -271,6 +273,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         // First arg: &var (this pointer).
         DeclRef var_ref{};
         var_ref.name = n->name ? n->name : "<anon_local>";
+        var_ref.name_text_id = make_unqualified_text_id(
+            n, module_ ? module_->link_name_texts.get() : nullptr);
         var_ref.local = lid;
         ExprId var_id = append_expr(n, var_ref, decl_ts, ValueCategory::LValue);
         UnaryExpr addr{};
@@ -342,6 +346,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         CallExpr c{};
         DeclRef callee_ref{};
         callee_ref.name = default_ctor->mangled_name;
+        callee_ref.name_text_id = make_text_id(
+            callee_ref.name, module_ ? module_->link_name_texts.get() : nullptr);
         callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
         TypeSpec fn_ts{};
         fn_ts.base = TB_VOID;
@@ -351,6 +357,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         // First arg: &var (this pointer).
         DeclRef var_ref{};
         var_ref.name = n->name ? n->name : "<anon_local>";
+        var_ref.name_text_id = make_unqualified_text_id(
+            n, module_ ? module_->link_name_texts.get() : nullptr);
         var_ref.local = lid;
         ExprId var_id = append_expr(n, var_ref, decl_ts, ValueCategory::LValue);
         UnaryExpr addr{};
@@ -406,6 +414,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         CallExpr c{};
         DeclRef callee_ref{};
         callee_ref.name = best->mangled_name;
+        callee_ref.name_text_id = make_text_id(
+            callee_ref.name, module_ ? module_->link_name_texts.get() : nullptr);
         callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
         TypeSpec fn_ts{};
         fn_ts.base = TB_VOID;
@@ -415,6 +425,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         // First arg: &var (this pointer).
         DeclRef var_ref{};
         var_ref.name = n->name ? n->name : "<anon_local>";
+        var_ref.name_text_id = make_unqualified_text_id(
+            n, module_ ? module_->link_name_texts.get() : nullptr);
         var_ref.local = lid;
         ExprId var_id = append_expr(n, var_ref, decl_ts, ValueCategory::LValue);
         UnaryExpr addr{};
@@ -478,6 +490,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     for (long long idx = 0; idx < array_ts.array_size; ++idx) {
       DeclRef dr{};
       dr.name = n->name ? n->name : "<anon_local>";
+      dr.name_text_id = make_unqualified_text_id(
+          n, module_ ? module_->link_name_texts.get() : nullptr);
       dr.local = lid;
       ExprId dr_id = append_expr(n, dr, array_ts, ValueCategory::LValue);
       TypeSpec idx_ts{};
@@ -522,6 +536,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       // DeclRef to the local
       DeclRef dr{};
       dr.name = n->name ? n->name : "<anon_local>";
+      dr.name_text_id = make_unqualified_text_id(
+          n, module_ ? module_->link_name_texts.get() : nullptr);
       dr.local = lid;
       ExprId dr_id = append_expr(n, dr, decl_ts, ValueCategory::LValue);
       // IntLiteral for index
@@ -622,6 +638,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       elem_ts.array_size = -1;
       DeclRef dr{};
       dr.name = n->name ? n->name : "<anon_local>";
+      dr.name_text_id = make_unqualified_text_id(
+          n, module_ ? module_->link_name_texts.get() : nullptr);
       dr.local = lid;
       ExprId dr_id = append_expr(n, dr, decl_ts, ValueCategory::LValue);
       TypeSpec idx_ts{};
@@ -929,6 +947,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
 
     DeclRef dr{};
     dr.name = n->name ? n->name : "<anon_local>";
+    dr.name_text_id = make_unqualified_text_id(
+        n, module_ ? module_->link_name_texts.get() : nullptr);
     dr.local = lid;
     ExprId base_id = append_expr(n, dr, decl_ts, ValueCategory::LValue);
     int cursor = 0;
