@@ -324,16 +324,21 @@ Token Parser::make_injected_token(const Token& seed, TokenKind kind,
 
 void Parser::populate_qualified_name_symbol_ids(QualifiedNameRef* name) {
     if (!name) return;
+    name->qualifier_text_ids.clear();
+    name->qualifier_text_ids.reserve(name->qualifier_segments.size());
     name->qualifier_symbol_ids.clear();
     name->qualifier_symbol_ids.reserve(name->qualifier_segments.size());
     for (const std::string& segment : name->qualifier_segments) {
+        const TextId text_id = parser_text_id_for_token(kInvalidText, segment);
+        name->qualifier_text_ids.push_back(text_id);
         name->qualifier_symbol_ids.push_back(
-            parser_name_tables_.intern_identifier(segment));
+            parser_name_tables_.intern_identifier(text_id));
     }
+    name->base_text_id = parser_text_id_for_token(kInvalidText, name->base_name);
     name->base_symbol_id =
         name->base_name.empty()
             ? kInvalidSymbol
-            : parser_name_tables_.intern_identifier(name->base_name);
+            : parser_name_tables_.intern_identifier(name->base_text_id);
 }
 
 bool Parser::has_typedef_name(std::string_view name) const {
@@ -1572,12 +1577,16 @@ bool Parser::peek_qualified_name(QualifiedNameRef* out, bool allow_global) const
         return false;
     }
     result.base_name = std::string(token_spelling(tokens_[p]));
+    result.base_text_id = parser_text_id_for_token(tokens_[p].text_id, result.base_name);
     ++p;
     while (p + 1 < static_cast<int>(tokens_.size()) &&
            tokens_[p].kind == TokenKind::ColonColon &&
            tokens_[p + 1].kind == TokenKind::Identifier) {
         result.qualifier_segments.push_back(result.base_name);
+        result.qualifier_text_ids.push_back(result.base_text_id);
         result.base_name = std::string(token_spelling(tokens_[p + 1]));
+        result.base_text_id =
+            parser_text_id_for_token(tokens_[p + 1].text_id, result.base_name);
         p += 2;
     }
     *out = std::move(result);
@@ -1603,12 +1612,22 @@ void Parser::apply_qualified_name(Node* node, const QualifiedNameRef& qn,
                                   const char* resolved_name) {
     if (!node) return;
     node->is_global_qualified = qn.is_global_qualified;
-    node->unqualified_name = arena_.strdup(qn.base_name.c_str());
+    node->unqualified_name =
+        arena_.strdup(std::string(token_texts_ && qn.base_text_id != kInvalidText
+                                      ? token_texts_->lookup(qn.base_text_id)
+                                      : std::string_view(qn.base_name))
+                          .c_str());
     node->n_qualifier_segments = static_cast<int>(qn.qualifier_segments.size());
     if (node->n_qualifier_segments > 0) {
         node->qualifier_segments = arena_.alloc_array<const char*>(node->n_qualifier_segments);
         for (int i = 0; i < node->n_qualifier_segments; ++i) {
-            node->qualifier_segments[i] = arena_.strdup(qn.qualifier_segments[i].c_str());
+            const std::string_view segment =
+                token_texts_ && i < static_cast<int>(qn.qualifier_text_ids.size()) &&
+                        qn.qualifier_text_ids[i] != kInvalidText
+                    ? token_texts_->lookup(qn.qualifier_text_ids[i])
+                    : std::string_view(qn.qualifier_segments[i]);
+            node->qualifier_segments[i] =
+                arena_.strdup(std::string(segment).c_str());
         }
     }
     if (resolved_name && resolved_name[0]) {

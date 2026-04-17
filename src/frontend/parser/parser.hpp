@@ -151,8 +151,10 @@ class Parser {
   struct QualifiedNameRef {
     bool is_global_qualified = false;
     std::vector<std::string> qualifier_segments;
+    std::vector<TextId> qualifier_text_ids;
     std::vector<SymbolId> qualifier_symbol_ids;
     std::string base_name;
+    TextId base_text_id = kInvalidText;
     SymbolId base_symbol_id = kInvalidSymbol;
 
     bool is_unqualified_atom() const {
