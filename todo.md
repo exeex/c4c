@@ -6,23 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 3 for the selected local-memory `gep` lane by
-extending the x86 prepared-module consumer to accept bounded local-slot
-compare-against-immediate guard chains, direct local-slot addressed loads, and
-the sign-extension byte lane needed by the cluster. The selected proving
-cluster now moves together on the x86 backend path:
+Completed `plan.md` Step 4 by rerunning the full `x86_backend` checkpoint after
+landing the bounded local-memory `gep` lane. The label now reports `37/220`
+passing and `183/220` failing, which is a truthful improvement over the prior
+`32/220` checkpoint. The completed `gep` cluster still holds inside that
+broader run:
 `c_testsuite_x86_backend_src_00032_c`,
 `c_testsuite_x86_backend_src_00073_c`, and
-`c_testsuite_x86_backend_src_00130_c` all pass, and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` now carries explicit
-boundary fixtures for the new local compare-immediate and byte-addressed
-handoff shapes.
+`c_testsuite_x86_backend_src_00130_c` all remain passing on the x86 backend
+path.
 
 ## Suggested Next
 
-Start `plan.md` Step 4 by running the `x86_backend` checkpoint again and
-measuring the truthful pass-count effect of the completed local-memory `gep`
-lane before selecting the next adjacent family packet.
+Start the next bounded packet on the adjacent local-memory store family rather
+than widening to unrelated prepared-module limits: inspect
+`c_testsuite_x86_backend_src_00042_c` and
+`c_testsuite_x86_backend_src_00046_c` as the next same-neighborhood pair and
+verify whether one honest shared store-lane repair can move them together
+without reopening the completed `gep` lane.
 
 ## Watchouts
 
@@ -32,24 +33,25 @@ lane before selecting the next adjacent family packet.
   control flow.
 - Shared `lir_to_bir` capability growth should explain the result more than any
   x86-local patching.
-- The x86 handoff extension stayed in the existing bounded local-slot guard
-  route; it did not reopen semantic lowering or widen into unrelated x86
-  families.
-- The new handoff support is still bounded to parameter-free x86_64 local-slot
-  guard chains with direct local loads, addressed local-slot loads, and
-  compare-against-immediate returns. Do not silently treat that as general x86
-  CFG or arbitrary memory support.
-- Leave `00037`, `00042`, `00046`, `00143`, and `00207` out of the next
-  packet; Step 4 should measure this completed lane before widening to another
-  family.
+- The checkpoint improved truthfully by five passes, but the dominant remaining
+  fail surface is still split across capability families, not isolated tests.
+- `00037` is adjacent in numbering but still fails in the `scalar-cast
+  semantic family`; do not silently fold it into the next local-memory packet.
+- The next nearby local-memory blockers are `00042` and `00046`, both still
+  failing in the `store local-memory semantic family`.
+- VLA/control-flow-heavy local-memory cases such as `00143` and `00207` still
+  fail in the `alloca local-memory semantic family`; they remain a later lane.
+- Many other remaining failures are still prepared-module x86 limits such as
+  direct-immediate return, minimal single-block return, or single-function
+  module restrictions. Do not disguise those as local-memory progress.
 
 ## Proof
 
 Ran the delegated proof exactly:
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -R '^backend_x86_handoff_boundary$' --output-on-failure >> test_after.log 2>&1 && ctest --test-dir build -R '^c_testsuite_x86_backend_src_(00032|00073|00130)_c$' --output-on-failure >> test_after.log 2>&1`.
-`backend_x86_handoff_boundary` passed, and
-`c_testsuite_x86_backend_src_00032_c`,
-`c_testsuite_x86_backend_src_00073_c`, and
-`c_testsuite_x86_backend_src_00130_c` all passed on the x86 backend path.
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -L x86_backend --output-on-failure >> test_after.log 2>&1`.
+The build completed, then the `x86_backend` checkpoint finished with `37/220`
+passing and `183/220` failing. The repaired `gep` cluster remained green
+inside that broader run, and the adjacent blocker families called out above
+were confirmed from the same log.
 Proof log:
 `test_after.log`.
