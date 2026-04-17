@@ -6,25 +6,25 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed the first bounded Step 4 allocation slice by teaching
-`run_regalloc()` to consume the liveness-derived regalloc seeds
-semantically: the active C++ route now performs deterministic target-aware
-register assignment for eligible values, reuses registers when live intervals
-expire, and falls back to real stack-slot/home-slot assignments instead of
-leaving every value unallocated.
+Extended the bounded Step 4 allocator into distinct semantic phases closer to
+the retained Rust route: call-crossing values now consume a callee-saved pool
+first, non-call-crossing values still prefer the caller-saved seed pool, and
+caller-pool overflow can spill over into remaining callee-saved capacity
+before falling back to real stack slots.
 
-Focused `backend_prepare_liveness` coverage now proves both sides of that
-activation: on the phi path, `left.v` and `right.v` reuse the same real
-register across disjoint intervals while overlapping `sum` falls back to a
-real stack slot; a second byval-param case proves a `requires_home_slot`
-value stays on a real home slot instead of taking a register.
+Focused `backend_prepare_liveness` coverage now proves that split directly on
+a call-heavy function: the call-spanning `carry` value takes `s1`, the first
+post-call value takes caller-saved `t0`, and the overlapping overflow value
+takes the remaining callee-saved `s2` while the published allocation
+constraints record the same preference split.
 
 ## Suggested Next
 
-Extend Step 4 beyond the first bounded allocator by making the active route
-consume call-crossing constraints with a distinct callee-saved path and by
-growing the allocator from single-register seeded pools toward the retained
-Rust intent for spillover and broader priority handling.
+Extend Step 4 by moving beyond fixed pool ordering into broader Rust-like
+priority handling: use liveness-derived weights to choose among multiple
+eligible caller/callee candidates when the current bounded pools overflow, and
+prove that higher-value intervals win before lower-priority ones fall back to
+stack slots.
 
 ## Watchouts
 
@@ -32,12 +32,15 @@ Rust intent for spillover and broader priority handling.
   while `live_interval` still represents the CFG-extended range after
   live-through propagation; downstream consumers must not collapse those into
   one concept
-- `PreparedAllocationConstraint.cannot_cross_call` still needs a clearer
-  semantic contract before call-heavy tests rely on it for allocator behavior
-- the current bounded allocator uses intentionally tiny target register pools
-  to prove active interval-based assignment and stack/home-slot fallback; later
-  Step 4 work still needs a broader callee-saved spillover story closer to the
-  retained Rust allocator
+- the current call-crossing split is still intentionally bounded: it proves
+  phase ordering and spillover, but it does not yet choose among competing
+  same-bank intervals with Rust-like weight-sensitive heuristics
+- `PreparedAllocationConstraint.preferred_register_names` now carries the
+  caller-vs-callee preference split, while `cannot_cross_call` is reserved for
+  the stronger call-spanning prohibition; downstream consumers should keep
+  those meanings distinct
+- the active target pools are still small proof-oriented seeds, even though the
+  callee-saved side now has bounded spillover headroom
 - Rust Tier 2 / Tier 3 shared-slot reuse is still reference-only for the
   active C++ route: `PreparedFrameSlot` remains a dedicated object-owned slot
   record, so do not fake value-level reuse with object names, source kinds, or
@@ -54,7 +57,7 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_liveness$ >
 test_after.log 2>&1`
-after teaching `run_regalloc()` to make real register/stack decisions from the
-liveness-derived seeds and extending focused activation coverage to prove both
-register reuse and home-slot fallback.
+after teaching `run_regalloc()` to split call-crossing values into a distinct
+callee-saved phase and to use remaining callee-saved capacity as bounded
+spillover for caller-pool overflow.
 Canonical proof log: `test_after.log`.

@@ -235,6 +235,85 @@ prepare::PreparedBirModule prepare_byval_home_slot_module_with_regalloc() {
   return planner.run();
 }
 
+prepare::PreparedBirModule prepare_call_crossing_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "call_crossing_spillover";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(40),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "sink_i32",
+      .args = {bir::Value::named(bir::TypeKind::I32, "carry")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "local0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(5),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "local1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(6),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "merge0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "local0"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "merge1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "merge0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "local1"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "merge1"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
 int check_phi_predecessor_edge_liveness(const prepare::PreparedBirModule& prepared) {
   if (!prepared.stack_layout.objects.empty()) {
     return fail("expected no stack-layout objects for the phi-only test function");
@@ -388,6 +467,47 @@ int check_byval_home_slot_regalloc(const prepare::PreparedBirModule& prepared) {
   return 0;
 }
 
+int check_call_crossing_regalloc_spillover(const prepare::PreparedBirModule& prepared) {
+  const auto* function = find_regalloc_function(prepared, "call_crossing_spillover");
+  if (function == nullptr) {
+    return fail("expected regalloc output for call_crossing_spillover");
+  }
+
+  const auto* carry = find_regalloc_value(*function, "carry");
+  const auto* local0 = find_regalloc_value(*function, "local0");
+  const auto* local1 = find_regalloc_value(*function, "local1");
+  if (carry == nullptr || local0 == nullptr || local1 == nullptr) {
+    return fail("expected carry, local0, and local1 to appear in regalloc output");
+  }
+
+  if (!carry->crosses_call || !carry->assigned_register.has_value() ||
+      carry->assigned_register->register_name != "s1") {
+    return fail("expected the call-crossing carry value to take the first callee-saved register");
+  }
+  if (local0->crosses_call || !local0->assigned_register.has_value() ||
+      local0->assigned_register->register_name != "t0") {
+    return fail("expected the first post-call value to take the caller-saved seed register");
+  }
+  if (local1->crosses_call || !local1->assigned_register.has_value() ||
+      local1->assigned_register->register_name != "s2") {
+    return fail("expected caller-pool overflow to spill over into the remaining callee-saved register");
+  }
+
+  const auto* carry_constraint = find_constraint(*function, carry->value_id);
+  const auto* local1_constraint = find_constraint(*function, local1->value_id);
+  if (carry_constraint == nullptr || !carry_constraint->cannot_cross_call ||
+      carry_constraint->preferred_register_names != std::vector<std::string>{"s1", "s2"} ||
+      carry_constraint->forbidden_register_names != std::vector<std::string>{"t0"}) {
+    return fail("expected the call-crossing constraint to prefer callee-saved registers and forbid the caller-saved seed");
+  }
+  if (local1_constraint == nullptr || local1_constraint->cannot_cross_call ||
+      local1_constraint->preferred_register_names != std::vector<std::string>{"t0"}) {
+    return fail("expected the non-call-crossing overflow value to keep the caller-saved preference before spillover");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -403,6 +523,11 @@ int main() {
 
   const auto byval_prepared = prepare_byval_home_slot_module_with_regalloc();
   if (const int rc = check_byval_home_slot_regalloc(byval_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto call_crossing_prepared = prepare_call_crossing_module_with_regalloc();
+  if (const int rc = check_call_crossing_regalloc_spillover(call_crossing_prepared); rc != 0) {
     return rc;
   }
   return 0;

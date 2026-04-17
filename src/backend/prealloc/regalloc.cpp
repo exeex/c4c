@@ -80,15 +80,25 @@ struct ActiveRegisterAssignment {
   }
   switch (target) {
     case Target::X86_64:
-      return {"rbx"};
+      return {"rbx", "r12"};
     case Target::I686:
-      return {"ebx"};
+      return {"ebx", "esi"};
     case Target::Aarch64:
-      return {"x20"};
+      return {"x20", "x21"};
     case Target::Riscv64:
-      return {"s1"};
+      return {"s1", "s2"};
   }
   return {};
+}
+
+[[nodiscard]] std::vector<std::string> materialize_register_names(
+    const std::vector<std::string_view>& register_names) {
+  std::vector<std::string> materialized;
+  materialized.reserve(register_names.size());
+  for (const std::string_view register_name : register_names) {
+    materialized.emplace_back(register_name);
+  }
+  return materialized;
 }
 
 [[nodiscard]] std::size_t normalized_value_size(const PreparedRegallocValue& value) {
@@ -203,6 +213,8 @@ void BirPreAlloc::run_regalloc() {
           register_class != PreparedRegisterClass::None &&
           liveness_value.value_kind != PreparedValueKind::StackObject;
       const std::size_t priority = value_priority(liveness_value);
+      const auto caller_saved_names = caller_saved_registers(prepared_.target, register_class);
+      const auto callee_saved_names = callee_saved_registers(prepared_.target, register_class);
 
       regalloc_function.values.push_back(PreparedRegallocValue{
           .value_id = liveness_value.value_id,
@@ -235,8 +247,12 @@ void BirPreAlloc::run_regalloc() {
           .cannot_cross_call = liveness_value.crosses_call &&
                                register_class != PreparedRegisterClass::Float,
           .fixed_register_name = std::nullopt,
-          .preferred_register_names = {},
-          .forbidden_register_names = {},
+          .preferred_register_names = materialize_register_names(liveness_value.crosses_call
+                                                                    ? callee_saved_names
+                                                                    : caller_saved_names),
+          .forbidden_register_names = materialize_register_names(liveness_value.crosses_call
+                                                                     ? caller_saved_names
+                                                                     : std::vector<std::string_view>{}),
       });
     }
 
@@ -290,10 +306,57 @@ void BirPreAlloc::run_regalloc() {
                 return lhs.value_id < rhs.value_id;
               });
 
-    std::vector<ActiveRegisterAssignment> active_assignments;
-    active_assignments.reserve(regalloc_function.values.size());
+    std::vector<ActiveRegisterAssignment> active_caller_saved_assignments;
+    active_caller_saved_assignments.reserve(regalloc_function.values.size());
+    std::vector<ActiveRegisterAssignment> active_callee_saved_assignments;
+    active_callee_saved_assignments.reserve(regalloc_function.values.size());
     std::size_t assigned_register_count = 0;
     std::size_t assigned_stack_count = 0;
+
+    auto assign_from_pool = [&](const auto& should_consider,
+                                const auto& register_pool_for_value,
+                                std::vector<ActiveRegisterAssignment>& active_assignments) {
+      for (const std::size_t value_index : allocation_order) {
+        auto& value = regalloc_function.values[value_index];
+        if (value.assigned_register.has_value() || value.assigned_stack_slot.has_value() ||
+            value.requires_home_slot || !value.live_interval.has_value() ||
+            value.register_class == PreparedRegisterClass::None || !should_consider(value)) {
+          continue;
+        }
+
+        expire_completed_assignments(active_assignments, value.live_interval->start_point);
+        const auto register_names = register_pool_for_value(value);
+        if (const auto chosen_register = choose_register(active_assignments, register_names);
+            chosen_register.has_value()) {
+          value.assigned_register = PreparedPhysicalRegisterAssignment{
+              .reg_class = value.register_class,
+              .register_name = std::move(*chosen_register),
+          };
+          value.allocation_status = PreparedAllocationStatus::AssignedRegister;
+          active_assignments.push_back(ActiveRegisterAssignment{
+              .end_point = value.live_interval->end_point,
+              .register_name = value.assigned_register->register_name,
+          });
+          ++assigned_register_count;
+        }
+      }
+    };
+
+    assign_from_pool([](const PreparedRegallocValue& value) { return value.crosses_call; },
+                     [this](const PreparedRegallocValue& value) {
+                       return callee_saved_registers(prepared_.target, value.register_class);
+                     },
+                     active_callee_saved_assignments);
+    assign_from_pool([](const PreparedRegallocValue& value) { return !value.crosses_call; },
+                     [this](const PreparedRegallocValue& value) {
+                       return caller_saved_registers(prepared_.target, value.register_class);
+                     },
+                     active_caller_saved_assignments);
+    assign_from_pool([](const PreparedRegallocValue& value) { return !value.crosses_call; },
+                     [this](const PreparedRegallocValue& value) {
+                       return callee_saved_registers(prepared_.target, value.register_class);
+                     },
+                     active_callee_saved_assignments);
 
     for (const std::size_t value_index : allocation_order) {
       auto& value = regalloc_function.values[value_index];
@@ -325,26 +388,6 @@ void BirPreAlloc::run_regalloc() {
           value.allocation_status = PreparedAllocationStatus::AssignedStackSlot;
           ++assigned_stack_count;
         }
-        continue;
-      }
-
-      expire_completed_assignments(active_assignments, value.live_interval->start_point);
-
-      const auto register_names = value.crosses_call
-                                      ? callee_saved_registers(prepared_.target, value.register_class)
-                                      : caller_saved_registers(prepared_.target, value.register_class);
-      if (const auto chosen_register = choose_register(active_assignments, register_names);
-          chosen_register.has_value()) {
-        value.assigned_register = PreparedPhysicalRegisterAssignment{
-            .reg_class = value.register_class,
-            .register_name = std::move(*chosen_register),
-        };
-        value.allocation_status = PreparedAllocationStatus::AssignedRegister;
-        active_assignments.push_back(ActiveRegisterAssignment{
-            .end_point = value.live_interval->end_point,
-            .register_name = value.assigned_register->register_name,
-        });
-        ++assigned_register_count;
         continue;
       }
 
