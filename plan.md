@@ -1,128 +1,145 @@
-# External EASTL Suite Bootstrap Runbook
+# Template Struct Instance Resolution Runbook
 
 Status: Active
-Source Idea: ideas/open/15_cpp_external_eastl_suite_bootstrap.md
+Source Idea: ideas/open/16_template_struct_instance_resolution_for_symbol_lookup.md
+Supersedes: ideas/open/15_cpp_external_eastl_suite_bootstrap.md
 
 ## Purpose
 
-Bootstrap a curated `tests/cpp/external/eastl` suite so EASTL-derived cases can
-grow under c4c's native external-test model instead of depending on the full
-upstream `EASTLTest` executable harness.
+Route template-struct member/symbol lookup through the same
+partial-specialization and instantiation machinery that already chooses
+concrete struct bodies, so later lowering stops depending on intermediate
+emitted-name-like tags.
 
 ## Goal
 
-Land the suite root, register the first standalone case, and prove it with
-c4c's build and `ctest` flow while keeping `ref/EASTL` / `ref/EABase` as the
-upstream include sources.
+Land a shared template-instance resolution helper, hook late member lookup into
+it, and prove the exposed `eastl::pair<int, int>` member path no longer fails
+on `pair_T1_T1_T2_T2`.
 
 ## Core Rule
 
-Keep the boundary honest:
-
-- curated extracted cases live in `tests/cpp/external/eastl`
-- upstream library and broader harness code stay in `ref/EASTL` and related EA
-  repos
-
-Do not collapse those into one directory just to make one test pass.
+Do not accept pair-specific string aliases, emitted-name shims, or testcase
+shape matching as progress. The fix must generalize the semantic lookup path.
 
 ## Read First
 
-- [ideas/open/15_cpp_external_eastl_suite_bootstrap.md](/workspaces/c4c/ideas/open/15_cpp_external_eastl_suite_bootstrap.md)
-- [tests/CMakeLists.txt](/workspaces/c4c/tests/CMakeLists.txt)
-- [tests/cpp/external/CMakeLists.txt](/workspaces/c4c/tests/cpp/external/CMakeLists.txt)
-- [tests/cpp/external/clang/README.md](/workspaces/c4c/tests/cpp/external/clang/README.md)
-- [tests/cpp/eastl/README.md](/workspaces/c4c/tests/cpp/eastl/README.md)
+- [ideas/open/16_template_struct_instance_resolution_for_symbol_lookup.md](/workspaces/c4c/ideas/open/16_template_struct_instance_resolution_for_symbol_lookup.md)
+- [src/frontend/hir/hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp)
+- [src/frontend/hir/hir_templates_materialization.cpp](/workspaces/c4c/src/frontend/hir/hir_templates_materialization.cpp)
+- [src/frontend/hir/hir_templates_struct_instantiation.cpp](/workspaces/c4c/src/frontend/hir/hir_templates_struct_instantiation.cpp)
+- [src/codegen/lir/stmt_emitter_lvalue.cpp](/workspaces/c4c/src/codegen/lir/stmt_emitter_lvalue.cpp)
+- [src/codegen/lir/stmt_emitter_types.cpp](/workspaces/c4c/src/codegen/lir/stmt_emitter_types.cpp)
 
 ## Current Scope
 
-- add `tests/cpp/external/eastl` bootstrap files
-- register the suite from the main test CMake
-- add one frontend-smoke case around `EASTL/internal/piecewise_construct_t.h`
-- prove configure/build/test for the new suite path
+- extract and centralize template-struct instance resolution for primary and
+  partial-specialized paths
+- use that shared resolver from late member/symbol lookup when the incoming tag
+  is not already concrete
+- prove the route on the EASTL pair/member failure without expanding EASTL
+  suite scope in the same slice
 
 ## Non-Goals
 
-- full upstream `ref/EASTL/test` harness import
-- multi-case EASTL expansion in the same slice
-- submodule conversion in the same slice
+- replacing the repo's local emitted naming with a standard ABI mangler
+- broad symbol-table redesign beyond the shared template-instance seam
+- unrelated EASTL test-suite growth in the same packet
 
 ## Working Model
 
-- mirror the repo's external-suite shape: `allowlist.txt` + `RunCase.cmake`
-- inject `ref/EASTL/include` and `ref/EABase/include/Common` from the runner
-- prefer standalone extracted cases that can pass at the current frontier and
-  still leave a clean route toward later runtime coverage
-- treat future submodule conversion as follow-on work, not a blocker
+- keep specialization selection in the existing HIR template machinery
+- treat emitted mangled names as the final naming surface, not the semantic
+  identity used for lookup
+- let later lookup request a concrete struct instance first, then perform field
+  resolution against `struct_defs`
+- prefer one shared helper over new pair-specific or member-specific fallback
+  code
 
 ## Execution Rules
 
-- keep the first case standalone; do not pull `EATest`, `EAMain`, or the
-  monolithic upstream registration harness into this slice
-- record upstream provenance in `UPSTREAM.md`
-- make the suite auto-detectable from `tests/CMakeLists.txt`
-- keep test names filterable under a stable `eastl_cpp_external_...` prefix
-- require `build -> targeted ctest` proof before accepting the slice
+- reuse the existing partial-specialization selection path instead of cloning it
+  in codegen
+- keep the new helper structured around family/origin, selected pattern, and
+  resolved bindings even if the immediate caller only needs the concrete tag
+- avoid widening the patch into method/materialization cleanup unless that is
+  required to make the shared resolver correct
+- require `build -> narrow repro test` proof before accepting the slice
+- escalate to a broader frontend subset if the helper touches common template
+  infrastructure beyond the exposed repro path
 
 ## Step 1
 
 ### Goal
 
-Create the suite root and registration contract.
+Extract a shared template-struct instance resolution helper from the current
+partial-specialization realization path.
 
 ### Primary Targets
 
-- [tests/CMakeLists.txt](/workspaces/c4c/tests/CMakeLists.txt)
-- [tests/cpp/external/CMakeLists.txt](/workspaces/c4c/tests/cpp/external/CMakeLists.txt)
-- `tests/cpp/external/eastl/{README.md,UPSTREAM.md,allowlist.txt,RunCase.cmake}`
+- [src/frontend/hir/hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp)
+- [src/frontend/hir/hir_templates_materialization.cpp](/workspaces/c4c/src/frontend/hir/hir_templates_materialization.cpp)
+- [src/frontend/hir/hir_templates_struct_instantiation.cpp](/workspaces/c4c/src/frontend/hir/hir_templates_struct_instantiation.cpp)
 
 ### Actions
 
-- add a cache variable and enable toggle for the EASTL external suite
-- auto-detect `tests/cpp/external/eastl`
-- register allowlisted cases under an `eastl_cpp_external_...` test prefix
-- implement a runner that injects shared EASTL include paths and supports
-  `parse`, `frontend`, and `runtime` modes
+- identify the minimal reusable output needed by later lookup callers
+- centralize pattern selection, binding resolution, and concrete instance-tag
+  derivation behind one helper
+- keep the helper authoritative for both primary-template and
+  partial-specialized instantiation paths
 
 ### Completion Check
 
-The new suite is discoverable at configure time and has a stable runner
-contract for future cases.
+Late lookup callers can request concrete template-instance resolution without
+re-implementing specialization logic.
 
 ## Step 2
 
 ### Goal
 
-Land the first proven EASTL-derived case.
+Integrate late member/symbol lookup with the shared template-instance resolver.
 
 ### Primary Targets
 
-- [tests/cpp/external/eastl/piecewise_construct/frontend_basic.cpp](/workspaces/c4c/tests/cpp/external/eastl/piecewise_construct/frontend_basic.cpp)
-- [tests/cpp/external/eastl/allowlist.txt](/workspaces/c4c/tests/cpp/external/eastl/allowlist.txt)
+- [src/codegen/lir/stmt_emitter_lvalue.cpp](/workspaces/c4c/src/codegen/lir/stmt_emitter_lvalue.cpp)
+- [src/codegen/lir/stmt_emitter_types.cpp](/workspaces/c4c/src/codegen/lir/stmt_emitter_types.cpp)
 
 ### Actions
 
-- add one standalone frontend-smoke case around
-  `ref/EASTL/include/EASTL/internal/piecewise_construct_t.h`
-- keep it minimal and self-contained
-- prove it through the new frontend-mode runner
+- detect when incoming struct tags are not yet concrete enough for
+  `struct_defs[tag]` lookup
+- resolve those tags through the shared template-instance helper before field
+  lookup failure
+- keep field lookup generic and semantic; do not add pair-only aliases
 
 ### Completion Check
 
-`ctest` can run the first `eastl_cpp_external_...` case successfully.
+Member lookup resolves against the concrete instance layout even when the
+incoming helper path still carries an intermediate template tag.
 
 ## Step 3
 
 ### Goal
 
-Leave the route ready for follow-on expansion.
+Prove the shared-resolution route on the exposed EASTL pair/member failure.
+
+### Primary Targets
+
+- `/tmp/eastl_pair_member.cpp` or an equivalent focused repro
+- `tests/cpp/external/eastl/utility/frontend_basic.cpp` only if the compiler
+  fix makes the intended utility-surface proof honest again
 
 ### Actions
 
-- capture provenance and scope boundaries clearly
-- record next candidate directions in `todo.md`
-- keep the suite compatible with a future dedicated submodule
+- keep one focused build/repro command that previously failed on
+  `pair_T1_T1_T2_T2`
+- confirm the repaired route reaches concrete `pair<int, int>` member layout
+  lookup
+- decide whether acceptance also needs the narrow EASTL external-suite test
+  rerun in addition to the direct repro
 
 ### Completion Check
 
-Another agent can add the second case or convert the suite layout without
-re-deriving the boundary decisions from scratch.
+The exposed pair/member route compiles successfully through the repaired shared
+lookup path.

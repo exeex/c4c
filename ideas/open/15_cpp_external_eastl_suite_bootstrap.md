@@ -106,3 +106,14 @@ Create `tests/cpp/external/eastl`, wire it into the test build with an
 allowlist and runner that inject shared EASTL include paths, then land one
 small frontend smoke test around an EASTL-owned header surface and prove it
 through `ctest`.
+
+## Status Note
+
+As of 2026-04-17, the bootstrap slice has already established the external
+suite root, runner, allowlist contract, and the first passing
+`piecewise_construct` frontend-smoke case.
+
+Follow-on EASTL expansion remains open, but a later attempt to add another
+utility-surface case exposed a separate compiler issue around template-struct
+instance/member lookup. That compiler work should proceed as its own idea
+instead of being silently absorbed into this bootstrap idea.

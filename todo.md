@@ -1,43 +1,45 @@
 Status: Active
-Source Idea: ideas/open/15_cpp_external_eastl_suite_bootstrap.md
+Source Idea: ideas/open/16_template_struct_instance_resolution_for_symbol_lookup.md
 Source Plan: plan.md
 
 # Current Packet
 
-Bootstrap `tests/cpp/external/eastl` with one standalone frontend-smoke case,
-then prove the new suite path through configure/build/ctest.
+Extract a shared template-struct instance resolver from the current
+partial-specialization path, then wire late member lookup into it for the
+exposed `eastl::pair<int, int>` failure route.
 
 ## Just Finished
 
-- Activated the new EASTL external-suite bootstrap idea into `plan.md` and
-  this `todo.md`.
-- Defined the initial target shape:
-  `tests/cpp/external/eastl` with allowlist + runner + provenance notes.
-- Wired the suite into the main test CMake and proved the first passing case:
-  `eastl_cpp_external_piecewise_construct_frontend_basic_cpp`.
+- Switched the active lifecycle state away from the EASTL bootstrap idea after
+  confirming the new work is a separate compiler initiative, not routine suite
+  expansion.
+- Recorded a new open idea for shared template-instance resolution in symbol
+  and member lookup.
+- Rewrote `plan.md` around the shared-helper route instead of continuing the
+  old external-suite expansion runbook.
 
 ## Suggested Next
 
-- Add a second EASTL-derived case, likely from tuple, utility, memory, or
-  vector coverage, using the same standalone extracted-case pattern.
-- Decide whether the next expansion should stay frontend-only for a few cases or
-  deliberately target the first runtime-capable external EASTL case.
-- Decide whether follow-on should also create a dedicated submodule repository
-  for `tests/cpp/external/eastl`, or keep bootstrapping in-tree until a small
-  curated bundle exists.
+- Start from the current `realize_template_struct(...)` flow and extract the
+  smallest reusable helper that exposes selected pattern, resolved bindings,
+  and concrete instance tag.
+- Integrate that helper into
+  `StmtEmitter::resolve_member_field_access(...)` before direct
+  `struct_defs[tag]` failure.
+- Keep a focused repro around `eastl::pair<int, int>` member access as the
+  acceptance surface before deciding whether to re-enable the external utility
+  case in the same slice.
 
 ## Watchouts
 
-- Do not move the whole upstream `ref/EASTL/test` harness under
-  `tests/cpp/external/eastl`.
-- Keep shared include paths injected by the runner instead of hardcoding them
-  independently per case.
-- Prefer semantic standalone cases over harness-heavy imports.
-- Treat the blocked `type_traits` runtime path as follow-on compiler work, not
-  as a reason to revert the external-suite bootstrap.
+- Do not solve this with `pair`-specific aliases or emitted-name string
+  rewrites.
+- Do not silently expand the patch into a repo-wide ABI-mangling redesign.
+- Keep the active EASTL bootstrap idea open; this switch is a route split, not
+  a closure.
 
 ## Proof
 
 - `cmake -S . -B build`
 - `cmake --build build --target c4cll -j8`
-- `ctest --test-dir build -R '^eastl_cpp_external_' --output-on-failure`
+- `build/c4cll -I ref/EASTL/include -I ref/EABase/include/Common /tmp/eastl_pair_member.cpp -o /tmp/eastl_pair_member.ll`
