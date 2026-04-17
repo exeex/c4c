@@ -387,6 +387,9 @@ void Lowerer::materialize_hir_template_defs(Module& m) {
     }
     tdef.instances = ct_state_->instances_to_hir_metadata(
         name, tdef.template_params);
+    for (auto& instance : tdef.instances) {
+      instance.mangled_link_name_id = m.link_names.intern(instance.mangled_name);
+    }
     m.template_defs[name] = std::move(tdef);
   });
 }
@@ -482,6 +485,7 @@ void Lowerer::lower_non_method_functions_and_globals(
         Function ce_fn{};
         ce_fn.id = next_fn_id();
         ce_fn.name = item->name ? item->name : "<anon_consteval>";
+        ce_fn.link_name_id = m.link_names.intern(ce_fn.name);
         ce_fn.execution_domain = item->execution_domain;
         ce_fn.ns_qual = make_ns_qual(item);
         ce_fn.return_type = qtype_from(item->type);

@@ -1509,6 +1509,7 @@ void Lowerer::lower_global(const Node* gv,
   GlobalVar g{};
   g.id = next_global_id();
   g.name = name_override ? *name_override : (gv->name ? gv->name : "<anon_global>");
+  g.link_name_id = module_->link_names.intern(g.name);
   g.ns_qual = make_ns_qual(gv);
   {
     TypeSpec global_ts = gv->type;

@@ -107,6 +107,7 @@ BlockId Lowerer::begin_callable_body_lowering(Function& fn, FunctionCtx& ctx) {
   Function skeleton{};
   skeleton.id = fn.id;
   skeleton.name = fn.name;
+  skeleton.link_name_id = fn.link_name_id;
   skeleton.execution_domain = fn.execution_domain;
   skeleton.ns_qual = fn.ns_qual;
   skeleton.return_type = fn.return_type;
@@ -133,6 +134,7 @@ void Lowerer::lower_function(const Node* fn_node,
   fn.id = next_fn_id();
   fn.name = name_override ? *name_override
                           : (fn_node->name ? fn_node->name : "<anon_fn>");
+  fn.link_name_id = module_->link_names.intern(fn.name);
   fn.ns_qual = make_ns_qual(fn_node);
   {
     TypeSpec ret_ts = fn_node->type;

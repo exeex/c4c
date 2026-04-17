@@ -28,6 +28,7 @@ enum class HirPipelineStage {
 
 #include "ast.hpp"
 #include "source_profile.hpp"
+#include "../string_id_table.hpp"
 #include "../../target_profile.hpp"
 
 namespace c4c::sema {
@@ -664,6 +665,7 @@ struct SpecializationKeyHash {
 struct Function {
   FunctionId id{};
   SymbolName name;
+  LinkNameId link_name_id = kInvalidLinkName;
   ExecutionDomain execution_domain = ExecutionDomain::Host;
   NamespaceQualifier ns_qual;  // owning namespace context from AST
   QualType return_type{};
@@ -725,6 +727,7 @@ using GlobalInit = std::variant<std::monostate, InitScalar, InitList>;
 struct GlobalVar {
   GlobalId id{};
   SymbolName name;
+  LinkNameId link_name_id = kInvalidLinkName;
   ExecutionDomain execution_domain = ExecutionDomain::Host;
   NamespaceQualifier ns_qual;  // owning namespace context from AST
   QualType type{};
@@ -888,6 +891,7 @@ inline SpecializationKey make_specialization_key(
 /// A single template instantiation produced during lowering.
 struct HirTemplateInstantiation {
   std::string mangled_name;    // e.g. "add_i" for add<int>
+  LinkNameId mangled_link_name_id = kInvalidLinkName;
   TypeBindings bindings;       // template param → concrete type
   NttpBindings nttp_bindings;  // non-type template param → constant value
   SpecializationKey spec_key;  // stable identity for dedup/caching
@@ -922,6 +926,8 @@ struct Module {
   SourceProfile source_profile = SourceProfile::C;
   c4c::TargetProfile target_profile{};
   std::string data_layout;
+  std::shared_ptr<TextTable> link_name_texts = std::make_shared<TextTable>();
+  LinkNameTable link_names{link_name_texts.get()};
   std::vector<Function> functions;
   std::vector<GlobalVar> globals;
   std::vector<Expr> expr_pool;
@@ -973,6 +979,11 @@ struct Module {
   [[nodiscard]] LocalId alloc_local_id() { return LocalId{next_local_id++}; }
   [[nodiscard]] BlockId alloc_block_id() { return BlockId{next_block_id++}; }
   [[nodiscard]] ExprId alloc_expr_id() { return ExprId{next_expr_id++}; }
+
+  void attach_link_name_texts(std::shared_ptr<TextTable> texts) {
+    link_name_texts = texts ? std::move(texts) : std::make_shared<TextTable>();
+    link_names.attach_text_table(link_name_texts.get());
+  }
 
   void sync_next_ids_from_contents() {
     uint32_t max_fn = 0;

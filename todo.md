@@ -6,33 +6,35 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Step 1 landed: `src/frontend/string_id_table.hpp` now defines a distinct
-`LinkNameId` / `LinkNameTable` contract backed by the shared `TextTable`,
-`src/frontend/lexer/token.hpp` now consumes the shared `TextId` / `TextTable`
-definitions from that helper layer, and `tests/frontend/frontend_parser_tests.cpp`
-adds focused coverage for interning, lookup, invalid handling, and text-table
-reuse.
+Started Step 2: HIR now owns a live `LinkNameTable` at the materialization
+boundary, `hir::Function` / `hir::GlobalVar` / `hir::HirTemplateInstantiation`
+carry parallel link-name ids, HIR lowering interns emitted symbol names for
+functions/globals/template instances, and `tests/frontend/frontend_hir_tests.cpp`
+now exercises a real lowered HIR module to prove those ids materialize and
+resolve back to spelling.
 
 ## Suggested Next
 
-Start Step 2 from `plan.md`: thread `LinkNameTable` ownership into the HIR
-materialization boundary and add parallel `link_name_id` fields on the first
-HIR carriers for emitted symbols, keeping this slice focused on HIR-side
-interning rather than LIR or backend consumer migration.
+Start Step 3 from `plan.md`: extend the first bounded LIR carrier path with
+parallel link-name ids and forward the HIR-owned ids through one real
+HIR->LIR symbol path without collapsing back to string-only reconstruction.
 
 ## Watchouts
 
-- keep `LinkNameTable` backed by the existing TU `TextTable`; do not add a
-  second owning string store
-- do not merge `LinkNameId` with `TextId` or parser/source-atom `SymbolId`
-- HIR, not parser ingestion or backend emission, owns the first interning of
-  final logical symbol names
-- the first packet should stay on the table/id-space boundary; do not sprawl
-  into broad HIR/LIR/backend rewrites before the contract exists
+- `hir::Module` currently owns the link-name text table for this slice; keep
+  the source-idea goal in view and avoid hardening that into a permanent
+  second string store once the shared TU text-table boundary is available
+- keep `LinkNameId` distinct from both `TextId` and parser/source-atom
+  `SymbolId`; the new HIR fields are parallel carriers, not replacements
+- Step 3 should forward the new ids explicitly into LIR rather than reading
+  back `Function.name` / `GlobalVar.name` as an implicit side channel
+- late consumer lookup is still string-based today, so the next slice should
+  stay on one bounded HIR->LIR path before touching backend/text emission
 - avoid testcase-overfit proof or brittle emitted-text substring matching as a
   substitute for a real id path
 
 ## Proof
 
 Build: `cmake --build --preset default -j4`
-Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
+Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
+Log: `test_after.log`
