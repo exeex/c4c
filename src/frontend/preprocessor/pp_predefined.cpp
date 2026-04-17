@@ -1,5 +1,7 @@
 #include "pp_predefined.hpp"
 
+#include "../../target_profile.hpp"
+
 namespace c4c {
 
 namespace {
@@ -35,34 +37,6 @@ bool target_is_x86_64(const std::string& triple) {
 bool target_is_i386(const std::string& triple) {
   return triple_contains(triple, "i386") || triple_contains(triple, "i686") ||
          triple_contains(triple, "x86");
-}
-
-std::string default_host_target_triple() {
-#if defined(__aarch64__) || defined(_M_ARM64)
-#if defined(__APPLE__)
-  return "aarch64-apple-darwin";
-#elif defined(__linux__)
-  return "aarch64-unknown-linux-gnu";
-#else
-  return "aarch64-unknown-unknown";
-#endif
-#elif defined(__x86_64__) || defined(_M_X64)
-#if defined(__APPLE__)
-  return "x86_64-apple-darwin";
-#elif defined(__linux__)
-  return "x86_64-unknown-linux-gnu";
-#else
-  return "x86_64-unknown-unknown";
-#endif
-#elif defined(__i386__) || defined(_M_IX86)
-#if defined(__linux__)
-  return "i386-unknown-linux-gnu";
-#else
-  return "i386-unknown-unknown";
-#endif
-#else
-  return "unknown-unknown-unknown";
-#endif
 }
 
 void add_apple_target_predefines(MacroTable& table, const std::string& triple) {
@@ -109,7 +83,7 @@ void add_apple_target_predefines(MacroTable& table, const std::string& triple) {
 
 void init_predefined_macros(MacroTable& table, const std::string& requested_target_triple) {
   const std::string target_triple =
-      requested_target_triple.empty() ? default_host_target_triple() : requested_target_triple;
+      requested_target_triple.empty() ? c4c::default_host_target_triple() : requested_target_triple;
   def(table, "__STDC__", "1");
   def(table, "__STDC_VERSION__", "201710L");
   def(table, "__LP64__", "1");

@@ -23,6 +23,7 @@
 #include "compile_time_engine.hpp"
 #include "inline_expand.hpp"
 #include "source_profile.hpp"
+#include "target_profile.hpp"
 #include "token.hpp"
 
 
@@ -64,28 +65,6 @@ bool looks_like_llvm_ir(std::string_view text) {
     text.remove_prefix(eol + 1);
   }
   return false;
-}
-
-std::string default_host_target_triple() {
-#if defined(__aarch64__) || defined(_M_ARM64)
-#if defined(__APPLE__)
-  return "aarch64-apple-darwin";
-#elif defined(__linux__)
-  return "aarch64-unknown-linux-gnu";
-#else
-  return "aarch64-unknown-unknown";
-#endif
-#elif defined(__x86_64__) || defined(_M_X64)
-#if defined(__APPLE__)
-  return "x86_64-apple-darwin";
-#elif defined(__linux__)
-  return "x86_64-unknown-linux-gnu";
-#else
-  return "x86_64-unknown-unknown";
-#endif
-#else
-  return "unknown-unknown-unknown";
-#endif
 }
 
 std::string default_split_host_output_path(const std::string& input_path) {
@@ -332,7 +311,7 @@ int main(int argc, char **argv) {
     bool        emit_split_llvm = false;
     std::string input;
     std::string output;
-    std::string target_triple = default_host_target_triple();
+    std::string target_triple = c4c::default_host_target_triple();
     std::string device_target_triple;
     std::string host_output;
     std::string device_output;

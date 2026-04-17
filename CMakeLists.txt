@@ -24,6 +24,14 @@ add_subdirectory(src/frontend)
 add_subdirectory(src/codegen)
 add_subdirectory(src/backend)
 
+add_library(c4c_target_profile STATIC
+    "${PROJECT_SOURCE_DIR}/src/target_profile.cpp"
+)
+target_include_directories(c4c_target_profile PUBLIC
+    "${PROJECT_SOURCE_DIR}/src"
+)
+target_compile_features(c4c_target_profile PUBLIC cxx_std_17)
+
 add_executable(c4cll
     "${PROJECT_SOURCE_DIR}/src/apps/c4cll.cpp"
 )

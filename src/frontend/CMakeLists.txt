@@ -16,6 +16,7 @@ target_compile_definitions(c4c_frontend
     PUBLIC
         ENABLE_HEAVY_TENTATIVE_SNAPSHOT=$<IF:$<BOOL:${ENABLE_HEAVY_TENTATIVE_SNAPSHOT}>,1,0>
 )
+target_link_libraries(c4c_frontend PUBLIC c4c_target_profile)
 target_compile_features(c4c_frontend PUBLIC cxx_std_17)
 set_target_properties(c4c_frontend PROPERTIES
     PREFIX ""

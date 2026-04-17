@@ -1,30 +1,23 @@
 #include "target.hpp"
 
-#include <stdexcept>
-#include <string>
+#include "../target_profile.hpp"
 
 namespace c4c::backend {
 
-namespace {
-
-std::string_view arch_from_triple(std::string_view target_triple) {
-  const size_t dash = target_triple.find('-');
-  if (dash == std::string_view::npos) return target_triple;
-  return target_triple.substr(0, dash);
-}
-
-}  // namespace
-
 Target target_from_triple(std::string_view target_triple) {
-  const std::string_view arch = arch_from_triple(target_triple);
-  if (arch == "x86_64" || arch == "amd64") return Target::X86_64;
-  if (arch == "i386" || arch == "i486" || arch == "i586" || arch == "i686") {
-    return Target::I686;
+  switch (c4c::target_profile_from_triple(target_triple).arch) {
+    case c4c::TargetArch::X86_64:
+      return Target::X86_64;
+    case c4c::TargetArch::I686:
+      return Target::I686;
+    case c4c::TargetArch::Aarch64:
+      return Target::Aarch64;
+    case c4c::TargetArch::Riscv64:
+      return Target::Riscv64;
+    case c4c::TargetArch::Unknown:
+      break;
   }
-  if (arch == "aarch64" || arch == "arm64") return Target::Aarch64;
-  if (arch == "riscv64" || arch == "riscv64gc") return Target::Riscv64;
-  throw std::invalid_argument("unsupported backend target triple: " +
-                              std::string(target_triple));
+  return Target::X86_64;
 }
 
 const char* target_name(Target target) {

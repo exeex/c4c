@@ -27,7 +27,7 @@ target_include_directories(c4c_backend
         "${PROJECT_SOURCE_DIR}/src/codegen/lir"
         "${PROJECT_SOURCE_DIR}/src/codegen/shared"
 )
-target_link_libraries(c4c_backend PUBLIC c4c_frontend c4c_codegen)
+target_link_libraries(c4c_backend PUBLIC c4c_frontend c4c_codegen c4c_target_profile)
 
 target_compile_features(c4c_backend PUBLIC cxx_std_17)
 set_target_properties(c4c_backend PROPERTIES
