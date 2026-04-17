@@ -10,9 +10,13 @@ namespace c4c::backend::x86 {
 
 namespace {
 
-[[noreturn]] void throw_unsupported_direct_bir_module() {
-  throw std::invalid_argument(
-      "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
+Target resolve_direct_bir_target(const c4c::backend::bir::Module& module) {
+  const auto target = c4c::backend::target_from_triple(module.target_triple);
+  if (target != Target::X86_64 && target != Target::I686) {
+    throw std::invalid_argument(
+        "x86 backend emitter requires an x86 target triple for canonical prepared-module handoff");
+  }
+  return target;
 }
 
 [[noreturn]] void throw_x86_rewrite_in_progress() {
@@ -23,8 +27,9 @@ namespace {
 }  // namespace
 
 std::string emit_module(const c4c::backend::bir::Module& module) {
-  (void)module;
-  throw_unsupported_direct_bir_module();
+  const auto prepared = c4c::backend::prepare::prepare_semantic_bir_module_with_options(
+      module, resolve_direct_bir_target(module));
+  return emit_prepared_module(prepared);
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -24,6 +25,9 @@ namespace c4c::backend {
 namespace bir {
 struct Module;
 enum class BinaryOpcode : unsigned char;
+}
+namespace prepare {
+struct PreparedBirModule;
 }
 
 struct ParsedBackendExternCallArg;
@@ -1022,6 +1026,12 @@ std::string emit_minimal_constant_branch_return_asm(std::string_view target_trip
 c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
     const c4c::backend::LivenessInput& liveness_input);
 
+inline std::string emit_prepared_module(
+    const c4c::backend::prepare::PreparedBirModule& module) {
+  (void)module;
+  throw std::invalid_argument(
+      "x86 backend emitter does not yet support this prepared BIR module through the canonical x86 prepared-module handoff");
+}
 std::string emit_module(const c4c::backend::bir::Module& module);
 std::string emit_module(const c4c::codegen::lir::LirModule& module);
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,

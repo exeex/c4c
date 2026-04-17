@@ -1,6 +1,7 @@
 #include "backend.hpp"
 
 #include "bir/bir_printer.hpp"
+#include "mir/x86/codegen/x86_codegen.hpp"
 
 #include "../codegen/lir/lir_printer.hpp"
 
@@ -27,6 +28,10 @@ std::string emit_bootstrap_lir_module(const c4c::codegen::lir::LirModule& module
                                       Target target) {
   (void)target;
   return c4c::codegen::lir::print_llvm(module);
+}
+
+bool is_x86_target(Target target) {
+  return target == Target::X86_64 || target == Target::I686;
 }
 
 // The active public backend entry still stops at prepared semantic BIR text.
@@ -57,6 +62,9 @@ c4c::backend::bir::Module prepare_bir_module_for_target(
 
 std::string emit_target_bir_module(const bir::Module& module, Target public_target) {
   const auto prepared = prepare_semantic_bir_pipeline(module, public_target);
+  if (is_x86_target(public_target)) {
+    return c4c::backend::x86::emit_prepared_module(prepared);
+  }
   return render_prepared_bir_text(prepared.module);
 }
 
