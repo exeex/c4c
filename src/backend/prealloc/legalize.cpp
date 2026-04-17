@@ -11,27 +11,29 @@ namespace c4c::backend::prepare {
 
 namespace {
 
-bool should_promote_i1(Target target) {
-  switch (target) {
-    case Target::X86_64:
-    case Target::I686:
-    case Target::Aarch64:
-    case Target::Riscv64:
+bool should_promote_i1(const c4c::TargetProfile& target_profile) {
+  switch (target_profile.arch) {
+    case c4c::TargetArch::X86_64:
+    case c4c::TargetArch::I686:
+    case c4c::TargetArch::Aarch64:
+    case c4c::TargetArch::Riscv64:
       return true;
+    case c4c::TargetArch::Unknown:
+      return false;
   }
   return false;
 }
 
-bir::TypeKind legalize_type(Target target, bir::TypeKind type) {
-  if (should_promote_i1(target) && type == bir::TypeKind::I1) {
+bir::TypeKind legalize_type(const c4c::TargetProfile& target_profile, bir::TypeKind type) {
+  if (should_promote_i1(target_profile) && type == bir::TypeKind::I1) {
     return bir::TypeKind::I32;
   }
   return type;
 }
 
-void legalize_value(Target target, bir::Value& value) {
+void legalize_value(const c4c::TargetProfile& target_profile, bir::Value& value) {
   const auto original_type = value.type;
-  value.type = legalize_type(target, value.type);
+  value.type = legalize_type(target_profile, value.type);
   if (original_type == bir::TypeKind::I1 && value.type == bir::TypeKind::I32 &&
       value.kind == bir::Value::Kind::Immediate) {
     value.immediate = value.immediate != 0 ? 1 : 0;
@@ -54,12 +56,12 @@ std::size_t type_size_bytes(bir::TypeKind type) {
   }
 }
 
-void legalize_sized_type(Target target,
+void legalize_sized_type(const c4c::TargetProfile& target_profile,
                          bir::TypeKind& type,
                          std::size_t& size_bytes,
                          std::size_t& align_bytes) {
   const auto original_type = type;
-  type = legalize_type(target, type);
+  type = legalize_type(target_profile, type);
   if (original_type != type) {
     const auto legalized_size = type_size_bytes(type);
     size_bytes = legalized_size;
@@ -67,15 +69,18 @@ void legalize_sized_type(Target target,
   }
 }
 
-void legalize_call_arg_abi(Target target, bir::CallArgAbiInfo& abi) {
-  legalize_sized_type(target, abi.type, abi.size_bytes, abi.align_bytes);
+void legalize_call_arg_abi(const c4c::TargetProfile& target_profile, bir::CallArgAbiInfo& abi) {
+  legalize_sized_type(target_profile, abi.type, abi.size_bytes, abi.align_bytes);
 }
 
-void legalize_call_result_abi(Target target, bir::CallResultAbiInfo& abi) {
-  abi.type = legalize_type(target, abi.type);
+void legalize_call_result_abi(const c4c::TargetProfile& target_profile,
+                              bir::CallResultAbiInfo& abi) {
+  abi.type = legalize_type(target_profile, abi.type);
 }
 
-std::optional<bir::CallResultAbiInfo> infer_function_return_abi(const bir::Function& function) {
+std::optional<bir::CallResultAbiInfo> infer_function_return_abi(
+    const c4c::TargetProfile& target_profile,
+    const bir::Function& function) {
   if (function.return_type == bir::TypeKind::Void) {
     return std::nullopt;
   }
@@ -86,7 +91,9 @@ std::optional<bir::CallResultAbiInfo> infer_function_return_abi(const bir::Funct
     case bir::TypeKind::F32:
     case bir::TypeKind::F64:
     case bir::TypeKind::F128:
-      abi.primary_class = bir::AbiValueClass::Sse;
+      abi.primary_class = target_profile.has_float_return_registers
+                              ? bir::AbiValueClass::Sse
+                              : bir::AbiValueClass::Integer;
       break;
     case bir::TypeKind::I1:
     case bir::TypeKind::I8:
@@ -105,11 +112,11 @@ std::optional<bir::CallResultAbiInfo> infer_function_return_abi(const bir::Funct
   return abi;
 }
 
-void legalize_memory_access_metadata(Target target,
+void legalize_memory_access_metadata(const c4c::TargetProfile& target_profile,
                                      bir::TypeKind original_type,
                                      std::size_t& align_bytes,
                                      std::optional<bir::MemoryAddress>& address) {
-  const auto legalized_type = legalize_type(target, original_type);
+  const auto legalized_type = legalize_type(target_profile, original_type);
   if (legalized_type == original_type) {
     return;
   }
@@ -766,26 +773,26 @@ void lower_phi_nodes(bir::Function* function) {
   }
 }
 
-void legalize_module(Target target, bir::Module& module) {
+void legalize_module(const c4c::TargetProfile& target_profile, bir::Module& module) {
   for (auto& global : module.globals) {
-    legalize_sized_type(target, global.type, global.size_bytes, global.align_bytes);
+    legalize_sized_type(target_profile, global.type, global.size_bytes, global.align_bytes);
     if (global.initializer.has_value()) {
-      legalize_value(target, *global.initializer);
+      legalize_value(target_profile, *global.initializer);
     }
     for (auto& element : global.initializer_elements) {
-      legalize_value(target, element);
+      legalize_value(target_profile, element);
     }
   }
 
   for (auto& function : module.functions) {
     lower_phi_nodes(&function);
     legalize_sized_type(
-        target, function.return_type, function.return_size_bytes, function.return_align_bytes);
+        target_profile, function.return_type, function.return_size_bytes, function.return_align_bytes);
     if (!function.return_abi.has_value()) {
-      function.return_abi = infer_function_return_abi(function);
+      function.return_abi = infer_function_return_abi(target_profile, function);
     }
     if (function.return_abi.has_value()) {
-      legalize_call_result_abi(target, *function.return_abi);
+      legalize_call_result_abi(target_profile, *function.return_abi);
       if (function.return_abi->type == bir::TypeKind::Void &&
           !function.return_abi->returned_in_memory &&
           function.return_abi->primary_class != bir::AbiValueClass::Memory) {
@@ -793,10 +800,10 @@ void legalize_module(Target target, bir::Module& module) {
       }
     }
     for (auto& param : function.params) {
-      legalize_sized_type(target, param.type, param.size_bytes, param.align_bytes);
+      legalize_sized_type(target_profile, param.type, param.size_bytes, param.align_bytes);
     }
     for (auto& slot : function.local_slots) {
-      legalize_sized_type(target, slot.type, slot.size_bytes, slot.align_bytes);
+      legalize_sized_type(target_profile, slot.type, slot.size_bytes, slot.align_bytes);
     }
     for (auto& block : function.blocks) {
       for (auto& inst : block.insts) {
@@ -804,65 +811,65 @@ void legalize_module(Target target, bir::Module& module) {
             [&](auto& lowered) {
               using T = std::decay_t<decltype(lowered)>;
               if constexpr (std::is_same_v<T, bir::BinaryInst>) {
-                lowered.result.type = legalize_type(target, lowered.result.type);
-                lowered.operand_type = legalize_type(target, lowered.operand_type);
-                legalize_value(target, lowered.lhs);
-                legalize_value(target, lowered.rhs);
+                lowered.result.type = legalize_type(target_profile, lowered.result.type);
+                lowered.operand_type = legalize_type(target_profile, lowered.operand_type);
+                legalize_value(target_profile, lowered.lhs);
+                legalize_value(target_profile, lowered.rhs);
               } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
-                lowered.result.type = legalize_type(target, lowered.result.type);
-                lowered.compare_type = legalize_type(target, lowered.compare_type);
-                legalize_value(target, lowered.lhs);
-                legalize_value(target, lowered.rhs);
-                legalize_value(target, lowered.true_value);
-                legalize_value(target, lowered.false_value);
+                lowered.result.type = legalize_type(target_profile, lowered.result.type);
+                lowered.compare_type = legalize_type(target_profile, lowered.compare_type);
+                legalize_value(target_profile, lowered.lhs);
+                legalize_value(target_profile, lowered.rhs);
+                legalize_value(target_profile, lowered.true_value);
+                legalize_value(target_profile, lowered.false_value);
               } else if constexpr (std::is_same_v<T, bir::CastInst>) {
-                lowered.result.type = legalize_type(target, lowered.result.type);
-                legalize_value(target, lowered.operand);
+                lowered.result.type = legalize_type(target_profile, lowered.result.type);
+                legalize_value(target_profile, lowered.operand);
               } else if constexpr (std::is_same_v<T, bir::PhiInst>) {
-                lowered.result.type = legalize_type(target, lowered.result.type);
+                lowered.result.type = legalize_type(target_profile, lowered.result.type);
                 for (auto& incoming : lowered.incomings) {
-                  legalize_value(target, incoming.value);
+                  legalize_value(target_profile, incoming.value);
                 }
               } else if constexpr (std::is_same_v<T, bir::CallInst>) {
-                lowered.return_type = legalize_type(target, lowered.return_type);
+                lowered.return_type = legalize_type(target_profile, lowered.return_type);
                 if (!lowered.return_type_name.empty()) {
                   lowered.return_type_name = bir::render_type(lowered.return_type);
                 }
                 if (lowered.result.has_value()) {
-                  legalize_value(target, *lowered.result);
+                  legalize_value(target_profile, *lowered.result);
                 }
                 if (lowered.callee_value.has_value()) {
-                  legalize_value(target, *lowered.callee_value);
+                  legalize_value(target_profile, *lowered.callee_value);
                 }
                 for (auto& arg : lowered.args) {
-                  legalize_value(target, arg);
+                  legalize_value(target_profile, arg);
                 }
                 for (auto& arg_type : lowered.arg_types) {
-                  arg_type = legalize_type(target, arg_type);
+                  arg_type = legalize_type(target_profile, arg_type);
                 }
                 for (auto& arg_abi : lowered.arg_abi) {
-                  legalize_call_arg_abi(target, arg_abi);
+                  legalize_call_arg_abi(target_profile, arg_abi);
                 }
                 if (lowered.result_abi.has_value()) {
-                  legalize_call_result_abi(target, *lowered.result_abi);
+                  legalize_call_result_abi(target_profile, *lowered.result_abi);
                 }
               } else if constexpr (std::is_same_v<T, bir::LoadLocalInst> ||
                                    std::is_same_v<T, bir::LoadGlobalInst>) {
                 const auto original_type = lowered.result.type;
-                lowered.result.type = legalize_type(target, lowered.result.type);
+                lowered.result.type = legalize_type(target_profile, lowered.result.type);
                 legalize_memory_access_metadata(
-                    target, original_type, lowered.align_bytes, lowered.address);
+                    target_profile, original_type, lowered.align_bytes, lowered.address);
                 if (lowered.address.has_value()) {
-                  legalize_value(target, lowered.address->base_value);
+                  legalize_value(target_profile, lowered.address->base_value);
                 }
               } else if constexpr (std::is_same_v<T, bir::StoreLocalInst> ||
                                    std::is_same_v<T, bir::StoreGlobalInst>) {
                 const auto original_type = lowered.value.type;
-                legalize_value(target, lowered.value);
+                legalize_value(target_profile, lowered.value);
                 legalize_memory_access_metadata(
-                    target, original_type, lowered.align_bytes, lowered.address);
+                    target_profile, original_type, lowered.align_bytes, lowered.address);
                 if (lowered.address.has_value()) {
-                  legalize_value(target, lowered.address->base_value);
+                  legalize_value(target_profile, lowered.address->base_value);
                 }
               }
             },
@@ -870,9 +877,9 @@ void legalize_module(Target target, bir::Module& module) {
       }
 
       if (block.terminator.value.has_value()) {
-        legalize_value(target, *block.terminator.value);
+        legalize_value(target_profile, *block.terminator.value);
       }
-      legalize_value(target, block.terminator.condition);
+      legalize_value(target_profile, block.terminator.condition);
     }
   }
 }
@@ -881,9 +888,9 @@ void legalize_module(Target target, bir::Module& module) {
 
 void BirPreAlloc::run_legalize() {
   prepared_.completed_phases.push_back("legalize");
-  legalize_module(prepared_.target, prepared_.module);
+  legalize_module(prepared_.target_profile, prepared_.module);
   prepared_.invariants.push_back(PreparedBirInvariant::NoPhiNodes);
-  if (should_promote_i1(prepared_.target)) {
+  if (should_promote_i1(prepared_.target_profile)) {
     prepared_.invariants.push_back(PreparedBirInvariant::NoTargetFacingI1);
   }
 
