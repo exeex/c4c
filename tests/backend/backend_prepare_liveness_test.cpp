@@ -191,6 +191,50 @@ prepare::PreparedBirModule prepare_phi_module_with_regalloc() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_byval_home_slot_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "byval_home_slot";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "p.byval",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .is_byval = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "cmp0"),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "p.byval"),
+      .rhs = bir::Value::named(bir::TypeKind::Ptr, "p.byval"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "cmp0"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target = Target::Riscv64;
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
 int check_phi_predecessor_edge_liveness(const prepare::PreparedBirModule& prepared) {
   if (!prepared.stack_layout.objects.empty()) {
     return fail("expected no stack-layout objects for the phi-only test function");
@@ -279,9 +323,22 @@ int check_phi_regalloc_seed_activation(const prepare::PreparedBirModule& prepare
       phi->live_interval->end_point != 7) {
     return fail("expected phi.v regalloc seed to keep the liveness interval and a general-register class");
   }
-  if (phi->allocation_status != prepare::PreparedAllocationStatus::Unallocated ||
-      !phi->spillable || phi->priority == 0 || phi->spill_weight <= 0.0) {
-    return fail("expected phi.v regalloc seed to remain unallocated while publishing nonzero allocation priority");
+  if (phi->allocation_status != prepare::PreparedAllocationStatus::AssignedRegister ||
+      !phi->assigned_register.has_value() || !phi->spillable || phi->priority == 0 || phi->spill_weight <= 0.0) {
+    return fail("expected phi.v regalloc seed to become an assigned register while publishing nonzero allocation priority");
+  }
+  if (left->allocation_status != prepare::PreparedAllocationStatus::AssignedRegister ||
+      !left->assigned_register.has_value() ||
+      right->allocation_status != prepare::PreparedAllocationStatus::AssignedRegister ||
+      !right->assigned_register.has_value()) {
+    return fail("expected left.v and right.v to reuse a real register assignment across disjoint live intervals");
+  }
+  if (left->assigned_register->register_name != right->assigned_register->register_name) {
+    return fail("expected left.v and right.v to reuse the same register after interval expiry");
+  }
+  if (sum->allocation_status != prepare::PreparedAllocationStatus::AssignedStackSlot ||
+      !sum->assigned_stack_slot.has_value()) {
+    return fail("expected sum to receive a real stack-slot assignment when the active register is unavailable");
   }
 
   const auto* phi_constraint = find_constraint(*function, phi->value_id);
@@ -301,6 +358,36 @@ int check_phi_regalloc_seed_activation(const prepare::PreparedBirModule& prepare
   return 0;
 }
 
+int check_byval_home_slot_regalloc(const prepare::PreparedBirModule& prepared) {
+  const auto* function = find_regalloc_function(prepared, "byval_home_slot");
+  if (function == nullptr) {
+    return fail("expected regalloc output for byval_home_slot");
+  }
+
+  const auto* byval = find_regalloc_value(*function, "p.byval");
+  const auto* cmp0 = find_regalloc_value(*function, "cmp0");
+  if (byval == nullptr || cmp0 == nullptr) {
+    return fail("expected byval param and compare result to appear in regalloc output");
+  }
+
+  if (byval->allocation_status != prepare::PreparedAllocationStatus::AssignedStackSlot ||
+      !byval->assigned_stack_slot.has_value() || byval->assigned_register.has_value()) {
+    return fail("expected the byval param to keep a real home-slot assignment instead of taking a register");
+  }
+  if (cmp0->allocation_status != prepare::PreparedAllocationStatus::AssignedRegister ||
+      !cmp0->assigned_register.has_value()) {
+    return fail("expected the compare result to receive a real register assignment");
+  }
+
+  const auto* byval_constraint = find_constraint(*function, byval->value_id);
+  if (byval_constraint == nullptr || byval_constraint->register_class != prepare::PreparedRegisterClass::General ||
+      byval_constraint->requires_register || !byval_constraint->requires_home_slot) {
+    return fail("expected the byval param constraint to preserve the home-slot-only contract");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -311,6 +398,11 @@ int main() {
 
   const auto regalloc_prepared = prepare_phi_module_with_regalloc();
   if (const int rc = check_phi_regalloc_seed_activation(regalloc_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto byval_prepared = prepare_byval_home_slot_module_with_regalloc();
+  if (const int rc = check_byval_home_slot_regalloc(byval_prepared); rc != 0) {
     return rc;
   }
   return 0;

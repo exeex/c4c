@@ -1,13 +1,21 @@
 #include "prealloc.hpp"
+#include "stack_layout/support.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <optional>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace c4c::backend::prepare {
 
 namespace {
+
+struct ActiveRegisterAssignment {
+  std::size_t end_point = 0;
+  std::string register_name;
+};
 
 [[nodiscard]] PreparedRegisterClass classify_register_class(const PreparedLivenessValue& value) {
   switch (value.type) {
@@ -45,6 +53,129 @@ namespace {
     priority += 1U;
   }
   return priority;
+}
+
+[[nodiscard]] std::vector<std::string_view> caller_saved_registers(Target target,
+                                                                   PreparedRegisterClass reg_class) {
+  if (reg_class != PreparedRegisterClass::General) {
+    return {};
+  }
+  switch (target) {
+    case Target::X86_64:
+      return {"r11"};
+    case Target::I686:
+      return {"ecx"};
+    case Target::Aarch64:
+      return {"x13"};
+    case Target::Riscv64:
+      return {"t0"};
+  }
+  return {};
+}
+
+[[nodiscard]] std::vector<std::string_view> callee_saved_registers(Target target,
+                                                                   PreparedRegisterClass reg_class) {
+  if (reg_class != PreparedRegisterClass::General) {
+    return {};
+  }
+  switch (target) {
+    case Target::X86_64:
+      return {"rbx"};
+    case Target::I686:
+      return {"ebx"};
+    case Target::Aarch64:
+      return {"x20"};
+    case Target::Riscv64:
+      return {"s1"};
+  }
+  return {};
+}
+
+[[nodiscard]] std::size_t normalized_value_size(const PreparedRegallocValue& value) {
+  return stack_layout::normalize_size(value.type, 0);
+}
+
+[[nodiscard]] std::size_t normalized_value_alignment(const PreparedRegallocValue& value) {
+  return stack_layout::normalize_alignment(value.type, 0, normalized_value_size(value));
+}
+
+void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
+                                  std::size_t start_point) {
+  active.erase(std::remove_if(active.begin(),
+                              active.end(),
+                              [start_point](const ActiveRegisterAssignment& assignment) {
+                                return assignment.end_point < start_point;
+                              }),
+               active.end());
+}
+
+[[nodiscard]] bool register_is_active(const std::vector<ActiveRegisterAssignment>& active,
+                                      std::string_view register_name) {
+  return std::any_of(active.begin(),
+                     active.end(),
+                     [register_name](const ActiveRegisterAssignment& assignment) {
+                       return assignment.register_name == register_name;
+                     });
+}
+
+[[nodiscard]] std::optional<std::string> choose_register(
+    const std::vector<ActiveRegisterAssignment>& active,
+    const std::vector<std::string_view>& register_names) {
+  for (const std::string_view register_name : register_names) {
+    if (!register_is_active(active, register_name)) {
+      return std::string(register_name);
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<PreparedStackSlotAssignment> existing_stack_slot_assignment(
+    const PreparedStackLayout& stack_layout,
+    std::string_view function_name,
+    const PreparedRegallocValue& value) {
+  if (!value.stack_object_id.has_value()) {
+    return std::nullopt;
+  }
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.function_name != function_name || slot.object_id != *value.stack_object_id) {
+      continue;
+    }
+    return PreparedStackSlotAssignment{
+        .slot_id = slot.slot_id,
+        .offset_bytes = slot.offset_bytes,
+    };
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] PreparedStackSlotAssignment allocate_stack_slot(std::string_view function_name,
+                                                              const PreparedRegallocValue& value,
+                                                              const PreparedStackLayout& stack_layout,
+                                                              PreparedFrameSlotId& next_slot_id,
+                                                              std::size_t& next_offset_bytes,
+                                                              std::size_t& frame_alignment_bytes) {
+  if (const auto existing = existing_stack_slot_assignment(stack_layout, function_name, value);
+      existing.has_value()) {
+    return *existing;
+  }
+
+  const std::size_t size_bytes = normalized_value_size(value);
+  const std::size_t align_bytes = normalized_value_alignment(value);
+  next_offset_bytes = stack_layout::align_to(next_offset_bytes, align_bytes);
+  PreparedStackSlotAssignment slot{
+      .slot_id = next_slot_id++,
+      .offset_bytes = next_offset_bytes,
+  };
+  next_offset_bytes += size_bytes;
+  frame_alignment_bytes = std::max(frame_alignment_bytes, align_bytes);
+  return slot;
+}
+
+[[nodiscard]] std::size_t interval_start_sort_key(const PreparedRegallocValue& value) {
+  if (!value.live_interval.has_value()) {
+    return std::numeric_limits<std::size_t>::max();
+  }
+  return value.live_interval->start_point;
 }
 
 }  // namespace
@@ -99,7 +230,7 @@ void BirPreAlloc::run_regalloc() {
       regalloc_function.constraints.push_back(PreparedAllocationConstraint{
           .value_id = liveness_value.value_id,
           .register_class = register_class,
-          .requires_register = true,
+          .requires_register = !liveness_value.requires_home_slot,
           .requires_home_slot = liveness_value.requires_home_slot,
           .cannot_cross_call = liveness_value.crosses_call &&
                                register_class != PreparedRegisterClass::Float,
@@ -130,13 +261,118 @@ void BirPreAlloc::run_regalloc() {
       }
     }
 
+    PreparedFrameSlotId next_slot_id = 0;
+    std::size_t next_offset_bytes = prepared_.stack_layout.frame_size_bytes;
+    std::size_t frame_alignment_bytes = prepared_.stack_layout.frame_alignment_bytes;
+    for (const auto& slot : prepared_.stack_layout.frame_slots) {
+      next_slot_id = std::max(next_slot_id, slot.slot_id + 1U);
+      next_offset_bytes = std::max(next_offset_bytes, slot.offset_bytes + slot.size_bytes);
+      frame_alignment_bytes = std::max(frame_alignment_bytes, slot.align_bytes);
+    }
+
+    std::vector<std::size_t> allocation_order(regalloc_function.values.size());
+    for (std::size_t index = 0; index < allocation_order.size(); ++index) {
+      allocation_order[index] = index;
+    }
+    std::sort(allocation_order.begin(),
+              allocation_order.end(),
+              [&regalloc_function](std::size_t lhs_index, std::size_t rhs_index) {
+                const auto& lhs = regalloc_function.values[lhs_index];
+                const auto& rhs = regalloc_function.values[rhs_index];
+                const std::size_t lhs_start = interval_start_sort_key(lhs);
+                const std::size_t rhs_start = interval_start_sort_key(rhs);
+                if (lhs_start != rhs_start) {
+                  return lhs_start < rhs_start;
+                }
+                if (lhs.priority != rhs.priority) {
+                  return lhs.priority > rhs.priority;
+                }
+                return lhs.value_id < rhs.value_id;
+              });
+
+    std::vector<ActiveRegisterAssignment> active_assignments;
+    active_assignments.reserve(regalloc_function.values.size());
+    std::size_t assigned_register_count = 0;
+    std::size_t assigned_stack_count = 0;
+
+    for (const std::size_t value_index : allocation_order) {
+      auto& value = regalloc_function.values[value_index];
+
+      if (value.assigned_register.has_value() || value.assigned_stack_slot.has_value()) {
+        continue;
+      }
+
+      if (value.requires_home_slot) {
+        value.assigned_stack_slot = allocate_stack_slot(regalloc_function.function_name,
+                                                        value,
+                                                        prepared_.stack_layout,
+                                                        next_slot_id,
+                                                        next_offset_bytes,
+                                                        frame_alignment_bytes);
+        value.allocation_status = PreparedAllocationStatus::AssignedStackSlot;
+        ++assigned_stack_count;
+        continue;
+      }
+
+      if (!value.live_interval.has_value() || value.register_class == PreparedRegisterClass::None) {
+        if (normalized_value_size(value) != 0U) {
+          value.assigned_stack_slot = allocate_stack_slot(regalloc_function.function_name,
+                                                          value,
+                                                          prepared_.stack_layout,
+                                                          next_slot_id,
+                                                          next_offset_bytes,
+                                                          frame_alignment_bytes);
+          value.allocation_status = PreparedAllocationStatus::AssignedStackSlot;
+          ++assigned_stack_count;
+        }
+        continue;
+      }
+
+      expire_completed_assignments(active_assignments, value.live_interval->start_point);
+
+      const auto register_names = value.crosses_call
+                                      ? callee_saved_registers(prepared_.target, value.register_class)
+                                      : caller_saved_registers(prepared_.target, value.register_class);
+      if (const auto chosen_register = choose_register(active_assignments, register_names);
+          chosen_register.has_value()) {
+        value.assigned_register = PreparedPhysicalRegisterAssignment{
+            .reg_class = value.register_class,
+            .register_name = std::move(*chosen_register),
+        };
+        value.allocation_status = PreparedAllocationStatus::AssignedRegister;
+        active_assignments.push_back(ActiveRegisterAssignment{
+            .end_point = value.live_interval->end_point,
+            .register_name = value.assigned_register->register_name,
+        });
+        ++assigned_register_count;
+        continue;
+      }
+
+      value.assigned_stack_slot = allocate_stack_slot(regalloc_function.function_name,
+                                                      value,
+                                                      prepared_.stack_layout,
+                                                      next_slot_id,
+                                                      next_offset_bytes,
+                                                      frame_alignment_bytes);
+      value.allocation_status = PreparedAllocationStatus::AssignedStackSlot;
+      ++assigned_stack_count;
+    }
+
+    prepared_.stack_layout.frame_size_bytes =
+        std::max(prepared_.stack_layout.frame_size_bytes,
+                 stack_layout::align_to(next_offset_bytes, std::max<std::size_t>(frame_alignment_bytes, 1U)));
+    prepared_.stack_layout.frame_alignment_bytes =
+        std::max(prepared_.stack_layout.frame_alignment_bytes, frame_alignment_bytes);
+
     prepared_.notes.push_back(PrepareNote{
         .phase = "regalloc",
         .message = "regalloc seeded function '" + regalloc_function.function_name + "' with " +
                    std::to_string(regalloc_function.constraints.size()) +
                    " allocation constraint(s) and " +
                    std::to_string(regalloc_function.interference.size()) +
-                   " interference edge(s) from active liveness",
+                   " interference edge(s) from active liveness; assigned " +
+                   std::to_string(assigned_register_count) + " register(s) and " +
+                   std::to_string(assigned_stack_count) + " stack slot(s)",
     });
     prepared_.regalloc.functions.push_back(std::move(regalloc_function));
   }
