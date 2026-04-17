@@ -399,6 +399,7 @@ struct IndexExpr {
 struct MemberExpr {
   ExprId base{};
   SymbolName field;
+  SymbolName resolved_owner_tag;
   bool is_arrow = false;
 };
 
@@ -1262,5 +1263,7 @@ struct ModuleDag {
 };
 
 }  // namespace dag
+
+std::string encode_template_type_arg_ref_hir(const TypeSpec& ts);
 
 }  // namespace c4c::hir

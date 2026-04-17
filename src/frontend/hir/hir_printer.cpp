@@ -565,6 +565,9 @@ class Printer {
   void print_expr_payload(std::ostringstream& out, const MemberExpr& x) {
     print_expr_inline(out, x.base);
     out << (x.is_arrow ? "->" : ".") << x.field;
+    if (!x.resolved_owner_tag.empty()) {
+      out << "{owner=" << x.resolved_owner_tag << "}";
+    }
   }
 
   void print_expr_payload(std::ostringstream& out, const TernaryExpr& x) {

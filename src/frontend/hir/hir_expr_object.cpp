@@ -306,6 +306,7 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
     lhs.base = tmp_id;
     lhs.field = field_name;
     lhs.is_arrow = false;
+    if (param_ts.tag && param_ts.tag[0]) lhs.resolved_owner_tag = param_ts.tag;
     ExprId lhs_id = append_expr(list_node, lhs, field_ts, ValueCategory::LValue);
     AssignExpr assign{};
     assign.op = AssignOp::Set;
@@ -480,6 +481,7 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
           me.base = cur_lhs;
           me.field = fld.name;
           me.is_arrow = false;
+          if (cur_ts.tag && cur_ts.tag[0]) me.resolved_owner_tag = cur_ts.tag;
           ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
           const Node* val_node = init_item_value_node(item);
           if (is_agg(field_ts) || field_ts.array_rank > 0) {

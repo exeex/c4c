@@ -556,9 +556,21 @@ void Lowerer::realize_template_struct(
   if (!primary_tpl) return;
   if (!origin) origin = primary_tpl->name;
   if (primary_tpl->name) ts.tpl_struct_origin = primary_tpl->name;
+  const std::string incoming_tag =
+      (ts.tag && ts.tag[0]) ? std::string(ts.tag) : std::string{};
+  const std::string lookup_key =
+      (ts.tpl_struct_origin && ts.tpl_struct_origin[0])
+          ? encode_template_type_arg_ref_hir(ts)
+          : std::string{};
 
   ResolvedTemplateArgs resolved =
       materialize_template_args(primary_tpl, ts, tpl_bindings, nttp_bindings);
+  bool has_generic_type_arg = false;
+  for (const auto& arg : resolved.concrete_args) {
+    if (!arg.is_value && !has_concrete_type(arg.type) && !arg.type.tpl_struct_origin) {
+      has_generic_type_arg = true;
+    }
+  }
 
   for (const auto& arg : resolved.concrete_args) {
     if (!arg.is_value && arg.type.tpl_struct_origin) return;

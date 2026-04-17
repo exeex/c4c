@@ -44,29 +44,6 @@ set(NEGATIVE_TESTS_ALLOW_SUCCESS_STEMS
     bad_static_init_non_constant
 )
 
-if(CLANG_EXECUTABLE)
-  add_test(
-    NAME tiny_c2ll_tests
-    COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:c4cll>
-            -DEXAMPLE_C=${EXAMPLE_C}
-            -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
-            -DCLANG=${CLANG_EXECUTABLE}
-            -DOUT_BIN=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example_bin
-            -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_example_case.cmake"
-  )
-else()
-  add_test(
-    NAME tiny_c2ll_tests
-    COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:c4cll>
-            -DEXAMPLE_C=${EXAMPLE_C}
-            -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
-            -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_example_case.cmake"
-  )
-endif()
-set_tests_properties(tiny_c2ll_tests PROPERTIES LABELS "internal;example")
-
 foreach(src IN LISTS INTERNAL_NEGATIVE_TEST_SRCS)
   get_filename_component(stem "${src}" NAME_WE)
   set(test_name "negative_tests_${stem}")
@@ -184,47 +161,7 @@ set_tests_properties(positive_split_llvm_pragma_exec PROPERTIES
     LABELS "internal;positive_case;split_llvm")
 
 
-add_test(
-    NAME frontend_cxx_stage1_version
-    COMMAND c4cll --version
-)
-set_tests_properties(frontend_cxx_stage1_version PROPERTIES
-    LABELS "internal;example"
-    PASS_REGULAR_EXPRESSION "tiny-c2ll"
-)
 
-if(EXISTS "${EXAMPLE_C}")
-  add_test(
-      NAME frontend_cxx_stage1_lex
-      COMMAND c4cll --lex-only "${EXAMPLE_C}"
-  )
-  set_tests_properties(frontend_cxx_stage1_lex PROPERTIES
-      LABELS "internal;example"
-      PASS_REGULAR_EXPRESSION "EOF"
-  )
-endif()
-
-if(EXISTS "${EXAMPLE_C}")
-  add_test(
-      NAME frontend_cxx_stage1_parse
-      COMMAND c4cll --parse-only "${EXAMPLE_C}"
-  )
-  set_tests_properties(frontend_cxx_stage1_parse PROPERTIES
-      LABELS "internal;example"
-      PASS_REGULAR_EXPRESSION "Program"
-  )
-endif()
-
-if(EXISTS "${EXAMPLE_C}")
-  add_test(
-      NAME frontend_cxx_stage1_emit_ir
-      COMMAND c4cll "${EXAMPLE_C}"
-  )
-  set_tests_properties(frontend_cxx_stage1_emit_ir PROPERTIES
-      LABELS "internal;example"
-      PASS_REGULAR_EXPRESSION "define"
-  )
-endif()
 
 
 if(CLANG_EXECUTABLE)

@@ -58,6 +58,7 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
         lhs_me.base = this_id;
         lhs_me.field = field.name;
         lhs_me.is_arrow = true;
+        lhs_me.resolved_owner_tag = struct_tag;
         ExprId lhs_member =
             append_expr(method_node, lhs_me, field_ts, ValueCategory::LValue);
 
@@ -65,6 +66,7 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
         rhs_me.base = other_id;
         rhs_me.field = field.name;
         rhs_me.is_arrow = true;
+        rhs_me.resolved_owner_tag = struct_tag;
         ExprId rhs_member =
             append_expr(method_node, rhs_me, field_ts, ValueCategory::LValue);
 
@@ -122,6 +124,7 @@ void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
     me.base = this_ptr_id;
     me.field = field.name;
     me.is_arrow = true;
+    me.resolved_owner_tag = struct_tag;
     TypeSpec field_ts = field.elem_type;
     ExprId member_id = append_expr(span_node, me, field_ts, ValueCategory::LValue);
     UnaryExpr addr{};
@@ -444,6 +447,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   ctx.fn = &fn;
   if (tpl_bindings) ctx.tpl_bindings = *tpl_bindings;
   if (nttp_bindings) ctx.nttp_bindings = *nttp_bindings;
+  ctx.method_struct_tag = struct_tag;
 
   {
     Param this_param{};
@@ -463,7 +467,6 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   append_callable_params(
       fn, ctx, method_node, tpl_bindings, nttp_bindings, "method-param:", true,
       false);
-  ctx.method_struct_tag = struct_tag;
 
   if (maybe_register_bodyless_callable(
           &fn, method_node->body != nullptr || method_node->is_defaulted)) {
@@ -681,7 +684,8 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
             }
             field_ts = substitute_signature_template_type(field_ts, &ctx.tpl_bindings);
             resolve_signature_template_type_if_needed(
-                field_ts, &ctx.tpl_bindings, &ctx.nttp_bindings, method_node,
+                field_ts, &ctx.tpl_bindings, &ctx.nttp_bindings, &ctx.method_struct_tag,
+                method_node,
                 std::string("ctor-init-member:") + mem_name);
             resolve_typedef_to_struct(field_ts);
             break;
@@ -708,6 +712,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       me.base = this_id;
       me.field = mem_name;
       me.is_arrow = true;
+      me.resolved_owner_tag = struct_tag;
       ExprId lhs_id = append_expr(method_node, me, field_ts, ValueCategory::LValue);
 
       bool did_ctor_call = false;

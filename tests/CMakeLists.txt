@@ -9,6 +9,7 @@ set(C_TESTSUITE_ROOT "" CACHE PATH "Path to vendored c-testsuite subset root")
 set(C_CLANG_TEST_SUITE_ROOT "" CACHE PATH "Path to vendored external clang C subset root")
 set(LLVM_TEST_SUITE_ROOT "" CACHE PATH "Path to vendored gcc torture subset root")
 set(CPP_CLANG_TEST_SUITE_ROOT "" CACHE PATH "Path to vendored external clang C++ subset root")
+set(CPP_EASTL_EXTERNAL_TEST_SUITE_ROOT "" CACHE PATH "Path to curated external EASTL C++ subset root")
 
 set(LLVM_GCC_C_TORTURE_STEP_TIMEOUT_SEC "20" CACHE STRING
     "Per-step timeout (seconds) for llvm gcc-c-torture case script")
@@ -28,6 +29,9 @@ option(ENABLE_C_CLANG_EXTERNAL_TESTS
 option(ENABLE_CPP_CLANG_EXTERNAL_TESTS
     "Register curated external clang C++ subset tests"
     ON)
+option(ENABLE_CPP_EASTL_EXTERNAL_TESTS
+    "Register curated external EASTL C++ subset tests"
+    ON)
 
 # ── Auto-detect vendored roots ────────────────────────────────────────────────
 
@@ -42,6 +46,9 @@ if(NOT LLVM_TEST_SUITE_ROOT AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/c/external/g
 endif()
 if(NOT CPP_CLANG_TEST_SUITE_ROOT AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cpp/external/clang")
   set(CPP_CLANG_TEST_SUITE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/cpp/external/clang")
+endif()
+if(NOT CPP_EASTL_EXTERNAL_TEST_SUITE_ROOT AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cpp/external/eastl")
+  set(CPP_EASTL_EXTERNAL_TEST_SUITE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/cpp/external/eastl")
 endif()
 
 find_program(PYTHON3_EXECUTABLE NAMES python3)

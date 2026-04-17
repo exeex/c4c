@@ -601,7 +601,11 @@ TypeSpec StmtEmitter::resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool 
 MemberFieldAccess StmtEmitter::resolve_member_field_access(FnCtx& ctx, const MemberExpr& m) {
   MemberFieldAccess access;
   access.base_ts = resolve_member_base_type(ctx, m.base, m.is_arrow);
-  access.tag = access.base_ts.tag;
+  if (!m.resolved_owner_tag.empty()) {
+    access.tag = m.resolved_owner_tag;
+  } else if (access.base_ts.tag && access.base_ts.tag[0]) {
+    access.tag = access.base_ts.tag;
+  }
   if (!access.has_tag()) return access;
   access.field_found =
       resolve_field_access(access.tag, m.field, access.chain, access.field_ts, &access.bf);

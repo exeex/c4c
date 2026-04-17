@@ -209,6 +209,7 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       me.base = this_id;
       me.field = r.name;
       me.is_arrow = true;
+      me.resolved_owner_tag = ctx->method_struct_tag;
       return append_expr(n, me, n->type, ValueCategory::LValue);
     }
   }

@@ -572,6 +572,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             me.base = ie_id;
             me.field = fld.name;
             me.is_arrow = false;
+            if (elem_ts.tag && elem_ts.tag[0]) me.resolved_owner_tag = elem_ts.tag;
             ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
             ExprId val_id = lower_expr(&ctx, scalar_node);
             AssignExpr ae{};
@@ -809,6 +810,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
               me.base = cur_lhs;
               me.field = fld.name;
               me.is_arrow = false;
+              if (cur_ts.tag && cur_ts.tag[0]) me.resolved_owner_tag = cur_ts.tag;
               ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
 
               const Node* val_node = init_item_value_node(item);

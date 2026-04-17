@@ -173,6 +173,7 @@ void Lowerer::instantiate_template_struct_body(
   compute_struct_layout(module_, def);
   module_->struct_def_order.push_back(mangled);
   module_->struct_defs[mangled] = std::move(def);
+  struct_def_nodes_[mangled] = tpl_def;
   register_instantiated_template_struct_methods(
       mangled, tpl_def, method_tpl_bindings, method_nttp_bindings);
 }
