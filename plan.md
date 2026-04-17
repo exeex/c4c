@@ -1,4 +1,4 @@
-# X86 Backend Pointer-Backed Same-Module Global Runbook
+# X86 Backend Next Capability-Family Runbook
 
 Status: Active
 Source Idea: ideas/open/54_x86_backend_c_testsuite_capability_families.md
@@ -6,151 +6,165 @@ Activated from: ideas/open/54_x86_backend_c_testsuite_capability_families.md
 
 ## Purpose
 
-Continue the x86 backend capability-family route after the completed
-same-module defined-global lane by targeting one bounded pointer-backed
-same-module global lane.
+Retarget the active runbook after the completed pointer-backed same-module
+global lane so the next packet starts by naming the next bounded
+`x86_backend` capability family instead of drifting under exhausted plan text.
 
 ## Goal
 
-Land one honest straight-line pointer-backed same-module global slice that
-broadens truthful `x86_backend` coverage without reopening bootstrap scalar
-globals, multi-function prepared modules, or multi-block control-flow work.
+Name one honest next capability family from the remaining `x86_backend`
+failures, then land one bounded slice that moves a real cluster without
+expectation weakening or testcase overfit.
 
 ## Core Rule
 
-Grow shared x86 prepared-module capability by family. Do not weaken
-expectations, do not reintroduce fallback LLVM IR acceptance, and do not add
-testcase-named or rendered-text recognizers.
+Keep progress explained by shared backend capability growth. Do not weaken
+`x86_backend` expectations, do not reintroduce fallback LLVM IR acceptance,
+and do not add testcase-named or rendered-text recognizers.
 
 ## Read First
 
 - [ideas/open/54_x86_backend_c_testsuite_capability_families.md](/workspaces/c4c/ideas/open/54_x86_backend_c_testsuite_capability_families.md)
-- [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
-- [src/backend/mir/x86/codegen/globals.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/globals.cpp)
 - [tests/backend/backend_x86_handoff_boundary_test.cpp](/workspaces/c4c/tests/backend/backend_x86_handoff_boundary_test.cpp)
 - [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
-- [tests/c/external/c-testsuite/src/00049.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00049.c)
-- [tests/c/external/c-testsuite/src/00149.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00149.c)
-- [tests/c/external/c-testsuite/src/00150.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00150.c)
+- [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
+- [src/backend/mir/x86/codegen/globals.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/globals.cpp)
 - [tests/c/external/c-testsuite/src/00045.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00045.c)
+- [tests/c/external/c-testsuite/src/00051.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00051.c)
 - [tests/c/external/c-testsuite/src/00189.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00189.c)
 
 ## Current Targets
 
-- Stay within the prepared x86 handoff/emitter boundary, not another semantic
-  `lir_to_bir` expansion.
-- Choose a small cluster of `x86_backend` failures that already lower honestly
-  except for pointer-backed same-module global address materialization or
-  pointer-indirect global reads.
-- Prefer probes whose common blocker is a same-module pointer-valued global
-  root feeding fixed-offset loads and straight-line equality guards or direct
-  field reads.
+- Start from the post-pointer-backed checkpoint recorded in `todo.md`, not the
+  older creation-day `18/220` baseline in the source idea.
+- Spend the first packet naming the next bounded family from the remaining
+  failures before widening codegen or semantic lowering again.
+- Prefer one family whose probes should move together if a shared capability
+  is repaired honestly.
+- Keep adjacent families explicit when they are not required by the chosen
+  lane.
 
 ## Non-Goals
 
-- Reopening the completed same-module defined-global lane as routine follow-up.
-- Using this packet to repair bootstrap scalar-global setup, multi-function
-  prepared-module limits, or multi-block control-flow families.
-- Accepting fallback LLVM IR or weakening `x86_backend` expectations.
-- Adding testcase-shaped emit helpers or recognizers keyed to rendered output.
-- Pulling `00045` or `00189` into the packet without an explicit route change.
+- Reopening the completed pointer-backed same-module global lane as routine
+  follow-up.
+- Hiding a route change inside an implementation packet.
+- Mixing bootstrap scalar globals, multi-function prepared-module work, and
+  multi-block control flow into one packet without Step 1 explicitly justifying
+  that boundary.
+- Accepting fallback LLVM IR or weakening supported-path expectations.
+- Adding testcase-shaped helpers or recognizers keyed to rendered output.
 
 ## Working Model
 
-- The next bounded family is pointer-backed same-module global addressing, not
-  broader relocation work or semantic global bootstrap.
-- Candidate probes should already reach the prepared-module path and differ
-  mainly in loading through a same-module pointer-valued global or aggregate
-  field before straight-line reads and equality checks.
-- Progress must be explained by shared emitter or handoff capability, not by
-  one testcase win.
+- The current source idea remains open, but the prior runbook is exhausted.
+- The next packet must first re-baseline the remaining failure surface into one
+  dominant family instead of assuming the previous prepared-module frontier is
+  still the best target.
+- Candidate remaining families currently visible from the last packet include
+  bootstrap scalar globals, multi-function prepared-module routes, and
+  multi-block control flow, but Step 1 must verify the next route from current
+  evidence before code changes begin.
+- If the next honest family sits outside the prepared x86 handoff/emitter
+  boundary, record that explicitly rather than silently broadening scope.
 
 ## Execution Rules
 
-- Name one pointer-backed same-module global family before widening codegen
-  support.
-- Keep out-of-scope neighboring failures explicit in `todo.md` instead of
-  silently broadening the route.
-- Use backend notes and handoff tests to describe the supported boundary by
-  family.
+- Step 1 must name one family, one proving cluster, and the nearby out-of-scope
+  shapes before implementation starts.
+- Keep packet churn in `todo.md`; use `plan.md` only for genuine route
+  checkpoint changes.
 - Validation ladder per packet: build, narrow backend proof, selected
-  same-family c-testsuite probes, then checkpoint `x86_backend` only once a
-  coherent cluster moves together.
+  same-family `c_testsuite_x86_backend_*` probes, then `x86_backend`
+  checkpoint once a coherent slice exists.
+- If Step 1 shows a distinct initiative that should live outside this source
+  idea, stop and record that lifecycle blocker instead of mutating the plan ad
+  hoc.
 
-## Step 1. Name The First Pointer-Backed Global Lane
+## Step 1. Re-Baseline The Remaining Frontier
 
-Goal: Choose one dominant pointer-backed same-module global family and its
-proving cluster before x86 codegen changes widen.
-
-Primary targets:
-- failing `x86_backend` c-testsuite cases that already lower honestly
-- current x86 handoff tests that define the unsupported pointer-backed global
-  boundary
-
-Actions:
-- inspect the current prepared-module pointer-backed global rejection and
-  group probes by one same-module pointer-valued global root plus fixed-offset
-  read shape
-- select a small proving cluster that should move together if the pointer-
-  backed lane is widened honestly
-- record nearby out-of-scope shapes that still require bootstrap scalar
-  globals, multi-function prepared modules, or multi-block control flow
-
-Completion check:
-- one pointer-backed same-module global lane and one same-family proving
-  cluster are named without drifting into testcase-by-testcase repair
-
-## Step 2. Extend The Pointer-Backed Global Lane Honestly
-
-Goal: Teach the x86 prepared-module path to accept the chosen straight-line
-pointer-backed same-module global family.
+Goal: Group the post-pointer-backed failures into credible next-family
+candidates before choosing new code work.
 
 Primary targets:
-- [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
-- [src/backend/mir/x86/codegen/globals.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/globals.cpp)
+- current `x86_backend` checkpoint evidence
+- [tests/backend/backend_x86_handoff_boundary_test.cpp](/workspaces/c4c/tests/backend/backend_x86_handoff_boundary_test.cpp)
+- [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
 
 Actions:
-- implement the smallest shared prepared-handoff/codegen widening needed for
-  same-module pointer-valued global roots feeding fixed-offset loads and
-  straight-line reads or equality-immediate guards
-- keep bootstrap scalar-global setup, multi-function prepared-module routes,
-  and broader relocation-backed families unsupported when they are not
-  required by the chosen lane
-- do not add testcase-named shortcuts or rendered-text recognizers
+- inspect the current failure surface after the completed pointer-backed lane
+- cluster remaining failures by one dominant capability blocker rather than by
+  testcase name
+- separate neighboring families such as bootstrap scalar globals,
+  multi-function prepared-module routes, and multi-block control flow instead
+  of merging them prematurely
+- stop and record a route note if the best next family no longer fits the
+  active source-idea path
 
 Completion check:
-- the chosen pointer-backed same-module global lane is accepted through shared
-  x86 prepared-module logic without testcase-shaped recognition
+- one or two credible next-family candidates are named with clear evidence and
+  without testcase-by-testcase repair framing
 
-## Step 3. Keep The Boundary Truthful
+## Step 2. Name The Next Bounded Family
 
-Goal: Describe the supported pointer-backed same-module global family and the
-remaining nearby unsupported boundary explicitly.
+Goal: Choose exactly one next capability family and its proving cluster.
+
+Actions:
+- select the smallest family whose nearby probes should move together if one
+  shared capability is widened honestly
+- record the intended proving cluster and the nearby out-of-scope neighbors
+- make explicit whether the chosen route stays at the prepared x86
+  handoff/emitter boundary or needs broader semantic work
+
+Completion check:
+- one bounded family and one proving cluster are named clearly enough for a
+  later implementation packet
+
+## Step 3. Extend The Chosen Family Honestly
+
+Goal: Implement the smallest shared capability widening required by the chosen
+family.
+
+Primary targets:
+- implementation files selected by Step 2's family choice
+
+Actions:
+- change shared lowering or backend logic only where the chosen family
+  requires it
+- keep adjacent families unsupported when they are not part of the named lane
+- do not use expectation downgrades, testcase-named shortcuts, or rendered-text
+  matching as proof of progress
+
+Completion check:
+- the chosen family is admitted through shared logic rather than testcase
+  recognition
+
+## Step 4. Keep The Boundary Truthful
+
+Goal: Describe the newly supported family and the nearby unsupported boundary
+explicitly.
 
 Primary targets:
 - [tests/backend/backend_x86_handoff_boundary_test.cpp](/workspaces/c4c/tests/backend/backend_x86_handoff_boundary_test.cpp)
 - [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
 
 Actions:
-- revise handoff coverage so the new pointer-backed global lane is described
-  by family rather than testcase name
-- keep nearby unsupported notes or handoff expectations explicit for bootstrap
-  scalar globals, multi-function prepared modules, and multi-block
-  control-flow families
-- ensure the tests still prove prepared-module honesty rather than legacy
-  adapter growth
+- revise backend notes and handoff coverage to describe the chosen family by
+  capability
+- keep nearby unsupported neighbors explicit when they remain outside the lane
+- ensure the tests still prove honest prepared-module or lowering boundaries
+  rather than adapter growth
 
 Completion check:
-- backend notes and handoff tests prove the new pointer-backed same-module
-  global lane is supported and the nearby unsupported boundary remains
-  explicit
+- backend notes and handoff tests describe the supported family and the nearby
+  unsupported boundary truthfully
 
-## Step 4. Prove Nearby Same-Family Cases
+## Step 5. Prove Nearby Same-Family Cases
 
-Goal: Show the slice improves a capability family instead of one probe.
+Goal: Show the slice improved a capability family instead of one probe.
 
 Actions:
-- run the narrow backend tests for notes and handoff coverage
+- run the narrow backend tests for the touched boundary
 - run the chosen same-family `c_testsuite_x86_backend_*` probes
 - once a coherent slice exists, run the `x86_backend` checkpoint to measure the
   truthful pass-count effect
