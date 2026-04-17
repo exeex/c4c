@@ -1028,9 +1028,42 @@ c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
 
 inline std::string emit_prepared_module(
     const c4c::backend::prepare::PreparedBirModule& module) {
-  (void)module;
-  throw std::invalid_argument(
-      "x86 backend emitter does not yet support this prepared BIR module through the canonical x86 prepared-module handoff");
+  if (module.target != c4c::backend::Target::X86_64 &&
+      module.target != c4c::backend::Target::I686) {
+    throw std::invalid_argument(
+        "x86 backend emitter requires an x86 target for the canonical prepared-module handoff");
+  }
+
+  if (module.module.functions.size() != 1) {
+    throw std::invalid_argument(
+        "x86 backend emitter only supports a single-function prepared module through the canonical prepared-module handoff");
+  }
+
+  const auto& function = module.module.functions.front();
+  if (function.is_declaration || !function.params.empty() || !function.local_slots.empty() ||
+      function.return_type != c4c::backend::bir::TypeKind::I32 ||
+      function.blocks.size() != 1) {
+    throw std::invalid_argument(
+        "x86 backend emitter only supports a minimal i32 return function through the canonical prepared-module handoff");
+  }
+
+  const auto& entry = function.blocks.front();
+  if (!entry.insts.empty() || entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !entry.terminator.value.has_value()) {
+    throw std::invalid_argument(
+        "x86 backend emitter only supports a direct i32 return terminator through the canonical prepared-module handoff");
+  }
+
+  const auto& returned = *entry.terminator.value;
+  if (returned.kind != c4c::backend::bir::Value::Kind::Immediate ||
+      returned.type != c4c::backend::bir::TypeKind::I32) {
+    throw std::invalid_argument(
+        "x86 backend emitter only supports an immediate i32 return value through the canonical prepared-module handoff");
+  }
+
+  return ".intel_syntax noprefix\n.text\n.globl " + function.name + "\n.type " + function.name +
+         ", @function\n" + function.name + ":\n    mov eax, " +
+         std::to_string(static_cast<std::int32_t>(returned.immediate)) + "\n    ret\n";
 }
 std::string emit_module(const c4c::backend::bir::Module& module);
 std::string emit_module(const c4c::codegen::lir::LirModule& module);

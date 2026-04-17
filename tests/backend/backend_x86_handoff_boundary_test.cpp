@@ -4,7 +4,6 @@
 
 #include <cstdlib>
 #include <iostream>
-#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -20,14 +19,10 @@ int fail(const char* message) {
   return 1;
 }
 
-template <typename Fn>
-std::optional<std::string> capture_invalid_argument(Fn&& fn) {
-  try {
-    (void)fn();
-  } catch (const std::invalid_argument& ex) {
-    return ex.what();
-  }
-  return std::nullopt;
+std::string expected_minimal_constant_return_asm(const char* function_name, int returned_value) {
+  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
+         "\n.type " + function_name + ", @function\n" + function_name +
+         ":\n    mov eax, " + std::to_string(returned_value) + "\n    ret\n";
 }
 
 bir::Module make_x86_return_constant_module() {
@@ -54,33 +49,23 @@ int main() {
   const auto prepared =
       c4c::backend::prepare::prepare_semantic_bir_module_with_options(module, Target::X86_64);
   const auto prepared_bir_text = bir::print(prepared.module);
+  const auto expected_asm = expected_minimal_constant_return_asm("main", 7);
 
-  const auto prepared_error =
-      capture_invalid_argument([&]() { return c4c::backend::x86::emit_prepared_module(prepared); });
-  if (!prepared_error.has_value()) {
-    return fail("x86 prepared-module consumer no longer reports an explicit boundary");
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail("x86 prepared-module consumer did not emit the canonical minimal return asm");
   }
 
-  const auto public_error = capture_invalid_argument(
-      [&]() { return c4c::backend::emit_target_bir_module(module, Target::X86_64); });
-  if (public_error != prepared_error) {
+  const auto public_asm =
+      c4c::backend::emit_target_bir_module(module, Target::X86_64);
+  if (public_asm != prepared_asm) {
     return fail("public x86 BIR entry no longer routes through the x86 prepared-module consumer");
   }
 
-  const auto generic_error = capture_invalid_argument([&]() {
-    return c4c::backend::emit_module(
-        BackendModuleInput{module}, BackendOptions{.target = Target::X86_64});
-  });
-  if (generic_error != public_error) {
+  const auto generic_asm = c4c::backend::emit_module(
+      BackendModuleInput{module}, BackendOptions{.target = Target::X86_64});
+  if (generic_asm != public_asm) {
     return fail("generic backend emit path no longer routes x86 BIR input through emit_target_bir_module");
-  }
-
-  if (prepared_error->find("prepared BIR module") == std::string::npos) {
-    return fail("x86 handoff boundary no longer reports prepared-module ownership");
-  }
-
-  if (prepared_error->find("direct BIR module") != std::string::npos) {
-    return fail("x86 handoff boundary still reports the retired direct-BIR rejection path");
   }
 
   if (prepared_bir_text.find("bir.func @main() -> i32 {") == std::string::npos) {

@@ -6,29 +6,33 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Started Step 2 by making the public/generic x86 BIR route hand prepared
-backend data to an explicit x86 prepared-module consumer boundary instead of
-returning prepared semantic BIR text directly. The boundary is now named and
-proven in `backend_x86_handoff_boundary`, even though x86 still reports that
-prepared-module handoff as unsupported.
+Implemented the first real prepared-module consumer slice inside
+`x86::emit_prepared_module(...)` for a minimal single-function `return i32
+<imm32>` case. `backend_x86_handoff_boundary` now proves that the canonical
+prepared-module consumer succeeds and that the public/generic x86 BIR routes
+return the same canonical x86 assembly through that boundary.
 
 ## Suggested Next
 
-Implement the first real x86 prepared-module consumer slice behind
-`x86::emit_prepared_module(...)`, keeping that function as the only canonical
-entry for x86 prepared-BIR handoff instead of reintroducing raw-BIR or
-direct-return special cases.
+Extend `x86::emit_prepared_module(...)` to the next honest prepared-module
+shapes behind the same canonical boundary, starting with additional minimal
+prepared return/value-flow cases that still avoid reintroducing any
+direct-BIR/public-entry fallback path.
 
 ## Watchouts
 
-- `backend_x86_handoff_boundary` now proves route ownership by checking the
-  shared x86 prepared-module failure surface; keep future proof semantic and do
-  not regress it back into prepared-BIR text or assembly substring checks
+- keep new support inside `x86::emit_prepared_module(...)`; do not recreate a
+  raw-BIR or public-entry special-case path like the reverted direct-return
+  route
+- `backend_x86_handoff_boundary` now proves success by comparing the canonical
+  prepared/public/generic route outputs against the same bounded x86 function
+  result; keep future proof route-oriented instead of falling back to generic
+  substring checks
 - the canonical x86 handoff is now the prepared-module consumer boundary, so
   new work should extend `x86::emit_prepared_module(...)` rather than adding
   new public/backend-side fallback renderers
-- avoid reintroducing testcase-shaped direct-return lowering while teaching the
-  prepared consumer its first supported slice
+- keep the current support semantic and minimal: one prepared function, one
+  block, direct immediate `i32` return, no hidden mixed fallback
 
 ## Proof
 
