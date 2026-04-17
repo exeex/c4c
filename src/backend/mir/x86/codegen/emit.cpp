@@ -10,13 +10,16 @@ namespace c4c::backend::x86 {
 
 namespace {
 
-Target resolve_direct_bir_target(const c4c::backend::bir::Module& module) {
-  const auto target = c4c::backend::target_from_triple(module.target_triple);
-  if (target != Target::X86_64 && target != Target::I686) {
+const c4c::TargetProfile& resolve_direct_bir_target_profile(
+    const c4c::backend::bir::Module& module,
+    c4c::TargetProfile& storage) {
+  storage = c4c::target_profile_from_triple(
+      module.target_triple.empty() ? c4c::default_host_target_triple() : module.target_triple);
+  if (storage.arch != c4c::TargetArch::X86_64 && storage.arch != c4c::TargetArch::I686) {
     throw std::invalid_argument(
         "x86 backend emitter requires an x86 target triple for canonical prepared-module handoff");
   }
-  return target;
+  return storage;
 }
 
 [[noreturn]] void throw_x86_rewrite_in_progress() {
@@ -27,8 +30,9 @@ Target resolve_direct_bir_target(const c4c::backend::bir::Module& module) {
 }  // namespace
 
 std::string emit_module(const c4c::backend::bir::Module& module) {
+  c4c::TargetProfile target_profile;
   const auto prepared = c4c::backend::prepare::prepare_semantic_bir_module_with_options(
-      module, resolve_direct_bir_target(module));
+      module, resolve_direct_bir_target_profile(module, target_profile));
   return emit_prepared_module(prepared);
 }
 

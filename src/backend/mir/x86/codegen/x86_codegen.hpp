@@ -1028,8 +1028,12 @@ c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
 
 inline std::string emit_prepared_module(
     const c4c::backend::prepare::PreparedBirModule& module) {
-  if (module.target != c4c::backend::Target::X86_64 &&
-      module.target != c4c::backend::Target::I686) {
+  const auto prepared_arch = module.target_profile.arch != c4c::TargetArch::Unknown
+                                 ? module.target_profile.arch
+                                 : (module.target == c4c::backend::Target::I686
+                                        ? c4c::TargetArch::I686
+                                        : c4c::TargetArch::X86_64);
+  if (prepared_arch != c4c::TargetArch::X86_64 && prepared_arch != c4c::TargetArch::I686) {
     throw std::invalid_argument(
         "x86 backend emitter requires an x86 target for the canonical prepared-module handoff");
   }
@@ -1071,7 +1075,7 @@ inline std::string emit_prepared_module(
              std::to_string(static_cast<std::int32_t>(returned.immediate)) + "\n    ret\n";
     }
 
-    if (function.params.size() == 1 && module.target == c4c::backend::Target::X86_64) {
+    if (function.params.size() == 1 && prepared_arch == c4c::TargetArch::X86_64) {
       const auto& param = function.params.front();
       if (param.type == c4c::backend::bir::TypeKind::I32 && !param.is_varargs &&
           !param.is_sret && !param.is_byval && returned.name == param.name) {
@@ -1082,7 +1086,7 @@ inline std::string emit_prepared_module(
 
   if (entry.insts.size() == 1 && function.params.size() == 1 &&
       returned.kind == c4c::backend::bir::Value::Kind::Named &&
-      module.target == c4c::backend::Target::X86_64) {
+      prepared_arch == c4c::TargetArch::X86_64) {
     const auto& param = function.params.front();
     const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.front());
     if (binary != nullptr && param.type == c4c::backend::bir::TypeKind::I32 && !param.is_varargs &&
