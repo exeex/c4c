@@ -6,24 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Hard-retired one residual mixed x86 entry path in the shared backend public
-surface: unsupported x86 LIR input no longer falls back to bootstrap
-`print_llvm(...)` output when semantic `lir_to_bir` lowering fails. Both the
-public x86 LIR entry and the generic backend emit path now reject that case
-with a canonical prepared-module-handoff failure instead of keeping a second
-LIR-side route alive, and the focused handoff test now proves that rejection
-using an unsupported inline-asm fixture. This packet also completed the
-broader `^backend_` checkpoint requested before near-close confidence.
+Removed one x86 shadow-ownership seam inside the canonical prepared-module
+consumer: the minimal single-parameter i32 handoff no longer bakes in local
+`edi`/`eax` assumptions. `x86::emit_prepared_module(...)` now resolves the
+minimal return register from prepared `return_abi` plus the shared backend ABI
+register helper, and it resolves the sole parameter register through the same
+canonical helper surface instead of hardcoded x86 names. The focused handoff
+test now derives its expected asm from those same canonical ABI helpers, so
+prepared/public/generic route equality stays proven without reverting to local
+register-name assumptions.
 
 ## Suggested Next
 
-Stay on route cleanup rather than more proof-family expansion. The next packet
-should inspect x86-local ownership around prepared backend metadata
-consumption, identify one remaining shadow-ownership seam for ABI, value
-location, or frame/stack decisions that still duplicates backend-published
-facts, and either remove it or make its retirement condition explicit in code.
-If no concrete competing seam remains after that inspection, hand lifecycle
-state back for near-close assessment instead of widening the emitter support.
+Stay on ownership cleanup rather than widening proof families. The next packet
+should inspect whether the prepared-module consumer still shadows backend
+frame, stack-slot, or value-location decisions anywhere else in the bounded x86
+route. If no concrete competing seam remains after that inspection, hand
+lifecycle state back for near-close assessment instead of expanding emitter
+support.
 
 ## Watchouts
 
@@ -40,6 +40,10 @@ state back for near-close assessment instead of widening the emitter support.
 - public x86 entry and direct BIR entry already funnel through the canonical
   prepared-module consumer; future cleanup should retire residual mixed
   ownership around that seam instead of reopening the boundary question
+- the minimal route now consumes prepared `return_abi`, but the parameter side
+  still reaches the canonical register mapping through the shared backend ABI
+  helper because prepared functions do not yet publish a dedicated per-function
+  parameter ABI table
 - the current join support is still tightly bounded: one prepared function, one
   entry compare, two empty branch-to-join leaf blocks, and one join block whose
   phi has already been legalized into a single `bir.select`
@@ -69,7 +73,3 @@ state back for near-close assessment instead of widening the emitter support.
 Ran `cmake --build --preset default -j4 && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the passing proving output to `test_after.log`.
-
-Also ran `cmake --build --preset default -j4 && ctest --test-dir build -j
---output-on-failure -R '^backend_'` and observed the broader backend
-checkpoint pass.

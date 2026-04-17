@@ -1,6 +1,8 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
+#include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/prealloc/target_register_profile.hpp"
 #include "src/codegen/lir/ir.hpp"
 
 #include <cstdlib>
@@ -31,81 +33,123 @@ int fail(const char* message) {
   return 1;
 }
 
-std::string expected_minimal_constant_return_asm(const char* function_name, int returned_value) {
+std::string narrow_abi_register(std::string_view wide_register) {
+  if (wide_register == "rax") return "eax";
+  if (wide_register == "rdi") return "edi";
+  if (wide_register == "rsi") return "esi";
+  if (wide_register == "rdx") return "edx";
+  if (wide_register == "rcx") return "ecx";
+  if (wide_register == "r8") return "r8d";
+  if (wide_register == "r9") return "r9d";
+  return std::string(wide_register);
+}
+
+std::string minimal_i32_return_register() {
+  const auto abi =
+      c4c::backend::lir_to_bir_detail::compute_function_return_abi(x86_target_profile(),
+                                                                   bir::TypeKind::I32,
+                                                                   false);
+  if (!abi.has_value()) {
+    throw std::runtime_error("missing canonical i32 return ABI for x86 handoff test");
+  }
+  const auto wide_register =
+      c4c::backend::prepare::call_result_destination_register_name(x86_target_profile(), *abi);
+  if (!wide_register.has_value()) {
+    throw std::runtime_error("missing canonical i32 return register for x86 handoff test");
+  }
+  return narrow_abi_register(*wide_register);
+}
+
+std::string minimal_i32_param_register() {
+  const auto abi =
+      c4c::backend::lir_to_bir_detail::compute_call_arg_abi(x86_target_profile(),
+                                                            bir::TypeKind::I32);
+  if (!abi.has_value()) {
+    throw std::runtime_error("missing canonical i32 parameter ABI for x86 handoff test");
+  }
+  const auto wide_register = c4c::backend::prepare::call_arg_destination_register_name(
+      x86_target_profile(), *abi, 0);
+  if (!wide_register.has_value()) {
+    throw std::runtime_error("missing canonical i32 parameter register for x86 handoff test");
+  }
+  return narrow_abi_register(*wide_register);
+}
+
+std::string asm_header(const char* function_name) {
   return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    mov eax, " + std::to_string(returned_value) + "\n    ret\n";
+         "\n.type " + function_name + ", @function\n" + function_name + ":\n";
+}
+
+std::string expected_minimal_param_binary_asm(const char* function_name,
+                                              const char* mnemonic,
+                                              int immediate) {
+  const auto return_register = minimal_i32_return_register();
+  const auto param_register = minimal_i32_param_register();
+  return asm_header(function_name) + "    mov " + return_register + ", " + param_register +
+         "\n    " + mnemonic + " " + return_register + ", " + std::to_string(immediate) +
+         "\n    ret\n";
+}
+
+std::string expected_branch_prefix(const char* function_name, const char* false_label) {
+  const auto param_register = minimal_i32_param_register();
+  return asm_header(function_name) + "    test " + param_register + ", " + param_register +
+         "\n    jne .L" + function_name + "_" + false_label + "\n";
+}
+
+std::string expected_minimal_constant_return_asm(const char* function_name, int returned_value) {
+  return asm_header(function_name) + "    mov " + minimal_i32_return_register() + ", " +
+         std::to_string(returned_value) + "\n    ret\n";
 }
 
 std::string expected_minimal_param_passthrough_asm(const char* function_name) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    mov eax, edi\n    ret\n";
+  return asm_header(function_name) + "    mov " + minimal_i32_return_register() + ", " +
+         minimal_i32_param_register() + "\n    ret\n";
 }
 
 std::string expected_minimal_param_add_immediate_asm(const char* function_name, int immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    mov eax, edi\n    add eax, " + std::to_string(immediate) + "\n    ret\n";
+  return expected_minimal_param_binary_asm(function_name, "add", immediate);
 }
 
 std::string expected_minimal_param_sub_immediate_asm(const char* function_name, int immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    mov eax, edi\n    sub eax, " + std::to_string(immediate) + "\n    ret\n";
+  return expected_minimal_param_binary_asm(function_name, "sub", immediate);
 }
 
 std::string expected_minimal_param_mul_immediate_asm(const char* function_name, int immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    mov eax, edi\n    imul eax, " + std::to_string(immediate) + "\n    ret\n";
+  return expected_minimal_param_binary_asm(function_name, "imul", immediate);
 }
 
 std::string expected_minimal_param_and_immediate_asm(const char* function_name, int immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    mov eax, edi\n    and eax, " + std::to_string(immediate) + "\n    ret\n";
+  return expected_minimal_param_binary_asm(function_name, "and", immediate);
 }
 
 std::string expected_minimal_param_or_immediate_asm(const char* function_name, int immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    mov eax, edi\n    or eax, " + std::to_string(immediate) + "\n    ret\n";
+  return expected_minimal_param_binary_asm(function_name, "or", immediate);
 }
 
 std::string expected_minimal_param_xor_immediate_asm(const char* function_name, int immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    mov eax, edi\n    xor eax, " + std::to_string(immediate) + "\n    ret\n";
+  return expected_minimal_param_binary_asm(function_name, "xor", immediate);
 }
 
 std::string expected_minimal_param_shl_immediate_asm(const char* function_name, int immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    mov eax, edi\n    shl eax, " + std::to_string(immediate) + "\n    ret\n";
+  return expected_minimal_param_binary_asm(function_name, "shl", immediate);
 }
 
 std::string expected_minimal_param_lshr_immediate_asm(const char* function_name, int immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    mov eax, edi\n    shr eax, " + std::to_string(immediate) + "\n    ret\n";
+  return expected_minimal_param_binary_asm(function_name, "shr", immediate);
 }
 
 std::string expected_minimal_param_ashr_immediate_asm(const char* function_name, int immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    mov eax, edi\n    sar eax, " + std::to_string(immediate) + "\n    ret\n";
+  return expected_minimal_param_binary_asm(function_name, "sar", immediate);
 }
 
 std::string expected_minimal_param_eq_zero_branch_asm(const char* function_name,
                                                       const char* false_label,
                                                       int true_returned_value,
                                                       int false_returned_value) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    test edi, edi\n    jne .L" + function_name + "_" + false_label +
-         "\n    mov eax, " + std::to_string(true_returned_value) + "\n    ret\n.L" +
-         function_name + "_" + false_label + ":\n    mov eax, " +
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + std::to_string(true_returned_value) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " +
          std::to_string(false_returned_value) + "\n    ret\n";
 }
 
@@ -113,11 +157,10 @@ std::string expected_minimal_param_eq_zero_branch_param_or_immediate_asm(
     const char* function_name,
     const char* false_label,
     int true_returned_value) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    test edi, edi\n    jne .L" + function_name + "_" + false_label +
-         "\n    mov eax, " + std::to_string(true_returned_value) +
-         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov eax, edi\n    ret\n";
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + std::to_string(true_returned_value) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    ret\n";
 }
 
 std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_asm(
@@ -125,12 +168,12 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_asm(
     const char* false_label,
     int true_immediate,
     int false_immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    test edi, edi\n    jne .L" + function_name + "_" + false_label +
-         "\n    mov eax, edi\n    add eax, " + std::to_string(true_immediate) +
-         "\n    ret\n.L" + function_name + "_" + false_label +
-         ":\n    mov eax, edi\n    sub eax, " + std::to_string(false_immediate) + "\n    ret\n";
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() +
+         "\n    add " + minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    sub " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) + "\n    ret\n";
 }
 
 std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_add_asm(
@@ -139,14 +182,14 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_add_asm
     int true_immediate,
     int false_immediate,
     int joined_immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    test edi, edi\n    jne .L" + function_name + "_" + false_label +
-         "\n    mov eax, edi\n    add eax, " + std::to_string(true_immediate) +
-         "\n    add eax, " + std::to_string(joined_immediate) +
-         "\n    ret\n.L" + function_name + "_" + false_label +
-         ":\n    mov eax, edi\n    sub eax, " + std::to_string(false_immediate) +
-         "\n    add eax, " + std::to_string(joined_immediate) + "\n    ret\n";
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() +
+         "\n    add " + minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
+         "\n    add " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    sub " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) + "\n    add " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
 std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm(
@@ -155,14 +198,14 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm
     int true_immediate,
     int false_immediate,
     int joined_immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    test edi, edi\n    jne .L" + function_name + "_" + false_label +
-         "\n    mov eax, edi\n    add eax, " + std::to_string(true_immediate) +
-         "\n    xor eax, " + std::to_string(joined_immediate) +
-         "\n    ret\n.L" + function_name + "_" + false_label +
-         ":\n    mov eax, edi\n    sub eax, " + std::to_string(false_immediate) +
-         "\n    xor eax, " + std::to_string(joined_immediate) + "\n    ret\n";
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() +
+         "\n    add " + minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
+         "\n    xor " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    sub " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) + "\n    xor " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
 std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_and_asm(
@@ -171,14 +214,14 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_and_asm
     int true_immediate,
     int false_immediate,
     int joined_immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    test edi, edi\n    jne .L" + function_name + "_" + false_label +
-         "\n    mov eax, edi\n    add eax, " + std::to_string(true_immediate) +
-         "\n    and eax, " + std::to_string(joined_immediate) +
-         "\n    ret\n.L" + function_name + "_" + false_label +
-         ":\n    mov eax, edi\n    sub eax, " + std::to_string(false_immediate) +
-         "\n    and eax, " + std::to_string(joined_immediate) + "\n    ret\n";
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() +
+         "\n    add " + minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
+         "\n    and " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    sub " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) + "\n    and " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
 std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_or_asm(
@@ -187,14 +230,14 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_or_asm(
     int true_immediate,
     int false_immediate,
     int joined_immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    test edi, edi\n    jne .L" + function_name + "_" + false_label +
-         "\n    mov eax, edi\n    add eax, " + std::to_string(true_immediate) +
-         "\n    or eax, " + std::to_string(joined_immediate) +
-         "\n    ret\n.L" + function_name + "_" + false_label +
-         ":\n    mov eax, edi\n    sub eax, " + std::to_string(false_immediate) +
-         "\n    or eax, " + std::to_string(joined_immediate) + "\n    ret\n";
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() +
+         "\n    add " + minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
+         "\n    or " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    sub " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) + "\n    or " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
 std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_mul_asm(
@@ -203,14 +246,14 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_mul_asm
     int true_immediate,
     int false_immediate,
     int joined_immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    test edi, edi\n    jne .L" + function_name + "_" + false_label +
-         "\n    mov eax, edi\n    add eax, " + std::to_string(true_immediate) +
-         "\n    imul eax, " + std::to_string(joined_immediate) +
-         "\n    ret\n.L" + function_name + "_" + false_label +
-         ":\n    mov eax, edi\n    sub eax, " + std::to_string(false_immediate) +
-         "\n    imul eax, " + std::to_string(joined_immediate) + "\n    ret\n";
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() +
+         "\n    add " + minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
+         "\n    imul " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    sub " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) + "\n    imul " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
 std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_shl_asm(
@@ -219,14 +262,14 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_shl_asm
     int true_immediate,
     int false_immediate,
     int joined_immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    test edi, edi\n    jne .L" + function_name + "_" + false_label +
-         "\n    mov eax, edi\n    add eax, " + std::to_string(true_immediate) +
-         "\n    shl eax, " + std::to_string(joined_immediate) +
-         "\n    ret\n.L" + function_name + "_" + false_label +
-         ":\n    mov eax, edi\n    sub eax, " + std::to_string(false_immediate) +
-         "\n    shl eax, " + std::to_string(joined_immediate) + "\n    ret\n";
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() +
+         "\n    add " + minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
+         "\n    shl " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    sub " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) + "\n    shl " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
 std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_lshr_asm(
@@ -235,14 +278,14 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_lshr_as
     int true_immediate,
     int false_immediate,
     int joined_immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    test edi, edi\n    jne .L" + function_name + "_" + false_label +
-         "\n    mov eax, edi\n    add eax, " + std::to_string(true_immediate) +
-         "\n    shr eax, " + std::to_string(joined_immediate) +
-         "\n    ret\n.L" + function_name + "_" + false_label +
-         ":\n    mov eax, edi\n    sub eax, " + std::to_string(false_immediate) +
-         "\n    shr eax, " + std::to_string(joined_immediate) + "\n    ret\n";
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() +
+         "\n    add " + minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
+         "\n    shr " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    sub " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) + "\n    shr " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
 std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_ashr_asm(
@@ -251,14 +294,14 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_ashr_as
     int true_immediate,
     int false_immediate,
     int joined_immediate) {
-  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
-         "\n.type " + function_name + ", @function\n" + function_name +
-         ":\n    test edi, edi\n    jne .L" + function_name + "_" + false_label +
-         "\n    mov eax, edi\n    add eax, " + std::to_string(true_immediate) +
-         "\n    sar eax, " + std::to_string(joined_immediate) +
-         "\n    ret\n.L" + function_name + "_" + false_label +
-         ":\n    mov eax, edi\n    sub eax, " + std::to_string(false_immediate) +
-         "\n    sar eax, " + std::to_string(joined_immediate) + "\n    ret\n";
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() +
+         "\n    add " + minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
+         "\n    sar " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    sub " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) + "\n    sar " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
 bir::Module make_x86_return_constant_module() {

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../assembler/mod.hpp"
+#include "../../../bir/lir_to_bir.hpp"
+#include "../../../prealloc/target_register_profile.hpp"
 
 #include <array>
 #include <cstddef>
@@ -1028,13 +1030,13 @@ c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
 
 inline std::string emit_prepared_module(
     const c4c::backend::prepare::PreparedBirModule& module) {
-  const auto prepared_arch = module.target_profile.arch != c4c::TargetArch::Unknown
-                                 ? module.target_profile.arch
-                                 : c4c::target_profile_from_triple(
-                                       module.module.target_triple.empty()
-                                           ? c4c::default_host_target_triple()
-                                           : module.module.target_triple)
-                                       .arch;
+  const auto resolved_target_profile = module.target_profile.arch != c4c::TargetArch::Unknown
+                                           ? module.target_profile
+                                           : c4c::target_profile_from_triple(
+                                                 module.module.target_triple.empty()
+                                                     ? c4c::default_host_target_triple()
+                                                     : module.module.target_triple);
+  const auto prepared_arch = resolved_target_profile.arch;
   if (prepared_arch != c4c::TargetArch::X86_64 && prepared_arch != c4c::TargetArch::I686) {
     throw std::invalid_argument(
         "x86 backend emitter requires an x86 target for the canonical prepared-module handoff");
@@ -1055,6 +1057,48 @@ inline std::string emit_prepared_module(
   const auto& entry = function.blocks.front();
   const auto asm_prefix = ".intel_syntax noprefix\n.text\n.globl " + function.name +
                           "\n.type " + function.name + ", @function\n" + function.name + ":\n";
+  const auto narrow_abi_register = [](std::string_view wide_register) -> std::optional<std::string> {
+    if (wide_register == "rax") return std::string("eax");
+    if (wide_register == "rdi") return std::string("edi");
+    if (wide_register == "rsi") return std::string("esi");
+    if (wide_register == "rdx") return std::string("edx");
+    if (wide_register == "rcx") return std::string("ecx");
+    if (wide_register == "r8") return std::string("r8d");
+    if (wide_register == "r9") return std::string("r9d");
+    return std::string(wide_register);
+  };
+  const auto narrow_register = [&](const std::optional<std::string>& wide_register)
+      -> std::optional<std::string> {
+    if (!wide_register.has_value()) {
+      return std::nullopt;
+    }
+    return narrow_abi_register(*wide_register);
+  };
+  const auto return_register = [&]() -> std::optional<std::string> {
+    if (!function.return_abi.has_value()) {
+      return std::nullopt;
+    }
+    return narrow_register(c4c::backend::prepare::call_result_destination_register_name(
+        resolved_target_profile, *function.return_abi));
+  }();
+  if (!return_register.has_value()) {
+    throw std::invalid_argument(
+        "x86 backend emitter requires prepared return ABI metadata for the canonical prepared-module handoff");
+  }
+  const auto minimal_param_register =
+      [&](const c4c::backend::bir::Param& param) -> std::optional<std::string> {
+    if (param.is_varargs || param.is_sret || param.is_byval) {
+      return std::nullopt;
+    }
+    const auto param_abi =
+        c4c::backend::lir_to_bir_detail::compute_call_arg_abi(resolved_target_profile,
+                                                              param.type);
+    if (!param_abi.has_value()) {
+      return std::nullopt;
+    }
+    return narrow_register(c4c::backend::prepare::call_arg_destination_register_name(
+        resolved_target_profile, *param_abi, 0));
+  };
   const auto find_block = [&](std::string_view label) -> const c4c::backend::bir::Block* {
     for (const auto& block : function.blocks) {
       if (block.label == label) {
@@ -1072,14 +1116,18 @@ inline std::string emit_prepared_module(
       return std::nullopt;
     }
     if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
-      return "    mov eax, " + std::to_string(static_cast<std::int32_t>(value.immediate)) +
+      return "    mov " + *return_register + ", " +
+             std::to_string(static_cast<std::int32_t>(value.immediate)) +
              "\n";
     }
     if (value.kind != c4c::backend::bir::Value::Kind::Named) {
       return std::nullopt;
     }
     if (value.name == param.name) {
-      return std::string("    mov eax, edi\n");
+      if (const auto param_register = minimal_param_register(param); param_register.has_value()) {
+        return "    mov " + *return_register + ", " + *param_register + "\n";
+      }
+      return std::nullopt;
     }
 
     const auto binary_it = named_binaries.find(value.name);
@@ -1109,40 +1157,53 @@ inline std::string emit_prepared_module(
 
     const auto immediate =
         lhs_is_param_rhs_is_imm ? binary.rhs.immediate : binary.lhs.immediate;
+    const auto param_register = minimal_param_register(param);
+    if (!param_register.has_value()) {
+      return std::nullopt;
+    }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Add) {
-      return "    mov eax, edi\n    add eax, " +
+      return "    mov " + *return_register + ", " + *param_register + "\n    add " +
+             *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Sub && lhs_is_param_rhs_is_imm) {
-      return "    mov eax, edi\n    sub eax, " +
+      return "    mov " + *return_register + ", " + *param_register + "\n    sub " +
+             *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Mul) {
-      return "    mov eax, edi\n    imul eax, " +
+      return "    mov " + *return_register + ", " + *param_register + "\n    imul " +
+             *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::And) {
-      return "    mov eax, edi\n    and eax, " +
+      return "    mov " + *return_register + ", " + *param_register + "\n    and " +
+             *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Or) {
-      return "    mov eax, edi\n    or eax, " +
+      return "    mov " + *return_register + ", " + *param_register + "\n    or " +
+             *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Xor) {
-      return "    mov eax, edi\n    xor eax, " +
+      return "    mov " + *return_register + ", " + *param_register + "\n    xor " +
+             *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Shl && lhs_is_param_rhs_is_imm) {
-      return "    mov eax, edi\n    shl eax, " +
+      return "    mov " + *return_register + ", " + *param_register + "\n    shl " +
+             *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::LShr && lhs_is_param_rhs_is_imm) {
-      return "    mov eax, edi\n    shr eax, " +
+      return "    mov " + *return_register + ", " + *param_register + "\n    shr " +
+             *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::AShr && lhs_is_param_rhs_is_imm) {
-      return "    mov eax, edi\n    sar eax, " +
+      return "    mov " + *return_register + ", " + *param_register + "\n    sar " +
+             *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
     }
     return std::nullopt;
@@ -1172,34 +1233,39 @@ inline std::string emit_prepared_module(
     const auto immediate =
         lhs_is_source_rhs_is_imm ? binary.rhs.immediate : binary.lhs.immediate;
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Add) {
-      return "    add eax, " + std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
+      return "    add " + *return_register + ", " +
+             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Sub && lhs_is_source_rhs_is_imm) {
-      return "    sub eax, " +
+      return "    sub " + *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Mul) {
-      return "    imul eax, " + std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
+      return "    imul " + *return_register + ", " +
+             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::And) {
-      return "    and eax, " + std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
+      return "    and " + *return_register + ", " +
+             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Or) {
-      return "    or eax, " + std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
+      return "    or " + *return_register + ", " +
+             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Xor) {
-      return "    xor eax, " + std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
+      return "    xor " + *return_register + ", " +
+             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::Shl && lhs_is_source_rhs_is_imm) {
-      return "    shl eax, " +
+      return "    shl " + *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::LShr && lhs_is_source_rhs_is_imm) {
-      return "    shr eax, " +
+      return "    shr " + *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
     }
     if (binary.opcode == c4c::backend::bir::BinaryOpcode::AShr && lhs_is_source_rhs_is_imm) {
-      return "    sar eax, " +
+      return "    sar " + *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
     }
     return std::nullopt;
@@ -1225,6 +1291,10 @@ inline std::string emit_prepared_module(
     const auto& param = function.params.front();
     if (param.type != c4c::backend::bir::TypeKind::I32 || param.is_varargs || param.is_sret ||
         param.is_byval) {
+      return std::nullopt;
+    }
+    const auto param_register = minimal_param_register(param);
+    if (!param_register.has_value()) {
       return std::nullopt;
     }
 
@@ -1271,7 +1341,8 @@ inline std::string emit_prepared_module(
     }
 
     const std::string false_label = ".L" + function.name + "_" + false_block->label;
-    return asm_prefix + "    test edi, edi\n    jne " + false_label + "\n" + *true_return +
+    return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    jne " +
+           false_label + "\n" + *true_return +
            false_label + ":\n" + *false_return;
   };
   const auto try_render_materialized_compare_join = [&]() -> std::optional<std::string> {
@@ -1284,6 +1355,10 @@ inline std::string emit_prepared_module(
     const auto& param = function.params.front();
     if (param.type != c4c::backend::bir::TypeKind::I32 || param.is_varargs || param.is_sret ||
         param.is_byval) {
+      return std::nullopt;
+    }
+    const auto param_register = minimal_param_register(param);
+    if (!param_register.has_value()) {
       return std::nullopt;
     }
 
@@ -1409,7 +1484,8 @@ inline std::string emit_prepared_module(
     }
 
     const std::string false_label = ".L" + function.name + "_" + false_block->label;
-    return asm_prefix + "    test edi, edi\n    jne " + false_label + "\n" + *true_return +
+    return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    jne " +
+           false_label + "\n" + *true_return +
            false_label + ":\n" + *false_return;
   };
   if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
@@ -1435,7 +1511,7 @@ inline std::string emit_prepared_module(
         throw std::invalid_argument(
             "x86 backend emitter only supports parameter-free immediate i32 returns through the canonical prepared-module handoff");
       }
-      return asm_prefix + "    mov eax, " +
+      return asm_prefix + "    mov " + *return_register + ", " +
              std::to_string(static_cast<std::int32_t>(returned.immediate)) + "\n    ret\n";
     }
 
@@ -1443,7 +1519,9 @@ inline std::string emit_prepared_module(
       const auto& param = function.params.front();
       if (param.type == c4c::backend::bir::TypeKind::I32 && !param.is_varargs &&
           !param.is_sret && !param.is_byval && returned.name == param.name) {
-        return asm_prefix + "    mov eax, edi\n    ret\n";
+        if (const auto param_register = minimal_param_register(param); param_register.has_value()) {
+          return asm_prefix + "    mov " + *return_register + ", " + *param_register + "\n    ret\n";
+        }
       }
     }
   }
@@ -1468,16 +1546,23 @@ inline std::string emit_prepared_module(
           binary->rhs.name == param.name &&
           binary->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
           binary->lhs.type == c4c::backend::bir::TypeKind::I32;
+      const auto param_register = minimal_param_register(param);
+      if (!param_register.has_value()) {
+        throw std::invalid_argument(
+            "x86 backend emitter requires prepared parameter ABI metadata for the canonical prepared-module handoff");
+      }
       if (binary->opcode == c4c::backend::bir::BinaryOpcode::Add &&
           (lhs_is_param_rhs_is_imm || rhs_is_param_lhs_is_imm)) {
         const auto immediate =
             lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
-        return asm_prefix + "    mov eax, edi\n    add eax, " +
+        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
+               "\n    add " + *return_register + ", " +
                std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
       }
 
       if (binary->opcode == c4c::backend::bir::BinaryOpcode::Sub && lhs_is_param_rhs_is_imm) {
-        return asm_prefix + "    mov eax, edi\n    sub eax, " +
+        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
+               "\n    sub " + *return_register + ", " +
                std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) + "\n    ret\n";
       }
 
@@ -1485,7 +1570,8 @@ inline std::string emit_prepared_module(
           (lhs_is_param_rhs_is_imm || rhs_is_param_lhs_is_imm)) {
         const auto immediate =
             lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
-        return asm_prefix + "    mov eax, edi\n    imul eax, " +
+        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
+               "\n    imul " + *return_register + ", " +
                std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
       }
 
@@ -1493,7 +1579,8 @@ inline std::string emit_prepared_module(
           (lhs_is_param_rhs_is_imm || rhs_is_param_lhs_is_imm)) {
         const auto immediate =
             lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
-        return asm_prefix + "    mov eax, edi\n    and eax, " +
+        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
+               "\n    and " + *return_register + ", " +
                std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
       }
 
@@ -1501,7 +1588,8 @@ inline std::string emit_prepared_module(
           (lhs_is_param_rhs_is_imm || rhs_is_param_lhs_is_imm)) {
         const auto immediate =
             lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
-        return asm_prefix + "    mov eax, edi\n    or eax, " +
+        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
+               "\n    or " + *return_register + ", " +
                std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
       }
 
@@ -1509,27 +1597,31 @@ inline std::string emit_prepared_module(
           (lhs_is_param_rhs_is_imm || rhs_is_param_lhs_is_imm)) {
         const auto immediate =
             lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
-        return asm_prefix + "    mov eax, edi\n    xor eax, " +
+        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
+               "\n    xor " + *return_register + ", " +
                std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
       }
 
       if (binary->opcode == c4c::backend::bir::BinaryOpcode::Shl &&
           lhs_is_param_rhs_is_imm) {
-        return asm_prefix + "    mov eax, edi\n    shl eax, " +
+        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
+               "\n    shl " + *return_register + ", " +
                std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) +
                "\n    ret\n";
       }
 
       if (binary->opcode == c4c::backend::bir::BinaryOpcode::LShr &&
           lhs_is_param_rhs_is_imm) {
-        return asm_prefix + "    mov eax, edi\n    shr eax, " +
+        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
+               "\n    shr " + *return_register + ", " +
                std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) +
                "\n    ret\n";
       }
 
       if (binary->opcode == c4c::backend::bir::BinaryOpcode::AShr &&
           lhs_is_param_rhs_is_imm) {
-        return asm_prefix + "    mov eax, edi\n    sar eax, " +
+        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
+               "\n    sar " + *return_register + ", " +
                std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) +
                "\n    ret\n";
       }
