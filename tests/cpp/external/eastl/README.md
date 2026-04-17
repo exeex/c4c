@@ -16,7 +16,8 @@ Layout:
 - `allowlist.txt`: manifests the registered cases and their execution mode
 - `RunCase.cmake`: runner that injects shared EASTL/EABase include paths
 - `UPSTREAM.md`: provenance notes for extracted cases
-- `type_traits/`: first standalone case family
+- `piecewise_construct/`: bootstrap case family for the first frontend smoke
+- `utility/`: follow-on frontend smoke derived from the upstream utility area
 
 Allowlist format:
 
