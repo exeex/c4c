@@ -107,6 +107,41 @@ std::optional<bir::CallResultAbiInfo> lower_function_return_abi(bir::TypeKind ty
   return std::nullopt;
 }
 
+std::optional<bir::CallArgAbiInfo> lower_call_arg_abi(bir::TypeKind type) {
+  if (type == bir::TypeKind::Void) {
+    return std::nullopt;
+  }
+
+  bir::CallArgAbiInfo abi{
+      .type = type,
+      .size_bytes = lir_to_bir_detail::type_size_bytes(type),
+      .align_bytes = lir_to_bir_detail::type_size_bytes(type),
+      .passed_in_register = true,
+  };
+  switch (type) {
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      abi.primary_class = bir::AbiValueClass::Sse;
+      return abi;
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      abi.primary_class = bir::AbiValueClass::Integer;
+      return abi;
+    case bir::TypeKind::I128:
+      abi.primary_class = bir::AbiValueClass::Memory;
+      abi.passed_in_register = false;
+      abi.passed_on_stack = true;
+      return abi;
+    case bir::TypeKind::Void:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 using lir_to_bir_detail::lower_integer_type;
@@ -593,6 +628,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .callee = std::string(callee_name),
         .args = {*lowered_ap},
         .arg_types = {bir::TypeKind::Ptr},
+        .arg_abi = {*lower_call_arg_abi(bir::TypeKind::Ptr)},
         .return_type_name = "void",
         .return_type = bir::TypeKind::Void,
     });
@@ -644,6 +680,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
             "llvm.va_arg." + std::string(c4c::codegen::lir::trim_lir_arg_text(va_arg.type_str.str())),
         .args = {*lowered_ap},
         .arg_types = {bir::TypeKind::Ptr},
+        .arg_abi = {*lower_call_arg_abi(bir::TypeKind::Ptr)},
         .return_type = *lowered_type,
         .result_abi = lower_function_return_abi(*lowered_type, false),
     });
@@ -777,6 +814,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .callee = std::string(parsed_callee->symbol_name),
         .args = {*lowered_arg},
         .arg_types = {value_type},
+        .arg_abi = {*lower_call_arg_abi(value_type)},
         .return_type = value_type,
         .result_abi = lower_function_return_abi(value_type, false),
     });
@@ -807,6 +845,8 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .callee = "llvm.va_copy.p0.p0",
         .args = {*lowered_dst, *lowered_src},
         .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+        .arg_abi = {*lower_call_arg_abi(bir::TypeKind::Ptr),
+                    *lower_call_arg_abi(bir::TypeKind::Ptr)},
         .return_type_name = "void",
         .return_type = bir::TypeKind::Void,
     });
@@ -843,6 +883,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .callee = "llvm.stackrestore",
         .args = {*lowered_saved_ptr},
         .arg_types = {bir::TypeKind::Ptr},
+        .arg_abi = {*lower_call_arg_abi(bir::TypeKind::Ptr)},
         .return_type_name = "void",
         .return_type = bir::TypeKind::Void,
     });
