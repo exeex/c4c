@@ -786,7 +786,9 @@ void legalize_module(Target target, bir::Module& module) {
     }
     if (function.return_abi.has_value()) {
       legalize_call_result_abi(target, *function.return_abi);
-      if (function.return_abi->type == bir::TypeKind::Void) {
+      if (function.return_abi->type == bir::TypeKind::Void &&
+          !function.return_abi->returned_in_memory &&
+          function.return_abi->primary_class != bir::AbiValueClass::Memory) {
         function.return_abi.reset();
       }
     }

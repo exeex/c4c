@@ -71,6 +71,42 @@ std::optional<std::string> parse_byval_pointee_type(std::string_view type_text) 
   return std::nullopt;
 }
 
+std::optional<bir::CallResultAbiInfo> lower_function_return_abi(bir::TypeKind type,
+                                                                bool returned_via_sret) {
+  if (returned_via_sret) {
+    return bir::CallResultAbiInfo{
+        .type = bir::TypeKind::Void,
+        .primary_class = bir::AbiValueClass::Memory,
+        .returned_in_memory = true,
+    };
+  }
+
+  bir::CallResultAbiInfo abi{
+      .type = type,
+  };
+  switch (type) {
+    case bir::TypeKind::Void:
+      return std::nullopt;
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      abi.primary_class = bir::AbiValueClass::Sse;
+      return abi;
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      abi.primary_class = bir::AbiValueClass::Integer;
+      return abi;
+    case bir::TypeKind::I128:
+      abi.primary_class = bir::AbiValueClass::Memory;
+      abi.returned_in_memory = true;
+      return abi;
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 using lir_to_bir_detail::lower_integer_type;
@@ -319,6 +355,7 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_r
   if (const auto scalar_type = lower_scalar_or_function_pointer_type(trimmed); scalar_type.has_value()) {
     return LoweredReturnInfo{
         .type = *scalar_type,
+        .abi = lower_function_return_abi(*scalar_type, false),
     };
   }
   if (const auto aggregate_layout = lower_byval_aggregate_layout(trimmed, type_decls);
@@ -327,6 +364,7 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_r
         .type = bir::TypeKind::Void,
         .size_bytes = aggregate_layout->size_bytes,
         .align_bytes = aggregate_layout->align_bytes,
+        .abi = lower_function_return_abi(bir::TypeKind::Void, true),
         .returned_via_sret = true,
     };
   }
@@ -376,22 +414,20 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_s
 
 std::optional<bir::Function> BirFunctionLowerer::lower_extern_decl(
     const c4c::codegen::lir::LirExternDecl& decl) {
-  auto return_type = lower_scalar_or_function_pointer_type(decl.return_type_str);
-  if (!return_type.has_value()) {
-    return_type = lower_scalar_or_function_pointer_type(decl.return_type.str());
+  auto return_info = lower_return_info_from_type(decl.return_type_str, TypeDeclMap{});
+  if (!return_info.has_value()) {
+    return_info = lower_return_info_from_type(decl.return_type.str(), TypeDeclMap{});
   }
-  if (!return_type.has_value() &&
-      (c4c::codegen::lir::trim_lir_arg_text(decl.return_type_str) == "void" ||
-       c4c::codegen::lir::trim_lir_arg_text(decl.return_type.str()) == "void")) {
-    return_type = bir::TypeKind::Void;
-  }
-  if (!return_type.has_value()) {
+  if (!return_info.has_value()) {
     return std::nullopt;
   }
 
   bir::Function lowered;
   lowered.name = decl.name;
-  lowered.return_type = *return_type;
+  lowered.return_type = return_info->type;
+  lowered.return_size_bytes = return_info->size_bytes;
+  lowered.return_align_bytes = return_info->align_bytes;
+  lowered.return_abi = return_info->abi;
   lowered.is_declaration = true;
   return lowered;
 }
@@ -869,10 +905,12 @@ std::optional<bir::Function> BirFunctionLowerer::lower_decl_function(
   auto return_info = lower_signature_return_info(function.signature_text, TypeDeclMap{});
   if (!return_info.has_value()) {
     lowered.return_type = lower_param_type(function.return_type).value_or(bir::TypeKind::Void);
+    lowered.return_abi = lower_function_return_abi(lowered.return_type, false);
   } else {
     lowered.return_type = return_info->type;
     lowered.return_size_bytes = return_info->size_bytes;
     lowered.return_align_bytes = return_info->align_bytes;
+    lowered.return_abi = return_info->abi;
   }
   if (!lower_function_params(function, return_info, TypeDeclMap{}, &lowered)) {
     return std::nullopt;

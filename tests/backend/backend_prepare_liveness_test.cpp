@@ -1,4 +1,6 @@
 #include "src/backend/bir/bir.hpp"
+#include "src/backend/bir/lir_to_bir.hpp"
+#include "src/codegen/lir/ir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/backend/target.hpp"
 
@@ -10,7 +12,10 @@
 namespace {
 
 using c4c::backend::Target;
+using c4c::backend::BirLoweringOptions;
+using c4c::backend::try_lower_to_bir_with_options;
 namespace bir = c4c::backend::bir;
+namespace lir = c4c::codegen::lir;
 namespace prepare = c4c::backend::prepare;
 
 int fail(const char* message) {
@@ -806,6 +811,35 @@ prepare::PreparedBirModule prepare_return_same_storage_module_with_regalloc() {
   return planner.run();
 }
 
+std::optional<prepare::PreparedBirModule> lower_and_legalize_aggregate_return_decl_module() {
+  lir::LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  lir::LirFunction function;
+  function.name = "aggregate_decl";
+  function.is_declaration = true;
+  function.signature_text = "declare { i32, i32 } @aggregate_decl()";
+  module.functions.push_back(std::move(function));
+
+  auto lowered = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return std::nullopt;
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(*lowered.module);
+  prepared.target = Target::X86_64;
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_evicted_spill_module_with_regalloc() {
   bir::Module module;
 
@@ -1458,6 +1492,24 @@ int check_return_same_storage_resolution(const prepare::PreparedBirModule& prepa
   return 0;
 }
 
+int check_lowered_aggregate_return_abi(const prepare::PreparedBirModule& prepared) {
+  const auto* function = find_module_function(prepared, "aggregate_decl");
+  if (function == nullptr) {
+    return fail("expected lowered aggregate_decl function metadata");
+  }
+  if (function->return_type != bir::TypeKind::Void || !function->is_declaration) {
+    return fail("expected aggregate_decl to stay declaration-only with void lowered return storage");
+  }
+  if (function->params.empty() || !function->params.front().is_sret) {
+    return fail("expected aggregate_decl lowering to publish an explicit sret parameter");
+  }
+  if (!function->return_abi.has_value() || !function->return_abi->returned_in_memory ||
+      function->return_abi->primary_class != bir::AbiValueClass::Memory) {
+    return fail("expected aggregate_decl to preserve lowering-owned memory return ABI metadata");
+  }
+  return 0;
+}
+
 int check_loop_weighted_priority(const prepare::PreparedBirModule& prepared) {
   const auto* liveness = find_liveness_function(prepared, "loop_weighted_priority");
   const auto* regalloc = find_regalloc_function(prepared, "loop_weighted_priority");
@@ -1535,6 +1587,14 @@ int main() {
 
   const auto return_same_storage_prepared = prepare_return_same_storage_module_with_regalloc();
   if (const int rc = check_return_same_storage_resolution(return_same_storage_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto aggregate_return_prepared = lower_and_legalize_aggregate_return_decl_module();
+  if (!aggregate_return_prepared.has_value()) {
+    return fail("expected aggregate declaration lowering to succeed");
+  }
+  if (const int rc = check_lowered_aggregate_return_abi(*aggregate_return_prepared); rc != 0) {
     return rc;
   }
 

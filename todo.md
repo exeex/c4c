@@ -6,24 +6,27 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Added explicit `bir::Function.return_abi` metadata to the active prealloc
-route and taught legalization to populate or normalize it from the function
-return contract before regalloc runs. Step 4 return-site move resolution now
-consumes that explicit ABI surface instead of deriving storage/register
-identity straight from `bir::Function.return_type`.
+Moved function-level return ABI ownership earlier into BIR lowering by adding
+ABI payload to lowered return info and threading it into `bir::Function` for
+declarations, normal function lowering, and the canonical-select fast path.
+Prealloc legalization now preserves explicit memory-return ABI metadata even
+when the lowered function storage return type is `Void`, instead of dropping
+that contract during normalization.
 
-Focused `backend_prepare_liveness` coverage now proves both return paths:
-legalized RISC-V float-return functions publish explicit `return_abi` metadata
-and still expose the expected `fa0` return move, while same-storage integer
-returns also keep explicit integer return ABI metadata without emitting a
-redundant move.
+Focused `backend_prepare_liveness` coverage now proves the contract at both
+ends: legalized RISC-V float and integer returns still publish explicit
+function `return_abi` metadata for regalloc move resolution, and a lowered
+aggregate-return declaration keeps an explicit memory/sret `return_abi`
+through BIR lowering plus prepare legalize instead of forcing prealloc to
+synthesize it from `return_type`.
 
 ## Suggested Next
 
-Start replacing the remaining ad hoc ABI-class inference in function-level
-return metadata with lowering-owned/source ABI information where available, so
-`return_abi` stops being synthesized from only the legalized scalar return
-type inside prealloc.
+Audit the remaining call-site ABI surfaces against the same ownership rule:
+thread lowering-owned/source metadata into `bir::CallInst.arg_abi` and
+`result_abi` wherever the lowering path already knows more than prealloc’s
+target-local legalization fallback, especially for declaration and aggregate
+routes.
 
 ## Watchouts
 
@@ -53,6 +56,10 @@ type inside prealloc.
 - `bir::Function.return_abi` is now the contract that return-site move
   resolution consumes; it is currently synthesized during legalization from the
   legalized function return type when the route has no better source ABI data
+- lowered aggregate/sret functions can now legitimately carry
+  `return_abi={type=Void, primary_class=Memory, returned_in_memory=true}`;
+  prepare legalize must preserve that metadata instead of treating all
+  `Void` return ABI entries as empty
 - the focused call-result proof currently uses an `F32` value on the active
   RISC-V target because the general-register seed pools are active while float
   register pools are still absent; if float allocation becomes active later,
@@ -83,6 +90,11 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_liveness$ > test_after.log
 2>&1`
-after adding explicit `bir::Function.return_abi` metadata to the active route
-and switching return-site move resolution over to that contract.
+after threading lowering-owned function return ABI metadata into
+`bir::Function` and preserving explicit memory-return ABI through prepare
+legalize.
+Supervisor acceptance check:
+`ctest --test-dir build --output-on-failure -L backend -LE c_testsuite`
+passed (71/71). A full `-L backend` sweep still hits the pre-existing
+`c_testsuite` x86 backend asm/fallback cluster outside this packet.
 Canonical proof log: `test_after.log`.

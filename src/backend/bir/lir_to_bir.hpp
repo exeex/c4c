@@ -376,6 +376,7 @@ class BirFunctionLowerer {
     bir::TypeKind type = bir::TypeKind::Void;
     std::size_t size_bytes = 0;
     std::size_t align_bytes = 0;
+    std::optional<bir::CallResultAbiInfo> abi;
     bool returned_via_sret = false;
   };
 

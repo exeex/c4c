@@ -253,6 +253,9 @@ std::optional<bir::Function> BirFunctionLowerer::try_lower_canonical_select_func
   bir::Function lowered;
   lowered.name = function_.name;
   lowered.return_type = return_info->type;
+  lowered.return_size_bytes = return_info->size_bytes;
+  lowered.return_align_bytes = return_info->align_bytes;
+  lowered.return_abi = return_info->abi;
   if (!lower_function_params(function_, return_info, type_decls_, &lowered)) {
     return std::nullopt;
   }
@@ -467,6 +470,7 @@ std::optional<bir::Function> BirFunctionLowerer::lower() {
   lowered_function_.return_type = return_info_->type;
   lowered_function_.return_size_bytes = return_info_->size_bytes;
   lowered_function_.return_align_bytes = return_info_->align_bytes;
+  lowered_function_.return_abi = return_info_->abi;
   if (!lower_function_params(function_, return_info_, type_decls_, &lowered_function_)) {
     note_function_lowering_family_failure("function-signature semantic family");
     return std::nullopt;
