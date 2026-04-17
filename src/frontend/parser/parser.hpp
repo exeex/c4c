@@ -269,11 +269,21 @@ class Parser {
     Lite,
   };
 
+  enum class TentativeTextRefKind {
+    None,
+    TextId,
+  };
+
+  struct TentativeTextRef {
+    TentativeTextRefKind kind = TentativeTextRefKind::None;
+    TextId text_id = kInvalidText;
+  };
+
   // Cheap speculative parser state used by lite tentative parsing. This is
   // the rollback surface that remains safe for syntax-only probes.
   struct ParserLiteSnapshot {
     int pos;
-    std::string last_resolved_typedef;
+    TentativeTextRef last_resolved_typedef;
     int template_arg_expr_depth = 0;
     size_t token_mutation_count = 0;
   };
@@ -281,10 +291,10 @@ class Parser {
   struct ParserSnapshot {
     ParserLiteSnapshot lite;
     ParserSymbolTables symbol_tables;
-    std::set<std::string> non_atom_typedefs;
-    std::set<std::string> non_atom_user_typedefs;
-    std::unordered_map<std::string, TypeSpec> non_atom_typedef_types;
-    std::unordered_map<std::string, TypeSpec> non_atom_var_types;
+    std::unordered_set<TextId> non_atom_typedefs;
+    std::unordered_set<TextId> non_atom_user_typedefs;
+    std::unordered_map<TextId, TypeSpec> non_atom_typedef_types;
+    std::unordered_map<TextId, TypeSpec> non_atom_var_types;
   };
 
   struct TentativeParseStats {
@@ -473,10 +483,10 @@ class Parser {
   std::set<std::string> known_fn_names_;
   // String-keyed fallback storage for composed or synthesized names that are
   // not eligible for source-atom SymbolId identity.
-  std::set<std::string> non_atom_typedefs_;
-  std::set<std::string> non_atom_user_typedefs_;
-  std::unordered_map<std::string, TypeSpec> non_atom_typedef_types_;
-  std::unordered_map<std::string, TypeSpec> non_atom_var_types_;
+  std::unordered_set<TextId> non_atom_typedefs_;
+  std::unordered_set<TextId> non_atom_user_typedefs_;
+  std::unordered_map<TextId, TypeSpec> non_atom_typedef_types_;
+  std::unordered_map<TextId, TypeSpec> non_atom_var_types_;
   // Struct member typedef scoped names: "StructTag::TypeName" → TypeSpec.
   // Populated when parsing typedef inside struct bodies.
   std::unordered_map<std::string, TypeSpec> struct_typedefs_;
@@ -643,6 +653,10 @@ class Parser {
     if (token_text_id != kInvalidText) return token_text_id;
     if (fallback.empty()) return kInvalidText;
     return token_texts_ ? token_texts_->intern(fallback) : kInvalidText;
+  }
+  TextId find_parser_text_id(std::string_view text) const {
+    if (text.empty() || !token_texts_) return kInvalidText;
+    return token_texts_->find(text);
   }
   std::string_view token_spelling(const Token& token) const;
   void set_parser_owned_spelling(Token& token, std::string_view spelling);
