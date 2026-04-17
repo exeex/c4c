@@ -214,10 +214,8 @@ void Lowerer::lower_function(const Node* fn_node,
     fn.attrs.align_bytes = fn_node->type.align_bytes;
   }
   if (fn.attrs.align_bytes == 0) {
-    auto fit = module_->fn_index.find(fn.name);
-    if (fit != module_->fn_index.end() &&
-        fit->second.value < module_->functions.size()) {
-      int prev_align = module_->functions[fit->second.value].attrs.align_bytes;
+    if (const Function* prev_fn = module_->find_function_by_name_legacy(fn.name)) {
+      int prev_align = prev_fn->attrs.align_bytes;
       if (prev_align > 0) {
         fn.attrs.align_bytes = prev_align;
       }

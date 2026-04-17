@@ -138,10 +138,8 @@ int Lowerer::builtin_alignof_expr_bytes(FunctionCtx* ctx, const Node* expr) {
   int align = 0;
   if (expr && expr->kind == NK_VAR && expr->name) {
     const std::string fn_name(expr->name);
-    auto fit = module_->fn_index.find(fn_name);
-    if (fit != module_->fn_index.end() &&
-        fit->second.value < module_->functions.size()) {
-      int fn_align = module_->functions[fit->second.value].attrs.align_bytes;
+    if (const Function* fn = module_->find_function_by_name_legacy(fn_name)) {
+      int fn_align = fn->attrs.align_bytes;
       if (fn_align > 0) align = fn_align;
     }
   }

@@ -18,24 +18,9 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
 
 const Function* StmtEmitter::find_local_target_function(
     LinkNameId link_name_id, std::string_view fallback_name) const {
-  if (link_name_id != kInvalidLinkName) {
-    const auto it = std::find_if(mod_.functions.begin(), mod_.functions.end(),
-                                 [&](const Function& fn) {
-                                   return fn.link_name_id == link_name_id;
-                                 });
-    if (it != mod_.functions.end()) {
-      return &*it;
-    }
-  }
-
-  if (fallback_name.empty()) {
-    return nullptr;
-  }
-  const auto fit = mod_.fn_index.find(std::string(fallback_name));
-  if (fit == mod_.fn_index.end() || fit->second.value >= mod_.functions.size()) {
-    return nullptr;
-  }
-  return &mod_.functions[fit->second.value];
+  if (const Function* fn = mod_.find_function(link_name_id)) return fn;
+  if (fallback_name.empty()) return nullptr;
+  return mod_.find_function_by_name_legacy(fallback_name);
 }
 
 CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr& call,

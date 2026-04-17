@@ -41,6 +41,7 @@ class ConstInitEmitter {
   // ── Global object lookup ────────────────────────────────────────────────
   const c4c::hir::GlobalVar* select_global_object(const std::string& name) const;
   const c4c::hir::GlobalVar* select_global_object(c4c::hir::GlobalId id) const;
+  const c4c::hir::GlobalVar* select_global_object(const c4c::hir::DeclRef& ref) const;
 
   // ── Constant evaluation ─────────────────────────────────────────────────
   std::optional<long long> try_const_eval_int(c4c::hir::ExprId id);

@@ -15,10 +15,10 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   // the global with that name (C99 6.2.2p4). Erase any shadowing local
   // binding so the global is found by the NK_VAR resolution fallback.
   if (n->is_extern && !n->init && n->name && n->name[0]) {
-    const auto git = module_->global_index.find(n->name);
-    if (git != module_->global_index.end()) {
+    const GlobalId global_id = module_->lookup_global_id(n->name);
+    if (global_id.valid()) {
       ctx.locals.erase(n->name);
-      ctx.static_globals[n->name] = git->second;
+      ctx.static_globals[n->name] = global_id;
     }
     return;
   }

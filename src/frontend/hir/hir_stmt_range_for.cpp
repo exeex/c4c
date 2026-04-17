@@ -41,10 +41,8 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
   TypeSpec iter_ts{};
   iter_ts.base = TB_VOID;
   {
-    auto fit = module_->fn_index.find(begin_mangled);
-    if (fit != module_->fn_index.end() &&
-        fit->second.value < module_->functions.size()) {
-      iter_ts = module_->functions[fit->second.value].return_type.spec;
+    if (const Function* fn = module_->find_function_by_name_legacy(begin_mangled)) {
+      iter_ts = fn->return_type.spec;
     }
   }
   if (iter_ts.base == TB_VOID) {
@@ -152,10 +150,8 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
     attach_decl_ref_link_name_id(dr);
     TypeSpec inc_ret_ts = iter_ts;
     {
-      auto fit2 = module_->fn_index.find(mit->second);
-      if (fit2 != module_->fn_index.end() &&
-          fit2->second.value < module_->functions.size()) {
-        inc_ret_ts = module_->functions[fit2->second.value].return_type.spec;
+      if (const Function* fn = module_->find_function_by_name_legacy(mit->second)) {
+        inc_ret_ts = fn->return_type.spec;
       }
     }
     TypeSpec callee_ts = inc_ret_ts;
@@ -204,10 +200,8 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
       dr.name = mit->second;
       attach_decl_ref_link_name_id(dr);
       {
-        auto fit2 = module_->fn_index.find(mit->second);
-        if (fit2 != module_->fn_index.end() &&
-            fit2->second.value < module_->functions.size()) {
-          deref_ret_ts = module_->functions[fit2->second.value].return_type.spec;
+        if (const Function* fn = module_->find_function_by_name_legacy(mit->second)) {
+          deref_ret_ts = fn->return_type.spec;
         }
       }
       if (deref_ret_ts.base == TB_VOID || deref_ret_ts.base == TB_INT) {

@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -1015,6 +1016,16 @@ struct Module {
     next_expr_id = std::max(next_expr_id, max_expr);
   }
 
+  [[nodiscard]] FunctionId lookup_function_id(std::string_view name) const {
+    const auto it = fn_index.find(std::string(name));
+    return it == fn_index.end() ? FunctionId::invalid() : it->second;
+  }
+
+  [[nodiscard]] GlobalId lookup_global_id(std::string_view name) const {
+    const auto it = global_index.find(std::string(name));
+    return it == global_index.end() ? GlobalId::invalid() : it->second;
+  }
+
   Function* find_function(FunctionId id) {
     auto it = std::find_if(functions.begin(), functions.end(),
                            [&](const Function& fn) { return fn.id.value == id.value; });
@@ -1027,6 +1038,36 @@ struct Module {
     return it == functions.end() ? nullptr : &(*it);
   }
 
+  Function* find_function(LinkNameId id) {
+    if (id == kInvalidLinkName) return nullptr;
+    auto it = std::find_if(functions.begin(), functions.end(),
+                           [&](const Function& fn) { return fn.link_name_id == id; });
+    return it == functions.end() ? nullptr : &(*it);
+  }
+
+  const Function* find_function(LinkNameId id) const {
+    if (id == kInvalidLinkName) return nullptr;
+    auto it = std::find_if(functions.begin(), functions.end(),
+                           [&](const Function& fn) { return fn.link_name_id == id; });
+    return it == functions.end() ? nullptr : &(*it);
+  }
+
+  Function* find_function_by_name_legacy(std::string_view name) {
+    const FunctionId id = lookup_function_id(name);
+    return id.valid() ? find_function(id) : nullptr;
+  }
+
+  const Function* find_function_by_name_legacy(std::string_view name) const {
+    const FunctionId id = lookup_function_id(name);
+    return id.valid() ? find_function(id) : nullptr;
+  }
+
+  const Function* resolve_function_decl(const DeclRef& ref) const {
+    if (ref.local || ref.param_index || ref.global) return nullptr;
+    if (const Function* fn = find_function(ref.link_name_id)) return fn;
+    return find_function_by_name_legacy(ref.name);
+  }
+
   GlobalVar* find_global(GlobalId id) {
     auto it = std::find_if(globals.begin(), globals.end(),
                            [&](const GlobalVar& gv) { return gv.id.value == id.value; });
@@ -1037,6 +1078,39 @@ struct Module {
     auto it = std::find_if(globals.begin(), globals.end(),
                            [&](const GlobalVar& gv) { return gv.id.value == id.value; });
     return it == globals.end() ? nullptr : &(*it);
+  }
+
+  GlobalVar* find_global(LinkNameId id) {
+    if (id == kInvalidLinkName) return nullptr;
+    auto it = std::find_if(globals.begin(), globals.end(),
+                           [&](const GlobalVar& gv) { return gv.link_name_id == id; });
+    return it == globals.end() ? nullptr : &(*it);
+  }
+
+  const GlobalVar* find_global(LinkNameId id) const {
+    if (id == kInvalidLinkName) return nullptr;
+    auto it = std::find_if(globals.begin(), globals.end(),
+                           [&](const GlobalVar& gv) { return gv.link_name_id == id; });
+    return it == globals.end() ? nullptr : &(*it);
+  }
+
+  GlobalVar* find_global_by_name_legacy(std::string_view name) {
+    const GlobalId id = lookup_global_id(name);
+    return id.valid() ? find_global(id) : nullptr;
+  }
+
+  const GlobalVar* find_global_by_name_legacy(std::string_view name) const {
+    const GlobalId id = lookup_global_id(name);
+    return id.valid() ? find_global(id) : nullptr;
+  }
+
+  const GlobalVar* resolve_global_decl(const DeclRef& ref) const {
+    if (ref.local || ref.param_index) return nullptr;
+    if (ref.global) {
+      if (const GlobalVar* gv = find_global(*ref.global)) return gv;
+    }
+    if (const GlobalVar* gv = find_global(ref.link_name_id)) return gv;
+    return find_global_by_name_legacy(ref.name);
   }
 
   Expr* find_expr(ExprId id) {

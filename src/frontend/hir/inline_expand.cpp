@@ -318,10 +318,7 @@ const Function* resolve_direct_callee(const Module& module, const CallExpr& call
   const auto* ref = std::get_if<DeclRef>(&callee_expr->payload);
   if (!ref) return nullptr;
 
-  auto it = module.fn_index.find(ref->name);
-  if (it == module.fn_index.end()) return nullptr;
-
-  return module.find_function(it->second);
+  return module.resolve_function_decl(*ref);
 }
 
 // ── check_inline_eligibility ─────────────────────────────────────────────────

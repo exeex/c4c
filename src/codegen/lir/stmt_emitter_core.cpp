@@ -420,6 +420,12 @@ const GlobalVar* StmtEmitter::select_global_object(GlobalId id) const {
   return gv;
 }
 
+const GlobalVar* StmtEmitter::select_global_object(const DeclRef& ref) const {
+  if (ref.global) return select_global_object(*ref.global);
+  if (const GlobalVar* gv = mod_.find_global(ref.link_name_id)) return gv;
+  return select_global_object(ref.name);
+}
+
 void StmtEmitter::emit_lbl(FnCtx& ctx, const std::string& lbl) { open_lbl(ctx, lbl); }
 
 void StmtEmitter::emit_term_br(FnCtx& ctx, const std::string& target_label) {

@@ -178,11 +178,11 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
   DeclRef dr{};
   dr.name = resolved_mangled;
   attach_decl_ref_link_name_id(dr);
-  auto fit = module_->fn_index.find(dr.name);
   TypeSpec fn_ts{};
   fn_ts.base = TB_VOID;
-  if (fit != module_->fn_index.end() && fit->second.value < module_->functions.size()) {
-    fn_ts = module_->functions[fit->second.value].return_type.spec;
+  const Function* callee_fn = module_->find_function_by_name_legacy(dr.name);
+  if (callee_fn) {
+    fn_ts = callee_fn->return_type.spec;
   }
   if (fn_ts.base == TB_VOID) {
     if (auto rit = find_struct_method_return_type(obj_ts.tag, op_method_name, obj_ts.is_const)) {
@@ -220,10 +220,6 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
   ptr_ts.ptr_level++;
   c.args.push_back(append_expr(obj_node, addr, ptr_ts));
 
-  const Function* callee_fn = nullptr;
-  if (fit != module_->fn_index.end() && fit->second.value < module_->functions.size()) {
-    callee_fn = &module_->functions[fit->second.value];
-  }
   const Node* method_ast = nullptr;
   if (!callee_fn) method_ast = find_pending_method_by_mangled(resolved_mangled);
 
@@ -304,11 +300,10 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
           mit = rts.is_const ? struct_methods_.find(base_key) : struct_methods_.find(const_key);
         }
         if (mit == struct_methods_.end()) break;
-        auto fit = module_->fn_index.find(mit->second);
         TypeSpec fn_ts{};
         fn_ts.base = TB_VOID;
-        if (fit != module_->fn_index.end() && fit->second.value < module_->functions.size()) {
-          fn_ts = module_->functions[fit->second.value].return_type.spec;
+        if (const Function* fn = module_->find_function_by_name_legacy(mit->second)) {
+          fn_ts = fn->return_type.spec;
         }
         if (fn_ts.base == TB_VOID) {
           auto rit2 = struct_method_ret_types_.find(std::string(rts.tag) + "::operator_arrow");
@@ -378,11 +373,10 @@ ExprId Lowerer::maybe_bool_convert(FunctionCtx* ctx, ExprId expr, const Node* n)
   DeclRef dr{};
   dr.name = mit->second;
   attach_decl_ref_link_name_id(dr);
-  auto fit = module_->fn_index.find(dr.name);
   TypeSpec fn_ts{};
   fn_ts.base = TB_BOOL;
-  if (fit != module_->fn_index.end() && fit->second.value < module_->functions.size()) {
-    fn_ts = module_->functions[fit->second.value].return_type.spec;
+  if (const Function* fn = module_->find_function_by_name_legacy(dr.name)) {
+    fn_ts = fn->return_type.spec;
   }
   TypeSpec callee_ts = fn_ts;
   callee_ts.ptr_level++;

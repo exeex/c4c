@@ -123,10 +123,10 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
     }
   }
 
-  auto existing_global = module_->global_index.find(mangled);
-  if (existing_global != module_->global_index.end()) {
-    instantiated_template_globals_[instance_key] = existing_global->second;
-    return existing_global->second;
+  const GlobalId existing_global = module_->lookup_global_id(mangled);
+  if (existing_global.valid()) {
+    instantiated_template_globals_[instance_key] = existing_global;
+    return existing_global;
   }
 
   const Node* chosen = selected.selected_pattern;
@@ -134,10 +134,10 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
   const NttpBindings* nttp_ptr =
       selected.nttp_bindings.empty() ? nullptr : &selected.nttp_bindings;
   lower_global(chosen, &mangled, tpl_ptr, nttp_ptr);
-  auto git = module_->global_index.find(mangled);
-  if (git == module_->global_index.end()) return std::nullopt;
-  instantiated_template_globals_[instance_key] = git->second;
-  return git->second;
+  const GlobalId global_id = module_->lookup_global_id(mangled);
+  if (!global_id.valid()) return std::nullopt;
+  instantiated_template_globals_[instance_key] = global_id;
+  return global_id;
 }
 
 }  // namespace c4c::hir

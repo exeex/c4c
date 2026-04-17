@@ -241,6 +241,7 @@ class StmtEmitter {
 
   const GlobalVar* select_global_object(const std::string& name) const;
   const GlobalVar* select_global_object(GlobalId id) const;
+  const GlobalVar* select_global_object(const DeclRef& ref) const;
 
 
   // ── Expr lookup ───────────────────────────────────────────────────────────

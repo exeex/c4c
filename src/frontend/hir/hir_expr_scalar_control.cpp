@@ -29,16 +29,11 @@ const HirStructField* find_struct_instance_field_including_bases(
 void Lowerer::attach_decl_ref_link_name_id(DeclRef& ref) const {
   if (!module_) return;
   if (ref.link_name_id != kInvalidLinkName) return;
-  if (ref.global) {
-    if (const GlobalVar* gv = module_->find_global(*ref.global)) {
-      ref.link_name_id = gv->link_name_id;
-      return;
-    }
+  if (const GlobalVar* gv = module_->resolve_global_decl(ref)) {
+    ref.link_name_id = gv->link_name_id;
+    return;
   }
-  if (ref.local || ref.param_index) return;
-  const auto fit = module_->fn_index.find(ref.name);
-  if (fit == module_->fn_index.end()) return;
-  if (const Function* fn = module_->find_function(fit->second)) {
+  if (const Function* fn = module_->resolve_function_decl(ref)) {
     ref.link_name_id = fn->link_name_id;
   }
 }
@@ -185,8 +180,8 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
     }
   }
   if (!has_local_binding) {
-    auto git = module_->global_index.find(r.name);
-    if (git != module_->global_index.end()) r.global = git->second;
+    const GlobalId global_id = module_->lookup_global_id(r.name);
+    if (global_id.valid()) r.global = global_id;
   }
   if (ctx && !ctx->method_struct_tag.empty() && !has_local_binding &&
       !r.param_index && !r.global) {
@@ -220,9 +215,8 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
   TypeSpec var_ts = n->type;
   if (var_ts.base == TB_VOID && var_ts.ptr_level == 0 && var_ts.array_rank == 0 &&
       !r.local && !r.param_index && !r.global) {
-    auto fit = module_->fn_index.find(r.name);
-    if (fit != module_->fn_index.end() && fit->second.value < module_->functions.size()) {
-      var_ts = module_->functions[fit->second.value].return_type.spec;
+    if (const Function* fn = module_->find_function_by_name_legacy(r.name)) {
+      var_ts = fn->return_type.spec;
       var_ts.ptr_level++;
       var_ts.is_fn_ptr = true;
     }

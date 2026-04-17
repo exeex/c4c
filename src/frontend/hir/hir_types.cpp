@@ -368,15 +368,11 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
       }
     }
   }
-  const auto git = module_->global_index.find(name);
-  if (git != module_->global_index.end()) {
-    if (const GlobalVar* gv = module_->find_global(git->second)) {
-      if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
-    }
+  if (const GlobalVar* gv = module_->find_global_by_name_legacy(name)) {
+    if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
   }
-  const auto fit = module_->fn_index.find(name);
-  if (fit != module_->fn_index.end() && fit->second.value < module_->functions.size()) {
-    return module_->functions[fit->second.value].return_type.spec;
+  if (const Function* fn = module_->find_function_by_name_legacy(name)) {
+    return fn->return_type.spec;
   }
   return std::nullopt;
 }
@@ -387,10 +383,8 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
 
   if (auto dit = deduced_template_calls_.find(call);
       dit != deduced_template_calls_.end()) {
-    auto fit = module_->fn_index.find(dit->second.mangled_name);
-    if (fit != module_->fn_index.end() &&
-        fit->second.value < module_->functions.size()) {
-      return module_->functions[fit->second.value].return_type.spec;
+    if (const Function* fn = module_->find_function_by_name_legacy(dit->second.mangled_name)) {
+      return fn->return_type.spec;
     }
   }
 
@@ -424,10 +418,8 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type(
           }
         }
       }
-      auto fit = module_->fn_index.find(resolved_name);
-      if (fit != module_->fn_index.end() &&
-          fit->second.value < module_->functions.size()) {
-        return module_->functions[fit->second.value].return_type.spec;
+      if (const Function* fn = module_->find_function_by_name_legacy(resolved_name)) {
+        return fn->return_type.spec;
       }
     }
   }
@@ -1645,22 +1637,16 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
           }
         }
       }
-      auto git = module_->global_index.find(name);
-      if (git != module_->global_index.end()) {
-        if (const GlobalVar* gv = module_->find_global(git->second)) {
-          return reference_value_ts(gv->type.spec);
-        }
+      if (const GlobalVar* gv = module_->find_global_by_name_legacy(name)) {
+        return reference_value_ts(gv->type.spec);
       }
-      auto fit = module_->fn_index.find(name);
-      if (fit != module_->fn_index.end()) {
-        if (const Function* fn = module_->find_function(fit->second)) {
-          TypeSpec ts = fn->return_type.spec;
-          ts.is_fn_ptr = true;
-          ts.ptr_level = 0;
-          ts.array_rank = 0;
-          ts.array_size = -1;
-          return ts;
-        }
+      if (const Function* fn = module_->find_function_by_name_legacy(name)) {
+        TypeSpec ts = fn->return_type.spec;
+        ts.is_fn_ptr = true;
+        ts.ptr_level = 0;
+        ts.array_rank = 0;
+        ts.array_size = -1;
+        return ts;
       }
       return n->type;
     }
@@ -1788,16 +1774,12 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
         const std::string callee_name = n->left->name;
         auto dit = deduced_template_calls_.find(n);
         if (dit != deduced_template_calls_.end()) {
-          auto fit = module_->fn_index.find(dit->second.mangled_name);
-          if (fit != module_->fn_index.end()) {
-            const Function* fn = module_->find_function(fit->second);
-            if (fn) return reference_value_ts(fn->return_type.spec);
+          if (const Function* fn = module_->find_function_by_name_legacy(dit->second.mangled_name)) {
+            return reference_value_ts(fn->return_type.spec);
           }
         }
-        auto fit = module_->fn_index.find(callee_name);
-        if (fit != module_->fn_index.end()) {
-          const Function* fn = module_->find_function(fit->second);
-          if (fn) return reference_value_ts(fn->return_type.spec);
+        if (const Function* fn = module_->find_function_by_name_legacy(callee_name)) {
+          return reference_value_ts(fn->return_type.spec);
         }
         TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
         if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 && callee_ts.tag) {

@@ -10,12 +10,26 @@ namespace c4c::hir {
 
 namespace {
 
+const Function* find_direct_call_target(const Module& mod, LinkNameId link_name_id,
+                                        std::string_view fallback_name) {
+  if (const Function* fn = mod.find_function(link_name_id)) return fn;
+  return mod.find_function_by_name_legacy(fallback_name);
+}
+
 LinkNameId find_direct_call_carrier_link_name_id(const Module& mod,
-                                                 const std::string& name) {
-  const auto fit = mod.fn_index.find(name);
-  if (fit == mod.fn_index.end()) return kInvalidLinkName;
-  const Function* fn = mod.find_function(fit->second);
+                                                 std::string_view name) {
+  const Function* fn = mod.find_function_by_name_legacy(name);
   return fn ? fn->link_name_id : kInvalidLinkName;
+}
+
+TypeSpec direct_call_callee_type(const Module& mod, const DeclRef& dr,
+                                 const TypeSpec& fallback) {
+  if (const Function* fn = find_direct_call_target(mod, dr.link_name_id, dr.name)) {
+    TypeSpec callee_ts = fn->return_type.spec;
+    callee_ts.ptr_level++;
+    return callee_ts;
+  }
+  return fallback;
 }
 
 DeclRef make_direct_call_decl_ref(Module& mod, std::string name) {
@@ -80,11 +94,10 @@ std::optional<ExprId> Lowerer::try_lower_template_struct_call(FunctionCtx* ctx,
   std::string resolved_mangled = *resolved;
   CallExpr oc{};
   DeclRef dr = make_direct_call_decl_ref(*module_, resolved_mangled);
-  auto fit = module_->fn_index.find(dr.name);
   TypeSpec fn_ts{};
   fn_ts.base = TB_VOID;
-  if (fit != module_->fn_index.end() && fit->second.value < module_->functions.size()) {
-    fn_ts = module_->functions[fit->second.value].return_type.spec;
+  if (const Function* fn = find_direct_call_target(*module_, dr.link_name_id, dr.name)) {
+    fn_ts = fn->return_type.spec;
   }
   if (fn_ts.base == TB_VOID) {
     if (auto rit = find_struct_method_return_type(tmp_ts.tag, "operator_call", false)) {
@@ -195,9 +208,7 @@ bool Lowerer::try_expand_pack_call_arg(FunctionCtx* ctx,
   if (pit == ctx->pack_params.end() || pit->second.empty()) return false;
 
   auto direct_callee_fn = [&](const std::string& name) -> const Function* {
-    auto fit = module_->fn_index.find(name);
-    if (fit == module_->fn_index.end()) return nullptr;
-    return module_->find_function(fit->second);
+    return module_->find_function_by_name_legacy(name);
   };
 
   for (const auto& elem : pit->second) {
@@ -212,10 +223,7 @@ bool Lowerer::try_expand_pack_call_arg(FunctionCtx* ctx,
 
     DeclRef callee_ref = make_direct_call_decl_ref(*module_, callee_name);
     TypeSpec callee_ts = pattern->left->type;
-    if (const Function* callee_fn = direct_callee_fn(callee_name)) {
-      callee_ts = callee_fn->return_type.spec;
-      callee_ts.ptr_level++;
-    }
+    callee_ts = direct_call_callee_type(*module_, callee_ref, callee_ts);
 
     CallExpr expanded_call{};
     expanded_call.callee = append_expr(pattern->left, callee_ref, callee_ts);
@@ -279,11 +287,10 @@ std::optional<ExprId> Lowerer::try_lower_member_call_expr(FunctionCtx* ctx,
       resolved_method = resolve_ref_overload(ovit->first, n, ctx);
     }
     DeclRef dr = make_direct_call_decl_ref(*module_, resolved_method);
-    auto fit = module_->fn_index.find(dr.name);
     TypeSpec fn_ts{};
     fn_ts.base = TB_VOID;
-    if (fit != module_->fn_index.end() && fit->second.value < module_->functions.size()) {
-      fn_ts = module_->functions[fit->second.value].return_type.spec;
+    if (const Function* fn = find_direct_call_target(*module_, dr.link_name_id, dr.name)) {
+      fn_ts = fn->return_type.spec;
     }
     fn_ts.ptr_level++;
     call.callee = append_expr(n->left, dr, fn_ts);
@@ -333,9 +340,8 @@ std::optional<ExprId> Lowerer::try_lower_member_call_expr(FunctionCtx* ctx,
     }
     TypeSpec ts = n->type;
     if (ts.base == TB_VOID && ts.ptr_level == 0) {
-      auto mfit = module_->fn_index.find(resolved_method);
-      if (mfit != module_->fn_index.end() && mfit->second.value < module_->functions.size()) {
-        ts = module_->functions[mfit->second.value].return_type.spec;
+      if (const Function* fn = find_direct_call_target(*module_, dr.link_name_id, dr.name)) {
+        ts = fn->return_type.spec;
       }
     }
     return append_expr(n, call, ts);
@@ -368,9 +374,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
 
   CallExpr c{};
   auto direct_callee_fn = [&](const std::string& name) -> const Function* {
-    auto fit = module_->fn_index.find(name);
-    if (fit == module_->fn_index.end()) return nullptr;
-    return module_->find_function(fit->second);
+    return module_->find_function_by_name_legacy(name);
   };
   if (auto member_call = try_lower_member_call_expr(ctx, n)) {
     return *member_call;
@@ -414,15 +418,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
       }
     }
     DeclRef dr = make_direct_call_decl_ref(*module_, resolved_callee_name);
-    auto fit = module_->fn_index.find(dr.name);
-    if (fit != module_->fn_index.end() &&
-        fit->second.value < module_->functions.size()) {
-      TypeSpec fn_ts = module_->functions[fit->second.value].return_type.spec;
-      fn_ts.ptr_level++;
-      c.callee = append_expr(n->left, dr, fn_ts);
-    } else {
-      c.callee = append_expr(n->left, dr, n->left->type);
-    }
+    c.callee = append_expr(n->left, dr, direct_call_callee_type(*module_, dr, n->left->type));
     TemplateCallInfo tci;
     tci.source_template = n->left->name;
     if (tpl_fn) {
@@ -437,15 +433,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
              ded_it != deduced_template_calls_.end()) {
     resolved_callee_name = ded_it->second.mangled_name;
     DeclRef dr = make_direct_call_decl_ref(*module_, resolved_callee_name);
-    auto fit = module_->fn_index.find(dr.name);
-    if (fit != module_->fn_index.end() &&
-        fit->second.value < module_->functions.size()) {
-      TypeSpec fn_ts = module_->functions[fit->second.value].return_type.spec;
-      fn_ts.ptr_level++;
-      c.callee = append_expr(n->left, dr, fn_ts);
-    } else {
-      c.callee = append_expr(n->left, dr, n->left->type);
-    }
+    c.callee = append_expr(n->left, dr, direct_call_callee_type(*module_, dr, n->left->type));
     TemplateCallInfo tci;
     tci.source_template = n->left->name;
     const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
@@ -467,20 +455,12 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
       diag += "'";
       throw std::runtime_error(diag);
     }
-    if (n->left && n->left->kind == NK_VAR && n->left->name &&
-        ref_overload_set_.count(n->left->name)) {
-      resolved_callee_name = resolve_ref_overload(n->left->name, n, ctx);
-      DeclRef dr = make_direct_call_decl_ref(*module_, resolved_callee_name);
-      auto fit = module_->fn_index.find(dr.name);
-      if (fit != module_->fn_index.end() &&
-          fit->second.value < module_->functions.size()) {
-        TypeSpec fn_ts = module_->functions[fit->second.value].return_type.spec;
-        fn_ts.ptr_level++;
-        c.callee = append_expr(n->left, dr, fn_ts);
+      if (n->left && n->left->kind == NK_VAR && n->left->name &&
+          ref_overload_set_.count(n->left->name)) {
+        resolved_callee_name = resolve_ref_overload(n->left->name, n, ctx);
+        DeclRef dr = make_direct_call_decl_ref(*module_, resolved_callee_name);
+        c.callee = append_expr(n->left, dr, direct_call_callee_type(*module_, dr, n->left->type));
       } else {
-        c.callee = append_expr(n->left, dr, n->left->type);
-      }
-    } else {
       bool resolved_as_method = false;
       if (ctx && !ctx->method_struct_tag.empty() &&
           n->left && n->left->kind == NK_VAR && n->left->name) {
@@ -494,12 +474,10 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
           if (resolved_method) {
             resolved_callee_name = *resolved_method;
             DeclRef dr = make_direct_call_decl_ref(*module_, resolved_callee_name);
-            auto fit = module_->fn_index.find(dr.name);
             TypeSpec fn_ts{};
             fn_ts.base = TB_VOID;
-            if (fit != module_->fn_index.end() &&
-                fit->second.value < module_->functions.size()) {
-              fn_ts = module_->functions[fit->second.value].return_type.spec;
+            if (const Function* fn = find_direct_call_target(*module_, dr.link_name_id, dr.name)) {
+              fn_ts = fn->return_type.spec;
             }
             fn_ts.ptr_level++;
             c.callee = append_expr(n->left, dr, fn_ts);
