@@ -860,6 +860,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
       // Declaration — no body to lower; hir_to_lir owns this directly.
       LirFunction lir_fn;
       lir_fn.name = quote_llvm_ident(fn.name);
+      lir_fn.link_name_id = fn.link_name_id;
       lir_fn.is_internal = false;
       lir_fn.can_elide_if_unreferenced = false;
       lir_fn.is_declaration = true;
@@ -898,6 +899,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
       // Build LirFunction from accumulated ctx — owned by hir_to_lir.
       LirFunction lir_fn;
       lir_fn.name = quote_llvm_ident(fn.name);
+      lir_fn.link_name_id = fn.link_name_id;
       lir_fn.is_internal = fn.linkage.is_static;
       const bool is_std_impl_helper =
           fn.name.rfind("std::__", 0) == 0;

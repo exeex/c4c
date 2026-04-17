@@ -1,14 +1,16 @@
 #include "arena.hpp"
+#include "hir_to_lir.hpp"
 #include "hir/hir_ir.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "sema.hpp"
 #include "source_profile.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
-#include <string_view>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -183,6 +185,39 @@ int use_template() { return id<int>(add_one(global_value)); }
               "template-instantiation metadata and lowered HIR functions should share one LinkNameId");
 }
 
+void test_hir_to_lir_forwards_function_link_name_ids() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+template<typename T>
+T id(T value) { return value; }
+
+int global_value = 7;
+
+int add_one(int value) { return value + 1; }
+
+int use_template() { return id<int>(add_one(global_value)); }
+)cpp");
+  const c4c::codegen::lir::LirModule lir_module =
+      c4c::codegen::lir::lower(hir_module);
+
+  const auto hir_fn_it = hir_module.fn_index.find("add_one");
+  expect_true(hir_fn_it != hir_module.fn_index.end(),
+              "fixture function should still be present in the HIR function index");
+  const c4c::hir::Function* hir_function = hir_module.find_function(hir_fn_it->second);
+  expect_true(hir_function != nullptr,
+              "fixture function should resolve through the HIR lookup before lowering to LIR");
+  expect_true(hir_function->link_name_id != c4c::kInvalidLinkName,
+              "fixture function should carry a valid HIR LinkNameId before LIR lowering");
+
+  const auto lir_fn_it = std::find_if(lir_module.functions.begin(), lir_module.functions.end(),
+                                      [](const c4c::codegen::lir::LirFunction& fn) {
+                                        return fn.name == "add_one";
+                                      });
+  expect_true(lir_fn_it != lir_module.functions.end(),
+              "fixture function should lower into a concrete LIR function carrier");
+  expect_true(lir_fn_it->link_name_id == hir_function->link_name_id,
+              "LIR functions should forward the HIR LinkNameId on the direct emitted-function path");
+}
+
 }  // namespace
 
 int main() {
@@ -191,6 +226,7 @@ int main() {
   test_dense_id_map_supports_local_type_storage();
   test_optional_dense_id_map_supports_function_id_counters();
   test_hir_materializes_link_name_ids_for_emitted_symbols();
+  test_hir_to_lir_forwards_function_link_name_ids();
 
   std::cout << "PASS: frontend_hir_tests\n";
   return 0;

@@ -26,6 +26,7 @@
 #include "operands.hpp"
 #include "types.hpp"
 #include "ast.hpp"  // TypeSpec, TypeBase
+#include "../../frontend/string_id_table.hpp"
 #include "../../target_profile.hpp"
 
 namespace c4c::codegen::lir {
@@ -480,6 +481,7 @@ struct LirExternDecl {
 
 struct LirFunction {
   std::string name;
+  LinkNameId link_name_id = kInvalidLinkName;
   bool is_internal = false;
   bool can_elide_if_unreferenced = false;
   bool is_declaration = false;  // true for declarations (no body)

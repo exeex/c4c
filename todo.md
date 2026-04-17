@@ -6,18 +6,18 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Started Step 2: HIR now owns a live `LinkNameTable` at the materialization
-boundary, `hir::Function` / `hir::GlobalVar` / `hir::HirTemplateInstantiation`
-carry parallel link-name ids, HIR lowering interns emitted symbol names for
-functions/globals/template instances, and `tests/frontend/frontend_hir_tests.cpp`
-now exercises a real lowered HIR module to prove those ids materialize and
-resolve back to spelling.
+Started Step 3 on the direct emitted-function path: `codegen::lir::LirFunction`
+now carries a parallel `link_name_id`, HIR-to-LIR lowering forwards
+`hir::Function.link_name_id` for both declarations and definitions, and
+`tests/frontend/frontend_hir_tests.cpp` now lowers a real HIR fixture into LIR
+to prove the forwarded id survives on the first bounded HIR->LIR carrier.
 
 ## Suggested Next
 
-Start Step 3 from `plan.md`: extend the first bounded LIR carrier path with
-parallel link-name ids and forward the HIR-owned ids through one real
-HIR->LIR symbol path without collapsing back to string-only reconstruction.
+Continue Step 3 with the next bounded symbol family: decide whether
+`LirGlobal`, specialization metadata, or another directly emitted link-visible
+carrier should be the second explicit id path before widening into late
+consumer lookup in Step 4.
 
 ## Watchouts
 
@@ -26,10 +26,10 @@ HIR->LIR symbol path without collapsing back to string-only reconstruction.
   second string store once the shared TU text-table boundary is available
 - keep `LinkNameId` distinct from both `TextId` and parser/source-atom
   `SymbolId`; the new HIR fields are parallel carriers, not replacements
-- Step 3 should forward the new ids explicitly into LIR rather than reading
-  back `Function.name` / `GlobalVar.name` as an implicit side channel
-- late consumer lookup is still string-based today, so the next slice should
-  stay on one bounded HIR->LIR path before touching backend/text emission
+- the first Step 3 slice proves only the emitted-function carrier; `LirGlobal`
+  and late consumer lookup are still string-based today
+- keep forwarding explicit ids through LIR carriers rather than treating
+  `name` strings as the semantic source of truth
 - avoid testcase-overfit proof or brittle emitted-text substring matching as a
   substitute for a real id path
 
