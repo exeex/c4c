@@ -23,12 +23,6 @@ struct ProgramPointLocation {
   std::size_t instruction_index = 0;
 };
 
-enum class AssignedStorageKind {
-  None,
-  Register,
-  StackSlot,
-};
-
 [[nodiscard]] PreparedRegisterClass classify_register_class(const PreparedLivenessValue& value) {
   switch (value.type) {
     case bir::TypeKind::I1:
@@ -165,47 +159,51 @@ enum class AssignedStorageKind {
   return stack_layout::normalize_alignment(value.type, 0, normalized_value_size(value));
 }
 
-[[nodiscard]] AssignedStorageKind assigned_storage_kind(const PreparedRegallocValue& value) {
+[[nodiscard]] PreparedMoveStorageKind assigned_storage_kind(const PreparedRegallocValue& value) {
   if (value.assigned_register.has_value()) {
-    return AssignedStorageKind::Register;
+    return PreparedMoveStorageKind::Register;
   }
   if (value.assigned_stack_slot.has_value()) {
-    return AssignedStorageKind::StackSlot;
+    return PreparedMoveStorageKind::StackSlot;
   }
-  return AssignedStorageKind::None;
+  return PreparedMoveStorageKind::None;
 }
 
 [[nodiscard]] bool assigned_storage_matches(const PreparedRegallocValue& lhs,
                                             const PreparedRegallocValue& rhs) {
-  const AssignedStorageKind lhs_kind = assigned_storage_kind(lhs);
-  const AssignedStorageKind rhs_kind = assigned_storage_kind(rhs);
+  const PreparedMoveStorageKind lhs_kind = assigned_storage_kind(lhs);
+  const PreparedMoveStorageKind rhs_kind = assigned_storage_kind(rhs);
   if (lhs_kind != rhs_kind) {
     return false;
   }
   switch (lhs_kind) {
-    case AssignedStorageKind::None:
+    case PreparedMoveStorageKind::None:
       return true;
-    case AssignedStorageKind::Register:
+    case PreparedMoveStorageKind::Register:
       return lhs.assigned_register->register_name == rhs.assigned_register->register_name;
-    case AssignedStorageKind::StackSlot:
+    case PreparedMoveStorageKind::StackSlot:
       return lhs.assigned_stack_slot->slot_id == rhs.assigned_stack_slot->slot_id;
   }
   return false;
 }
 
 [[nodiscard]] std::string storage_transfer_reason(std::string_view prefix,
-                                                  AssignedStorageKind from_kind,
-                                                  AssignedStorageKind to_kind) {
-  if (from_kind == AssignedStorageKind::StackSlot && to_kind == AssignedStorageKind::Register) {
+                                                  PreparedMoveStorageKind from_kind,
+                                                  PreparedMoveStorageKind to_kind) {
+  if (from_kind == PreparedMoveStorageKind::StackSlot &&
+      to_kind == PreparedMoveStorageKind::Register) {
     return std::string(prefix) + "_stack_to_register";
   }
-  if (from_kind == AssignedStorageKind::Register && to_kind == AssignedStorageKind::StackSlot) {
+  if (from_kind == PreparedMoveStorageKind::Register &&
+      to_kind == PreparedMoveStorageKind::StackSlot) {
     return std::string(prefix) + "_register_to_stack";
   }
-  if (from_kind == AssignedStorageKind::Register && to_kind == AssignedStorageKind::Register) {
+  if (from_kind == PreparedMoveStorageKind::Register &&
+      to_kind == PreparedMoveStorageKind::Register) {
     return std::string(prefix) + "_register_to_register";
   }
-  if (from_kind == AssignedStorageKind::StackSlot && to_kind == AssignedStorageKind::StackSlot) {
+  if (from_kind == PreparedMoveStorageKind::StackSlot &&
+      to_kind == PreparedMoveStorageKind::StackSlot) {
     return std::string(prefix) + "_stack_to_stack";
   }
   return std::string(prefix) + "_storage_resolution";
@@ -223,8 +221,8 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    std::size_t block_index,
                                    std::size_t instruction_index,
                                    std::string reason) {
-  if (assigned_storage_kind(source) == AssignedStorageKind::None ||
-      assigned_storage_kind(destination) == AssignedStorageKind::None ||
+  if (assigned_storage_kind(source) == PreparedMoveStorageKind::None ||
+      assigned_storage_kind(destination) == PreparedMoveStorageKind::None ||
       assigned_storage_matches(source, destination)) {
     return;
   }
@@ -234,7 +232,10 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       regalloc_function.move_resolution.end(),
       [&](const PreparedMoveResolution& move) {
         return move.from_value_id == source.value_id && move.to_value_id == destination.value_id &&
-               move.block_index == block_index && move.instruction_index == instruction_index;
+               move.destination_kind == PreparedMoveDestinationKind::Value &&
+               move.destination_storage_kind == assigned_storage_kind(destination) &&
+               !move.destination_abi_index.has_value() && move.block_index == block_index &&
+               move.instruction_index == instruction_index;
       });
   if (duplicate != regalloc_function.move_resolution.end()) {
     return;
@@ -243,6 +244,9 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
   regalloc_function.move_resolution.push_back(PreparedMoveResolution{
       .from_value_id = source.value_id,
       .to_value_id = destination.value_id,
+      .destination_kind = PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = assigned_storage_kind(destination),
+      .destination_abi_index = std::nullopt,
       .block_index = block_index,
       .instruction_index = instruction_index,
       .reason = std::move(reason),
@@ -252,12 +256,14 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
 void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    PreparedValueId from_value_id,
                                    PreparedValueId to_value_id,
-                                   AssignedStorageKind from_kind,
-                                   AssignedStorageKind to_kind,
+                                   PreparedMoveDestinationKind destination_kind,
+                                   PreparedMoveStorageKind from_kind,
+                                   PreparedMoveStorageKind to_kind,
+                                   std::optional<std::size_t> destination_abi_index,
                                    std::size_t block_index,
                                    std::size_t instruction_index,
                                    std::string reason) {
-  if (from_kind == AssignedStorageKind::None || to_kind == AssignedStorageKind::None ||
+  if (from_kind == PreparedMoveStorageKind::None || to_kind == PreparedMoveStorageKind::None ||
       from_kind == to_kind) {
     return;
   }
@@ -267,6 +273,9 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       regalloc_function.move_resolution.end(),
       [&](const PreparedMoveResolution& move) {
         return move.from_value_id == from_value_id && move.to_value_id == to_value_id &&
+               move.destination_kind == destination_kind &&
+               move.destination_storage_kind == to_kind &&
+               move.destination_abi_index == destination_abi_index &&
                move.block_index == block_index && move.instruction_index == instruction_index;
       });
   if (duplicate != regalloc_function.move_resolution.end()) {
@@ -276,6 +285,9 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
   regalloc_function.move_resolution.push_back(PreparedMoveResolution{
       .from_value_id = from_value_id,
       .to_value_id = to_value_id,
+      .destination_kind = destination_kind,
+      .destination_storage_kind = to_kind,
+      .destination_abi_index = destination_abi_index,
       .block_index = block_index,
       .instruction_index = instruction_index,
       .reason = std::move(reason),
@@ -446,7 +458,7 @@ void append_phi_move_resolution(const bir::Function& function,
       }
 
       const auto* destination = find_regalloc_value(regalloc_function, phi->result.name);
-      if (destination == nullptr || assigned_storage_kind(*destination) == AssignedStorageKind::None) {
+      if (destination == nullptr || assigned_storage_kind(*destination) == PreparedMoveStorageKind::None) {
         continue;
       }
 
@@ -456,7 +468,7 @@ void append_phi_move_resolution(const bir::Function& function,
         }
 
         const auto* source = find_regalloc_value(regalloc_function, incoming.value.name);
-        if (source == nullptr || assigned_storage_kind(*source) == AssignedStorageKind::None ||
+        if (source == nullptr || assigned_storage_kind(*source) == PreparedMoveStorageKind::None ||
             assigned_storage_matches(*source, *destination)) {
           continue;
         }
@@ -530,43 +542,43 @@ void append_consumer_move_resolution(const bir::Function& function,
   }
 }
 
-[[nodiscard]] AssignedStorageKind call_arg_storage_kind(const bir::CallInst& call,
-                                                        std::size_t arg_index) {
+[[nodiscard]] PreparedMoveStorageKind call_arg_storage_kind(const bir::CallInst& call,
+                                                            std::size_t arg_index) {
   if (arg_index >= call.arg_abi.size()) {
-    return AssignedStorageKind::None;
+    return PreparedMoveStorageKind::None;
   }
 
   const auto& abi = call.arg_abi[arg_index];
   if (abi.passed_in_register) {
-    return AssignedStorageKind::Register;
+    return PreparedMoveStorageKind::Register;
   }
   if (abi.passed_on_stack || abi.byval_copy || abi.sret_pointer ||
       abi.primary_class == bir::AbiValueClass::Memory) {
-    return AssignedStorageKind::StackSlot;
+    return PreparedMoveStorageKind::StackSlot;
   }
-  return AssignedStorageKind::None;
+  return PreparedMoveStorageKind::None;
 }
 
-[[nodiscard]] AssignedStorageKind call_result_storage_kind(const bir::CallInst& call) {
+[[nodiscard]] PreparedMoveStorageKind call_result_storage_kind(const bir::CallInst& call) {
   if (!call.result.has_value() || !call.result_abi.has_value() || call.result->kind != bir::Value::Kind::Named) {
-    return AssignedStorageKind::None;
+    return PreparedMoveStorageKind::None;
   }
 
   const auto& abi = *call.result_abi;
   if (abi.returned_in_memory || abi.primary_class == bir::AbiValueClass::Memory) {
-    return AssignedStorageKind::StackSlot;
+    return PreparedMoveStorageKind::StackSlot;
   }
   if (abi.type != bir::TypeKind::Void) {
-    return AssignedStorageKind::Register;
+    return PreparedMoveStorageKind::Register;
   }
-  return AssignedStorageKind::None;
+  return PreparedMoveStorageKind::None;
 }
 
-[[nodiscard]] AssignedStorageKind function_return_storage_kind(const bir::Function& function) {
+[[nodiscard]] PreparedMoveStorageKind function_return_storage_kind(const bir::Function& function) {
   if (function.return_type == bir::TypeKind::Void) {
-    return AssignedStorageKind::None;
+    return PreparedMoveStorageKind::None;
   }
-  return AssignedStorageKind::Register;
+  return PreparedMoveStorageKind::Register;
 }
 
 void append_call_arg_move_resolution(const bir::Function& function,
@@ -590,12 +602,14 @@ void append_call_arg_move_resolution(const bir::Function& function,
           continue;
         }
 
-        const AssignedStorageKind consumed_kind = call_arg_storage_kind(*call, arg_index);
+        const PreparedMoveStorageKind consumed_kind = call_arg_storage_kind(*call, arg_index);
         append_move_resolution_record(regalloc_function,
                                       source->value_id,
                                       source->value_id,
+                                      PreparedMoveDestinationKind::CallArgumentAbi,
                                       assigned_storage_kind(*source),
                                       consumed_kind,
+                                      arg_index,
                                       block_index,
                                       instruction_index,
                                       storage_transfer_reason("call_arg",
@@ -621,12 +635,14 @@ void append_call_result_move_resolution(const bir::Function& function,
         continue;
       }
 
-      const AssignedStorageKind consumed_kind = call_result_storage_kind(*call);
+      const PreparedMoveStorageKind consumed_kind = call_result_storage_kind(*call);
       append_move_resolution_record(regalloc_function,
                                     result->value_id,
                                     result->value_id,
+                                    PreparedMoveDestinationKind::CallResultAbi,
                                     assigned_storage_kind(*result),
                                     consumed_kind,
+                                    std::nullopt,
                                     block_index,
                                     instruction_index,
                                     storage_transfer_reason("call_result",
@@ -638,8 +654,8 @@ void append_call_result_move_resolution(const bir::Function& function,
 
 void append_return_move_resolution(const bir::Function& function,
                                    PreparedRegallocFunction& regalloc_function) {
-  const AssignedStorageKind consumed_kind = function_return_storage_kind(function);
-  if (consumed_kind == AssignedStorageKind::None) {
+  const PreparedMoveStorageKind consumed_kind = function_return_storage_kind(function);
+  if (consumed_kind == PreparedMoveStorageKind::None) {
     return;
   }
 
@@ -658,8 +674,10 @@ void append_return_move_resolution(const bir::Function& function,
     append_move_resolution_record(regalloc_function,
                                   source->value_id,
                                   source->value_id,
+                                  PreparedMoveDestinationKind::FunctionReturnAbi,
                                   assigned_storage_kind(*source),
                                   consumed_kind,
+                                  std::nullopt,
                                   block_index,
                                   block.insts.size(),
                                   storage_transfer_reason("return",

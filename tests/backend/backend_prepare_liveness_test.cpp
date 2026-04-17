@@ -1173,6 +1173,11 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
       move->reason != "phi_join_stack_to_register") {
     return fail("expected the stack-backed left phi incoming to publish a join-time stack-to-register move");
   }
+  if (move->destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+      move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      move->destination_abi_index.has_value()) {
+    return fail("expected phi-join move resolution to keep the generic value destination surface");
+  }
   if (right_feed->assigned_register.has_value() &&
       right_feed->assigned_register->register_name == phi->assigned_register->register_name &&
       find_move_resolution(*function, right_feed->value_id, phi->value_id) != nullptr) {
@@ -1258,6 +1263,11 @@ int check_weighted_post_call_regalloc(const prepare::PreparedBirModule& prepared
       carry_to_hot->reason != "consumer_register_to_register") {
     return fail("expected the post-call carry use to publish a consumer-keyed register-to-register move record");
   }
+  if (carry_to_hot->destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+      carry_to_hot->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      carry_to_hot->destination_abi_index.has_value()) {
+    return fail("expected consumer move resolution to keep the generic value destination surface");
+  }
 
   return 0;
 }
@@ -1326,6 +1336,11 @@ int check_call_arg_move_resolution(const prepare::PreparedBirModule& prepared) {
       spill_move->reason != "call_arg_stack_to_register") {
     return fail("expected the stack-backed named call argument to publish a call-site stack-to-register move");
   }
+  if (spill_move->destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      spill_move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      spill_move->destination_abi_index != std::optional<std::size_t>{3}) {
+    return fail("expected the call-argument move to publish the concrete ABI argument destination");
+  }
   if (find_move_resolution(*function, keep_arg->value_id, keep_arg->value_id) != nullptr) {
     return fail("expected register-backed call arguments to skip redundant call-site move resolution");
   }
@@ -1353,6 +1368,11 @@ int check_call_result_move_resolution(const prepare::PreparedBirModule& prepared
       move->reason != "call_result_stack_to_register") {
     return fail("expected the stack-backed call result to publish a call-result stack-to-register move");
   }
+  if (move->destination_kind != prepare::PreparedMoveDestinationKind::CallResultAbi ||
+      move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      move->destination_abi_index.has_value()) {
+    return fail("expected the call-result move to publish the concrete ABI return destination");
+  }
 
   return 0;
 }
@@ -1376,6 +1396,11 @@ int check_return_move_resolution(const prepare::PreparedBirModule& prepared) {
   if (move == nullptr || move->block_index != 0 || move->instruction_index != 1 ||
       move->reason != "return_stack_to_register") {
     return fail("expected the stack-backed return value to publish a return-site stack-to-register move");
+  }
+  if (move->destination_kind != prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+      move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      move->destination_abi_index.has_value()) {
+    return fail("expected the return-site move to publish the function ABI destination surface");
   }
 
   return 0;
