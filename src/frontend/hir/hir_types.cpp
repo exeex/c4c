@@ -21,6 +21,23 @@
 
 namespace c4c::hir {
 
+namespace {
+
+bool init_list_has_field_designator(const InitListItem& item) {
+  return item.field_designator_text_id != kInvalidText || item.field_designator.has_value();
+}
+
+std::string_view init_list_field_designator_text(const InitListItem& item,
+                                                 const TextTable* texts) {
+  if (item.field_designator_text_id != kInvalidText && texts) {
+    return texts->lookup(item.field_designator_text_id);
+  }
+  if (item.field_designator) return *item.field_designator;
+  return {};
+}
+
+}  // namespace
+
 bool Lowerer::is_lvalue_ref_ts(const TypeSpec& ts) {
   return ts.is_lvalue_ref;
 }
@@ -613,17 +630,19 @@ GlobalInit Lowerer::normalize_global_init(const TypeSpec& ts, const GlobalInit& 
     return std::any_of(
         list.items.begin(), list.items.end(),
         [](const InitListItem& item) {
-          return item.field_designator.has_value() || item.index_designator.has_value();
+          return init_list_has_field_designator(item) || item.index_designator.has_value();
         });
   };
   auto find_aggregate_field_index =
       [&](const HirStructDef& sd, const InitListItem& item, size_t next_idx)
       -> std::optional<size_t> {
     size_t idx = next_idx;
-    if (item.field_designator) {
+    const std::string_view designator =
+        init_list_field_designator_text(item, module_ ? module_->link_name_texts.get() : nullptr);
+    if (!designator.empty()) {
       const auto fit = std::find_if(
           sd.fields.begin(), sd.fields.end(),
-          [&](const HirStructField& field) { return field.name == *item.field_designator; });
+          [&](const HirStructField& field) { return field.name == designator; });
       if (fit == sd.fields.end()) return std::nullopt;
       idx = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
     } else if (item.index_designator && *item.index_designator >= 0) {
@@ -637,8 +656,14 @@ GlobalInit Lowerer::normalize_global_init(const TypeSpec& ts, const GlobalInit& 
           const GlobalInit& child) -> std::optional<InitListItem> {
     auto item = make_init_item(child);
     if (!item) return std::nullopt;
-    if (!sd.fields[idx].name.empty()) item->field_designator = sd.fields[idx].name;
-    else item->index_designator = static_cast<long long>(idx);
+    if (!sd.fields[idx].name.empty()) {
+      item->field_designator = sd.fields[idx].name;
+      item->field_designator_text_id = make_text_id(
+          sd.fields[idx].name, module_ ? module_->link_name_texts.get() : nullptr);
+    } else {
+      item->index_designator = static_cast<long long>(idx);
+      item->field_designator_text_id = kInvalidText;
+    }
     if (target_ts.array_rank > 0 && target_ts.array_size >= 0) {
       item->resolved_array_bound = target_ts.array_size;
     }
@@ -651,6 +676,7 @@ GlobalInit Lowerer::normalize_global_init(const TypeSpec& ts, const GlobalInit& 
     if (!item) return std::nullopt;
     item->index_designator = idx;
     item->field_designator.reset();
+    item->field_designator_text_id = kInvalidText;
     if (target_ts.array_rank > 0 && target_ts.array_size >= 0) {
       item->resolved_array_bound = target_ts.array_size;
     }
@@ -812,7 +838,7 @@ GlobalInit Lowerer::normalize_global_init(const TypeSpec& ts, const GlobalInit& 
       if (list->items.empty()) return init;
       const auto& item0 = list->items.front();
       const auto maybe_idx = find_aggregate_field_index(sd, item0, 0);
-      if (maybe_idx && (item0.field_designator || item0.index_designator)) {
+      if (maybe_idx && (init_list_has_field_designator(item0) || item0.index_designator)) {
         idx = *maybe_idx;
         child = child_init_of(item0);
       } else {
@@ -1123,6 +1149,8 @@ InitList Lowerer::lower_init_list(const Node* n, FunctionCtx* ctx) {
           item.index_designator = it->desig_val;
         } else if (it->desig_field) {
           item.field_designator = std::string(it->desig_field);
+          item.field_designator_text_id = make_text_id(
+              *item.field_designator, module_ ? module_->link_name_texts.get() : nullptr);
         }
       }
       value_node = it->left ? it->left : it->right;

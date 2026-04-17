@@ -191,6 +191,14 @@ class Printer {
  private:
   const Module& m_;
 
+  std::string_view init_list_field_designator_text(const InitListItem& item) const {
+    if (item.field_designator_text_id != kInvalidText && m_.link_name_texts) {
+      return m_.link_name_texts->lookup(item.field_designator_text_id);
+    }
+    if (item.field_designator) return *item.field_designator;
+    return {};
+  }
+
   void print_template_def(std::ostringstream& out, const HirTemplateDef& td) {
     out << "  template";
     if (td.is_consteval) out << " consteval";
@@ -450,7 +458,8 @@ class Printer {
     for (size_t i = 0; i < list.items.size(); ++i) {
       if (i) out << ", ";
       const auto& item = list.items[i];
-      if (item.field_designator) out << "." << *item.field_designator << " = ";
+      const std::string_view field_designator = init_list_field_designator_text(item);
+      if (!field_designator.empty()) out << "." << field_designator << " = ";
       else if (item.index_designator) out << "[" << *item.index_designator << "] = ";
       if (item.resolved_array_bound) out << "<bound=" << *item.resolved_array_bound << "> ";
       print_global_init_inline(out, std::visit(

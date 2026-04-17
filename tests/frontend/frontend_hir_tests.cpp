@@ -1,6 +1,7 @@
 #include "arena.hpp"
 #include "hir_to_lir.hpp"
 #include "hir/hir_ir.hpp"
+#include "hir/hir_printer.hpp"
 #include "lir_printer.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
@@ -679,6 +680,55 @@ int read_value(Widget* widget) { return widget->value; }
   expect_eq(hir_module.link_name_texts->lookup(member_expr->field_text_id),
             member_expr->field,
             "member-expression field TextIds should resolve through the HIR text table");
+}
+
+void test_hir_global_init_designators_preserve_text_ids_for_field_names() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+struct Triple {
+  int left;
+  int middle;
+  int right;
+};
+
+struct Triple triple = {.right = 7};
+)c",
+                                                  c4c::SourceProfile::C);
+
+  const auto global_it = hir_module.global_index.find("triple");
+  expect_true(global_it != hir_module.global_index.end(),
+              "fixture global should be present in the HIR global index");
+  c4c::hir::GlobalVar* global = hir_module.find_global(global_it->second);
+  expect_true(global != nullptr,
+              "fixture global should resolve through the mutable HIR global lookup");
+
+  auto* init_list = std::get_if<c4c::hir::InitList>(&global->init);
+  expect_true(init_list != nullptr && !init_list->items.empty(),
+              "fixture global should lower to a non-empty designated init list");
+
+  c4c::hir::InitListItem& item = init_list->items.front();
+  expect_true(item.field_designator.has_value(),
+              "designated init items should preserve the legacy field spelling during migration");
+  expect_true(item.field_designator_text_id != c4c::kInvalidText,
+              "designated init items should preserve a parallel TextId for the field name");
+  expect_eq(hir_module.link_name_texts->lookup(item.field_designator_text_id), "right",
+            "init-list field designator TextIds should resolve through the HIR text table");
+
+  item.field_designator = "broken_right";
+
+  const std::string hir_dump = c4c::hir::format_hir(hir_module);
+  expect_true(hir_dump.find(".right = 7") != std::string::npos,
+              "HIR printer should recover designated field spellings from TextId lookup");
+  expect_true(hir_dump.find("broken_right") == std::string::npos,
+              "HIR printer should not trust a corrupted raw field designator");
+
+  const c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+  const auto lir_global_it = std::find_if(
+      lir_module.globals.begin(), lir_module.globals.end(),
+      [](const c4c::codegen::lir::LirGlobal& global) { return global.name == "triple"; });
+  expect_true(lir_global_it != lir_module.globals.end(),
+              "fixture global should lower into a concrete LIR global carrier");
+  expect_eq(lir_global_it->init_text, "{ i32 zeroinitializer, i32 zeroinitializer, i32 7 }",
+            "LIR const-init lowering should recover the designated field from TextId lookup");
 }
 
 void test_hir_to_lir_forwards_function_link_name_ids() {
@@ -1653,6 +1703,7 @@ int main() {
   test_hir_template_calls_preserve_text_ids_for_source_template_names();
   test_hir_consteval_call_metadata_preserves_text_ids_for_function_names();
   test_hir_member_exprs_preserve_text_ids_for_field_names();
+  test_hir_global_init_designators_preserve_text_ids_for_field_names();
   test_hir_to_lir_forwards_function_link_name_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();

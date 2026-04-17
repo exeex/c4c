@@ -46,6 +46,19 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
   return resolved.empty() ? std::string(fallback) : std::string(resolved);
 }
 
+bool init_list_has_field_designator(const InitListItem& item) {
+  return item.field_designator_text_id != kInvalidText || item.field_designator.has_value();
+}
+
+std::string_view init_list_field_designator_text(const InitListItem& item,
+                                                 const TextTable* texts) {
+  if (item.field_designator_text_id != kInvalidText && texts) {
+    return texts->lookup(item.field_designator_text_id);
+  }
+  if (item.field_designator) return *item.field_designator;
+  return {};
+}
+
 }  // namespace
 
 // ── Constructor ───────────────────────────────────────────────────────────────
@@ -1131,10 +1144,12 @@ TypeSpec ConstInitEmitter::resolve_flexible_array_field_ts(const HirStructField&
 
 std::optional<size_t> ConstInitEmitter::find_union_field_index(const HirStructDef& union_sd,
                                                                const InitListItem& item) const {
-  if (item.field_designator) {
+  const std::string_view designator =
+      init_list_field_designator_text(item, mod_.link_name_texts.get());
+  if (!designator.empty()) {
     const auto fit = std::find_if(
         union_sd.fields.begin(), union_sd.fields.end(),
-        [&](const HirStructField& f) { return f.name == *item.field_designator; });
+        [&](const HirStructField& f) { return f.name == designator; });
     if (fit == union_sd.fields.end()) return std::nullopt;
     return static_cast<size_t>(std::distance(union_sd.fields.begin(), fit));
   }
@@ -1156,7 +1171,7 @@ std::optional<long long> ConstInitEmitter::find_array_index(const InitListItem& 
 }
 
 bool ConstInitEmitter::is_explicitly_mapped_item(const InitListItem& item) const {
-  return item.field_designator.has_value() || item.index_designator.has_value();
+  return init_list_has_field_designator(item) || item.index_designator.has_value();
 }
 
 bool ConstInitEmitter::is_explicitly_mapped_list(const InitList& list) const {
@@ -1175,10 +1190,12 @@ std::optional<size_t> ConstInitEmitter::find_struct_field_index(const HirStructD
                                                                 const InitListItem& item,
                                                                 size_t next_idx) const {
   size_t idx = next_idx;
-  if (item.field_designator) {
+  const std::string_view designator =
+      init_list_field_designator_text(item, mod_.link_name_texts.get());
+  if (!designator.empty()) {
     const auto fit = std::find_if(
         sd.fields.begin(), sd.fields.end(),
-        [&](const HirStructField& f) { return f.name == *item.field_designator; });
+        [&](const HirStructField& f) { return f.name == designator; });
     if (fit == sd.fields.end()) return std::nullopt;
     idx = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
   } else if (item.index_designator && *item.index_designator >= 0) {
