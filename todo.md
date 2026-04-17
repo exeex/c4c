@@ -6,25 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Started Step 3 by extending the public prepared-liveness contract with exact
-per-value `definition_point` and ordered `use_points`, instead of publishing
-only interval ranges. The active C++ liveness path now retains those exact
-program points while it computes intervals, so downstream value-driven
-consumers can distinguish true defs/uses from CFG live-through extension.
+Started the first real Step 3/4 bridge by replacing the `run_regalloc()`
+no-op with active liveness projection: the C++ prealloc route now publishes
+per-function `PreparedRegallocValue` seed records, type-driven allocation
+constraints, and live-interval interference edges derived from active liveness
+data instead of relying on stack-object-only summaries or a stub phase.
 
-Focused `backend_prepare_liveness` coverage now proves that predecessor-edge
-phi uses are exposed as real use points: `left.v` and `right.v` keep their
-block-local definitions at points 2 and 4 while publishing the join-edge phi
-uses at points 3 and 5, and the downstream `phi.v` / `sum` values likewise
-publish their exact definition/use points on the active path.
+Focused `backend_prepare_liveness` coverage now proves that the active route
+reaches regalloc for the phi test function: `phi.v` keeps its value-level
+interval and priority in `PreparedRegallocValue`, receives a general-register
+constraint, and interferes with `sum` because their live intervals overlap,
+while disjoint predecessors `left.v` and `right.v` remain non-interfering.
 
 ## Suggested Next
 
-Use the new exact def/use program-point contract to add the first real
-value-driven Step 3/4 bridge: publish the minimum allocation-constraint or
-interference seed data that `regalloc` will consume from liveness, without
-falling back to stack-object identity or reintroducing stack-layout-only
-heuristics.
+Make the next Step 4 slice consume these published regalloc seeds
+semantically: teach `run_regalloc()` to make the first bounded allocation
+decision from value intervals plus call-crossing/home-slot constraints, rather
+than stopping at unallocated seed data.
 
 ## Watchouts
 
@@ -32,9 +31,12 @@ heuristics.
   while `live_interval` still represents the CFG-extended range after
   live-through propagation; downstream consumers must not collapse those into
   one concept
-- the active contract still does not publish interference, spill weights, or
-  allocation constraints; the next packet should add one real regalloc-facing
-  bridge rather than inventing placeholder summaries
+- the current regalloc bridge seeds general/float eligibility, priorities, and
+  interval-overlap interference, but it still leaves every value unallocated;
+  the next packet should consume these seeds to make at least one real
+  allocation or stack-slot decision
+- `PreparedAllocationConstraint.cannot_cross_call` still needs a clearer
+  semantic contract before call-heavy tests rely on it for allocator behavior
 - Rust Tier 2 / Tier 3 shared-slot reuse is still reference-only for the
   active C++ route: `PreparedFrameSlot` remains a dedicated object-owned slot
   record, so do not fake value-level reuse with object names, source kinds, or
@@ -51,7 +53,7 @@ Ran the delegated proof command successfully:
 `cmake --build --preset default --target c4c_backend -j4 && ctest --test-dir
 build -j --output-on-failure -R ^backend_prepare_liveness$ >
 test_after.log 2>&1`
-after teaching `liveness.cpp` to retain exact per-value definition/use program
-points and extending focused activation coverage to prove predecessor-edge phi
-uses are published on the active path.
+after teaching `regalloc.cpp` to publish liveness-derived value seeds and
+extending focused activation coverage to prove those seeds are active on the
+phi path.
 Canonical proof log: `test_after.log`.
