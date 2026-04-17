@@ -114,7 +114,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_expr_scalar_control_helper PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "decl local: int = \\(input#P1 \\+ bias\\).*\\(local#L1 \\+= this#P0->base\\).*decl __tern_tmp: int = 0.*if \\(\\(local#L1 > 6\\)\\) -> block#.*decl picked: int = __tern_tmp#L3.*\\(__real__z#L6\\) = 3.*\\(__imag__z#L6\\) = 4.*return \\(\\(\\(\\(picked#L2 \\+ \\(\\(int\\)\\(__real__z#L6\\)\\)\\) \\+ \\(\\(int\\)\\(__imag__z#L6\\)\\)\\) \\+ values#L7\\[1\\]\\) \\+ \\(\\(int\\)sizeof\\(values#L7\\[0\\]\\)\\)\\)"
+  PASS_REGULAR_EXPRESSION "decl local: int = \\(input#P1 \\+ bias\\).*\\(local#L1 \\+= this#P0->base\\{owner=Acc\\}\\).*decl __tern_tmp: int = 0.*decl picked: int = __tern_tmp#L3.*\\(\\(__real__z#L6\\) = 3\\).*\\(\\(__imag__z#L6\\) = 4\\).*return .*values#L7\\[1\\].*sizeof\\(values#L7\\[0\\]\\)"
 )
 
 add_test(
@@ -159,7 +159,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_template_struct_body_instantiation PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "struct Buffer_T_int_N_3 size=20 align=4.*field data: int\\[3\\] llvm_idx=0 offset=4 size=12 align=4.*field tail: int llvm_idx=1 offset=16 size=4 align=4.*fn Buffer_T_int_N_3__sum_const\\(this: struct Buffer_T_int_N_3\\*\\) -> int.*return \\(\\(this#P0->value \\+ this#P0->data\\[1\\]\\) \\+ this#P0->tail\\)"
+  PASS_REGULAR_EXPRESSION "struct Buffer_T_int_N_3 size=20 align=4.*field data: int\\[3\\] llvm_idx=0 offset=4 size=12 align=4.*field tail: int llvm_idx=1 offset=16 size=4 align=4.*fn Buffer_T_int_N_3__sum_const\\(this: struct Buffer_T_int_N_3\\*\\) -> int.*return \\(\\(this#P0->value\\{owner=Buffer_T_int_N_3\\} \\+ this#P0->data\\{owner=Buffer_T_int_N_3\\}\\[1\\]\\) \\+ this#P0->tail\\{owner=Buffer_T_int_N_3\\}\\)"
 )
 
 add_test(
@@ -204,7 +204,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_stmt_local_decl_helper PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "decl seed: struct Box.*Box__Box\\(\\(&seed#L0\\)\\).*decl copy: struct Box.*Box__Box__1\\(\\(&copy#L1\\), \\(&seed#L0\\)\\).*decl data: int\\[3\\] = 0.*\\(data#L2\\[0\\] = 1\\).*\\(data#L2\\[1\\] = 2\\).*\\(data#L2\\[2\\] = 3\\).*decl __rref_tmp_[0-9]+: int = 7.*decl moved: int\\*&& = \\(&__rref_tmp_[0-9]+#L4\\).*return \\(\\(copy#L1.value \\+ data#L2\\[1\\]\\) \\+ \\(\\*moved#L3\\)\\)"
+  PASS_REGULAR_EXPRESSION "decl seed: struct Box.*Box__Box\\(\\(&seed#L0\\)\\).*decl copy: struct Box.*Box__Box__1\\(\\(&copy#L1\\), \\(&seed#L0\\)\\).*decl data: int\\[3\\] = 0.*\\(data#L2\\[0\\] = 1\\).*\\(data#L2\\[1\\] = 2\\).*\\(data#L2\\[2\\] = 3\\).*decl __rref_tmp_[0-9]+: int = 7.*decl moved: int\\*&& = \\(&__rref_tmp_[0-9]+#L4\\).*return \\(\\(copy#L1.value\\{owner=Box\\} \\+ data#L2\\[1\\]\\) \\+ \\(\\*moved#L3\\)\\)"
 )
 
 add_test(

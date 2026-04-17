@@ -99,8 +99,13 @@ struct StringIdTable {
 // identity without inventing a placeholder spelling.
 template <typename Id, Id InvalidId>
 struct PathIdTable : KeyIdTable<Id, InvalidId, std::string> {
+  Id find(std::string_view text) const {
+    const auto it = this->id_by_key_.find(std::string(text));
+    return it == this->id_by_key_.end() ? InvalidId : it->second;
+  }
+
   Id intern(std::string_view text) {
-    const Id existing = this->find(std::string(text));
+    const Id existing = find(text);
     if (existing != InvalidId) return existing;
     this->key_by_id_.push_back(std::string(text));
     const Id id = static_cast<Id>(this->key_by_id_.size());

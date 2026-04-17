@@ -215,7 +215,9 @@ Node* Parser::parse_stmt() {
 
     switch (cur().kind) {
         case TokenKind::PragmaPack: {
-            handle_pragma_pack(std::string(token_spelling(cur())));
+            handle_pragma_pack(cur().text_id == kInvalidText
+                                   ? std::string()
+                                   : std::string(token_spelling(cur())));
             consume();
             return make_node(NK_EMPTY, ln);
         }

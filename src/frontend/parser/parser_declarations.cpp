@@ -1746,7 +1746,9 @@ Node* Parser::parse_top_level() {
 
     // Handle #pragma pack tokens
     if (check(TokenKind::PragmaPack)) {
-        handle_pragma_pack(std::string(token_spelling(cur())));
+        handle_pragma_pack(cur().text_id == kInvalidText
+                               ? std::string()
+                               : std::string(token_spelling(cur())));
         consume();
         return nullptr;
     }

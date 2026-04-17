@@ -420,6 +420,8 @@ std::string StmtEmitter::emit_rval_id(FnCtx& ctx, ExprId id, TypeSpec& out_ts) {
     out_ts = resolve_payload_type(ctx, *b);
   } else if (const auto* c = std::get_if<CallExpr>(&e.payload)) {
     out_ts = resolve_payload_type(ctx, *c);
+  } else if (const auto* m = std::get_if<MemberExpr>(&e.payload)) {
+    out_ts = resolve_payload_type(ctx, *m);
   }
   if (out_ts.base == TB_VOID && out_ts.ptr_level == 0 && out_ts.array_rank == 0) {
     out_ts = resolve_expr_type(ctx, id);

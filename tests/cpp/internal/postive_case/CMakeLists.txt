@@ -537,7 +537,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_defaulted_destructor_member_teardown PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "WithDtor__dtor\\(\\(&this#P0->inner\\)\\)"
+  PASS_REGULAR_EXPRESSION "WithDtor__dtor\\(\\(&this#P0->inner\\{owner=Outer\\}\\)\\)"
 )
 
 add_test(
