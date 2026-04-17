@@ -6,18 +6,19 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 3 `Keep The Boundary Truthful` by tightening the
-current equality-against-immediate guard slice to the honest non-global
-prepared x86 lane, adding handoff coverage for an immediate-only guard chain,
-and leaving global-backed equality guards explicitly rejected. The accepted
-same-family proving cluster for this slice is now `00054` and `00055`.
+Completed `plan.md` Step 4 `Prove Nearby Same-Family Cases` on top of the
+completed Step 3 boundary work. The honest same-family proving cluster remains
+`00054` and `00055`; both still pass with
+`backend_x86_handoff_boundary` and `backend_lir_to_bir_notes`, and the
+`x86_backend` checkpoint now reports `46/220` passing on the current tree.
 
 ## Suggested Next
 
-Stay on `plan.md` Step 4 and prove the narrowed non-global equality-guard lane
-as a coherent family around `00054`/`00055`. If the supervisor wants a broader
-checkpoint after this slice, keep `00047`/`00048`/`00049` out of the proving
-cluster unless the route is explicitly widened to same-module global emission.
+This runbook packet is now proven. Route the next turn through lifecycle
+decision-making: either close this runbook as exhausted or retarget a new
+bounded capability-family packet. If a follow-on packet is activated, keep
+`00047`/`00048`/`00049` out of scope unless the route is explicitly widened to
+an honest same-module global-emission family.
 
 ## Watchouts
 
@@ -35,8 +36,10 @@ cluster unless the route is explicitly widened to same-module global emission.
 
 ## Proof
 
-Executed the delegated Step 3 proof command:
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|backend_lir_to_bir_notes|c_testsuite_x86_backend_src_00054_c|c_testsuite_x86_backend_src_00055_c)$' >> test_after.log 2>&1`.
+Executed the Step 4 proof command:
+`cmake --build --preset default >> test_before.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|backend_lir_to_bir_notes|c_testsuite_x86_backend_src_00054_c|c_testsuite_x86_backend_src_00055_c)$' >> test_before.log 2>&1 && ctest --test-dir build -j --output-on-failure -L x86_backend >> test_before.log 2>&1`.
 `backend_lir_to_bir_notes`, `backend_x86_handoff_boundary`,
 `c_testsuite_x86_backend_src_00054_c`, and
-`c_testsuite_x86_backend_src_00055_c` all passed. Proof log: `test_after.log`.
+`c_testsuite_x86_backend_src_00055_c` all passed, and the full
+`x86_backend` checkpoint reported `46/220` passing with `174/220` still
+failing. Proof log: `test_before.log`.
