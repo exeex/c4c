@@ -25,13 +25,13 @@ DeclRef make_direct_call_decl_ref(Module& mod, std::string name) {
   return dr;
 }
 
-void intern_direct_call_callee_link_name(Module& mod, Expr& expr) {
+void attach_direct_call_callee_link_name_id(Module& mod, Expr& expr) {
   auto* ref = std::get_if<DeclRef>(&expr.payload);
   if (!ref || ref->local || ref->param_index || ref->global ||
       ref->link_name_id != kInvalidLinkName) {
     return;
   }
-  ref->link_name_id = mod.link_names.intern(ref->name);
+  ref->link_name_id = find_direct_call_carrier_link_name_id(mod, ref->name);
 }
 
 }  // namespace
@@ -523,7 +523,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
       }
       if (!resolved_as_method) {
         c.callee = lower_expr(ctx, n->left);
-        intern_direct_call_callee_link_name(*module_, module_->expr_pool[c.callee.value]);
+        attach_direct_call_callee_link_name_id(*module_, module_->expr_pool[c.callee.value]);
       }
     }
   }

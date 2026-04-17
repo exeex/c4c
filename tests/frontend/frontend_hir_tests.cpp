@@ -759,6 +759,49 @@ int use_template() { return id<int>(7); }
               "template-call lowering should not trust a corrupted raw decl-ref name");
 }
 
+void test_hir_direct_call_builtin_alias_fallback_keeps_invalid_link_name_ids() {
+  c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+int main() {
+  __builtin_abort();
+  return 0;
+}
+)cpp");
+
+  const auto main_it = hir_module.fn_index.find("main");
+  expect_true(main_it != hir_module.fn_index.end(),
+              "fixture main should be present in the HIR function index");
+  c4c::hir::Function* main_fn = hir_module.find_function(main_it->second);
+  expect_true(main_fn != nullptr,
+              "fixture main should resolve through the HIR function lookup");
+
+  const c4c::hir::DeclRef* callee_ref = nullptr;
+  for (const auto& block : main_fn->blocks) {
+    for (const auto& stmt : block.stmts) {
+      const auto* expr_stmt = std::get_if<c4c::hir::ExprStmt>(&stmt.payload);
+      if (expr_stmt == nullptr || !expr_stmt->expr) {
+        continue;
+      }
+      const auto* call =
+          std::get_if<c4c::hir::CallExpr>(&hir_module.expr_pool[expr_stmt->expr->value].payload);
+      if (call == nullptr || call->builtin_id != c4c::BuiltinId::Abort) {
+        continue;
+      }
+      callee_ref = std::get_if<c4c::hir::DeclRef>(&hir_module.expr_pool[call->callee.value].payload);
+      if (callee_ref != nullptr) {
+        break;
+      }
+    }
+    if (callee_ref != nullptr) {
+      break;
+    }
+  }
+
+  expect_true(callee_ref != nullptr,
+              "builtin alias lowering should retain a decl-ref callee in HIR");
+  expect_true(callee_ref->link_name_id == c4c::kInvalidLinkName,
+              "builtin alias callees should stay on the invalid-id fallback when no semantic carrier exists");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -1199,6 +1242,7 @@ int main() {
   test_hir_to_lir_decl_backed_call_result_inference_prefers_link_name_ids();
   test_hir_to_lir_object_helper_callees_prefer_link_name_ids();
   test_hir_to_lir_template_call_helper_callees_prefer_carrier_link_name_ids();
+  test_hir_direct_call_builtin_alias_fallback_keeps_invalid_link_name_ids();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();

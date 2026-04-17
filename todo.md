@@ -6,18 +6,19 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Changed `hir_expr_call.cpp` helper-built direct-call callee `DeclRef`
-construction to copy `LinkNameId` only from already-materialized function
-carriers instead of raw-name interning, then added a template-call regression
-that proves corrupted helper-built callee names still lower through the
-semantic `LinkNameId` path.
+Tightened `hir_expr_call.cpp`'s post-`lower_expr` direct-call fallback so it
+only reattaches `LinkNameId` from already-materialized function carriers
+instead of interning raw callee names, then added a builtin-alias regression
+that proves alias calls intentionally stay on the invalid-id fallback when no
+semantic carrier exists.
 
 ## Suggested Next
 
-Audit the remaining `hir_expr_call.cpp` helper families that still bypass the
-new carrier lookup boundary, especially direct-call paths that currently patch
-`DeclRef` ids after `lower_expr`, and keep builtin-alias or not-yet-materialized
-callee routes on the intentional invalid-id fallback.
+Audit the remaining helper-built method/self-call routes in
+`hir_expr_call.cpp` that still synthesize direct-call `DeclRef`s before their
+emitted function carrier is guaranteed to exist, and keep those routes on the
+intentional invalid-id fallback unless they can recover a real semantic
+carrier without raw-name interning.
 
 ## Watchouts
 
@@ -30,8 +31,8 @@ callee routes on the intentional invalid-id fallback.
 - the shared helper still only copies ids from carriers already present in
   `global_index` or `fn_index`; some method-family helper calls can still
   legitimately stay invalid until their emitted carrier exists at lowering time
-- unresolved direct-call decl refs now intern `LinkNameId` in HIR call
-  lowering, but builtin alias calls still intentionally use
+- post-`lower_expr` direct-call fallback now only reattaches ids from existing
+  function carriers; builtin alias calls still intentionally use
   `kInvalidLinkName` because they do not originate from an HIR semantic
   carrier
 - extern declaration dedup now has two paths: semantic `LinkNameId` keys when
@@ -48,9 +49,9 @@ callee routes on the intentional invalid-id fallback.
   legitimately keep `kInvalidLinkName` when their method carrier is not yet in
   `fn_index`; do not force raw-name interning there just to make the field
   non-zero
-- plain `foo()` direct-call lowering now patches the callee `DeclRef` in place
-  after `lower_expr`, so this route stays bounded to call sites instead of
-  teaching every `DeclRef` construction path about `LinkNameId`
+- plain `foo()` direct-call lowering still patches the callee `DeclRef` in
+  place after `lower_expr`, but that fallback is now carrier-only rather than
+  raw-name interning
 - direct-call target resolution now suppresses redundant extern-decl
   bookkeeping when a local declaration/definition can be recovered by
   `LinkNameId`; keep builtin-alias and invalid-id fallback behavior intact
@@ -73,9 +74,9 @@ callee routes on the intentional invalid-id fallback.
   source of truth
 - avoid testcase-overfit proof or brittle emitted-text substring matching as a
   substitute for a real id path
-- the new HIR regression proves the object-helper route on `operator_delete`;
-  add more helper-family coverage only when the route already has a real
-  semantic carrier at HIR lowering time
+- the new HIR regressions now cover both helper-built object calls and builtin
+  alias fallback; add more helper-family coverage only when the route already
+  has a real semantic carrier at HIR lowering time
 
 ## Proof
 
