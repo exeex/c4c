@@ -19,14 +19,12 @@ those shift families.
 
 ## Suggested Next
 
-Extend focused proof only if the same bounded prepared-module consumer already
-honestly supports another single trailing join-local parameter-immediate op on
-the legalized select result behind the canonical boundary, and only if that
-still stays inside the same explicit join consumer with no nested selects,
-forwarded joins, commuted forms, or fallback rendering. If no similarly
-bounded family remains, the next packet should pivot from proof expansion back
-to retiring mixed ownership or other active-route cleanup required by the
-source idea.
+Pivot from proof-family expansion back to route cleanup. The next packet should
+inspect the current x86 prepared-module entry and ownership seams, identify one
+remaining mixed-route or shadow-ownership path that still competes with the
+canonical prepared-module boundary, and either remove it or make its retirement
+condition explicit in code. After the next meaningful x86 route change, run a
+broader `^backend_` checkpoint before treating the route as near-close.
 
 ## Watchouts
 
@@ -40,6 +38,9 @@ source idea.
 - the canonical x86 handoff is now the prepared-module consumer boundary, so
   new work should extend `x86::emit_prepared_module(...)` rather than adding
   new public/backend-side fallback renderers
+- public x86 entry and direct BIR entry already funnel through the canonical
+  prepared-module consumer; future cleanup should retire residual mixed
+  ownership around that seam instead of reopening the boundary question
 - the current join support is still tightly bounded: one prepared function, one
   entry compare, two empty branch-to-join leaf blocks, and one join block whose
   phi has already been legalized into a single `bir.select`
@@ -54,6 +55,9 @@ source idea.
   logical cases (`xor`, `and`, and `or`), and three shift cases (`shl`,
   `lshr`, and `ashr`) whose named operand is exactly the select result; do not
   widen beyond one trailing op in the same block
+- do not treat more narrow handoff proofs as closure-quality evidence by
+  themselves; a broader `^backend_` checkpoint is required before near-close
+  acceptance
 - keep control-flow proof route-oriented by comparing prepared/public/generic
   outputs against the same canonical assembly instead of falling back to loose
   substring assertions

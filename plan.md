@@ -11,9 +11,10 @@ instead of preserving it as a fallback.
 
 ## Goal
 
-Make the canonical x86 backend route consume backend-side handoff data
-directly, delete the mixed transitional route, and prove the pure handoff is
-the actual route in use.
+Keep the canonical x86 backend route on the prepared-module handoff that is now
+actually in use, finish retiring any remaining mixed transitional ownership,
+and raise validation from focused route proof to a broader backend checkpoint
+before treating the route as near-close.
 
 ## Core Rule
 
@@ -35,10 +36,12 @@ The run is only complete when the active x86 path both:
 
 ## Current Targets
 
-- x86 backend entry and handoff code under `src/backend/`
-- BIR or prepared-BIR handoff surfaces used by the x86 route
+- x86 public and direct-BIR entrypoints that now funnel through the
+  prepared-module consumer
+- remaining mixed ownership or fallback seams under `src/backend/`
 - x86-local ownership code that still re-derives stack, ABI, or regalloc facts
 - route-proof tests under `tests/backend/`
+- broader backend validation needed before near-close acceptance
 
 ## Non-Goals
 
@@ -51,9 +54,12 @@ The run is only complete when the active x86 path both:
 
 ### Canonical handoff
 
-- x86 should consume canonical backend-side data, either as raw `bir::Module`
-  plus explicit local prepare or as an already prepared backend module
-- the consumer boundary must be explicit and singular
+- the active x86 route now prepares incoming BIR first and consumes one bounded
+  prepared-module seam
+- public x86 entry and direct x86 BIR entry should continue to converge on that
+  singular prepared-module consumer boundary
+- further work should treat that prepared-module seam as canonical unless the
+  source idea itself changes
 
 ### Ownership discipline
 
@@ -64,6 +70,8 @@ The run is only complete when the active x86 path both:
 ### Acceptance model
 
 - runtime proof must show the canonical route is the active route
+- focused prepared/public/generic route-equality proof is necessary but no
+  longer sufficient by itself for near-close confidence
 - deleting or hard-retiring the wrong mixed path is part of completion, not an
   optional cleanup
 
@@ -75,98 +83,109 @@ The run is only complete when the active x86 path both:
 - consume backend-published metadata instead of re-deriving it locally when the
   canonical contract already exists
 - keep proof route-oriented and semantic, not based on printed IR substrings
+- keep new work centered on the existing prepared-module consumer boundary, not
+  on new public-entry or raw-BIR fallback renderers
 - use `build -> focused x86/backend proof -> broader backend checkpoint` as the
-  validation ladder for nontrivial route changes
+  validation ladder, and require the broader `^backend_` checkpoint before
+  treating the route as near-close
 
 ## Ordered Steps
 
-### Step 1: Lock The X86 Handoff Boundary
+### Step 1: Checkpoint The Canonical Prepared-Module Boundary
 
 Goal:
-Decide the canonical x86 consumer boundary and make the wrong mixed boundary
-explicitly non-canonical.
+Record the prepared-module seam that is now the active x86 route and make the
+remaining mixed boundary explicitly residual cleanup, not open route design.
 
 Actions:
-- inspect the active x86 backend entry path and identify where mixed LIR/BIR
-  state is still accepted or re-derived
-- choose the honest consumer boundary: raw BIR plus local prepare, or prepared
-  backend module
-- document the files/functions that currently own x86 handoff selection and the
-  seams that must be removed or retired
+- checkpoint the current x86 route where public entry and direct BIR entry
+  prepare first and then hand off to the bounded prepared-module consumer
+- document that the prepared-module seam is the canonical active boundary for
+  this runbook
+- identify the remaining mixed ownership or fallback-adjacent seams that still
+  need deletion or hard retirement under that boundary
 
 Completion Check:
-- the canonical handoff boundary is explicit in the code and runbook
-- the mixed route is identified as deletion/retirement work, not preserved as a
-  peer path
+- the canonical prepared-module handoff boundary is explicit in the runbook
+- remaining mixed-route work is framed as cleanup under the chosen boundary,
+  not as an unresolved boundary decision
 
-### Step 2: Connect X86 To The Canonical Backend Contract
+### Step 2: Retire Mixed Ownership Under The Active Boundary
 
 Goal:
-Make x86 accept the canonical backend-side handoff instead of the transitional
-mixed contract.
+Delete or hard-retire the wrong mixed-contract behavior that still survives
+around the active prepared-module route.
 
 Primary Target:
 - x86 backend entry and route-selection code under `src/backend/`
+- x86-local ownership glue that duplicates backend-published prepare/prealloc
+  facts
 
 Actions:
-- connect x86 entry to the chosen pure BIR or prepared-BIR boundary
-- remove direct rejection of the canonical handoff when it is not the legacy
-  transitional slice
-- align x86 consumption to published backend ABI/location metadata where the
-  contract already exists
+- audit the still-reachable mixed or fallback-adjacent x86 entry behavior now
+  that the canonical route is the prepared-module consumer
+- remove or hard-retire any wrong mixed-contract path that still competes with
+  the active prepared-module route
+- reduce duplicated x86-local stack, ABI, or location ownership where the
+  canonical backend metadata already publishes the needed facts
 
 Completion Check:
-- the active x86 route accepts the canonical backend-side handoff
-- direct route ownership no longer depends on mixed LIR/BIR entry semantics
+- the active x86 route no longer depends on mixed LIR/BIR ownership semantics
+- the remaining x86 handoff behavior matches one canonical prepared-module
+  route rather than a hidden dual path
 
-### Step 3: Retire Mixed Ownership And Legacy Route Behavior
+### Step 3: Extend Proof Only Where It Serves Route Cleanup
 
 Goal:
-Delete or hard-retire the wrong mixed-contract path and remove shadow ownership
-that conflicts with canonical backend prepare/prealloc data.
+Keep focused route proof aligned with the canonical prepared-module consumer
+without drifting into test-shaped expansion.
 
 Primary Target:
-- mixed handoff branches and x86-local ownership glue under `src/backend/`
+- route-proof tests under `tests/backend/`
 
 Actions:
-- remove or hard-retire mixed/fallback x86 entry behavior
-- reduce duplicated x86-local stack/regalloc ownership where canonical backend
-  metadata already covers the need
-- keep any remaining bounded gaps explicit instead of leaving a hidden dual
-  path behind
+- preserve the prepared/public/generic route-equality proof surface for the
+  bounded prepared-module consumer
+- treat the recently landed joined branch proof as coverage of the current
+  bounded family, not as permission to keep widening proof forever
+- add more focused proof only when it directly supports the active route and
+  stays inside the same explicit consumer seam without fallback growth
 
 Completion Check:
-- the wrong mixed-contract route is no longer an active x86 backend path
-- x86 no longer maintains a silent shadow ownership contract for the same data
+- focused proof still demonstrates that the canonical prepared-module route is
+  the path actually in use
+- proof expansion remains bounded and semantic rather than testcase-shaped
 
-### Step 4: Runtime Proof And Acceptance
+### Step 4: Broader Backend Checkpoint And Acceptance
 
 Goal:
-Prove the canonical x86 route is the one actually entered and that it consumes
-backend-published metadata instead of a hidden mixed fallback.
+Raise validation from narrow packet proof to broader backend confidence before
+the runbook is treated as close-ready.
 
 Actions:
-- add or extend focused backend tests that exercise x86 through the canonical
-  handoff
-- verify route selection and metadata consumption with semantic assertions
-- run a broader backend checkpoint before treating the route as close-ready
+- keep the focused backend handoff test green for packet-level proof
+- run `^backend_` coverage after the next meaningful x86 route slice or before
+  any near-close acceptance decision
+- use broader validation results to decide whether the route is truly nearing
+  completion or whether more mixed-ownership cleanup is still exposed
 
 Completion Check:
 - tests prove the canonical x86 route is active
 - no hidden mixed fallback is needed for the focused proof
-- broader backend validation is green for the accepted route
+- broader backend validation is green for the accepted route before near-close
+  acceptance
 
 ## Validation
 
 ### Focused Proof
 
-- `cmake --build /workspaces/c4c/build --target c4c_backend -j4`
-- focused backend/x86 tests under `tests/backend/` that prove route selection
-  and metadata use
+- `cmake --build --preset default -j4`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$'`
 
 ### Broader Checkpoint
 
-- `ctest --test-dir /workspaces/c4c/build --output-on-failure -R '^backend_'`
+- `cmake --build --preset default -j4`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
 ## Done Condition
 
@@ -176,3 +195,4 @@ This runbook is complete only when:
 - mixed LIR/BIR ownership is removed or hard-retired for the active route
 - canonical backend metadata is used instead of conflicting local re-derivation
 - tests prove the canonical x86 route is the one actually in use
+- a broader `^backend_` checkpoint has passed before near-close acceptance
