@@ -85,6 +85,7 @@ struct CallTargetInfo {
   std::string fn_name;
   TypeSpec callee_ts{};
   std::string callee_val;
+  LinkNameId callee_link_name_id = kInvalidLinkName;
   TypeSpec ret_spec{};
   std::string ret_ty;
   const Function* target_fn = nullptr;

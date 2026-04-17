@@ -6,19 +6,18 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended Step 4 into another backend-facing consumer: `backend::analyze_module`
-now resolves function summary names from existing `LinkNameId` carriers before
-it reports module/function pre-scan metadata, and
-`tests/frontend/frontend_hir_tests.cpp` proves backend analysis still reports
-the semantic function name after the legacy raw LIR function carrier is
-deliberately corrupted.
+Forwarded `LinkNameId` through resolved direct-call LIR carriers and taught
+backend direct-call lowering to prefer that semantic callee identity over a
+corrupted raw `@name` operand; `tests/frontend/frontend_hir_tests.cpp` now
+proves BIR call lowering still emits `helper` after the legacy direct-call
+carrier is deliberately corrupted.
 
 ## Suggested Next
 
-Review the remaining backend-facing consumers that still surface legacy raw
-symbol names despite existing carriers, especially any declaration-oriented or
-diagnostic/reporting paths, and keep avoiding fake ids for unresolved
-extern-call declarations.
+Review the remaining late-consumer paths that still surface raw direct-call or
+declaration-oriented names despite existing carriers, especially any LIR-side
+text-emission or backend diagnostic/reporting surfaces, while continuing to
+avoid fake ids for unresolved extern-call declarations.
 
 ## Watchouts
 
@@ -31,6 +30,9 @@ extern-call declarations.
 - unresolved extern-call declarations still print names from raw strings today
   because this route does not yet have a real `LinkNameId` source of truth;
   avoid faking that boundary with ad hoc interning
+- the new direct-call carrier only becomes valid when the callee resolves to an
+  existing HIR `Function`; intrinsic/builtin aliases and unresolved extern
+  calls should continue to flow with `kInvalidLinkName`
 - keep forwarding explicit ids through LIR carriers and resolve them only at
   late consumers rather than treating legacy `name` strings as the semantic
   source of truth

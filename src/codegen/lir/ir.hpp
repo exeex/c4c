@@ -267,6 +267,7 @@ struct LirCallOp {
   LirOperand result;               // SSA name for result (empty for void calls)
   LirTypeRef return_type;          // LLVM return type string (e.g. "i32", "void", "{ i32, i1 }")
   LirOperand callee;               // callee value (e.g. "@foo", "%ptr", "@llvm.fabs.f64")
+  LinkNameId direct_callee_link_name_id = kInvalidLinkName;
   std::string callee_type_suffix;  // optional fn ptr type suffix (empty for direct calls)
   std::string args_str;            // pre-formatted argument string (e.g. "i32 %t1, i32 %t2")
 };

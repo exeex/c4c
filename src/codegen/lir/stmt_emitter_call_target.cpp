@@ -52,6 +52,7 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
     const auto fit = mod_.fn_index.find(info.fn_name);
     if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
       info.target_fn = &mod_.functions[fit->second.value];
+      info.callee_link_name_id = info.target_fn->link_name_id;
     }
   }
   info.callee_fn_ptr_sig = info.target_fn ? nullptr : resolve_callee_fn_ptr_sig(ctx, callee_e);
@@ -66,8 +67,13 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
 
 void StmtEmitter::emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
                                  const std::vector<OwnedLirTypedCallArg>& args) {
-  emit_lir_op(
-      ctx, make_lir_call_op("", "void", call_target.callee_val, call_target.callee_type_suffix, args));
+  emit_lir_op(ctx,
+              make_lir_call_op("",
+                               "void",
+                               call_target.callee_val,
+                               call_target.callee_type_suffix,
+                               args,
+                               call_target.callee_link_name_id));
 }
 
 std::string StmtEmitter::emit_call_with_result(
@@ -76,7 +82,12 @@ std::string StmtEmitter::emit_call_with_result(
   const std::string tmp = fresh_tmp(ctx);
   emit_lir_op(
       ctx,
-      make_lir_call_op(tmp, call_target.ret_ty, call_target.callee_val, call_target.callee_type_suffix, args));
+      make_lir_call_op(tmp,
+                       call_target.ret_ty,
+                       call_target.callee_val,
+                       call_target.callee_type_suffix,
+                       args,
+                       call_target.callee_link_name_id));
   return tmp;
 }
 

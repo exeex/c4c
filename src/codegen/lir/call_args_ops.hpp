@@ -9,11 +9,13 @@ inline LirCallOp make_lir_call_op(std::string result,
                                   std::string return_type,
                                   std::string callee,
                                   std::string_view callee_type_suffix,
-                                  const std::vector<OwnedLirTypedCallArg>& args) {
+                                  const std::vector<OwnedLirTypedCallArg>& args,
+                                  LinkNameId direct_callee_link_name_id = kInvalidLinkName) {
   const auto formatted = format_lir_call_fields(callee_type_suffix, args);
   return LirCallOp{std::string(trim_lir_arg_text(result)),
                    std::string(trim_lir_arg_text(return_type)),
                    std::string(trim_lir_arg_text(callee)),
+                   direct_callee_link_name_id,
                    formatted.callee_type_suffix,
                    formatted.args_str};
 }

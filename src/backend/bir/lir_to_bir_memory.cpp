@@ -4197,12 +4197,27 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     if (const auto direct_callee = c4c::codegen::lir::parse_lir_direct_global_callee(call->callee);
         direct_callee.has_value()) {
       call_family = kDirectCallFamily;
+      const auto resolved_direct_callee_name =
+          [&](std::string_view fallback_name) -> std::string {
+        if (call->direct_callee_link_name_id != c4c::kInvalidLinkName) {
+          const std::string_view semantic_name =
+              context_.lir_module.link_names.spelling(call->direct_callee_link_name_id);
+          if (!semantic_name.empty()) {
+            return std::string(semantic_name);
+          }
+        }
+        return std::string(fallback_name);
+      };
       if (const auto inferred_call = parse_typed_call(*call); inferred_call.has_value()) {
-        if (const auto lowered_memset = try_lower_direct_memset_call(*direct_callee, *inferred_call);
+        const std::string semantic_direct_callee =
+            resolved_direct_callee_name(*direct_callee);
+        if (const auto lowered_memset =
+                try_lower_direct_memset_call(semantic_direct_callee, *inferred_call);
             lowered_memset.has_value()) {
           return *lowered_memset;
         }
-        if (const auto lowered_memcpy = try_lower_direct_memcpy_call(*direct_callee, *inferred_call);
+        if (const auto lowered_memcpy =
+                try_lower_direct_memcpy_call(semantic_direct_callee, *inferred_call);
             lowered_memcpy.has_value()) {
           return *lowered_memcpy;
         }
@@ -4210,17 +4225,19 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
 
       if (const auto parsed_call = parse_direct_global_typed_call(*call);
           parsed_call.has_value()) {
+        const std::string semantic_direct_callee =
+            resolved_direct_callee_name(parsed_call->symbol_name);
         if (const auto lowered_memset =
-                try_lower_direct_memset_call(parsed_call->symbol_name, parsed_call->typed_call);
+                try_lower_direct_memset_call(semantic_direct_callee, parsed_call->typed_call);
             lowered_memset.has_value()) {
           return *lowered_memset;
         }
         if (const auto lowered_memcpy =
-                try_lower_direct_memcpy_call(parsed_call->symbol_name, parsed_call->typed_call);
+                try_lower_direct_memcpy_call(semantic_direct_callee, parsed_call->typed_call);
             lowered_memcpy.has_value()) {
           return *lowered_memcpy;
         }
-        callee_name = std::string(parsed_call->symbol_name);
+        callee_name = std::move(semantic_direct_callee);
         is_variadic_call = parsed_call->is_variadic;
         lowered_args.reserve(parsed_call->typed_call.args.size());
         lowered_arg_types.reserve(parsed_call->typed_call.param_types.size());
@@ -4287,7 +4304,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
               *lir_to_bir_detail::compute_call_arg_abi(context_.target_profile, *arg_type));
         }
       } else if (c4c::codegen::lir::trim_lir_arg_text(call->args_str).empty()) {
-        callee_name = std::string(*direct_callee);
+        callee_name = resolved_direct_callee_name(*direct_callee);
       } else {
         return fail_call_family(call_family);
       }
