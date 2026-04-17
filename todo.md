@@ -6,108 +6,47 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Checkpointed the helper-call ABI lane with the deferred broader backend pause
-and repaired the stack-layout test compile blocker that surfaced during that
-checkpoint. `backend_prepare_stack_layout_test.cpp` now references
-`prepare::stack_layout::FunctionInlineAsmSummary` at the active public
-namespace boundary again, the focused `backend_prepare_stack_layout` proof
-passes, and the broader `^backend_` checkpoint passes on the repaired tree.
+Started Step 5 acceptance work for prealloc liveness by adding
+`src/backend/prealloc/liveness_comparison.md`, an explicit C++ vs Rust
+comparison note for the active `liveness.cpp` route. The note maps the live C++
+pipeline to `liveness.rs`, records the prepared-contract adaptations that are
+intentional in c4c, and calls out the remaining Rust-only extensions
+(`setjmp`, GEP-base, and F128-source liveness growth) as bounded divergences
+instead of leaving them implicit.
 
 ## Suggested Next
 
-Choose the next packet from the active prealloc runbook rather than extending
-this helper-call ABI lane by inertia. The route review says the plan and source
-idea still align, broader proof is now refreshed, and the next bounded packet
-should either advance a real convergence gap or start the explicit Step 5
-acceptance/comparison work instead of adding more helper-only proofs.
+Keep Step 5 moving with the same bounded shape: compare one remaining active
+phase against its Rust reference and record bounded divergences explicitly
+instead of returning to helper-call ABI expansion. The cleanest next packet is
+the matching `regalloc.cpp` vs `regalloc.rs` acceptance artifact, using the
+new liveness note as the template for what counts as explicit comparison
+coverage.
 
 ## Watchouts
 
-- exact `definition_point` / `use_points` now capture true local activity,
-  while `live_interval` still represents the CFG-extended range after
-  live-through propagation; downstream consumers must not collapse those into
-  one concept
-- loop-depth weighting now depends on mapping liveness use points back through
-  `PreparedLivenessBlock` ranges; if program-point numbering changes, regalloc
-  weighting and spill-op locations need to stay in lockstep with that contract
-- the new spill bookkeeping only records real eviction-to-stack fallout for
-  values that actually lose a register and stay stack-backed afterward; reloads
-  are now emitted per later use point, but this is still bounded bookkeeping
-  rather than true split-interval placement
-- `move_resolution` now covers phi joins plus result-producing
-  binary/select/cast consumers plus call-site argument/result materialization,
-  plus function return-site transfers, but it still does not model other
-  non-result consumer sites
-- consumer-keyed move records intentionally skip redundant entries when the
-  source and produced result already share the same assigned register or stack
-  slot; the dedupe key now also includes ABI destination metadata so repeated
-  self-keyed ABI moves can stay distinguishable by destination kind/index
-- call-argument, call-result, and return-site move records now publish
-  destination kind, storage, and concrete register name when the target ABI
-  makes that identity available, but ordinary value-destination moves must stay
-  free of ABI-specific decoration
-- `bir::Function.return_abi` is now the contract that return-site move
-  resolution consumes; it is currently synthesized during legalization from the
-  legalized function return type when the route has no better source ABI data
-- shared direct/indirect call lowering now sets `bir::CallInst.result_abi`
-  from `LoweredReturnInfo.abi`, and helper-built scalar/pointer runtime call
-  sites in `lir_to_bir_calling.cpp` now also set concrete `arg_abi`/`result_abi`
-  where the lowering already knows the active ABI class; the focused coverage
-  now includes helper-built `va_copy` pointer arguments, aggregate
-  `va_arg` sret/ap arguments, and helper-built aggregate call byval/sret
-  destinations, but future packets should prefer broader checkpointing over
-  adding more helper-only shapes
-- `BirFunctionLowerer::lower_param_type` now treats pointer/array-shaped
-  function params as canonical `Ptr` inputs before the byval aggregate fallback;
-  if pointer-param lowering rules change again, helper-built runtime calls will
-  regress first
-- ABI move-resolution consumers should distinguish redundant same-register
-  handoffs from real ABI-surface transfers: identical source/destination
-  registers still skip records, but stack-backed ABI destinations and
-  non-matching register ABI destinations now legitimately produce move records
-- lowered aggregate/sret functions can now legitimately carry
-  `return_abi={type=Void, primary_class=Memory, returned_in_memory=true}`;
-  prepare legalize must preserve that metadata instead of treating all
-  `Void` return ABI entries as empty
-- the broader backend pause exposed a build-sensitive namespace contract in
-  `backend_prepare_stack_layout_test.cpp`: callers must use
-  `prepare::stack_layout::FunctionInlineAsmSummary`, not the old
-  `prepare::FunctionInlineAsmSummary` spelling
-- the focused call-result proof currently uses an `F32` value on the active
-  RISC-V target because the general-register seed pools are active while float
-  register pools are still absent; if float allocation becomes active later,
-  this test shape and the return/ABI destination proofs will need a different
-  pressure source
-- `PreparedAllocationConstraint.preferred_register_names` now carries the
-  caller-vs-callee preference split, while `cannot_cross_call` is reserved for
-  the stronger call-spanning prohibition; downstream consumers should keep
-  those meanings distinct
-- the active target pools are still small proof-oriented seeds, even though the
-  callee-saved side now has bounded spillover headroom
-- non-call spillover must not evict call-crossing callee assignments; the new
-  replacement helper intentionally restricts callee spillover eviction to
-  other non-call occupants
-- Rust Tier 2 / Tier 3 shared-slot reuse is still reference-only for the
-  active C++ route: `PreparedFrameSlot` remains a dedicated object-owned slot
-  record, so do not fake value-level reuse with object names, source kinds, or
-  cross-object slot alias shortcuts before a later packet consumes the new
-  value-level contract semantically
-- keep `.rs` files as references until the final comparison pass is complete
-- acceptance requires both `.cpp` vs `.rs` comparison and runtime proof in c4c
-- do not let `liveness` or `regalloc` fall back to object identity for value
-  tracking
+- keep the new comparison note honest about current gaps: Rust still has
+  `extend_gep_base_liveness(...)`, `extend_f128_source_liveness(...)`, and
+  `extend_intervals_for_setjmp(...)`, and the active C++ route does not yet
+  port those extensions
+- exact `definition_point` / `use_points` are local activity records, while
+  `live_interval` remains the CFG-extended range after live-through
+  propagation; future comparison notes should keep those concepts distinct
+- the active liveness contract is intentionally value-oriented even when a
+  unique stack object is linked; do not let later Step 5 notes drift back into
+  object-identity reasoning for `liveness` or `regalloc`
+- keep `.rs` files as references until the final comparison pass is complete;
+  Step 5 is explicit audit work, not a cleanup excuse
+- this packet only refreshed the narrow `backend_prepare_liveness` proof, so
+  any acceptance-quality milestone still needs supervisor-owned broader
+  checkpointing
 
 ## Proof
 
-Focused repair proof passed:
+Focused Step 5 liveness proof passed:
 `cmake --build --preset default -j4 && ctest --test-dir build -j
---output-on-failure -R '^backend_prepare_stack_layout$' > test_after.log 2>&1`
+--output-on-failure -R '^backend_prepare_liveness$' > test_after.log 2>&1`
 
-Broader checkpoint also passed afterward:
-`cmake --build --preset default -j4 && ctest --test-dir build -j
---output-on-failure -R '^backend_' > test_after.log 2>&1`
-
-The active canonical proof log is `test_after.log` from the broader backend
-checkpoint. The older `test_before.log` came from a narrower
-`backend_prepare_liveness` run, so it is not a matching regression-guard pair
-for this broader scope and should not be treated as one.
+The packet proof log is `test_after.log`. This slice only added the explicit
+liveness comparison artifact plus the canonical todo update; it did not widen
+validation beyond the delegated narrow liveness subset.
