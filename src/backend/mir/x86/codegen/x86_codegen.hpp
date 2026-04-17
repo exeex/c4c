@@ -1120,11 +1120,16 @@ inline std::string emit_prepared_module(
     std::size_t next_offset = 0;
     std::size_t max_align = 16;
     for (const auto& slot : function.local_slots) {
-      if (slot.type != c4c::backend::bir::TypeKind::I32 &&
+      if (slot.type != c4c::backend::bir::TypeKind::I8 &&
+          slot.type != c4c::backend::bir::TypeKind::I32 &&
           slot.type != c4c::backend::bir::TypeKind::Ptr) {
         return std::nullopt;
       }
-      const auto slot_size = slot.size_bytes != 0 ? slot.size_bytes : (slot.type == c4c::backend::bir::TypeKind::Ptr ? 8u : 4u);
+      const auto slot_size = slot.size_bytes != 0
+                                 ? slot.size_bytes
+                                 : (slot.type == c4c::backend::bir::TypeKind::Ptr ? 8u
+                                    : slot.type == c4c::backend::bir::TypeKind::I32 ? 4u
+                                                                                    : 1u);
       const auto slot_align = slot.align_bytes != 0 ? slot.align_bytes : slot_size;
       if (slot_size == 0 || slot_size > 8 || slot_align > 16) {
         return std::nullopt;
@@ -1149,6 +1154,25 @@ inline std::string emit_prepared_module(
       return "[rsp]";
     }
     return "[rsp + " + std::to_string(byte_offset) + "]";
+  };
+  const auto try_render_local_address_operand =
+      [&](const LocalSlotLayout& local_layout,
+          const std::optional<c4c::backend::bir::MemoryAddress>& address,
+          std::string_view size_name) -> std::optional<std::string> {
+    if (!address.has_value() ||
+        address->base_kind != c4c::backend::bir::MemoryAddress::BaseKind::LocalSlot) {
+      return std::nullopt;
+    }
+    const auto slot_it = local_layout.offsets.find(address->base_name);
+    if (slot_it == local_layout.offsets.end()) {
+      return std::nullopt;
+    }
+    const auto signed_byte_offset =
+        static_cast<std::int64_t>(slot_it->second) + address->byte_offset;
+    if (signed_byte_offset < 0) {
+      return std::nullopt;
+    }
+    return render_stack_memory_operand(static_cast<std::size_t>(signed_byte_offset), size_name);
   };
   const auto try_render_minimal_local_slot_return = [&]() -> std::optional<std::string> {
     if (function.params.empty() == false || function.blocks.size() != 1 ||
@@ -1265,27 +1289,52 @@ inline std::string emit_prepared_module(
           auto rendered_load_or_store =
               [&](const c4c::backend::bir::Inst& inst,
                   std::optional<std::string_view>* current_i32_name,
+                  std::optional<std::string_view>* current_i8_name,
                   std::optional<std::string_view>* current_ptr_name)
               -> std::optional<std::string> {
             if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
-              if (load->byte_offset != 0 || load->address.has_value()) {
-                return std::nullopt;
+              std::optional<std::string> memory;
+              if (load->address.has_value()) {
+                memory = try_render_local_address_operand(
+                    *layout,
+                    load->address,
+                    load->result.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
+                    : load->result.type == c4c::backend::bir::TypeKind::I8 ? "BYTE"
+                                                                           : "DWORD");
+              } else {
+                if (load->byte_offset != 0) {
+                  return std::nullopt;
+                }
+                const auto slot_it = layout->offsets.find(load->slot_name);
+                if (slot_it == layout->offsets.end()) {
+                  return std::nullopt;
+                }
+                memory = render_stack_memory_operand(
+                    slot_it->second,
+                    load->result.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
+                    : load->result.type == c4c::backend::bir::TypeKind::I8 ? "BYTE"
+                                                                           : "DWORD");
               }
-              const auto slot_it = layout->offsets.find(load->slot_name);
-              if (slot_it == layout->offsets.end()) {
+              if (!memory.has_value()) {
                 return std::nullopt;
               }
               if (load->result.type == c4c::backend::bir::TypeKind::Ptr) {
                 *current_i32_name = std::nullopt;
+                *current_i8_name = std::nullopt;
                 *current_ptr_name = load->result.name;
-                return "    mov rax, " +
-                       render_stack_memory_operand(slot_it->second, "QWORD") + "\n";
+                return "    mov rax, " + *memory + "\n";
               }
               if (load->result.type == c4c::backend::bir::TypeKind::I32) {
                 *current_i32_name = load->result.name;
+                *current_i8_name = std::nullopt;
                 *current_ptr_name = std::nullopt;
-                return "    mov eax, " +
-                       render_stack_memory_operand(slot_it->second, "DWORD") + "\n";
+                return "    mov eax, " + *memory + "\n";
+              }
+              if (load->result.type == c4c::backend::bir::TypeKind::I8) {
+                *current_i32_name = std::nullopt;
+                *current_i8_name = load->result.name;
+                *current_ptr_name = std::nullopt;
+                return "    movsx eax, " + *memory + "\n";
               }
               return std::nullopt;
             }
@@ -1301,6 +1350,7 @@ inline std::string emit_prepared_module(
             if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate &&
                 store->value.type == c4c::backend::bir::TypeKind::I32) {
               *current_i32_name = std::nullopt;
+              *current_i8_name = std::nullopt;
               *current_ptr_name = std::nullopt;
               return "    mov " + render_stack_memory_operand(slot_it->second, "DWORD") + ", " +
                      std::to_string(static_cast<std::int32_t>(store->value.immediate)) + "\n";
@@ -1309,13 +1359,23 @@ inline std::string emit_prepared_module(
                 store->value.type == c4c::backend::bir::TypeKind::I32 &&
                 current_i32_name->has_value() && *current_i32_name == store->value.name) {
               *current_i32_name = std::nullopt;
+              *current_i8_name = std::nullopt;
               *current_ptr_name = std::nullopt;
               return "    mov " + render_stack_memory_operand(slot_it->second, "DWORD") +
                      ", eax\n";
             }
+            if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+                store->value.type == c4c::backend::bir::TypeKind::I8) {
+              *current_i32_name = std::nullopt;
+              *current_i8_name = std::nullopt;
+              *current_ptr_name = std::nullopt;
+              return "    mov " + render_stack_memory_operand(slot_it->second, "BYTE") + ", " +
+                     std::to_string(static_cast<std::int8_t>(store->value.immediate)) + "\n";
+            }
             if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
                 store->value.type == c4c::backend::bir::TypeKind::Ptr) {
               *current_i32_name = std::nullopt;
+              *current_i8_name = std::nullopt;
               if (current_ptr_name->has_value() && *current_ptr_name == store->value.name) {
                 *current_ptr_name = std::nullopt;
                 return "    mov " + render_stack_memory_operand(slot_it->second, "QWORD") +
@@ -1323,7 +1383,8 @@ inline std::string emit_prepared_module(
               }
               const auto pointee_slot_it = layout->offsets.find(store->value.name);
               if (pointee_slot_it == layout->offsets.end()) {
-                return std::nullopt;
+                *current_ptr_name = std::nullopt;
+                return std::string{};
               }
               *current_ptr_name = std::nullopt;
               return "    lea rax, " + render_stack_address_expr(pointee_slot_it->second) +
@@ -1335,6 +1396,7 @@ inline std::string emit_prepared_module(
 
           std::string body;
           std::optional<std::string_view> current_i32_name;
+          std::optional<std::string_view> current_i8_name;
           std::optional<std::string_view> current_ptr_name;
           std::size_t compare_index = block.insts.size();
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::CondBranch) {
@@ -1346,11 +1408,26 @@ inline std::string emit_prepared_module(
 
           for (std::size_t index = 0; index < compare_index; ++index) {
             const auto rendered_inst =
-                rendered_load_or_store(block.insts[index], &current_i32_name, &current_ptr_name);
-            if (!rendered_inst.has_value()) {
+                rendered_load_or_store(block.insts[index],
+                                       &current_i32_name,
+                                       &current_i8_name,
+                                       &current_ptr_name);
+            if (rendered_inst.has_value()) {
+              body += *rendered_inst;
+              continue;
+            }
+
+            const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&block.insts[index]);
+            if (cast == nullptr || cast->opcode != c4c::backend::bir::CastOpcode::SExt ||
+                cast->operand.type != c4c::backend::bir::TypeKind::I8 ||
+                cast->result.type != c4c::backend::bir::TypeKind::I32 ||
+                cast->operand.kind != c4c::backend::bir::Value::Kind::Named ||
+                !current_i8_name.has_value() || *current_i8_name != cast->operand.name) {
               return std::nullopt;
             }
-            body += *rendered_inst;
+            current_i8_name = std::nullopt;
+            current_i32_name = cast->result.name;
+            current_ptr_name = std::nullopt;
           }
 
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Return) {
@@ -1404,13 +1481,24 @@ inline std::string emit_prepared_module(
                compare->result.type != c4c::backend::bir::TypeKind::I32) ||
               block.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named ||
               block.terminator.condition.name != compare->result.name ||
-              compare->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
-              compare->rhs.type != c4c::backend::bir::TypeKind::I32 ||
-              compare->rhs.immediate != 0 ||
-              compare->lhs.kind != c4c::backend::bir::Value::Kind::Named ||
-              !current_i32_name.has_value() || *current_i32_name != compare->lhs.name) {
+              !current_i32_name.has_value()) {
             return std::nullopt;
           }
+          const bool lhs_is_current_rhs_is_imm =
+              compare->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+              compare->lhs.name == *current_i32_name &&
+              compare->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+              compare->rhs.type == c4c::backend::bir::TypeKind::I32;
+          const bool rhs_is_current_lhs_is_imm =
+              compare->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+              compare->rhs.name == *current_i32_name &&
+              compare->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+              compare->lhs.type == c4c::backend::bir::TypeKind::I32;
+          if (!lhs_is_current_rhs_is_imm && !rhs_is_current_lhs_is_imm) {
+            return std::nullopt;
+          }
+          const auto compare_immediate = lhs_is_current_rhs_is_imm ? compare->rhs.immediate
+                                                                   : compare->lhs.immediate;
 
           const auto* true_block = find_block(block.terminator.true_label);
           const auto* false_block = find_block(block.terminator.false_label);
@@ -1428,9 +1516,14 @@ inline std::string emit_prepared_module(
           const std::string false_label = ".L" + function.name + "_" + false_block->label;
           const char* branch_opcode =
               compare->opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je";
-          return body + "    test eax, eax\n    " + std::string(branch_opcode) + " " +
-                 false_label + "\n" + *rendered_true +
-                 false_label + ":\n" + *rendered_false;
+          const auto compare_setup =
+              compare_immediate == 0
+                  ? std::string("    test eax, eax\n")
+                  : "    cmp eax, " +
+                        std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
+          return body + compare_setup + "    " + std::string(branch_opcode) + " " +
+                 false_label + "\n" + *rendered_true + false_label + ":\n" +
+                 *rendered_false;
         };
 
     auto asm_text = asm_prefix;

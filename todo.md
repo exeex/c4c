@@ -6,20 +6,23 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Finished the last `plan.md` Step 2 semantic blocker on the selected
-local-memory `gep` lane by teaching loaded local-array pointers to survive
-both one-past-end and one-before-base scalar `gep` steps through the shared
-`lir_to_bir` route. The narrowed proof for `backend_lir_to_bir_notes` plus
-`c_testsuite_x86_backend_src_00032_c` now shows the same state already reached
-by `00073` and `00130`: semantic `lir_to_bir` succeeds, and the remaining
-failure is only the existing x86 prepared-handoff boundary outside owned
-files. Step 2 is now semantically complete for this selected `gep` lane.
+Completed `plan.md` Step 3 for the selected local-memory `gep` lane by
+extending the x86 prepared-module consumer to accept bounded local-slot
+compare-against-immediate guard chains, direct local-slot addressed loads, and
+the sign-extension byte lane needed by the cluster. The selected proving
+cluster now moves together on the x86 backend path:
+`c_testsuite_x86_backend_src_00032_c`,
+`c_testsuite_x86_backend_src_00073_c`, and
+`c_testsuite_x86_backend_src_00130_c` all pass, and
+`tests/backend/backend_x86_handoff_boundary_test.cpp` now carries explicit
+boundary fixtures for the new local compare-immediate and byte-addressed
+handoff shapes.
 
 ## Suggested Next
 
-Move this lane to Step 3 x86-handoff work without reopening semantic lowering:
-the selected `gep` cluster (`00032`, `00073`, `00130`) is now blocked only by
-the prepared-module x86 emitter boundary, not by shared `lir_to_bir`.
+Start `plan.md` Step 4 by running the `x86_backend` checkpoint again and
+measuring the truthful pass-count effect of the completed local-memory `gep`
+lane before selecting the next adjacent family packet.
 
 ## Watchouts
 
@@ -29,25 +32,24 @@ the prepared-module x86 emitter boundary, not by shared `lir_to_bir`.
   control flow.
 - Shared `lir_to_bir` capability growth should explain the result more than any
   x86-local patching.
-- `00032`, `00073`, and `00130` are now all outside this packet's semantic
-  scope; they stop at the x86 prepared-handoff boundary rather than inside
-  `lir_to_bir`.
-- The semantic repair that closed `00032` was shared, not testcase-shaped:
-  loaded local-array pointers now survive `gep` results at `base_index == size`
-  and `base_index < 0` through the existing local-memory provenance maps.
-- Leave `00037`, `00042`, `00046`, `00143`, and `00207` out of this packet;
-  this Step 2 lane is now semantically complete and the next blocker is in the
-  x86 handoff stage.
+- The x86 handoff extension stayed in the existing bounded local-slot guard
+  route; it did not reopen semantic lowering or widen into unrelated x86
+  families.
+- The new handoff support is still bounded to parameter-free x86_64 local-slot
+  guard chains with direct local loads, addressed local-slot loads, and
+  compare-against-immediate returns. Do not silently treat that as general x86
+  CFG or arbitrary memory support.
+- Leave `00037`, `00042`, `00046`, `00143`, and `00207` out of the next
+  packet; Step 4 should measure this completed lane before widening to another
+  family.
 
 ## Proof
 
-Ran the narrowed delegated proof exactly:
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -R '^backend_lir_to_bir_notes$' --output-on-failure >> test_after.log 2>&1 && ctest --test-dir build -R '^c_testsuite_x86_backend_src_00032_c$' --output-on-failure >> test_after.log 2>&1`.
-`backend_lir_to_bir_notes` passed, and `00032` no longer fails in semantic
-`lir_to_bir`; it now fails only at the x86 prepared-handoff boundary. Local
-spot checks with `./build/c4cll --codegen asm --backend-bir-stage semantic`
-confirmed that `00032`, `00073`, and `00130` all lower through semantic BIR on
-the repaired shared `gep` lane. The packet should still stay uncommitted until
-the Step 3 x86 handoff work is chosen.
+Ran the delegated proof exactly:
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -R '^backend_x86_handoff_boundary$' --output-on-failure >> test_after.log 2>&1 && ctest --test-dir build -R '^c_testsuite_x86_backend_src_(00032|00073|00130)_c$' --output-on-failure >> test_after.log 2>&1`.
+`backend_x86_handoff_boundary` passed, and
+`c_testsuite_x86_backend_src_00032_c`,
+`c_testsuite_x86_backend_src_00073_c`, and
+`c_testsuite_x86_backend_src_00130_c` all passed on the x86 backend path.
 Proof log:
 `test_after.log`.
