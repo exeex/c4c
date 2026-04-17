@@ -305,6 +305,8 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
     MemberExpr lhs{};
     lhs.base = tmp_id;
     lhs.field = field_name;
+    lhs.field_text_id = make_text_id(
+        lhs.field, module_ ? module_->link_name_texts.get() : nullptr);
     if (param_ts.tag && param_ts.tag[0]) lhs.resolved_owner_tag = param_ts.tag;
     if (param_ts.tag && param_ts.tag[0]) {
       lhs.member_symbol_id = find_struct_member_symbol_id(param_ts.tag, field_name);
@@ -483,6 +485,8 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
           MemberExpr me{};
           me.base = cur_lhs;
           me.field = fld.name;
+          me.field_text_id = make_text_id(
+              me.field, module_ ? module_->link_name_texts.get() : nullptr);
           if (cur_ts.tag && cur_ts.tag[0]) me.resolved_owner_tag = cur_ts.tag;
           me.member_symbol_id = fld.member_symbol_id;
           me.is_arrow = false;

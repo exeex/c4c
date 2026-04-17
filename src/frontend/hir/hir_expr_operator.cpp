@@ -373,6 +373,8 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
       MemberExpr m{};
       m.base = arrow_ptr;
       m.field = n->name ? n->name : "<anon_field>";
+      m.field_text_id = make_unqualified_text_id(
+          n, module_ ? module_->link_name_texts.get() : nullptr);
       m.is_arrow = true;
       const TypeSpec base_ts = module_->expr_pool[arrow_ptr.value].type.spec;
       const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;
@@ -406,6 +408,8 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
   MemberExpr m{};
   m.base = lower_expr(ctx, n->left);
   m.field = n->name ? n->name : "<anon_field>";
+  m.field_text_id = make_unqualified_text_id(
+      n, module_ ? module_->link_name_texts.get() : nullptr);
   m.is_arrow = n->is_arrow;
   const TypeSpec base_ts = module_->expr_pool[m.base.value].type.spec;
   const TypeBindings* tpl_bindings = ctx ? &ctx->tpl_bindings : nullptr;

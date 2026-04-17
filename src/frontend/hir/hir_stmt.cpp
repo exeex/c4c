@@ -73,6 +73,8 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
         MemberExpr lhs_me{};
         lhs_me.base = this_id;
         lhs_me.field = field.name;
+        lhs_me.field_text_id = make_text_id(
+            lhs_me.field, module_ ? module_->link_name_texts.get() : nullptr);
         lhs_me.resolved_owner_tag = struct_tag;
         lhs_me.member_symbol_id = field.member_symbol_id;
         lhs_me.is_arrow = true;
@@ -82,6 +84,8 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
         MemberExpr rhs_me{};
         rhs_me.base = other_id;
         rhs_me.field = field.name;
+        rhs_me.field_text_id = make_text_id(
+            rhs_me.field, module_ ? module_->link_name_texts.get() : nullptr);
         rhs_me.resolved_owner_tag = struct_tag;
         rhs_me.member_symbol_id = field.member_symbol_id;
         rhs_me.is_arrow = true;
@@ -143,6 +147,8 @@ void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
     MemberExpr me{};
     me.base = this_ptr_id;
     me.field = field.name;
+    me.field_text_id = make_text_id(
+        me.field, module_ ? module_->link_name_texts.get() : nullptr);
     me.resolved_owner_tag = struct_tag;
     me.member_symbol_id = field.member_symbol_id;
     me.is_arrow = true;
@@ -747,6 +753,8 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       MemberExpr me{};
       me.base = this_id;
       me.field = mem_name;
+      me.field_text_id = make_text_id(
+          me.field, module_ ? module_->link_name_texts.get() : nullptr);
       me.resolved_owner_tag = struct_tag;
       me.member_symbol_id = find_struct_member_symbol_id(struct_tag, mem_name);
       me.is_arrow = true;

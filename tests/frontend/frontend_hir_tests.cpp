@@ -654,6 +654,33 @@ int use_consteval() { return fold(3, 4); }
             "consteval-call function-name TextIds should resolve through the HIR text table");
 }
 
+void test_hir_member_exprs_preserve_text_ids_for_field_names() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+struct Widget {
+  int value;
+};
+
+int read_value(Widget* widget) { return widget->value; }
+)cpp");
+
+  const c4c::hir::MemberExpr* member_expr = nullptr;
+  for (const auto& expr : hir_module.expr_pool) {
+    member_expr = std::get_if<c4c::hir::MemberExpr>(&expr.payload);
+    if (member_expr != nullptr && member_expr->field == "value") {
+      break;
+    }
+    member_expr = nullptr;
+  }
+
+  expect_true(member_expr != nullptr,
+              "fixture should lower at least one MemberExpr for the selected field access");
+  expect_true(member_expr->field_text_id != c4c::kInvalidText,
+              "member expressions should preserve a parallel TextId for the field name");
+  expect_eq(hir_module.link_name_texts->lookup(member_expr->field_text_id),
+            member_expr->field,
+            "member-expression field TextIds should resolve through the HIR text table");
+}
+
 void test_hir_to_lir_forwards_function_link_name_ids() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 template<typename T>
@@ -1625,6 +1652,7 @@ int main() {
   test_hir_struct_defs_preserve_text_ids_for_tags_and_bases();
   test_hir_template_calls_preserve_text_ids_for_source_template_names();
   test_hir_consteval_call_metadata_preserves_text_ids_for_function_names();
+  test_hir_member_exprs_preserve_text_ids_for_field_names();
   test_hir_to_lir_forwards_function_link_name_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();

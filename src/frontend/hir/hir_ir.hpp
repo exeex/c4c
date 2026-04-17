@@ -403,6 +403,7 @@ struct IndexExpr {
 struct MemberExpr {
   ExprId base{};
   SymbolName field;
+  TextId field_text_id = kInvalidText;
   SymbolName resolved_owner_tag;
   MemberSymbolId member_symbol_id = kInvalidMemberSymbol;
   bool is_arrow = false;

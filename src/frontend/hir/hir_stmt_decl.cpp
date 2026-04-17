@@ -597,6 +597,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             MemberExpr me{};
             me.base = ie_id;
             me.field = fld.name;
+            me.field_text_id = make_text_id(
+                me.field, module_ ? module_->link_name_texts.get() : nullptr);
             if (elem_ts.tag && elem_ts.tag[0]) me.resolved_owner_tag = elem_ts.tag;
             me.member_symbol_id = fld.member_symbol_id;
             me.is_arrow = false;
@@ -838,6 +840,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
               MemberExpr me{};
               me.base = cur_lhs;
               me.field = fld.name;
+              me.field_text_id = make_text_id(
+                  me.field, module_ ? module_->link_name_texts.get() : nullptr);
               if (cur_ts.tag && cur_ts.tag[0]) me.resolved_owner_tag = cur_ts.tag;
               me.member_symbol_id = fld.member_symbol_id;
               me.is_arrow = false;

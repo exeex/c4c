@@ -210,6 +210,8 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       MemberExpr me{};
       me.base = this_id;
       me.field = r.name;
+      me.field_text_id = make_text_id(
+          me.field, module_ ? module_->link_name_texts.get() : nullptr);
       me.resolved_owner_tag = ctx->method_struct_tag;
       me.member_symbol_id =
           find_struct_member_symbol_id(ctx->method_struct_tag, r.name);
