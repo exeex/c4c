@@ -3,6 +3,18 @@
 
 namespace c4c::hir {
 
+namespace {
+
+DeclRef make_link_name_decl_ref(Module& module, std::string name) {
+  DeclRef ref{};
+  ref.name = std::move(name);
+  ref.name_text_id = make_text_id(ref.name, module.link_name_texts.get());
+  ref.link_name_id = module.link_names.find(ref.name);
+  return ref;
+}
+
+}  // namespace
+
 bool Lowerer::struct_has_member_dtors(const std::string& tag) {
   auto sit = module_->struct_defs.find(tag);
   if (sit == module_->struct_defs.end()) return false;
@@ -29,6 +41,8 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
     if (sit != module_->struct_defs.end()) {
       DeclRef this_ref{};
       this_ref.name = "this";
+      this_ref.name_text_id = make_text_id(
+          this_ref.name, module_ ? module_->link_name_texts.get() : nullptr);
       auto pit = ctx.params.find("this");
       if (pit != ctx.params.end()) this_ref.param_index = pit->second;
       TypeSpec this_ts{};
@@ -41,6 +55,8 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
           method_node->params[0]->name ? method_node->params[0]->name : "<anon_param>";
       DeclRef other_ref{};
       other_ref.name = other_name;
+      other_ref.name_text_id = make_text_id(
+          other_ref.name, module_ ? module_->link_name_texts.get() : nullptr);
       auto opit = ctx.params.find(other_name);
       if (opit != ctx.params.end()) other_ref.param_index = opit->second;
       TypeSpec other_ts = this_ts;
@@ -86,6 +102,8 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
   if (is_copy_or_move_assign) {
     DeclRef this_ref2{};
     this_ref2.name = "this";
+    this_ref2.name_text_id = make_text_id(
+        this_ref2.name, module_ ? module_->link_name_texts.get() : nullptr);
     auto pit2 = ctx.params.find("this");
     if (pit2 != ctx.params.end()) this_ref2.param_index = pit2->second;
     TypeSpec this_ts2{};
@@ -491,6 +509,8 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
     if (method_node->is_destructor) {
       DeclRef this_ref{};
       this_ref.name = "this";
+      this_ref.name_text_id = make_text_id(
+          this_ref.name, module_ ? module_->link_name_texts.get() : nullptr);
       auto pit = ctx.params.find("this");
       if (pit != ctx.params.end()) this_ref.param_index = pit->second;
       TypeSpec this_ts{};
@@ -633,6 +653,8 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
         }
         DeclRef this_ref{};
         this_ref.name = "this";
+        this_ref.name_text_id = make_text_id(
+            this_ref.name, module_ ? module_->link_name_texts.get() : nullptr);
         auto pit = ctx.params.find("this");
         if (pit != ctx.params.end()) this_ref.param_index = pit->second;
         TypeSpec this_ts{};
@@ -643,9 +665,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
             method_node, this_ref, this_ts, ValueCategory::LValue);
 
         CallExpr c{};
-        DeclRef callee_ref{};
-        callee_ref.name = best->mangled_name;
-        callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
+        DeclRef callee_ref = make_link_name_decl_ref(*module_, best->mangled_name);
         TypeSpec fn_ts{};
         fn_ts.base = TB_VOID;
         TypeSpec callee_ts = fn_ts;
@@ -675,6 +695,8 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
 
       DeclRef this_ref{};
       this_ref.name = "this";
+      this_ref.name_text_id = make_text_id(
+          this_ref.name, module_ ? module_->link_name_texts.get() : nullptr);
       auto pit = ctx.params.find("this");
       if (pit != ctx.params.end()) this_ref.param_index = pit->second;
       TypeSpec this_ts{};
@@ -790,9 +812,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
               throw std::runtime_error(diag);
             }
             CallExpr c{};
-            DeclRef callee_ref{};
-            callee_ref.name = best->mangled_name;
-            callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
+            DeclRef callee_ref = make_link_name_decl_ref(*module_, best->mangled_name);
             TypeSpec fn_ts{};
             fn_ts.base = TB_VOID;
             TypeSpec callee_ts = fn_ts;
@@ -864,6 +884,8 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   if (method_node->is_destructor) {
     DeclRef this_ref{};
     this_ref.name = "this";
+    this_ref.name_text_id = make_text_id(
+        this_ref.name, module_ ? module_->link_name_texts.get() : nullptr);
     auto pit = ctx.params.find("this");
     if (pit != ctx.params.end()) this_ref.param_index = pit->second;
     TypeSpec this_ts{};

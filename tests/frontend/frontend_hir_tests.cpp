@@ -381,6 +381,60 @@ int make_widget() {
               "fixture should lower at least one constructor or destructor callee decl-ref");
 }
 
+void test_hir_stmt_decl_refs_preserve_text_ids_for_this_param_and_ctor_callees() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+struct Member {
+  Member(int value) {}
+};
+
+struct Widget {
+  Member member;
+
+  Widget(int other) : member(other) {}
+  Widget() : Widget(7) {}
+  Widget& operator=(const Widget& other) = default;
+};
+)cpp");
+
+  bool saw_this_param_ref = false;
+  bool saw_other_param_ref = false;
+  bool saw_link_named_callee_ref = false;
+  for (const auto& expr : hir_module.expr_pool) {
+    const auto* ref = std::get_if<c4c::hir::DeclRef>(&expr.payload);
+    if (ref == nullptr) {
+      continue;
+    }
+    if (ref->param_index.has_value() && ref->name == "this") {
+      saw_this_param_ref = true;
+      expect_true(ref->name_text_id != c4c::kInvalidText,
+                  "statement-lowered this decl-refs should preserve a parallel TextId");
+      expect_eq(hir_module.link_name_texts->lookup(ref->name_text_id), "this",
+                "statement-lowered this decl-ref TextIds should resolve through the HIR text table");
+    }
+    if (ref->param_index.has_value() && ref->name == "other") {
+      saw_other_param_ref = true;
+      expect_true(ref->name_text_id != c4c::kInvalidText,
+                  "statement-lowered parameter decl-refs should preserve a parallel TextId");
+      expect_eq(hir_module.link_name_texts->lookup(ref->name_text_id), "other",
+                "statement-lowered parameter decl-ref TextIds should resolve through the HIR text table");
+    }
+    if (ref->link_name_id != c4c::kInvalidLinkName) {
+      saw_link_named_callee_ref = true;
+      expect_true(ref->name_text_id != c4c::kInvalidText,
+                  "statement-lowered constructor callees should preserve a parallel TextId");
+      expect_eq(hir_module.link_name_texts->lookup(ref->name_text_id), ref->name,
+                "statement-lowered callee TextIds should resolve to the same emitted spelling");
+    }
+  }
+
+  expect_true(saw_this_param_ref,
+              "fixture should lower at least one statement-built this decl-ref");
+  expect_true(saw_other_param_ref,
+              "fixture should lower at least one statement-built parameter decl-ref");
+  expect_true(saw_link_named_callee_ref,
+              "fixture should lower at least one statement-built constructor callee decl-ref");
+}
+
 void test_hir_to_lir_forwards_function_link_name_ids() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 template<typename T>
@@ -1347,6 +1401,7 @@ int main() {
   test_hir_materializes_decl_ref_link_name_ids_for_emitted_refs();
   test_hir_namespace_qualifiers_preserve_text_ids_for_qualified_decl_refs();
   test_hir_decl_stmt_decl_refs_preserve_text_ids_for_ctor_and_dtor_routes();
+  test_hir_stmt_decl_refs_preserve_text_ids_for_this_param_and_ctor_callees();
   test_hir_to_lir_forwards_function_link_name_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();
