@@ -6,6 +6,7 @@
 #include "parser.hpp"
 #include "sema.hpp"
 #include "source_profile.hpp"
+#include "target_profile.hpp"
 #include "backend/bir/lir_to_bir.hpp"
 
 #include <algorithm>
@@ -61,6 +62,14 @@ void overwrite_signature_name(std::string* signature_text,
               "fixture signature should contain an argument list");
   signature_text->replace(at_pos, paren_pos - at_pos,
                           "@" + std::string(replacement_name));
+}
+
+c4c::codegen::lir::LirModule make_link_name_aware_lir_module() {
+  c4c::codegen::lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  return module;
 }
 
 void test_dense_id_map_tracks_assigned_dense_ids() {
@@ -365,6 +374,25 @@ int call_helper(int value) { return helper(value); }
               "printer should not trust a corrupted raw direct-call operand");
 }
 
+void test_lir_printer_resolves_extern_decl_link_names_at_emission_boundary() {
+  c4c::codegen::lir::LirModule lir_module = make_link_name_aware_lir_module();
+
+  c4c::codegen::lir::LirExternDecl decl;
+  decl.name = "broken_extern_decl_name";
+  decl.return_type_str = "i32";
+  decl.return_type = "i32";
+  decl.link_name_id = lir_module.link_names.intern("semantic_helper");
+  expect_true(decl.link_name_id != c4c::kInvalidLinkName,
+              "fixture should assign a real LinkNameId to the extern declaration carrier");
+  lir_module.extern_decls.push_back(std::move(decl));
+
+  const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
+  expect_true(llvm_ir.find("declare i32 @semantic_helper(...)") != std::string::npos,
+              "printer should recover extern declaration spellings from LinkNameId lookup");
+  expect_true(llvm_ir.find("broken_extern_decl_name") == std::string::npos,
+              "printer should not trust a corrupted raw extern declaration name");
+}
+
 void test_lir_to_bir_resolves_link_names_at_backend_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -530,6 +558,37 @@ int call_helper(int value) { return helper(value); }
               "backend lir_to_bir should not trust a corrupted raw direct-call symbol");
 }
 
+void test_lir_to_bir_resolves_extern_decl_link_names_at_backend_boundary() {
+  c4c::codegen::lir::LirModule lir_module = make_link_name_aware_lir_module();
+
+  c4c::codegen::lir::LirExternDecl decl;
+  decl.name = "broken_backend_extern_decl_name";
+  decl.return_type_str = "i32";
+  decl.return_type = "i32";
+  decl.link_name_id = lir_module.link_names.intern("semantic_backend_helper");
+  expect_true(decl.link_name_id != c4c::kInvalidLinkName,
+              "fixture should assign a real LinkNameId before backend extern-decl lowering");
+  lir_module.extern_decls.push_back(std::move(decl));
+
+  const auto lowering =
+      c4c::backend::try_lower_to_bir_with_options(lir_module, c4c::backend::BirLoweringOptions{});
+  expect_true(lowering.module.has_value(),
+              "backend lir_to_bir lowering should succeed for an extern declaration with a LinkNameId");
+
+  const auto bir_decl_it = std::find_if(
+      lowering.module->functions.begin(), lowering.module->functions.end(),
+      [](const c4c::backend::bir::Function& function) {
+        return function.is_declaration && function.name == "semantic_backend_helper";
+      });
+  expect_true(bir_decl_it != lowering.module->functions.end(),
+              "backend lir_to_bir should recover extern declaration names from LinkNameId lookup");
+  expect_true(std::none_of(lowering.module->functions.begin(), lowering.module->functions.end(),
+                           [](const c4c::backend::bir::Function& function) {
+                             return function.name == "broken_backend_extern_decl_name";
+                           }),
+              "backend lir_to_bir should not trust a corrupted raw extern declaration name");
+}
+
 void test_lir_to_bir_resolves_decl_backed_direct_call_link_names_at_backend_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 extern int helper(int value);
@@ -637,9 +696,11 @@ int main() {
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();
+  test_lir_printer_resolves_extern_decl_link_names_at_emission_boundary();
   test_lir_to_bir_resolves_link_names_at_backend_boundary();
   test_lir_to_bir_analysis_resolves_link_names_at_backend_boundary();
   test_lir_to_bir_resolves_direct_call_link_names_at_backend_boundary();
+  test_lir_to_bir_resolves_extern_decl_link_names_at_backend_boundary();
   test_lir_to_bir_resolves_decl_backed_direct_call_link_names_at_backend_boundary();
 
   std::cout << "PASS: frontend_hir_tests\n";

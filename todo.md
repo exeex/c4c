@@ -6,18 +6,16 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Added focused backend coverage proving declaration-backed direct calls and
-their lowered declarations still resolve through `LinkNameId` at the backend
-boundary even after both the raw LIR declaration name and the raw direct-call
-operand are deliberately corrupted.
+Carried `LinkNameId` through `LirExternDecl` so late consumer boundaries now
+resolve extern declaration spellings from ids when one is already present on
+the carrier, while leaving unresolved externs without a real source of truth
+at `kInvalidLinkName`.
 
 ## Suggested Next
 
-Review the remaining late-consumer surfaces that still expose raw
-declaration-oriented names despite existing carriers, especially unresolved
-extern-call declarations and any backend diagnostic/reporting paths that do
-not already pass through the resolved-module boundary, while continuing to
-avoid fake ids where HIR has no real semantic source of truth.
+Review backend diagnostic and reporting paths that still look at raw LIR
+names instead of the resolved module view, and only extend `LinkNameId`
+carriers further when a real HIR or LIR semantic source exists.
 
 ## Watchouts
 
@@ -27,9 +25,9 @@ avoid fake ids where HIR has no real semantic source of truth.
   available
 - keep `LinkNameId` distinct from both `TextId` and parser/source-atom
   `SymbolId`; the new HIR fields are parallel carriers, not replacements
-- unresolved extern-call declarations still print names from raw strings today
-  because this route does not yet have a real `LinkNameId` source of truth;
-  avoid faking that boundary with ad hoc interning
+- unresolved extern-call declarations still only get semantic names if an
+  upstream carrier already has a real `LinkNameId`; do not fake that boundary
+  by interning raw fallback names during lowering
 - the new direct-call carrier only becomes valid when the callee resolves to an
   existing HIR `Function`; intrinsic/builtin aliases and unresolved extern
   calls should continue to flow with `kInvalidLinkName`

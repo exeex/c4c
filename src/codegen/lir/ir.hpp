@@ -477,6 +477,7 @@ struct LirExternDecl {
   std::string name;
   std::string return_type_str;  // LLVM return type (temporary; will be TypeSpec later)
   LirTypeRef return_type;
+  LinkNameId link_name_id = kInvalidLinkName;
 };
 
 // ── Function ─────────────────────────────────────────────────────────────────
@@ -539,6 +540,11 @@ struct LirSpecEntry {
 // ── Module ───────────────────────────────────────────────────────────────────
 
 struct LirModule {
+  struct ExternDeclInfo {
+    std::string return_type_str;
+    LinkNameId link_name_id = kInvalidLinkName;
+  };
+
   c4c::TargetProfile target_profile{};
   std::string data_layout;
   std::shared_ptr<c4c::TextTable> link_name_texts;
@@ -551,17 +557,24 @@ struct LirModule {
 
   // Dedup map for extern call declarations (name → return type string).
   // Lowering writes here via record_extern_decl(); finalize converts to extern_decls vector.
-  std::unordered_map<std::string, std::string> extern_decl_map;
+  std::unordered_map<std::string, ExternDeclInfo> extern_decl_map;
 
   /// Record an extern function call declaration.  Deduplicates by name and
   /// upgrades void returns to concrete types when a non-void call is seen.
-  void record_extern_decl(const std::string& name, const std::string& ret_ty) {
+  void record_extern_decl(const std::string& name, const std::string& ret_ty,
+                          LinkNameId link_name_id = kInvalidLinkName) {
     auto it = extern_decl_map.find(name);
     if (it == extern_decl_map.end()) {
-      extern_decl_map.emplace(name, ret_ty);
+      extern_decl_map.emplace(name, ExternDeclInfo{ret_ty, link_name_id});
       return;
     }
-    if (it->second == "void" && ret_ty != "void") it->second = ret_ty;
+    if (it->second.return_type_str == "void" && ret_ty != "void") {
+      it->second.return_type_str = ret_ty;
+    }
+    if (it->second.link_name_id == kInvalidLinkName &&
+        link_name_id != kInvalidLinkName) {
+      it->second.link_name_id = link_name_id;
+    }
   }
 
   // Type declarations (struct definitions) needed by the output.

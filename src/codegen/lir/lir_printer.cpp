@@ -61,6 +61,13 @@ std::string resolve_direct_call_callee(const LirCallOp& call,
   return llvm_global_sym(std::string(resolved_name));
 }
 
+std::string resolve_extern_decl_name(const LirExternDecl& decl,
+                                     const c4c::LinkNameTable& link_names) {
+  const std::string_view resolved_name =
+      resolve_link_name(link_names, decl.link_name_id);
+  return resolved_name.empty() ? decl.name : std::string(resolved_name);
+}
+
 // Render a single LirInst to text.
 void render_inst(std::ostringstream& os, const LirInst& inst,
                  const c4c::LinkNameTable& link_names) {
@@ -538,7 +545,9 @@ std::string print_llvm(const LirModule& mod) {
 
   // External function declarations.
   for (const auto& ed : mod.extern_decls) {
-    out << "declare " << ed.return_type_str << " " << llvm_global_sym(ed.name) << "(...)\n";
+    out << "declare " << ed.return_type_str << " "
+        << llvm_global_sym(resolve_extern_decl_name(ed, mod.link_names))
+        << "(...)\n";
   }
   if (!mod.extern_decls.empty()) out << "\n";
 

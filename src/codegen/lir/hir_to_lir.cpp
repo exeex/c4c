@@ -389,12 +389,13 @@ static void finalize_module(LirModule& module,
                             const c4c::hir::Module& hir_mod) {
   // Convert extern_decl_map (dedup map) into extern_decls vector,
   // filtering out functions defined in this TU.
-  for (const auto& [name, ret_ty] : module.extern_decl_map) {
+  for (const auto& [name, decl_info] : module.extern_decl_map) {
     if (hir_mod.fn_index.count(name)) continue;
     LirExternDecl ed;
     ed.name = name;
-    ed.return_type_str = ret_ty;
-    ed.return_type = c4c::codegen::lir::LirTypeRef(ret_ty);
+    ed.return_type_str = decl_info.return_type_str;
+    ed.return_type = c4c::codegen::lir::LirTypeRef(decl_info.return_type_str);
+    ed.link_name_id = decl_info.link_name_id;
     module.extern_decls.push_back(std::move(ed));
   }
 }

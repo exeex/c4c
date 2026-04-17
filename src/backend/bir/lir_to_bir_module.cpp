@@ -104,6 +104,18 @@ c4c::codegen::lir::LirGlobal global_with_resolved_name(
   return resolved;
 }
 
+c4c::codegen::lir::LirExternDecl extern_decl_with_resolved_name(
+    const c4c::codegen::lir::LirModule& module,
+    const c4c::codegen::lir::LirExternDecl& decl) {
+  c4c::codegen::lir::LirExternDecl resolved = decl;
+  const std::string_view resolved_name = resolve_link_name(module.link_names,
+                                                           decl.link_name_id);
+  if (!resolved_name.empty()) {
+    resolved.name = std::string(resolved_name);
+  }
+  return resolved;
+}
+
 }  // namespace
 
 BirFunctionLowerer::BirFunctionLowerer(BirLoweringContext& context,
@@ -562,7 +574,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   function_symbols.reserve(context.lir_module.extern_decls.size() +
                            context.lir_module.functions.size());
   for (const auto& decl : context.lir_module.extern_decls) {
-    function_symbols.insert(decl.name);
+    function_symbols.insert(extern_decl_with_resolved_name(context.lir_module, decl).name);
   }
   for (const auto& function : context.lir_module.functions) {
     function_symbols.insert(function_with_resolved_name(context.lir_module, function).name);
@@ -618,7 +630,9 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   }
 
   for (const auto& decl : context.lir_module.extern_decls) {
-    auto lowered_decl = BirFunctionLowerer::lower_extern_decl(decl, context.target_profile);
+    auto lowered_decl = BirFunctionLowerer::lower_extern_decl(
+        extern_decl_with_resolved_name(context.lir_module, decl),
+        context.target_profile);
     if (!lowered_decl.has_value()) {
       continue;
     }
