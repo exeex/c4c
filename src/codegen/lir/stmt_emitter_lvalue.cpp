@@ -607,8 +607,14 @@ MemberFieldAccess StmtEmitter::resolve_member_field_access(FnCtx& ctx, const Mem
     access.tag = access.base_ts.tag;
   }
   if (!access.has_tag()) return access;
-  access.field_found =
-      resolve_field_access(access.tag, m.field, access.chain, access.field_ts, &access.bf);
+  if (m.member_symbol_id != kInvalidMemberSymbol) {
+    access.field_found = resolve_field_access_by_member_symbol_id(
+        access.tag, m.member_symbol_id, access.chain, access.field_ts, &access.bf);
+  }
+  if (!access.field_found) {
+    access.field_found =
+        resolve_field_access(access.tag, m.field, access.chain, access.field_ts, &access.bf);
+  }
   return access;
 }
 

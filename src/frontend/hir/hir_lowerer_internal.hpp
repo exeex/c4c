@@ -362,6 +362,8 @@ class Lowerer {
 
   std::optional<long long> find_struct_static_member_const_value(
       const std::string& tag, const std::string& member) const;
+  MemberSymbolId find_struct_member_symbol_id(
+      const std::string& tag, const std::string& member) const;
   std::optional<long long> try_eval_instantiated_struct_static_member_const(
       const std::string& tag, const std::string& member) const;
 
@@ -369,6 +371,10 @@ class Lowerer {
       const Node* n, const NttpBindings& nttp_bindings) const;
 
   std::optional<std::string> find_struct_method_mangled(
+      const std::string& tag,
+      const std::string& method,
+      bool is_const_obj) const;
+  std::optional<LinkNameId> find_struct_method_link_name_id(
       const std::string& tag,
       const std::string& method,
       bool is_const_obj) const;
@@ -441,6 +447,7 @@ class Lowerer {
 
   std::optional<HirStructField> instantiate_template_struct_field(
       const Node* orig_f,
+      const std::string& owner_tag,
       const TypeBindings& selected_type_bindings,
       const NttpBindings& selected_nttp_bindings_map,
       const Node* tpl_def,
@@ -958,6 +965,8 @@ class Lowerer {
       struct_static_member_const_values_;
   // Struct method map: "struct_tag::method_name" → mangled function name.
   std::unordered_map<std::string, std::string> struct_methods_;
+  // Struct method map: "struct_tag::method_name" → link-visible symbol id.
+  std::unordered_map<std::string, LinkNameId> struct_method_link_name_ids_;
   // Struct method return types: "struct_tag::method_name" → return TypeSpec.
   std::unordered_map<std::string, TypeSpec> struct_method_ret_types_;
   // Top-level function definitions keyed by unqualified name for early

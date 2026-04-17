@@ -177,7 +177,7 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
   CallExpr c{};
   DeclRef dr{};
   dr.name = resolved_mangled;
-  attach_decl_ref_link_name_id(dr);
+  dr.link_name_id = module_->link_names.find(dr.name);
   TypeSpec fn_ts{};
   fn_ts.base = TB_VOID;
   const Function* callee_fn = module_->find_function_by_name_legacy(dr.name);
@@ -328,7 +328,7 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
         CallExpr cc{};
         DeclRef dr{};
         dr.name = mit->second;
-        attach_decl_ref_link_name_id(dr);
+        dr.link_name_id = module_->link_names.find(dr.name);
         TypeSpec callee_ts = fn_ts;
         callee_ts.ptr_level++;
         cc.callee = append_expr(n, dr, callee_ts);
@@ -353,17 +353,20 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
               base_ts, m.is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
               n, std::string("member-owner:") + m.field)) {
         m.resolved_owner_tag = *owner_tag;
+        m.member_symbol_id = find_struct_member_symbol_id(*owner_tag, m.field);
       } else if (n->left) {
         const TypeSpec ast_base_ts = infer_generic_ctrl_type(ctx, n->left);
         if (auto owner_tag = resolve_member_lookup_owner_tag(
                 ast_base_ts, m.is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
                 n, std::string("member-owner-ast:") + m.field)) {
           m.resolved_owner_tag = *owner_tag;
+          m.member_symbol_id = find_struct_member_symbol_id(*owner_tag, m.field);
         } else if (auto owner_tag = resolve_member_lookup_owner_tag(
                        n->left->type, m.is_arrow, tpl_bindings, nttp_bindings,
                        current_struct_tag, n,
                        std::string("member-owner-raw-ast:") + m.field)) {
           m.resolved_owner_tag = *owner_tag;
+          m.member_symbol_id = find_struct_member_symbol_id(*owner_tag, m.field);
         }
       }
       return append_expr(n, m, n->type, ValueCategory::LValue);
@@ -383,17 +386,20 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
           base_ts, m.is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
           n, std::string("member-owner:") + m.field)) {
     m.resolved_owner_tag = *owner_tag;
+    m.member_symbol_id = find_struct_member_symbol_id(*owner_tag, m.field);
   } else if (n->left) {
     const TypeSpec ast_base_ts = infer_generic_ctrl_type(ctx, n->left);
     if (auto owner_tag = resolve_member_lookup_owner_tag(
             ast_base_ts, m.is_arrow, tpl_bindings, nttp_bindings, current_struct_tag,
             n, std::string("member-owner-ast:") + m.field)) {
       m.resolved_owner_tag = *owner_tag;
+      m.member_symbol_id = find_struct_member_symbol_id(*owner_tag, m.field);
     } else if (auto owner_tag = resolve_member_lookup_owner_tag(
                    n->left->type, m.is_arrow, tpl_bindings, nttp_bindings,
                    current_struct_tag, n,
                    std::string("member-owner-raw-ast:") + m.field)) {
       m.resolved_owner_tag = *owner_tag;
+      m.member_symbol_id = find_struct_member_symbol_id(*owner_tag, m.field);
     }
   }
   const ValueCategory category =
@@ -416,7 +422,7 @@ ExprId Lowerer::maybe_bool_convert(FunctionCtx* ctx, ExprId expr, const Node* n)
   CallExpr c{};
   DeclRef dr{};
   dr.name = mit->second;
-  attach_decl_ref_link_name_id(dr);
+  dr.link_name_id = module_->link_names.find(dr.name);
   TypeSpec fn_ts{};
   fn_ts.base = TB_BOOL;
   if (const Function* fn = module_->find_function_by_name_legacy(dr.name)) {

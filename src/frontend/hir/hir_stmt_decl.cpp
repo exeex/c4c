@@ -255,6 +255,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         CallExpr c{};
         DeclRef callee_ref{};
         callee_ref.name = best->mangled_name;
+        callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
         TypeSpec fn_ts{};
         fn_ts.base = TB_VOID;
         TypeSpec callee_ts = fn_ts;
@@ -334,6 +335,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         CallExpr c{};
         DeclRef callee_ref{};
         callee_ref.name = default_ctor->mangled_name;
+        callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
         TypeSpec fn_ts{};
         fn_ts.base = TB_VOID;
         TypeSpec callee_ts = fn_ts;
@@ -397,6 +399,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         CallExpr c{};
         DeclRef callee_ref{};
         callee_ref.name = best->mangled_name;
+        callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
         TypeSpec fn_ts{};
         fn_ts.base = TB_VOID;
         TypeSpec callee_ts = fn_ts;
@@ -571,8 +574,9 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             MemberExpr me{};
             me.base = ie_id;
             me.field = fld.name;
-            me.is_arrow = false;
             if (elem_ts.tag && elem_ts.tag[0]) me.resolved_owner_tag = elem_ts.tag;
+            me.member_symbol_id = fld.member_symbol_id;
+            me.is_arrow = false;
             ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
             ExprId val_id = lower_expr(&ctx, scalar_node);
             AssignExpr ae{};
@@ -809,8 +813,9 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
               MemberExpr me{};
               me.base = cur_lhs;
               me.field = fld.name;
-              me.is_arrow = false;
               if (cur_ts.tag && cur_ts.tag[0]) me.resolved_owner_tag = cur_ts.tag;
+              me.member_symbol_id = fld.member_symbol_id;
+              me.is_arrow = false;
               ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
 
               const Node* val_node = init_item_value_node(item);

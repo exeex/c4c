@@ -75,6 +75,7 @@ void Lowerer::register_instantiated_template_struct_methods(
     std::string mkey = mangled + "::" + method->name + csuf;
     if (struct_methods_.count(mkey)) continue;
     struct_methods_[mkey] = mmangled;
+    struct_method_link_name_ids_[mkey] = module_->link_names.intern(mmangled);
     struct_method_ret_types_[mkey] = method->type;
     lower_struct_method(mmangled, mangled, method,
                         &method_tpl_bindings, &method_nttp_bindings);
@@ -95,6 +96,7 @@ void Lowerer::record_instantiated_template_struct_field_metadata(
 
 std::optional<HirStructField> Lowerer::instantiate_template_struct_field(
     const Node* orig_f,
+    const std::string& owner_tag,
     const TypeBindings& selected_type_bindings,
     const NttpBindings& selected_nttp_bindings_map,
     const Node* tpl_def,
@@ -107,6 +109,8 @@ std::optional<HirStructField> Lowerer::instantiate_template_struct_field(
 
   HirStructField hf;
   hf.name = orig_f->name;
+  hf.member_symbol_id =
+      module_->member_symbols.intern(owner_tag + "::" + orig_f->name);
   if (ft.array_rank > 0) {
     hf.is_flexible_array = (ft.array_size < 0);
     hf.array_first_dim = (ft.array_size >= 0) ? ft.array_size : 0;
@@ -134,7 +138,8 @@ void Lowerer::append_instantiated_template_struct_fields(
     record_instantiated_template_struct_field_metadata(
         mangled, orig_f, selected_nttp_bindings_map);
     std::optional<HirStructField> hf = instantiate_template_struct_field(
-        orig_f, selected_type_bindings, selected_nttp_bindings_map, tpl_def, llvm_idx);
+        orig_f, mangled, selected_type_bindings, selected_nttp_bindings_map,
+        tpl_def, llvm_idx);
     if (!hf) continue;
     def.fields.push_back(std::move(*hf));
     if (!tpl_def->is_union) ++llvm_idx;

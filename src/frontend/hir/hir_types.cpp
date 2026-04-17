@@ -318,6 +318,34 @@ std::optional<std::string> Lowerer::find_struct_method_mangled(
   return std::nullopt;
 }
 
+std::optional<LinkNameId> Lowerer::find_struct_method_link_name_id(
+    const std::string& tag,
+    const std::string& method,
+    bool is_const_obj) const {
+  const std::string base_key = tag + "::" + method;
+  const std::string const_key = base_key + "_const";
+  auto try_local = [&]() -> std::optional<LinkNameId> {
+    auto it = is_const_obj ? struct_method_link_name_ids_.find(const_key)
+                           : struct_method_link_name_ids_.find(base_key);
+    if (it != struct_method_link_name_ids_.end()) return it->second;
+    it = is_const_obj ? struct_method_link_name_ids_.find(base_key)
+                      : struct_method_link_name_ids_.find(const_key);
+    if (it != struct_method_link_name_ids_.end()) return it->second;
+    return std::nullopt;
+  };
+  if (auto local = try_local()) return local;
+  auto dit = module_->struct_defs.find(tag);
+  if (dit != module_->struct_defs.end()) {
+    for (const auto& base_tag : dit->second.base_tags) {
+      if (auto inherited =
+              find_struct_method_link_name_id(base_tag, method, is_const_obj)) {
+        return inherited;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<TypeSpec> Lowerer::find_struct_method_return_type(
     const std::string& tag,
     const std::string& method,
@@ -906,6 +934,22 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
   return std::nullopt;
 }
 
+MemberSymbolId Lowerer::find_struct_member_symbol_id(
+    const std::string& tag, const std::string& member) const {
+  const MemberSymbolId direct_id =
+      module_->member_symbols.find(tag + "::" + member);
+  if (direct_id != kInvalidMemberSymbol) return direct_id;
+  auto dit = module_->struct_defs.find(tag);
+  if (dit != module_->struct_defs.end()) {
+    for (const auto& base_tag : dit->second.base_tags) {
+      const MemberSymbolId inherited_id =
+          find_struct_member_symbol_id(base_tag, member);
+      if (inherited_id != kInvalidMemberSymbol) return inherited_id;
+    }
+  }
+  return kInvalidMemberSymbol;
+}
+
 bool Lowerer::has_side_effect_expr(const Node* n) const {
   if (!n) return false;
   switch (n->kind) {
@@ -1234,6 +1278,8 @@ void Lowerer::lower_struct_def(const Node* sd) {
 
     HirStructField hf;
     hf.name = f->name;
+    hf.member_symbol_id = module_->member_symbols.intern(
+        std::string(tag) + "::" + f->name);
     TypeSpec ft = f->type;
 
     if (is_bitfield && !sd->is_union) {
@@ -1392,6 +1438,7 @@ void Lowerer::lower_struct_def(const Node* sd) {
       if (ctor_idx == 0) {
         std::string key = std::string(tag) + "::" + method->name;
         struct_methods_[key] = mangled;
+        struct_method_link_name_ids_[key] = module_->link_names.intern(mangled);
         struct_method_ret_types_[key] = method->type;
       }
       pending_methods_.push_back({mangled, std::string(tag), method,
@@ -1443,6 +1490,7 @@ void Lowerer::lower_struct_def(const Node* sd) {
       ovset.push_back(std::move(e1));
     }
     struct_methods_[key] = mangled;
+    struct_method_link_name_ids_[key] = module_->link_names.intern(mangled);
     struct_method_ret_types_[key] = method->type;
     pending_methods_.push_back({mangled, std::string(tag), method,
                                 method_tpl_bindings, method_nttp_bindings});

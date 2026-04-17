@@ -57,16 +57,18 @@ void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
         MemberExpr lhs_me{};
         lhs_me.base = this_id;
         lhs_me.field = field.name;
-        lhs_me.is_arrow = true;
         lhs_me.resolved_owner_tag = struct_tag;
+        lhs_me.member_symbol_id = field.member_symbol_id;
+        lhs_me.is_arrow = true;
         ExprId lhs_member =
             append_expr(method_node, lhs_me, field_ts, ValueCategory::LValue);
 
         MemberExpr rhs_me{};
         rhs_me.base = other_id;
         rhs_me.field = field.name;
-        rhs_me.is_arrow = true;
         rhs_me.resolved_owner_tag = struct_tag;
+        rhs_me.member_symbol_id = field.member_symbol_id;
+        rhs_me.is_arrow = true;
         ExprId rhs_member =
             append_expr(method_node, rhs_me, field_ts, ValueCategory::LValue);
 
@@ -123,8 +125,9 @@ void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
     MemberExpr me{};
     me.base = this_ptr_id;
     me.field = field.name;
-    me.is_arrow = true;
     me.resolved_owner_tag = struct_tag;
+    me.member_symbol_id = field.member_symbol_id;
+    me.is_arrow = true;
     TypeSpec field_ts = field.elem_type;
     ExprId member_id = append_expr(span_node, me, field_ts, ValueCategory::LValue);
     UnaryExpr addr{};
@@ -139,6 +142,7 @@ void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
       CallExpr c{};
       DeclRef callee_ref{};
       callee_ref.name = dit->second.mangled_name;
+      callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
       TypeSpec fn_ts{};
       fn_ts.base = TB_VOID;
       TypeSpec callee_ts = fn_ts;
@@ -176,6 +180,7 @@ void Lowerer::emit_dtor_calls(FunctionCtx& ctx, size_t since, const Node* span_n
       CallExpr c{};
       DeclRef callee_ref{};
       callee_ref.name = dit->second.mangled_name;
+      callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
       TypeSpec fn_ts{};
       fn_ts.base = TB_VOID;
       TypeSpec callee_ts = fn_ts;
@@ -432,6 +437,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   Function fn{};
   fn.id = next_fn_id();
   fn.name = mangled_name;
+  fn.link_name_id = module_->link_names.intern(fn.name);
   fn.ns_qual = make_ns_qual(method_node);
   {
     TypeSpec ret_ts = prepare_callable_return_type(
@@ -634,6 +640,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
         CallExpr c{};
         DeclRef callee_ref{};
         callee_ref.name = best->mangled_name;
+        callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
         TypeSpec fn_ts{};
         fn_ts.base = TB_VOID;
         TypeSpec callee_ts = fn_ts;
@@ -711,8 +718,9 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       MemberExpr me{};
       me.base = this_id;
       me.field = mem_name;
-      me.is_arrow = true;
       me.resolved_owner_tag = struct_tag;
+      me.member_symbol_id = find_struct_member_symbol_id(struct_tag, mem_name);
+      me.is_arrow = true;
       ExprId lhs_id = append_expr(method_node, me, field_ts, ValueCategory::LValue);
 
       bool did_ctor_call = false;
@@ -779,6 +787,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
             CallExpr c{};
             DeclRef callee_ref{};
             callee_ref.name = best->mangled_name;
+            callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
             TypeSpec fn_ts{};
             fn_ts.base = TB_VOID;
             TypeSpec callee_ts = fn_ts;

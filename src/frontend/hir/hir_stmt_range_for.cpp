@@ -64,7 +64,7 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
     CallExpr cc{};
     DeclRef dr{};
     dr.name = mangled;
-    attach_decl_ref_link_name_id(dr);
+    dr.link_name_id = module_->link_names.find(dr.name);
     TypeSpec callee_ts = iter_ts;
     callee_ts.ptr_level++;
     cc.callee = append_expr(n, dr, callee_ts);
@@ -117,7 +117,7 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
     CallExpr cc{};
     DeclRef dr{};
     dr.name = mit->second;
-    attach_decl_ref_link_name_id(dr);
+    dr.link_name_id = module_->link_names.find(dr.name);
     TypeSpec bool_ts{};
     bool_ts.base = TB_BOOL;
     TypeSpec callee_ts = bool_ts;
@@ -147,7 +147,7 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
     CallExpr cc{};
     DeclRef dr{};
     dr.name = mit->second;
-    attach_decl_ref_link_name_id(dr);
+    dr.link_name_id = module_->link_names.find(dr.name);
     TypeSpec inc_ret_ts = iter_ts;
     {
       if (const Function* fn = module_->find_function_by_name_legacy(mit->second)) {
@@ -198,7 +198,7 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
       CallExpr cc{};
       DeclRef dr{};
       dr.name = mit->second;
-      attach_decl_ref_link_name_id(dr);
+      dr.link_name_id = module_->link_names.find(dr.name);
       {
         if (const Function* fn = module_->find_function_by_name_legacy(mit->second)) {
           deref_ret_ts = fn->return_type.spec;

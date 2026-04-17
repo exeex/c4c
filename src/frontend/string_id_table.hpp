@@ -10,9 +10,11 @@ namespace c4c {
 
 using TextId = uint32_t;
 using LinkNameId = uint32_t;
+using MemberSymbolId = uint32_t;
 
 constexpr TextId kInvalidText = 0;
 constexpr LinkNameId kInvalidLinkName = 0;
+constexpr MemberSymbolId kInvalidMemberSymbol = 0;
 
 // Generic stable-id table keyed by a caller-provided value type.
 template <typename Id, Id InvalidId, typename Key>
@@ -123,6 +125,54 @@ struct LinkNameTable {
 
   TextTable* texts_ = nullptr;
   KeyIdTable<LinkNameId, kInvalidLinkName, TextId> link_name_ids_;
+};
+
+// Struct/union member semantic identity layer. Member symbols are not
+// link-visible, but still need a stable semantic id once a concrete owner tag
+// is known. Like LinkNameTable, this reuses TextTable storage.
+struct MemberSymbolTable {
+  explicit MemberSymbolTable(TextTable* texts = nullptr) : texts_(texts) {}
+
+  void attach_text_table(TextTable* texts) { texts_ = texts; }
+
+  MemberSymbolId find(TextId text_id) const {
+    if (!texts_ || text_id == kInvalidText) return kInvalidMemberSymbol;
+    const auto it = member_symbol_ids_.id_by_key_.find(text_id);
+    return it == member_symbol_ids_.id_by_key_.end() ? kInvalidMemberSymbol
+                                                     : it->second;
+  }
+
+  MemberSymbolId find(std::string_view text) const {
+    if (!texts_ || text.empty()) return kInvalidMemberSymbol;
+    const auto text_it = texts_->id_by_key_.find(std::string(text));
+    if (text_it == texts_->id_by_key_.end()) return kInvalidMemberSymbol;
+    return find(text_it->second);
+  }
+
+  MemberSymbolId intern(TextId text_id) {
+    if (!texts_ || text_id == kInvalidText) return kInvalidMemberSymbol;
+    return member_symbol_ids_.intern(text_id);
+  }
+
+  MemberSymbolId intern(std::string_view semantic_name) {
+    if (!texts_) return kInvalidMemberSymbol;
+    return intern(texts_->intern(semantic_name));
+  }
+
+  TextId text_id(MemberSymbolId id) const {
+    const TextId* stored = member_symbol_ids_.lookup(id);
+    return stored ? *stored : kInvalidText;
+  }
+
+  std::string_view spelling(MemberSymbolId id) const {
+    if (!texts_) return {};
+    return texts_->lookup(text_id(id));
+  }
+
+  size_t size() const { return member_symbol_ids_.size(); }
+
+  TextTable* texts_ = nullptr;
+  KeyIdTable<MemberSymbolId, kInvalidMemberSymbol, TextId> member_symbol_ids_;
 };
 
 }  // namespace c4c

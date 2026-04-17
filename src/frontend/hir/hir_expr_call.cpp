@@ -32,10 +32,13 @@ TypeSpec direct_call_callee_type(const Module& mod, const DeclRef& dr,
   return fallback;
 }
 
-DeclRef make_direct_call_decl_ref(Module& mod, std::string name) {
+DeclRef make_direct_call_decl_ref(Module& mod, std::string name,
+                                  LinkNameId link_name_id = kInvalidLinkName) {
   DeclRef dr{};
   dr.name = std::move(name);
-  dr.link_name_id = find_direct_call_carrier_link_name_id(mod, dr.name);
+  dr.link_name_id = (link_name_id != kInvalidLinkName)
+      ? link_name_id
+      : find_direct_call_carrier_link_name_id(mod, dr.name);
   return dr;
 }
 
@@ -66,8 +69,12 @@ std::optional<ExprId> Lowerer::try_lower_template_struct_call(FunctionCtx* ctx,
   }
 
   auto resolved = find_struct_method_mangled(tmp_ts.tag, "operator_call", false);
+  auto resolved_link_name_id =
+      find_struct_method_link_name_id(tmp_ts.tag, "operator_call", false);
   if (!resolved) {
     resolved = find_struct_method_mangled(tmp_ts.tag, "operator_call", true);
+    resolved_link_name_id =
+        find_struct_method_link_name_id(tmp_ts.tag, "operator_call", true);
   }
   if (!resolved) return tmp_expr;
 
@@ -93,7 +100,9 @@ std::optional<ExprId> Lowerer::try_lower_template_struct_call(FunctionCtx* ctx,
 
   std::string resolved_mangled = *resolved;
   CallExpr oc{};
-  DeclRef dr = make_direct_call_decl_ref(*module_, resolved_mangled);
+  DeclRef dr = make_direct_call_decl_ref(
+      *module_, resolved_mangled,
+      resolved_link_name_id.value_or(kInvalidLinkName));
   TypeSpec fn_ts{};
   fn_ts.base = TB_VOID;
   if (const Function* fn = find_direct_call_target(*module_, dr.link_name_id, dr.name)) {
@@ -286,7 +295,11 @@ std::optional<ExprId> Lowerer::try_lower_member_call_expr(FunctionCtx* ctx,
     if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
       resolved_method = resolve_ref_overload(ovit->first, n, ctx);
     }
-    DeclRef dr = make_direct_call_decl_ref(*module_, resolved_method);
+    const LinkNameId resolved_link_name_id =
+        find_struct_method_link_name_id(tag, method_name, base_ts.is_const)
+            .value_or(kInvalidLinkName);
+    DeclRef dr = make_direct_call_decl_ref(
+        *module_, resolved_method, resolved_link_name_id);
     TypeSpec fn_ts{};
     fn_ts.base = TB_VOID;
     if (const Function* fn = find_direct_call_target(*module_, dr.link_name_id, dr.name)) {
@@ -473,7 +486,12 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
                 find_struct_method_mangled(ctx->method_struct_tag, callee_name, true);
           if (resolved_method) {
             resolved_callee_name = *resolved_method;
-            DeclRef dr = make_direct_call_decl_ref(*module_, resolved_callee_name);
+            const LinkNameId resolved_link_name_id =
+                find_struct_method_link_name_id(
+                    ctx->method_struct_tag, callee_name, false)
+                    .value_or(kInvalidLinkName);
+            DeclRef dr = make_direct_call_decl_ref(
+                *module_, resolved_callee_name, resolved_link_name_id);
             TypeSpec fn_ts{};
             fn_ts.base = TB_VOID;
             if (const Function* fn = find_direct_call_target(*module_, dr.link_name_id, dr.name)) {

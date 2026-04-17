@@ -305,8 +305,11 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
     MemberExpr lhs{};
     lhs.base = tmp_id;
     lhs.field = field_name;
-    lhs.is_arrow = false;
     if (param_ts.tag && param_ts.tag[0]) lhs.resolved_owner_tag = param_ts.tag;
+    if (param_ts.tag && param_ts.tag[0]) {
+      lhs.member_symbol_id = find_struct_member_symbol_id(param_ts.tag, field_name);
+    }
+    lhs.is_arrow = false;
     ExprId lhs_id = append_expr(list_node, lhs, field_ts, ValueCategory::LValue);
     AssignExpr assign{};
     assign.op = AssignOp::Set;
@@ -480,8 +483,9 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
           MemberExpr me{};
           me.base = cur_lhs;
           me.field = fld.name;
-          me.is_arrow = false;
           if (cur_ts.tag && cur_ts.tag[0]) me.resolved_owner_tag = cur_ts.tag;
+          me.member_symbol_id = fld.member_symbol_id;
+          me.is_arrow = false;
           ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
           const Node* val_node = init_item_value_node(item);
           if (is_agg(field_ts) || field_ts.array_rank > 0) {
@@ -644,7 +648,7 @@ ExprId Lowerer::lower_new_expr(FunctionCtx* ctx, const Node* n) {
     CallExpr call{};
     DeclRef callee_ref{};
     callee_ref.name = op_fn;
-    attach_decl_ref_link_name_id(callee_ref);
+    callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
     TypeSpec fn_ptr_ts{};
     fn_ptr_ts.base = TB_VOID;
     fn_ptr_ts.ptr_level = 1;
@@ -694,7 +698,7 @@ ExprId Lowerer::lower_new_expr(FunctionCtx* ctx, const Node* n) {
         CallExpr ctor_call{};
         DeclRef ctor_ref{};
         ctor_ref.name = best->mangled_name;
-        attach_decl_ref_link_name_id(ctor_ref);
+        ctor_ref.link_name_id = module_->link_names.find(ctor_ref.name);
         TypeSpec ctor_fn_ts{};
         ctor_fn_ts.base = TB_VOID;
         ctor_fn_ts.ptr_level = 1;
@@ -744,7 +748,7 @@ ExprId Lowerer::lower_delete_expr(FunctionCtx* ctx, const Node* n) {
   CallExpr call{};
   DeclRef callee_ref{};
   callee_ref.name = op_fn;
-  attach_decl_ref_link_name_id(callee_ref);
+  callee_ref.link_name_id = module_->link_names.find(callee_ref.name);
   TypeSpec fn_ptr_ts{};
   fn_ptr_ts.base = TB_VOID;
   fn_ptr_ts.ptr_level = 1;

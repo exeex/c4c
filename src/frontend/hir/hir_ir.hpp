@@ -400,6 +400,7 @@ struct MemberExpr {
   ExprId base{};
   SymbolName field;
   SymbolName resolved_owner_tag;
+  MemberSymbolId member_symbol_id = kInvalidMemberSymbol;
   bool is_arrow = false;
 };
 
@@ -763,6 +764,7 @@ struct ProgramSummary {
 
 struct HirStructField {
   SymbolName name;
+  MemberSymbolId member_symbol_id = kInvalidMemberSymbol;
   TypeSpec elem_type;           // element type (first array dim cleared into array_first_dim)
   long long array_first_dim = -1;  // >=0 if field is an array type
   int llvm_idx = 0;             // LLVM struct field index
@@ -932,6 +934,7 @@ struct Module {
   std::string data_layout;
   std::shared_ptr<TextTable> link_name_texts = std::make_shared<TextTable>();
   LinkNameTable link_names{link_name_texts.get()};
+  MemberSymbolTable member_symbols{link_name_texts.get()};
   std::vector<Function> functions;
   std::vector<GlobalVar> globals;
   std::vector<Expr> expr_pool;
@@ -987,6 +990,7 @@ struct Module {
   void attach_link_name_texts(std::shared_ptr<TextTable> texts) {
     link_name_texts = texts ? std::move(texts) : std::make_shared<TextTable>();
     link_names.attach_text_table(link_name_texts.get());
+    member_symbols.attach_text_table(link_name_texts.get());
   }
 
   void sync_next_ids_from_contents() {

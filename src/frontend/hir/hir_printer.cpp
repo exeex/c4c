@@ -568,6 +568,9 @@ class Printer {
     if (!x.resolved_owner_tag.empty()) {
       out << "{owner=" << x.resolved_owner_tag << "}";
     }
+    if (x.member_symbol_id != kInvalidMemberSymbol) {
+      out << "{member_id=" << x.member_symbol_id << "}";
+    }
   }
 
   void print_expr_payload(std::ostringstream& out, const TernaryExpr& x) {
