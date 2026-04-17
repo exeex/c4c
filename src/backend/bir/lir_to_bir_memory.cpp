@@ -180,6 +180,8 @@ std::optional<bir::Value> BirFunctionLowerer::lower_zero_initializer_value(bir::
       return bir::Value::immediate_i1(false);
     case bir::TypeKind::I8:
       return bir::Value::immediate_i8(0);
+    case bir::TypeKind::I16:
+      return bir::Value::immediate_i16(0);
     case bir::TypeKind::I32:
       return bir::Value::immediate_i32(0);
     case bir::TypeKind::I64:
@@ -206,6 +208,7 @@ std::optional<bir::Value> BirFunctionLowerer::lower_repeated_byte_initializer_va
   switch (type) {
     case bir::TypeKind::I8:
       return bir::Value::immediate_i8(static_cast<std::int8_t>(fill_byte));
+    case bir::TypeKind::I16:
     case bir::TypeKind::I32:
     case bir::TypeKind::I64:
       break;

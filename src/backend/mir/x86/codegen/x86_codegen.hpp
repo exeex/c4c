@@ -1121,13 +1121,17 @@ inline std::string emit_prepared_module(
     std::size_t max_align = 16;
     for (const auto& slot : function.local_slots) {
       if (slot.type != c4c::backend::bir::TypeKind::I8 &&
+          slot.type != c4c::backend::bir::TypeKind::I16 &&
           slot.type != c4c::backend::bir::TypeKind::I32 &&
+          slot.type != c4c::backend::bir::TypeKind::I64 &&
           slot.type != c4c::backend::bir::TypeKind::Ptr) {
         return std::nullopt;
       }
       const auto slot_size = slot.size_bytes != 0
                                  ? slot.size_bytes
                                  : (slot.type == c4c::backend::bir::TypeKind::Ptr ? 8u
+                                    : slot.type == c4c::backend::bir::TypeKind::I64 ? 8u
+                                    : slot.type == c4c::backend::bir::TypeKind::I16 ? 2u
                                     : slot.type == c4c::backend::bir::TypeKind::I32 ? 4u
                                                                                     : 1u);
       const auto slot_align = slot.align_bytes != 0 ? slot.align_bytes : slot_size;
@@ -2412,6 +2416,251 @@ inline std::string emit_prepared_module(
     asm_text += *rendered_false;
     return asm_text;
   };
+  const auto try_render_local_i16_arithmetic_guard = [&]() -> std::optional<std::string> {
+    if (!function.params.empty() || function.blocks.size() != 3 ||
+        prepared_arch != c4c::TargetArch::X86_64 ||
+        entry.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
+        entry.insts.size() != 9) {
+      return std::nullopt;
+    }
+    const auto layout = build_local_slot_layout();
+    if (!layout.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto* true_block = find_block(entry.terminator.true_label);
+    const auto* false_block = find_block(entry.terminator.false_label);
+    if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
+        false_block == &entry ||
+        true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        false_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        !true_block->terminator.value.has_value() || !false_block->terminator.value.has_value() ||
+        !true_block->insts.empty() || !false_block->insts.empty()) {
+      return std::nullopt;
+    }
+
+    const auto* store_zero = std::get_if<c4c::backend::bir::StoreLocalInst>(&entry.insts[0]);
+    const auto* load_initial = std::get_if<c4c::backend::bir::LoadLocalInst>(&entry.insts[1]);
+    const auto* sext_initial = std::get_if<c4c::backend::bir::CastInst>(&entry.insts[2]);
+    const auto* add_one = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts[3]);
+    const auto* trunc_updated = std::get_if<c4c::backend::bir::CastInst>(&entry.insts[4]);
+    const auto* store_updated = std::get_if<c4c::backend::bir::StoreLocalInst>(&entry.insts[5]);
+    const auto* load_updated = std::get_if<c4c::backend::bir::LoadLocalInst>(&entry.insts[6]);
+    const auto* sext_updated = std::get_if<c4c::backend::bir::CastInst>(&entry.insts[7]);
+    const auto* compare = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts[8]);
+    if (store_zero == nullptr || load_initial == nullptr || sext_initial == nullptr ||
+        add_one == nullptr || trunc_updated == nullptr || store_updated == nullptr ||
+        load_updated == nullptr || sext_updated == nullptr || compare == nullptr) {
+      return std::nullopt;
+    }
+    if (store_zero->byte_offset != 0 || load_initial->byte_offset != 0 ||
+        store_updated->byte_offset != 0 || load_updated->byte_offset != 0 ||
+        store_zero->address.has_value() || load_initial->address.has_value() ||
+        store_updated->address.has_value() || load_updated->address.has_value()) {
+      return std::nullopt;
+    }
+    if (store_zero->slot_name != load_initial->slot_name ||
+        store_zero->slot_name != store_updated->slot_name ||
+        store_zero->slot_name != load_updated->slot_name) {
+      return std::nullopt;
+    }
+    if (store_zero->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        store_zero->value.type != c4c::backend::bir::TypeKind::I16 ||
+        load_initial->result.type != c4c::backend::bir::TypeKind::I16 ||
+        sext_initial->opcode != c4c::backend::bir::CastOpcode::SExt ||
+        sext_initial->operand.kind != c4c::backend::bir::Value::Kind::Named ||
+        sext_initial->operand.type != c4c::backend::bir::TypeKind::I16 ||
+        sext_initial->operand.name != load_initial->result.name ||
+        sext_initial->result.type != c4c::backend::bir::TypeKind::I32 ||
+        add_one->opcode != c4c::backend::bir::BinaryOpcode::Add ||
+        add_one->operand_type != c4c::backend::bir::TypeKind::I32 ||
+        add_one->lhs.kind != c4c::backend::bir::Value::Kind::Named ||
+        add_one->lhs.name != sext_initial->result.name ||
+        add_one->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        add_one->rhs.type != c4c::backend::bir::TypeKind::I32 ||
+        add_one->rhs.immediate != 1 ||
+        add_one->result.type != c4c::backend::bir::TypeKind::I32 ||
+        trunc_updated->opcode != c4c::backend::bir::CastOpcode::Trunc ||
+        trunc_updated->operand.kind != c4c::backend::bir::Value::Kind::Named ||
+        trunc_updated->operand.type != c4c::backend::bir::TypeKind::I32 ||
+        trunc_updated->operand.name != add_one->result.name ||
+        trunc_updated->result.type != c4c::backend::bir::TypeKind::I16 ||
+        store_updated->value.kind != c4c::backend::bir::Value::Kind::Named ||
+        store_updated->value.type != c4c::backend::bir::TypeKind::I16 ||
+        store_updated->value.name != trunc_updated->result.name ||
+        load_updated->result.type != c4c::backend::bir::TypeKind::I16 ||
+        sext_updated->opcode != c4c::backend::bir::CastOpcode::SExt ||
+        sext_updated->operand.kind != c4c::backend::bir::Value::Kind::Named ||
+        sext_updated->operand.type != c4c::backend::bir::TypeKind::I16 ||
+        sext_updated->operand.name != load_updated->result.name ||
+        sext_updated->result.type != c4c::backend::bir::TypeKind::I32 ||
+        (compare->opcode != c4c::backend::bir::BinaryOpcode::Eq &&
+         compare->opcode != c4c::backend::bir::BinaryOpcode::Ne) ||
+        compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
+        compare->lhs.kind != c4c::backend::bir::Value::Kind::Named ||
+        compare->lhs.name != sext_updated->result.name ||
+        compare->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        compare->rhs.type != c4c::backend::bir::TypeKind::I32 ||
+        compare->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        compare->result.name != entry.terminator.condition.name) {
+      return std::nullopt;
+    }
+
+    const auto slot_it = layout->offsets.find(store_zero->slot_name);
+    if (slot_it == layout->offsets.end()) {
+      return std::nullopt;
+    }
+    const auto short_memory = render_stack_memory_operand(slot_it->second, "WORD");
+    const auto render_return_block =
+        [&](const c4c::backend::bir::Block& block) -> std::optional<std::string> {
+      const auto& value = *block.terminator.value;
+      if (value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+          value.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      std::string rendered = "    mov eax, " +
+                             std::to_string(static_cast<std::int32_t>(value.immediate)) + "\n";
+      if (layout->frame_size != 0) {
+        rendered += "    add rsp, " + std::to_string(layout->frame_size) + "\n";
+      }
+      rendered += "    ret\n";
+      return rendered;
+    };
+    const auto rendered_true = render_return_block(*true_block);
+    const auto rendered_false = render_return_block(*false_block);
+    if (!rendered_true.has_value() || !rendered_false.has_value()) {
+      return std::nullopt;
+    }
+
+    std::string asm_text = asm_prefix;
+    if (layout->frame_size != 0) {
+      asm_text += "    sub rsp, " + std::to_string(layout->frame_size) + "\n";
+    }
+    asm_text += "    mov " + short_memory + ", " +
+                std::to_string(static_cast<std::int16_t>(store_zero->value.immediate)) + "\n";
+    asm_text += "    movsx eax, " + short_memory + "\n";
+    asm_text += "    add eax, 1\n";
+    asm_text += "    mov " + short_memory + ", ax\n";
+    asm_text += "    movsx eax, " + short_memory + "\n";
+    asm_text += compare->rhs.immediate == 0
+                    ? "    test eax, eax\n"
+                    : "    cmp eax, " +
+                          std::to_string(static_cast<std::int32_t>(compare->rhs.immediate)) + "\n";
+    asm_text += "    " +
+                std::string(compare->opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je") +
+                " .L" + function.name + "_" + false_block->label + "\n";
+    asm_text += *rendered_true;
+    asm_text += ".L" + function.name + "_" + false_block->label + ":\n";
+    asm_text += *rendered_false;
+    return asm_text;
+  };
+  const auto try_render_local_i16_i64_sub_return = [&]() -> std::optional<std::string> {
+    if (!function.params.empty() || function.blocks.size() != 1 ||
+        prepared_arch != c4c::TargetArch::X86_64 ||
+        entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        !entry.terminator.value.has_value() || entry.insts.size() != 10) {
+      return std::nullopt;
+    }
+    const auto layout = build_local_slot_layout();
+    if (!layout.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto* store_short = std::get_if<c4c::backend::bir::StoreLocalInst>(&entry.insts[0]);
+    const auto* store_long = std::get_if<c4c::backend::bir::StoreLocalInst>(&entry.insts[1]);
+    const auto* load_long = std::get_if<c4c::backend::bir::LoadLocalInst>(&entry.insts[2]);
+    const auto* load_short = std::get_if<c4c::backend::bir::LoadLocalInst>(&entry.insts[3]);
+    const auto* sext_short = std::get_if<c4c::backend::bir::CastInst>(&entry.insts[4]);
+    const auto* sub = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts[5]);
+    const auto* trunc_result = std::get_if<c4c::backend::bir::CastInst>(&entry.insts[6]);
+    const auto* store_result = std::get_if<c4c::backend::bir::StoreLocalInst>(&entry.insts[7]);
+    const auto* load_result = std::get_if<c4c::backend::bir::LoadLocalInst>(&entry.insts[8]);
+    const auto* sext_result = std::get_if<c4c::backend::bir::CastInst>(&entry.insts[9]);
+    if (store_short == nullptr || store_long == nullptr || load_long == nullptr ||
+        load_short == nullptr || sext_short == nullptr || sub == nullptr ||
+        trunc_result == nullptr || store_result == nullptr || load_result == nullptr ||
+        sext_result == nullptr) {
+      return std::nullopt;
+    }
+    if (store_short->byte_offset != 0 || store_long->byte_offset != 0 ||
+        load_long->byte_offset != 0 || load_short->byte_offset != 0 ||
+        store_result->byte_offset != 0 || load_result->byte_offset != 0 ||
+        store_short->address.has_value() || store_long->address.has_value() ||
+        load_long->address.has_value() || load_short->address.has_value() ||
+        store_result->address.has_value() || load_result->address.has_value()) {
+      return std::nullopt;
+    }
+    if (store_short->slot_name != load_short->slot_name ||
+        store_short->slot_name != store_result->slot_name ||
+        store_short->slot_name != load_result->slot_name ||
+        store_long->slot_name != load_long->slot_name) {
+      return std::nullopt;
+    }
+    const auto& returned = *entry.terminator.value;
+    if (store_short->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        store_short->value.type != c4c::backend::bir::TypeKind::I16 ||
+        store_long->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        store_long->value.type != c4c::backend::bir::TypeKind::I64 ||
+        load_long->result.type != c4c::backend::bir::TypeKind::I64 ||
+        load_short->result.type != c4c::backend::bir::TypeKind::I16 ||
+        sext_short->opcode != c4c::backend::bir::CastOpcode::SExt ||
+        sext_short->operand.kind != c4c::backend::bir::Value::Kind::Named ||
+        sext_short->operand.type != c4c::backend::bir::TypeKind::I16 ||
+        sext_short->operand.name != load_short->result.name ||
+        sext_short->result.type != c4c::backend::bir::TypeKind::I64 ||
+        sub->opcode != c4c::backend::bir::BinaryOpcode::Sub ||
+        sub->operand_type != c4c::backend::bir::TypeKind::I64 ||
+        sub->lhs.kind != c4c::backend::bir::Value::Kind::Named ||
+        sub->lhs.name != sext_short->result.name ||
+        sub->rhs.kind != c4c::backend::bir::Value::Kind::Named ||
+        sub->rhs.name != load_long->result.name ||
+        sub->rhs.type != c4c::backend::bir::TypeKind::I64 ||
+        sub->result.type != c4c::backend::bir::TypeKind::I64 ||
+        trunc_result->opcode != c4c::backend::bir::CastOpcode::Trunc ||
+        trunc_result->operand.kind != c4c::backend::bir::Value::Kind::Named ||
+        trunc_result->operand.type != c4c::backend::bir::TypeKind::I64 ||
+        trunc_result->operand.name != sub->result.name ||
+        trunc_result->result.type != c4c::backend::bir::TypeKind::I16 ||
+        store_result->value.kind != c4c::backend::bir::Value::Kind::Named ||
+        store_result->value.type != c4c::backend::bir::TypeKind::I16 ||
+        store_result->value.name != trunc_result->result.name ||
+        load_result->result.type != c4c::backend::bir::TypeKind::I16 ||
+        sext_result->opcode != c4c::backend::bir::CastOpcode::SExt ||
+        sext_result->operand.kind != c4c::backend::bir::Value::Kind::Named ||
+        sext_result->operand.type != c4c::backend::bir::TypeKind::I16 ||
+        sext_result->operand.name != load_result->result.name ||
+        sext_result->result.type != c4c::backend::bir::TypeKind::I32 ||
+        returned.kind != c4c::backend::bir::Value::Kind::Named ||
+        returned.name != sext_result->result.name) {
+      return std::nullopt;
+    }
+
+    const auto short_slot_it = layout->offsets.find(store_short->slot_name);
+    const auto long_slot_it = layout->offsets.find(store_long->slot_name);
+    if (short_slot_it == layout->offsets.end() || long_slot_it == layout->offsets.end()) {
+      return std::nullopt;
+    }
+    const auto short_memory = render_stack_memory_operand(short_slot_it->second, "WORD");
+    const auto long_memory = render_stack_memory_operand(long_slot_it->second, "QWORD");
+
+    std::string asm_text = asm_prefix;
+    if (layout->frame_size != 0) {
+      asm_text += "    sub rsp, " + std::to_string(layout->frame_size) + "\n";
+    }
+    asm_text += "    mov " + short_memory + ", " +
+                std::to_string(static_cast<std::int16_t>(store_short->value.immediate)) + "\n";
+    asm_text += "    mov " + long_memory + ", " +
+                std::to_string(static_cast<std::int64_t>(store_long->value.immediate)) + "\n";
+    asm_text += "    movsx rax, " + short_memory + "\n";
+    asm_text += "    sub rax, " + long_memory + "\n";
+    asm_text += "    mov " + short_memory + ", ax\n";
+    asm_text += "    movsx eax, " + short_memory + "\n";
+    if (layout->frame_size != 0) {
+      asm_text += "    add rsp, " + std::to_string(layout->frame_size) + "\n";
+    }
+    asm_text += "    ret\n";
+    return asm_text;
+  };
   const auto try_render_param_derived_value =
       [&](const c4c::backend::bir::Value& value,
           const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>&
@@ -2805,6 +3054,10 @@ inline std::string emit_prepared_module(
         rendered_local_i32_guard.has_value()) {
       return *rendered_local_i32_guard;
     }
+    if (const auto rendered_local_i16_guard = try_render_local_i16_arithmetic_guard();
+        rendered_local_i16_guard.has_value()) {
+      return *rendered_local_i16_guard;
+    }
     if (const auto rendered_local_slot_guard_chain = try_render_local_slot_guard_chain();
         rendered_local_slot_guard_chain.has_value()) {
       return *rendered_local_slot_guard_chain;
@@ -2821,6 +3074,10 @@ inline std::string emit_prepared_module(
   if (const auto rendered_local_slot = try_render_minimal_local_slot_return();
       rendered_local_slot.has_value()) {
     return *rendered_local_slot;
+  }
+  if (const auto rendered_local_i16_i64_return = try_render_local_i16_i64_sub_return();
+      rendered_local_i16_i64_return.has_value()) {
+    return *rendered_local_i16_i64_return;
   }
   if (entry.insts.empty()) {
     if (returned.kind == c4c::backend::bir::Value::Kind::Immediate) {

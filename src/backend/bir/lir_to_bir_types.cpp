@@ -110,6 +110,9 @@ std::optional<bir::TypeKind> lower_integer_type(std::string_view text) {
   if (text == "i8") {
     return bir::TypeKind::I8;
   }
+  if (text == "i16") {
+    return bir::TypeKind::I16;
+  }
   if (text == "i32") {
     return bir::TypeKind::I32;
   }
@@ -127,6 +130,8 @@ std::size_t type_size_bytes(bir::TypeKind type) {
     case bir::TypeKind::I1:
     case bir::TypeKind::I8:
       return 1;
+    case bir::TypeKind::I16:
+      return 2;
     case bir::TypeKind::I32:
     case bir::TypeKind::F32:
       return 4;

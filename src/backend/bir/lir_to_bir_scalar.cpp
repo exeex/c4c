@@ -13,6 +13,8 @@ std::optional<unsigned> BirFunctionLowerer::integer_type_bit_width(bir::TypeKind
       return 1u;
     case bir::TypeKind::I8:
       return 8u;
+    case bir::TypeKind::I16:
+      return 16u;
     case bir::TypeKind::I32:
       return 32u;
     case bir::TypeKind::I64:
@@ -42,6 +44,8 @@ std::optional<bir::Value> BirFunctionLowerer::make_integer_immediate(bir::TypeKi
       return bir::Value::immediate_i1(value != 0);
     case bir::TypeKind::I8:
       return bir::Value::immediate_i8(static_cast<std::int8_t>(value));
+    case bir::TypeKind::I16:
+      return bir::Value::immediate_i16(static_cast<std::int16_t>(value));
     case bir::TypeKind::I32:
       return bir::Value::immediate_i32(static_cast<std::int32_t>(value));
     case bir::TypeKind::I64:

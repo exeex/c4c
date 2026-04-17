@@ -14,6 +14,7 @@ enum class TypeKind : unsigned char {
   Void,
   I1,
   I8,
+  I16,
   I32,
   I64,
   I128,
@@ -60,6 +61,7 @@ struct Value {
 
   static Value immediate_i1(bool value);
   static Value immediate_i8(std::int8_t value);
+  static Value immediate_i16(std::int16_t value);
   static Value immediate_i32(std::int32_t value);
   static Value immediate_i64(std::int64_t value);
   static Value immediate_f32_bits(std::uint32_t bits);

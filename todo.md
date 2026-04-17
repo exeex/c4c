@@ -6,22 +6,23 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Steps 2-5 for one bounded semantic local-memory sublane:
-loaded local array-pointer addressing through a local pointer slot. The slice
-preserves repeated local aggregate provenance across pointer store/load in
-`lir_to_bir`, adds a matching `backend_x86_handoff_boundary` LIR route
-fixture, and moves `c_testsuite_x86_backend_src_00130_c` onto the x86 backend
-path. The `x86_backend` checkpoint improved from `57/220` passed to `58/220`
-passed.
+Completed `plan.md` Steps 2-5 for one bounded `i16` local-slot semantic lane:
+added honest BIR `i16` support through local-memory lowering, admitted bounded
+`i16`/`i64` stack-slot layout in the x86 prepared-module path, and taught the
+x86 emitter the matching local-slot update/return families proved by
+`backend_x86_handoff_boundary`. The slice moves
+`c_testsuite_x86_backend_src_00086_c` and
+`c_testsuite_x86_backend_src_00111_c` onto the x86 backend path. The
+`x86_backend` checkpoint improved from `58/220` passed to `60/220` passed.
 
 ## Suggested Next
 
-Pick the next in-route semantic local-memory packet explicitly instead of
-quietly broadening scope. The cleanest next options are either another
-pointer/aggregate local-addressing neighbor near `00130`, if one exists, or a
-separate `i16` local-slot lane around `00086` and `00111`; keep that second
-lane separate because it needs width support rather than more pointer
-provenance.
+Keep the route on the same width-focused semantic family and probe the next
+adjacent `i16` local-slot neighbors before broadening into generic
+scalar-cast or control-flow work. The next honest packet should either widen
+the newly admitted `short` stack-slot lane to one nearby same-family cluster
+or stop and record that the remaining `i16` failures actually sit in a
+different initiative.
 
 ## Watchouts
 
@@ -41,22 +42,26 @@ provenance.
 - The new handoff fixture proves a guard-style route. A direct `return p[1][3]
   != 2;` shape still sits outside the current x86 emitter contract and should
   not be mistaken for a regression in this slice.
-- Keep loop-heavy, runtime-heavy, global-heavy, `i16` local-slot, and
+- This packet admits bounded `i16` local-slot update/return shapes, not
+  arbitrary `i16` arithmetic or generic multi-slot width support. Keep
+  loop-heavy, runtime-heavy, global-heavy, wide scalar-cast, and
   multi-function prepared-module work out of this lane unless the next packet
   names that route explicitly.
 
 ## Proof
 
 Baseline capture before implementation:
-`cmake --build --preset default && ctest --test-dir build -L x86_backend --output-on-failure | tee test_before.log`
+`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00086_c|c_testsuite_x86_backend_src_00111_c)$' | tee test_before.log`
 
 Narrow proof during the packet:
-`ctest --test-dir build -R '^backend_x86_handoff_boundary$' --output-on-failure`
-`ctest --test-dir build -R '^c_testsuite_x86_backend_src_00130_c$' --output-on-failure`
+`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00086_c|c_testsuite_x86_backend_src_00111_c)$' | tee test_after.log`
 
-Checkpoint proof and canonical after-log:
-`cmake --build --preset default && ctest --test-dir build -L x86_backend --output-on-failure | tee test_after.log`
+Checkpoint proof:
+`ctest --test-dir build -L x86_backend`
 
 Regression guard:
-`test_before.log` vs `test_after.log` passed with `+1` resolved test
-(`c_testsuite_x86_backend_src_00130_c`) and no new failures.
+`test_before.log` vs `test_after.log` passed with `+2` resolved tests
+(`c_testsuite_x86_backend_src_00086_c` and
+`c_testsuite_x86_backend_src_00111_c`) and no new failures on the delegated
+subset. The broader `x86_backend` checkpoint moved from `58/220` to `60/220`
+passed.

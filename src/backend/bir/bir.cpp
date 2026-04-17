@@ -21,6 +21,14 @@ Value Value::immediate_i8(std::int8_t value) {
   return result;
 }
 
+Value Value::immediate_i16(std::int16_t value) {
+  Value result;
+  result.kind = Kind::Immediate;
+  result.type = TypeKind::I16;
+  result.immediate = value;
+  return result;
+}
+
 Value Value::immediate_i32(std::int32_t value) {
   Value result;
   result.kind = Kind::Immediate;
@@ -71,6 +79,8 @@ std::string render_type(TypeKind type) {
       return "i1";
     case TypeKind::I8:
       return "i8";
+    case TypeKind::I16:
+      return "i16";
     case TypeKind::I32:
       return "i32";
     case TypeKind::I64:

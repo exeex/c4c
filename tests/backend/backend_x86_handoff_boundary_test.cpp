@@ -285,6 +285,36 @@ std::string expected_minimal_local_i32_short_circuit_or_guard_asm(const char* fu
          "    ret\n";
 }
 
+std::string expected_minimal_local_i16_increment_guard_asm(const char* function_name) {
+  return asm_header(function_name) + "    sub rsp, 16\n"
+         "    mov WORD PTR [rsp], 0\n"
+         "    movsx eax, WORD PTR [rsp]\n"
+         "    add eax, 1\n"
+         "    mov WORD PTR [rsp], ax\n"
+         "    movsx eax, WORD PTR [rsp]\n"
+         "    cmp eax, 1\n"
+         "    je .L" + std::string(function_name) + "_block_2\n"
+         "    mov eax, 1\n"
+         "    add rsp, 16\n"
+         "    ret\n"
+         ".L" + function_name + "_block_2:\n"
+         "    mov eax, 0\n"
+         "    add rsp, 16\n"
+         "    ret\n";
+}
+
+std::string expected_minimal_local_i16_i64_sub_return_asm(const char* function_name) {
+  return asm_header(function_name) + "    sub rsp, 16\n"
+         "    mov WORD PTR [rsp], 1\n"
+         "    mov QWORD PTR [rsp + 8], 1\n"
+         "    movsx rax, WORD PTR [rsp]\n"
+         "    sub rax, QWORD PTR [rsp + 8]\n"
+         "    mov WORD PTR [rsp], ax\n"
+         "    movsx eax, WORD PTR [rsp]\n"
+         "    add rsp, 16\n"
+         "    ret\n";
+}
+
 std::string expected_minimal_i32_immediate_guard_chain_asm(const char* function_name) {
   return asm_header(function_name) + "    mov eax, 0\n"
          "    cmp eax, 0\n"
@@ -2203,6 +2233,168 @@ bir::Module make_x86_local_i32_short_circuit_or_guard_module() {
   return module;
 }
 
+bir::Module make_x86_local_i16_increment_guard_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.x",
+      .type = bir::TypeKind::I16,
+      .size_bytes = 2,
+      .align_bytes = 2,
+      .is_address_taken = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.x",
+      .value = bir::Value::immediate_i16(0),
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I16, "%t1"),
+      .slot_name = "%lv.x",
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t2"),
+      .operand = bir::Value::named(bir::TypeKind::I16, "%t1"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t3"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t2"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::Trunc,
+      .result = bir::Value::named(bir::TypeKind::I16, "%t4"),
+      .operand = bir::Value::named(bir::TypeKind::I32, "%t3"),
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.x",
+      .value = bir::Value::named(bir::TypeKind::I16, "%t4"),
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I16, "%t5"),
+      .slot_name = "%lv.x",
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t6"),
+      .operand = bir::Value::named(bir::TypeKind::I16, "%t5"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t7"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t6"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "%t7"),
+      .true_label = "block_1",
+      .false_label = "block_2",
+  };
+
+  bir::Block block_1;
+  block_1.label = "block_1";
+  block_1.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+
+  bir::Block block_2;
+  block_2.label = "block_2";
+  block_2.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_x86_local_i16_i64_sub_return_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.s",
+      .type = bir::TypeKind::I16,
+      .size_bytes = 2,
+      .align_bytes = 2,
+      .is_address_taken = true,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.l",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .is_address_taken = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.s",
+      .value = bir::Value::immediate_i16(1),
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.l",
+      .value = bir::Value::immediate_i64(1),
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "%t0"),
+      .slot_name = "%lv.l",
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I16, "%t1"),
+      .slot_name = "%lv.s",
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::I64, "%t2"),
+      .operand = bir::Value::named(bir::TypeKind::I16, "%t1"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I64, "%t3"),
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::named(bir::TypeKind::I64, "%t2"),
+      .rhs = bir::Value::named(bir::TypeKind::I64, "%t0"),
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::Trunc,
+      .result = bir::Value::named(bir::TypeKind::I16, "%t4"),
+      .operand = bir::Value::named(bir::TypeKind::I64, "%t3"),
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.s",
+      .value = bir::Value::named(bir::TypeKind::I16, "%t4"),
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I16, "%t5"),
+      .slot_name = "%lv.s",
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t6"),
+      .operand = bir::Value::named(bir::TypeKind::I16, "%t5"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "%t6"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_x86_immediate_i32_guard_chain_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3508,6 +3700,24 @@ int main() {
                               expected_minimal_local_i32_short_circuit_or_guard_asm("main"),
                               "select ne i32 %t3, 3, i32 1, %t13",
                               "minimal local-slot short-circuit or-guard route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(make_x86_local_i16_increment_guard_module(),
+                              expected_minimal_local_i16_increment_guard_asm("main"),
+                              "%t3 = bir.add i32 %t2, 1",
+                              "minimal local-slot i16 increment guard route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(make_x86_local_i16_i64_sub_return_module(),
+                              expected_minimal_local_i16_i64_sub_return_asm("main"),
+                              "%t3 = bir.sub i64 %t2, %t0",
+                              "minimal local-slot i16/i64 subtract return route");
       status != 0) {
     return status;
   }

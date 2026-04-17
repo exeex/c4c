@@ -338,6 +338,8 @@ std::optional<bir::Value> lower_zero_initializer_value(bir::TypeKind type) {
       return bir::Value::immediate_i1(false);
     case bir::TypeKind::I8:
       return bir::Value::immediate_i8(0);
+    case bir::TypeKind::I16:
+      return bir::Value::immediate_i16(0);
     case bir::TypeKind::I32:
       return bir::Value::immediate_i32(0);
     case bir::TypeKind::I64:
