@@ -1236,18 +1236,21 @@ Node* Parser::parse_primary() {
         pos_ + 1 < static_cast<int>(tokens_.size()) &&
         tokens_[pos_ + 1].kind == TokenKind::Identifier) {
         QualifiedNameRef qn = parse_qualified_name(true);
-        std::string qualified_name = qn.base_name;
+        const std::string_view base_name =
+            parser_text(qn.base_text_id, qn.base_name);
+        std::string qualified_name(base_name);
         if (!qn.qualifier_segments.empty()) {
             int context_id = resolve_namespace_context(qn);
             if (context_id >= 0) {
-                qualified_name = canonical_name_in_context(context_id, qn.base_name);
+                qualified_name =
+                    canonical_name_in_context(context_id, std::string(base_name));
             } else {
                 qualified_name.clear();
                 for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
                     qualified_name += qn.qualifier_segments[i];
                     qualified_name += "::";
                 }
-                qualified_name += qn.base_name;
+                qualified_name += base_name;
             }
         }
         const char* nm = arena_.strdup(qualified_name.c_str());
@@ -1261,9 +1264,11 @@ Node* Parser::parse_primary() {
     if (check(TokenKind::Identifier)) {
         int ident_start = pos_;
         QualifiedNameRef qn = parse_qualified_name(false);
+        const std::string_view qn_base_name =
+            parser_text(qn.base_text_id, qn.base_name);
         const std::string direct_resolved_type_name =
             qn.qualifier_segments.empty()
-                ? resolve_visible_type_name(qn.base_name)
+                ? resolve_visible_type_name(qn_base_name)
                 : std::string();
         if (is_cpp_mode() && qn.qualifier_segments.empty() &&
             check(TokenKind::LParen)) {
@@ -1320,7 +1325,9 @@ Node* Parser::parse_primary() {
             if (type_qn.qualifier_segments.empty()) return false;
 
             const std::string first_qualifier =
-                resolve_visible_type_name(type_qn.qualifier_segments.front());
+                resolve_visible_type_name(
+                    parser_text(type_qn.qualifier_text_ids.front(),
+                                type_qn.qualifier_segments.front()));
             if (first_qualifier.empty()) return false;
 
             return has_typedef_type(first_qualifier) ||
@@ -1409,13 +1416,14 @@ Node* Parser::parse_primary() {
             if (context_id >= 0) {
                 auto alias_it = using_value_aliases_.find(context_id);
                 if (alias_it != using_value_aliases_.end()) {
-                    auto value_it = alias_it->second.find(qn.base_name);
+                    auto value_it = alias_it->second.find(std::string(qn_base_name));
                     if (value_it != alias_it->second.end()) {
                         qualified_name = value_it->second;
                     }
                 }
                 if (qualified_name.empty()) {
-                    qualified_name = canonical_name_in_context(context_id, qn.base_name);
+                    qualified_name =
+                        canonical_name_in_context(context_id, std::string(qn_base_name));
                 }
             } else {
                 for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
@@ -1423,10 +1431,10 @@ Node* Parser::parse_primary() {
                     qualified_name += qn.qualifier_segments[i];
                 }
                 if (!qualified_name.empty()) qualified_name += "::";
-                qualified_name += qn.base_name;
+                qualified_name += qn_base_name;
             }
         } else {
-            qualified_name = resolve_visible_value_name(qn.base_name);
+            qualified_name = resolve_visible_value_name(std::string(qn_base_name));
         }
         const char* nm = arena_.strdup(qualified_name.c_str());
         const BuiltinId builtin_id = builtin_id_from_name(nm);
@@ -1651,17 +1659,21 @@ Node* Parser::parse_primary() {
                         !(pos_ + 3 < static_cast<int>(tokens_.size()) &&
                           tokens_[pos_ + 3].kind == TokenKind::Less)) {
                         QualifiedNameRef operand_name = parse_qualified_name(false);
+                        const std::string_view operand_base_name =
+                            parser_text(operand_name.base_text_id,
+                                        operand_name.base_name);
                         std::string qualified_name;
                         int context_id = resolve_namespace_context(operand_name);
                         if (context_id >= 0) {
-                            qualified_name = canonical_name_in_context(context_id, operand_name.base_name);
+                            qualified_name = canonical_name_in_context(
+                                context_id, std::string(operand_base_name));
                         } else {
                             for (size_t i = 0; i < operand_name.qualifier_segments.size(); ++i) {
                                 if (i) qualified_name += "::";
                                 qualified_name += operand_name.qualifier_segments[i];
                             }
                             if (!qualified_name.empty()) qualified_name += "::";
-                            qualified_name += operand_name.base_name;
+                            qualified_name += operand_base_name;
                         }
                         const char* nm = arena_.strdup(qualified_name.c_str());
                         arg = make_var(nm, ln);

@@ -880,7 +880,9 @@ Node* Parser::parse_stmt() {
                 if (!is_known_type) {
                     int ctx = resolve_namespace_context(qn);
                     if (ctx >= 0) {
-                        std::string ns_name = canonical_name_in_context(ctx, qn.base_name);
+                        std::string ns_name = canonical_name_in_context(
+                            ctx,
+                            std::string(parser_text(qn.base_text_id, qn.base_name)));
                         is_known_type = has_typedef_type(ns_name);
                     }
                 }

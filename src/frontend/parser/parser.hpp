@@ -661,6 +661,11 @@ class Parser {
     if (text.empty() || !token_texts_) return kInvalidText;
     return token_texts_->find(text);
   }
+  std::string_view parser_text(TextId text_id,
+                               std::string_view fallback = {}) const {
+    if (token_texts_ && text_id != kInvalidText) return token_texts_->lookup(text_id);
+    return fallback;
+  }
   void clear_last_resolved_typedef() {
     last_resolved_typedef_.clear();
     last_resolved_typedef_text_id_ = kInvalidText;

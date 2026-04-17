@@ -382,6 +382,7 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
 
     while (true) {
         qn.base_name = token_spelling(cur());
+        qn.base_text_id = parser_text_id_for_token(cur().text_id, qn.base_name);
         consume();
 
         if (consume_final_template_args && !consume_optional_template_args())
@@ -400,6 +401,7 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
             break;
 
         qn.qualifier_segments.push_back(qn.base_name);
+        qn.qualifier_text_ids.push_back(qn.base_text_id);
         consume(); // ::
         if (check(TokenKind::KwTemplate))
             consume();
@@ -558,7 +560,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
         if (!has_typedef_type(resolved)) {
             bool preserved_template_owner_member = false;
             if (spelled_name.find('<') != std::string::npos &&
-                qn.base_name == "type") {
+                parser_text(qn.base_text_id, qn.base_name) == "type") {
                 int final_scope_pos = -1;
                 for (int i = owner_start; i + 1 < pos_; ++i) {
                     if (tokens_[i].kind == TokenKind::ColonColon &&
@@ -724,7 +726,9 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                     bool found_member = false;
                     if (owner->name && owner->name[0]) {
                         const std::string scoped_name =
-                            std::string(owner->name) + "::" + qn.base_name;
+                            std::string(owner->name) + "::" +
+                            std::string(parser_text(qn.base_text_id,
+                                                    qn.base_name));
                         if (const TypeSpec* scoped_type =
                                 find_typedef_type(scoped_name)) {
                             resolved_member = *scoped_type;
@@ -733,7 +737,9 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                     }
                     for (int i = 0; !found_member && i < owner->n_member_typedefs; ++i) {
                         const char* name = owner->member_typedef_names[i];
-                        if (!name || qn.base_name != name) continue;
+                        if (!name ||
+                            parser_text(qn.base_text_id, qn.base_name) != name)
+                            continue;
                         resolved_member = owner->member_typedef_types[i];
                         found_member = true;
                     }
