@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../bir/bir.hpp"
+#include "../../target_profile.hpp"
 #include "../target.hpp"
 
 #include <cstddef>
@@ -348,6 +349,7 @@ enum class PreparedBirInvariant {
 struct PreparedBirModule {
   c4c::backend::bir::Module module;
   Target target = Target::X86_64;
+  c4c::TargetProfile target_profile{};
   PrepareRoute route = PrepareRoute::SemanticBirShared;
   std::vector<PreparedBirInvariant> invariants;
   PreparedStackLayout stack_layout;
@@ -360,12 +362,13 @@ struct PreparedBirModule {
 class BirPreAlloc {
  public:
   BirPreAlloc(const c4c::backend::bir::Module& module,
-              Target target,
+              const c4c::TargetProfile& target_profile,
               const PrepareOptions& options = {})
       : options_(options),
         prepared_{
             .module = module,
-            .target = target,
+            .target = c4c::backend::target_from_profile(target_profile),
+            .target_profile = target_profile,
             .route = PrepareRoute::SemanticBirShared,
             .completed_phases = {},
             .notes = {},
@@ -392,12 +395,12 @@ class BirPreAlloc {
 
 PreparedBirModule prepare_semantic_bir_module_with_options(
     const c4c::backend::bir::Module& module,
-    Target target,
+    const c4c::TargetProfile& target_profile,
     const PrepareOptions& options = {});
 
 PreparedBirModule prepare_bir_module_with_options(
     const c4c::backend::bir::Module& module,
-    Target target,
+    const c4c::TargetProfile& target_profile,
     const PrepareOptions& options = {});
 
 }  // namespace c4c::backend::prepare

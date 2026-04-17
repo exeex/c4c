@@ -43,7 +43,8 @@ std::string render_prepared_bir_text(const c4c::backend::bir::Module& module) {
 c4c::backend::prepare::PreparedBirModule prepare_semantic_bir_pipeline(
     const c4c::backend::bir::Module& module,
     Target target) {
-  return c4c::backend::prepare::prepare_semantic_bir_module_with_options(module, target);
+  return c4c::backend::prepare::prepare_semantic_bir_module_with_options(
+      module, c4c::backend::target_profile_from_backend_target(target, module.target_triple));
 }
 
 }  // namespace

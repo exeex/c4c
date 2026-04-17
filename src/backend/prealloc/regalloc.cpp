@@ -558,7 +558,7 @@ void append_consumer_move_resolution(const bir::Function& function,
   return PreparedMoveStorageKind::None;
 }
 
-void append_call_arg_move_resolution(Target target,
+void append_call_arg_move_resolution(const c4c::TargetProfile& target_profile,
                                      const bir::Function& function,
                                      PreparedRegallocFunction& regalloc_function) {
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
@@ -583,7 +583,7 @@ void append_call_arg_move_resolution(Target target,
         const PreparedMoveStorageKind consumed_kind = call_arg_storage_kind(*call, arg_index);
         const PreparedMoveStorageKind source_kind = assigned_storage_kind(*source);
         const auto destination_register_name = arg_index < call->arg_abi.size()
-                                                   ? call_arg_destination_register_name(target,
+                                                   ? call_arg_destination_register_name(target_profile,
                                                                                        call->arg_abi[arg_index],
                                                                                        arg_index)
                                                    : std::nullopt;
@@ -610,7 +610,7 @@ void append_call_arg_move_resolution(Target target,
   }
 }
 
-void append_call_result_move_resolution(Target target,
+void append_call_result_move_resolution(const c4c::TargetProfile& target_profile,
                                         const bir::Function& function,
                                         PreparedRegallocFunction& regalloc_function) {
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
@@ -629,8 +629,8 @@ void append_call_result_move_resolution(Target target,
       const PreparedMoveStorageKind consumed_kind = call_result_storage_kind(*call);
       const PreparedMoveStorageKind source_kind = assigned_storage_kind(*result);
       const auto destination_register_name = call->result_abi.has_value()
-                                                 ? call_result_destination_register_name(
-                                                       target, *call->result_abi)
+                                                   ? call_result_destination_register_name(
+                                                       target_profile, *call->result_abi)
                                                  : std::nullopt;
       if (source_kind == PreparedMoveStorageKind::Register &&
           consumed_kind == PreparedMoveStorageKind::Register && result->assigned_register.has_value() &&
@@ -654,7 +654,7 @@ void append_call_result_move_resolution(Target target,
   }
 }
 
-void append_return_move_resolution(Target target,
+void append_return_move_resolution(const c4c::TargetProfile& target_profile,
                                    const bir::Function& function,
                                    PreparedRegallocFunction& regalloc_function) {
   const PreparedMoveStorageKind consumed_kind = function_return_storage_kind(function);
@@ -677,7 +677,7 @@ void append_return_move_resolution(Target target,
     const PreparedMoveStorageKind source_kind = assigned_storage_kind(*source);
     const auto destination_register_name = function.return_abi.has_value()
                                                ? call_result_destination_register_name(
-                                                     target, *function.return_abi)
+                                                     target_profile, *function.return_abi)
                                                : std::nullopt;
     if (source_kind == PreparedMoveStorageKind::Register &&
         consumed_kind == PreparedMoveStorageKind::Register && source->assigned_register.has_value() &&
@@ -769,8 +769,8 @@ void BirPreAlloc::run_regalloc() {
                                    (base_priority >= liveness_value.use_points.size()
                                         ? base_priority - liveness_value.use_points.size()
                                         : 0U);
-      const auto caller_saved_names = caller_saved_registers(prepared_.target, register_class);
-      const auto callee_saved_names = callee_saved_registers(prepared_.target, register_class);
+      const auto caller_saved_names = caller_saved_registers(prepared_.target_profile, register_class);
+      const auto callee_saved_names = callee_saved_registers(prepared_.target_profile, register_class);
 
       regalloc_function.values.push_back(PreparedRegallocValue{
           .value_id = liveness_value.value_id,
@@ -930,19 +930,19 @@ void BirPreAlloc::run_regalloc() {
 
     assign_from_pool([](const PreparedRegallocValue& value) { return value.crosses_call; },
                      [this](const PreparedRegallocValue& value) {
-                       return callee_saved_registers(prepared_.target, value.register_class);
+                       return callee_saved_registers(prepared_.target_profile, value.register_class);
                      },
                      active_callee_saved_assignments,
                      [](const ActiveRegisterAssignment&) { return true; });
     assign_from_pool([](const PreparedRegallocValue& value) { return !value.crosses_call; },
                      [this](const PreparedRegallocValue& value) {
-                       return caller_saved_registers(prepared_.target, value.register_class);
+                       return caller_saved_registers(prepared_.target_profile, value.register_class);
                      },
                      active_caller_saved_assignments,
                      [](const ActiveRegisterAssignment&) { return true; });
     assign_from_pool([](const PreparedRegallocValue& value) { return !value.crosses_call; },
                      [this](const PreparedRegallocValue& value) {
-                       return callee_saved_registers(prepared_.target, value.register_class);
+                       return callee_saved_registers(prepared_.target_profile, value.register_class);
                      },
                      active_callee_saved_assignments,
                      [&regalloc_function](const ActiveRegisterAssignment& assignment) {
@@ -997,9 +997,9 @@ void BirPreAlloc::run_regalloc() {
         function != nullptr) {
       append_phi_move_resolution(*function, regalloc_function);
       append_consumer_move_resolution(*function, regalloc_function);
-      append_call_arg_move_resolution(prepared_.target, *function, regalloc_function);
-      append_call_result_move_resolution(prepared_.target, *function, regalloc_function);
-      append_return_move_resolution(prepared_.target, *function, regalloc_function);
+      append_call_arg_move_resolution(prepared_.target_profile, *function, regalloc_function);
+      append_call_result_move_resolution(prepared_.target_profile, *function, regalloc_function);
+      append_return_move_resolution(prepared_.target_profile, *function, regalloc_function);
     }
 
     prepared_.stack_layout.frame_size_bytes =

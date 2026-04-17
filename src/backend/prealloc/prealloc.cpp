@@ -20,16 +20,16 @@ PreparedBirModule BirPreAlloc::run() {
 
 PreparedBirModule prepare_semantic_bir_module_with_options(
     const c4c::backend::bir::Module& module,
-    Target target,
+    const c4c::TargetProfile& target_profile,
     const PrepareOptions& options) {
-  return BirPreAlloc(module, target, options).run();
+  return BirPreAlloc(module, target_profile, options).run();
 }
 
 PreparedBirModule prepare_bir_module_with_options(
     const c4c::backend::bir::Module& module,
-    Target target,
+    const c4c::TargetProfile& target_profile,
     const PrepareOptions& options) {
-  return prepare_semantic_bir_module_with_options(module, target, options);
+  return prepare_semantic_bir_module_with_options(module, target_profile, options);
 }
 
 }  // namespace c4c::backend::prepare
