@@ -40,6 +40,12 @@ int llvm_struct_field_slot_by_name(const HirStructDef& sd, const std::string& fi
   return 0;
 }
 
+std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
+                              std::string_view fallback) {
+  const std::string_view resolved = mod.link_names.spelling(id);
+  return resolved.empty() ? std::string(fallback) : std::string(resolved);
+}
+
 }  // namespace
 
 // ── Constructor ───────────────────────────────────────────────────────────────
@@ -442,6 +448,14 @@ std::optional<std::string> ConstInitEmitter::try_emit_global_address_expr(ExprId
     std::vector<std::string> indices;
   };
 
+  const auto resolve_global_decl_name = [&](std::string_view name) -> std::optional<std::string> {
+    auto git = mod_.global_index.find(std::string(name));
+    if (git == mod_.global_index.end()) return std::nullopt;
+    const GlobalVar* gv = select_global_object(git->second);
+    if (!gv) return std::nullopt;
+    return emitted_link_name(mod_, gv->link_name_id, gv->name);
+  };
+
   std::function<std::optional<GlobalAddressExpr>(ExprId)> lower_expr =
       [&](ExprId expr_id) -> std::optional<GlobalAddressExpr> {
     const Expr& expr = get_expr(expr_id);
@@ -449,12 +463,12 @@ std::optional<std::string> ConstInitEmitter::try_emit_global_address_expr(ExprId
         [&](const auto& payload) -> std::optional<GlobalAddressExpr> {
           using T = std::decay_t<decltype(payload)>;
           if constexpr (std::is_same_v<T, DeclRef>) {
+            auto global_name = resolve_global_decl_name(payload.name);
+            if (!global_name.has_value()) return std::nullopt;
             auto git = mod_.global_index.find(payload.name);
-            if (git == mod_.global_index.end()) return std::nullopt;
             const GlobalVar* gv = select_global_object(git->second);
-            if (!gv) return std::nullopt;
             return GlobalAddressExpr{
-                .global_name = payload.name,
+                .global_name = *global_name,
                 .root_type_text = llvm_alloca_ty(gv->type.spec),
                 .current_type = gv->type.spec,
                 .indices = {},
@@ -506,6 +520,26 @@ std::optional<std::string> ConstInitEmitter::try_emit_global_address_expr(ExprId
 
 std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expected_ts) {
   const Expr& e = get_expr(id);
+  const auto resolve_global_decl_name = [&](std::string_view name) -> std::optional<std::string> {
+    auto git = mod_.global_index.find(std::string(name));
+    if (git == mod_.global_index.end()) return std::nullopt;
+    const GlobalVar* gv = select_global_object(git->second);
+    if (!gv) return std::nullopt;
+    return emitted_link_name(mod_, gv->link_name_id, gv->name);
+  };
+  const auto resolve_function_decl_name = [&](std::string_view name) -> std::optional<std::string> {
+    auto fit = mod_.fn_index.find(std::string(name));
+    if (fit == mod_.fn_index.end()) return std::nullopt;
+    const auto fn_index = fit->second.value;
+    if (fn_index >= mod_.functions.size()) return std::nullopt;
+    const auto& fn = mod_.functions[fn_index];
+    return emitted_link_name(mod_, fn.link_name_id, fn.name);
+  };
+  const auto resolve_decl_name = [&](std::string_view name) -> std::string {
+    if (auto global_name = resolve_global_decl_name(name)) return *global_name;
+    if (auto function_name = resolve_function_decl_name(name)) return *function_name;
+    return std::string(name);
+  };
   return std::visit([&](const auto& p) -> std::string {
     using T = std::decay_t<decltype(p)>;
     if (is_complex_base(expected_ts.base) && expected_ts.ptr_level == 0 && expected_ts.array_rank == 0) {
@@ -549,16 +583,18 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
       return "getelementptr inbounds ([" + std::to_string(len) + " x i8], ptr " +
              gname + ", i64 0, i64 0)";
     } else if constexpr (std::is_same_v<T, DeclRef>) {
-      if (mod_.fn_index.count(p.name) || llvm_ty(expected_ts) == "ptr" ||
+      if (resolve_function_decl_name(p.name).has_value() ||
+          resolve_global_decl_name(p.name).has_value() ||
+          llvm_ty(expected_ts) == "ptr" ||
           expected_ts.ptr_level > 0 || expected_ts.is_fn_ptr) {
-        return llvm_global_sym(p.name);
+        return llvm_global_sym(resolve_decl_name(p.name));
       }
       return "0";
     } else if constexpr (std::is_same_v<T, UnaryExpr>) {
       if (p.op == UnaryOp::AddrOf) {
         const Expr& op_e = get_expr(p.operand);
         if (const auto* r = std::get_if<DeclRef>(&op_e.payload))
-          return llvm_global_sym(r->name);
+          return llvm_global_sym(resolve_decl_name(r->name));
         if (const auto* s = std::get_if<StringLiteral>(&op_e.payload)) {
           const std::string bytes = bytes_from_string_literal(*s);
           const std::string gname = intern_str(bytes);
@@ -584,7 +620,10 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
               if (gv && gv->type.spec.array_rank > 0) {
                 const TypeSpec& resolved = gv->type.spec;
                 const std::string aty = llvm_alloca_ty(resolved);
-                std::string gep = "getelementptr inbounds (" + aty + ", ptr @" + dr->name + ", i64 0";
+                const std::string global_name =
+                    emitted_link_name(mod_, gv->link_name_id, gv->name);
+                std::string gep =
+                    "getelementptr inbounds (" + aty + ", ptr @" + global_name + ", i64 0";
                 for (auto idx : indices) gep += ", i64 " + std::to_string(idx);
                 gep += ")";
                 return gep;
@@ -646,8 +685,10 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
                         if (!found) { ok = false; break; }
                       }
                       if (ok) {
-                        if (total_offset == 0) return "@" + dr->name;
-                        return "getelementptr (i8, ptr @" + dr->name +
+                        const std::string global_name =
+                            emitted_link_name(mod_, gv->link_name_id, gv->name);
+                        if (total_offset == 0) return "@" + global_name;
+                        return "getelementptr (i8, ptr @" + global_name +
                                ", i64 " + std::to_string(total_offset) + ")";
                       }
                     }
@@ -664,8 +705,10 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
                   const std::string tag(gv->type.spec.tag);
                   if (const auto* sd = find_struct_def(tag)) {
                     const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
+                    const std::string global_name =
+                        emitted_link_name(mod_, gv->link_name_id, gv->name);
                     return "getelementptr inbounds (" + llvm_struct_type_str(tag) +
-                           ", ptr " + llvm_global_sym(dr->name) +
+                           ", ptr " + llvm_global_sym(global_name) +
                            ", i32 0, i32 " + std::to_string(fi) + ")";
                   }
                 }
@@ -698,7 +741,10 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
                       if (const auto* sd = find_struct_def(tag)) {
                         const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
                         const std::string aty = llvm_alloca_ty(gv->type.spec);
-                        std::string gep = "getelementptr inbounds (" + aty + ", ptr @" + dr->name + ", i64 0";
+                        const std::string global_name =
+                            emitted_link_name(mod_, gv->link_name_id, gv->name);
+                        std::string gep =
+                            "getelementptr inbounds (" + aty + ", ptr @" + global_name + ", i64 0";
                         for (auto idx : indices) gep += ", i64 " + std::to_string(idx);
                         gep += ", i32 " + std::to_string(fi) + ")";
                         return gep;
@@ -719,7 +765,9 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
                   if (const auto* sd = find_struct_def(tag)) {
                     const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
                     const std::string aty = llvm_alloca_ty(gv->type.spec);
-                    return "getelementptr inbounds (" + aty + ", ptr @" + dr->name +
+                    const std::string global_name =
+                        emitted_link_name(mod_, gv->link_name_id, gv->name);
+                    return "getelementptr inbounds (" + aty + ", ptr @" + global_name +
                            ", i64 0, i64 0, i32 " + std::to_string(fi) + ")";
                   }
                 }
@@ -744,7 +792,9 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
                       if (const auto* sd = find_struct_def(tag)) {
                         const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
                         const std::string aty = llvm_alloca_ty(gv->type.spec);
-                        return "getelementptr inbounds (" + aty + ", ptr @" + dr2->name +
+                        const std::string global_name =
+                            emitted_link_name(mod_, gv->link_name_id, gv->name);
+                        return "getelementptr inbounds (" + aty + ", ptr @" + global_name +
                                ", i64 0, i64 " + std::to_string(*rhs_val) +
                                ", i32 " + std::to_string(fi) + ")";
                       }
@@ -837,12 +887,14 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
           if (git != mod_.global_index.end()) {
             const GlobalVar* gv = select_global_object(git->second);
             if (gv) {
+              const std::string global_name =
+                  emitted_link_name(mod_, gv->link_name_id, gv->name);
               if (gv->type.spec.array_rank > 0) {
                 const std::string aty = llvm_alloca_ty(gv->type.spec);
-                return "getelementptr inbounds (" + aty + ", ptr @" + dr->name +
+                return "getelementptr inbounds (" + aty + ", ptr @" + global_name +
                        ", i64 0, i64 " + std::to_string(*rhs_val) + ")";
               }
-              return "getelementptr inbounds (i8, ptr @" + dr->name +
+              return "getelementptr inbounds (i8, ptr @" + global_name +
                      ", i64 " + std::to_string(*rhs_val) + ")";
             }
           }
@@ -854,7 +906,7 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
           return std::visit([&](const auto& q) -> std::optional<std::string> {
             using U = std::decay_t<decltype(q)>;
             if constexpr (std::is_same_v<U, LabelAddrExpr>) {
-              return "ptrtoint (ptr blockaddress(@" + q.fn_name +
+              return "ptrtoint (ptr blockaddress(@" + resolve_decl_name(q.fn_name) +
                      ", %ulbl_" + q.label_name + ") to i64)";
             } else if constexpr (std::is_same_v<U, CastExpr>) {
               return self(self, q.expr);
@@ -885,7 +937,7 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
       }
       return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
     } else if constexpr (std::is_same_v<T, LabelAddrExpr>) {
-      return "blockaddress(@" + p.fn_name + ", %ulbl_" + p.label_name + ")";
+      return "blockaddress(@" + resolve_decl_name(p.fn_name) + ", %ulbl_" + p.label_name + ")";
     } else if constexpr (std::is_same_v<T, CallExpr>) {
       const BuiltinId builtin_id = p.builtin_id;
       switch (builtin_constant_fp_kind(builtin_id)) {

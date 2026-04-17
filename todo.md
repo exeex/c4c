@@ -6,16 +6,18 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Updated owned late text-emission sites in `codegen/lir` so function signature
-emission and direct global/function reference emission now resolve existing
-`LinkNameId` spellings when those carriers are already present, while leaving
-unresolved extern fallback names string-backed rather than inventing new ids.
+Updated owned constant-initializer and global-address emission in
+`codegen/lir/const_init_emitter.cpp` so decl-backed global/function spellings
+now resolve existing `LinkNameId` carriers when available, including
+`blockaddress` and GEP-based constant expressions, while leaving unresolved
+fallback names string-backed when no semantic carrier exists.
 
 ## Suggested Next
 
-Audit the remaining LIR text and constant-initializer emission paths that still
-spell global or function names from raw strings, and only migrate sites where
-the upstream HIR/LIR carrier already owns a real `LinkNameId`.
+Audit the remaining late consumer boundaries that still emit unresolved
+callee/declaration names from raw strings, especially `stmt_emitter_call_target`
+and extern-decl recording, and only migrate them if a real upstream
+`LinkNameId` carrier already exists.
 
 ## Watchouts
 
@@ -48,6 +50,10 @@ the upstream HIR/LIR carrier already owns a real `LinkNameId`.
   `fn.link_name_id`, but dedup/index selection in HIR and lowering still keys
   off legacy `name` strings and should not be conflated with emission-time
   spelling
+- `const_init_emitter` now resolves emitted decl-backed globals/functions late
+  from `LinkNameId`, including `blockaddress` and constant-expression GEP
+  spellings, but its raw decl strings still remain the lookup key used to find
+  those semantic carriers
 - keep forwarding explicit ids through LIR carriers and resolve them only at
   late consumers rather than treating legacy `name` strings as the semantic
   source of truth
