@@ -15,7 +15,7 @@ Module build_hir(const Node* program_root,
   // Stage 1: Initial HIR — lower AST to mixed compile-time/runtime HIR.
   InitialHirBuildResult initial = build_initial_hir(program_root, resolved_types);
   initial.module->source_profile = source_profile;
-  initial.module->target_triple = target_profile.triple;
+  initial.module->target_profile = target_profile;
   // Module starts at HirPipelineStage::Initial (the default).
 
   // Stage 2: Normalized HIR — fixpoint reduction of compile-time work.

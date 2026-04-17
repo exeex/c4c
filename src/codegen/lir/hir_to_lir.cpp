@@ -50,7 +50,7 @@ int object_align_bytes(const c4c::hir::Module& mod, const TypeSpec& ts) {
     const auto it = mod.struct_defs.find(ts.tag);
     align = (it != mod.struct_defs.end()) ? std::max(1, it->second.align_bytes) : 8;
   } else if (ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0) {
-    align = llvm_va_list_alignment(mod.target_triple);
+    align = llvm_va_list_alignment(mod.target_profile);
   } else {
     switch (ts.base) {
       case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: align = 1; break;
@@ -221,8 +221,8 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
   using namespace c4c::codegen::llvm_helpers;
   std::vector<std::string> decls;
 
-  if (!llvm_va_list_is_pointer_object(mod.target_triple)) {
-    decls.push_back(llvm_va_list_struct_decl(mod.target_triple));
+  if (!llvm_va_list_is_pointer_object(mod.target_profile)) {
+    decls.push_back(llvm_va_list_struct_decl(mod.target_profile));
   }
 
   for (const auto& tag : mod.struct_def_order) {
@@ -320,7 +320,7 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
       if (void_param_list) break;
       if (i) sig_out << ", ";
       const TypeSpec& param_ts = fn.params[i].type.spec;
-      if (llvm_target_is_amd64_sysv(mod.target_triple) &&
+      if (llvm_target_is_amd64_sysv(mod.target_profile) &&
           llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
         sig_out << "ptr byval(" << llvm_ty(param_ts) << ") align "
                 << std::max(8, object_align_bytes(mod, param_ts));
@@ -356,7 +356,7 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
     if (i) sig_out << ", ";
     const TypeSpec& param_ts = fn.params[i].type.spec;
     const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
-    if (llvm_target_is_amd64_sysv(mod.target_triple) &&
+    if (llvm_target_is_amd64_sysv(mod.target_profile) &&
         llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
       sig_out << "ptr byval(" << llvm_ty(param_ts) << ") align "
               << std::max(8, object_align_bytes(mod, param_ts)) << " " << pname;
@@ -547,7 +547,7 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
   for (size_t i = 0; i < fn.params.size(); ++i) {
     if (!modified_params.count(static_cast<uint32_t>(i))) continue;
     const auto& param = fn.params[i];
-    if (llvm_target_is_amd64_sysv(mod.target_triple) &&
+    if (llvm_target_is_amd64_sysv(mod.target_profile) &&
         llvm_cc::amd64_fixed_aggregate_passed_byval(param.type.spec, mod)) {
       continue;
     }
@@ -825,15 +825,17 @@ static void eliminate_dead_internals(LirModule& mod) {
 
 LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
   using namespace c4c::codegen::llvm_helpers;
+  const c4c::TargetProfile& target_profile = hir_mod.target_profile;
+  const std::string& target_triple = target_profile.triple;
 
   // Module-level orchestration: owned by hir_to_lir, not StmtEmitter.
-  set_active_target_triple(hir_mod.target_triple);
+  set_active_target_profile(target_profile);
 
   LirModule module;
-  module.target_triple = hir_mod.target_triple;
+  module.target_triple = target_triple;
   module.data_layout = !hir_mod.data_layout.empty()
       ? hir_mod.data_layout
-      : llvm_default_datalayout(hir_mod.target_triple);
+      : llvm_default_datalayout(target_profile);
   module.type_decls = build_type_decls(hir_mod);
   module.prefer_semantic_va_ops = options.preserve_semantic_va_ops;
 

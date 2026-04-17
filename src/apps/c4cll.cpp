@@ -96,7 +96,7 @@ c4c::hir::Module filter_hir_module_for_domain(const c4c::hir::Module& input,
                                               c4c::ExecutionDomain domain,
                                               const c4c::TargetProfile& target_profile) {
   c4c::hir::Module filtered = input;
-  filtered.target_triple = target_profile.triple;
+  filtered.target_profile = target_profile;
   filtered.data_layout.clear();
   filtered.functions.clear();
   filtered.globals.clear();

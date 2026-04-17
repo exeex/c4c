@@ -155,7 +155,7 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s) {
 
 void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s) {
   const std::string aliased_template =
-      rewrite_inline_asm_mnemonics(s.asm_template, mod_.target_triple);
+      rewrite_inline_asm_mnemonics(s.asm_template, mod_.target_profile.triple);
   const std::string asm_text = escape_llvm_c_bytes(aliased_template);
   const std::string constraints = rewrite_asm_constraints(escape_llvm_c_bytes(s.constraints));
   TypeSpec ret_ts{};

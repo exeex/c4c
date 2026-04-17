@@ -146,12 +146,12 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
       if (payload_sz == 0) return "zeroinitializer";
     }
   }
-  if (llvm_va_list_is_pointer_object(mod_.target_triple)) {
+  if (llvm_va_list_is_pointer_object(mod_.target_profile)) {
     const std::string out = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirVaArgOp{out, ap_ptr, res_ty});
     return out;
   }
-  if (llvm_target_is_amd64_sysv(mod_.target_triple)) {
+  if (llvm_target_is_amd64_sysv(mod_.target_profile)) {
     return emit_amd64_va_arg(ctx, res_ts, res_ty, ap_ptr);
   }
   if (const auto hfa = classify_aarch64_hfa(mod_, res_ts)) {
