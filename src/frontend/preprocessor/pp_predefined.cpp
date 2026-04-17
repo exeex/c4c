@@ -312,12 +312,4 @@ void init_predefined_macros(MacroTable& table, const c4c::TargetProfile& target_
   def(table, "__GCC_ASM_FLAG_OUTPUTS__", "1");
 }
 
-void init_predefined_macros(MacroTable& table, const std::string& requested_target_triple) {
-  init_predefined_macros(
-      table,
-      c4c::target_profile_from_triple(
-          requested_target_triple.empty() ? c4c::default_host_target_triple()
-                                          : requested_target_triple));
-}
-
 }  // namespace c4c

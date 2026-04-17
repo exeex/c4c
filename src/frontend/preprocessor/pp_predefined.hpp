@@ -8,7 +8,6 @@ namespace c4c {
 
 // Populate |table| with predefined macros for the default target (LP64 aarch64).
 void init_predefined_macros(MacroTable& table, const c4c::TargetProfile& target_profile);
-void init_predefined_macros(MacroTable& table, const std::string& target_triple = "");
 
 }  // namespace c4c
 

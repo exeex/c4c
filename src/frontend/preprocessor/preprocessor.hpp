@@ -43,8 +43,6 @@ public:
   void set_source_profile(SourceProfile profile);
   SourceProfile source_profile() const { return source_profile_; }
   void set_target_profile(const c4c::TargetProfile& target_profile);
-  void set_target_triple(const std::string& triple);
-  const std::string& target_triple() const { return target_triple_; }
   const c4c::TargetProfile& target_profile() const { return target_profile_; }
 
   // Define/undefine macros from driver (for -D/-U command-line flags).
@@ -120,7 +118,6 @@ private:
   std::vector<PreprocessorDiagnostic> warnings_;
 
   SourceProfile source_profile_ = SourceProfile::C;
-  std::string target_triple_;
   c4c::TargetProfile target_profile_{};
 
   bool needs_external_fallback_ = false;
