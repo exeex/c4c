@@ -1885,6 +1885,234 @@ inline std::string emit_prepared_module(
     asm_text += *rendered_entry;
     return asm_text;
   };
+  const auto try_render_local_i32_arithmetic_guard = [&]() -> std::optional<std::string> {
+    if (!function.params.empty() || function.blocks.size() != 3 ||
+        entry.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
+        prepared_arch != c4c::TargetArch::X86_64 || entry.insts.empty()) {
+      return std::nullopt;
+    }
+
+    const auto layout = build_local_slot_layout();
+    if (!layout.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto* true_block = find_block(entry.terminator.true_label);
+    const auto* false_block = find_block(entry.terminator.false_label);
+    if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
+        false_block == &entry ||
+        true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        false_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        !true_block->terminator.value.has_value() || !false_block->terminator.value.has_value() ||
+        !true_block->insts.empty() || !false_block->insts.empty()) {
+      return std::nullopt;
+    }
+
+    struct NamedLocalI32Expr {
+      enum class Kind { LocalLoad, Add, Sub };
+      Kind kind = Kind::LocalLoad;
+      std::string operand;
+      c4c::backend::bir::Value lhs;
+      c4c::backend::bir::Value rhs;
+    };
+    std::unordered_map<std::string_view, NamedLocalI32Expr> named_i32_exprs;
+    const auto render_guard_return =
+        [&](std::int32_t returned_imm) -> std::string {
+      std::string rendered = "    mov eax, " + std::to_string(returned_imm) + "\n";
+      if (layout->frame_size != 0) {
+        rendered += "    add rsp, " + std::to_string(layout->frame_size) + "\n";
+      }
+      rendered += "    ret\n";
+      return rendered;
+    };
+
+    std::function<std::optional<std::string>(const c4c::backend::bir::Value&)> render_i32_operand;
+    std::function<std::optional<std::string>(const c4c::backend::bir::Value&)> render_i32_value;
+    render_i32_operand =
+        [&](const c4c::backend::bir::Value& value) -> std::optional<std::string> {
+          if (value.type != c4c::backend::bir::TypeKind::I32) {
+            return std::nullopt;
+          }
+          if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+            return std::to_string(static_cast<std::int32_t>(value.immediate));
+          }
+          if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+            return std::nullopt;
+          }
+          const auto expr_it = named_i32_exprs.find(value.name);
+          if (expr_it == named_i32_exprs.end() ||
+              expr_it->second.kind != NamedLocalI32Expr::Kind::LocalLoad) {
+            return std::nullopt;
+          }
+          return expr_it->second.operand;
+        };
+    render_i32_value =
+        [&](const c4c::backend::bir::Value& value) -> std::optional<std::string> {
+          if (value.type != c4c::backend::bir::TypeKind::I32) {
+            return std::nullopt;
+          }
+          if (const auto operand = render_i32_operand(value); operand.has_value()) {
+            return "    mov eax, " + *operand + "\n";
+          }
+          if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+            return std::nullopt;
+          }
+          const auto expr_it = named_i32_exprs.find(value.name);
+          if (expr_it == named_i32_exprs.end()) {
+            return std::nullopt;
+          }
+          const auto& expr = expr_it->second;
+          if (expr.kind == NamedLocalI32Expr::Kind::Add) {
+            if (const auto lhs_render = render_i32_value(expr.lhs); lhs_render.has_value()) {
+              if (const auto rhs_operand = render_i32_operand(expr.rhs); rhs_operand.has_value()) {
+                return *lhs_render + "    add eax, " + *rhs_operand + "\n";
+              }
+            }
+            if (const auto rhs_render = render_i32_value(expr.rhs); rhs_render.has_value()) {
+              if (const auto lhs_operand = render_i32_operand(expr.lhs); lhs_operand.has_value()) {
+                return *rhs_render + "    add eax, " + *lhs_operand + "\n";
+              }
+            }
+            return std::nullopt;
+          }
+          if (expr.kind == NamedLocalI32Expr::Kind::Sub) {
+            if (const auto lhs_render = render_i32_value(expr.lhs); lhs_render.has_value()) {
+              if (const auto rhs_operand = render_i32_operand(expr.rhs); rhs_operand.has_value()) {
+                return *lhs_render + "    sub eax, " + *rhs_operand + "\n";
+              }
+            }
+            return std::nullopt;
+          }
+          return "    mov eax, " + expr.operand + "\n";
+        };
+
+    auto asm_text = asm_prefix;
+    if (layout->frame_size != 0) {
+      asm_text += "    sub rsp, " + std::to_string(layout->frame_size) + "\n";
+    }
+
+    for (std::size_t index = 0; index + 1 < entry.insts.size(); ++index) {
+      const auto& inst = entry.insts[index];
+      if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
+        if (store->byte_offset != 0 || store->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+            store->value.type != c4c::backend::bir::TypeKind::I32) {
+          return std::nullopt;
+        }
+        std::optional<std::string> memory;
+        if (store->address.has_value()) {
+          memory = try_render_local_address_operand(*layout, store->address, "DWORD");
+        } else {
+          const auto slot_it = layout->offsets.find(store->slot_name);
+          if (slot_it == layout->offsets.end()) {
+            return std::nullopt;
+          }
+          memory = render_stack_memory_operand(slot_it->second, "DWORD");
+        }
+        if (!memory.has_value()) {
+          return std::nullopt;
+        }
+        asm_text += "    mov " + *memory + ", " +
+                    std::to_string(static_cast<std::int32_t>(store->value.immediate)) + "\n";
+        continue;
+      }
+
+      if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
+        if (load->byte_offset != 0 || load->result.type != c4c::backend::bir::TypeKind::I32) {
+          return std::nullopt;
+        }
+        std::optional<std::string> memory;
+        if (load->address.has_value()) {
+          memory = try_render_local_address_operand(*layout, load->address, "DWORD");
+        } else {
+          const auto slot_it = layout->offsets.find(load->slot_name);
+          if (slot_it == layout->offsets.end()) {
+            return std::nullopt;
+          }
+          memory = render_stack_memory_operand(slot_it->second, "DWORD");
+        }
+        if (!memory.has_value()) {
+          return std::nullopt;
+        }
+        named_i32_exprs[load->result.name] = NamedLocalI32Expr{
+            .kind = NamedLocalI32Expr::Kind::LocalLoad,
+            .operand = *memory,
+        };
+        continue;
+      }
+
+      const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+      if (binary == nullptr || binary->operand_type != c4c::backend::bir::TypeKind::I32 ||
+          binary->result.type != c4c::backend::bir::TypeKind::I32 ||
+          (binary->opcode != c4c::backend::bir::BinaryOpcode::Add &&
+           binary->opcode != c4c::backend::bir::BinaryOpcode::Sub)) {
+        return std::nullopt;
+      }
+      named_i32_exprs[binary->result.name] = NamedLocalI32Expr{
+          .kind = binary->opcode == c4c::backend::bir::BinaryOpcode::Add
+                      ? NamedLocalI32Expr::Kind::Add
+                      : NamedLocalI32Expr::Kind::Sub,
+          .lhs = binary->lhs,
+          .rhs = binary->rhs,
+      };
+    }
+
+    const auto* compare = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.back());
+    if (compare == nullptr ||
+        (compare->opcode != c4c::backend::bir::BinaryOpcode::Eq &&
+         compare->opcode != c4c::backend::bir::BinaryOpcode::Ne) ||
+        compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
+        (compare->result.type != c4c::backend::bir::TypeKind::I1 &&
+         compare->result.type != c4c::backend::bir::TypeKind::I32) ||
+        entry.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named ||
+        entry.terminator.condition.name != compare->result.name) {
+      return std::nullopt;
+    }
+
+    const bool lhs_is_value_rhs_is_imm =
+        compare->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+        compare->rhs.type == c4c::backend::bir::TypeKind::I32;
+    const bool rhs_is_value_lhs_is_imm =
+        compare->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+        compare->lhs.type == c4c::backend::bir::TypeKind::I32;
+    if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
+      return std::nullopt;
+    }
+
+    const auto compared_value = lhs_is_value_rhs_is_imm ? compare->lhs : compare->rhs;
+    const auto compared_render = render_i32_value(compared_value);
+    if (!compared_render.has_value()) {
+      return std::nullopt;
+    }
+    const auto compare_immediate =
+        lhs_is_value_rhs_is_imm ? compare->rhs.immediate : compare->lhs.immediate;
+    asm_text += *compared_render;
+    asm_text += compare_immediate == 0
+                    ? "    test eax, eax\n"
+                    : "    cmp eax, " +
+                          std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
+    asm_text += std::string("    ") +
+                (compare->opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je") + " .L" +
+                function.name + "_" + false_block->label + "\n";
+
+    const auto render_return_block =
+        [&](const c4c::backend::bir::Block& block) -> std::optional<std::string> {
+      const auto& value = *block.terminator.value;
+      if (value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+          value.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      return render_guard_return(static_cast<std::int32_t>(value.immediate));
+    };
+    const auto rendered_true = render_return_block(*true_block);
+    const auto rendered_false = render_return_block(*false_block);
+    if (!rendered_true.has_value() || !rendered_false.has_value()) {
+      return std::nullopt;
+    }
+    asm_text += *rendered_true;
+    asm_text += ".L" + function.name + "_" + false_block->label + ":\n";
+    asm_text += *rendered_false;
+    return asm_text;
+  };
   const auto try_render_param_derived_value =
       [&](const c4c::backend::bir::Value& value,
           const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>&
@@ -2273,6 +2501,10 @@ inline std::string emit_prepared_module(
     }
     if (const auto rendered_join = try_render_materialized_compare_join(); rendered_join.has_value()) {
       return *rendered_join;
+    }
+    if (const auto rendered_local_i32_guard = try_render_local_i32_arithmetic_guard();
+        rendered_local_i32_guard.has_value()) {
+      return *rendered_local_i32_guard;
     }
     if (const auto rendered_local_slot_guard_chain = try_render_local_slot_guard_chain();
         rendered_local_slot_guard_chain.has_value()) {
