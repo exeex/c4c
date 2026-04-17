@@ -1,5 +1,8 @@
 # X86 Backend Pure Bir Handoff
 
+Status: Complete
+Closed: 2026-04-17
+
 ## Goal
 
 Connect the x86 backend to the rebuilt backend pipeline through a pure BIR
@@ -108,14 +111,14 @@ Compile success through a mixed, legacy, or fallback path is not sufficient.
 
 ## Acceptance Criteria
 
-- [ ] the active x86 backend route accepts pure BIR or prepared-BIR input as its
+- [x] the active x86 backend route accepts pure BIR or prepared-BIR input as its
       canonical handoff
-- [ ] x86 no longer depends on mixed LIR/BIR ownership for the active path
-- [ ] canonical backend ABI and location metadata are consumed instead of
+- [x] x86 no longer depends on mixed LIR/BIR ownership for the active path
+- [x] canonical backend ABI and location metadata are consumed instead of
       re-derived in a conflicting local shadow pipeline
-- [ ] the wrong mixed-contract x86 route is removed or hard-retired rather than
+- [x] the wrong mixed-contract x86 route is removed or hard-retired rather than
       preserved as fallback behavior
-- [ ] tests prove the canonical x86 route is the actual route in use
+- [x] tests prove the canonical x86 route is the actual route in use
 
 ## Non-Goals
 
@@ -132,3 +135,25 @@ entry or explicit prepared-BIR adapter for the active route, delete the wrong
 mixed handoff instead of preserving it, then add a bounded test that proves x86
 consumes backend-published ABI/location information through the canonical
 route.
+
+## Completion Summary (2026-04-17)
+
+- The active x86 backend route now takes canonical backend-side BIR input,
+  prepares it once, and funnels both public and generic x86 entrypoints through
+  the same prepared-module consumer boundary.
+- The old mixed-contract survival path was retired for the active x86 route:
+  x86-target LIR input lowers through semantic BIR first, and unsupported
+  mixed fallback now fails instead of silently reviving a second ownership
+  path.
+- The prepared-module consumer now reads canonical backend metadata for return
+  ABI and parameter ABI instead of recomputing the minimal parameter-side
+  ownership contract locally.
+- Route proof remains semantic and route-oriented: the focused x86 handoff test
+  checks prepared/public/generic route equality, and the close-time broader
+  `^backend_` checkpoint passed with 72/72 tests green and no regressions.
+
+## Leftover Issues
+
+- None recorded for this handoff-boundary idea. Broader x86 backend capability
+  work, if needed later, should start as a separate open idea instead of
+  reopening this closed handoff plan.
