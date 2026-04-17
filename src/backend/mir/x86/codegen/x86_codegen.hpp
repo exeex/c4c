@@ -1164,11 +1164,18 @@ inline std::string emit_prepared_module(
                std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) +
                "\n    ret\n";
       }
+
+      if (binary->opcode == c4c::backend::bir::BinaryOpcode::AShr &&
+          lhs_is_param_rhs_is_imm) {
+        return asm_prefix + "    mov eax, edi\n    sar eax, " +
+               std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) +
+               "\n    ret\n";
+      }
     }
   }
 
   throw std::invalid_argument(
-      "x86 backend emitter only supports direct immediate i32 returns, direct single-parameter i32 passthrough returns, or single-parameter i32 add-immediate/sub-immediate/mul-immediate/and-immediate/or-immediate/xor-immediate/shl-immediate returns through the canonical prepared-module handoff");
+      "x86 backend emitter only supports direct immediate i32 returns, direct single-parameter i32 passthrough returns, or single-parameter i32 add-immediate/sub-immediate/mul-immediate/and-immediate/or-immediate/xor-immediate/shl-immediate/lshr-immediate/ashr-immediate returns through the canonical prepared-module handoff");
 }
 std::string emit_module(const c4c::backend::bir::Module& module);
 std::string emit_module(const c4c::codegen::lir::LirModule& module);

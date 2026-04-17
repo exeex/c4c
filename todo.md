@@ -8,14 +8,15 @@ Source Plan: plan.md
 
 Extended `x86::emit_prepared_module(...)` to support one additional honest
 prepared value-flow family: a minimal x86_64 single-function `i32` parameter
-returned after a single immediate logical-right-shift through the canonical
+returned after a single immediate arithmetic-right-shift through the canonical
 prepared-module boundary. The focused handoff proof now covers the
 immediate-return case, the direct single-parameter passthrough case, the
 single-parameter add-immediate case, the single-parameter sub-immediate case,
 the single-parameter mul-immediate case, the single-parameter and-immediate
 case, the single-parameter or-immediate case, the single-parameter
 xor-immediate case, the single-parameter shl-immediate case, and the
-single-parameter logical-right-shift-immediate case by checking
+single-parameter logical-right-shift-immediate case, and the
+single-parameter arithmetic-right-shift-immediate case by checking
 prepared/public/generic route equality against the same canonical x86
 assembly per shape.
 
@@ -23,9 +24,9 @@ assembly per shape.
 
 Extend `x86::emit_prepared_module(...)` to the next honest prepared-module
 shape behind the same canonical boundary with one bounded single-block
-single-parameter `i32` arithmetic-right-shift-immediate family that still
-consumes the shared prepared contract, without reintroducing any direct-BIR
-or public-entry fallback path.
+single-parameter `i32` compare-against-zero branch family that still consumes
+the shared prepared contract, if that route can be kept semantic and equally
+honest without reintroducing any direct-BIR or public-entry fallback path.
 
 ## Watchouts
 
@@ -48,9 +49,12 @@ or public-entry fallback path.
 - remaining shift-immediate follow-up work must stay equally bounded: one
   block, one returned SSA value, and a direct `edi` to `eax` lowering shape
   through the prepared-module consumer
-- the new shift support is intentionally one-way: keep future shift families
-  to `param op immediate` semantics only, not `immediate op param` or
-  variable-count lowering through `cl`
+- the new shift support remains intentionally one-way: keep any future shift
+  families to `param op immediate` semantics only, not `immediate op param`
+  or variable-count lowering through `cl`
+- if the next packet moves beyond one-op returns into control flow, keep the
+  route proof semantic and bounded rather than broadening into text-shape-only
+  backend assertions
 
 ## Proof
 
