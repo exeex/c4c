@@ -1087,7 +1087,6 @@ inline std::string emit_prepared_module(
     const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.front());
     if (binary != nullptr && param.type == c4c::backend::bir::TypeKind::I32 && !param.is_varargs &&
         !param.is_sret && !param.is_byval &&
-        binary->opcode == c4c::backend::bir::BinaryOpcode::Add &&
         binary->operand_type == c4c::backend::bir::TypeKind::I32 &&
         binary->result.type == c4c::backend::bir::TypeKind::I32 &&
         returned.name == binary->result.name) {
@@ -1101,17 +1100,23 @@ inline std::string emit_prepared_module(
           binary->rhs.name == param.name &&
           binary->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
           binary->lhs.type == c4c::backend::bir::TypeKind::I32;
-      if (lhs_is_param_rhs_is_imm || rhs_is_param_lhs_is_imm) {
+      if (binary->opcode == c4c::backend::bir::BinaryOpcode::Add &&
+          (lhs_is_param_rhs_is_imm || rhs_is_param_lhs_is_imm)) {
         const auto immediate =
             lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
         return asm_prefix + "    mov eax, edi\n    add eax, " +
                std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
       }
+
+      if (binary->opcode == c4c::backend::bir::BinaryOpcode::Sub && lhs_is_param_rhs_is_imm) {
+        return asm_prefix + "    mov eax, edi\n    sub eax, " +
+               std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) + "\n    ret\n";
+      }
     }
   }
 
   throw std::invalid_argument(
-      "x86 backend emitter only supports direct immediate i32 returns, direct single-parameter i32 passthrough returns, or single-parameter i32 add-immediate returns through the canonical prepared-module handoff");
+      "x86 backend emitter only supports direct immediate i32 returns, direct single-parameter i32 passthrough returns, or single-parameter i32 add-immediate/sub-immediate returns through the canonical prepared-module handoff");
 }
 std::string emit_module(const c4c::backend::bir::Module& module);
 std::string emit_module(const c4c::codegen::lir::LirModule& module);
