@@ -1,11 +1,18 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
 namespace c4c {
+
+using TextId = uint32_t;
+using LinkNameId = uint32_t;
+
+constexpr TextId kInvalidText = 0;
+constexpr LinkNameId kInvalidLinkName = 0;
 
 // Generic stable-id table keyed by a caller-provided value type.
 template <typename Id, Id InvalidId, typename Key>
@@ -67,6 +74,55 @@ struct PathIdTable : KeyIdTable<Id, InvalidId, std::string> {
         KeyIdTable<Id, InvalidId, std::string>::lookup(id);
     return stored ? std::string_view(*stored) : std::string_view{};
   }
+};
+
+using TextTable = StringIdTable<TextId, kInvalidText>;
+
+// Final logical symbol identity layer. Link names reuse TextTable storage
+// rather than owning a second copy of the spelling bytes.
+struct LinkNameTable {
+  explicit LinkNameTable(TextTable* texts = nullptr) : texts_(texts) {}
+
+  void attach_text_table(TextTable* texts) { texts_ = texts; }
+
+  LinkNameId find(TextId text_id) const {
+    if (!texts_ || text_id == kInvalidText) return kInvalidLinkName;
+    const auto it = link_name_ids_.id_by_key_.find(text_id);
+    return it == link_name_ids_.id_by_key_.end() ? kInvalidLinkName
+                                                 : it->second;
+  }
+
+  LinkNameId find(std::string_view text) const {
+    if (!texts_ || text.empty()) return kInvalidLinkName;
+    const auto text_it = texts_->id_by_key_.find(std::string(text));
+    if (text_it == texts_->id_by_key_.end()) return kInvalidLinkName;
+    return find(text_it->second);
+  }
+
+  LinkNameId intern(TextId text_id) {
+    if (!texts_ || text_id == kInvalidText) return kInvalidLinkName;
+    return link_name_ids_.intern(text_id);
+  }
+
+  LinkNameId intern(std::string_view logical_name) {
+    if (!texts_) return kInvalidLinkName;
+    return intern(texts_->intern(logical_name));
+  }
+
+  TextId text_id(LinkNameId id) const {
+    const TextId* stored = link_name_ids_.lookup(id);
+    return stored ? *stored : kInvalidText;
+  }
+
+  std::string_view spelling(LinkNameId id) const {
+    if (!texts_) return {};
+    return texts_->lookup(text_id(id));
+  }
+
+  size_t size() const { return link_name_ids_.size(); }
+
+  TextTable* texts_ = nullptr;
+  KeyIdTable<LinkNameId, kInvalidLinkName, TextId> link_name_ids_;
 };
 
 }  // namespace c4c

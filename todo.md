@@ -6,15 +6,19 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan activation only. No executor packet has landed yet.
+Step 1 landed: `src/frontend/string_id_table.hpp` now defines a distinct
+`LinkNameId` / `LinkNameTable` contract backed by the shared `TextTable`,
+`src/frontend/lexer/token.hpp` now consumes the shared `TextId` / `TextTable`
+definitions from that helper layer, and `tests/frontend/frontend_parser_tests.cpp`
+adds focused coverage for interning, lookup, invalid handling, and text-table
+reuse.
 
 ## Suggested Next
 
-Start with Step 1 from `plan.md`: inspect the current `TextTable` and adjacent
-id-table helpers, add the `LinkNameId` / `LinkNameTable` data model, and keep
-the first slice narrowly focused on the semantic id space rather than HIR/LIR
-consumer migration. Choose proof that builds the repo and exercises the
-narrowest path covering the new table API.
+Start Step 2 from `plan.md`: thread `LinkNameTable` ownership into the HIR
+materialization boundary and add parallel `link_name_id` fields on the first
+HIR carriers for emitted symbols, keeping this slice focused on HIR-side
+interning rather than LIR or backend consumer migration.
 
 ## Watchouts
 
@@ -30,4 +34,5 @@ narrowest path covering the new table API.
 
 ## Proof
 
-Not run yet.
+Build: `cmake --build --preset default -j4`
+Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`

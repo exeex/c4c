@@ -33,6 +33,38 @@ void expect_eq_int(int actual, int expected, const std::string& msg) {
   }
 }
 
+void test_link_name_table_reuses_text_table_storage() {
+  c4c::TextTable texts;
+  c4c::LinkNameTable link_names(&texts);
+
+  const c4c::LinkNameId alpha = link_names.intern("Alpha");
+  const c4c::TextId alpha_text = texts.intern("Alpha");
+  const c4c::LinkNameId alpha_again = link_names.intern(alpha_text);
+
+  expect_true(alpha != c4c::kInvalidLinkName,
+              "link-name interning should produce a valid LinkNameId");
+  expect_true(alpha == alpha_again,
+              "interning the same text through text ids should reuse one LinkNameId");
+  expect_true(link_names.find("Alpha") == alpha,
+              "string lookup should recover the existing LinkNameId");
+  expect_true(link_names.find(alpha_text) == alpha,
+              "text-id lookup should recover the existing LinkNameId");
+  expect_true(link_names.text_id(alpha) == alpha_text,
+              "LinkNameTable should map semantic ids back to the shared TextId");
+  expect_eq(link_names.spelling(alpha), "Alpha",
+            "LinkNameTable spelling should resolve through the shared TextTable");
+  expect_true(link_names.size() == 1,
+              "one unique link-name spelling should occupy one semantic id slot");
+  expect_true(texts.size() == 1,
+              "LinkNameTable should reuse existing TextTable storage");
+
+  const c4c::LinkNameId missing = link_names.find("Missing");
+  expect_true(missing == c4c::kInvalidLinkName,
+              "missing link-name lookups should stay invalid without creating entries");
+  expect_true(link_names.text_id(c4c::kInvalidLinkName) == c4c::kInvalidText,
+              "invalid LinkNameId should not resolve to a valid TextId");
+}
+
 void test_parser_reuses_symbol_ids_for_repeated_identifier_text_ids() {
   c4c::Lexer lexer("typedef int Value;\nValue other;\nValue third;\n");
   const std::vector<c4c::Token> tokens = lexer.scan_all();
@@ -862,6 +894,7 @@ void test_parser_qualified_declarator_name_uses_token_spelling() {
 }  // namespace
 
 int main() {
+  test_link_name_table_reuses_text_table_storage();
   test_parser_reuses_symbol_ids_for_repeated_identifier_text_ids();
   test_parser_symbol_helper_falls_back_to_lexeme_without_text_id();
   test_parser_string_wrappers_use_symbol_id_keyed_name_tables();

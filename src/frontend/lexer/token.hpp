@@ -8,13 +8,10 @@
 
 namespace c4c {
 
-using TextId = uint32_t;
 using FileId = uint32_t;
 
-constexpr TextId kInvalidText = 0;
 constexpr FileId kInvalidFile = 0;
 
-using TextTable = StringIdTable<TextId, kInvalidText>;
 using FileTable = PathIdTable<FileId, kInvalidFile>;
 
 // Token kinds mirroring ref/claudes-c-compiler/src/frontend/lexer/token.rs
