@@ -1,5 +1,14 @@
 # HIR To LIR Link-Name Table And Backend Symbol Ids
 
+Status: Closed
+Closed: 2026-04-17
+
+Closure note:
+- The first-slice acceptance is satisfied: `LinkNameId`/`LinkNameTable` is now a
+  distinct semantic id space, HIR materializes and carries link ids, HIR->LIR
+  forwards them, and late consumer boundaries resolve them back to text.
+- Backend-private temporary names remain out of scope for this closed slice.
+
 ## Goal
 
 Introduce a dedicated `LinkNameId` table at the HIR-to-LIR boundary so final
