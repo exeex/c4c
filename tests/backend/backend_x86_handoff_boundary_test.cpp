@@ -109,6 +109,17 @@ std::string expected_minimal_param_eq_zero_branch_asm(const char* function_name,
          std::to_string(false_returned_value) + "\n    ret\n";
 }
 
+std::string expected_minimal_param_eq_zero_branch_param_or_immediate_asm(
+    const char* function_name,
+    const char* false_label,
+    int true_returned_value) {
+  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
+         "\n.type " + function_name + ", @function\n" + function_name +
+         ":\n    test edi, edi\n    jne .L" + function_name + "_" + false_label +
+         "\n    mov eax, " + std::to_string(true_returned_value) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov eax, edi\n    ret\n";
+}
+
 bir::Module make_x86_return_constant_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -487,6 +498,54 @@ bir::Module make_x86_param_eq_zero_branch_module() {
   return module;
 }
 
+bir::Module make_x86_param_eq_zero_branch_param_or_immediate_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "branch_zero_or_passthrough";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .true_label = "is_zero",
+      .false_label = "is_nonzero",
+  };
+
+  bir::Block is_zero;
+  is_zero.label = "is_zero";
+  is_zero.terminator = bir::ReturnTerminator{
+      .value = bir::Value::immediate_i32(5),
+  };
+
+  bir::Block is_nonzero;
+  is_nonzero.label = "is_nonzero";
+  is_nonzero.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "p.x"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(is_zero));
+  function.blocks.push_back(std::move(is_nonzero));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 lir::LirModule make_x86_return_constant_lir_module() {
   lir::LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -710,6 +769,17 @@ int main() {
                                                                         11),
                               "bir.func @branch_on_zero(i32 p.x) -> i32 {",
                               "minimal i32 parameter compare-against-zero branch route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(
+              make_x86_param_eq_zero_branch_param_or_immediate_module(),
+              expected_minimal_param_eq_zero_branch_param_or_immediate_asm(
+                  "branch_zero_or_passthrough", "is_nonzero", 5),
+              "bir.func @branch_zero_or_passthrough(i32 p.x) -> i32 {",
+              "minimal i32 parameter compare-against-zero branch route with parameter leaf return");
       status != 0) {
     return status;
   }

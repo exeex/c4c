@@ -1111,18 +1111,29 @@ inline std::string emit_prepared_module(
 
     const auto& true_value = *true_block->terminator.value;
     const auto& false_value = *false_block->terminator.value;
-    if (true_value.kind != c4c::backend::bir::Value::Kind::Immediate ||
-        false_value.kind != c4c::backend::bir::Value::Kind::Immediate ||
-        true_value.type != c4c::backend::bir::TypeKind::I32 ||
-        false_value.type != c4c::backend::bir::TypeKind::I32) {
+    const auto try_render_leaf_return =
+        [&](const c4c::backend::bir::Value& value) -> std::optional<std::string> {
+      if (value.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+        return "    mov eax, " + std::to_string(static_cast<std::int32_t>(value.immediate)) +
+               "\n    ret\n";
+      }
+      if (value.kind == c4c::backend::bir::Value::Kind::Named && value.name == param.name) {
+        return std::string("    mov eax, edi\n    ret\n");
+      }
+      return std::nullopt;
+    };
+    const auto true_return = try_render_leaf_return(true_value);
+    const auto false_return = try_render_leaf_return(false_value);
+    if (!true_return.has_value() || !false_return.has_value()) {
       return std::nullopt;
     }
 
     const std::string false_label = ".L" + function.name + "_" + false_block->label;
-    return asm_prefix + "    test edi, edi\n    jne " + false_label + "\n    mov eax, " +
-           std::to_string(static_cast<std::int32_t>(true_value.immediate)) + "\n    ret\n" +
-           false_label + ":\n    mov eax, " +
-           std::to_string(static_cast<std::int32_t>(false_value.immediate)) + "\n    ret\n";
+    return asm_prefix + "    test edi, edi\n    jne " + false_label + "\n" + *true_return +
+           false_label + ":\n" + *false_return;
   };
   if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !entry.terminator.value.has_value()) {
