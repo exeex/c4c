@@ -376,6 +376,40 @@ int add_one(int value) { return value + global_value; }
               "backend lir_to_bir should not trust a corrupted raw global name carrier");
 }
 
+void test_lir_to_bir_analysis_resolves_link_names_at_backend_boundary() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+int add_one(int value) { return value + 1; }
+)cpp");
+  c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  auto lir_fn_it = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id != c4c::kInvalidLinkName &&
+               lir_module.link_names.spelling(fn.link_name_id) == "add_one";
+      });
+  expect_true(lir_fn_it != lir_module.functions.end(),
+              "fixture should lower add_one with a LinkNameId before backend analysis");
+  lir_fn_it->name = "broken_analysis_function_name";
+
+  c4c::backend::BirLoweringContext context =
+      c4c::backend::make_lowering_context(lir_module, c4c::backend::BirLoweringOptions{});
+  const c4c::backend::BirModuleAnalysis analysis = c4c::backend::analyze_module(context);
+
+  const auto summary_it = std::find_if(
+      analysis.functions.begin(), analysis.functions.end(),
+      [](const c4c::backend::BirFunctionPreScan& summary) {
+        return summary.function_name == "add_one";
+      });
+  expect_true(summary_it != analysis.functions.end(),
+              "backend analysis should recover the semantic function name from LinkNameId lookup");
+  expect_true(std::none_of(analysis.functions.begin(), analysis.functions.end(),
+                           [](const c4c::backend::BirFunctionPreScan& summary) {
+                             return summary.function_name == "broken_analysis_function_name";
+                           }),
+              "backend analysis should not trust a corrupted raw function name carrier");
+}
+
 }  // namespace
 
 int main() {
@@ -388,6 +422,7 @@ int main() {
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_to_bir_resolves_link_names_at_backend_boundary();
+  test_lir_to_bir_analysis_resolves_link_names_at_backend_boundary();
 
   std::cout << "PASS: frontend_hir_tests\n";
   return 0;

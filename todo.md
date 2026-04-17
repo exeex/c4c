@@ -6,19 +6,19 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended Step 4 into an active backend-side consumer: semantic `lir_to_bir`
-lowering now resolves function/global symbol spelling from existing
-`LinkNameId` carriers before it keys backend-facing BIR state, and
-`tests/frontend/frontend_hir_tests.cpp` proves backend lowering still emits the
-semantic names after the legacy raw LIR function/global name carriers are
+Extended Step 4 into another backend-facing consumer: `backend::analyze_module`
+now resolves function summary names from existing `LinkNameId` carriers before
+it reports module/function pre-scan metadata, and
+`tests/frontend/frontend_hir_tests.cpp` proves backend analysis still reports
+the semantic function name after the legacy raw LIR function carrier is
 deliberately corrupted.
 
 ## Suggested Next
 
-Review the remaining link-visible late-consumer surfaces and pick the next
-bounded active backend consumer that already has a real `LinkNameId` carrier,
-such as declaration-lowering or another prepared backend-facing module path,
-without inventing ids for unresolved extern-call declarations.
+Review the remaining backend-facing consumers that still surface legacy raw
+symbol names despite existing carriers, especially any declaration-oriented or
+diagnostic/reporting paths, and keep avoiding fake ids for unresolved
+extern-call declarations.
 
 ## Watchouts
 

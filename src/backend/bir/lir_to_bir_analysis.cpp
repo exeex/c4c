@@ -6,6 +6,23 @@ namespace c4c::backend {
 
 namespace {
 
+std::string_view resolve_link_name(const c4c::LinkNameTable& link_names,
+                                   c4c::LinkNameId id) {
+  if (id == c4c::kInvalidLinkName) return {};
+  const std::string_view spelling = link_names.spelling(id);
+  return spelling.empty() ? std::string_view{} : spelling;
+}
+
+std::string resolved_function_name(const c4c::codegen::lir::LirModule& module,
+                                   const c4c::codegen::lir::LirFunction& function) {
+  const std::string_view resolved_name = resolve_link_name(module.link_names,
+                                                           function.link_name_id);
+  if (!resolved_name.empty()) {
+    return std::string(resolved_name);
+  }
+  return function.name;
+}
+
 std::size_t count_instructions(const c4c::codegen::lir::LirFunction& function) {
   std::size_t count = 0;
   for (const auto& block : function.blocks) {
@@ -25,7 +42,7 @@ BirModuleAnalysis analyze_module(BirLoweringContext& context) {
 
   for (const auto& function : context.lir_module.functions) {
     BirFunctionPreScan summary;
-    summary.function_name = function.name;
+    summary.function_name = resolved_function_name(context.lir_module, function);
     summary.block_count = function.blocks.size();
     summary.instruction_count = count_instructions(function);
     summary.has_control_flow = function.blocks.size() > 1;
