@@ -540,6 +540,7 @@ class Parser {
   // Set by the using-alias handler to let the template wrapper detect that
   // a using type alias was defined during `parse_top_level()`.
   std::string last_using_alias_name_;
+  TextId last_using_alias_name_text_id_ = kInvalidText;
 
   // ── active parse context ──────────────────────────────────────────────────
   // Tag of the struct currently being parsed (empty if not in struct body).
@@ -685,6 +686,17 @@ class Parser {
   void set_last_resolved_typedef(std::string_view name) {
     last_resolved_typedef_ = std::string(name);
     last_resolved_typedef_text_id_ = parser_text_id_for_token(kInvalidText, name);
+  }
+  void clear_last_using_alias_name() {
+    last_using_alias_name_.clear();
+    last_using_alias_name_text_id_ = kInvalidText;
+  }
+  void set_last_using_alias_name(std::string_view name) {
+    last_using_alias_name_ = std::string(name);
+    last_using_alias_name_text_id_ = parser_text_id_for_token(kInvalidText, name);
+  }
+  std::string_view last_using_alias_name_text() const {
+    return parser_text(last_using_alias_name_text_id_, last_using_alias_name_);
   }
   const FnPtrTypedefInfo* find_typedef_fn_ptr_info(TextId text_id) const {
     if (text_id == kInvalidText) return nullptr;

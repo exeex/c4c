@@ -273,6 +273,29 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
 #endif
 }
 
+void test_parser_last_using_alias_name_prefers_text_id_storage() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  parser.set_last_using_alias_name("ns::Alias");
+  expect_true(parser.last_using_alias_name_text_id_ != c4c::kInvalidText,
+              "using-alias bookkeeping should retain a valid TextId");
+  expect_eq(parser.last_using_alias_name_text(), "ns::Alias",
+            "using-alias bookkeeping should resolve through the parser text table");
+
+  parser.last_using_alias_name_ = "corrupted";
+  expect_eq(parser.last_using_alias_name_text(), "ns::Alias",
+            "using-alias bookkeeping should prefer the TextId carrier over raw string storage");
+
+  parser.clear_last_using_alias_name();
+  expect_true(parser.last_using_alias_name_text_id_ == c4c::kInvalidText,
+              "clearing using-alias bookkeeping should drop the TextId carrier");
+  expect_true(parser.last_using_alias_name_text().empty(),
+              "clearing using-alias bookkeeping should leave no visible alias text");
+}
+
 void test_parser_parse_qualified_name_populates_atom_symbol_ids() {
   c4c::Lexer lexer("::ns::inner::Type value;\n", c4c::LexProfile::CppSubset);
   const std::vector<c4c::Token> tokens = lexer.scan_all();
@@ -775,6 +798,7 @@ int main() {
   test_parser_string_wrappers_use_symbol_id_keyed_name_tables();
   test_parser_heavy_snapshot_restores_symbol_id_keyed_tables();
   test_parser_keeps_qualified_bindings_string_keyed();
+  test_parser_last_using_alias_name_prefers_text_id_storage();
   test_parser_parse_qualified_name_populates_atom_symbol_ids();
   test_parser_apply_qualified_name_preserves_text_ids_on_ast_nodes();
   test_parser_injected_token_helpers_preserve_qualified_name_spelling();

@@ -6,26 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 2 / Step 4 for the bounded HIR
-`InitListItem.field_designator` route in `hir_ir.hpp`, initializer lowering and
-normalization helpers, const-init emission, HIR printing, and
-`frontend_hir_tests.cpp`.
+Completed `plan.md` Step 2 / Step 4 for the bounded parser
+`last_using_alias_name_` route in template using-alias bookkeeping and
+`frontend_parser_tests.cpp`.
 
-- Added parallel HIR `InitListItem::field_designator_text_id` storage so
-  designated global-init items are no longer string-only for preserved field
-  names.
-- Threaded designator-name interning through lower/normalize/const-init helper
-  paths using `module.link_name_texts` without collapsing `TextId`,
-  `SymbolId`, or `LinkNameId`.
-- Extended focused HIR proof so a designated init item still prints and lowers
-  correctly after the legacy raw field-designator string is corrupted, proving
-  the parallel `TextId` route is live.
+- Added parser-side `last_using_alias_name_text_id_` storage and helper accessors
+  so the alias-template wrapper no longer depends on raw string ownership alone
+  for that persistent parser state.
+- Switched template using-alias metadata capture to resolve the alias name
+  through the new `TextId` carrier before typedef lookup and alias-template map
+  insertion.
+- Added focused parser proof that corrupting the legacy raw alias string does
+  not break the visible alias spelling while the `TextId` carrier is present.
 
 ## Suggested Next
 
-Keep Step 2 bounded: choose one nearby persistent HIR carrier such as
-`DeclStmt.symbol` or `DeclRef.user_name` instead of widening into broader
-registry/index churn.
+Use the same bounded pattern on one remaining parser or HIR persistent text
+carrier with live consumers, such as `current_namespace_` or a struct-field
+name path, rather than widening into registry churn.
 
 ## Watchouts
 
@@ -33,21 +31,21 @@ registry/index churn.
 - HIR must intern its own spellings into `module.link_name_texts`; parser-owned
   `TextId`s cannot be copied directly into HIR because they belong to a
   different table.
-- `InitListItem::field_designator_text_id` must stay aligned anywhere
-  designated init items are synthesized, normalized, or rewritten into indexed
-  forms.
-- HIR printers and const-init/codegen helpers should prefer the `TextId` route
-  when it is present so the migration is not just passive parallel storage.
+- `last_using_alias_name_text_id_` must stay aligned anywhere template using
+  aliases clear, overwrite, or read the parser-side bookkeeping slot.
+- Parser-side `TextId` tests should keep proving the route still works after the
+  legacy string sidecar is intentionally corrupted, so the migration is not
+  passive storage only.
 - Keep diagnostic/debug/serialization strings out of scope.
 - Do not absorb unrelated EASTL lifecycle churn into this plan.
 
 ## Proof
 
 Baseline:
-`ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
 
 Packet proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
 
 Result:
 Passed on 2026-04-17 via `test_after.log`.

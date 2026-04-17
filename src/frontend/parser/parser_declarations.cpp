@@ -1337,7 +1337,7 @@ Node* Parser::parse_top_level() {
                 if (using_context_id == 0) {
                     register_typedef_binding(first_name, alias_ts, true);
                 }
-                last_using_alias_name_ = qualified;
+                set_last_using_alias_name(qualified);
                 return nullptr;
             }
             target = first_name;
@@ -1660,13 +1660,14 @@ Node* Parser::parse_top_level() {
         }
 
         size_t struct_defs_before = struct_defs_.size();
-        last_using_alias_name_.clear();
+        clear_last_using_alias_name();
         Node* templated = parse_top_level();
         // If parse_top_level() registered a using-alias, record alias template
         // info so that later Name<args> can rebuild the aliased template struct.
-        if (!last_using_alias_name_.empty() && !template_params.empty()) {
+        const std::string_view alias_name = last_using_alias_name_text();
+        if (!alias_name.empty() && !template_params.empty()) {
             if (const TypeSpec* aliased_type =
-                    find_typedef_type(last_using_alias_name_)) {
+                    find_typedef_type(alias_name)) {
                 AliasTemplateInfo ati;
                 for (size_t i = 0; i < template_params.size(); ++i) {
                     ati.param_names.push_back(template_params[i]);
@@ -1677,9 +1678,9 @@ Node* Parser::parse_top_level() {
                     ati.param_default_values.push_back(template_param_default_values[i]);
                 }
                 ati.aliased_type = *aliased_type;
-                alias_template_info_[last_using_alias_name_] = std::move(ati);
+                alias_template_info_[std::string(alias_name)] = std::move(ati);
             }
-            last_using_alias_name_.clear();
+            clear_last_using_alias_name();
         }
         auto attach_template_params = [&](Node* n) {
             if (!n || template_params.empty()) return;
