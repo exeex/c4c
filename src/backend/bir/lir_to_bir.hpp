@@ -249,9 +249,11 @@ class BirFunctionLowerer {
   struct LocalSlotAddress {
     std::string slot_name;
     bir::TypeKind value_type = bir::TypeKind::Void;
-    std::size_t byte_offset = 0;
+    std::int64_t byte_offset = 0;
     std::string storage_type_text;
     std::string type_text;
+    std::vector<std::string> array_element_slots;
+    std::size_t array_base_index = 0;
   };
   using LocalSlotAddressSlots = std::unordered_map<std::string, LocalSlotAddress>;
   using LocalSlotPointerValues = std::unordered_map<std::string, LocalSlotAddress>;
@@ -397,7 +399,7 @@ class BirFunctionLowerer {
 
   struct LocalAggregateGepTarget {
     std::string type_text;
-    std::size_t byte_offset = 0;
+    std::int64_t byte_offset = 0;
   };
 
  private:
@@ -537,7 +539,7 @@ class BirFunctionLowerer {
       const TypeDeclMap& type_decls);
   static std::optional<LocalAggregateGepTarget> resolve_relative_gep_target(
       std::string_view type_text,
-      std::size_t base_byte_offset,
+      std::int64_t base_byte_offset,
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls);
