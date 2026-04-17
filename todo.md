@@ -6,16 +6,16 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Hardened backend `lir_to_bir` failure-note reporting so function-level
-diagnostic paths resolve semantic names from `LinkNameId` when present instead
-of trusting a possibly corrupted raw LIR `name`, and added backend notes
-coverage that proves the reported function name comes from the id-backed path.
+Audited the remaining owned backend `lir_to_bir` module-level and non-failure
+reporting surfaces and confirmed they already resolve semantic names from
+`LinkNameId` before reporting or lowering, so no further code change was needed
+in this packet beyond recording the audit result.
 
 ## Suggested Next
 
-Review whether any remaining backend module-level or non-failure reporting
-surfaces still depend on raw LIR symbol names, and only extend `LinkNameId`
-carriers further when a real HIR or LIR semantic source exists.
+Audit late consumer boundaries outside this backend `lir_to_bir` slice only
+where final symbol spelling is still emitted or reported, and only add new
+`LinkNameId` plumbing when a real upstream semantic carrier already exists.
 
 ## Watchouts
 
@@ -33,7 +33,13 @@ carriers further when a real HIR or LIR semantic source exists.
   calls should continue to flow with `kInvalidLinkName`
 - this packet only hardened function-level backend failure notes; other
   reporting surfaces should still be audited individually before assuming the
-  backend is fully id-driven
+  backend is fully id-driven, but within the owned `lir_to_bir` module,
+  analysis, and calling files the remaining declaration/global/function paths
+  already route through resolved semantic names before they report or lower
+- `lower_extern_decl` and `lower_decl_function` still copy `decl.name` /
+  `function.name`, but their only owned caller is `lower_module`, which
+  resolves semantic names first; do not duplicate fallback lookup inside those
+  helpers unless a new direct caller appears
 - keep forwarding explicit ids through LIR carriers and resolve them only at
   late consumers rather than treating legacy `name` strings as the semantic
   source of truth
