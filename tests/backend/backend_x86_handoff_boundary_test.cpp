@@ -230,7 +230,9 @@ int check_route_outputs(const bir::Module& module,
                         const std::string& expected_bir_fragment,
                         const char* failure_context) {
   const auto prepared =
-      c4c::backend::prepare::prepare_semantic_bir_module_with_options(module, Target::X86_64);
+      c4c::backend::prepare::prepare_semantic_bir_module_with_options(
+          module, c4c::backend::target_profile_from_backend_target(Target::X86_64,
+                                                                   module.target_triple));
   const auto prepared_bir_text = bir::print(prepared.module);
 
   const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);

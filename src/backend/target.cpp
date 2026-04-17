@@ -41,7 +41,7 @@ c4c::TargetProfile target_profile_from_backend_target(Target target,
     case Target::Aarch64:
       return c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
     case Target::Riscv64:
-      return c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+      return c4c::target_profile_from_triple("riscv64gc-unknown-linux-gnu");
   }
   return c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 }

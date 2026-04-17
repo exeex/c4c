@@ -1,6 +1,7 @@
 #pragma once
 
 #include "bir.hpp"
+#include "../../target_profile.hpp"
 #include "../../codegen/lir/call_args_ops.hpp"
 #include "../../codegen/lir/ir.hpp"
 
@@ -34,6 +35,7 @@ struct BirLoweringNote {
 
 struct BirLoweringContext {
   const c4c::codegen::lir::LirModule& lir_module;
+  c4c::TargetProfile target_profile;
   BirLoweringOptions options;
   std::vector<BirLoweringNote> notes;
 
@@ -137,6 +139,12 @@ TypeDeclMap build_type_decl_map(const std::vector<std::string>& type_decls);
 std::optional<std::int64_t> parse_i64(std::string_view text);
 std::optional<bir::TypeKind> lower_integer_type(std::string_view text);
 std::size_t type_size_bytes(bir::TypeKind type);
+std::optional<bir::CallArgAbiInfo> compute_call_arg_abi(const c4c::TargetProfile& target_profile,
+                                                        bir::TypeKind type);
+std::optional<bir::CallResultAbiInfo> compute_function_return_abi(
+    const c4c::TargetProfile& target_profile,
+    bir::TypeKind type,
+    bool returned_via_sret);
 std::vector<std::string_view> split_top_level_initializer_items(std::string_view text);
 std::optional<ParsedTypedOperand> parse_typed_operand(std::string_view text);
 std::optional<std::int64_t> resolve_index_operand(
@@ -199,9 +207,11 @@ class BirFunctionLowerer {
   static std::optional<std::vector<ParsedFunctionSignatureParam>> parse_function_signature_params(
       std::string_view signature_text);
   static std::optional<bir::Function> lower_extern_decl(
-      const c4c::codegen::lir::LirExternDecl& decl);
+      const c4c::codegen::lir::LirExternDecl& decl,
+      const c4c::TargetProfile& target_profile);
   static std::optional<bir::Function> lower_decl_function(
-      const c4c::codegen::lir::LirFunction& function);
+      const c4c::codegen::lir::LirFunction& function,
+      const c4c::TargetProfile& target_profile);
 
   // Shared type buckets used by the split lowering translation units.
   using ValueMap = lir_to_bir_detail::ValueMap;
@@ -440,11 +450,13 @@ class BirFunctionLowerer {
   static std::optional<bir::TypeKind> lower_param_type(const c4c::TypeSpec& type);
   static std::optional<LoweredReturnInfo> lower_return_info_from_type(
       std::string_view type_text,
-      const TypeDeclMap& type_decls);
+      const TypeDeclMap& type_decls,
+      const c4c::TargetProfile& target_profile);
   std::optional<LoweredReturnInfo> infer_function_return_info() const;
   static std::optional<LoweredReturnInfo> lower_signature_return_info(
       std::string_view signature_text,
-      const TypeDeclMap& type_decls);
+      const TypeDeclMap& type_decls,
+      const c4c::TargetProfile& target_profile);
   static bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
                                     const std::optional<LoweredReturnInfo>& return_info,
                                     const TypeDeclMap& type_decls,

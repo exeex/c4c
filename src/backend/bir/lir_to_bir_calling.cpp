@@ -71,7 +71,27 @@ std::optional<std::string> parse_byval_pointee_type(std::string_view type_text) 
   return std::nullopt;
 }
 
-std::optional<bir::CallResultAbiInfo> lower_function_return_abi(bir::TypeKind type,
+bool use_float_return_registers(const c4c::TargetProfile& target_profile,
+                                bir::TypeKind type) {
+  if (!target_profile.has_float_return_registers) {
+    return false;
+  }
+  return type == bir::TypeKind::F32 || type == bir::TypeKind::F64 ||
+         type == bir::TypeKind::F128;
+}
+
+bool use_float_arg_registers(const c4c::TargetProfile& target_profile,
+                             bir::TypeKind type) {
+  if (!target_profile.has_float_arg_registers) {
+    return false;
+  }
+  return type == bir::TypeKind::F32 || type == bir::TypeKind::F64 ||
+         type == bir::TypeKind::F128;
+}
+
+std::optional<bir::CallResultAbiInfo> lower_function_return_abi(
+    const c4c::TargetProfile& target_profile,
+    bir::TypeKind type,
                                                                 bool returned_via_sret) {
   if (returned_via_sret) {
     return bir::CallResultAbiInfo{
@@ -90,7 +110,9 @@ std::optional<bir::CallResultAbiInfo> lower_function_return_abi(bir::TypeKind ty
     case bir::TypeKind::F32:
     case bir::TypeKind::F64:
     case bir::TypeKind::F128:
-      abi.primary_class = bir::AbiValueClass::Sse;
+      abi.primary_class = use_float_return_registers(target_profile, type)
+                              ? bir::AbiValueClass::Sse
+                              : bir::AbiValueClass::Integer;
       return abi;
     case bir::TypeKind::I1:
     case bir::TypeKind::I8:
@@ -107,7 +129,9 @@ std::optional<bir::CallResultAbiInfo> lower_function_return_abi(bir::TypeKind ty
   return std::nullopt;
 }
 
-std::optional<bir::CallArgAbiInfo> lower_call_arg_abi(bir::TypeKind type) {
+std::optional<bir::CallArgAbiInfo> lower_call_arg_abi(
+    const c4c::TargetProfile& target_profile,
+    bir::TypeKind type) {
   if (type == bir::TypeKind::Void) {
     return std::nullopt;
   }
@@ -122,7 +146,9 @@ std::optional<bir::CallArgAbiInfo> lower_call_arg_abi(bir::TypeKind type) {
     case bir::TypeKind::F32:
     case bir::TypeKind::F64:
     case bir::TypeKind::F128:
-      abi.primary_class = bir::AbiValueClass::Sse;
+      abi.primary_class = use_float_arg_registers(target_profile, type)
+                              ? bir::AbiValueClass::Sse
+                              : bir::AbiValueClass::Integer;
       return abi;
     case bir::TypeKind::I1:
     case bir::TypeKind::I8:
@@ -143,6 +169,19 @@ std::optional<bir::CallArgAbiInfo> lower_call_arg_abi(bir::TypeKind type) {
 }
 
 }  // namespace
+
+std::optional<bir::CallArgAbiInfo> lir_to_bir_detail::compute_call_arg_abi(
+    const c4c::TargetProfile& target_profile,
+    bir::TypeKind type) {
+  return lower_call_arg_abi(target_profile, type);
+}
+
+std::optional<bir::CallResultAbiInfo> lir_to_bir_detail::compute_function_return_abi(
+    const c4c::TargetProfile& target_profile,
+    bir::TypeKind type,
+    bool returned_via_sret) {
+  return lower_function_return_abi(target_profile, type, returned_via_sret);
+}
 
 using lir_to_bir_detail::lower_integer_type;
 
@@ -385,7 +424,8 @@ BirFunctionLowerer::parse_function_signature_params(std::string_view signature_t
 
 std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_return_info_from_type(
     std::string_view type_text,
-    const TypeDeclMap& type_decls) {
+    const TypeDeclMap& type_decls,
+    const c4c::TargetProfile& target_profile) {
   const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type_text);
   if (trimmed == "void") {
     return LoweredReturnInfo{};
@@ -393,7 +433,7 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_r
   if (const auto scalar_type = lower_scalar_or_function_pointer_type(trimmed); scalar_type.has_value()) {
     return LoweredReturnInfo{
         .type = *scalar_type,
-        .abi = lower_function_return_abi(*scalar_type, false),
+        .abi = lower_function_return_abi(target_profile, *scalar_type, false),
     };
   }
   if (const auto aggregate_layout = lower_byval_aggregate_layout(trimmed, type_decls);
@@ -402,7 +442,7 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_r
         .type = bir::TypeKind::Void,
         .size_bytes = aggregate_layout->size_bytes,
         .align_bytes = aggregate_layout->align_bytes,
-        .abi = lower_function_return_abi(bir::TypeKind::Void, true),
+        .abi = lower_function_return_abi(target_profile, bir::TypeKind::Void, true),
         .returned_via_sret = true,
     };
   }
@@ -417,7 +457,8 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::infer_f
     if (ret == nullptr) {
       continue;
     }
-    const auto lowered_type = lower_return_info_from_type(ret->type_str, type_decls_);
+    const auto lowered_type =
+        lower_return_info_from_type(ret->type_str, type_decls_, context_.target_profile);
     if (!lowered_type.has_value()) {
       return std::nullopt;
     }
@@ -437,7 +478,8 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::infer_f
 
 std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_signature_return_info(
     std::string_view signature_text,
-    const TypeDeclMap& type_decls) {
+    const TypeDeclMap& type_decls,
+    const c4c::TargetProfile& target_profile) {
   const auto line = c4c::codegen::lir::trim_lir_arg_text(signature_text);
   const auto first_space = line.find(' ');
   const auto at_pos = line.find('@');
@@ -447,14 +489,16 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_s
   }
   const auto return_type_text =
       c4c::codegen::lir::trim_lir_arg_text(line.substr(first_space + 1, at_pos - first_space - 1));
-  return lower_return_info_from_type(return_type_text, type_decls);
+  return lower_return_info_from_type(return_type_text, type_decls, target_profile);
 }
 
 std::optional<bir::Function> BirFunctionLowerer::lower_extern_decl(
-    const c4c::codegen::lir::LirExternDecl& decl) {
-  auto return_info = lower_return_info_from_type(decl.return_type_str, TypeDeclMap{});
+    const c4c::codegen::lir::LirExternDecl& decl,
+    const c4c::TargetProfile& target_profile) {
+  auto return_info =
+      lower_return_info_from_type(decl.return_type_str, TypeDeclMap{}, target_profile);
   if (!return_info.has_value()) {
-    return_info = lower_return_info_from_type(decl.return_type.str(), TypeDeclMap{});
+    return_info = lower_return_info_from_type(decl.return_type.str(), TypeDeclMap{}, target_profile);
   }
   if (!return_info.has_value()) {
     return std::nullopt;
@@ -631,7 +675,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .callee = std::string(callee_name),
         .args = {*lowered_ap},
         .arg_types = {bir::TypeKind::Ptr},
-        .arg_abi = {*lower_call_arg_abi(bir::TypeKind::Ptr)},
+        .arg_abi = {*lower_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)},
         .return_type_name = "void",
         .return_type = bir::TypeKind::Void,
     });
@@ -669,7 +713,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
                    .primary_class = bir::AbiValueClass::Memory,
                    .sret_pointer = true,
                },
-               *lower_call_arg_abi(bir::TypeKind::Ptr)},
+               *lower_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)},
           .return_type_name = "void",
           .return_type = bir::TypeKind::Void,
       });
@@ -681,9 +725,9 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
             "llvm.va_arg." + std::string(c4c::codegen::lir::trim_lir_arg_text(va_arg.type_str.str())),
         .args = {*lowered_ap},
         .arg_types = {bir::TypeKind::Ptr},
-        .arg_abi = {*lower_call_arg_abi(bir::TypeKind::Ptr)},
+        .arg_abi = {*lower_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)},
         .return_type = *lowered_type,
-        .result_abi = lower_function_return_abi(*lowered_type, false),
+        .result_abi = lower_function_return_abi(context_.target_profile, *lowered_type, false),
     });
     return true;
   };
@@ -712,7 +756,8 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         return fail_runtime_family("inline-asm placeholder family");
       }
       lowered_call.result = bir::Value::named(*lowered_type, inline_asm.result.str());
-      lowered_call.result_abi = lower_function_return_abi(*lowered_type, false);
+      lowered_call.result_abi =
+          lower_function_return_abi(context_.target_profile, *lowered_type, false);
       lowered_call.return_type = *lowered_type;
     } else if (!inline_asm.result.empty()) {
       return fail_runtime_family("inline-asm placeholder family");
@@ -815,9 +860,9 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .callee = std::string(parsed_callee->symbol_name),
         .args = {*lowered_arg},
         .arg_types = {value_type},
-        .arg_abi = {*lower_call_arg_abi(value_type)},
+        .arg_abi = {*lower_call_arg_abi(context_.target_profile, value_type)},
         .return_type = value_type,
-        .result_abi = lower_function_return_abi(value_type, false),
+        .result_abi = lower_function_return_abi(context_.target_profile, value_type, false),
     });
     return true;
   };
@@ -846,8 +891,8 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .callee = "llvm.va_copy.p0.p0",
         .args = {*lowered_dst, *lowered_src},
         .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
-        .arg_abi = {*lower_call_arg_abi(bir::TypeKind::Ptr),
-                    *lower_call_arg_abi(bir::TypeKind::Ptr)},
+        .arg_abi = {*lower_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr),
+                    *lower_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)},
         .return_type_name = "void",
         .return_type = bir::TypeKind::Void,
     });
@@ -870,7 +915,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .result = bir::Value::named(bir::TypeKind::Ptr, stacksave->result.str()),
         .callee = "llvm.stacksave",
         .return_type = bir::TypeKind::Ptr,
-        .result_abi = lower_function_return_abi(bir::TypeKind::Ptr, false),
+        .result_abi = lower_function_return_abi(context_.target_profile, bir::TypeKind::Ptr, false),
     });
     return true;
   }
@@ -884,7 +929,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .callee = "llvm.stackrestore",
         .args = {*lowered_saved_ptr},
         .arg_types = {bir::TypeKind::Ptr},
-        .arg_abi = {*lower_call_arg_abi(bir::TypeKind::Ptr)},
+        .arg_abi = {*lower_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)},
         .return_type_name = "void",
         .return_type = bir::TypeKind::Void,
     });
@@ -945,13 +990,15 @@ void BirFunctionLowerer::note_runtime_intrinsic_family_failure(std::string_view 
 }
 
 std::optional<bir::Function> BirFunctionLowerer::lower_decl_function(
-    const c4c::codegen::lir::LirFunction& function) {
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::TargetProfile& target_profile) {
   bir::Function lowered;
   lowered.name = function.name;
-  auto return_info = lower_signature_return_info(function.signature_text, TypeDeclMap{});
+  auto return_info =
+      lower_signature_return_info(function.signature_text, TypeDeclMap{}, target_profile);
   if (!return_info.has_value()) {
     lowered.return_type = lower_param_type(function.return_type).value_or(bir::TypeKind::Void);
-    lowered.return_abi = lower_function_return_abi(lowered.return_type, false);
+    lowered.return_abi = lower_function_return_abi(target_profile, lowered.return_type, false);
   } else {
     lowered.return_type = return_info->type;
     lowered.return_size_bytes = return_info->size_bytes;

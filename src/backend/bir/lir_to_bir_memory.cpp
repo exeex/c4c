@@ -3690,7 +3690,8 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return false;
     };
 
-    const auto return_info = lower_return_info_from_type(call->return_type.str(), type_decls);
+    const auto return_info =
+        lower_return_info_from_type(call->return_type.str(), type_decls, context_.target_profile);
     if (!return_info.has_value()) {
       return fail_call_family(kCallReturnFamily);
     }
@@ -4240,7 +4241,9 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
             }
             lowered_arg_types.push_back(bir::TypeKind::Ptr);
             lowered_args.push_back(*arg);
-            lowered_arg_abi.push_back(bir::CallArgAbiInfo{.type = bir::TypeKind::Ptr});
+            lowered_arg_abi.push_back(
+                *lir_to_bir_detail::compute_call_arg_abi(context_.target_profile,
+                                                         bir::TypeKind::Ptr));
             continue;
           }
           const auto arg_type =
@@ -4280,7 +4283,8 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           }
           lowered_arg_types.push_back(*arg_type);
           lowered_args.push_back(*arg);
-          lowered_arg_abi.push_back(bir::CallArgAbiInfo{.type = *arg_type});
+          lowered_arg_abi.push_back(
+              *lir_to_bir_detail::compute_call_arg_abi(context_.target_profile, *arg_type));
         }
       } else if (c4c::codegen::lir::trim_lir_arg_text(call->args_str).empty()) {
         callee_name = std::string(*direct_callee);
@@ -4316,7 +4320,9 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           }
           lowered_arg_types.push_back(bir::TypeKind::Ptr);
           lowered_args.push_back(*arg);
-          lowered_arg_abi.push_back(bir::CallArgAbiInfo{.type = bir::TypeKind::Ptr});
+          lowered_arg_abi.push_back(
+              *lir_to_bir_detail::compute_call_arg_abi(context_.target_profile,
+                                                       bir::TypeKind::Ptr));
           continue;
         }
         const auto arg_type =
@@ -4354,7 +4360,8 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         }
         lowered_arg_types.push_back(*arg_type);
         lowered_args.push_back(*arg);
-        lowered_arg_abi.push_back(bir::CallArgAbiInfo{.type = *arg_type});
+        lowered_arg_abi.push_back(
+            *lir_to_bir_detail::compute_call_arg_abi(context_.target_profile, *arg_type));
       }
       is_indirect_call = true;
     } else {

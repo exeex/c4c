@@ -582,7 +582,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   }
 
   for (const auto& decl : context.lir_module.extern_decls) {
-    auto lowered_decl = BirFunctionLowerer::lower_extern_decl(decl);
+    auto lowered_decl = BirFunctionLowerer::lower_extern_decl(decl, context.target_profile);
     if (!lowered_decl.has_value()) {
       continue;
     }
@@ -591,7 +591,8 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
 
   for (const auto& function : context.lir_module.functions) {
     if (function.is_declaration) {
-      auto lowered_decl = BirFunctionLowerer::lower_decl_function(function);
+      auto lowered_decl =
+          BirFunctionLowerer::lower_decl_function(function, context.target_profile);
       if (!lowered_decl.has_value()) {
         continue;
       }
