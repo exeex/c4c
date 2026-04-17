@@ -13,6 +13,7 @@ namespace c4c::backend::prepare {
 namespace {
 
 struct ActiveRegisterAssignment {
+  std::size_t value_index = 0;
   std::size_t end_point = 0;
   std::string register_name;
 };
@@ -137,6 +138,53 @@ void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
     }
   }
   return std::nullopt;
+}
+
+[[nodiscard]] bool has_lower_allocation_rank(const PreparedRegallocValue& lhs,
+                                             const PreparedRegallocValue& rhs) {
+  if (lhs.spill_weight != rhs.spill_weight) {
+    return lhs.spill_weight < rhs.spill_weight;
+  }
+  if (lhs.priority != rhs.priority) {
+    return lhs.priority < rhs.priority;
+  }
+  if (lhs.live_interval.has_value() != rhs.live_interval.has_value()) {
+    return !lhs.live_interval.has_value();
+  }
+  if (lhs.live_interval.has_value() && rhs.live_interval.has_value() &&
+      lhs.live_interval->start_point != rhs.live_interval->start_point) {
+    return lhs.live_interval->start_point > rhs.live_interval->start_point;
+  }
+  return lhs.value_id > rhs.value_id;
+}
+
+template <typename CanEvict>
+[[nodiscard]] std::optional<std::size_t> choose_eviction_candidate(
+    const PreparedRegallocFunction& function,
+    const std::vector<ActiveRegisterAssignment>& active,
+    const std::vector<std::string_view>& register_names,
+    const PreparedRegallocValue& value,
+    CanEvict can_evict) {
+  std::optional<std::size_t> weakest_active_index;
+  for (std::size_t active_index = 0; active_index < active.size(); ++active_index) {
+    const auto& assignment = active[active_index];
+    if (std::find(register_names.begin(), register_names.end(), assignment.register_name) ==
+            register_names.end() ||
+        !can_evict(assignment)) {
+      continue;
+    }
+
+    const auto& active_value = function.values[assignment.value_index];
+    if (!has_lower_allocation_rank(active_value, value)) {
+      continue;
+    }
+    if (!weakest_active_index.has_value() ||
+        has_lower_allocation_rank(active_value,
+                                  function.values[active[*weakest_active_index].value_index])) {
+      weakest_active_index = active_index;
+    }
+  }
+  return weakest_active_index;
 }
 
 [[nodiscard]] std::optional<PreparedStackSlotAssignment> existing_stack_slot_assignment(
@@ -315,7 +363,8 @@ void BirPreAlloc::run_regalloc() {
 
     auto assign_from_pool = [&](const auto& should_consider,
                                 const auto& register_pool_for_value,
-                                std::vector<ActiveRegisterAssignment>& active_assignments) {
+                                std::vector<ActiveRegisterAssignment>& active_assignments,
+                                const auto& can_evict_assignment) {
       for (const std::size_t value_index : allocation_order) {
         auto& value = regalloc_function.values[value_index];
         if (value.assigned_register.has_value() || value.assigned_stack_slot.has_value() ||
@@ -334,11 +383,38 @@ void BirPreAlloc::run_regalloc() {
           };
           value.allocation_status = PreparedAllocationStatus::AssignedRegister;
           active_assignments.push_back(ActiveRegisterAssignment{
+              .value_index = value_index,
               .end_point = value.live_interval->end_point,
               .register_name = value.assigned_register->register_name,
           });
           ++assigned_register_count;
+          continue;
         }
+
+        const auto eviction_index = choose_eviction_candidate(regalloc_function,
+                                                              active_assignments,
+                                                              register_names,
+                                                              value,
+                                                              can_evict_assignment);
+        if (!eviction_index.has_value()) {
+          continue;
+        }
+
+        auto& evicted_value = regalloc_function.values[active_assignments[*eviction_index].value_index];
+        value.assigned_register = PreparedPhysicalRegisterAssignment{
+            .reg_class = value.register_class,
+            .register_name = active_assignments[*eviction_index].register_name,
+        };
+        value.allocation_status = PreparedAllocationStatus::AssignedRegister;
+
+        evicted_value.assigned_register.reset();
+        evicted_value.allocation_status = PreparedAllocationStatus::Unallocated;
+
+        active_assignments[*eviction_index] = ActiveRegisterAssignment{
+            .value_index = value_index,
+            .end_point = value.live_interval->end_point,
+            .register_name = value.assigned_register->register_name,
+        };
       }
     };
 
@@ -346,17 +422,22 @@ void BirPreAlloc::run_regalloc() {
                      [this](const PreparedRegallocValue& value) {
                        return callee_saved_registers(prepared_.target, value.register_class);
                      },
-                     active_callee_saved_assignments);
+                     active_callee_saved_assignments,
+                     [](const ActiveRegisterAssignment&) { return true; });
     assign_from_pool([](const PreparedRegallocValue& value) { return !value.crosses_call; },
                      [this](const PreparedRegallocValue& value) {
                        return caller_saved_registers(prepared_.target, value.register_class);
                      },
-                     active_caller_saved_assignments);
+                     active_caller_saved_assignments,
+                     [](const ActiveRegisterAssignment&) { return true; });
     assign_from_pool([](const PreparedRegallocValue& value) { return !value.crosses_call; },
                      [this](const PreparedRegallocValue& value) {
                        return callee_saved_registers(prepared_.target, value.register_class);
                      },
-                     active_callee_saved_assignments);
+                     active_callee_saved_assignments,
+                     [&regalloc_function](const ActiveRegisterAssignment& assignment) {
+                       return !regalloc_function.values[assignment.value_index].crosses_call;
+                     });
 
     for (const std::size_t value_index : allocation_order) {
       auto& value = regalloc_function.values[value_index];
