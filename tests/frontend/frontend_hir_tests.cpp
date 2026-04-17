@@ -637,6 +637,23 @@ int use_template() { return id<int>(7); }
             "template-call source-template TextIds should resolve through the HIR text table");
 }
 
+void test_hir_consteval_call_metadata_preserves_text_ids_for_function_names() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+consteval int fold(int value, int scale) { return value * scale; }
+
+int use_consteval() { return fold(3, 4); }
+)cpp");
+
+  expect_true(hir_module.consteval_calls.size() == 1,
+              "fixture should lower exactly one evaluated consteval call");
+  const c4c::hir::ConstevalCallInfo& consteval_call = hir_module.consteval_calls.front();
+  expect_true(consteval_call.fn_name_text_id != c4c::kInvalidText,
+              "consteval-call metadata should preserve a parallel TextId for the function name");
+  expect_eq(hir_module.link_name_texts->lookup(consteval_call.fn_name_text_id),
+            consteval_call.fn_name,
+            "consteval-call function-name TextIds should resolve through the HIR text table");
+}
+
 void test_hir_to_lir_forwards_function_link_name_ids() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 template<typename T>
@@ -1607,6 +1624,7 @@ int main() {
   test_hir_stmt_decl_refs_preserve_text_ids_for_this_param_and_ctor_callees();
   test_hir_struct_defs_preserve_text_ids_for_tags_and_bases();
   test_hir_template_calls_preserve_text_ids_for_source_template_names();
+  test_hir_consteval_call_metadata_preserves_text_ids_for_function_names();
   test_hir_to_lir_forwards_function_link_name_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();

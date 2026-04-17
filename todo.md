@@ -6,24 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 2 / Step 4 for the bounded HIR template-call
-source-template route in `hir_ir.hpp`, `hir_expr_call.cpp`, and
+Completed `plan.md` Step 2 / Step 4 for the bounded HIR consteval-call
+metadata route in `hir_ir.hpp`, `compile_time_engine.cpp`, and
 `frontend_hir_tests.cpp`.
 
-- Added parallel HIR `TemplateCallInfo::source_template_text_id` storage so
-  preserved template-call source names are no longer string-only in call
-  metadata.
-- Threaded template-call source-template interning through `lower_call_expr()`
-  and pack-expansion call lowering using `module.link_name_texts` without
-  collapsing `TextId`, `SymbolId`, or `LinkNameId`.
-- Extended focused HIR proof so template-call metadata resolves its parallel
+- Added parallel HIR `ConstevalCallInfo::fn_name_text_id` storage so reduced
+  consteval-call metadata is no longer string-only for preserved function
+  names.
+- Threaded consteval-call name interning through pending-consteval evaluation
+  using `module.link_name_texts` without collapsing `TextId`, `SymbolId`, or
+  `LinkNameId`.
+- Extended focused HIR proof so consteval-call metadata resolves its parallel
   `TextId` through the HIR module text table.
 
 ## Suggested Next
 
-Keep Step 2 bounded: choose one nearby HIR metadata carrier that still stores
-stable TU text as `std::string`, such as `ConstevalCallInfo::fn_name`, instead
-of widening into broader registry/index churn.
+Keep Step 2 bounded: choose one nearby persistent HIR carrier such as
+`InitListItem.field_designator` or `MemberExpr.field` instead of widening into
+broader registry/index churn.
 
 ## Watchouts
 
@@ -31,12 +31,11 @@ of widening into broader registry/index churn.
 - HIR must intern its own spellings into `module.link_name_texts`; parser-owned
   `TextId`s cannot be copied directly into HIR because they belong to a
   different table.
-- `HirTemplateDef::template_param_text_ids` now needs to stay aligned with
-  `template_params` anywhere template metadata gets synthesized or rewritten
-  after `materialize_hir_template_defs()`.
-- The `template_defs` map is still keyed by string for untouched consumers, so
-  keep this slice limited to parallel storage; compile-time consumers still use
-  `template_params` string spellings for binding lookup.
+- `ConstevalCallInfo::fn_name_text_id` must stay aligned with the legacy
+  `fn_name` string anywhere consteval metadata gets synthesized or rewritten.
+- Compile-time registries still key consteval definitions by string for
+  untouched consumers, so keep this slice limited to parallel storage rather
+  than registry/index churn.
 - Keep diagnostic/debug/serialization strings out of scope.
 - Do not absorb unrelated EASTL lifecycle churn into this plan.
 

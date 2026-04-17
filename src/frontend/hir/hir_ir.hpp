@@ -915,6 +915,7 @@ struct HirTemplateInstantiation {
 /// Preserves the call intent so a future HIR pass can re-evaluate or defer.
 struct ConstevalCallInfo {
   SymbolName fn_name;                           // consteval function name
+  TextId fn_name_text_id = kInvalidText;        // stable consteval function name in module.link_name_texts
   std::vector<long long> const_args;            // evaluated constant argument values
   TypeBindings template_bindings;               // template param → concrete type (empty if non-template)
   long long result_value = 0;                   // computed result

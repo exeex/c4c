@@ -331,6 +331,8 @@ struct PendingConstevalEvalStep {
         // Record consteval call metadata.
         ConstevalCallInfo info;
         info.fn_name = pce->fn_name;
+        info.fn_name_text_id =
+            module.link_name_texts ? module.link_name_texts->intern(info.fn_name) : kInvalidText;
         info.const_args = pce->const_args;
         info.template_bindings = pce->tpl_bindings;
         info.result_value = rv;
