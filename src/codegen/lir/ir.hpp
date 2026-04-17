@@ -511,6 +511,7 @@ struct LirFunction {
 struct LirGlobal {
   LirGlobalId id{};
   std::string name;        // Unquoted C name (printer quotes it)
+  LinkNameId link_name_id = kInvalidLinkName;
   TypeSpec type{};
   bool is_internal = false;
   bool is_const = false;

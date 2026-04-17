@@ -6,18 +6,19 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Started Step 3 on the direct emitted-function path: `codegen::lir::LirFunction`
-now carries a parallel `link_name_id`, HIR-to-LIR lowering forwards
-`hir::Function.link_name_id` for both declarations and definitions, and
-`tests/frontend/frontend_hir_tests.cpp` now lowers a real HIR fixture into LIR
-to prove the forwarded id survives on the first bounded HIR->LIR carrier.
+Extended Step 3 from the first emitted-function path into the direct emitted
+global path: `codegen::lir::LirGlobal` now carries a parallel
+`link_name_id`, HIR-to-LIR lowering forwards `hir::GlobalVar.link_name_id`
+through both standard and flexible-array global lowering, and
+`tests/frontend/frontend_hir_tests.cpp` proves the forwarded id survives on
+both the function and global LIR carriers in one real HIR fixture.
 
 ## Suggested Next
 
-Continue Step 3 with the next bounded symbol family: decide whether
-`LirGlobal`, specialization metadata, or another directly emitted link-visible
-carrier should be the second explicit id path before widening into late
-consumer lookup in Step 4.
+Decide whether Step 3 needs one more explicit LIR carrier for
+template-specialization metadata, or whether the route is now strong enough to
+start Step 4 by threading shared link-name lookup into a late text-emitting
+consumer boundary.
 
 ## Watchouts
 
@@ -26,8 +27,8 @@ consumer lookup in Step 4.
   second string store once the shared TU text-table boundary is available
 - keep `LinkNameId` distinct from both `TextId` and parser/source-atom
   `SymbolId`; the new HIR fields are parallel carriers, not replacements
-- the first Step 3 slice proves only the emitted-function carrier; `LirGlobal`
-  and late consumer lookup are still string-based today
+- late consumer lookup is still string-based today even though both direct
+  emitted function/global LIR carriers now preserve `LinkNameId`
 - keep forwarding explicit ids through LIR carriers rather than treating
   `name` strings as the semantic source of truth
 - avoid testcase-overfit proof or brittle emitted-text substring matching as a

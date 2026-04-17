@@ -216,6 +216,24 @@ int use_template() { return id<int>(add_one(global_value)); }
               "fixture function should lower into a concrete LIR function carrier");
   expect_true(lir_fn_it->link_name_id == hir_function->link_name_id,
               "LIR functions should forward the HIR LinkNameId on the direct emitted-function path");
+
+  const auto hir_global_it = hir_module.global_index.find("global_value");
+  expect_true(hir_global_it != hir_module.global_index.end(),
+              "fixture global should still be present in the HIR global index");
+  const c4c::hir::GlobalVar* hir_global = hir_module.find_global(hir_global_it->second);
+  expect_true(hir_global != nullptr,
+              "fixture global should resolve through the HIR lookup before lowering to LIR");
+  expect_true(hir_global->link_name_id != c4c::kInvalidLinkName,
+              "fixture global should carry a valid HIR LinkNameId before LIR lowering");
+
+  const auto lir_global_it = std::find_if(lir_module.globals.begin(), lir_module.globals.end(),
+                                          [](const c4c::codegen::lir::LirGlobal& global) {
+                                            return global.name == "global_value";
+                                          });
+  expect_true(lir_global_it != lir_module.globals.end(),
+              "fixture global should lower into a concrete LIR global carrier");
+  expect_true(lir_global_it->link_name_id == hir_global->link_name_id,
+              "LIR globals should forward the HIR LinkNameId on the direct emitted-global path");
 }
 
 }  // namespace

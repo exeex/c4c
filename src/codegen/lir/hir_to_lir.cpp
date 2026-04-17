@@ -166,6 +166,7 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
 
           LirGlobal lg;
           lg.name = gv.name;
+          lg.link_name_id = gv.link_name_id;
           lg.type = ts;
           lg.is_internal = gv.linkage.is_static;
           lg.is_const = gv.is_const;
@@ -185,6 +186,7 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
 
   LirGlobal lg;
   lg.name = gv.name;
+  lg.link_name_id = gv.link_name_id;
   lg.type = ts;
   lg.is_internal = gv.linkage.is_static;
   lg.is_const = gv.is_const;
