@@ -245,6 +245,23 @@ std::string expected_minimal_local_i8_address_guard_asm(const char* function_nam
          "    ret\n";
 }
 
+std::string expected_minimal_loaded_local_array_pointer_guard_asm(const char* function_name,
+                                                                  int immediate) {
+  return asm_header(function_name) + "    sub rsp, 16\n"
+         "    mov BYTE PTR [rsp + 7], " + std::to_string(immediate) + "\n"
+         "    mov rax, QWORD PTR [rsp + 8]\n"
+         "    movsx eax, BYTE PTR [rsp + 7]\n"
+         "    cmp eax, " + std::to_string(immediate) + "\n"
+         "    je .L" + function_name + "_block_2\n"
+         "    mov eax, 1\n"
+         "    add rsp, 16\n"
+         "    ret\n"
+         ".L" + function_name + "_block_2:\n"
+         "    mov eax, 0\n"
+         "    add rsp, 16\n"
+         "    ret\n";
+}
+
 std::string expected_minimal_local_i32_short_circuit_or_guard_asm(const char* function_name) {
   return asm_header(function_name) + "    sub rsp, 16\n"
          "    mov DWORD PTR [rsp], 1\n"
@@ -2697,6 +2714,170 @@ lir::LirModule make_x86_local_i32_byte_storage_lir_module() {
   return module;
 }
 
+lir::LirModule make_x86_loaded_local_array_pointer_guard_lir_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  lir::LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.a"),
+      .type_str = "[2 x [4 x i8]]",
+      .count = lir::LirOperand(""),
+      .align = 1,
+  });
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.p"),
+      .type_str = "ptr",
+      .count = lir::LirOperand(""),
+      .align = 8,
+  });
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%t0"),
+      .element_type = "[2 x [4 x i8]]",
+      .ptr = lir::LirOperand("%lv.a"),
+      .indices = {lir::LirOperand("i64 0"), lir::LirOperand("i64 0")},
+  });
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = "ptr",
+      .val = lir::LirOperand("%t0"),
+      .ptr = lir::LirOperand("%lv.p"),
+  });
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%t1"),
+      .element_type = "[2 x [4 x i8]]",
+      .ptr = lir::LirOperand("%lv.a"),
+      .indices = {lir::LirOperand("i64 0"), lir::LirOperand("i64 0")},
+  });
+  entry.insts.push_back(lir::LirCastOp{
+      .result = lir::LirOperand("%t2"),
+      .kind = lir::LirCastKind::SExt,
+      .from_type = "i32",
+      .operand = lir::LirOperand("1"),
+      .to_type = "i64",
+  });
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%t3"),
+      .element_type = "[4 x i8]",
+      .ptr = lir::LirOperand("%t1"),
+      .indices = {lir::LirOperand("i64 %t2")},
+  });
+  entry.insts.push_back(lir::LirCastOp{
+      .result = lir::LirOperand("%t4"),
+      .kind = lir::LirCastKind::SExt,
+      .from_type = "i32",
+      .operand = lir::LirOperand("3"),
+      .to_type = "i64",
+  });
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%t5"),
+      .element_type = "i8",
+      .ptr = lir::LirOperand("%t3"),
+      .indices = {lir::LirOperand("i64 %t4")},
+  });
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = "i8",
+      .val = lir::LirOperand("2"),
+      .ptr = lir::LirOperand("%t5"),
+  });
+  entry.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t7"),
+      .type_str = "ptr",
+      .ptr = lir::LirOperand("%lv.p"),
+  });
+  entry.insts.push_back(lir::LirCastOp{
+      .result = lir::LirOperand("%t8"),
+      .kind = lir::LirCastKind::SExt,
+      .from_type = "i32",
+      .operand = lir::LirOperand("1"),
+      .to_type = "i64",
+  });
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%t9"),
+      .element_type = "[4 x i8]",
+      .ptr = lir::LirOperand("%t7"),
+      .indices = {lir::LirOperand("i64 %t8")},
+  });
+  entry.insts.push_back(lir::LirCastOp{
+      .result = lir::LirOperand("%t10"),
+      .kind = lir::LirCastKind::SExt,
+      .from_type = "i32",
+      .operand = lir::LirOperand("3"),
+      .to_type = "i64",
+  });
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%t11"),
+      .element_type = "i8",
+      .ptr = lir::LirOperand("%t9"),
+      .indices = {lir::LirOperand("i64 %t10")},
+  });
+  entry.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t12"),
+      .type_str = "i8",
+      .ptr = lir::LirOperand("%t11"),
+  });
+  entry.insts.push_back(lir::LirCastOp{
+      .result = lir::LirOperand("%t13"),
+      .kind = lir::LirCastKind::SExt,
+      .from_type = "i8",
+      .operand = lir::LirOperand("%t12"),
+      .to_type = "i32",
+  });
+  entry.insts.push_back(lir::LirCmpOp{
+      .result = lir::LirOperand("%t14"),
+      .is_float = false,
+      .predicate = "ne",
+      .type_str = "i32",
+      .lhs = lir::LirOperand("%t13"),
+      .rhs = lir::LirOperand("2"),
+  });
+  entry.insts.push_back(lir::LirCastOp{
+      .result = lir::LirOperand("%t15"),
+      .kind = lir::LirCastKind::ZExt,
+      .from_type = "i1",
+      .operand = lir::LirOperand("%t14"),
+      .to_type = "i32",
+  });
+  entry.insts.push_back(lir::LirCmpOp{
+      .result = lir::LirOperand("%t16"),
+      .is_float = false,
+      .predicate = "ne",
+      .type_str = "i32",
+      .lhs = lir::LirOperand("%t15"),
+      .rhs = lir::LirOperand("0"),
+  });
+  entry.terminator = lir::LirCondBr{
+      .cond_name = "%t16",
+      .true_label = "block_1",
+      .false_label = "block_2",
+  };
+
+  lir::LirBlock block_1;
+  block_1.label = "block_1";
+  block_1.terminator = lir::LirRet{
+      .value_str = std::string("1"),
+      .type_str = "i32",
+  };
+
+  lir::LirBlock block_2;
+  block_2.label = "block_2";
+  block_2.terminator = lir::LirRet{
+      .value_str = std::string("0"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 lir::LirModule make_x86_local_pointer_guard_chain_lir_module() {
   lir::LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -3387,6 +3568,14 @@ int main() {
           check_lir_route_outputs(make_x86_local_i32_byte_storage_lir_module(),
                                   expected_minimal_local_i32_byte_storage_asm("main", 3),
                                   "minimal local aggregate byte-storage i32 LIR route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_lir_route_outputs(make_x86_loaded_local_array_pointer_guard_lir_module(),
+                                  expected_minimal_loaded_local_array_pointer_guard_asm("main", 2),
+                                  "loaded local array-pointer guard LIR route");
       status != 0) {
     return status;
   }

@@ -27,6 +27,100 @@ using lir_to_bir_detail::parse_typed_operand;
 using lir_to_bir_detail::resolve_index_operand;
 using lir_to_bir_detail::type_size_bytes;
 
+static std::optional<std::vector<std::string>> collect_local_scalar_array_slots(
+    std::string_view type_text,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BirFunctionLowerer::LocalAggregateSlots& aggregate_slots) {
+  const auto layout = compute_aggregate_type_layout(
+      c4c::codegen::lir::trim_lir_arg_text(type_text), type_decls);
+  if (layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array) {
+    return std::nullopt;
+  }
+  const auto element_layout = compute_aggregate_type_layout(layout.element_type_text, type_decls);
+  if (element_layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Scalar ||
+      element_layout.size_bytes == 0) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> element_slots;
+  std::size_t slot_count = layout.array_count;
+  struct RepeatedAggregateExtent {
+    std::size_t element_count = 0;
+    std::size_t element_stride_bytes = 0;
+  };
+  const auto find_repeated_extent =
+      [&](const auto& self,
+          std::string_view storage_type_text,
+          std::size_t target_offset,
+          std::string_view repeated_type_text) -> std::optional<RepeatedAggregateExtent> {
+    const auto storage_layout = compute_aggregate_type_layout(storage_type_text, type_decls);
+    if (storage_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+        target_offset >= storage_layout.size_bytes) {
+      return std::nullopt;
+    }
+
+    switch (storage_layout.kind) {
+      case BirFunctionLowerer::AggregateTypeLayout::Kind::Array: {
+        const auto element_layout =
+            compute_aggregate_type_layout(storage_layout.element_type_text, type_decls);
+        if (element_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+            element_layout.size_bytes == 0) {
+          return std::nullopt;
+        }
+        const auto element_index = target_offset / element_layout.size_bytes;
+        if (element_index >= storage_layout.array_count) {
+          return std::nullopt;
+        }
+        const auto nested_offset = target_offset % element_layout.size_bytes;
+        if (nested_offset == 0 &&
+            c4c::codegen::lir::trim_lir_arg_text(storage_layout.element_type_text) ==
+                c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
+          return RepeatedAggregateExtent{
+              .element_count = storage_layout.array_count - element_index,
+              .element_stride_bytes = element_layout.size_bytes,
+          };
+        }
+        return self(self, storage_layout.element_type_text, nested_offset, repeated_type_text);
+      }
+      case BirFunctionLowerer::AggregateTypeLayout::Kind::Struct:
+        for (std::size_t index = 0; index < storage_layout.fields.size(); ++index) {
+          const auto field_begin = storage_layout.fields[index].byte_offset;
+          const auto field_end =
+              index + 1 < storage_layout.fields.size() ? storage_layout.fields[index + 1].byte_offset
+                                                       : storage_layout.size_bytes;
+          if (target_offset < field_begin || target_offset >= field_end) {
+            continue;
+          }
+          return self(self,
+                      storage_layout.fields[index].type_text,
+                      target_offset - field_begin,
+                      repeated_type_text);
+        }
+        return std::nullopt;
+      default:
+        return std::nullopt;
+    }
+  };
+  if (const auto extent = find_repeated_extent(find_repeated_extent,
+                                               aggregate_slots.storage_type_text,
+                                               aggregate_slots.base_byte_offset,
+                                               type_text);
+      extent.has_value() && extent->element_stride_bytes == layout.size_bytes) {
+    slot_count *= extent->element_count;
+  }
+
+  element_slots.reserve(slot_count);
+  for (std::size_t index = 0; index < slot_count; ++index) {
+    const auto slot_it = aggregate_slots.leaf_slots.find(
+        aggregate_slots.base_byte_offset + index * element_layout.size_bytes);
+    if (slot_it == aggregate_slots.leaf_slots.end()) {
+      return std::nullopt;
+    }
+    element_slots.push_back(slot_it->second);
+  }
+  return element_slots;
+}
+
 static bool can_reinterpret_byte_storage_view(std::string_view storage_type_text,
                                               std::string_view target_type_text,
                                               const BirFunctionLowerer::TypeDeclMap& type_decls) {
@@ -2872,7 +2966,22 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       if (store->val.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
         const auto local_slot_ptr_val_it = local_slot_pointer_values.find(store->val.str());
         if (local_slot_ptr_val_it != local_slot_pointer_values.end()) {
-          local_slot_address_slots[ptr_it->second] = local_slot_ptr_val_it->second;
+          auto stored_address = local_slot_ptr_val_it->second;
+          if (stored_address.array_element_slots.empty()) {
+            if (const auto array_base_it = local_pointer_array_bases.find(store->val.str());
+                array_base_it != local_pointer_array_bases.end()) {
+              stored_address.array_element_slots = array_base_it->second.element_slots;
+              stored_address.array_base_index = array_base_it->second.base_index;
+            } else if (const auto local_aggregate_it = local_aggregate_slots.find(store->val.str());
+                       local_aggregate_it != local_aggregate_slots.end()) {
+              if (const auto array_slots = collect_local_scalar_array_slots(
+                      local_aggregate_it->second.type_text, type_decls, local_aggregate_it->second);
+                  array_slots.has_value()) {
+                stored_address.array_element_slots = *array_slots;
+              }
+            }
+          }
+          local_slot_address_slots[ptr_it->second] = std::move(stored_address);
           local_address_slots.erase(ptr_it->second);
           local_indirect_pointer_slots.erase(ptr_it->second);
           stored_local_slot_address = true;
@@ -2917,7 +3026,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           }
           const auto target_layout = compute_aggregate_type_layout(
               local_aggregate_it->second.type_text, type_decls);
-          local_slot_address_slots[ptr_it->second] = LocalSlotAddress{
+          auto stored_address = LocalSlotAddress{
               .slot_name = leaf_it->second,
               .value_type = target_layout.kind == AggregateTypeLayout::Kind::Scalar
                                 ? target_layout.scalar_type
@@ -2926,6 +3035,12 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
               .storage_type_text = local_aggregate_it->second.storage_type_text,
               .type_text = local_aggregate_it->second.type_text,
           };
+          if (const auto array_slots = collect_local_scalar_array_slots(
+                  local_aggregate_it->second.type_text, type_decls, local_aggregate_it->second);
+              array_slots.has_value()) {
+            stored_address.array_element_slots = *array_slots;
+          }
+          local_slot_address_slots[ptr_it->second] = std::move(stored_address);
           local_address_slots.erase(ptr_it->second);
           local_indirect_pointer_slots.erase(ptr_it->second);
           stored_local_slot_address = true;
@@ -3378,8 +3493,33 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       if (const auto local_slot_it = local_slot_address_slots.find(ptr_it->second);
           local_slot_it != local_slot_address_slots.end()) {
         local_slot_pointer_values[load->result.str()] = local_slot_it->second;
-        if (!local_slot_it->second.array_element_slots.empty() &&
+        const auto loaded_layout =
+            compute_aggregate_type_layout(local_slot_it->second.type_text, type_decls);
+        if (loaded_layout.kind == AggregateTypeLayout::Kind::Array &&
+            !local_slot_it->second.array_element_slots.empty() &&
             local_slot_it->second.byte_offset >= 0) {
+          const auto element_layout =
+              compute_aggregate_type_layout(loaded_layout.element_type_text, type_decls);
+          if (element_layout.kind == AggregateTypeLayout::Kind::Scalar &&
+              element_layout.size_bytes != 0) {
+            LocalAggregateSlots aggregate_view{
+                .storage_type_text = local_slot_it->second.storage_type_text,
+                .type_text = local_slot_it->second.type_text,
+                .base_byte_offset =
+                    static_cast<std::size_t>(local_slot_it->second.byte_offset),
+            };
+            for (std::size_t index = 0; index < local_slot_it->second.array_element_slots.size();
+                 ++index) {
+              aggregate_view.leaf_slots.emplace(index * element_layout.size_bytes,
+                                                local_slot_it->second.array_element_slots[index]);
+            }
+            local_aggregate_slots[load->result.str()] = std::move(aggregate_view);
+          }
+        }
+        if (!local_slot_it->second.array_element_slots.empty() &&
+            local_slot_it->second.byte_offset >= 0 &&
+            !(loaded_layout.kind == AggregateTypeLayout::Kind::Array &&
+              local_slot_it->second.array_element_slots.size() > loaded_layout.array_count)) {
           local_pointer_array_bases[load->result.str()] = LocalPointerArrayBase{
               .element_slots = local_slot_it->second.array_element_slots,
               .base_index = local_slot_it->second.array_base_index,
