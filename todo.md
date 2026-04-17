@@ -8,21 +8,22 @@ Source Plan: plan.md
 
 Extended `x86::emit_prepared_module(...)` to support one additional honest
 prepared value-flow family: a minimal x86_64 single-function `i32` parameter
-returned after a single immediate left-shift through the canonical
+returned after a single immediate logical-right-shift through the canonical
 prepared-module boundary. The focused handoff proof now covers the
 immediate-return case, the direct single-parameter passthrough case, the
 single-parameter add-immediate case, the single-parameter sub-immediate case,
 the single-parameter mul-immediate case, the single-parameter and-immediate
 case, the single-parameter or-immediate case, the single-parameter
-xor-immediate case, and the single-parameter shl-immediate case by checking
-prepared/public/generic route equality against the same canonical x86 assembly
-per shape.
+xor-immediate case, the single-parameter shl-immediate case, and the
+single-parameter logical-right-shift-immediate case by checking
+prepared/public/generic route equality against the same canonical x86
+assembly per shape.
 
 ## Suggested Next
 
 Extend `x86::emit_prepared_module(...)` to the next honest prepared-module
 shape behind the same canonical boundary with one bounded single-block
-single-parameter `i32` logical-right-shift-immediate family that still
+single-parameter `i32` arithmetic-right-shift-immediate family that still
 consumes the shared prepared contract, without reintroducing any direct-BIR
 or public-entry fallback path.
 

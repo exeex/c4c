@@ -1157,6 +1157,13 @@ inline std::string emit_prepared_module(
                std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) +
                "\n    ret\n";
       }
+
+      if (binary->opcode == c4c::backend::bir::BinaryOpcode::LShr &&
+          lhs_is_param_rhs_is_imm) {
+        return asm_prefix + "    mov eax, edi\n    shr eax, " +
+               std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) +
+               "\n    ret\n";
+      }
     }
   }
 

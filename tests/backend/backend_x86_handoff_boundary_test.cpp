@@ -85,6 +85,12 @@ std::string expected_minimal_param_shl_immediate_asm(const char* function_name, 
          ":\n    mov eax, edi\n    shl eax, " + std::to_string(immediate) + "\n    ret\n";
 }
 
+std::string expected_minimal_param_lshr_immediate_asm(const char* function_name, int immediate) {
+  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
+         "\n.type " + function_name + ", @function\n" + function_name +
+         ":\n    mov eax, edi\n    shr eax, " + std::to_string(immediate) + "\n    ret\n";
+}
+
 bir::Module make_x86_return_constant_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -351,6 +357,38 @@ bir::Module make_x86_param_shl_immediate_module() {
   return module;
 }
 
+bir::Module make_x86_param_lshr_immediate_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "shift_right_two";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::LShr,
+      .result = bir::Value::named(bir::TypeKind::I32, "shifted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "shifted"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 lir::LirModule make_x86_return_constant_lir_module() {
   lir::LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -544,6 +582,15 @@ int main() {
                               expected_minimal_param_shl_immediate_asm("shift_left_three", 3),
                               "bir.func @shift_left_three(i32 p.x) -> i32 {",
                               "minimal i32 parameter shl-immediate route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(make_x86_param_lshr_immediate_module(),
+                              expected_minimal_param_lshr_immediate_asm("shift_right_two", 2),
+                              "bir.func @shift_right_two(i32 p.x) -> i32 {",
+                              "minimal i32 parameter logical-right-shift-immediate route");
       status != 0) {
     return status;
   }
