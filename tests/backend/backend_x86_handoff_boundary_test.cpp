@@ -177,6 +177,15 @@ std::string expected_minimal_local_i32_immediate_guard_asm(const char* function_
          "    ret\n";
 }
 
+std::string expected_minimal_local_i32_byte_storage_asm(const char* function_name,
+                                                        int immediate) {
+  return asm_header(function_name) + "    sub rsp, 16\n"
+         "    mov DWORD PTR [rsp], " + std::to_string(immediate) + "\n"
+         "    mov eax, DWORD PTR [rsp]\n"
+         "    add rsp, 16\n"
+         "    ret\n";
+}
+
 std::string expected_minimal_local_i8_address_guard_asm(const char* function_name,
                                                         int immediate) {
   return asm_header(function_name) + "    sub rsp, 16\n"
@@ -1851,6 +1860,49 @@ lir::LirModule make_x86_local_pointer_chain_lir_module() {
   return module;
 }
 
+lir::LirModule make_x86_local_i32_byte_storage_lir_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  lir::LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.u"),
+      .type_str = "{ [4 x i8] }",
+      .count = lir::LirOperand(""),
+      .align = 4,
+  });
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%t0"),
+      .element_type = "{ [4 x i8] }",
+      .ptr = lir::LirOperand("%lv.u"),
+      .indices = {"i32 0", "i32 0"},
+  });
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = "i32",
+      .val = lir::LirOperand("3"),
+      .ptr = lir::LirOperand("%t0"),
+  });
+  entry.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%t1"),
+      .type_str = "i32",
+      .ptr = lir::LirOperand("%t0"),
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::string("%t1"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 lir::LirModule make_x86_local_pointer_guard_chain_lir_module() {
   lir::LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -2427,6 +2479,14 @@ int main() {
           check_lir_route_outputs(make_x86_local_pointer_chain_lir_module(),
                                   expected_minimal_local_pointer_chain_asm("main"),
                                   "minimal local-slot pointer-chain LIR route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_lir_route_outputs(make_x86_local_i32_byte_storage_lir_module(),
+                                  expected_minimal_local_i32_byte_storage_asm("main", 3),
+                                  "minimal local aggregate byte-storage i32 LIR route");
       status != 0) {
     return status;
   }
