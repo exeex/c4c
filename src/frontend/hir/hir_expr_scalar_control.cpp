@@ -8,8 +8,6 @@
 
 namespace c4c::hir {
 
-namespace {
-
 const HirStructField* find_struct_instance_field_including_bases(
     const hir::Module& module,
     const std::string& tag,
@@ -28,23 +26,22 @@ const HirStructField* find_struct_instance_field_including_bases(
   return nullptr;
 }
 
-void attach_decl_ref_link_name_id(const Module& module, DeclRef& ref) {
+void Lowerer::attach_decl_ref_link_name_id(DeclRef& ref) const {
+  if (!module_) return;
   if (ref.link_name_id != kInvalidLinkName) return;
   if (ref.global) {
-    if (const GlobalVar* gv = module.find_global(*ref.global)) {
+    if (const GlobalVar* gv = module_->find_global(*ref.global)) {
       ref.link_name_id = gv->link_name_id;
       return;
     }
   }
   if (ref.local || ref.param_index) return;
-  const auto fit = module.fn_index.find(ref.name);
-  if (fit == module.fn_index.end()) return;
-  if (const Function* fn = module.find_function(fit->second)) {
+  const auto fit = module_->fn_index.find(ref.name);
+  if (fit == module_->fn_index.end()) return;
+  if (const Function* fn = module_->find_function(fit->second)) {
     ref.link_name_id = fn->link_name_id;
   }
 }
-
-}  // namespace
 
 ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
   if (n->is_concept_id) {
@@ -230,7 +227,7 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       var_ts.is_fn_ptr = true;
     }
   }
-  attach_decl_ref_link_name_id(*module_, r);
+  attach_decl_ref_link_name_id(r);
   ExprId ref_id = append_expr(n, r, var_ts, ValueCategory::LValue);
   if (ctx) {
     if (auto storage_ts = storage_type_for_declref(ctx, r); storage_ts && is_any_ref_ts(*storage_ts)) {

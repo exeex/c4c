@@ -6,18 +6,17 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Extended `lower_var_expr` so non-call `DeclRef` nodes now copy existing
-semantic `LinkNameId` values from emitted function/global carriers when HIR
-already resolves those bindings, covering ordinary function designators and
-decl-backed global refs without changing locals, params, temps, or builtin
-alias fallback behavior.
+Promoted the HIR decl-ref `LinkNameId` attachment rule into a shared lowerer
+helper and applied it to operator/object/range-for helper-generated callee
+refs, then added an object-helper regression that proves corrupted raw
+`operator_delete` decl-ref names still lower through the semantic `LinkNameId`
+path.
 
 ## Suggested Next
 
-Inspect the remaining explicit `DeclRef` builders outside `lower_var_expr`
-such as range-for/operator/object helper paths, and only propagate
-`LinkNameId` where they already recover a real emitted function/global carrier
-instead of re-interning by raw string.
+Audit the remaining helper-built HIR callee `DeclRef` sites outside the
+operator/object/range-for family and only copy `LinkNameId` where lowering can
+already recover a real emitted carrier instead of re-interning by raw string.
 
 ## Watchouts
 
@@ -27,6 +26,9 @@ instead of re-interning by raw string.
   available
 - keep `LinkNameId` distinct from both `TextId` and parser/source-atom
   `SymbolId`; the new HIR fields are parallel carriers, not replacements
+- the shared helper still only copies ids from carriers already present in
+  `global_index` or `fn_index`; some method-family helper calls can still
+  legitimately stay invalid until their emitted carrier exists at lowering time
 - unresolved direct-call decl refs now intern `LinkNameId` in HIR call
   lowering, but builtin alias calls still intentionally use
   `kInvalidLinkName` because they do not originate from an HIR semantic
@@ -66,13 +68,13 @@ instead of re-interning by raw string.
   source of truth
 - avoid testcase-overfit proof or brittle emitted-text substring matching as a
   substitute for a real id path
-- the new HIR regression now checks both function-designator and global decl
-  refs for copied semantic ids; extend coverage along the same semantic-carrier
-  rule if more HIR builders are migrated
+- the new HIR regression proves the object-helper route on `operator_delete`;
+  add more helper-family coverage only when the route already has a real
+  semantic carrier at HIR lowering time
 
 ## Proof
 
 Build: `cmake --build --preset default -j4`
 Narrow proof: `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`
 Result: passed
-Log: `test_before.log`
+Log: `test_after.log`

@@ -66,6 +66,7 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
     CallExpr cc{};
     DeclRef dr{};
     dr.name = mangled;
+    attach_decl_ref_link_name_id(dr);
     TypeSpec callee_ts = iter_ts;
     callee_ts.ptr_level++;
     cc.callee = append_expr(n, dr, callee_ts);
@@ -118,6 +119,7 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
     CallExpr cc{};
     DeclRef dr{};
     dr.name = mit->second;
+    attach_decl_ref_link_name_id(dr);
     TypeSpec bool_ts{};
     bool_ts.base = TB_BOOL;
     TypeSpec callee_ts = bool_ts;
@@ -147,6 +149,7 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
     CallExpr cc{};
     DeclRef dr{};
     dr.name = mit->second;
+    attach_decl_ref_link_name_id(dr);
     TypeSpec inc_ret_ts = iter_ts;
     {
       auto fit2 = module_->fn_index.find(mit->second);
@@ -199,6 +202,7 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
       CallExpr cc{};
       DeclRef dr{};
       dr.name = mit->second;
+      attach_decl_ref_link_name_id(dr);
       {
         auto fit2 = module_->fn_index.find(mit->second);
         if (fit2 != module_->fn_index.end() &&

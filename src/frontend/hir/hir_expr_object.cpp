@@ -166,6 +166,7 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
   CallExpr ctor_call{};
   DeclRef callee_ref{};
   callee_ref.name = best->mangled_name;
+  attach_decl_ref_link_name_id(callee_ref);
   TypeSpec fn_ts{};
   fn_ts.base = TB_VOID;
   TypeSpec callee_ts = fn_ts;
@@ -641,6 +642,7 @@ ExprId Lowerer::lower_new_expr(FunctionCtx* ctx, const Node* n) {
     CallExpr call{};
     DeclRef callee_ref{};
     callee_ref.name = op_fn;
+    attach_decl_ref_link_name_id(callee_ref);
     TypeSpec fn_ptr_ts{};
     fn_ptr_ts.base = TB_VOID;
     fn_ptr_ts.ptr_level = 1;
@@ -690,6 +692,7 @@ ExprId Lowerer::lower_new_expr(FunctionCtx* ctx, const Node* n) {
         CallExpr ctor_call{};
         DeclRef ctor_ref{};
         ctor_ref.name = best->mangled_name;
+        attach_decl_ref_link_name_id(ctor_ref);
         TypeSpec ctor_fn_ts{};
         ctor_fn_ts.base = TB_VOID;
         ctor_fn_ts.ptr_level = 1;
@@ -739,6 +742,7 @@ ExprId Lowerer::lower_delete_expr(FunctionCtx* ctx, const Node* n) {
   CallExpr call{};
   DeclRef callee_ref{};
   callee_ref.name = op_fn;
+  attach_decl_ref_link_name_id(callee_ref);
   TypeSpec fn_ptr_ts{};
   fn_ptr_ts.base = TB_VOID;
   fn_ptr_ts.ptr_level = 1;

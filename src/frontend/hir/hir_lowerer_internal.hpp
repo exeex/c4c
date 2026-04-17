@@ -341,6 +341,8 @@ class Lowerer {
   std::optional<TypeSpec> storage_type_for_declref(FunctionCtx* ctx,
                                                    const DeclRef& r);
 
+  void attach_decl_ref_link_name_id(DeclRef& ref) const;
+
   std::optional<ExprId> try_lower_rvalue_ref_storage_addr(
       FunctionCtx* ctx,
       const Node* n,

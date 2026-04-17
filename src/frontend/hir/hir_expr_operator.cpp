@@ -177,6 +177,7 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
   CallExpr c{};
   DeclRef dr{};
   dr.name = resolved_mangled;
+  attach_decl_ref_link_name_id(dr);
   auto fit = module_->fn_index.find(dr.name);
   TypeSpec fn_ts{};
   fn_ts.base = TB_VOID;
@@ -332,6 +333,7 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
         CallExpr cc{};
         DeclRef dr{};
         dr.name = mit->second;
+        attach_decl_ref_link_name_id(dr);
         TypeSpec callee_ts = fn_ts;
         callee_ts.ptr_level++;
         cc.callee = append_expr(n, dr, callee_ts);
@@ -375,6 +377,7 @@ ExprId Lowerer::maybe_bool_convert(FunctionCtx* ctx, ExprId expr, const Node* n)
   CallExpr c{};
   DeclRef dr{};
   dr.name = mit->second;
+  attach_decl_ref_link_name_id(dr);
   auto fit = module_->fn_index.find(dr.name);
   TypeSpec fn_ts{};
   fn_ts.base = TB_BOOL;
