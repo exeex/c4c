@@ -458,6 +458,7 @@ class BirFunctionLowerer {
       const TypeDeclMap& type_decls,
       const c4c::TargetProfile& target_profile);
   static bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
+                                    const c4c::TargetProfile& target_profile,
                                     const std::optional<LoweredReturnInfo>& return_info,
                                     const TypeDeclMap& type_decls,
                                     bir::Function* lowered);

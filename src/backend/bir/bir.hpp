@@ -86,11 +86,31 @@ struct PhiObservation {
   std::vector<PhiIncoming> incomings;
 };
 
+struct CallArgAbiInfo {
+  TypeKind type = TypeKind::Void;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
+  AbiValueClass primary_class = AbiValueClass::None;
+  AbiValueClass secondary_class = AbiValueClass::None;
+  bool passed_in_register = false;
+  bool passed_on_stack = false;
+  bool byval_copy = false;
+  bool sret_pointer = false;
+};
+
+struct CallResultAbiInfo {
+  TypeKind type = TypeKind::Void;
+  AbiValueClass primary_class = AbiValueClass::None;
+  AbiValueClass secondary_class = AbiValueClass::None;
+  bool returned_in_memory = false;
+};
+
 struct Param {
   TypeKind type = TypeKind::Void;
   std::string name;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
+  std::optional<CallArgAbiInfo> abi;
   bool is_varargs = false;
   bool is_sret = false;
   bool is_byval = false;
@@ -149,25 +169,6 @@ struct MemoryAddress {
   std::size_t align_bytes = 0;
   AddressSpace address_space = AddressSpace::Default;
   bool is_volatile = false;
-};
-
-struct CallArgAbiInfo {
-  TypeKind type = TypeKind::Void;
-  std::size_t size_bytes = 0;
-  std::size_t align_bytes = 0;
-  AbiValueClass primary_class = AbiValueClass::None;
-  AbiValueClass secondary_class = AbiValueClass::None;
-  bool passed_in_register = false;
-  bool passed_on_stack = false;
-  bool byval_copy = false;
-  bool sret_pointer = false;
-};
-
-struct CallResultAbiInfo {
-  TypeKind type = TypeKind::Void;
-  AbiValueClass primary_class = AbiValueClass::None;
-  AbiValueClass secondary_class = AbiValueClass::None;
-  bool returned_in_memory = false;
 };
 
 enum class BinaryOpcode : unsigned char {

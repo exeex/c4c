@@ -47,10 +47,15 @@ std::size_t type_size_bytes(bir::TypeKind type) {
     case bir::TypeKind::I8:
       return 1;
     case bir::TypeKind::I32:
+    case bir::TypeKind::F32:
       return 4;
     case bir::TypeKind::I64:
     case bir::TypeKind::Ptr:
+    case bir::TypeKind::F64:
       return 8;
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
+      return 16;
     default:
       return 0;
   }
@@ -76,6 +81,45 @@ void legalize_call_arg_abi(const c4c::TargetProfile& target_profile, bir::CallAr
 void legalize_call_result_abi(const c4c::TargetProfile& target_profile,
                               bir::CallResultAbiInfo& abi) {
   abi.type = legalize_type(target_profile, abi.type);
+}
+
+std::optional<bir::CallArgAbiInfo> infer_call_arg_abi(
+    const c4c::TargetProfile& target_profile,
+    bir::TypeKind type) {
+  if (type == bir::TypeKind::Void) {
+    return std::nullopt;
+  }
+
+  bir::CallArgAbiInfo abi{
+      .type = type,
+      .size_bytes = type_size_bytes(type),
+      .align_bytes = type_size_bytes(type),
+      .passed_in_register = true,
+  };
+  switch (type) {
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      abi.primary_class = target_profile.has_float_arg_registers
+                              ? bir::AbiValueClass::Sse
+                              : bir::AbiValueClass::Integer;
+      return abi;
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      abi.primary_class = bir::AbiValueClass::Integer;
+      return abi;
+    case bir::TypeKind::I128:
+      abi.primary_class = bir::AbiValueClass::Memory;
+      abi.passed_in_register = false;
+      abi.passed_on_stack = true;
+      return abi;
+    case bir::TypeKind::Void:
+      return std::nullopt;
+  }
+  return std::nullopt;
 }
 
 std::optional<bir::CallResultAbiInfo> infer_function_return_abi(
@@ -801,6 +845,22 @@ void legalize_module(const c4c::TargetProfile& target_profile, bir::Module& modu
     }
     for (auto& param : function.params) {
       legalize_sized_type(target_profile, param.type, param.size_bytes, param.align_bytes);
+      if (!param.abi.has_value()) {
+        param.abi = infer_call_arg_abi(target_profile, param.type);
+        if (param.abi.has_value()) {
+          if (param.is_sret) {
+            param.abi->sret_pointer = true;
+          }
+          if (param.is_byval) {
+            param.abi->byval_copy = true;
+            param.abi->size_bytes = param.size_bytes;
+            param.abi->align_bytes = param.align_bytes;
+          }
+        }
+      }
+      if (param.abi.has_value()) {
+        legalize_call_arg_abi(target_profile, *param.abi);
+      }
     }
     for (auto& slot : function.local_slots) {
       legalize_sized_type(target_profile, slot.type, slot.size_bytes, slot.align_bytes);

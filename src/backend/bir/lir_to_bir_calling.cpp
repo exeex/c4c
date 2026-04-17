@@ -516,6 +516,7 @@ std::optional<bir::Function> BirFunctionLowerer::lower_extern_decl(
 
 bool BirFunctionLowerer::lower_function_params(
     const c4c::codegen::lir::LirFunction& function,
+    const c4c::TargetProfile& target_profile,
     const std::optional<LoweredReturnInfo>& return_info,
     const TypeDeclMap& type_decls,
     bir::Function* lowered) {
@@ -526,6 +527,14 @@ bool BirFunctionLowerer::lower_function_params(
         .name = "%ret.sret",
         .size_bytes = return_info->size_bytes,
         .align_bytes = return_info->align_bytes,
+        .abi =
+            [&]() -> std::optional<bir::CallArgAbiInfo> {
+          auto abi = lower_call_arg_abi(target_profile, bir::TypeKind::Ptr);
+          if (abi.has_value()) {
+            abi->sret_pointer = true;
+          }
+          return abi;
+        }(),
         .is_sret = true,
     });
   }
@@ -580,6 +589,16 @@ bool BirFunctionLowerer::lower_function_params(
           .name = param.first,
           .size_bytes = layout->size_bytes,
           .align_bytes = layout->align_bytes,
+          .abi =
+              [&]() -> std::optional<bir::CallArgAbiInfo> {
+            auto abi = lower_call_arg_abi(target_profile, bir::TypeKind::Ptr);
+            if (abi.has_value()) {
+              abi->size_bytes = layout->size_bytes;
+              abi->align_bytes = layout->align_bytes;
+              abi->byval_copy = true;
+            }
+            return abi;
+          }(),
           .is_byval = true,
       });
       continue;
@@ -587,6 +606,7 @@ bool BirFunctionLowerer::lower_function_params(
     lowered->params.push_back(bir::Param{
         .type = *lowered_type,
         .name = param.first,
+        .abi = lower_call_arg_abi(target_profile, *lowered_type),
     });
   }
 
@@ -624,6 +644,7 @@ bool BirFunctionLowerer::lower_function_params(
       lowered->params.push_back(bir::Param{
           .type = *lowered_type,
           .name = param.operand,
+          .abi = lower_call_arg_abi(target_profile, *lowered_type),
       });
       continue;
     }
@@ -636,6 +657,16 @@ bool BirFunctionLowerer::lower_function_params(
         .name = param.operand,
         .size_bytes = layout->size_bytes,
         .align_bytes = layout->align_bytes,
+        .abi =
+            [&]() -> std::optional<bir::CallArgAbiInfo> {
+          auto abi = lower_call_arg_abi(target_profile, bir::TypeKind::Ptr);
+          if (abi.has_value()) {
+            abi->size_bytes = layout->size_bytes;
+            abi->align_bytes = layout->align_bytes;
+            abi->byval_copy = true;
+          }
+          return abi;
+        }(),
         .is_byval = true,
     });
   }
@@ -1005,7 +1036,11 @@ std::optional<bir::Function> BirFunctionLowerer::lower_decl_function(
     lowered.return_align_bytes = return_info->align_bytes;
     lowered.return_abi = return_info->abi;
   }
-  if (!lower_function_params(function, return_info, TypeDeclMap{}, &lowered)) {
+  if (!lower_function_params(function,
+                             target_profile,
+                             return_info,
+                             TypeDeclMap{},
+                             &lowered)) {
     return std::nullopt;
   }
   lowered.is_declaration = true;

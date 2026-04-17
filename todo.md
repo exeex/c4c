@@ -6,24 +6,19 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Removed one x86 shadow-ownership seam inside the canonical prepared-module
-consumer: the minimal single-parameter i32 handoff no longer bakes in local
-`edi`/`eax` assumptions. `x86::emit_prepared_module(...)` now resolves the
-minimal return register from prepared `return_abi` plus the shared backend ABI
-register helper, and it resolves the sole parameter register through the same
-canonical helper surface instead of hardcoded x86 names. The focused handoff
-test now derives its expected asm from those same canonical ABI helpers, so
-prepared/public/generic route equality stays proven without reverting to local
-register-name assumptions.
+Removed the remaining minimal parameter-side x86 shadow-ownership seam inside
+the canonical prepared-module consumer. `bir::Param` now carries canonical
+call-argument ABI metadata, lowering/legalize populate that metadata for the
+prepared route, and `x86::emit_prepared_module(...)` consumes the prepared
+parameter ABI instead of recomputing one locally from the type. The focused
+handoff test now derives its expected parameter register from prepared
+metadata, and the broader `^backend_` checkpoint stayed green after the slice.
 
 ## Suggested Next
 
-Stay on ownership cleanup rather than widening proof families. The next packet
-should inspect whether the prepared-module consumer still shadows backend
-frame, stack-slot, or value-location decisions anywhere else in the bounded x86
-route. If no concrete competing seam remains after that inspection, hand
-lifecycle state back for near-close assessment instead of expanding emitter
-support.
+No further concrete competing ownership seam is exposed in the current bounded
+x86 prepared-module route. Hand lifecycle state back for near-close assessment
+instead of widening emitter support or adding more narrow proof families.
 
 ## Watchouts
 
@@ -40,10 +35,6 @@ support.
 - public x86 entry and direct BIR entry already funnel through the canonical
   prepared-module consumer; future cleanup should retire residual mixed
   ownership around that seam instead of reopening the boundary question
-- the minimal route now consumes prepared `return_abi`, but the parameter side
-  still reaches the canonical register mapping through the shared backend ABI
-  helper because prepared functions do not yet publish a dedicated per-function
-  parameter ABI table
 - the current join support is still tightly bounded: one prepared function, one
   entry compare, two empty branch-to-join leaf blocks, and one join block whose
   phi has already been legalized into a single `bir.select`
@@ -70,6 +61,7 @@ support.
 
 ## Proof
 
-Ran `cmake --build --preset default -j4 && ctest --test-dir build -j
---output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
-and wrote the passing proving output to `test_after.log`.
+Ran `cmake --build --preset default -j4`, then
+`ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`,
+then `ctest --test-dir build -j --output-on-failure -R '^backend_'`, and all
+checks passed.

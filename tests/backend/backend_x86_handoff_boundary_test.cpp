@@ -33,6 +33,8 @@ int fail(const char* message) {
   return 1;
 }
 
+bir::Module make_x86_param_passthrough_module();
+
 std::string narrow_abi_register(std::string_view wide_register) {
   if (wide_register == "rax") return "eax";
   if (wide_register == "rdi") return "edi";
@@ -61,14 +63,14 @@ std::string minimal_i32_return_register() {
 }
 
 std::string minimal_i32_param_register() {
-  const auto abi =
-      c4c::backend::lir_to_bir_detail::compute_call_arg_abi(x86_target_profile(),
-                                                            bir::TypeKind::I32);
-  if (!abi.has_value()) {
-    throw std::runtime_error("missing canonical i32 parameter ABI for x86 handoff test");
+  const auto prepared = c4c::backend::prepare::prepare_semantic_bir_module_with_options(
+      make_x86_param_passthrough_module(), x86_target_profile());
+  if (prepared.module.functions.empty() || prepared.module.functions.front().params.empty() ||
+      !prepared.module.functions.front().params.front().abi.has_value()) {
+    throw std::runtime_error("missing prepared i32 parameter ABI metadata for x86 handoff test");
   }
   const auto wide_register = c4c::backend::prepare::call_arg_destination_register_name(
-      x86_target_profile(), *abi, 0);
+      x86_target_profile(), *prepared.module.functions.front().params.front().abi, 0);
   if (!wide_register.has_value()) {
     throw std::runtime_error("missing canonical i32 parameter register for x86 handoff test");
   }
@@ -1575,6 +1577,15 @@ int check_route_outputs(const bir::Module& module,
       c4c::backend::prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
   const auto prepared_bir_text = bir::print(prepared.module);
+  if (!prepared.module.functions.empty() && !prepared.module.functions.front().params.empty() &&
+      !prepared.module.functions.front().params.front().is_varargs &&
+      !prepared.module.functions.front().params.front().is_sret &&
+      !prepared.module.functions.front().params.front().is_byval &&
+      !prepared.module.functions.front().params.front().abi.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared x86 handoff no longer carries canonical parameter ABI metadata")
+                    .c_str());
+  }
 
   const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {

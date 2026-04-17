@@ -1087,17 +1087,11 @@ inline std::string emit_prepared_module(
   }
   const auto minimal_param_register =
       [&](const c4c::backend::bir::Param& param) -> std::optional<std::string> {
-    if (param.is_varargs || param.is_sret || param.is_byval) {
-      return std::nullopt;
-    }
-    const auto param_abi =
-        c4c::backend::lir_to_bir_detail::compute_call_arg_abi(resolved_target_profile,
-                                                              param.type);
-    if (!param_abi.has_value()) {
+    if (param.is_varargs || param.is_sret || param.is_byval || !param.abi.has_value()) {
       return std::nullopt;
     }
     return narrow_register(c4c::backend::prepare::call_arg_destination_register_name(
-        resolved_target_profile, *param_abi, 0));
+        resolved_target_profile, *param.abi, 0));
   };
   const auto find_block = [&](std::string_view label) -> const c4c::backend::bir::Block* {
     for (const auto& block : function.blocks) {
