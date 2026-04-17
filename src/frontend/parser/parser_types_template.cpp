@@ -279,7 +279,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                     *out = *type;
                     return true;
                 }
-                return decode_type_ref_text(token_spelling(tok), out);
+                return decode_type_ref_text(std::string(token_spelling(tok)), out);
             }
         }
 
@@ -290,7 +290,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
 
     auto eval_builtin_type_trait = [&](long long* val) -> bool {
         if (ti >= toks.size() || toks[ti].kind != TokenKind::Identifier) return false;
-        const std::string builtin_name = token_spelling(toks[ti]);
+        const std::string builtin_name = std::string(token_spelling(toks[ti]));
         if (!is_builtin_type_trait_name(builtin_name) ||
             builtin_name == "__builtin_types_compatible_p") {
             return false;
@@ -492,7 +492,8 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             return true;
         } else if (toks[ti].kind == TokenKind::IntLit) {
             ParsedTemplateArg a; a.is_value = true;
-            a.value = parse_int_lexeme(token_spelling(toks[ti]).c_str());
+            a.value =
+                parse_int_lexeme(std::string(token_spelling(toks[ti])).c_str());
             ref_args.push_back(a); ++ti; return true;
         } else if (toks[ti].kind == TokenKind::KwTrue) {
             ParsedTemplateArg a; a.is_value = true; a.value = 1;
@@ -528,7 +529,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
     // Helper: evaluate Trait<args>::member pattern starting at current ti.
     auto eval_member_lookup = [&](long long* val) -> bool {
         if (ti >= toks.size() || toks[ti].kind != TokenKind::Identifier) return false;
-        std::string ref_tpl_name = token_spelling(toks[ti]);
+        std::string ref_tpl_name = std::string(token_spelling(toks[ti]));
         size_t saved_ti = ti;
         ++ti;
 
@@ -556,7 +557,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         if (ti >= toks.size() || toks[ti].kind != TokenKind::ColonColon) { ti = saved_ti; return false; }
         ++ti;
         if (ti >= toks.size() || toks[ti].kind != TokenKind::Identifier) { ti = saved_ti; return false; }
-        std::string member_name = token_spelling(toks[ti]);
+        std::string member_name = std::string(token_spelling(toks[ti]));
         ++ti;
 
         std::string resolved_ref_tpl_name = ref_tpl_name;
@@ -643,7 +644,10 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         if (toks[ti].kind == TokenKind::KwTrue) { *val = 1; ++ti; return true; }
         if (toks[ti].kind == TokenKind::KwFalse) { *val = 0; ++ti; return true; }
         if (toks[ti].kind == TokenKind::IntLit) {
-            *val = parse_int_lexeme(token_spelling(toks[ti]).c_str()); ++ti; return true;
+            *val =
+                parse_int_lexeme(std::string(token_spelling(toks[ti])).c_str());
+            ++ti;
+            return true;
         }
         // NTTP param name
         if (toks[ti].kind == TokenKind::Identifier) {

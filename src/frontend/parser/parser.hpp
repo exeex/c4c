@@ -647,7 +647,7 @@ class Parser {
     if (fallback.empty()) return kInvalidText;
     return token_texts_ ? token_texts_->intern(fallback) : kInvalidText;
   }
-  std::string token_spelling(const Token& token) const;
+  std::string_view token_spelling(const Token& token) const;
   void set_parser_owned_spelling(Token& token, std::string_view spelling);
   Token make_injected_token(const Token& seed, TokenKind kind,
                             std::string_view spelling);

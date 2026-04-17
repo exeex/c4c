@@ -193,7 +193,7 @@ void Parser::parse_record_template_member_prelude(
             consume();
             if (check(TokenKind::Ellipsis)) consume();
             if (check(TokenKind::Identifier)) {
-                std::string pname = token_spelling(cur());
+                std::string pname = std::string(token_spelling(cur()));
                 consume();
                 register_synthesized_typedef_binding(pname);
                 injected_type_params->push_back(std::move(pname));
@@ -245,7 +245,7 @@ void Parser::parse_record_template_member_prelude(
             while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
             if (check(TokenKind::Ellipsis)) consume();
             if (check(TokenKind::Identifier)) {
-                std::string pname = token_spelling(cur());
+                std::string pname = std::string(token_spelling(cur()));
                 consume();
                 register_synthesized_typedef_binding(pname);
                 injected_type_params->push_back(std::move(pname));
@@ -291,7 +291,7 @@ void Parser::parse_record_template_member_prelude(
                     (check(TokenKind::Ellipsis) || check(TokenKind::Identifier))) {
                     if (check(TokenKind::Ellipsis)) consume();
                     if (check(TokenKind::Identifier)) {
-                        std::string pname = token_spelling(cur());
+                        std::string pname = std::string(token_spelling(cur()));
                         consume();
                         register_synthesized_typedef_binding(pname);
                         injected_type_params->push_back(std::move(pname));
@@ -447,7 +447,7 @@ void Parser::parse_record_template_member_prelude(
                         (check(TokenKind::Ellipsis) || check(TokenKind::Identifier))) {
                         if (check(TokenKind::Ellipsis)) consume();
                         if (check(TokenKind::Identifier)) {
-                            std::string pname = token_spelling(cur());
+                            std::string pname = std::string(token_spelling(cur()));
                             consume();
                             register_synthesized_typedef_binding(pname);
                             injected_type_params->push_back(std::move(pname));
@@ -640,7 +640,7 @@ bool Parser::try_parse_record_using_member(
     if (check(TokenKind::Identifier) &&
         pos_ + 1 < static_cast<int>(tokens_.size()) &&
         tokens_[pos_ + 1].kind == TokenKind::Assign) {
-        std::string alias_name = token_spelling(cur());
+        std::string alias_name = std::string(token_spelling(cur()));
         consume(); // name
         consume(); // '='
         TypeSpec alias_ts = parse_type_name();
@@ -873,7 +873,7 @@ bool Parser::try_parse_record_constructor_member(
     }
     if (probe < static_cast<int>(tokens_.size()) &&
         tokens_[probe].kind == TokenKind::Identifier &&
-        is_record_special_member_name(token_spelling(tokens_[probe]),
+        is_record_special_member_name(std::string(token_spelling(tokens_[probe])),
                                       struct_source_name) &&
         probe + 1 < static_cast<int>(tokens_.size()) &&
         tokens_[probe + 1].kind == TokenKind::LParen) {
@@ -886,13 +886,14 @@ bool Parser::try_parse_record_constructor_member(
     }
 
     if (!(check(TokenKind::Identifier) &&
-          is_record_special_member_name(token_spelling(cur()), struct_source_name) &&
+          is_record_special_member_name(std::string(token_spelling(cur())),
+                                        struct_source_name) &&
           pos_ + 1 < static_cast<int>(tokens_.size()) &&
           tokens_[pos_ + 1].kind == TokenKind::LParen)) {
         return false;
     }
 
-    const char* ctor_name = arena_.strdup(token_spelling(cur()));
+    const char* ctor_name = arena_.strdup(std::string(token_spelling(cur())));
     consume();  // consume the struct tag name
     consume();  // consume '('
     std::vector<Node*> params;
@@ -936,7 +937,8 @@ bool Parser::try_parse_record_constructor_member(
         std::vector<std::vector<Node*>> init_args_list;
         while (!at_end() && !check(TokenKind::LBrace)) {
             if (!check(TokenKind::Identifier)) break;
-            const char* mem_name = arena_.strdup(token_spelling(cur()));
+            const char* mem_name =
+                arena_.strdup(std::string(token_spelling(cur())));
             consume();  // member name
             expect(TokenKind::LParen);
             std::vector<Node*> args;
@@ -1005,13 +1007,14 @@ bool Parser::try_parse_record_destructor_member(
           check(TokenKind::Tilde) &&
           pos_ + 1 < static_cast<int>(tokens_.size()) &&
           tokens_[pos_ + 1].kind == TokenKind::Identifier &&
-          is_record_special_member_name(token_spelling(tokens_[pos_ + 1]),
+          is_record_special_member_name(
+              std::string(token_spelling(tokens_[pos_ + 1])),
                                         struct_source_name))) {
         return false;
     }
 
     consume();  // consume '~'
-    const char* dtor_name = arena_.strdup(token_spelling(cur()));
+    const char* dtor_name = arena_.strdup(std::string(token_spelling(cur())));
     consume();  // consume struct tag name
     expect(TokenKind::LParen);
     expect(TokenKind::RParen);
@@ -1161,7 +1164,7 @@ bool Parser::try_parse_record_method_or_field_member(
                 !can_start_parameter_type()) {
                 fts = TypeSpec{};
                 fts.base = TB_TYPEDEF;
-                fts.tag = arena_.strdup(token_spelling(cur()));
+                fts.tag = arena_.strdup(std::string(token_spelling(cur())));
                 fts.array_size = -1;
                 fts.inner_rank = -1;
                 consume();
@@ -1271,7 +1274,8 @@ bool Parser::try_parse_record_method_or_field_member(
             // Unknown operator token — error
             throw std::runtime_error(
                 std::string("unsupported operator overload token '") +
-                token_spelling(cur()) + "' at line " + std::to_string(cur().line));
+                std::string(token_spelling(cur())) + "' at line " +
+                std::to_string(cur().line));
         }
 
         op_mangled = operator_kind_mangled_name(op_kind);
@@ -1780,7 +1784,7 @@ void Parser::parse_record_definition_prelude(
             *tag = arena_.strdup(spelled.c_str());
         }
     } else if (check(TokenKind::Identifier)) {
-        *tag = arena_.strdup(token_spelling(cur()));
+        *tag = arena_.strdup(std::string(token_spelling(cur())));
         consume();
     }
     parse_decl_attrs_for_record(line, attr_ts);
@@ -2137,7 +2141,7 @@ Node* Parser::parse_enum() {
 
     const char* tag = nullptr;
     if (check(TokenKind::Identifier)) {
-        tag = arena_.strdup(token_spelling(cur()));
+        tag = arena_.strdup(std::string(token_spelling(cur())));
         consume();
     }
     skip_attributes();
@@ -2199,7 +2203,7 @@ Node* Parser::parse_enum() {
     while (!at_end() && !check(TokenKind::RBrace)) {
         skip_attributes();
         if (!check(TokenKind::Identifier)) { consume(); continue; }
-        const char* vname = arena_.strdup(token_spelling(cur()));
+        const char* vname = arena_.strdup(std::string(token_spelling(cur())));
         std::string vname_s(vname ? vname : "");
         if (seen_names.count(vname_s))
             throw std::runtime_error("duplicate enumerator: " + vname_s);

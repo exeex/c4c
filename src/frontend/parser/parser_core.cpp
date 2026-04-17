@@ -299,10 +299,10 @@ Parser::SymbolId Parser::symbol_id_for_token(const Token& token) {
     return symbol_id_for_token_text(token.text_id);
 }
 
-std::string Parser::token_spelling(const Token& token) const {
+std::string_view Parser::token_spelling(const Token& token) const {
     if (token.kind == TokenKind::EndOfFile) return {};
     if (token_texts_ && token.text_id != kInvalidText) {
-        return std::string(token_texts_->lookup(token.text_id));
+        return token_texts_->lookup(token.text_id);
     }
     throw std::runtime_error("token spelling requested without valid text_id");
 }
