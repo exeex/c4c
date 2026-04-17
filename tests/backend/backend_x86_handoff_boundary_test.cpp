@@ -1495,6 +1495,34 @@ lir::LirModule make_x86_param_add_immediate_lir_module() {
   return module;
 }
 
+lir::LirModule make_unsupported_x86_inline_asm_lir_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  lir::LirFunction function;
+  function.name = "bad_inline_asm";
+  function.signature_text = "define void @bad_inline_asm()";
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirInlineAsmOp{
+      .result = lir::LirOperand("%t0"),
+      .ret_type = "{ i32, i32 }",
+      .asm_text = "",
+      .constraints = "=r,=r",
+      .side_effects = true,
+      .args_str = "",
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 int check_route_outputs(const bir::Module& module,
                         const std::string& expected_asm,
                         const std::string& expected_bir_fragment,
@@ -1553,6 +1581,39 @@ int check_lir_route_outputs(const lir::LirModule& module,
     return fail((std::string(failure_context) +
                  ": generic backend emit path no longer routes x86 LIR input through emit_target_lir_module")
                     .c_str());
+  }
+
+  return 0;
+}
+
+int check_lir_route_rejection(const lir::LirModule& module,
+                              std::string_view expected_message_fragment,
+                              const char* failure_context) {
+  try {
+    (void)c4c::backend::emit_target_lir_module(module, module.target_profile);
+    return fail((std::string(failure_context) +
+                 ": public x86 LIR entry unexpectedly kept a mixed bootstrap fallback alive")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find(expected_message_fragment) == std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": public x86 LIR entry rejected unsupported lowering with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  try {
+    (void)c4c::backend::emit_module(
+        BackendModuleInput{module}, BackendOptions{.target_profile = x86_target_profile()});
+    return fail((std::string(failure_context) +
+                 ": generic x86 backend emit path unexpectedly kept a mixed bootstrap fallback alive")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find(expected_message_fragment) == std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": generic x86 backend emit path rejected unsupported lowering with the wrong contract message")
+                      .c_str());
+    }
   }
 
   return 0;
@@ -1794,6 +1855,15 @@ int main() {
           check_lir_route_outputs(make_x86_param_add_immediate_lir_module(),
                                   expected_minimal_param_add_immediate_asm("add_one", 1),
                                   "minimal i32 parameter add-immediate LIR route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_lir_route_rejection(
+              make_unsupported_x86_inline_asm_lir_module(),
+              "requires semantic lir_to_bir lowering before the canonical prepared-module handoff",
+              "unsupported x86 inline-asm LIR route");
       status != 0) {
     return status;
   }

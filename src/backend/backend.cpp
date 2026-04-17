@@ -58,6 +58,20 @@ bool is_x86_target(const c4c::TargetProfile& target_profile) {
          target_profile.arch == c4c::TargetArch::I686;
 }
 
+std::string make_x86_lir_handoff_failure_message(
+    const c4c::backend::BirLoweringResult& lowering) {
+  std::string message =
+      "x86 backend emit path requires semantic lir_to_bir lowering before the canonical prepared-module handoff";
+  for (auto it = lowering.notes.rbegin(); it != lowering.notes.rend(); ++it) {
+    if (it->phase == "module" || it->phase == "function") {
+      message += ": ";
+      message += it->message;
+      break;
+    }
+  }
+  return message;
+}
+
 // The active public backend entry still stops at prepared semantic BIR text.
 // Keep this helper name honest until x86 is wired to a real backend-side handoff.
 std::string render_prepared_bir_text(const c4c::backend::bir::Module& module) {
@@ -103,6 +117,9 @@ std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
       return c4c::backend::x86::emit_prepared_module(prepared_bir);
     }
     return render_prepared_bir_text(prepared_bir.module);
+  }
+  if (is_x86_target(target_profile)) {
+    throw std::invalid_argument(make_x86_lir_handoff_failure_message(lowering));
   }
   return emit_bootstrap_lir_module(module, target_profile);
 }
@@ -150,6 +167,9 @@ std::string emit_module(const BackendModuleInput& input,
       return c4c::backend::x86::emit_prepared_module(prepared_bir);
     }
     return render_prepared_bir_text(prepared_bir.module);
+  }
+  if (is_x86_target(target_profile)) {
+    throw std::invalid_argument(make_x86_lir_handoff_failure_message(lowering));
   }
   return emit_bootstrap_lir_module(lir_module, target_profile);
 }

@@ -6,25 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Proved the rest of the bounded joined right-shift family already present in the
-canonical x86 prepared-module consumer: minimal x86_64 single-parameter `i32`
-compare-against-zero branches whose join block contains one legalized
-`bir.select` plus one trailing supported parameter-immediate `lshr` or `ashr`
-on that select result. The focused handoff proof now covers joined add/sub
-followed by `shl`, `lshr`, and `ashr` while still proving
-prepared/public/generic route equality against the same canonical x86
-assembly, and it did so without adding any fallback or widening the emitter
-boundary because the existing bounded prepared-module consumer already handled
-those shift families.
+Hard-retired one residual mixed x86 entry path in the shared backend public
+surface: unsupported x86 LIR input no longer falls back to bootstrap
+`print_llvm(...)` output when semantic `lir_to_bir` lowering fails. Both the
+public x86 LIR entry and the generic backend emit path now reject that case
+with a canonical prepared-module-handoff failure instead of keeping a second
+LIR-side route alive, and the focused handoff test now proves that rejection
+using an unsupported inline-asm fixture. This packet also completed the
+broader `^backend_` checkpoint requested before near-close confidence.
 
 ## Suggested Next
 
-Pivot from proof-family expansion back to route cleanup. The next packet should
-inspect the current x86 prepared-module entry and ownership seams, identify one
-remaining mixed-route or shadow-ownership path that still competes with the
-canonical prepared-module boundary, and either remove it or make its retirement
-condition explicit in code. After the next meaningful x86 route change, run a
-broader `^backend_` checkpoint before treating the route as near-close.
+Stay on route cleanup rather than more proof-family expansion. The next packet
+should inspect x86-local ownership around prepared backend metadata
+consumption, identify one remaining shadow-ownership seam for ABI, value
+location, or frame/stack decisions that still duplicates backend-published
+facts, and either remove it or make its retirement condition explicit in code.
+If no concrete competing seam remains after that inspection, hand lifecycle
+state back for near-close assessment instead of widening the emitter support.
 
 ## Watchouts
 
@@ -70,3 +69,7 @@ broader `^backend_` checkpoint before treating the route as near-close.
 Ran `cmake --build --preset default -j4 && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the passing proving output to `test_after.log`.
+
+Also ran `cmake --build --preset default -j4 && ctest --test-dir build -j
+--output-on-failure -R '^backend_'` and observed the broader backend
+checkpoint pass.
