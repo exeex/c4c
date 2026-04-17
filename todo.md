@@ -6,16 +6,16 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Audited the remaining owned backend `lir_to_bir` module-level and non-failure
-reporting surfaces and confirmed they already resolve semantic names from
-`LinkNameId` before reporting or lowering, so no further code change was needed
-in this packet beyond recording the audit result.
+Updated owned late text-emission sites in `codegen/lir` so function signature
+emission and direct global/function reference emission now resolve existing
+`LinkNameId` spellings when those carriers are already present, while leaving
+unresolved extern fallback names string-backed rather than inventing new ids.
 
 ## Suggested Next
 
-Audit late consumer boundaries outside this backend `lir_to_bir` slice only
-where final symbol spelling is still emitted or reported, and only add new
-`LinkNameId` plumbing when a real upstream semantic carrier already exists.
+Audit the remaining LIR text and constant-initializer emission paths that still
+spell global or function names from raw strings, and only migrate sites where
+the upstream HIR/LIR carrier already owns a real `LinkNameId`.
 
 ## Watchouts
 
@@ -40,6 +40,14 @@ where final symbol spelling is still emitted or reported, and only add new
   `function.name`, but their only owned caller is `lower_module`, which
   resolves semantic names first; do not duplicate fallback lookup inside those
   helpers unless a new direct caller appears
+- `stmt_emitter_expr` and `stmt_emitter_lvalue` now prefer `LinkNameId` only
+  for resolved direct globals/functions already present in HIR; unresolved
+  extern-call paths still intentionally flow through raw fallback names because
+  no upstream semantic carrier exists there yet
+- `build_fn_signature` now resolves emitted function spellings late from
+  `fn.link_name_id`, but dedup/index selection in HIR and lowering still keys
+  off legacy `name` strings and should not be conflated with emission-time
+  spelling
 - keep forwarding explicit ids through LIR carriers and resolve them only at
   late consumers rather than treating legacy `name` strings as the semantic
   source of truth

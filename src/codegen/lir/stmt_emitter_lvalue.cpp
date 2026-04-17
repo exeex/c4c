@@ -6,6 +6,16 @@ namespace c4c::codegen::lir {
 namespace llvm_cc = c4c::codegen::llvm_backend;
 using namespace stmt_emitter_detail;
 
+namespace {
+
+std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
+                              std::string_view fallback) {
+  const std::string_view resolved = mod.link_names.spelling(id);
+  return resolved.empty() ? std::string(fallback) : std::string(resolved);
+}
+
+}
+
 // Draft-only staging file for Step 3 of the stmt_emitter split refactor.
 // This file owns the lvalue, member access, and assignable-store cluster.
 
@@ -198,9 +208,16 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
       if (const GlobalVar* best = select_global_object(gv0.name)) gv_idx = best->id.value;
       const auto& gv = mod_.globals[gv_idx];
       pts = gv.type.spec;
-      return llvm_global_sym(gv.name);
+      return llvm_global_sym(emitted_link_name(mod_, gv.link_name_id, gv.name));
     }
     pts = e.type.spec;
+    if (const auto fit = mod_.fn_index.find(r->name); fit != mod_.fn_index.end()) {
+      const auto fn_index = fit->second.value;
+      if (fn_index < mod_.functions.size()) {
+        const auto& fn = mod_.functions[fn_index];
+        return llvm_global_sym(emitted_link_name(mod_, fn.link_name_id, fn.name));
+      }
+    }
     return llvm_global_sym(r->name);
   }
   if (const auto* u = std::get_if<UnaryExpr>(&e.payload)) {

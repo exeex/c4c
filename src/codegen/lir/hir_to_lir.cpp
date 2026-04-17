@@ -25,6 +25,12 @@ int align_to_bytes(int value, int align) {
   return rem == 0 ? value : value + (align - rem);
 }
 
+std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
+                              std::string_view fallback) {
+  const std::string_view resolved = mod.link_names.spelling(id);
+  return resolved.empty() ? std::string(fallback) : std::string(resolved);
+}
+
 }  // namespace
 
 // ── Module-level orchestration helpers ───────────────────────────────────────
@@ -306,6 +312,7 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
 
   std::ostringstream sig_out;
   const std::string ret_ty = llvm_ret_ty(fn.return_type.spec);
+  const std::string emitted_name = emitted_link_name(mod, fn.link_name_id, fn.name);
 
   const bool void_param_list =
       fn.params.size() == 1 &&
@@ -317,7 +324,7 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
   if (fn.linkage.is_extern && fn.blocks.empty()) {
     const std::string decl_kw = fn.linkage.is_weak ? "declare extern_weak " : "declare ";
     sig_out << decl_kw << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
-            << llvm_global_sym(fn.name) << "(";
+            << llvm_global_sym(emitted_name) << "(";
     for (size_t i = 0; i < fn.params.size(); ++i) {
       if (void_param_list) break;
       if (i) sig_out << ", ";
@@ -350,7 +357,7 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
   std::string fn_lk = fn.linkage.is_static ? "internal " : "";
   if (fn.linkage.is_weak && !fn.linkage.is_static) fn_lk = "weak ";
   sig_out << "define " << fn_lk << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
-          << llvm_global_sym(fn.name) << "(";
+          << llvm_global_sym(emitted_name) << "(";
 
   // Parameters
   for (size_t i = 0; i < fn.params.size(); ++i) {

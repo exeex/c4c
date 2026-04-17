@@ -5,6 +5,16 @@ namespace c4c::codegen::lir {
 
 using namespace stmt_emitter_detail;
 
+namespace {
+
+std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
+                              std::string_view fallback) {
+  const std::string_view resolved = mod.link_names.spelling(id);
+  return resolved.empty() ? std::string(fallback) : std::string(resolved);
+}
+
+}
+
 // Draft-only staging file for Step 2 of the stmt_emitter split refactor.
 // This is the first expression-oriented ownership slice; the monolith still
 // owns the full live implementation until Step 4 wires these files into CMake.
@@ -536,20 +546,27 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const E
     const auto& gv0 = mod_.globals[gv_idx];
     if (const GlobalVar* best = select_global_object(gv0.name)) gv_idx = best->id.value;
     const auto& gv = mod_.globals[gv_idx];
+    const std::string global_name = emitted_link_name(mod_, gv.link_name_id, gv.name);
     if (gv.type.spec.array_rank > 0 && !gv.type.spec.is_ptr_to_array) {
       const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirGepOp{tmp, llvm_alloca_ty(gv.type.spec), llvm_global_sym(gv.name),
-                                     false, {"i64 0", "i64 0"}});
+      emit_lir_op(ctx, lir::LirGepOp{tmp, llvm_alloca_ty(gv.type.spec),
+                                     llvm_global_sym(global_name), false, {"i64 0", "i64 0"}});
       return tmp;
     }
     const std::string ty = llvm_ty(gv.type.spec);
     if (ty == "void") return "0";
     const std::string tmp = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, llvm_global_sym(gv.name)});
+    emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, llvm_global_sym(global_name)});
     return tmp;
   }
 
-  if (mod_.fn_index.count(r.name)) return llvm_global_sym(r.name);
+  if (const auto fit = mod_.fn_index.find(r.name); fit != mod_.fn_index.end()) {
+    const auto fn_index = fit->second.value;
+    if (fn_index < mod_.functions.size()) {
+      const auto& fn = mod_.functions[fn_index];
+      return llvm_global_sym(emitted_link_name(mod_, fn.link_name_id, fn.name));
+    }
+  }
 
   if ((r.name == "__func__" || r.name == "__FUNCTION__" || r.name == "__PRETTY_FUNCTION__") &&
       ctx.fn) {
