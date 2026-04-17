@@ -6,24 +6,29 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Activated the x86 pure-BIR handoff idea into `plan.md` and reset canonical
-execution state for the new active runbook.
+Locked Step 1's current seam in code and tests: the active x86/public backend
+entry is `backend::emit_module -> emit_target_bir_module -> prepared semantic
+BIR text`, while the translated x86 direct-BIR entry in
+`src/backend/mir/x86/codegen/emit.cpp` still rejects direct BIR input.
 
 ## Suggested Next
 
-Start Step 1 by identifying the actual x86 backend entry boundary in
-`src/backend/`, the exact mixed LIR/BIR seams that still own route selection,
-and the narrowest honest proof test for the active x86 handoff.
+Start Step 2 by choosing the canonical x86 consumer boundary, then replace the
+prepared-BIR text seam in `emit_target_bir_module` with a real x86 handoff
+instead of preserving the current non-canonical text route.
 
 ## Watchouts
 
-- do not preserve the mixed route as a fallback just because it currently
-  works; the idea is about deleting or hard-retiring the wrong boundary
-- keep x86 handoff work focused on contract ownership, not broad emission
-  cleanup outside the source idea
-- prefer backend-published ABI/location facts over new x86-local shadow
-  contracts
+- `backend_x86_handoff_boundary` now proves the exact seam to remove; do not
+  rewrite that test into a text-shape acceptance story once x86 handoff work
+  begins
+- the public route still bypasses target-local x86 emission entirely, so Step 2
+  must change route ownership rather than only broadening semantic-BIR output
+- keep the next slice focused on raw-BIR vs prepared-module ownership, not on
+  unrelated x86 emission cleanup outside the handoff boundary
 
 ## Proof
 
-Lifecycle activation only. No implementation proof run yet.
+Ran `cmake --build --preset default -j4 && ctest --test-dir build -j
+--output-on-failure -R '^backend_'` and wrote the proving output to
+`test_after.log`.

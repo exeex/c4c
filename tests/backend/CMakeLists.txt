@@ -154,6 +154,28 @@ set_tests_properties(backend_prepare_stack_layout PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_x86_handoff_boundary_test
+    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_test.cpp"
+)
+target_include_directories(backend_x86_handoff_boundary_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_x86_handoff_boundary_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_x86_handoff_boundary_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_x86_handoff_boundary
+  COMMAND $<TARGET_FILE:backend_x86_handoff_boundary_test>
+)
+set_tests_properties(backend_x86_handoff_boundary PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_phi
   SRC "${BACKEND_CASE_ROOT}/three_way_phi_merge_post_add_sub.c"

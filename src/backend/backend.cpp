@@ -29,9 +29,9 @@ std::string emit_bootstrap_lir_module(const c4c::codegen::lir::LirModule& module
   return c4c::codegen::lir::print_llvm(module);
 }
 
-std::string emit_prepared_bir_or_fallback(const c4c::backend::bir::Module& module,
-                                          Target target) {
-  (void)target;
+// The active public backend entry still stops at prepared semantic BIR text.
+// Keep this helper name honest until x86 is wired to a real backend-side handoff.
+std::string render_prepared_bir_text(const c4c::backend::bir::Module& module) {
   return c4c::backend::bir::print(module);
 }
 
@@ -56,9 +56,8 @@ c4c::backend::bir::Module prepare_bir_module_for_target(
 }
 
 std::string emit_target_bir_module(const bir::Module& module, Target public_target) {
-  (void)public_target;
   const auto prepared = prepare_semantic_bir_pipeline(module, public_target);
-  return emit_prepared_bir_or_fallback(prepared.module, public_target);
+  return render_prepared_bir_text(prepared.module);
 }
 
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
@@ -101,7 +100,7 @@ std::string emit_module(const BackendModuleInput& input,
       return c4c::backend::bir::print(*lowering.module);
     }
     const auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target);
-    return emit_prepared_bir_or_fallback(prepared_bir.module, target);
+    return render_prepared_bir_text(prepared_bir.module);
   }
   return emit_bootstrap_lir_module(lir_module, target);
 }
