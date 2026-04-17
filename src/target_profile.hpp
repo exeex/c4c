@@ -42,6 +42,7 @@ struct TargetProfile {
 std::string default_host_target_triple();
 TargetProfile default_target_profile(TargetArch arch);
 TargetProfile target_profile_from_triple(std::string_view target_triple);
+std::string llvm_target_triple(const TargetProfile& target_profile);
 const char* target_arch_name(TargetArch arch);
 const char* target_os_name(TargetOs os);
 const char* backend_abi_name(BackendAbiKind abi);

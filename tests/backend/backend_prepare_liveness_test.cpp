@@ -855,7 +855,7 @@ prepare::PreparedBirModule prepare_return_same_storage_module_with_regalloc() {
 
 std::optional<prepare::PreparedBirModule> lower_and_legalize_aggregate_return_decl_module() {
   lir::LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   lir::LirFunction function;
   function.name = "aggregate_decl";
@@ -884,7 +884,7 @@ std::optional<prepare::PreparedBirModule> lower_and_legalize_aggregate_return_de
 
 std::optional<prepare::PreparedBirModule> lower_and_prepare_call_result_module() {
   lir::LirModule module;
-  module.target_triple = "riscv64gc-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("riscv64gc-unknown-linux-gnu");
 
   lir::LirExternDecl decl;
   decl.name = "source_f32";
@@ -934,7 +934,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_call_result_module()
 
 std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_call_result_module() {
   lir::LirModule module;
-  module.target_triple = "riscv64gc-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("riscv64gc-unknown-linux-gnu");
 
   lir::LirFunction function;
   function.name = "lowered_helper_call_result_metadata";
@@ -979,7 +979,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_call_result_m
 
 std::optional<prepare::PreparedBirModule> lower_and_prepare_soft_float_helper_call_result_module() {
   lir::LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
 
   lir::LirFunction function;
   function.name = "lowered_helper_call_result_soft_float_metadata";
@@ -1010,7 +1010,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_soft_float_helper_ca
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(*lowered.module);
-  prepared.target_profile = riscv_target_profile(module.target_triple);
+  prepared.target_profile = module.target_profile;
 
   prepare::PrepareOptions options;
   options.run_legalize = true;
@@ -1024,7 +1024,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_soft_float_helper_ca
 
 std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_stackrestore_arg_module() {
   lir::LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
 
   lir::LirFunction function;
   function.name = "lowered_helper_stackrestore_arg_metadata";
@@ -1066,7 +1066,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_stackrestore_
 
 std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_va_copy_arg_module() {
   lir::LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
 
   lir::LirFunction function;
   function.name = "lowered_helper_va_copy_arg_metadata";
@@ -1108,7 +1108,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_va_copy_arg_m
 
 std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_va_arg_aggregate_module() {
   lir::LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
 
   lir::LirFunction function;
   function.name = "lowered_helper_va_arg_aggregate_metadata";
@@ -1150,7 +1150,7 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_va_arg_aggreg
 
 std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_aggregate_call_module() {
   lir::LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   lir::LirFunction decl;
   decl.name = "id_pair";

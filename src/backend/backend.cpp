@@ -25,17 +25,22 @@ const c4c::TargetProfile& profile_or_default(const c4c::TargetProfile& target_pr
 c4c::TargetProfile resolve_public_lir_target_profile(const c4c::codegen::lir::LirModule& module,
                                                      const c4c::TargetProfile& public_target) {
   c4c::TargetProfile module_profile_storage;
-  const auto& requested =
-      profile_or_default(public_target, module_profile_storage, module.target_triple);
+  const auto& requested = public_target.arch != c4c::TargetArch::Unknown
+                              ? public_target
+                              : (module.target_profile.arch != c4c::TargetArch::Unknown
+                                     ? module.target_profile
+                                     : profile_or_default(public_target,
+                                                          module_profile_storage,
+                                                          std::string_view{}));
   if (requested.arch != c4c::TargetArch::X86_64) {
     return requested;
   }
 
-  if (module.target_triple.empty()) {
+  if (module.target_profile.arch == c4c::TargetArch::Unknown) {
     return requested;
   }
 
-  const auto module_profile = c4c::target_profile_from_triple(module.target_triple);
+  const auto module_profile = module.target_profile;
   if (module_profile.arch == c4c::TargetArch::I686) {
     return module_profile;
   }

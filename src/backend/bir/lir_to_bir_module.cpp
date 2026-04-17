@@ -505,7 +505,7 @@ std::optional<bir::Function> BirFunctionLowerer::lower() {
 std::optional<bir::Module> lower_module(BirLoweringContext& context,
                                         const BirModuleAnalysis& analysis) {
   bir::Module module;
-  module.target_triple = context.lir_module.target_triple;
+  module.target_triple = c4c::llvm_target_triple(context.target_profile);
   module.data_layout = context.lir_module.data_layout;
 
   if (analysis.function_count == 0 && analysis.global_count == 0 &&

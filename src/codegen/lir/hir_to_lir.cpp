@@ -826,13 +826,11 @@ static void eliminate_dead_internals(LirModule& mod) {
 LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
   using namespace c4c::codegen::llvm_helpers;
   const c4c::TargetProfile& target_profile = hir_mod.target_profile;
-  const std::string& target_triple = target_profile.triple;
-
   // Module-level orchestration: owned by hir_to_lir, not StmtEmitter.
   set_active_target_profile(target_profile);
 
   LirModule module;
-  module.target_triple = target_triple;
+  module.target_profile = target_profile;
   module.data_layout = !hir_mod.data_layout.empty()
       ? hir_mod.data_layout
       : llvm_default_datalayout(target_profile);

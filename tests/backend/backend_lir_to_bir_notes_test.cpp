@@ -74,7 +74,7 @@ int expect_failure_notes(std::string_view case_name,
 
 LirModule make_unsupported_inline_asm_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_inline_asm";
@@ -102,7 +102,7 @@ LirModule make_unsupported_inline_asm_module() {
 
 LirModule make_bad_direct_call_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_direct_call";
@@ -129,7 +129,7 @@ LirModule make_bad_direct_call_module() {
 
 LirModule make_bad_indirect_call_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_indirect_call";
@@ -156,7 +156,7 @@ LirModule make_bad_indirect_call_module() {
 
 LirModule make_bad_call_return_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_call_return";
@@ -183,7 +183,7 @@ LirModule make_bad_call_return_module() {
 
 LirModule make_bad_memcpy_runtime_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_memcpy_runtime";
@@ -210,7 +210,7 @@ LirModule make_bad_memcpy_runtime_module() {
 
 LirModule make_bad_memset_runtime_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_memset_runtime";
@@ -237,7 +237,7 @@ LirModule make_bad_memset_runtime_module() {
 
 LirModule make_bad_variadic_runtime_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_variadic_runtime";
@@ -262,7 +262,7 @@ LirModule make_bad_variadic_runtime_module() {
 
 LirModule make_bad_stack_state_runtime_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_stack_state_runtime";
@@ -285,7 +285,7 @@ LirModule make_bad_stack_state_runtime_module() {
 
 LirModule make_bad_abs_runtime_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_abs_runtime";
@@ -310,7 +310,7 @@ LirModule make_bad_abs_runtime_module() {
 
 LirModule make_bad_scalar_cast_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_scalar_cast";
@@ -337,7 +337,7 @@ LirModule make_bad_scalar_cast_module() {
 
 LirModule make_bad_alloca_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_alloca";
@@ -363,7 +363,7 @@ LirModule make_bad_alloca_module() {
 
 LirModule make_bad_function_signature_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_function_signature";
@@ -387,7 +387,7 @@ LirModule make_bad_function_signature_module() {
 
 LirModule make_bad_scalar_control_flow_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_scalar_control_flow";
@@ -412,7 +412,7 @@ LirModule make_bad_scalar_control_flow_module() {
 
 LirModule make_bad_local_memory_umbrella_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_local_memory_umbrella";
@@ -437,7 +437,7 @@ LirModule make_bad_local_memory_umbrella_module() {
 
 LirModule make_bad_scalar_local_memory_umbrella_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_scalar_local_memory_umbrella";
@@ -464,7 +464,7 @@ LirModule make_bad_scalar_local_memory_umbrella_module() {
 
 LirModule make_bad_scalar_binop_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_scalar_binop";
@@ -491,7 +491,7 @@ LirModule make_bad_scalar_binop_module() {
 
 LirModule make_bad_gep_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_gep";
@@ -517,7 +517,7 @@ LirModule make_bad_gep_module() {
 
 LirModule make_bad_store_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_store";
@@ -542,7 +542,7 @@ LirModule make_bad_store_module() {
 
 LirModule make_bad_load_module() {
   LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
   function.name = "bad_load";

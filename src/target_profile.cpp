@@ -142,6 +142,47 @@ TargetProfile target_profile_from_triple(std::string_view target_triple) {
   return profile;
 }
 
+std::string llvm_target_triple(const TargetProfile& target_profile) {
+  const TargetArch arch = target_profile.arch == TargetArch::Unknown
+                              ? default_target_profile(TargetArch::Unknown).arch
+                              : target_profile.arch;
+  const TargetOs os = target_profile.os == TargetOs::Unknown ? TargetOs::Linux : target_profile.os;
+  const BackendAbiKind abi = target_profile.backend_abi == BackendAbiKind::Unknown
+                                 ? default_target_profile(arch).backend_abi
+                                 : target_profile.backend_abi;
+
+  std::string triple_arch;
+  switch (arch) {
+    case TargetArch::X86_64:
+      triple_arch = "x86_64";
+      break;
+    case TargetArch::I686:
+      triple_arch = "i386";
+      break;
+    case TargetArch::Aarch64:
+      triple_arch = "aarch64";
+      break;
+    case TargetArch::Riscv64:
+      triple_arch = abi == BackendAbiKind::RiscvLp64D ? "riscv64gc" : "riscv64";
+      break;
+    case TargetArch::Unknown:
+      triple_arch = "unknown";
+      break;
+  }
+
+  switch (os) {
+    case TargetOs::Darwin:
+      return triple_arch + "-apple-darwin";
+    case TargetOs::Windows:
+      return triple_arch + "-pc-windows-msvc";
+    case TargetOs::Linux:
+      return triple_arch + "-unknown-linux-gnu";
+    case TargetOs::Unknown:
+      return triple_arch + "-unknown-unknown";
+  }
+  return triple_arch + "-unknown-unknown";
+}
+
 const char* target_arch_name(TargetArch arch) {
   switch (arch) {
     case TargetArch::Unknown:

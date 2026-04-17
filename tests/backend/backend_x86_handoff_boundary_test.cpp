@@ -239,7 +239,7 @@ bir::Module make_x86_param_and_immediate_module() {
 
 lir::LirModule make_x86_return_constant_lir_module() {
   lir::LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   lir::LirFunction function;
   function.name = "main";
@@ -260,7 +260,7 @@ lir::LirModule make_x86_return_constant_lir_module() {
 
 lir::LirModule make_x86_param_add_immediate_lir_module() {
   lir::LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   lir::LirFunction function;
   function.name = "add_one";
@@ -331,11 +331,8 @@ int check_route_outputs(const bir::Module& module,
 int check_lir_route_outputs(const lir::LirModule& module,
                             const std::string& expected_asm,
                             const char* failure_context) {
-  c4c::TargetProfile target_profile;
   const auto public_asm =
-      c4c::backend::emit_target_lir_module(module,
-                                           target_profile_from_module_triple(module.target_triple,
-                                                                            target_profile));
+      c4c::backend::emit_target_lir_module(module, module.target_profile);
   if (public_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": public x86 LIR entry did not route through the canonical x86 prepared-module consumer")
