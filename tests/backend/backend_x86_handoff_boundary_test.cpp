@@ -43,6 +43,12 @@ std::string expected_minimal_param_sub_immediate_asm(const char* function_name, 
          ":\n    mov eax, edi\n    sub eax, " + std::to_string(immediate) + "\n    ret\n";
 }
 
+std::string expected_minimal_param_mul_immediate_asm(const char* function_name, int immediate) {
+  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
+         "\n.type " + function_name + ", @function\n" + function_name +
+         ":\n    mov eax, edi\n    imul eax, " + std::to_string(immediate) + "\n    ret\n";
+}
+
 bir::Module make_x86_return_constant_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -149,6 +155,38 @@ bir::Module make_x86_param_sub_immediate_module() {
   return module;
 }
 
+bir::Module make_x86_param_mul_immediate_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "mul_three";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Mul,
+      .result = bir::Value::named(bir::TypeKind::I32, "product"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "product"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 int check_route_outputs(const bir::Module& module,
                         const std::string& expected_asm,
                         const std::string& expected_bir_fragment,
@@ -223,6 +261,15 @@ int main() {
                               expected_minimal_param_sub_immediate_asm("sub_one", 1),
                               "bir.func @sub_one(i32 p.x) -> i32 {",
                               "minimal i32 parameter sub-immediate route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(make_x86_param_mul_immediate_module(),
+                              expected_minimal_param_mul_immediate_asm("mul_three", 3),
+                              "bir.func @mul_three(i32 p.x) -> i32 {",
+                              "minimal i32 parameter mul-immediate route");
       status != 0) {
     return status;
   }
