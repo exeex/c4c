@@ -208,12 +208,19 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       MemberExpr me{};
       me.base = this_id;
       me.field = r.name;
-      me.is_arrow = true;
       me.resolved_owner_tag = ctx->method_struct_tag;
+      me.member_symbol_id =
+          find_struct_member_symbol_id(ctx->method_struct_tag, r.name);
+      me.is_arrow = true;
       return append_expr(n, me, n->type, ValueCategory::LValue);
     }
   }
   TypeSpec var_ts = n->type;
+  std::optional<TypeSpec> storage_ts;
+  if (ctx) storage_ts = storage_type_for_declref(ctx, r);
+  if (storage_ts) {
+    var_ts = is_any_ref_ts(*storage_ts) ? reference_value_ts(*storage_ts) : *storage_ts;
+  }
   if (var_ts.base == TB_VOID && var_ts.ptr_level == 0 && var_ts.array_rank == 0 &&
       !r.local && !r.param_index && !r.global) {
     if (const Function* fn = module_->find_function_by_name_legacy(r.name)) {
@@ -224,13 +231,11 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
   }
   attach_decl_ref_link_name_id(r);
   ExprId ref_id = append_expr(n, r, var_ts, ValueCategory::LValue);
-  if (ctx) {
-    if (auto storage_ts = storage_type_for_declref(ctx, r); storage_ts && is_any_ref_ts(*storage_ts)) {
-      UnaryExpr u{};
-      u.op = UnaryOp::Deref;
-      u.operand = ref_id;
-      return append_expr(n, u, reference_value_ts(*storage_ts), ValueCategory::LValue);
-    }
+  if (storage_ts && is_any_ref_ts(*storage_ts)) {
+    UnaryExpr u{};
+    u.op = UnaryOp::Deref;
+    u.operand = ref_id;
+    return append_expr(n, u, reference_value_ts(*storage_ts), ValueCategory::LValue);
   }
   return ref_id;
 }

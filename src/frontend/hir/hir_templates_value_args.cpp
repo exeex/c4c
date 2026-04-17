@@ -93,10 +93,13 @@ void assign_template_arg_refs_from_struct_node(
   if (!ts) return;
   ts->tpl_struct_args.data = nullptr;
   ts->tpl_struct_args.size = 0;
-  if (!owner || owner->n_template_args <= 0) return;
+  if (!owner) return;
+  const int arg_count =
+      owner->n_template_args > 0 ? owner->n_template_args : owner->n_template_params;
+  if (arg_count <= 0) return;
 
-  ts->tpl_struct_args.data = new TemplateArgRef[owner->n_template_args]();
-  ts->tpl_struct_args.size = owner->n_template_args;
+  ts->tpl_struct_args.data = new TemplateArgRef[arg_count]();
+  ts->tpl_struct_args.size = arg_count;
   for (int i = 0; i < owner->n_template_args; ++i) {
     TemplateArgRef& out = ts->tpl_struct_args.data[i];
     const bool is_value =
@@ -104,13 +107,35 @@ void assign_template_arg_refs_from_struct_node(
     out.kind = is_value ? TemplateArgKind::Value : TemplateArgKind::Type;
     if (is_value) {
       out.value = owner->template_arg_values ? owner->template_arg_values[i] : 0;
-      const std::string debug_text = std::to_string(out.value);
+      std::string debug_text;
+      if (owner->template_param_names &&
+          owner->template_param_names[i] &&
+          owner->template_param_names[i][0]) {
+        debug_text = owner->template_param_names[i];
+      } else {
+        debug_text = std::to_string(out.value);
+      }
       out.debug_text = ::strdup(debug_text.c_str());
     } else if (owner->template_arg_types) {
       out.type = owner->template_arg_types[i];
       const std::string debug_text = encode_template_type_arg_ref_hir(out.type);
       out.debug_text =
           debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
+    } else if (owner->template_param_names &&
+               owner->template_param_names[i] &&
+               owner->template_param_names[i][0]) {
+      out.debug_text = ::strdup(owner->template_param_names[i]);
+    }
+  }
+  for (int i = owner->n_template_args; i < arg_count; ++i) {
+    TemplateArgRef& out = ts->tpl_struct_args.data[i];
+    const bool is_value =
+        owner->template_param_is_nttp && owner->template_param_is_nttp[i];
+    out.kind = is_value ? TemplateArgKind::Value : TemplateArgKind::Type;
+    if (owner->template_param_names &&
+        owner->template_param_names[i] &&
+        owner->template_param_names[i][0]) {
+      out.debug_text = ::strdup(owner->template_param_names[i]);
     }
   }
 }
@@ -163,8 +188,11 @@ bool Lowerer::recover_template_struct_identity_from_tag(
       }
     }
   }
-  if (it == struct_def_nodes_.end() || !it->second) return false;
-  const Node* owner = it->second;
+  const Node* owner = (it != struct_def_nodes_.end()) ? it->second : nullptr;
+  if (!owner) {
+    owner = canonical_template_struct_primary(*ts, owner);
+  }
+  if (!owner) return false;
   const char* origin = nullptr;
   if (owner->template_origin_name && owner->template_origin_name[0]) {
     origin = owner->template_origin_name;

@@ -491,7 +491,30 @@ const Node* Lowerer::canonical_template_struct_primary(
     const Node* primary_tpl) const {
   if (primary_tpl) return primary_tpl;
   if (!ts.tpl_struct_origin) return nullptr;
-  return find_template_struct_primary(ts.tpl_struct_origin);
+  if (const Node* primary = find_template_struct_primary(ts.tpl_struct_origin)) {
+    return primary;
+  }
+  auto try_family_root = [&](const std::string& raw_name) -> const Node* {
+    const size_t scope_sep = raw_name.rfind("::");
+    const size_t search_from = (scope_sep == std::string::npos) ? 0 : (scope_sep + 2);
+    const size_t tpl_sep = raw_name.find("_T", search_from);
+    if (tpl_sep == std::string::npos) return nullptr;
+    const std::string family_name = raw_name.substr(0, tpl_sep);
+    if (family_name.empty()) return nullptr;
+    if (const Node* primary = find_template_struct_primary(family_name)) {
+      return primary;
+    }
+    if (scope_sep != std::string::npos) {
+      const std::string unqualified = family_name.substr(scope_sep + 2);
+      if (!unqualified.empty()) return find_template_struct_primary(unqualified);
+    }
+    return nullptr;
+  };
+  if (const Node* primary = try_family_root(ts.tpl_struct_origin)) return primary;
+  if (ts.tag && ts.tag[0]) {
+    if (const Node* primary = try_family_root(ts.tag)) return primary;
+  }
+  return nullptr;
 }
 
 void Lowerer::realize_template_struct_if_needed(
