@@ -378,6 +378,7 @@ struct CastExpr {
 /// Metadata preserved for template function application calls.
 struct TemplateCallInfo {
   std::string source_template;       // original template name (e.g., "add")
+  TextId source_template_text_id = kInvalidText;  // stable template name in module.link_name_texts
   std::vector<TypeSpec> template_args; // resolved concrete template arguments
   NttpBindings nttp_args;             // resolved NTTP values (param name → value)
 };

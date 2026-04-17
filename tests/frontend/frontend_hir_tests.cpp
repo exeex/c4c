@@ -593,6 +593,50 @@ Box<int> make_box() { return {}; }
             "instantiated template struct base-tag TextIds should resolve through the HIR text table");
 }
 
+void test_hir_template_calls_preserve_text_ids_for_source_template_names() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+template<typename T>
+T id(T value) { return value; }
+
+int use_template() { return id<int>(7); }
+)cpp");
+
+  const auto caller_it = hir_module.fn_index.find("use_template");
+  expect_true(caller_it != hir_module.fn_index.end(),
+              "fixture caller should be present in the HIR function index");
+  const c4c::hir::Function* caller = hir_module.find_function(caller_it->second);
+  expect_true(caller != nullptr,
+              "fixture caller should resolve through the HIR function lookup");
+
+  const c4c::hir::TemplateCallInfo* template_info = nullptr;
+  for (const auto& block : caller->blocks) {
+    for (const auto& stmt : block.stmts) {
+      const auto* ret = std::get_if<c4c::hir::ReturnStmt>(&stmt.payload);
+      if (ret == nullptr || !ret->expr) {
+        continue;
+      }
+      const auto* call =
+          std::get_if<c4c::hir::CallExpr>(&hir_module.expr_pool[ret->expr->value].payload);
+      if (call == nullptr || !call->template_info.has_value()) {
+        continue;
+      }
+      template_info = &*call->template_info;
+      break;
+    }
+    if (template_info != nullptr) {
+      break;
+    }
+  }
+
+  expect_true(template_info != nullptr,
+              "fixture caller should retain template-call metadata on the lowered call");
+  expect_true(template_info->source_template_text_id != c4c::kInvalidText,
+              "template-call metadata should preserve a parallel TextId for the source template name");
+  expect_eq(hir_module.link_name_texts->lookup(template_info->source_template_text_id),
+            template_info->source_template,
+            "template-call source-template TextIds should resolve through the HIR text table");
+}
+
 void test_hir_to_lir_forwards_function_link_name_ids() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 template<typename T>
@@ -1562,6 +1606,7 @@ int main() {
   test_hir_decl_stmt_decl_refs_preserve_text_ids_for_ctor_and_dtor_routes();
   test_hir_stmt_decl_refs_preserve_text_ids_for_this_param_and_ctor_callees();
   test_hir_struct_defs_preserve_text_ids_for_tags_and_bases();
+  test_hir_template_calls_preserve_text_ids_for_source_template_names();
   test_hir_to_lir_forwards_function_link_name_ids();
   test_hir_to_lir_direct_call_target_resolution_prefers_link_name_ids();
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();

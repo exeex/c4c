@@ -6,25 +6,24 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 2 / Step 4 for the bounded HIR template-definition
-parameter-spelling route in `hir_ir.hpp`, `hir_build.cpp`, and
+Completed `plan.md` Step 2 / Step 4 for the bounded HIR template-call
+source-template route in `hir_ir.hpp`, `hir_expr_call.cpp`, and
 `frontend_hir_tests.cpp`.
 
-- Added parallel HIR `HirTemplateDef::template_param_text_ids` storage so
-  preserved template parameter spellings are no longer string-only in template
+- Added parallel HIR `TemplateCallInfo::source_template_text_id` storage so
+  preserved template-call source names are no longer string-only in call
   metadata.
-- Threaded template-parameter interning through
-  `materialize_hir_template_defs()` using `module.link_name_texts` without
+- Threaded template-call source-template interning through `lower_call_expr()`
+  and pack-expansion call lowering using `module.link_name_texts` without
   collapsing `TextId`, `SymbolId`, or `LinkNameId`.
-- Extended focused HIR proof so preserved template parameter metadata resolves
-  its parallel `TextId`s through the HIR module text table.
+- Extended focused HIR proof so template-call metadata resolves its parallel
+  `TextId` through the HIR module text table.
 
 ## Suggested Next
 
 Keep Step 2 bounded: choose one nearby HIR metadata carrier that still stores
-stable TU text as `std::string`, such as
-`TemplateCallInfo::source_template` or `ConstevalCallInfo::fn_name`, instead of
-widening into broader registry/index churn.
+stable TU text as `std::string`, such as `ConstevalCallInfo::fn_name`, instead
+of widening into broader registry/index churn.
 
 ## Watchouts
 
