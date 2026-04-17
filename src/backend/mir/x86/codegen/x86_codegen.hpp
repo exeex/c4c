@@ -1047,16 +1047,90 @@ inline std::string emit_prepared_module(
 
   const auto& function = module.module.functions.front();
   if (function.is_declaration || function.params.size() > 1 || !function.local_slots.empty() ||
-      function.return_type != c4c::backend::bir::TypeKind::I32 || function.blocks.size() != 1) {
+      function.return_type != c4c::backend::bir::TypeKind::I32 || function.blocks.empty()) {
     throw std::invalid_argument(
         "x86 backend emitter only supports a minimal i32 return function through the canonical prepared-module handoff");
   }
 
   const auto& entry = function.blocks.front();
+  const auto asm_prefix = ".intel_syntax noprefix\n.text\n.globl " + function.name +
+                          "\n.type " + function.name + ", @function\n" + function.name + ":\n";
+  const auto find_block = [&](std::string_view label) -> const c4c::backend::bir::Block* {
+    for (const auto& block : function.blocks) {
+      if (block.label == label) {
+        return &block;
+      }
+    }
+    return nullptr;
+  };
+  const auto try_render_minimal_compare_branch = [&]() -> std::optional<std::string> {
+    if (function.blocks.size() != 3 || function.params.size() != 1 ||
+        prepared_arch != c4c::TargetArch::X86_64 || entry.insts.size() != 1 ||
+        entry.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
+      return std::nullopt;
+    }
+
+    const auto& param = function.params.front();
+    if (param.type != c4c::backend::bir::TypeKind::I32 || param.is_varargs || param.is_sret ||
+        param.is_byval) {
+      return std::nullopt;
+    }
+
+    const auto* compare = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.front());
+    if (compare == nullptr || compare->opcode != c4c::backend::bir::BinaryOpcode::Eq ||
+        compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
+        compare->result.type != c4c::backend::bir::TypeKind::I32 ||
+        entry.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named ||
+        entry.terminator.condition.name != compare->result.name) {
+      return std::nullopt;
+    }
+
+    const bool lhs_is_param_rhs_is_zero =
+        compare->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+        compare->lhs.name == param.name &&
+        compare->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+        compare->rhs.type == c4c::backend::bir::TypeKind::I32 && compare->rhs.immediate == 0;
+    const bool rhs_is_param_lhs_is_zero =
+        compare->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+        compare->rhs.name == param.name &&
+        compare->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+        compare->lhs.type == c4c::backend::bir::TypeKind::I32 && compare->lhs.immediate == 0;
+    if (!lhs_is_param_rhs_is_zero && !rhs_is_param_lhs_is_zero) {
+      return std::nullopt;
+    }
+
+    const auto* true_block = find_block(entry.terminator.true_label);
+    const auto* false_block = find_block(entry.terminator.false_label);
+    if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
+        false_block == &entry || true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        false_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        !true_block->terminator.value.has_value() || !false_block->terminator.value.has_value() ||
+        !true_block->insts.empty() || !false_block->insts.empty()) {
+      return std::nullopt;
+    }
+
+    const auto& true_value = *true_block->terminator.value;
+    const auto& false_value = *false_block->terminator.value;
+    if (true_value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        false_value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        true_value.type != c4c::backend::bir::TypeKind::I32 ||
+        false_value.type != c4c::backend::bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+
+    const std::string false_label = ".L" + function.name + "_" + false_block->label;
+    return asm_prefix + "    test edi, edi\n    jne " + false_label + "\n    mov eax, " +
+           std::to_string(static_cast<std::int32_t>(true_value.immediate)) + "\n    ret\n" +
+           false_label + ":\n    mov eax, " +
+           std::to_string(static_cast<std::int32_t>(false_value.immediate)) + "\n    ret\n";
+  };
   if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !entry.terminator.value.has_value()) {
+    if (const auto rendered_branch = try_render_minimal_compare_branch(); rendered_branch.has_value()) {
+      return *rendered_branch;
+    }
     throw std::invalid_argument(
-        "x86 backend emitter only supports a minimal single-block i32 return terminator through the canonical prepared-module handoff");
+        "x86 backend emitter only supports a minimal single-block i32 return terminator or a bounded compare-against-zero branch through the canonical prepared-module handoff");
   }
 
   const auto& returned = *entry.terminator.value;
@@ -1064,9 +1138,6 @@ inline std::string emit_prepared_module(
     throw std::invalid_argument(
         "x86 backend emitter only supports i32 return values through the canonical prepared-module handoff");
   }
-
-  const auto asm_prefix = ".intel_syntax noprefix\n.text\n.globl " + function.name +
-                          "\n.type " + function.name + ", @function\n" + function.name + ":\n";
   if (entry.insts.empty()) {
     if (returned.kind == c4c::backend::bir::Value::Kind::Immediate) {
       if (!function.params.empty()) {
@@ -1175,7 +1246,7 @@ inline std::string emit_prepared_module(
   }
 
   throw std::invalid_argument(
-      "x86 backend emitter only supports direct immediate i32 returns, direct single-parameter i32 passthrough returns, or single-parameter i32 add-immediate/sub-immediate/mul-immediate/and-immediate/or-immediate/xor-immediate/shl-immediate/lshr-immediate/ashr-immediate returns through the canonical prepared-module handoff");
+      "x86 backend emitter only supports direct immediate i32 returns, direct single-parameter i32 passthrough returns, single-parameter i32 add-immediate/sub-immediate/mul-immediate/and-immediate/or-immediate/xor-immediate/shl-immediate/lshr-immediate/ashr-immediate returns, or one bounded compare-against-zero branch family through the canonical prepared-module handoff");
 }
 std::string emit_module(const c4c::backend::bir::Module& module);
 std::string emit_module(const c4c::codegen::lir::LirModule& module);

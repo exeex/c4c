@@ -7,26 +7,21 @@ Source Plan: plan.md
 ## Just Finished
 
 Extended `x86::emit_prepared_module(...)` to support one additional honest
-prepared value-flow family: a minimal x86_64 single-function `i32` parameter
-returned after a single immediate arithmetic-right-shift through the canonical
-prepared-module boundary. The focused handoff proof now covers the
-immediate-return case, the direct single-parameter passthrough case, the
-single-parameter add-immediate case, the single-parameter sub-immediate case,
-the single-parameter mul-immediate case, the single-parameter and-immediate
-case, the single-parameter or-immediate case, the single-parameter
-xor-immediate case, the single-parameter shl-immediate case, and the
-single-parameter logical-right-shift-immediate case, and the
-single-parameter arithmetic-right-shift-immediate case by checking
-prepared/public/generic route equality against the same canonical x86
-assembly per shape.
+prepared control-flow family: a minimal x86_64 single-function `i32`
+compare-against-zero branch in the entry block that routes to two leaf
+immediate-return blocks through the canonical prepared-module boundary. The
+focused handoff proof now covers that bounded compare-and-branch case, and it
+still proves prepared/public/generic route equality against the same canonical
+x86 assembly for each supported shape.
 
 ## Suggested Next
 
 Extend `x86::emit_prepared_module(...)` to the next honest prepared-module
-shape behind the same canonical boundary with one bounded single-block
-single-parameter `i32` compare-against-zero branch family that still consumes
-the shared prepared contract, if that route can be kept semantic and equally
-honest without reintroducing any direct-BIR or public-entry fallback path.
+control-flow shape behind the same canonical boundary: one bounded x86_64
+single-parameter `i32` compare-against-zero branch whose two leaf blocks
+return the parameter itself versus an immediate, if that can still be modeled
+semantically inside the prepared-module consumer without adding any raw-BIR or
+public-entry fallback renderer.
 
 ## Watchouts
 
@@ -40,21 +35,19 @@ honest without reintroducing any direct-BIR or public-entry fallback path.
 - the canonical x86 handoff is now the prepared-module consumer boundary, so
   new work should extend `x86::emit_prepared_module(...)` rather than adding
   new public/backend-side fallback renderers
-- keep the current support semantic and minimal: one prepared function, one
-  block, and only direct `i32` return families already modeled by the
-  canonical prepared boundary, with no hidden mixed fallback
-- keep immediate-op support limited to the same one-op prepared shape; do not
-  widen into multi-instruction prep or mixed fallback behavior unless the
-  canonical prepared route and proof stay equally honest
-- remaining shift-immediate follow-up work must stay equally bounded: one
-  block, one returned SSA value, and a direct `edi` to `eax` lowering shape
-  through the prepared-module consumer
-- the new shift support remains intentionally one-way: keep any future shift
-  families to `param op immediate` semantics only, not `immediate op param`
-  or variable-count lowering through `cl`
-- if the next packet moves beyond one-op returns into control flow, keep the
-  route proof semantic and bounded rather than broadening into text-shape-only
-  backend assertions
+- keep the current branch support equally bounded: one prepared function, one
+  entry compare, one `cond_br`, and two leaf return blocks with no join/phi or
+  hidden mixed fallback
+- the branch support currently assumes `BinaryOpcode::Eq` against zero with the
+  sole parameter as the compared value and immediate `i32` returns in both leaf
+  blocks; widen only if the prepared-module consumer can stay semantic and
+  explicit
+- keep control-flow proof route-oriented by comparing prepared/public/generic
+  outputs against the same canonical assembly instead of falling back to loose
+  substring assertions
+- if the next packet adds a non-immediate leaf return, preserve the canonical
+  prepared-module boundary and avoid sneaking in a second renderer for
+  parameter moves or direct-BIR shortcuts
 
 ## Proof
 
