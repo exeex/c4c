@@ -67,6 +67,12 @@ std::string expected_minimal_param_and_immediate_asm(const char* function_name, 
          ":\n    mov eax, edi\n    and eax, " + std::to_string(immediate) + "\n    ret\n";
 }
 
+std::string expected_minimal_param_xor_immediate_asm(const char* function_name, int immediate) {
+  return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
+         "\n.type " + function_name + ", @function\n" + function_name +
+         ":\n    mov eax, edi\n    xor eax, " + std::to_string(immediate) + "\n    ret\n";
+}
+
 bir::Module make_x86_return_constant_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -230,6 +236,38 @@ bir::Module make_x86_param_and_immediate_module() {
   });
   entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "masked"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_x86_param_xor_immediate_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "flip_masked_bits";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Xor,
+      .result = bir::Value::named(bir::TypeKind::I32, "flipped"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(10),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "flipped"),
   };
 
   function.blocks.push_back(std::move(entry));
@@ -403,6 +441,15 @@ int main() {
                               expected_minimal_param_and_immediate_asm("mask_low_bits", 15),
                               "bir.func @mask_low_bits(i32 p.x) -> i32 {",
                               "minimal i32 parameter and-immediate route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(make_x86_param_xor_immediate_module(),
+                              expected_minimal_param_xor_immediate_asm("flip_masked_bits", 10),
+                              "bir.func @flip_masked_bits(i32 p.x) -> i32 {",
+                              "minimal i32 parameter xor-immediate route");
       status != 0) {
     return status;
   }
