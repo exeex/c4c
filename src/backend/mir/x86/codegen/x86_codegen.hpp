@@ -1042,16 +1042,18 @@ inline std::string emit_prepared_module(
         "x86 backend emitter requires an x86 target for the canonical prepared-module handoff");
   }
 
+  std::vector<const c4c::backend::bir::Function*> defined_functions;
   const c4c::backend::bir::Function* function_ptr = nullptr;
   for (const auto& candidate : module.module.functions) {
     if (candidate.is_declaration) {
       continue;
     }
-    if (function_ptr != nullptr) {
-      throw std::invalid_argument(
-          "x86 backend emitter only supports a single-function prepared module through the canonical prepared-module handoff");
+    defined_functions.push_back(&candidate);
+    if (candidate.name == "main") {
+      function_ptr = &candidate;
+    } else if (function_ptr == nullptr) {
+      function_ptr = &candidate;
     }
-    function_ptr = &candidate;
   }
   if (function_ptr == nullptr) {
     throw std::invalid_argument(
@@ -1059,13 +1061,6 @@ inline std::string emit_prepared_module(
   }
 
   const auto& function = *function_ptr;
-  if (function.is_declaration || function.params.size() > 1 ||
-      function.return_type != c4c::backend::bir::TypeKind::I32 || function.blocks.empty()) {
-    throw std::invalid_argument(
-        "x86 backend emitter only supports a minimal i32 return function through the canonical prepared-module handoff");
-  }
-
-  const auto& entry = function.blocks.front();
   const auto asm_prefix = ".intel_syntax noprefix\n.text\n.globl " + function.name +
                           "\n.type " + function.name + ", @function\n" + function.name + ":\n";
   const auto narrow_abi_register = [](std::string_view wide_register) -> std::optional<std::string> {
@@ -1401,6 +1396,313 @@ inline std::string emit_prepared_module(
     }
     return data;
   };
+  const auto minimal_function_return_register =
+      [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
+    if (!candidate.return_abi.has_value()) {
+      return std::nullopt;
+    }
+    return narrow_register(c4c::backend::prepare::call_result_destination_register_name(
+        resolved_target_profile, *candidate.return_abi));
+  };
+  const auto minimal_function_asm_prefix =
+      [&](const c4c::backend::bir::Function& candidate) -> std::string {
+    return ".intel_syntax noprefix\n.text\n.globl " + candidate.name + "\n.type " + candidate.name +
+           ", @function\n" + candidate.name + ":\n";
+  };
+  const auto try_render_trivial_defined_function =
+      [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
+    if (prepared_arch != c4c::TargetArch::X86_64 || !candidate.params.empty() ||
+        !candidate.local_slots.empty() || candidate.blocks.size() != 1) {
+      return std::nullopt;
+    }
+    const auto& candidate_entry = candidate.blocks.front();
+    if (!candidate_entry.insts.empty() ||
+        candidate_entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return) {
+      return std::nullopt;
+    }
+    if (candidate.return_type == c4c::backend::bir::TypeKind::Void &&
+        !candidate_entry.terminator.value.has_value()) {
+      return minimal_function_asm_prefix(candidate) + "    ret\n";
+    }
+    if (candidate.return_type != c4c::backend::bir::TypeKind::I32 ||
+        !candidate_entry.terminator.value.has_value() ||
+        candidate_entry.terminator.value->kind != c4c::backend::bir::Value::Kind::Immediate) {
+      return std::nullopt;
+    }
+    const auto candidate_return_register = minimal_function_return_register(candidate);
+    if (!candidate_return_register.has_value()) {
+      return std::nullopt;
+    }
+    return minimal_function_asm_prefix(candidate) + "    mov " + *candidate_return_register + ", " +
+           std::to_string(
+               static_cast<std::int32_t>(candidate_entry.terminator.value->immediate)) +
+           "\n    ret\n";
+  };
+  const auto try_render_bounded_multi_defined_call_lane = [&]() -> std::optional<std::string> {
+    if (defined_functions.size() <= 1 || prepared_arch != c4c::TargetArch::X86_64) {
+      return std::nullopt;
+    }
+
+    static constexpr const char* kArgRegs64[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+    static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
+    std::unordered_set<std::string_view> emitted_string_names;
+    std::vector<const c4c::backend::bir::StringConstant*> used_string_constants;
+    std::unordered_set<std::string_view> used_same_module_globals;
+    std::string rendered_functions;
+    bool saw_bounded_entry = false;
+
+    for (const auto* candidate : defined_functions) {
+      if (const auto rendered_trivial = try_render_trivial_defined_function(*candidate);
+          rendered_trivial.has_value()) {
+        rendered_functions += *rendered_trivial;
+        continue;
+      }
+
+      if (saw_bounded_entry || candidate->return_type != c4c::backend::bir::TypeKind::I32 ||
+          !candidate->params.empty() || candidate->blocks.size() != 1 ||
+          candidate->blocks.front().label != "entry" ||
+          candidate->blocks.front().terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+          !candidate->blocks.front().terminator.value.has_value()) {
+        return std::nullopt;
+      }
+
+      const auto candidate_return_register = minimal_function_return_register(*candidate);
+      if (!candidate_return_register.has_value()) {
+        return std::nullopt;
+      }
+
+      struct CandidateLocalSlotLayout {
+        std::unordered_map<std::string_view, std::size_t> offsets;
+        std::size_t frame_size = 0;
+      };
+      const auto build_candidate_local_slot_layout = [&]() -> std::optional<CandidateLocalSlotLayout> {
+        CandidateLocalSlotLayout layout;
+        std::size_t next_offset = 0;
+        std::size_t max_align = 16;
+        for (const auto& slot : candidate->local_slots) {
+          if (slot.type != c4c::backend::bir::TypeKind::I8 &&
+              slot.type != c4c::backend::bir::TypeKind::I16 &&
+              slot.type != c4c::backend::bir::TypeKind::I32 &&
+              slot.type != c4c::backend::bir::TypeKind::I64 &&
+              slot.type != c4c::backend::bir::TypeKind::Ptr) {
+            return std::nullopt;
+          }
+          const auto slot_size = slot.size_bytes != 0
+                                     ? slot.size_bytes
+                                     : (slot.type == c4c::backend::bir::TypeKind::Ptr ? 8u
+                                        : slot.type == c4c::backend::bir::TypeKind::I64 ? 8u
+                                        : slot.type == c4c::backend::bir::TypeKind::I16 ? 2u
+                                        : slot.type == c4c::backend::bir::TypeKind::I32 ? 4u
+                                                                                        : 1u);
+          const auto slot_align = slot.align_bytes != 0 ? slot.align_bytes : slot_size;
+          if (slot_size == 0 || slot_size > 8 || slot_align > 16) {
+            return std::nullopt;
+          }
+          next_offset = align_up(next_offset, slot_align);
+          layout.offsets.emplace(slot.name, next_offset);
+          next_offset += slot_size;
+          max_align = std::max(max_align, slot_align);
+        }
+        layout.frame_size = align_up(next_offset, max_align);
+        return layout;
+      };
+      const auto candidate_layout = build_candidate_local_slot_layout();
+      if (!candidate_layout.has_value()) {
+        return std::nullopt;
+      }
+      const auto candidate_stack_adjust = candidate_layout->frame_size + 8;
+      const auto render_candidate_local_i32 = [&](std::string_view slot_name) -> std::optional<std::string> {
+        const auto slot_it = candidate_layout->offsets.find(slot_name);
+        if (slot_it == candidate_layout->offsets.end()) {
+          return std::nullopt;
+        }
+        return render_stack_memory_operand(slot_it->second + 8, "DWORD");
+      };
+
+      std::string body = "    sub rsp, " + std::to_string(candidate_stack_adjust) + "\n";
+      std::optional<std::string_view> current_i32_name;
+      for (const auto& inst : candidate->blocks.front().insts) {
+        if (const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst)) {
+          if (call->args.size() != call->arg_types.size() || call->args.size() > 6 ||
+              (call->result.has_value() &&
+               call->result->type != c4c::backend::bir::TypeKind::I32 &&
+               call->result->type != c4c::backend::bir::TypeKind::Void)) {
+            return std::nullopt;
+          }
+          std::string callee_name;
+          if (!call->is_indirect) {
+            if (call->callee.empty() || call->callee_value.has_value()) {
+              return std::nullopt;
+            }
+            callee_name = call->callee;
+          } else {
+            if (!call->callee.empty() || !call->callee_value.has_value() ||
+                call->callee_value->kind != c4c::backend::bir::Value::Kind::Named ||
+                call->callee_value->type != c4c::backend::bir::TypeKind::Ptr ||
+                call->callee_value->name.empty() || call->callee_value->name.front() != '@') {
+              return std::nullopt;
+            }
+            callee_name = std::string(call->callee_value->name.substr(1));
+            bool found_same_module_function = false;
+            for (const auto* available_function : defined_functions) {
+              if (available_function->name == callee_name) {
+                found_same_module_function = true;
+                break;
+              }
+            }
+            if (!found_same_module_function) {
+              return std::nullopt;
+            }
+          }
+
+          for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
+            const auto& arg = call->args[arg_index];
+            if (call->arg_types[arg_index] == c4c::backend::bir::TypeKind::Ptr) {
+              if (arg.kind != c4c::backend::bir::Value::Kind::Named || arg.name.empty() ||
+                  arg.name.front() != '@') {
+                return std::nullopt;
+              }
+              const std::string_view symbol_name(arg.name.data() + 1, arg.name.size() - 1);
+              if (const auto* string_constant = find_string_constant(symbol_name);
+                  string_constant != nullptr) {
+                if (emitted_string_names.insert(symbol_name).second) {
+                  used_string_constants.push_back(string_constant);
+                }
+                body += "    lea ";
+                body += kArgRegs64[arg_index];
+                body += ", [rip + ";
+                body += render_private_data_label(arg.name);
+                body += "]\n";
+                continue;
+              }
+              const auto* global = find_same_module_global(symbol_name);
+              if (global == nullptr) {
+                return std::nullopt;
+              }
+              used_same_module_globals.insert(global->name);
+              body += "    lea ";
+              body += kArgRegs64[arg_index];
+              body += ", [rip + ";
+              body += render_asm_symbol_name(global->name);
+              body += "]\n";
+              continue;
+            }
+
+            if (call->arg_types[arg_index] != c4c::backend::bir::TypeKind::I32) {
+              return std::nullopt;
+            }
+            if (arg.kind == c4c::backend::bir::Value::Kind::Immediate) {
+              body += "    mov ";
+              body += kArgRegs32[arg_index];
+              body += ", ";
+              body += std::to_string(static_cast<std::int32_t>(arg.immediate));
+              body += "\n";
+              continue;
+            }
+            if (arg.kind != c4c::backend::bir::Value::Kind::Named || !current_i32_name.has_value() ||
+                arg.name != *current_i32_name) {
+              return std::nullopt;
+            }
+            body += "    mov ";
+            body += kArgRegs32[arg_index];
+            body += ", eax\n";
+          }
+
+          body += "    xor eax, eax\n";
+          body += "    call ";
+          body += render_asm_symbol_name(callee_name);
+          body += "\n";
+          current_i32_name =
+              call->result.has_value() && call->result->type == c4c::backend::bir::TypeKind::I32
+                  ? std::optional<std::string_view>(call->result->name)
+                  : std::nullopt;
+          continue;
+        }
+
+        if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
+          if (store->byte_offset != 0 || store->address.has_value() ||
+              store->value.type != c4c::backend::bir::TypeKind::I32) {
+            return std::nullopt;
+          }
+          const auto memory = render_candidate_local_i32(store->slot_name);
+          if (!memory.has_value()) {
+            return std::nullopt;
+          }
+          if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+            body += "    mov " + *memory + ", " +
+                    std::to_string(static_cast<std::int32_t>(store->value.immediate)) + "\n";
+            current_i32_name = std::nullopt;
+            continue;
+          }
+          if (store->value.kind != c4c::backend::bir::Value::Kind::Named ||
+              !current_i32_name.has_value() || store->value.name != *current_i32_name) {
+            return std::nullopt;
+          }
+          body += "    mov " + *memory + ", eax\n";
+          current_i32_name = std::nullopt;
+          continue;
+        }
+
+        const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+        if (load == nullptr || load->byte_offset != 0 || load->address.has_value() ||
+            load->result.type != c4c::backend::bir::TypeKind::I32) {
+          return std::nullopt;
+        }
+        const auto memory = render_candidate_local_i32(load->slot_name);
+        if (!memory.has_value()) {
+          return std::nullopt;
+        }
+        body += "    mov eax, " + *memory + "\n";
+        current_i32_name = load->result.name;
+      }
+
+      const auto& returned = *candidate->blocks.front().terminator.value;
+      if (returned.kind != c4c::backend::bir::Value::Kind::Immediate ||
+          returned.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      body += "    mov " + *candidate_return_register + ", " +
+              std::to_string(static_cast<std::int32_t>(returned.immediate)) +
+              "\n    add rsp, " + std::to_string(candidate_stack_adjust) + "\n    ret\n";
+      rendered_functions += minimal_function_asm_prefix(*candidate) + body;
+      saw_bounded_entry = true;
+    }
+
+    if (!saw_bounded_entry) {
+      return std::nullopt;
+    }
+
+    std::string rendered_data;
+    for (const auto* string_constant : used_string_constants) {
+      rendered_data += emit_string_constant_data(*string_constant);
+    }
+    for (const auto& global : module.module.globals) {
+      if (used_same_module_globals.find(global.name) == used_same_module_globals.end()) {
+        continue;
+      }
+      const auto rendered_global_data = emit_same_module_global_data(global);
+      if (!rendered_global_data.has_value()) {
+        return std::nullopt;
+      }
+      rendered_data += *rendered_global_data;
+    }
+    return rendered_functions + rendered_data;
+  };
+  if (const auto rendered_multi_defined = try_render_bounded_multi_defined_call_lane();
+      rendered_multi_defined.has_value()) {
+    return *rendered_multi_defined;
+  }
+  if (defined_functions.size() > 1) {
+    throw std::invalid_argument(
+        "x86 backend emitter only supports a single-function prepared module through the canonical prepared-module handoff");
+  }
+  if (function.is_declaration || function.params.size() > 1 ||
+      function.return_type != c4c::backend::bir::TypeKind::I32 || function.blocks.empty()) {
+    throw std::invalid_argument(
+        "x86 backend emitter only supports a minimal i32 return function through the canonical prepared-module handoff");
+  }
+
+  const auto& entry = function.blocks.front();
   const auto try_render_minimal_local_slot_return = [&]() -> std::optional<std::string> {
     if (function.params.empty() == false || function.blocks.size() != 1 ||
         entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
