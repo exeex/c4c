@@ -10,19 +10,20 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving the
-materialized compare-join entry-side prepared branch gate behind
-`find_prepared_eq_i32_param_zero_branch_condition()`. The compare-join path no
-longer open-codes the prepared `param == 0` operand check inline, and the same
-prepared-branch helper now also serves the adjacent minimal compare-branch
-route.
+materialized compare-join route's prepared true/false transfer fetch plus
+paired return rendering behind
+`render_materialized_compare_join_branches_if_supported()`. The compare-join
+consumer now asks one prepared join helper for its rendered branch arms
+instead of open-coding the authoritative join transfer lookup and per-edge
+return rendering inline.
 
 ## Suggested Next
 
-The next small Step 3 packet is to move the compare-join path's
-true/false-transfer fetch plus paired return rendering behind one prepared
-join-consumer helper so `render_materialized_compare_join_if_supported()`
-narrows further without merging with short-circuit topology rules or turning
-into Step 4 file cleanup.
+The next small Step 3 packet is to start consuming
+`PreparedJoinTransferKind::EdgeStoreSlot` through the same authoritative
+join-consumer contract used by the compare-join path, without merging that
+work with short-circuit topology rules, countdown-loop handling, or Step 4
+emitter-file cleanup.
 
 ## Watchouts
 
@@ -35,22 +36,20 @@ into Step 4 file cleanup.
   file-organization cleanup.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth or new
   emitter-local CFG scans.
-- `find_materialized_compare_join_context()` is intentionally scoped to the
-  joined compare-return route: it validates the authoritative prepared join
+- `find_materialized_compare_join_context()` is still intentionally scoped to
+  the joined compare-return route: it validates the authoritative prepared join
   carrier and trailing binary around the prepared join result, but it should
   not absorb the short-circuit route's continuation/topology rules.
-- `find_prepared_eq_i32_param_zero_branch_condition()` is scoped to prepared
-  `Eq` `i32` conditions over the entry param and zero. If another route needs a
-  broader predicate shape, strengthen the helper around prepared branch
-  semantics instead of restoring inline operand scans.
+- `render_materialized_compare_join_branches_if_supported()` is the current
+  prepared join-consumer seam for this route. Keep follow-on work keyed by the
+  prepared join transfer and edge metadata instead of rebuilding transfer
+  meaning from join-block scans or local instruction names.
 - If another consumer path needs extra branch or join facts, strengthen the
   shared prepared-control-flow contract in `prealloc.hpp` rather than growing
   emitter-local scans or CFG-shape recovery.
 - `test_before.log` remains the narrow baseline for
   `^backend_x86_handoff_boundary$`, and this packet refreshed `test_after.log`
   with the same focused proof command for supervisor review.
-- Keep the compare-join helper surfaces keyed by prepared branch/join metadata,
-  not by local instruction names or join-block scans.
 - Treat any future fix here as capability repair, not expectation weakening:
   the joined-branch and loop-countdown routes are covered by
   `backend_x86_handoff_boundary`.
