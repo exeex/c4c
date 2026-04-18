@@ -4329,7 +4329,7 @@ std::string emit_prepared_module(
     }
     return std::nullopt;
   };
-  const auto find_prepared_eq_i32_branch_condition =
+  const auto find_prepared_i32_eq_or_ne_branch_condition =
       [&](const c4c::backend::bir::Block& source_block)
       -> const c4c::backend::prepare::PreparedBranchCondition* {
     if (source_block.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
@@ -4347,7 +4347,8 @@ std::string emit_prepared_module(
     if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
         !branch_condition->compare_type.has_value() || !branch_condition->lhs.has_value() ||
         !branch_condition->rhs.has_value() ||
-        *branch_condition->predicate != c4c::backend::bir::BinaryOpcode::Eq ||
+        (*branch_condition->predicate != c4c::backend::bir::BinaryOpcode::Eq &&
+         *branch_condition->predicate != c4c::backend::bir::BinaryOpcode::Ne) ||
         *branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
         branch_condition->condition_value.kind != c4c::backend::bir::Value::Kind::Named ||
         branch_condition->condition_value.name != source_block.terminator.condition.name ||
@@ -4358,13 +4359,18 @@ std::string emit_prepared_module(
 
     return branch_condition;
   };
-  const auto find_prepared_eq_i32_param_zero_branch_condition =
+  struct PreparedParamZeroBranchCondition {
+    const c4c::backend::prepare::PreparedBranchCondition* branch_condition = nullptr;
+    std::string_view false_label;
+    const char* false_branch_opcode = nullptr;
+  };
+  const auto find_prepared_param_zero_branch_condition =
       [&](const c4c::backend::bir::Block& source_block,
           const c4c::backend::bir::Param& param)
-      -> const c4c::backend::prepare::PreparedBranchCondition* {
-    const auto* branch_condition = find_prepared_eq_i32_branch_condition(source_block);
+      -> std::optional<PreparedParamZeroBranchCondition> {
+    const auto* branch_condition = find_prepared_i32_eq_or_ne_branch_condition(source_block);
     if (branch_condition == nullptr) {
-      return nullptr;
+      return std::nullopt;
     }
 
     const bool lhs_is_param_rhs_is_zero =
@@ -4380,10 +4386,25 @@ std::string emit_prepared_module(
         branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32 &&
         branch_condition->lhs->immediate == 0;
     if (!lhs_is_param_rhs_is_zero && !rhs_is_param_lhs_is_zero) {
-      return nullptr;
+      return std::nullopt;
     }
 
-    return branch_condition;
+    if (*branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Eq) {
+      return PreparedParamZeroBranchCondition{
+          .branch_condition = branch_condition,
+          .false_label = branch_condition->false_label,
+          .false_branch_opcode = "jne",
+      };
+    }
+    if (*branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Ne) {
+      return PreparedParamZeroBranchCondition{
+          .branch_condition = branch_condition,
+          .false_label = branch_condition->false_label,
+          .false_branch_opcode = "je",
+      };
+    }
+
+    return std::nullopt;
   };
   const auto render_param_derived_return_if_supported =
       [&](const c4c::backend::bir::Value& value,
@@ -4478,13 +4499,15 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto* branch_condition = find_prepared_eq_i32_param_zero_branch_condition(entry, param);
-    if (branch_condition == nullptr) {
+    const auto prepared_branch =
+        find_prepared_param_zero_branch_condition(entry, param);
+    if (!prepared_branch.has_value()) {
       return std::nullopt;
     }
 
-    const auto* true_block = find_block(entry.terminator.true_label);
-    const auto* false_block = find_block(entry.terminator.false_label);
+    const auto* branch_condition = prepared_branch->branch_condition;
+    const auto* true_block = find_block(branch_condition->true_label);
+    const auto* false_block = find_block(branch_condition->false_label);
     if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
         false_block == &entry || true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
         false_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
@@ -4504,9 +4527,10 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const std::string false_label = ".L" + function.name + "_" + false_block->label;
-    return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    jne " +
-           false_label + "\n" + *true_return +
+    const std::string false_label = ".L" + function.name + "_" +
+                                    std::string(prepared_branch->false_label);
+    return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    " +
+           prepared_branch->false_branch_opcode + " " + false_label + "\n" + *true_return +
            false_label + ":\n" + *false_return;
   };
   const auto render_materialized_compare_join_if_supported =
@@ -4528,10 +4552,13 @@ std::string emit_prepared_module(
     }
 
     const auto* function_control_flow = find_control_flow_function();
-    const auto* branch_condition = find_prepared_eq_i32_param_zero_branch_condition(entry, param);
-    if (function_control_flow == nullptr || branch_condition == nullptr) {
+    const auto prepared_branch =
+        find_prepared_param_zero_branch_condition(entry, param);
+    if (function_control_flow == nullptr || !prepared_branch.has_value() ||
+        prepared_branch->branch_condition == nullptr) {
       return std::nullopt;
     }
+    const auto* branch_condition = prepared_branch->branch_condition;
 
     const auto authoritative_join_transfer =
         find_authoritative_branch_owned_join_transfer(*function_control_flow, entry.label);
@@ -4552,8 +4579,9 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    jne " +
-           rendered_join->false_label + "\n" + rendered_join->true_return +
+    return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    " +
+           prepared_branch->false_branch_opcode + " " + rendered_join->false_label + "\n" +
+           rendered_join->true_return +
            rendered_join->false_label + ":\n" + rendered_join->false_return;
   };
   if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||

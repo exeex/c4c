@@ -124,10 +124,16 @@ std::string expected_minimal_param_binary_asm(const char* function_name,
          "\n    ret\n";
 }
 
-std::string expected_branch_prefix(const char* function_name, const char* false_label) {
+std::string expected_zero_branch_prefix(const char* function_name,
+                                        const char* false_label,
+                                        const char* false_branch_opcode) {
   const auto param_register = minimal_i32_param_register();
   return asm_header(function_name) + "    test " + param_register + ", " + param_register +
-         "\n    jne .L" + function_name + "_" + false_label + "\n";
+         "\n    " + false_branch_opcode + " .L" + function_name + "_" + false_label + "\n";
+}
+
+std::string expected_branch_prefix(const char* function_name, const char* false_label) {
+  return expected_zero_branch_prefix(function_name, false_label, "jne");
 }
 
 std::string expected_minimal_constant_return_asm(const char* function_name, int returned_value) {
@@ -680,6 +686,30 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_ashr_as
          minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
+std::string expected_minimal_param_ne_zero_branch_asm(const char* function_name,
+                                                      const char* false_label,
+                                                      int true_returned_value,
+                                                      int false_returned_value) {
+  return expected_zero_branch_prefix(function_name, false_label, "je") + "    mov " +
+         minimal_i32_return_register() + ", " + std::to_string(true_returned_value) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " +
+         std::to_string(false_returned_value) + "\n    ret\n";
+}
+
+std::string expected_minimal_param_ne_zero_branch_joined_add_or_sub_asm(
+    const char* function_name,
+    const char* false_label,
+    int true_immediate,
+    int false_immediate) {
+  return expected_zero_branch_prefix(function_name, false_label, "je") + "    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() +
+         "\n    sub " + minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    add " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) + "\n    ret\n";
+}
+
 bir::Module make_x86_return_constant_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1106,6 +1136,54 @@ bir::Module make_x86_param_eq_zero_branch_param_or_immediate_module() {
   return module;
 }
 
+bir::Module make_x86_param_ne_zero_branch_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "branch_on_nonzero";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .true_label = "is_nonzero",
+      .false_label = "is_zero",
+  };
+
+  bir::Block is_nonzero;
+  is_nonzero.label = "is_nonzero";
+  is_nonzero.terminator = bir::ReturnTerminator{
+      .value = bir::Value::immediate_i32(11),
+  };
+
+  bir::Block is_zero;
+  is_zero.label = "is_zero";
+  is_zero.terminator = bir::ReturnTerminator{
+      .value = bir::Value::immediate_i32(7),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(is_nonzero));
+  function.blocks.push_back(std::move(is_zero));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_x86_param_eq_zero_branch_joined_add_or_sub_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1179,6 +1257,84 @@ bir::Module make_x86_param_eq_zero_branch_joined_add_or_sub_module() {
   function.blocks.push_back(std::move(entry));
   function.blocks.push_back(std::move(is_zero));
   function.blocks.push_back(std::move(is_nonzero));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_x86_param_ne_zero_branch_joined_sub_or_add_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "branch_join_adjust_nonzero";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .true_label = "is_nonzero",
+      .false_label = "is_zero",
+  };
+
+  bir::Block is_nonzero;
+  is_nonzero.label = "is_nonzero";
+  is_nonzero.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "nonzero.adjusted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  is_nonzero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block is_zero;
+  is_zero.label = "is_zero";
+  is_zero.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "zero.adjusted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(5),
+  });
+  is_zero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "is_nonzero",
+              .value = bir::Value::named(bir::TypeKind::I32, "nonzero.adjusted"),
+          },
+          bir::PhiIncoming{
+              .label = "is_zero",
+              .value = bir::Value::named(bir::TypeKind::I32, "zero.adjusted"),
+          },
+      },
+  });
+  join.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "merge"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(is_nonzero));
+  function.blocks.push_back(std::move(is_zero));
   function.blocks.push_back(std::move(join));
   module.functions.push_back(std::move(function));
   return module;
@@ -4582,6 +4738,27 @@ int main() {
       status != 0) {
     return status;
   }
+  if (const auto status =
+          check_route_outputs(make_x86_param_ne_zero_branch_module(),
+                              expected_minimal_param_ne_zero_branch_asm("branch_on_nonzero",
+                                                                        "is_zero",
+                                                                        11,
+                                                                        7),
+                              "bir.func @branch_on_nonzero(i32 p.x) -> i32 {",
+                              "scalar-control-flow compare-against-zero nonzero branch lane");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_consumes_prepared_control_flow(
+              make_x86_param_ne_zero_branch_module(),
+              expected_minimal_param_ne_zero_branch_asm(
+                  "branch_on_nonzero", "is_zero", 11, 7),
+              "branch_on_nonzero",
+              "scalar-control-flow compare-against-zero nonzero branch lane prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
 
   if (const auto status =
           check_route_outputs(
@@ -4621,6 +4798,36 @@ int main() {
                   "branch_join_adjust", "is_nonzero", 5, 1),
               "branch_join_adjust",
               "scalar-control-flow compare-against-zero joined branch lane EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_route_outputs(
+              make_x86_param_ne_zero_branch_joined_sub_or_add_module(),
+              expected_minimal_param_ne_zero_branch_joined_add_or_sub_asm(
+                  "branch_join_adjust_nonzero", "is_zero", 1, 5),
+              "join:\n  nonzero.adjusted = bir.sub i32 p.x, 1\n  zero.adjusted = bir.add i32 p.x, 5\n  merge = bir.select ne i32 p.x, 0, i32 nonzero.adjusted, zero.adjusted\n  bir.ret i32 merge",
+              "scalar-control-flow compare-against-zero nonzero joined branch lane");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_consumes_prepared_control_flow(
+              make_x86_param_ne_zero_branch_joined_sub_or_add_module(),
+              expected_minimal_param_ne_zero_branch_joined_add_or_sub_asm(
+                  "branch_join_adjust_nonzero", "is_zero", 1, 5),
+              "branch_join_adjust_nonzero",
+              "scalar-control-flow compare-against-zero nonzero joined branch lane prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_consumes_prepared_control_flow(
+              make_x86_param_ne_zero_branch_joined_sub_or_add_module(),
+              expected_minimal_param_ne_zero_branch_joined_add_or_sub_asm(
+                  "branch_join_adjust_nonzero", "is_zero", 1, 5),
+              "branch_join_adjust_nonzero",
+              "scalar-control-flow compare-against-zero nonzero joined branch lane EdgeStoreSlot prepared-control-flow ownership");
       status != 0) {
     return status;
   }

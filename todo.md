@@ -9,20 +9,22 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by deleting the stale
-`find_authoritative_select_materialization_join_transfer()` helper after the
-adjacent non-countdown branch-owned join consumers converged on the shared
-prepared-carrier validation path. The active Step 3 x86 join consumers now use
-the branch-owned authoritative lookup seam consistently instead of carrying a
-dead select-only variant.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by broadening the
+minimal compare-against-zero branch and joined-branch consumers from prepared
+`eq i32 param, 0` only to prepared `eq/ne i32 param, 0` control-flow facts.
+The x86 handoff path now derives false-branch polarity from prepared branch
+metadata instead of hard-coding the equality-only lane, and
+`tests/backend/backend_x86_handoff_boundary_test.cpp` now proves actual
+prepared `BinaryOpcode::Ne` ownership for both the plain branch and
+branch-owned join cases.
 
 ## Suggested Next
 
-Treat the non-countdown authoritative-join carrier cleanup as exhausted and
-pick the next small Step 3 packet from a still-live prepared-control-flow
-consumer seam, or hand lifecycle back for route refresh if the remaining work
-is no longer a real Step 3 consumer packet without entering countdown loops or
-Step 4 file reorganization.
+Pick the next small Step 3 consumer packet that replaces another
+equality-shaped prepared-branch assumption with a predicate-driven prepared
+lookup, or hand lifecycle back for route refresh if the remaining Step 3 work
+would otherwise spill into countdown-loop routing or Step 4 file
+reorganization.
 
 ## Watchouts
 
@@ -35,15 +37,16 @@ Step 4 file reorganization.
   file-organization cleanup.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth or new
   emitter-local CFG scans.
-- The materialized-compare and short-circuit join helpers now share one
-  prepared-carrier validation path, so follow-on work should reuse that seam
-  instead of reintroducing per-helper carrier parsing or destination-name
+- Keep deriving branch polarity from prepared branch metadata rather than from
+  equality-only assumptions in the emitter.
+- The materialized-compare and short-circuit join helpers already share one
+  prepared-carrier validation seam, so follow-on work should extend that
+  seam instead of reintroducing per-helper carrier parsing or destination-name
   assumptions.
 - The joined-branch ownership helper still proves both
   `SelectMaterialization` and `PreparedJoinTransferKind::EdgeStoreSlot`
-  carriers with a renamed carrier result; keep any further coverage in this
-  family focused on prepared carrier validation rather than broader route
-  expansion.
+  carriers; keep further work in this family focused on prepared carrier
+  validation rather than broader route expansion.
 - If another consumer path needs extra branch or join facts, strengthen the
   shared prepared-control-flow contract in `prealloc.hpp` rather than growing
   emitter-local scans or CFG-shape recovery.
@@ -51,13 +54,13 @@ Step 4 file reorganization.
   `^backend_x86_handoff_boundary$`, and this packet refreshed `test_after.log`
   with the same focused proof command for supervisor review.
 - Treat any future fix here as capability repair, not expectation weakening:
-  the joined-branch and loop-countdown routes are covered by
+  the eq/ne joined-branch and loop-countdown routes are covered by
   `backend_x86_handoff_boundary`.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This cleanup packet passed with the same focused
-`backend_x86_handoff_boundary` proof command, and `test_after.log` remains the
-fresh canonical narrow log for the authoritative-join helper surface.
+This packet passed with the same focused `backend_x86_handoff_boundary` proof
+command, and `test_after.log` remains the fresh canonical narrow log for the
+prepared eq/ne branch-owned consumer surface.
