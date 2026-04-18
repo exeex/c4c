@@ -27,6 +27,37 @@ using lir_to_bir_detail::parse_typed_operand;
 using lir_to_bir_detail::resolve_index_operand;
 using lir_to_bir_detail::type_size_bytes;
 
+static bool can_address_scalar_subobject(std::int64_t byte_offset,
+                                         bir::TypeKind stored_type,
+                                         std::string_view type_text,
+                                         bir::TypeKind access_type,
+                                         const BirFunctionLowerer::TypeDeclMap& type_decls,
+                                         bool allow_opaque_ptr_base) {
+  if (byte_offset < 0) {
+    return false;
+  }
+  if (stored_type == access_type) {
+    return true;
+  }
+  if (stored_type != bir::TypeKind::Void) {
+    return false;
+  }
+  if (allow_opaque_ptr_base && byte_offset == 0 && (type_text.empty() || type_text == "ptr")) {
+    return true;
+  }
+
+  const auto access_size = type_size_bytes(access_type);
+  if (access_size == 0) {
+    return false;
+  }
+  const auto view_layout = compute_aggregate_type_layout(type_text, type_decls);
+  if (view_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+      view_layout.size_bytes == 0) {
+    return false;
+  }
+  return static_cast<std::size_t>(byte_offset) + access_size <= view_layout.size_bytes;
+}
+
 static std::optional<std::vector<std::string>> collect_local_scalar_array_slots(
     std::string_view type_text,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
@@ -359,48 +390,6 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   const auto fail_load = [&]() {
     note_function_lowering_family_failure("load local-memory semantic family");
     return false;
-  };
-  const auto can_address_local_scalar_subobject =
-      [&](const LocalSlotAddress& address, bir::TypeKind access_type) -> bool {
-    if (address.byte_offset < 0) {
-      return false;
-    }
-    if (address.value_type == access_type) {
-      return true;
-    }
-    if (address.value_type != bir::TypeKind::Void) {
-      return false;
-    }
-    const auto access_size = type_size_bytes(access_type);
-    if (access_size == 0) {
-      return false;
-    }
-    const auto view_layout = compute_aggregate_type_layout(address.type_text, type_decls);
-    if (view_layout.kind == AggregateTypeLayout::Kind::Invalid || view_layout.size_bytes == 0) {
-      return false;
-    }
-    return static_cast<std::size_t>(address.byte_offset) + access_size <= view_layout.size_bytes;
-  };
-  const auto can_address_pointer_scalar_subobject =
-      [&](const PointerAddress& address, bir::TypeKind access_type) -> bool {
-    if (address.value_type == access_type) {
-      return true;
-    }
-    if (address.value_type != bir::TypeKind::Void) {
-      return false;
-    }
-    if (address.byte_offset == 0 && (address.type_text.empty() || address.type_text == "ptr")) {
-      return true;
-    }
-    const auto access_size = type_size_bytes(access_type);
-    if (access_size == 0) {
-      return false;
-    }
-    const auto view_layout = compute_aggregate_type_layout(address.type_text, type_decls);
-    if (view_layout.kind == AggregateTypeLayout::Kind::Invalid || view_layout.size_bytes == 0) {
-      return false;
-    }
-    return address.byte_offset + access_size <= view_layout.size_bytes;
   };
   if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, lowered_insts)) {
     return true;
@@ -1568,7 +1557,12 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
 
     if (const auto addressed_ptr_it = pointer_value_addresses.find(store->ptr.str());
         addressed_ptr_it != pointer_value_addresses.end()) {
-      if (!can_address_pointer_scalar_subobject(addressed_ptr_it->second, *value_type)) {
+      if (!can_address_scalar_subobject(static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
+                                        addressed_ptr_it->second.value_type,
+                                        addressed_ptr_it->second.type_text,
+                                        *value_type,
+                                        type_decls,
+                                        true)) {
         return fail_store();
       }
       if (!append_addressed_store(
@@ -1592,7 +1586,12 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       const bool can_use_direct_local_slot =
           direct_slot_type_it != local_slot_types.end() &&
           direct_slot_type_it->second == *value_type;
-      if (!can_address_local_scalar_subobject(local_slot_ptr_it->second, *value_type)) {
+      if (!can_address_scalar_subobject(local_slot_ptr_it->second.byte_offset,
+                                        local_slot_ptr_it->second.value_type,
+                                        local_slot_ptr_it->second.type_text,
+                                        *value_type,
+                                        type_decls,
+                                        false)) {
         return fail_store();
       }
       if (exact_local_slot_type && can_use_direct_local_slot &&
@@ -2036,7 +2035,12 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
 
     if (const auto addressed_ptr_it = pointer_value_addresses.find(load->ptr.str());
         addressed_ptr_it != pointer_value_addresses.end()) {
-      if (!can_address_pointer_scalar_subobject(addressed_ptr_it->second, *value_type)) {
+      if (!can_address_scalar_subobject(static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
+                                        addressed_ptr_it->second.value_type,
+                                        addressed_ptr_it->second.type_text,
+                                        *value_type,
+                                        type_decls,
+                                        true)) {
         return fail_load();
       }
       const auto slot_size = type_size_bytes(*value_type);
@@ -2069,7 +2073,12 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       const bool can_use_direct_local_slot =
           direct_slot_type_it != local_slot_types.end() &&
           direct_slot_type_it->second == *value_type;
-      if (!can_address_local_scalar_subobject(local_slot_ptr_it->second, *value_type)) {
+      if (!can_address_scalar_subobject(local_slot_ptr_it->second.byte_offset,
+                                        local_slot_ptr_it->second.value_type,
+                                        local_slot_ptr_it->second.type_text,
+                                        *value_type,
+                                        type_decls,
+                                        false)) {
         return fail_load();
       }
       if (*value_type == bir::TypeKind::Ptr && exact_local_slot_type && can_use_direct_local_slot &&
