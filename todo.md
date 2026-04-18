@@ -6,38 +6,39 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2: extracted the remaining coordinator-owned
-`DynamicLocalAggregateArrayAccess` constructor from
+Plan Step 2: extracted the remaining coordinator-owned dynamic local-aggregate
+GEP projection from
 `src/backend/bir/lir_to_bir_memory.cpp` into
 `src/backend/bir/lir_to_bir_memory_local_slots.cpp` as
-`build_dynamic_local_aggregate_array_access`, so the coordinator still chooses
-the GEP route while local-slot mechanics now own the repeated-extent and
-leaf-slot packaging for dynamic local aggregate array access.
+`resolve_dynamic_local_aggregate_gep_projection`, so the coordinator still
+chooses the dynamic local-aggregate lane while local-slot mechanics now own
+the per-element slot projection for dynamic local aggregate GEP results.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by extracting the remaining
-`dynamic_local_aggregate_arrays.find(gep->ptr.str())` projection block in
-`src/backend/bir/lir_to_bir_memory.cpp` into a local-slots helper, so the
-coordinator stops assembling per-element slot vectors for dynamic local
-aggregate GEP projections inline.
+Continue `plan.md` Step 2 by extracting the next remaining
+`dynamic_local_aggregate_arrays.find(...)` consumer in
+`src/backend/bir/lir_to_bir_memory.cpp`, preferably the store or load path,
+into local-slot ownership helpers so the coordinator stops carrying dynamic
+local aggregate value mechanics inline.
 
 ## Watchouts
 
 - This plan is refactor-only; do not claim x86 backend capability progress from
   it.
 - Keep `lower_scalar_or_local_memory_inst` in the main coordinator TU.
-- `build_dynamic_local_aggregate_array_access` now centralizes the repeated
-  extent lookup for scalar-slot-backed dynamic local aggregate arrays; keep
-  future packets focused on the remaining local-slot mechanics instead of
-  pulling shared addressing helpers across ownership buckets.
+- `build_dynamic_local_aggregate_array_access` now owns repeated-extent
+  packaging, and `resolve_dynamic_local_aggregate_gep_projection` now owns the
+  per-element slot projection; keep future packets focused on the remaining
+  dynamic local aggregate local-slot mechanics instead of pulling shared
+  addressing helpers across ownership buckets.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:
   0`; treat the canonical log pair as unchanged-behavior evidence, not as a
   newly introduced regression.
-- The next packet should still be chosen by remaining coordinator-owned local
-  mechanics, not by line counts or by emptying `lir_to_bir_memory.cpp` for its
-  own sake.
+- The next packet should still be chosen by the next coherent
+  coordinator-owned local dynamic aggregate helper family, not by line counts
+  or by emptying `lir_to_bir_memory.cpp` for its own sake.
 - Treat renderer de-headerization as separate idea `56`.
 
 ## Proof

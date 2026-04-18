@@ -652,6 +652,35 @@ BirFunctionLowerer::build_dynamic_local_aggregate_array_access(
   };
 }
 
+std::optional<DynamicLocalPointerArrayAccess>
+BirFunctionLowerer::resolve_dynamic_local_aggregate_gep_projection(
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const TypeDeclMap& type_decls,
+    const DynamicLocalAggregateArrayAccess& access) {
+  std::vector<std::string> element_slots;
+  element_slots.reserve(access.element_count);
+  for (std::size_t element_index = 0; element_index < access.element_count; ++element_index) {
+    LocalAggregateSlots element_aggregate{
+        .storage_type_text = access.element_type_text,
+        .type_text = access.element_type_text,
+        .base_byte_offset = access.byte_offset + element_index * access.element_stride_bytes,
+        .leaf_slots = access.leaf_slots,
+    };
+    const auto element_slot = resolve_local_aggregate_gep_slot(
+        element_aggregate.type_text, gep, value_aliases, type_decls, element_aggregate);
+    if (!element_slot.has_value()) {
+      return std::nullopt;
+    }
+    element_slots.push_back(*element_slot);
+  }
+
+  return DynamicLocalPointerArrayAccess{
+      .element_slots = std::move(element_slots),
+      .index = access.index,
+  };
+}
+
 std::optional<bir::Value> BirFunctionLowerer::load_dynamic_local_aggregate_array_value(
     std::string_view result_name,
     bir::TypeKind value_type,

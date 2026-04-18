@@ -902,30 +902,12 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return true;
     } else if (const auto local_aggregate_it = dynamic_local_aggregate_arrays.find(gep->ptr.str());
                local_aggregate_it != dynamic_local_aggregate_arrays.end()) {
-      std::vector<std::string> element_slots;
-      element_slots.reserve(local_aggregate_it->second.element_count);
-      for (std::size_t element_index = 0;
-           element_index < local_aggregate_it->second.element_count;
-           ++element_index) {
-        LocalAggregateSlots element_aggregate{
-            .storage_type_text = local_aggregate_it->second.element_type_text,
-            .type_text = local_aggregate_it->second.element_type_text,
-            .base_byte_offset =
-                local_aggregate_it->second.byte_offset +
-                element_index * local_aggregate_it->second.element_stride_bytes,
-            .leaf_slots = local_aggregate_it->second.leaf_slots,
-        };
-        const auto element_slot = resolve_local_aggregate_gep_slot(
-            element_aggregate.type_text, *gep, value_aliases, type_decls, element_aggregate);
-        if (!element_slot.has_value()) {
-          return fail_gep();
-        }
-        element_slots.push_back(*element_slot);
+      const auto projection = resolve_dynamic_local_aggregate_gep_projection(
+          *gep, value_aliases, type_decls, local_aggregate_it->second);
+      if (!projection.has_value()) {
+        return fail_gep();
       }
-      dynamic_local_pointer_arrays[gep->result.str()] = DynamicLocalPointerArrayAccess{
-          .element_slots = std::move(element_slots),
-          .index = local_aggregate_it->second.index,
-      };
+      dynamic_local_pointer_arrays[gep->result.str()] = std::move(*projection);
       return true;
     } else if (const auto local_slot_ptr_it = local_slot_pointer_values.find(gep->ptr.str());
                local_slot_ptr_it != local_slot_pointer_values.end()) {
