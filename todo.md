@@ -7,30 +7,30 @@ Source Plan: plan.md
 ## Just Finished
 
 Plan Step 2: extracted the coordinator-side
-`local_slot_pointer_values.find(...)` GEP branch from
+`local_pointer_array_bases.find(...)` GEP branch from
 `src/backend/bir/lir_to_bir_memory.cpp` into
 `src/backend/bir/lir_to_bir_memory_local_slots.cpp` as
-`try_lower_local_slot_pointer_gep`, so the coordinator now only dispatches that
-local-slot-owned family while the helper owns the local-slot map lookup,
-relative GEP target resolution, and rewritten `LocalSlotAddress` result.
+`try_lower_local_pointer_array_base_gep`, so the coordinator now only
+dispatches that local-slot-owned family while the helper owns the array-base
+lookup plus the in-range, one-past-end, negative-offset, and dynamic-index
+local-slot result handling.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by extracting the remaining
-`local_pointer_array_bases.find(...)` GEP branch in
-`src/backend/bir/lir_to_bir_memory.cpp` into a local-slot-owned helper, keeping
-the packet limited to that coordinator dispatch seam rather than widening into
-addressing or provenance helpers.
+Continue `plan.md` Step 2 by extracting the remaining coordinator-side
+local-slot-owned GEP helpers adjacent to this seam, starting with the
+`local_array_slots.find(...)` family if the ownership split still expects one
+more local-slot bucket before moving on.
 
 ## Watchouts
 
 - This plan is refactor-only; do not claim x86 backend capability progress from
   it.
 - Keep `lower_scalar_or_local_memory_inst` in the main coordinator TU.
-- `try_lower_local_slot_pointer_gep` now owns the
-  `local_slot_pointer_values` lookup and relative-address rewrite path; the
-  next packet should not pull that logic back into the coordinator while
-  extracting the adjacent `local_pointer_array_bases` family.
+- `try_lower_local_slot_pointer_gep` and
+  `try_lower_local_pointer_array_base_gep` now own their respective local-slot
+  map lookups; the next packet should continue moving one honest ownership
+  bucket at a time instead of re-centralizing that dispatch in the coordinator.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:
   0`; treat the canonical log pair as unchanged-behavior evidence, not as a
@@ -43,10 +43,8 @@ addressing or provenance helpers.
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir|backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir|c_testsuite_x86_backend_src_00205_c)$' | tee test_after.log`.
-The build passed, and the narrow backend proof reproduced the pre-existing
-single failure `c_testsuite_x86_backend_src_00205_c` with no new failing tests
-versus `test_before.log`. The canonical regression check
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
-reported `delta : passed=0 failed=0` and `new failing tests: 0`, but still
-returned failure because it currently requires the passed count to increase
-strictly. `test_after.log` remains the canonical proof log for this packet.
+The build passed, and the narrow backend proof reproduced the same `4/5`
+result recorded in `test_before.log`: the four backend notes/handoff/dynamic
+member-array tests passed, and the pre-existing failure
+`c_testsuite_x86_backend_src_00205_c` remained unchanged. `test_after.log`
+remains the canonical proof log for this packet.

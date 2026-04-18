@@ -790,6 +790,176 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_slot_pointer_gep(
   return true;
 }
 
+std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const LocalSlotTypes& local_slot_types,
+    LocalPointerSlots* local_pointer_slots,
+    LocalPointerArrayBaseMap* local_pointer_array_bases,
+    DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
+    DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
+    LocalSlotPointerValues* local_slot_pointer_values) {
+  const auto array_base_it = local_pointer_array_bases->find(std::string(gep.ptr.str()));
+  if (array_base_it == local_pointer_array_bases->end()) {
+    return std::nullopt;
+  }
+
+  if (gep.indices.empty() || gep.indices.size() > 2) {
+    return false;
+  }
+
+  std::size_t index_pos = 0;
+  if (gep.indices.size() == 2) {
+    const auto base_index = parse_typed_operand(gep.indices[0]);
+    if (!base_index.has_value()) {
+      return false;
+    }
+    const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+    if (!base_imm.has_value() || *base_imm != 0) {
+      return false;
+    }
+    index_pos = 1;
+  }
+
+  const auto parsed_index = parse_typed_operand(gep.indices[index_pos]);
+  if (!parsed_index.has_value()) {
+    return false;
+  }
+
+  const auto index_imm = resolve_index_operand(parsed_index->operand, value_aliases);
+  if (index_imm.has_value()) {
+    const auto final_index = static_cast<std::int64_t>(array_base_it->second.base_index) + *index_imm;
+    if (final_index < 0) {
+      if (array_base_it->second.element_slots.empty()) {
+        return false;
+      }
+      const auto& base_slot = array_base_it->second.element_slots.front();
+      const auto slot_type_it = local_slot_types.find(base_slot);
+      if (slot_type_it == local_slot_types.end()) {
+        return false;
+      }
+      const auto slot_size = type_size_bytes(slot_type_it->second);
+      if (slot_size == 0) {
+        return false;
+      }
+      (*local_slot_pointer_values)[std::string(gep.result.str())] = LocalSlotAddress{
+          .slot_name = base_slot,
+          .value_type = slot_type_it->second,
+          .byte_offset = final_index * static_cast<std::int64_t>(slot_size),
+          .storage_type_text = render_type(slot_type_it->second),
+          .type_text = render_type(slot_type_it->second),
+          .array_element_slots = array_base_it->second.element_slots,
+      };
+      return true;
+    }
+
+    if (static_cast<std::size_t>(final_index) > array_base_it->second.element_slots.size()) {
+      return false;
+    }
+
+    if (static_cast<std::size_t>(final_index) == array_base_it->second.element_slots.size()) {
+      if (array_base_it->second.element_slots.empty()) {
+        return false;
+      }
+      const auto& base_slot = array_base_it->second.element_slots.front();
+      const auto slot_type_it = local_slot_types.find(base_slot);
+      if (slot_type_it == local_slot_types.end()) {
+        return false;
+      }
+      const auto slot_size = type_size_bytes(slot_type_it->second);
+      if (slot_size == 0) {
+        return false;
+      }
+      (*local_slot_pointer_values)[std::string(gep.result.str())] = LocalSlotAddress{
+          .slot_name = base_slot,
+          .value_type = slot_type_it->second,
+          .byte_offset = final_index * static_cast<std::int64_t>(slot_size),
+          .storage_type_text = render_type(slot_type_it->second),
+          .type_text = render_type(slot_type_it->second),
+          .array_element_slots = array_base_it->second.element_slots,
+          .array_base_index = static_cast<std::size_t>(final_index),
+      };
+      (*local_pointer_array_bases)[std::string(gep.result.str())] = LocalPointerArrayBase{
+          .element_slots = array_base_it->second.element_slots,
+          .base_index = static_cast<std::size_t>(final_index),
+      };
+      return true;
+    }
+
+    (*local_pointer_slots)[std::string(gep.result.str())] =
+        array_base_it->second.element_slots[static_cast<std::size_t>(final_index)];
+    (*local_pointer_array_bases)[std::string(gep.result.str())] = LocalPointerArrayBase{
+        .element_slots = array_base_it->second.element_slots,
+        .base_index = static_cast<std::size_t>(final_index),
+    };
+    return true;
+  }
+
+  const auto index_value = lower_typed_index_value(*parsed_index, value_aliases);
+  if (!index_value.has_value() || array_base_it->second.base_index != 0) {
+    return false;
+  }
+  if (array_base_it->second.element_slots.empty()) {
+    return false;
+  }
+
+  const auto slot_type_it = local_slot_types.find(array_base_it->second.element_slots.front());
+  if (slot_type_it == local_slot_types.end()) {
+    return false;
+  }
+
+  if (slot_type_it->second == bir::TypeKind::Ptr) {
+    (*dynamic_local_pointer_arrays)[std::string(gep.result.str())] = DynamicLocalPointerArrayAccess{
+        .element_slots = array_base_it->second.element_slots,
+        .index = *index_value,
+    };
+    return true;
+  }
+
+  const auto element_size = type_size_bytes(slot_type_it->second);
+  if (element_size == 0) {
+    return false;
+  }
+
+  std::optional<std::string> element_type_text;
+  switch (slot_type_it->second) {
+    case bir::TypeKind::I1:
+      element_type_text = "i1";
+      break;
+    case bir::TypeKind::I8:
+      element_type_text = "i8";
+      break;
+    case bir::TypeKind::I32:
+      element_type_text = "i32";
+      break;
+    case bir::TypeKind::I64:
+      element_type_text = "i64";
+      break;
+    default:
+      return false;
+  }
+
+  DynamicLocalAggregateArrayAccess access{
+      .element_type_text = *element_type_text,
+      .byte_offset = 0,
+      .element_count = array_base_it->second.element_slots.size(),
+      .element_stride_bytes = element_size,
+  };
+  for (std::size_t element_index = 0; element_index < array_base_it->second.element_slots.size();
+       ++element_index) {
+    const auto& slot_name = array_base_it->second.element_slots[element_index];
+    const auto element_slot_type_it = local_slot_types.find(slot_name);
+    if (element_slot_type_it == local_slot_types.end() ||
+        element_slot_type_it->second != slot_type_it->second) {
+      return false;
+    }
+    access.leaf_slots.emplace(element_index * element_size, slot_name);
+  }
+
+  (*dynamic_local_aggregate_arrays)[std::string(gep.result.str())] = std::move(access);
+  return true;
+}
+
 std::optional<bir::Value> BirFunctionLowerer::load_dynamic_local_aggregate_array_value(
     std::string_view result_name,
     bir::TypeKind value_type,
