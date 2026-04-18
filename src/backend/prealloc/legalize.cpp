@@ -874,6 +874,103 @@ PreparedBranchCondition make_branch_condition(const std::string& function_name,
   return condition;
 }
 
+std::optional<std::string> find_linear_join_predecessor(
+    const std::unordered_map<std::string, const bir::Block*>& blocks_by_label,
+    std::string_view start_label,
+    std::string_view join_label) {
+  std::unordered_set<std::string_view> visited;
+  auto current_it = blocks_by_label.find(std::string(start_label));
+  if (current_it == blocks_by_label.end()) {
+    return std::nullopt;
+  }
+
+  const auto* current = current_it->second;
+  while (current != nullptr && visited.insert(current->label).second) {
+    if (current->terminator.kind != bir::TerminatorKind::Branch) {
+      return std::nullopt;
+    }
+    if (current->terminator.target_label == join_label) {
+      return current->label;
+    }
+    current_it = blocks_by_label.find(current->terminator.target_label);
+    if (current_it == blocks_by_label.end()) {
+      return std::nullopt;
+    }
+    current = current_it->second;
+  }
+
+  return std::nullopt;
+}
+
+void collect_select_materialized_join_transfers(
+    const bir::Function& function,
+    const std::vector<PreparedBranchCondition>& branch_conditions,
+    std::vector<PreparedJoinTransfer>* join_transfers) {
+  if (join_transfers == nullptr) {
+    return;
+  }
+
+  std::unordered_map<std::string, const bir::Block*> blocks_by_label;
+  for (const auto& block : function.blocks) {
+    blocks_by_label.emplace(block.label, &block);
+  }
+
+  std::unordered_set<std::string_view> existing_join_blocks;
+  for (const auto& transfer : *join_transfers) {
+    existing_join_blocks.insert(transfer.join_block_label);
+  }
+
+  for (const auto& block : function.blocks) {
+    if (block.insts.empty() || existing_join_blocks.find(block.label) != existing_join_blocks.end()) {
+      continue;
+    }
+
+    const auto* select = std::get_if<bir::SelectInst>(&block.insts.front());
+    if (select == nullptr) {
+      continue;
+    }
+
+    for (const auto& branch_condition : branch_conditions) {
+      if (!branch_condition.predicate.has_value() || !branch_condition.compare_type.has_value() ||
+          !branch_condition.lhs.has_value() || !branch_condition.rhs.has_value() ||
+          *branch_condition.predicate != select->predicate ||
+          *branch_condition.compare_type != select->compare_type ||
+          *branch_condition.lhs != select->lhs || *branch_condition.rhs != select->rhs) {
+        continue;
+      }
+
+      const auto true_incoming_label =
+          find_linear_join_predecessor(blocks_by_label, branch_condition.true_label, block.label);
+      const auto false_incoming_label =
+          find_linear_join_predecessor(blocks_by_label, branch_condition.false_label, block.label);
+      if (!true_incoming_label.has_value() || !false_incoming_label.has_value()) {
+        continue;
+      }
+
+      join_transfers->push_back(PreparedJoinTransfer{
+          .function_name = function.name,
+          .join_block_label = block.label,
+          .result = select->result,
+          .kind = PreparedJoinTransferKind::SelectMaterialization,
+          .storage_name = std::nullopt,
+          .incomings =
+              {
+                  bir::PhiIncoming{
+                      .label = *true_incoming_label,
+                      .value = select->true_value,
+                  },
+                  bir::PhiIncoming{
+                      .label = *false_incoming_label,
+                      .value = select->false_value,
+                  },
+              },
+      });
+      existing_join_blocks.insert(join_transfers->back().join_block_label);
+      break;
+    }
+  }
+}
+
 void legalize_module(const c4c::TargetProfile& target_profile,
                      bir::Module& module,
                      PreparedControlFlow* control_flow) {
@@ -1006,6 +1103,10 @@ void legalize_module(const c4c::TargetProfile& target_profile,
         function_control_flow.branch_conditions.push_back(make_branch_condition(function.name, block));
       }
     }
+    collect_select_materialized_join_transfers(
+        function,
+        function_control_flow.branch_conditions,
+        &function_control_flow.join_transfers);
 
     if (control_flow != nullptr &&
         (!function_control_flow.branch_conditions.empty() ||

@@ -303,6 +303,73 @@ int check_two_way_branch_join_control_flow_contract(const prepare::PreparedBirMo
   return 0;
 }
 
+int check_short_circuit_or_control_flow_contract(const prepare::PreparedBirModule& prepared,
+                                                 const char* function_name) {
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    return fail("expected legalize to publish prepared control-flow metadata for the short-circuit lane");
+  }
+  if (control_flow->branch_conditions.size() != 2 || control_flow->join_transfers.size() != 1) {
+    return fail("expected the short-circuit lane to publish two branch-condition records and one join-transfer");
+  }
+
+  const prepare::PreparedBranchCondition* entry_condition = nullptr;
+  const prepare::PreparedBranchCondition* join_condition = nullptr;
+  for (const auto& condition : control_flow->branch_conditions) {
+    if (condition.block_label == "entry") {
+      entry_condition = &condition;
+    } else if (condition.block_label == "logic.end.10") {
+      join_condition = &condition;
+    }
+  }
+  if (entry_condition == nullptr || join_condition == nullptr) {
+    return fail("expected the short-circuit lane to publish entry and join branch-condition metadata");
+  }
+
+  if (!entry_condition->predicate.has_value() || !entry_condition->compare_type.has_value() ||
+      !entry_condition->lhs.has_value() || !entry_condition->rhs.has_value() ||
+      *entry_condition->predicate != bir::BinaryOpcode::Ne ||
+      *entry_condition->compare_type != bir::TypeKind::I32 ||
+      !is_named_i32(*entry_condition->lhs, "%t3") || !is_immediate_i32(*entry_condition->rhs, 3) ||
+      entry_condition->true_label != "logic.skip.8" ||
+      entry_condition->false_label != "logic.rhs.7" ||
+      !is_named_i32(entry_condition->condition_value, "%t4")) {
+    return fail("expected the short-circuit entry metadata to preserve the authoritative guard compare");
+  }
+
+  if (!join_condition->predicate.has_value() || !join_condition->compare_type.has_value() ||
+      !join_condition->lhs.has_value() || !join_condition->rhs.has_value() ||
+      *join_condition->predicate != bir::BinaryOpcode::Ne ||
+      *join_condition->compare_type != bir::TypeKind::I32 ||
+      !is_named_i32(*join_condition->lhs, "%t17") || !is_immediate_i32(*join_condition->rhs, 0) ||
+      join_condition->true_label != "block_1" || join_condition->false_label != "block_2" ||
+      !is_named_i32(join_condition->condition_value, "%t18")) {
+    return fail("expected the short-circuit join metadata to preserve the joined-boolean branch contract");
+  }
+
+  const auto& join_transfer = control_flow->join_transfers.front();
+  if (join_transfer.kind != prepare::PreparedJoinTransferKind::SelectMaterialization ||
+      join_transfer.join_block_label != "logic.end.10" || !is_named_i32(join_transfer.result, "%t17") ||
+      join_transfer.incomings.size() != 2 || join_transfer.storage_name.has_value()) {
+    return fail("expected the short-circuit join metadata to publish a select-materialized join contract");
+  }
+  bool saw_rhs_incoming = false;
+  bool saw_short_circuit_incoming = false;
+  for (const auto& incoming : join_transfer.incomings) {
+    saw_rhs_incoming =
+        saw_rhs_incoming ||
+        (incoming.label == "logic.rhs.end.9" && is_named_i32(incoming.value, "%t13"));
+    saw_short_circuit_incoming =
+        saw_short_circuit_incoming ||
+        (incoming.label == "logic.skip.8" && is_immediate_i32(incoming.value, 1));
+  }
+  if (!saw_rhs_incoming || !saw_short_circuit_incoming) {
+    return fail("expected the short-circuit join metadata to preserve rhs and short-circuit incoming ownership");
+  }
+
+  return 0;
+}
+
 prepare::PreparedBirModule legalize_call_abi_module() {
   bir::Module module;
   module.globals.push_back(bir::Global{
@@ -460,6 +527,150 @@ prepare::PreparedBirModule legalize_two_way_branch_join_module() {
       std::move(is_zero),
       std::move(is_nonzero),
       std::move(join),
+  };
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  return std::move(planner.prepared());
+}
+
+prepare::PreparedBirModule legalize_short_circuit_or_guard_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "short_circuit_or_prepare_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.u.0",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_address_taken = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%t0.addr",
+      .value = bir::Value::immediate_i32(1),
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.u.0",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%t1.addr",
+      .value = bir::Value::immediate_i32(3),
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.u.0",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t3"),
+      .slot_name = "%t3.addr",
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.u.0",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t4"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t3"),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "%t4"),
+      .true_label = "logic.skip.8",
+      .false_label = "logic.rhs.7",
+  };
+
+  bir::Block logic_rhs;
+  logic_rhs.label = "logic.rhs.7";
+  logic_rhs.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t12"),
+      .slot_name = "%t12.addr",
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.u.0",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  logic_rhs.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t13"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t12"),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  logic_rhs.terminator = bir::BranchTerminator{.target_label = "logic.rhs.end.9"};
+
+  bir::Block logic_rhs_end;
+  logic_rhs_end.label = "logic.rhs.end.9";
+  logic_rhs_end.terminator = bir::BranchTerminator{.target_label = "logic.end.10"};
+
+  bir::Block logic_skip;
+  logic_skip.label = "logic.skip.8";
+  logic_skip.terminator = bir::BranchTerminator{.target_label = "logic.end.10"};
+
+  bir::Block logic_end;
+  logic_end.label = "logic.end.10";
+  logic_end.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t17"),
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t3"),
+      .rhs = bir::Value::immediate_i32(3),
+      .true_value = bir::Value::immediate_i32(1),
+      .false_value = bir::Value::named(bir::TypeKind::I32, "%t13"),
+  });
+  logic_end.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t18"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t17"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  logic_end.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "%t18"),
+      .true_label = "block_1",
+      .false_label = "block_2",
+  };
+
+  bir::Block block_1;
+  block_1.label = "block_1";
+  block_1.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+
+  bir::Block block_2;
+  block_2.label = "block_2";
+  block_2.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks = {
+      std::move(entry),
+      std::move(logic_rhs),
+      std::move(logic_rhs_end),
+      std::move(logic_skip),
+      std::move(logic_end),
+      std::move(block_1),
+      std::move(block_2),
   };
   module.functions.push_back(std::move(function));
 
@@ -1441,6 +1652,20 @@ int main() {
     return status;
   }
   if (const int status = check_two_way_materialized_join(prepared_two_way_join.module.functions.front());
+      status != 0) {
+    return status;
+  }
+
+  const auto prepared_short_circuit_or = legalize_short_circuit_or_guard_module();
+  if (const int status = check_prepare_phi_invariant(prepared_short_circuit_or); status != 0) {
+    return status;
+  }
+  if (const int status = check_prepare_i1_invariant(prepared_short_circuit_or); status != 0) {
+    return status;
+  }
+  if (const int status =
+          check_short_circuit_or_control_flow_contract(prepared_short_circuit_or,
+                                                       "short_circuit_or_prepare_contract");
       status != 0) {
     return status;
   }

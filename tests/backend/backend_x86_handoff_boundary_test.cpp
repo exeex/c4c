@@ -3641,6 +3641,61 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
   return 0;
 }
 
+int check_short_circuit_route_consumes_prepared_control_flow(const bir::Module& module,
+                                                             const std::string& expected_asm,
+                                                             const char* function_name,
+                                                             const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 2 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* join_block = find_block(function, "logic.end.10");
+  if (entry_block == nullptr || join_block == nullptr || entry_block->insts.size() < 4 ||
+      join_block->insts.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer has the expected entry/join shape")
+                    .c_str());
+  }
+
+  auto* entry_compare = std::get_if<bir::BinaryInst>(&entry_block->insts.back());
+  auto* join_select = std::get_if<bir::SelectInst>(&join_block->insts.front());
+  auto* join_compare = std::get_if<bir::BinaryInst>(&join_block->insts.back());
+  if (entry_compare == nullptr || join_select == nullptr || join_compare == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the bounded compare/select carriers")
+                    .c_str());
+  }
+
+  entry_compare->opcode = bir::BinaryOpcode::Eq;
+  entry_compare->lhs = bir::Value::immediate_i32(7);
+  entry_compare->rhs = bir::Value::immediate_i32(7);
+  join_select->predicate = bir::BinaryOpcode::Eq;
+  join_select->lhs = bir::Value::immediate_i32(2);
+  join_select->rhs = bir::Value::immediate_i32(9);
+  join_compare->opcode = bir::BinaryOpcode::Eq;
+  join_compare->lhs = bir::Value::immediate_i32(5);
+  join_compare->rhs = bir::Value::immediate_i32(5);
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative short-circuit control-flow contract")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_route_rejection(const bir::Module& module,
                           std::string_view expected_message_fragment,
                           const char* failure_context) {
@@ -4037,6 +4092,15 @@ int main() {
                               expected_minimal_local_i32_short_circuit_or_guard_asm("main"),
                               "select ne i32 %t3, 3, i32 1, %t13",
                               "minimal local-slot short-circuit or-guard route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_route_consumes_prepared_control_flow(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              expected_minimal_local_i32_short_circuit_or_guard_asm("main"),
+              "main",
+              "minimal local-slot short-circuit or-guard prepared-control-flow ownership");
       status != 0) {
     return status;
   }

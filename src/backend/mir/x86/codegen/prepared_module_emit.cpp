@@ -1553,6 +1553,23 @@ std::string emit_prepared_module(
       }
       return current;
     };
+    const auto empty_branch_chain_contains_label =
+        [&](const c4c::backend::bir::Block& start, std::string_view target_label) {
+          std::unordered_set<std::string_view> visited;
+          const auto* current = &start;
+          while (current != nullptr && visited.insert(current->label).second) {
+            if (current->label == target_label) {
+              return true;
+            }
+            if (!current->insts.empty() ||
+                current->terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
+              return false;
+            }
+            current = find_block(current->terminator.target_label);
+          }
+          return false;
+        };
+    const auto* function_control_flow = find_control_flow_function();
 
     const auto render_function_return =
         [&](std::int32_t returned_imm) -> std::string {
@@ -2100,6 +2117,23 @@ std::string emit_prepared_module(
             }
             return std::pair<std::string, std::string>{compare_setup, branch_opcode};
           };
+          const auto render_false_branch_compare_from_condition =
+              [&](const c4c::backend::prepare::PreparedBranchCondition& condition)
+              -> std::optional<std::pair<std::string, std::string>> {
+            if (!condition.predicate.has_value() || !condition.lhs.has_value() ||
+                !condition.rhs.has_value()) {
+              return std::nullopt;
+            }
+
+            c4c::backend::bir::BinaryInst compare{
+                .opcode = *condition.predicate,
+                .result = condition.condition_value,
+                .operand_type = condition.compare_type.value_or(c4c::backend::bir::TypeKind::I32),
+                .lhs = *condition.lhs,
+                .rhs = *condition.rhs,
+            };
+            return render_false_branch_compare(compare);
+          };
 
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Return) {
             if (compare_index != block.insts.size() || !block.terminator.value.has_value()) {
@@ -2190,7 +2224,27 @@ std::string emit_prepared_module(
               block.terminator.condition.name != compare->result.name) {
             return std::nullopt;
           }
-          const auto false_branch_compare = render_false_branch_compare(*compare);
+          const auto find_branch_condition =
+              [&](std::string_view block_label)
+              -> const c4c::backend::prepare::PreparedBranchCondition* {
+            if (function_control_flow == nullptr) {
+              return nullptr;
+            }
+            for (const auto& condition : function_control_flow->branch_conditions) {
+              if (condition.block_label == block_label) {
+                return &condition;
+              }
+            }
+            return nullptr;
+          };
+          const auto entry_branch_condition = find_branch_condition(block.label);
+          auto false_branch_compare =
+              entry_branch_condition != nullptr
+                  ? render_false_branch_compare_from_condition(*entry_branch_condition)
+                  : std::optional<std::pair<std::string, std::string>>{};
+          if (!false_branch_compare.has_value()) {
+            false_branch_compare = render_false_branch_compare(*compare);
+          }
           if (!false_branch_compare.has_value()) {
             return std::nullopt;
           }
@@ -2202,7 +2256,179 @@ std::string emit_prepared_module(
             return std::nullopt;
           }
 
+          const auto detect_short_circuit_plan_from_control_flow =
+              [&]() -> std::optional<ShortCircuitPlan> {
+            if (entry_branch_condition == nullptr || function_control_flow == nullptr ||
+                !entry_branch_condition->predicate.has_value() ||
+                !entry_branch_condition->compare_type.has_value() ||
+                !entry_branch_condition->lhs.has_value() ||
+                !entry_branch_condition->rhs.has_value() ||
+                entry_branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
+                entry_branch_condition->condition_value.kind !=
+                    c4c::backend::bir::Value::Kind::Named ||
+                entry_branch_condition->condition_value.name != block.terminator.condition.name ||
+                entry_branch_condition->true_label != block.terminator.true_label ||
+                entry_branch_condition->false_label != block.terminator.false_label) {
+              return std::nullopt;
+            }
+
+            const auto* direct_true_join = resolve_empty_branch_chain(true_block->label);
+            const auto* direct_false_join = resolve_empty_branch_chain(false_block->label);
+            const bool true_short_circuits =
+                direct_true_join != nullptr && direct_true_join != true_block;
+            const bool false_short_circuits =
+                direct_false_join != nullptr && direct_false_join != false_block;
+            if (true_short_circuits == false_short_circuits) {
+              return std::nullopt;
+            }
+
+            const auto* join_block = true_short_circuits ? direct_true_join : direct_false_join;
+            const auto* rhs_entry = true_short_circuits ? false_block : true_block;
+            if (join_block == nullptr) {
+              return std::nullopt;
+            }
+
+            const auto* join_branch_condition = find_branch_condition(join_block->label);
+            if (join_branch_condition == nullptr || !join_branch_condition->predicate.has_value() ||
+                !join_branch_condition->lhs.has_value() || !join_branch_condition->rhs.has_value() ||
+                !join_branch_condition->compare_type.has_value() ||
+                *join_branch_condition->compare_type != c4c::backend::bir::TypeKind::I32) {
+              return std::nullopt;
+            }
+
+            const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
+            for (const auto& candidate : function_control_flow->join_transfers) {
+              if (candidate.join_block_label != join_block->label ||
+                  candidate.kind !=
+                      c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
+                  candidate.incomings.size() != 2) {
+                continue;
+              }
+              if (join_transfer != nullptr) {
+                return std::nullopt;
+              }
+              join_transfer = &candidate;
+            }
+            if (join_transfer == nullptr) {
+              return std::nullopt;
+            }
+
+            const bool lhs_is_join_result_rhs_is_zero =
+                join_branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
+                join_branch_condition->lhs->name == join_transfer->result.name &&
+                join_branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+                join_branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32 &&
+                join_branch_condition->rhs->immediate == 0;
+            const bool rhs_is_join_result_lhs_is_zero =
+                join_branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Named &&
+                join_branch_condition->rhs->name == join_transfer->result.name &&
+                join_branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+                join_branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32 &&
+                join_branch_condition->lhs->immediate == 0;
+            if (!lhs_is_join_result_rhs_is_zero && !rhs_is_join_result_lhs_is_zero) {
+              return std::nullopt;
+            }
+
+            const auto classify_join_incoming =
+                [](const c4c::backend::bir::PhiIncoming& incoming)
+                -> std::variant<std::monostate, bool, std::string_view> {
+              if (incoming.value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+                  incoming.value.type == c4c::backend::bir::TypeKind::I32 &&
+                  (incoming.value.immediate == 0 || incoming.value.immediate == 1)) {
+                return incoming.value.immediate != 0;
+              }
+              if (incoming.value.kind == c4c::backend::bir::Value::Kind::Named) {
+                return incoming.value.name;
+              }
+              return std::monostate{};
+            };
+            const auto incoming0_kind = classify_join_incoming(join_transfer->incomings[0]);
+            const auto incoming1_kind = classify_join_incoming(join_transfer->incomings[1]);
+            const bool incoming0_is_bool = std::holds_alternative<bool>(incoming0_kind);
+            const bool incoming1_is_bool = std::holds_alternative<bool>(incoming1_kind);
+            const bool incoming0_is_named = std::holds_alternative<std::string_view>(incoming0_kind);
+            const bool incoming1_is_named = std::holds_alternative<std::string_view>(incoming1_kind);
+            if (!((incoming0_is_bool && incoming1_is_named) ||
+                  (incoming0_is_named && incoming1_is_bool))) {
+              return std::nullopt;
+            }
+
+            const auto& short_circuit_incoming =
+                incoming0_is_bool ? join_transfer->incomings[0] : join_transfer->incomings[1];
+            const bool short_circuit_value =
+                incoming0_is_bool ? std::get<bool>(incoming0_kind) : std::get<bool>(incoming1_kind);
+            const bool short_circuit_on_compare_true =
+                empty_branch_chain_contains_label(*true_block, short_circuit_incoming.label);
+            const bool short_circuit_on_compare_false =
+                empty_branch_chain_contains_label(*false_block, short_circuit_incoming.label);
+            if (short_circuit_on_compare_true == short_circuit_on_compare_false) {
+              return std::nullopt;
+            }
+
+            const auto* join_true = find_block(join_branch_condition->true_label);
+            const auto* join_false = find_block(join_branch_condition->false_label);
+            if (join_true == nullptr || join_false == nullptr || join_true == join_block ||
+                join_false == join_block) {
+              return std::nullopt;
+            }
+
+            GuardJoinContinuation continuation_plan{
+                .join_label = join_block->label,
+                .true_block = nullptr,
+                .false_block = nullptr,
+                .hoisted_compare = nullptr,
+            };
+            if (*join_branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Ne) {
+              continuation_plan.true_block = join_true;
+              continuation_plan.false_block = join_false;
+            } else if (*join_branch_condition->predicate ==
+                       c4c::backend::bir::BinaryOpcode::Eq) {
+              continuation_plan.true_block = join_false;
+              continuation_plan.false_block = join_true;
+            } else {
+              return std::nullopt;
+            }
+
+            ShortCircuitPlan plan;
+            plan.continuation = continuation_plan;
+            auto assign_short_circuit = [&](bool compare_truth, bool bool_value) {
+              const auto* target =
+                  bool_value ? continuation_plan.true_block : continuation_plan.false_block;
+              if (compare_truth) {
+                plan.on_compare_true = target;
+                plan.on_compare_true_uses_continuation = false;
+              } else {
+                plan.on_compare_false = target;
+                plan.on_compare_false_uses_continuation = false;
+              }
+            };
+            auto assign_rhs = [&](bool compare_truth) {
+              if (compare_truth) {
+                plan.on_compare_true = rhs_entry;
+                plan.on_compare_true_uses_continuation = true;
+              } else {
+                plan.on_compare_false = rhs_entry;
+                plan.on_compare_false_uses_continuation = true;
+              }
+            };
+
+            if (short_circuit_on_compare_true) {
+              assign_short_circuit(true, short_circuit_value);
+              assign_rhs(false);
+            } else {
+              assign_rhs(true);
+              assign_short_circuit(false, short_circuit_value);
+            }
+            if (plan.on_compare_true == nullptr || plan.on_compare_false == nullptr) {
+              return std::nullopt;
+            }
+            return plan;
+          };
           const auto detect_short_circuit_plan = [&]() -> std::optional<ShortCircuitPlan> {
+            if (const auto contract_plan = detect_short_circuit_plan_from_control_flow();
+                contract_plan.has_value()) {
+              return contract_plan;
+            }
             const auto classify_bool_value =
                 [&](const c4c::backend::bir::Value& value)
                 -> std::variant<std::monostate, bool, std::string_view> {
