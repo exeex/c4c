@@ -10,21 +10,21 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/prealloc/prealloc.hpp` and
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by promoting the
-materialized compare-join predecessor, join-block, and return-shape validation
-into a shared prepared-control-flow helper and switching the x86 compare-join
-consumer to use that prepared context directly. The joined-branch carrier and
-join-shape checks now sit in the same shared contract, so x86 no longer keeps
-its own copy of that authoritative compare-join lookup logic.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving the
+prepared i32 eq/ne param-zero branch predicate/value validation into a shared
+prepared-control-flow helper and switching both the minimal compare-branch and
+materialized compare-join x86 consumers to use that same shared lookup. The
+emitter no longer keeps its own duplicate param-zero prepared-branch matcher
+for the label-matching and label-relaxed lanes.
 
 ## Suggested Next
 
 The next accepted packet should keep shrinking Step 3 emitter-local seams in
-the same joined-branch family by lifting the remaining prepared param-zero
-branch predicate/value validation seam out of `prepared_module_emit.cpp` so
-the minimal compare-branch and materialized compare-join lanes share a single
-prepared branch-consumer helper. Keep that packet in semantic consumer
-helpers, not file organization.
+the same joined-branch family by lifting more of the authoritative
+branch-owned join lookup or compare-join render planning out of
+`prepared_module_emit.cpp` and into shared prepared consumer helpers where the
+contract is already authoritative. Keep that work in semantic consumer
+helpers, not Step 4 file organization.
 
 ## Watchouts
 
@@ -39,12 +39,14 @@ helpers, not file organization.
   emitter-local CFG scans.
 - Keep deriving branch polarity from prepared branch metadata rather than from
   equality-only assumptions in the emitter.
-- The shared helpers in `prealloc.hpp` now own both authoritative
-  branch-owned join-transfer validation and the supported SelectMaterialization
-  / EdgeStoreSlot carrier query plus the supported materialized compare-join
-  predecessor and join-block shape validation, so follow-on work should keep
+- The shared helpers in `prealloc.hpp` now own authoritative branch-owned
+  join-transfer validation, supported SelectMaterialization / EdgeStoreSlot
+  carrier queries, supported materialized compare-join predecessor and
+  join-block shape validation, and the prepared i32 eq/ne param-zero branch
+  lookup used by both compare-consumer lanes. Follow-on work should keep
   extending prepared consumer lookups rather than reintroducing x86-side
-  transfer-index, storage-name, predecessor, or carrier-kind checks.
+  transfer-index, storage-name, predecessor, carrier-kind, predicate, or
+  param-zero operand checks.
 - The short-circuit ownership tests intentionally rewrite carrier labels and
   entry compares to prove x86 trusts prepared metadata over emitter-local
   carrier naming; do not add source-label equality checks that undercut that
@@ -66,12 +68,16 @@ helpers, not file organization.
 - The joined-branch ownership tests now intentionally desynchronize raw entry
   terminator labels from prepared branch metadata; do not restore source-label
   equality requirements in the compare-join consumer.
+- `test_before.log` remains the narrow baseline for
+  `^backend_x86_handoff_boundary$`, and this packet refreshed `test_after.log`
+  with the same focused proof command after moving the remaining param-zero
+  branch validation seam into shared prepared control-flow helpers.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 This packet refreshes `test_after.log` with the same focused
-`backend_x86_handoff_boundary` proof command for the compare-join consumer
-path after moving the remaining predecessor/join-shape validation into shared
-prepared-control-flow helpers.
+`backend_x86_handoff_boundary` proof command for the shared param-zero branch
+consumer helper now used by both the minimal compare-branch and compare-join
+paths.

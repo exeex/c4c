@@ -466,6 +466,73 @@ struct PreparedControlFlow {
   return nullptr;
 }
 
+struct PreparedParamZeroBranchCondition {
+  const PreparedBranchCondition* branch_condition = nullptr;
+  std::string_view false_label;
+  const char* false_branch_opcode = nullptr;
+};
+
+[[nodiscard]] inline std::optional<PreparedParamZeroBranchCondition>
+find_prepared_param_zero_branch_condition(const PreparedControlFlowFunction& function_cf,
+                                          const bir::Block& source_block,
+                                          const bir::Param& param,
+                                          bool require_label_match) {
+  if (source_block.terminator.kind != bir::TerminatorKind::CondBranch ||
+      source_block.terminator.condition.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+
+  const auto* branch_condition = find_prepared_branch_condition(function_cf, source_block.label);
+  if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
+      !branch_condition->compare_type.has_value() || !branch_condition->lhs.has_value() ||
+      !branch_condition->rhs.has_value() ||
+      (*branch_condition->predicate != bir::BinaryOpcode::Eq &&
+       *branch_condition->predicate != bir::BinaryOpcode::Ne) ||
+      *branch_condition->compare_type != bir::TypeKind::I32 ||
+      branch_condition->condition_value.kind != bir::Value::Kind::Named ||
+      branch_condition->condition_value.name != source_block.terminator.condition.name) {
+    return std::nullopt;
+  }
+  if (require_label_match &&
+      (branch_condition->true_label != source_block.terminator.true_label ||
+       branch_condition->false_label != source_block.terminator.false_label)) {
+    return std::nullopt;
+  }
+
+  const bool lhs_is_param_rhs_is_zero =
+      branch_condition->lhs->kind == bir::Value::Kind::Named &&
+      branch_condition->lhs->name == param.name &&
+      branch_condition->rhs->kind == bir::Value::Kind::Immediate &&
+      branch_condition->rhs->type == bir::TypeKind::I32 &&
+      branch_condition->rhs->immediate == 0;
+  const bool rhs_is_param_lhs_is_zero =
+      branch_condition->rhs->kind == bir::Value::Kind::Named &&
+      branch_condition->rhs->name == param.name &&
+      branch_condition->lhs->kind == bir::Value::Kind::Immediate &&
+      branch_condition->lhs->type == bir::TypeKind::I32 &&
+      branch_condition->lhs->immediate == 0;
+  if (!lhs_is_param_rhs_is_zero && !rhs_is_param_lhs_is_zero) {
+    return std::nullopt;
+  }
+
+  if (*branch_condition->predicate == bir::BinaryOpcode::Eq) {
+    return PreparedParamZeroBranchCondition{
+        .branch_condition = branch_condition,
+        .false_label = branch_condition->false_label,
+        .false_branch_opcode = "jne",
+    };
+  }
+  if (*branch_condition->predicate == bir::BinaryOpcode::Ne) {
+    return PreparedParamZeroBranchCondition{
+        .branch_condition = branch_condition,
+        .false_label = branch_condition->false_label,
+        .false_branch_opcode = "je",
+    };
+  }
+
+  return std::nullopt;
+}
+
 [[nodiscard]] inline const bir::Block* find_block_in_function(const bir::Function& function,
                                                               std::string_view block_label) {
   for (const auto& block : function.blocks) {
