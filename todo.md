@@ -9,18 +9,17 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed Step 3 packet work in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` and
-`src/backend/prealloc/prealloc.hpp` by reusing the prepared
-select-materialization lookup helper in the guarded short-circuit x86
-consumer, eliminating the last inline `join_transfers` scan in
-`prepared_module_emit.cpp`.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by narrowing the
+remaining guarded short-circuit fallback so prepared-route cases now fail
+closed unless the prepared control-flow contract can provide the plan, instead
+of reconstructing select/phi meaning from raw join blocks.
 
 ## Suggested Next
 
-Continue Step 3 with a bounded audit packet that verifies no remaining x86
-prepared-control-flow consumers still depend on inline select-materialization
-join scans or legacy select `incomings` semantics, then hand route selection
-back to the supervisor if the audit is clean.
+Step 3 likely needs a supervisor route check next: the remaining raw
+short-circuit reconstruction now only serves the no-control-flow fallback, so
+the next bounded packet should verify whether any covered x86 consumer lanes
+still depend on non-contract join semantics before choosing more code work.
 
 ## Watchouts
 
@@ -34,10 +33,9 @@ back to the supervisor if the audit is clean.
   `source_false_transfer_index` are now the authoritative truth-to-edge mapping
   for select-materialization joins; future producers in that family must
   populate them consistently with `edge_transfers`.
-- The guarded short-circuit and materialized-compare lanes now both rely on the
-  shared select-materialization lookup helper, so any remaining Step 3
-  follow-up should target residual consumer dependencies rather than adding new
-  lane-local transfer matchers.
+- The guarded short-circuit raw select/phi reconstruction still exists only as a
+  no-control-flow fallback path; if a future packet touches it, treat any
+  prepared-route re-expansion as route drift.
 
 ## Proof
 

@@ -2420,6 +2420,9 @@ std::string emit_prepared_module(
                 contract_plan.has_value()) {
               return contract_plan;
             }
+            if (function_control_flow != nullptr) {
+              return std::nullopt;
+            }
             const auto* true_block = find_block(block.terminator.true_label);
             const auto* false_block = find_block(block.terminator.false_label);
             if (true_block == nullptr || false_block == nullptr || true_block == &block ||
