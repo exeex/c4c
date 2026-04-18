@@ -10,24 +10,25 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `tests/backend/backend_x86_handoff_boundary_test.cpp` by extending the focused
-prepared compare-join handoff coverage from direct same-module
-`LoadGlobal i32` selected-value roots to one bounded same-module global-root
-immediate-op chain. The compare-join ownership fixtures now mutate both the
+prepared compare-join handoff coverage from zero-offset same-module
+`LoadGlobal i32` selected-value roots to one bounded fixed-offset same-module
+global-root family. The compare-join ownership fixtures now mutate both the
 plain joined-branch path and the `PreparedJoinTransferKind::EdgeStoreSlot`
-carrier to feed `GlobalI32Load` roots through a single immediate op per arm,
-and the focused checks prove the existing shared compare-join helpers plus x86
-consumer path still treat those global-root chains and the trailing xor
-contract as authoritative prepared control-flow data.
+carrier to feed selected values from aggregate globals through offset-4
+`GlobalI32Load` roots, and the focused checks prove the existing shared
+compare-join helpers plus x86 consumer path still treat those fixed-offset
+global roots and the trailing xor contract as authoritative prepared
+control-flow data.
 
 ## Suggested Next
 
 The next accepted packet should stay in Step 3 and extend the same prepared
 compare-join branch-return ownership surface to one additional bounded
 non-param selected-value root family that still fits shared prepared data,
-with preference for a fixed-offset same-module global `LoadGlobal i32` root or
-another same-module-only root that does not require idea 61 stack/addressing
-work. Keep the work in shared consumer helpers and focused ownership tests,
-not Step 4 file organization.
+with preference for a pointer-backed same-module global root or another
+same-module-only root that does not require idea 61 stack/addressing work.
+Keep the work in shared consumer helpers and focused ownership tests, not Step
+4 file organization.
 
 ## Watchouts
 
@@ -40,9 +41,10 @@ not Step 4 file organization.
   param-backed selected-value bases, direct immediate selected-value bases,
   immediate-base selected-value chains, direct same-module global-load
   selected-value bases, bounded same-module global-root immediate-op chains,
-  and the same immediate/global contracts when the join carrier is an
-  `EdgeStoreSlot`; follow-on work should keep extending that prepared contract
-  instead of reconstructing per-arm return metadata in x86.
+  fixed-offset same-module global-load selected-value bases, and the same
+  immediate/global contracts when the join carrier is an `EdgeStoreSlot`;
+  follow-on work should keep extending that prepared contract instead of
+  reconstructing per-arm return metadata in x86.
 - The x86 compare-join branch renderer should continue treating the prepared
   true/false return contexts as authoritative; do not reintroduce raw
   selected-value plumbing just to call shared classification helpers from x86
@@ -51,23 +53,23 @@ not Step 4 file organization.
   chains; follow-on packets should preserve that shared classification route
   instead of teaching x86 to special-case immediate-root join values locally.
 - The global-root lane still intentionally keeps same-module scalar-load
-  legality in the x86 consumer and does not open local-slot/address-based
-  roots; do not widen this packet into idea 61 frame/addressing work.
+  legality in the x86 consumer and now covers both zero-offset and fixed-offset
+  aggregate loads, but it still does not open local-slot/address-based roots;
+  do not widen this packet into idea 61 frame/addressing work.
 - The joined-branch ownership tests still intentionally desynchronize raw entry
   terminator labels from prepared branch metadata; do not restore source-label
   equality checks in the x86 consumer.
 - `test_before.log` remains the narrow baseline for
   `^backend_x86_handoff_boundary$`, and this packet refreshed `test_after.log`
-  with the same focused proof command after adding same-module global-root
-  selected-value chain ownership checks.
+  with the same focused proof command after adding fixed-offset same-module
+  global-root ownership checks.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The focused proof passed and refreshed `test_after.log` with the
-`backend_x86_handoff_boundary` subset for the same-module global-root
-selected-value chain compare-join return contexts, the matching
-`EdgeStoreSlot` joined-branch route that consumes them, and the previously
-covered param-based, immediate, and direct global compare-join ownership
-seams.
+`backend_x86_handoff_boundary` subset for fixed-offset same-module global-root
+compare-join return contexts, the matching `EdgeStoreSlot` joined-branch route
+that consumes them, and the previously covered param-based, immediate, and
+zero-offset/global-chain compare-join ownership seams.
