@@ -10,19 +10,20 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting
-`find_trailing_guard_compare()` and routing the continuation-aware plain
-`Branch` compare-join lane through `build_short_circuit_entry_compare_context()`.
-The compare-driven `Branch` continuation path now reuses the same helper-owned
-guard-compare validation and false-branch compare selection as the ordinary
-cond-branch entry lane instead of keeping its own inline compare fallback
-assembly.
+`resolve_direct_branch_targets()` and routing both
+`build_short_circuit_entry_routing_context()` and
+`build_plain_cond_branch_plan()` through that helper. The compare-driven plain
+cond-branch and short-circuit entry lanes now share the same helper-owned
+true/false target lookup and self-target rejection path instead of resolving
+those blocks separately beside emitter-local assembly logic.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect whether the compare-driven plain
-cond-branch and short-circuit lanes can also share direct-target plan
-construction more uniformly, so ordinary true/false target lookup keeps moving
-out of emitter-local assembly branches and into the helper cluster.
+The next small Step 3 packet is to inspect whether
+`build_compare_join_continuation()` can also reuse the same direct-target
+resolution helper family for its join-successor lookup, so compare-join
+continuation wiring keeps moving out of ad hoc block validation and into the
+shared helper cluster.
 
 ## Watchouts
 
@@ -34,7 +35,9 @@ out of emitter-local assembly branches and into the helper cluster.
   authoritative for continuation entry.
 - `build_compare_join_continuation()` remains the Step 3 gate for the join-
   result zero-compare contract; keep `Eq`/`Ne` mapping and jump-target choice
-  data-driven there instead of pushing them back into renderer assembly.
+  data-driven there instead of pushing them back into renderer assembly, and
+  prefer extending the direct-target helper family over re-growing local
+  `find_block()` plus self-target checks there.
 - `build_direct_branch_plan()` now owns direct true/false target validation
   for both plain cond-branch fallback and continuation-aware plain `Branch`
   rendering; keep block-null and self-target rejection there instead of
@@ -43,9 +46,11 @@ out of emitter-local assembly branches and into the helper cluster.
   once a plan exists; future cleanup should route compare-and-branch assembly
   through that helper instead of re-growing inline false-label strings.
 - `build_short_circuit_entry_routing_context()` now owns entry-branch contract
-  validation, resolved true/false block lookup, and RHS-entry selection; keep
-  that ownership in the helper cluster instead of re-growing those checks
-  inside `try_render_short_circuit_plan()`.
+  validation and RHS-entry selection, while `resolve_direct_branch_targets()`
+  now owns the direct true/false target lookup shared with
+  `build_plain_cond_branch_plan()`; keep that ownership in the helper cluster
+  instead of re-growing those checks inside `try_render_short_circuit_plan()`
+  or the plain cond-branch emitter.
 - `build_short_circuit_entry_compare_context()` now owns prepared entry-branch
   lookup plus false-branch compare fallback selection, and
   `find_trailing_guard_compare()` now owns trailing guard-compare validation
@@ -84,5 +89,5 @@ out of emitter-local assembly branches and into the helper cluster.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 guard-compare helper reuse
+The build and narrow proof passed for this Step 3 direct-target helper reuse
 packet; proof output is in `test_after.log`.

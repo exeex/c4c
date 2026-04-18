@@ -1562,6 +1562,10 @@ std::string emit_prepared_module(
       const c4c::backend::bir::Block* false_block = nullptr;
       const c4c::backend::bir::Block* rhs_entry = nullptr;
     };
+    struct DirectBranchTargets {
+      const c4c::backend::bir::Block* true_block = nullptr;
+      const c4c::backend::bir::Block* false_block = nullptr;
+    };
     struct ShortCircuitEntryCompareContext {
       const c4c::backend::prepare::PreparedBranchCondition* branch_condition = nullptr;
       std::pair<std::string, std::string> false_branch_compare;
@@ -1623,6 +1627,20 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
       return continuation;
+    };
+    const auto resolve_direct_branch_targets =
+        [&](const c4c::backend::bir::Block& source_block,
+            std::string_view true_label,
+            std::string_view false_label) -> std::optional<DirectBranchTargets> {
+      DirectBranchTargets targets{
+          .true_block = find_block(true_label),
+          .false_block = find_block(false_label),
+      };
+      if (targets.true_block == nullptr || targets.false_block == nullptr ||
+          targets.true_block == &source_block || targets.false_block == &source_block) {
+        return std::nullopt;
+      }
+      return targets;
     };
     const auto classify_short_circuit_join_incoming =
         [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer)
@@ -1749,10 +1767,10 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
 
-      const auto* true_block = find_block(branch_condition->true_label);
-      const auto* false_block = find_block(branch_condition->false_label);
-      if (true_block == nullptr || false_block == nullptr || true_block == &source_block ||
-          false_block == &source_block) {
+      const auto direct_targets = resolve_direct_branch_targets(source_block,
+                                                                branch_condition->true_label,
+                                                                branch_condition->false_label);
+      if (!direct_targets.has_value()) {
         return std::nullopt;
       }
 
@@ -1774,9 +1792,10 @@ std::string emit_prepared_module(
 
       return ShortCircuitEntryRoutingContext{
           .classified_incoming = *classified_incoming,
-          .true_block = true_block,
-          .false_block = false_block,
-          .rhs_entry = short_circuit_on_compare_true ? false_block : true_block,
+          .true_block = direct_targets->true_block,
+          .false_block = direct_targets->false_block,
+          .rhs_entry = short_circuit_on_compare_true ? direct_targets->false_block
+                                                     : direct_targets->true_block,
       };
     };
     const auto build_short_circuit_plan =
@@ -1837,9 +1856,15 @@ std::string emit_prepared_module(
     const auto build_plain_cond_branch_plan =
         [&](const c4c::backend::bir::Block& source_block)
         -> std::optional<ShortCircuitPlan> {
+      const auto direct_targets = resolve_direct_branch_targets(source_block,
+                                                                source_block.terminator.true_label,
+                                                                source_block.terminator.false_label);
+      if (!direct_targets.has_value()) {
+        return std::nullopt;
+      }
       return build_direct_branch_plan(source_block,
-                                      find_block(source_block.terminator.true_label),
-                                      find_block(source_block.terminator.false_label));
+                                      direct_targets->true_block,
+                                      direct_targets->false_block);
     };
     const auto render_short_circuit_target =
         [&](const auto& render_block_fn,
