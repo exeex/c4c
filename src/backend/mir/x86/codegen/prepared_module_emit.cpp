@@ -1586,11 +1586,32 @@ std::string emit_prepared_module(
           .true_block = find_block(true_label),
           .false_block = find_block(false_label),
       };
-      if (targets.true_block == nullptr || targets.false_block == nullptr ||
-          targets.true_block == &source_block || targets.false_block == &source_block) {
+      if (targets.true_block == nullptr || targets.false_block == nullptr) {
         return std::nullopt;
       }
       return targets;
+    };
+    const auto build_direct_branch_plan_from_targets =
+        [&](const c4c::backend::bir::Block& source_block,
+            const DirectBranchTargets& direct_targets) -> std::optional<ShortCircuitPlan> {
+      if (direct_targets.true_block == nullptr || direct_targets.false_block == nullptr ||
+          direct_targets.true_block == &source_block ||
+          direct_targets.false_block == &source_block) {
+        return std::nullopt;
+      }
+
+      return ShortCircuitPlan{
+          .on_compare_true =
+              ShortCircuitTarget{
+                  .block = direct_targets.true_block,
+                  .continuation = std::nullopt,
+              },
+          .on_compare_false =
+              ShortCircuitTarget{
+                  .block = direct_targets.false_block,
+                  .continuation = std::nullopt,
+              },
+      };
     };
     const auto build_direct_branch_plan_from_labels =
         [&](const c4c::backend::bir::Block& source_block,
@@ -1602,19 +1623,7 @@ std::string emit_prepared_module(
       if (!direct_targets.has_value()) {
         return std::nullopt;
       }
-
-      return ShortCircuitPlan{
-          .on_compare_true =
-              ShortCircuitTarget{
-                  .block = direct_targets->true_block,
-                  .continuation = std::nullopt,
-              },
-          .on_compare_false =
-              ShortCircuitTarget{
-                  .block = direct_targets->false_block,
-                  .continuation = std::nullopt,
-              },
-      };
+      return build_direct_branch_plan_from_targets(source_block, *direct_targets);
     };
     const auto build_compare_join_continuation =
         [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
@@ -1856,36 +1865,16 @@ std::string emit_prepared_module(
       }
       return plan;
     };
-    const auto build_direct_branch_plan =
-        [&](const c4c::backend::bir::Block& source_block,
-            const c4c::backend::bir::Block* true_block,
-            const c4c::backend::bir::Block* false_block)
-        -> std::optional<ShortCircuitPlan> {
-      if (true_block == nullptr || false_block == nullptr || true_block == &source_block ||
-          false_block == &source_block) {
-        return std::nullopt;
-      }
-
-      return ShortCircuitPlan{
-          .on_compare_true =
-              ShortCircuitTarget{
-                  .block = true_block,
-                  .continuation = std::nullopt,
-              },
-          .on_compare_false =
-              ShortCircuitTarget{
-                  .block = false_block,
-                  .continuation = std::nullopt,
-              },
-      };
-    };
     const auto build_compare_join_branch_plan =
         [&](const c4c::backend::bir::Block& source_block,
             const GuardJoinContinuation& continuation_plan)
         -> std::optional<ShortCircuitPlan> {
-      return build_direct_branch_plan(source_block,
-                                      continuation_plan.true_block,
-                                      continuation_plan.false_block);
+      return build_direct_branch_plan_from_targets(
+          source_block,
+          DirectBranchTargets{
+              .true_block = continuation_plan.true_block,
+              .false_block = continuation_plan.false_block,
+          });
     };
     const auto build_plain_cond_branch_plan =
         [&](const c4c::backend::bir::Block& source_block)

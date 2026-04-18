@@ -9,20 +9,21 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by collapsing entry-path
-compare-driven render-plan assembly behind
-`build_compare_driven_entry_render_plan()`. The compare-join continuation path,
-short-circuit path, and plain conditional fallback now ask one helper for the
-final `CompareDrivenBranchRenderPlan` instead of locally pairing
-`build_*_branch_plan()` results with
-`build_short_circuit_entry_compare_context()` at each call site.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by converging the
+remaining direct-branch helper split onto
+`build_direct_branch_plan_from_targets()`. Plain conditional entry still
+resolves labels through `build_direct_branch_plan_from_labels()`, but both the
+label-driven path and compare-join continuation path now share one
+`ShortCircuitPlan` builder contract instead of separate pointer-vs-label
+helper variants.
 
 ## Suggested Next
 
 The next small Step 3 packet is to keep tightening compare-driven branch-plan
-ownership so the continuation and plain-entry helpers converge on one shared
-branch-plan builder contract instead of carrying separate direct-branch helper
-variants.
+ownership by folding more of the prepared branch-condition validation for
+plain conditional entry into a single helper so
+`build_short_circuit_entry_direct_branch_plan()` stops re-checking contract
+details that already belong beside branch-plan selection.
 
 ## Watchouts
 
@@ -49,13 +50,14 @@ variants.
   result zero-compare contract; keep `Eq`/`Ne` mapping and jump-target choice
   data-driven there instead of pushing them back into renderer assembly.
 - `resolve_direct_branch_targets()` now owns direct true/false block lookup for
-  plain cond-branch entry, short-circuit entry routing, and compare-join
-  continuation successor selection; keep block-null and self-target rejection
-  there instead of re-growing local checks in emitter paths.
+  plain cond-branch entry and compare-join continuation successor selection;
+  keep label-to-block resolution there, but keep branch-plan validity checks in
+  `build_direct_branch_plan_from_targets()` instead of re-growing local
+  pointer/null/self-target checks in emitter paths.
 - `build_compare_join_branch_plan()` now owns the compare-join continuation
-  handoff into `render_compare_driven_branch_plan()`; keep future continuation
-  target plumbing there instead of re-growing `build_direct_branch_plan()`
-  calls beside render sites.
+  handoff into `build_direct_branch_plan_from_targets()`; keep future
+  continuation target plumbing there instead of re-growing plan assembly or
+  local continuation-target checks beside render sites.
 - `CompareDrivenBranchRenderPlan` now owns the compare setup/opcode plus
   branch-lane targets that feed `render_compare_driven_branch_plan()`; future
   cleanup should extend that contract instead of re-splitting compare plumbing
@@ -75,5 +77,5 @@ variants.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 compare-driven entry render-
-plan cleanup packet; proof output is in `test_after.log`.
+The build and narrow proof passed for this Step 3 direct-branch helper
+convergence packet; proof output is in `test_after.log`.
