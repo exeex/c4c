@@ -413,6 +413,11 @@ struct PreparedAuthoritativeBranchJoinTransfer {
   const PreparedEdgeValueTransfer* false_transfer = nullptr;
 };
 
+struct PreparedJoinCarrier {
+  std::size_t carrier_index = 0;
+  std::string_view result_name;
+};
+
 // Shared consumers must take branch semantics from `branch_conditions` and former
 // phi/join obligations from `join_transfers` instead of reconstructing them from CFG shape.
 struct PreparedControlFlow {
@@ -551,6 +556,45 @@ find_authoritative_branch_owned_join_transfer(
       .true_transfer = true_transfer,
       .false_transfer = false_transfer,
   };
+}
+
+[[nodiscard]] inline std::optional<PreparedJoinCarrier> find_supported_join_carrier(
+    const PreparedJoinTransfer& join_transfer,
+    const bir::Block& join_block,
+    std::size_t carrier_index) {
+  if (carrier_index >= join_block.insts.size()) {
+    return std::nullopt;
+  }
+
+  const auto& join_carrier = join_block.insts[carrier_index];
+  if (const auto* select = std::get_if<bir::SelectInst>(&join_carrier); select != nullptr) {
+    if (join_transfer.kind != PreparedJoinTransferKind::SelectMaterialization ||
+        select->result.kind != bir::Value::Kind::Named ||
+        select->result.type != bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+    return PreparedJoinCarrier{
+        .carrier_index = carrier_index,
+        .result_name = select->result.name,
+    };
+  }
+
+  if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&join_carrier);
+      load_local != nullptr) {
+    if (join_transfer.kind != PreparedJoinTransferKind::EdgeStoreSlot ||
+        !join_transfer.storage_name.has_value() ||
+        load_local->slot_name != *join_transfer.storage_name ||
+        load_local->result.kind != bir::Value::Kind::Named ||
+        load_local->result.type != bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+    return PreparedJoinCarrier{
+        .carrier_index = carrier_index,
+        .result_name = load_local->result.name,
+    };
+  }
+
+  return std::nullopt;
 }
 
 [[nodiscard]] inline const std::vector<PreparedEdgeValueTransfer>* incoming_transfers_for_join(

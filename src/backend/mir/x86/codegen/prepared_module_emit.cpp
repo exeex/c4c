@@ -1535,10 +1535,6 @@ std::string emit_prepared_module(
     std::size_t carrier_index = 0;
     std::string_view carrier_result_name;
   };
-  struct PreparedJoinCarrier {
-    std::size_t carrier_index = 0;
-    std::string_view result_name;
-  };
   struct MaterializedCompareJoinRender {
     std::string false_label;
     std::string true_return;
@@ -1610,47 +1606,6 @@ std::string emit_prepared_module(
         .false_predecessor = false_predecessor,
     };
   };
-  const auto find_prepared_join_carrier =
-      [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
-          const c4c::backend::bir::Block& join_block,
-          std::size_t carrier_index) -> std::optional<PreparedJoinCarrier> {
-    if (carrier_index >= join_block.insts.size()) {
-      return std::nullopt;
-    }
-
-    const auto& join_carrier = join_block.insts[carrier_index];
-    if (const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&join_carrier);
-        select != nullptr) {
-      if (join_transfer.kind !=
-              c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
-          select->result.kind != c4c::backend::bir::Value::Kind::Named ||
-          select->result.type != c4c::backend::bir::TypeKind::I32) {
-        return std::nullopt;
-      }
-      return PreparedJoinCarrier{
-          .carrier_index = carrier_index,
-          .result_name = select->result.name,
-      };
-    }
-
-    if (const auto* load_local =
-            std::get_if<c4c::backend::bir::LoadLocalInst>(&join_carrier);
-        load_local != nullptr) {
-      if (join_transfer.kind != c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
-          !join_transfer.storage_name.has_value() ||
-          load_local->slot_name != *join_transfer.storage_name ||
-          load_local->result.kind != c4c::backend::bir::Value::Kind::Named ||
-          load_local->result.type != c4c::backend::bir::TypeKind::I32) {
-        return std::nullopt;
-      }
-      return PreparedJoinCarrier{
-          .carrier_index = carrier_index,
-          .result_name = load_local->result.name,
-      };
-    }
-
-    return std::nullopt;
-  };
   const auto find_materialized_compare_join_context =
       [&](const c4c::backend::prepare::PreparedAuthoritativeBranchJoinTransfer&
               authoritative_join_transfer,
@@ -1693,7 +1648,9 @@ std::string emit_prepared_module(
     }
 
     const auto prepared_carrier =
-        find_prepared_join_carrier(*join_transfer, *join_block, carrier_index);
+        c4c::backend::prepare::find_supported_join_carrier(*join_transfer,
+                                                           *join_block,
+                                                           carrier_index);
     if (!prepared_carrier.has_value()) {
       return std::nullopt;
     }
@@ -1857,7 +1814,9 @@ std::string emit_prepared_module(
       }
 
       const auto prepared_carrier =
-          find_prepared_join_carrier(join_transfer, join_block, join_block.insts.size() - 2);
+          c4c::backend::prepare::find_supported_join_carrier(join_transfer,
+                                                             join_block,
+                                                             join_block.insts.size() - 2);
       if (!prepared_carrier.has_value()) {
         return std::nullopt;
       }
