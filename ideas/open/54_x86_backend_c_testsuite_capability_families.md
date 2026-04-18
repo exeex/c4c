@@ -169,8 +169,9 @@ Before the next capability-family activation:
 
 - [ ] the first execution packet names one dominant capability family rather
       than one testcase
-- [ ] at least one bounded local-memory lane is lowered honestly through
-      semantic `lir_to_bir` into the prepared x86 handoff
+- [ ] at least one bounded lane from the chosen first capability family is
+      lowered honestly through semantic `lir_to_bir` into the prepared x86
+      handoff
 - [ ] nearby cases in the same lane are checked so the result is not just one
       testcase-shaped repair
 - [ ] backend notes and handoff tests describe the supported/unsupported
@@ -186,8 +187,8 @@ Narrow proving while iterating:
 
 - `ctest --test-dir build -R '^backend_lir_to_bir_notes$' --output-on-failure`
 - `ctest --test-dir build -R '^backend_x86_handoff_boundary_test$' --output-on-failure`
-- targeted `c_testsuite_x86_backend_*` cases chosen from the same local-memory
-  family
+- targeted `c_testsuite_x86_backend_*` cases chosen from the same first
+  capability family
 
 Checkpoint proving after a coherent slice:
 
@@ -207,6 +208,6 @@ prepared-module behavior outside the bounded lane.
 ## Good First Patch
 
 Pick a small cluster of currently failing x86 backend c-testsuite cases whose
-common blocker is local stack/object addressing, then implement one honest
-semantic local-memory lane and prove it across that cluster plus the backend
-notes and handoff tests.
+common blocker is one backend capability family, then implement one honest
+lane in that family and prove it across that cluster plus the backend notes and
+x86 handoff tests.

@@ -61,6 +61,18 @@ through lifecycle instead of silently expanding this plan.
   prove it across a small related case cluster plus the backend notes and x86
   handoff tests.
 
+## Route Checkpoint
+
+- The attempted bounded integer-switch packet showed that `00158` and `00193`
+  were not a coherent first proving cluster for this runbook.
+- Backend-only integer-switch lowering and handoff support can be useful probe
+  work, but it does not count as the first accepted capability-family packet
+  unless at least one chosen c-testsuite lane shares the same remaining
+  mechanism.
+- Treat loop-plus-direct-runtime control flow and multi-defined-helper-function
+  prepared-module support as deeper x86 handoff subfamilies, not as evidence
+  that a pure switch-lowering lane is already proven.
+
 ## Execution Rules
 
 - Prefer semantic lowering or prepared-module boundary repair over testcase
@@ -85,12 +97,17 @@ Primary targets:
 Actions:
 - inspect the current `x86_backend` or equivalent bounded fail surface
 - cluster the visible failures by shared backend mechanism
+- separate backend-only scalar-control-flow probes from c-testsuite-credible
+  proving lanes
 - pick one first family and name a narrow proving set from that cluster
+- require the proving set to share one remaining semantic-lowering or x86
+  prepared-module mechanism after backend boundary probes are added
 - decide whether idea `56` remains parallel for this packet or is a real blocker
 
 Completion check:
-- the next packet has one named capability family, one bounded proving cluster,
-  and an explicit judgment on whether idea `56` stays out of scope
+- the next packet has one named capability family, one bounded proving cluster
+  whose cases share the same remaining mechanism, and an explicit judgment on
+  whether idea `56` stays out of scope
 
 ## Step 2. Lock The Family Boundary In Backend Tests
 
@@ -127,6 +144,9 @@ Actions:
   family
 - keep the route in semantic lowering and honest prepared-module ingestion
 - check nearby same-family cases so the change is not just one testcase-shaped fix
+- if backend-only probe support lands but the chosen c-tests still fail on a
+  deeper loop/runtime or multi-function handoff gate, stop and repair the
+  family selection before claiming packet progress
 
 Completion check:
 - one bounded family lane is supported honestly across more than one nearby case
