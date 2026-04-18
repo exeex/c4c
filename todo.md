@@ -9,20 +9,19 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by refactoring the
-short-circuit select-join consumer to carry the authoritative prepared
-true/false transfer pair through `ShortCircuitJoinContext` and consume those
-records directly when building the branch plan, instead of validating the
-authoritative pair and then falling back to raw `source_*_transfer_index`
-access.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting a shared
+authoritative-transfer classifier for select-materialization joins, so both the
+materialized-compare consumer and the short-circuit select-join consumer reuse
+the same prepared true/false transfer validation without forcing the
+short-circuit path through predecessor-block matching.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect whether the remaining
-materialized-compare and short-circuit select-join consumers can share a tiny
-authoritative-transfer classification helper without forcing the short-circuit
-path onto the carrier-label-specific predecessor-block validation used by
-`find_authoritative_join_branch_sources()`.
+The next small Step 3 packet is to inspect the remaining select-materialization
+consumer entry guards around `render_materialized_compare_join_if_supported()`
+and the short-circuit entry-plan builder, and remove any still-duplicated
+prepared-branch/select-join shape checks that can be shared without widening
+the accepted CFG families.
 
 ## Watchouts
 
@@ -35,6 +34,10 @@ path onto the carrier-label-specific predecessor-block validation used by
   prepared incoming ownership labels from the transfer records, but its
   continuation routing still depends on carrier labels that can differ from the
   prepared source ownership.
+- The new shared authoritative-transfer helper only covers prepared transfer
+  validation and source-label consistency; predecessor block lookup and
+  branch-to-join topology checks still belong only to
+  `find_authoritative_join_branch_sources()`.
 - The short-circuit/select-join route still requires exactly one authoritative
   prepared source lane to carry a bool immediate; do not widen this into
   arbitrary edge scans or named-lane heuristics when touching adjacent helpers.
@@ -52,6 +55,6 @@ path onto the carrier-label-specific predecessor-block validation used by
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This Step 3 authoritative-transfer refactor packet is using the same focused
-proof command, and `test_after.log` is the canonical executor proof log path
+This Step 3 shared authoritative-transfer classification packet uses the same
+focused proof command, and `test_after.log` is the canonical proof log path
 for the result.

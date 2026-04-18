@@ -1525,19 +1525,14 @@ std::string emit_prepared_module(
         &join_transfer.edge_transfers[false_index],
     };
   };
-  struct AuthoritativeJoinBranchSources {
+  struct AuthoritativeJoinTransfers {
     const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
     const c4c::backend::prepare::PreparedEdgeValueTransfer* false_transfer = nullptr;
-    const c4c::backend::bir::Block* true_predecessor = nullptr;
-    const c4c::backend::bir::Block* false_predecessor = nullptr;
   };
-  const auto find_authoritative_join_branch_sources =
-      [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
-          std::string_view true_block_label,
-          std::string_view false_block_label)
-      -> std::optional<AuthoritativeJoinBranchSources> {
-    const auto authoritative_transfers =
-        find_authoritative_join_edge_transfers(join_transfer);
+  const auto classify_authoritative_join_transfers =
+      [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer)
+      -> std::optional<AuthoritativeJoinTransfers> {
+    const auto authoritative_transfers = find_authoritative_join_edge_transfers(join_transfer);
     if (!authoritative_transfers.has_value()) {
       return std::nullopt;
     }
@@ -1549,12 +1544,35 @@ std::string emit_prepared_module(
         false_transfer->successor_label != join_transfer.join_block_label) {
       return std::nullopt;
     }
+
+    return AuthoritativeJoinTransfers{
+        .true_transfer = true_transfer,
+        .false_transfer = false_transfer,
+    };
+  };
+  struct AuthoritativeJoinBranchSources {
+    const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
+    const c4c::backend::prepare::PreparedEdgeValueTransfer* false_transfer = nullptr;
+    const c4c::backend::bir::Block* true_predecessor = nullptr;
+    const c4c::backend::bir::Block* false_predecessor = nullptr;
+  };
+  const auto find_authoritative_join_branch_sources =
+      [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
+          std::string_view true_block_label,
+          std::string_view false_block_label)
+      -> std::optional<AuthoritativeJoinBranchSources> {
+    const auto authoritative_transfers = classify_authoritative_join_transfers(join_transfer);
+    if (!authoritative_transfers.has_value()) {
+      return std::nullopt;
+    }
     if (join_transfer.source_true_incoming_label.has_value() &&
-        true_transfer->predecessor_label != *join_transfer.source_true_incoming_label) {
+        authoritative_transfers->true_transfer->predecessor_label !=
+            *join_transfer.source_true_incoming_label) {
       return std::nullopt;
     }
     if (join_transfer.source_false_incoming_label.has_value() &&
-        false_transfer->predecessor_label != *join_transfer.source_false_incoming_label) {
+        authoritative_transfers->false_transfer->predecessor_label !=
+            *join_transfer.source_false_incoming_label) {
       return std::nullopt;
     }
 
@@ -1574,8 +1592,8 @@ std::string emit_prepared_module(
     }
 
     return AuthoritativeJoinBranchSources{
-        .true_transfer = true_transfer,
-        .false_transfer = false_transfer,
+        .true_transfer = authoritative_transfers->true_transfer,
+        .false_transfer = authoritative_transfers->false_transfer,
         .true_predecessor = true_predecessor,
         .false_predecessor = false_predecessor,
     };
@@ -1819,13 +1837,13 @@ std::string emit_prepared_module(
             const auto& find_branch_condition_fn)
         -> std::optional<ShortCircuitJoinContext> {
       const auto authoritative_transfers =
-          find_authoritative_join_edge_transfers(join_transfer);
+          classify_authoritative_join_transfers(join_transfer);
       if (!authoritative_transfers.has_value()) {
         return std::nullopt;
       }
 
-      const auto* true_transfer = authoritative_transfers->first;
-      const auto* false_transfer = authoritative_transfers->second;
+      const auto* true_transfer = authoritative_transfers->true_transfer;
+      const auto* false_transfer = authoritative_transfers->false_transfer;
       if (true_transfer == nullptr || false_transfer == nullptr) {
         return std::nullopt;
       }
