@@ -11,19 +11,21 @@ Source Plan: plan.md
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `tests/backend/backend_x86_handoff_boundary_test.cpp` and `todo.md` by
 extending the compare-join handoff-boundary fixture to the fixed-offset
-same-module global selected-value-chain false-lane passthrough topology,
-keeping the same prepared branch/join ownership contract and proving both the
-plain prepared consumer and the `PreparedJoinTransferKind::EdgeStoreSlot`
-carrier still emit the same canonical asm when one extra empty authoritative
-false-lane bridge sits between the source branch lane and the join.
+pointer-backed same-module global selected-value-chain passthrough topology on
+both true and false lanes, keeping the same prepared branch/join ownership
+contract and proving both the plain prepared consumer and the
+`PreparedJoinTransferKind::EdgeStoreSlot` carrier still emit the same
+canonical asm when one extra empty authoritative bridge sits between the
+source branch lane and the join.
 
 ## Suggested Next
 
 The next accepted packet should stay in Step 3 and keep shrinking residual
 compare-join topology sensitivity only where prepared ownership is already
-authoritative, most likely by extending the same passthrough check to the
-fixed-offset pointer-backed selected-value-chain family before widening into
-broader CFG shapes, instruction-selection work, or Step 4 file organization.
+authoritative, most likely by extending the same passthrough check to another
+adjacent prepared compare-join family that already has baseline and
+EdgeStoreSlot selected-value-chain coverage before widening into broader CFG
+shapes, instruction-selection work, or Step 4 file organization.
 
 ## Watchouts
 
@@ -34,7 +36,8 @@ broader CFG shapes, instruction-selection work, or Step 4 file organization.
   testcase-shaped matcher growth, or broad multi-block rediscovery. This
   family should only allow one extra empty passthrough after an already-
   authoritative compare lane when the prepared branch labels and join-transfer
-  ownership already identify the real source edges.
+  ownership already identify the real source edges, including the pointer-
+  backed fixed-offset selected-value-chain variant.
 - Keep follow-on work focused on places where prepared branch labels and join
   ownership are already authoritative; do not reintroduce source-label
   equality checks, local join bundle reconstruction, or emitter-local semantic
@@ -42,9 +45,10 @@ broader CFG shapes, instruction-selection work, or Step 4 file organization.
 - `test_before.log` remains the narrow baseline for
   `^backend_x86_handoff_boundary$`, and this packet refreshes `test_after.log`
   with the same focused proof command after proving the compare-join
-  fixed-offset same-module global selected-value-chain consumer and paired
-  EdgeStoreSlot carrier also ignore one extra empty false-lane passthrough
-  block when prepared control-flow ownership is authoritative.
+  fixed-offset pointer-backed same-module global selected-value-chain consumer
+  and paired EdgeStoreSlot carrier also ignore one extra empty true-lane or
+  false-lane passthrough block when prepared control-flow ownership is
+  authoritative.
 
 ## Proof
 
