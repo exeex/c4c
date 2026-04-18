@@ -841,6 +841,7 @@ add_test(
 c4c_set_backend_test_labels(
   "backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir"
   backend_route
+  x86_dynamic_indexed_gep_local_memory_lane
 )
 
 add_test(
@@ -860,6 +861,7 @@ add_test(
 c4c_set_backend_test_labels(
   "backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir"
   backend_route
+  x86_dynamic_indexed_gep_local_memory_lane
 )
 
 add_test(

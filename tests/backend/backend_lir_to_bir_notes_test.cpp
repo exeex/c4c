@@ -16,6 +16,7 @@ using c4c::codegen::lir::LirCastOp;
 using c4c::codegen::lir::LirCallOp;
 using c4c::codegen::lir::LirGepOp;
 using c4c::codegen::lir::LirFunction;
+using c4c::codegen::lir::LirGlobal;
 using c4c::codegen::lir::LirInlineAsmOp;
 using c4c::codegen::lir::LirBinOp;
 using c4c::codegen::lir::LirLoadOp;
@@ -70,6 +71,27 @@ int expect_failure_notes(std::string_view case_name,
   }
   if (!contains_note(result.notes, "module", module_failure)) {
     return fail(missing_module_note);
+  }
+  return 0;
+}
+
+int expect_success_without_function_note(std::string_view case_name,
+                                         const LirModule& module,
+                                         std::string_view unexpected_function_failure,
+                                         std::string_view unexpected_module_failure,
+                                         const char* unexpected_function_note,
+                                         const char* unexpected_module_note) {
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail((std::string("expected semantic BIR lowering to succeed for ") +
+                 std::string(case_name))
+                    .c_str());
+  }
+  if (contains_note(result.notes, "function", unexpected_function_failure)) {
+    return fail(unexpected_function_note);
+  }
+  if (contains_note(result.notes, "module", unexpected_module_failure)) {
+    return fail(unexpected_module_note);
   }
   return 0;
 }
@@ -551,6 +573,197 @@ LirModule make_bad_gep_module() {
   return module;
 }
 
+LirModule make_dynamic_indexed_gep_local_member_array_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.Pair = type { [3 x i32] }");
+
+  LirFunction function;
+  function.name = "dynamic_indexed_gep_local_member_array";
+  function.signature_text =
+      "define i32 @dynamic_indexed_gep_local_member_array(ptr %p.p, i32 %p.i)";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t0"),
+      .element_type = "%struct.Pair",
+      .ptr = LirOperand("%p.p"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 0")},
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t1"),
+      .kind = LirCastKind::SExt,
+      .from_type = "i32",
+      .operand = LirOperand("%p.i"),
+      .to_type = "i64",
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t2"),
+      .element_type = "[3 x i32]",
+      .ptr = LirOperand("%t0"),
+      .indices = {LirOperand("i64 0"), LirOperand("i64 0")},
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t3"),
+      .element_type = "i32",
+      .ptr = LirOperand("%t2"),
+      .indices = {LirOperand("i64 %t1")},
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%t4"),
+      .type_str = "i32",
+      .ptr = LirOperand("%t3"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("%t4"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirGlobal make_dynamic_indexed_gep_global_cases() {
+  LirGlobal global;
+  global.name = "cases";
+  global.qualifier = "global ";
+  global.llvm_type = "[2 x %struct.Pair]";
+  global.init_text =
+      "[%struct.Pair { [3 x i64] [i64 7, i64 11, i64 13], i64 29 }, "
+      "%struct.Pair { [3 x i64] [i64 17, i64 19, i64 23], i64 31 }]";
+  global.align_bytes = 8;
+  return global;
+}
+
+LirModule make_dynamic_indexed_gep_global_member_array_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.Pair = type { [3 x i64], i64 }");
+  module.globals.push_back(make_dynamic_indexed_gep_global_cases());
+
+  LirFunction function;
+  function.name = "dynamic_indexed_gep_global_member_array";
+  function.signature_text =
+      "define i64 @dynamic_indexed_gep_global_member_array(i32 %p.j, i32 %p.i)";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_LONG};
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t0"),
+      .element_type = "[2 x %struct.Pair]",
+      .ptr = LirOperand("@cases"),
+      .indices = {LirOperand("i64 0"), LirOperand("i64 0")},
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t1"),
+      .kind = LirCastKind::SExt,
+      .from_type = "i32",
+      .operand = LirOperand("%p.j"),
+      .to_type = "i64",
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t2"),
+      .element_type = "%struct.Pair",
+      .ptr = LirOperand("%t0"),
+      .indices = {LirOperand("i64 %t1")},
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t3"),
+      .element_type = "%struct.Pair",
+      .ptr = LirOperand("%t2"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 0")},
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t4"),
+      .element_type = "[3 x i64]",
+      .ptr = LirOperand("%t3"),
+      .indices = {LirOperand("i64 0"), LirOperand("i64 0")},
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t5"),
+      .kind = LirCastKind::SExt,
+      .from_type = "i32",
+      .operand = LirOperand("%p.i"),
+      .to_type = "i64",
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t6"),
+      .element_type = "i64",
+      .ptr = LirOperand("%t4"),
+      .indices = {LirOperand("i64 %t5")},
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%t7"),
+      .type_str = "i64",
+      .ptr = LirOperand("%t6"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("%t7"),
+      .type_str = "i64",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_dynamic_indexed_gep_global_member_scalar_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.Pair = type { [3 x i64], i64 }");
+  module.globals.push_back(make_dynamic_indexed_gep_global_cases());
+
+  LirFunction function;
+  function.name = "dynamic_indexed_gep_global_member_scalar";
+  function.signature_text = "define i64 @dynamic_indexed_gep_global_member_scalar(i32 %p.j)";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_LONG};
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t0"),
+      .element_type = "[2 x %struct.Pair]",
+      .ptr = LirOperand("@cases"),
+      .indices = {LirOperand("i64 0"), LirOperand("i64 0")},
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t1"),
+      .kind = LirCastKind::SExt,
+      .from_type = "i32",
+      .operand = LirOperand("%p.j"),
+      .to_type = "i64",
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t2"),
+      .element_type = "%struct.Pair",
+      .ptr = LirOperand("%t0"),
+      .indices = {LirOperand("i64 %t1")},
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t3"),
+      .element_type = "%struct.Pair",
+      .ptr = LirOperand("%t2"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 1")},
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%t4"),
+      .type_str = "i64",
+      .ptr = LirOperand("%t3"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("%t4"),
+      .type_str = "i64",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_store_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -848,6 +1061,39 @@ int main() {
           "missing module note carrying the gep local-memory semantic family failure");
       gep_status != 0) {
     return gep_status;
+  }
+
+  if (const int dynamic_gep_lane_status = expect_success_without_function_note(
+          "dynamic_indexed_gep_local_member_array",
+          make_dynamic_indexed_gep_local_member_array_module(),
+          "latest function failure: semantic lir_to_bir function 'dynamic_indexed_gep_local_member_array' failed in gep local-memory semantic family",
+          "failed in gep local-memory semantic family",
+          "unexpected dynamic indexed gep local-memory lane function failure note",
+          "unexpected dynamic indexed gep local-memory lane module failure note");
+      dynamic_gep_lane_status != 0) {
+    return dynamic_gep_lane_status;
+  }
+
+  if (const int dynamic_global_scalar_lane_status = expect_success_without_function_note(
+          "dynamic_indexed_gep_global_member_scalar",
+          make_dynamic_indexed_gep_global_member_scalar_module(),
+          "latest function failure: semantic lir_to_bir function 'dynamic_indexed_gep_global_member_scalar' failed in gep local-memory semantic family",
+          "failed in gep local-memory semantic family",
+          "unexpected dynamic indexed global scalar-member gep function failure note",
+          "unexpected dynamic indexed global scalar-member gep module failure note");
+      dynamic_global_scalar_lane_status != 0) {
+    return dynamic_global_scalar_lane_status;
+  }
+
+  if (const int dynamic_global_array_lane_status = expect_success_without_function_note(
+          "dynamic_indexed_gep_global_member_array",
+          make_dynamic_indexed_gep_global_member_array_module(),
+          "latest function failure: semantic lir_to_bir function 'dynamic_indexed_gep_global_member_array' failed in gep local-memory semantic family",
+          "failed in gep local-memory semantic family",
+          "unexpected dynamic indexed global member-array gep function failure note",
+          "unexpected dynamic indexed global member-array gep module failure note");
+      dynamic_global_array_lane_status != 0) {
+    return dynamic_global_array_lane_status;
   }
 
   if (const int store_status = expect_failure_notes(

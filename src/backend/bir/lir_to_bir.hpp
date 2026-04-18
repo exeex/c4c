@@ -332,6 +332,21 @@ class BirFunctionLowerer {
   using DynamicGlobalAggregateArrayMap =
       std::unordered_map<std::string, DynamicGlobalAggregateArrayAccess>;
 
+  struct DynamicGlobalScalarArrayAccess {
+    std::string global_name;
+    bir::TypeKind element_type = bir::TypeKind::Void;
+    std::size_t byte_offset = 0;
+    std::size_t outer_element_count = 0;
+    std::size_t outer_element_stride_bytes = 0;
+    bir::Value outer_index;
+    std::size_t element_count = 0;
+    std::size_t element_stride_bytes = 0;
+    bir::Value index;
+  };
+
+  using DynamicGlobalScalarArrayMap =
+      std::unordered_map<std::string, DynamicGlobalScalarArrayAccess>;
+
   struct LocalAggregateSlots {
     std::string storage_type_text;
     std::string type_text;
@@ -700,6 +715,7 @@ class BirFunctionLowerer {
   GlobalPointerMap global_pointer_slots_;
   DynamicGlobalPointerArrayMap dynamic_global_pointer_arrays_;
   DynamicGlobalAggregateArrayMap dynamic_global_aggregate_arrays_;
+  DynamicGlobalScalarArrayMap dynamic_global_scalar_arrays_;
   GlobalObjectPointerMap global_object_pointer_slots_;
   GlobalAddressIntMap global_address_ints_;
   GlobalObjectAddressIntMap global_object_address_ints_;
