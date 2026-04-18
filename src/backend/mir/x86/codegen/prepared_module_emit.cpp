@@ -1539,6 +1539,10 @@ std::string emit_prepared_module(
       bool omit_true_continuation = false;
       bool omit_false_lane = false;
     };
+    struct RenderedShortCircuitFalseLane {
+      std::string label;
+      std::string rendered;
+    };
     struct ClassifiedShortCircuitIncoming {
       std::size_t transfer_index = 0;
       bool short_circuit_value = false;
@@ -1671,6 +1675,28 @@ std::string emit_prepared_module(
       }
       return render_block_fn(*target.block,
                              omit_continuation ? std::nullopt : target.continuation);
+    };
+    const auto render_short_circuit_false_lane =
+        [&](const auto& render_block_fn,
+            const ShortCircuitPlan& plan,
+            const ShortCircuitRenderContext& render_context)
+        -> std::optional<RenderedShortCircuitFalseLane> {
+      RenderedShortCircuitFalseLane rendered_false_lane{
+          .label = ".L" + function.name + "_" + std::string(plan.on_compare_false.block->label),
+          .rendered = {},
+      };
+      if (render_context.omit_false_lane) {
+        return rendered_false_lane;
+      }
+
+      const auto rendered_false =
+          render_short_circuit_target(render_block_fn, plan.on_compare_false, false);
+      if (!rendered_false.has_value()) {
+        return std::nullopt;
+      }
+      rendered_false_lane.rendered =
+          rendered_false_lane.label + ":\n" + *rendered_false;
+      return rendered_false_lane;
     };
 
     const auto render_function_return =
@@ -2538,23 +2564,16 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
-            std::optional<std::string> rendered_false;
-            if (!render_context->omit_false_lane) {
-              rendered_false = render_short_circuit_target(
-                  render_block, short_circuit_plan.on_compare_false, false);
-              if (!rendered_false.has_value()) {
-                return std::nullopt;
-              }
+            const auto rendered_false_lane = render_short_circuit_false_lane(
+                render_block, short_circuit_plan, *render_context);
+            if (!rendered_false_lane.has_value()) {
+              return std::nullopt;
             }
-
-            const std::string false_label =
-                ".L" + function.name + "_" +
-                std::string(short_circuit_plan.on_compare_false.block->label);
             std::string rendered =
                 body + false_branch_compare->first + "    " + false_branch_compare->second + " " +
-                false_label + "\n" + *rendered_true;
-            if (!render_context->omit_false_lane) {
-              rendered += false_label + ":\n" + *rendered_false;
+                rendered_false_lane->label + "\n" + *rendered_true;
+            if (!rendered_false_lane->rendered.empty()) {
+              rendered += rendered_false_lane->rendered;
             }
             return rendered;
           };

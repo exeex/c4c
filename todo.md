@@ -9,18 +9,17 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting
-`render_short_circuit_target()` out of `render_short_circuit_plan()`. The
-short-circuit renderer now delegates per-target block rendering and
-continuation omission to one reusable helper instead of rebuilding that target
-logic inside the final control-flow assembly step.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting the final
+short-circuit false-label stitching out of `render_short_circuit_plan()`. The
+plan renderer now delegates false-lane rendering and label assembly to a
+reusable helper instead of rebuilding that final false-block splice inline.
 
 ## Suggested Next
 
-The next small Step 3 packet is to extract the final short-circuit false-label
-stitching out of `render_short_circuit_plan()` so the plan renderer becomes a
-thin control-flow assembly wrapper over reusable render-context, target-
-rendering, and final-label emission helpers.
+The next small Step 3 packet is to extract the remaining render-context
+construction out of `render_short_circuit_plan()` so the plan renderer becomes
+a thin wrapper that only sequences context-building and the existing target and
+false-lane helpers.
 
 ## Watchouts
 
@@ -33,9 +32,10 @@ rendering, and final-label emission helpers.
 - `build_compare_join_continuation()` remains the Step 3 gate for the join-
   result zero-compare contract; keep `Eq`/`Ne` mapping and jump-target choice
   data-driven there instead of pushing them back into renderer assembly.
-- `build_render_context()` now owns rendered true/false lane omission, and
-  `render_short_circuit_target()` now owns per-target block rendering plus
-  continuation omission; future cleanup should keep those responsibilities in
+- `build_render_context()` now owns rendered true/false lane omission,
+  `render_short_circuit_target()` owns per-target block rendering plus
+  continuation omission, and `render_short_circuit_false_lane()` owns the final
+  false-label splice; future cleanup should keep those responsibilities in
   helpers instead of re-growing inline target handling in
   `render_short_circuit_plan()`.
 - `classify_short_circuit_join_incoming()` still assumes the prepared select
@@ -49,5 +49,5 @@ rendering, and final-label emission helpers.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 short-circuit target-render
-cleanup packet; `test_after.log` remains the canonical proof log path.
+The build and narrow proof passed for this Step 3 false-label cleanup packet;
+`test_after.log` remains the canonical proof log path.
