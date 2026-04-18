@@ -1941,20 +1941,17 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
 
-      const auto carrier_names_prepared_value =
-          [&](const auto& carrier_result) {
-            return carrier_result.kind == c4c::backend::bir::Value::Kind::Named &&
-                   carrier_result.type == c4c::backend::bir::TypeKind::I32 &&
-                   carrier_result.name == join_transfer.result.name;
-          };
+      std::optional<std::string_view> carrier_result_name;
       const auto& join_carrier = join_block.insts[join_block.insts.size() - 2];
       if (const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&join_carrier);
           select != nullptr) {
         if (join_transfer.kind !=
                 c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
-            !carrier_names_prepared_value(select->result)) {
+            select->result.kind != c4c::backend::bir::Value::Kind::Named ||
+            select->result.type != c4c::backend::bir::TypeKind::I32) {
           return std::nullopt;
         }
+        carrier_result_name = select->result.name;
       } else if (const auto* load_local =
                      std::get_if<c4c::backend::bir::LoadLocalInst>(&join_carrier);
                  load_local != nullptr) {
@@ -1962,22 +1959,27 @@ std::string emit_prepared_module(
                 c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
             !join_transfer.storage_name.has_value() ||
             load_local->slot_name != *join_transfer.storage_name ||
-            !carrier_names_prepared_value(load_local->result)) {
+            load_local->result.kind != c4c::backend::bir::Value::Kind::Named ||
+            load_local->result.type != c4c::backend::bir::TypeKind::I32) {
           return std::nullopt;
         }
+        carrier_result_name = load_local->result.name;
       } else {
+        return std::nullopt;
+      }
+      if (!carrier_result_name.has_value()) {
         return std::nullopt;
       }
 
       const bool lhs_is_join_result_rhs_is_zero =
           join_branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Named &&
-          join_branch_condition.lhs->name == join_transfer.result.name &&
+          join_branch_condition.lhs->name == *carrier_result_name &&
           join_branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
           join_branch_condition.rhs->type == c4c::backend::bir::TypeKind::I32 &&
           join_branch_condition.rhs->immediate == 0;
       const bool rhs_is_join_result_lhs_is_zero =
           join_branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Named &&
-          join_branch_condition.rhs->name == join_transfer.result.name &&
+          join_branch_condition.rhs->name == *carrier_result_name &&
           join_branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
           join_branch_condition.lhs->type == c4c::backend::bir::TypeKind::I32 &&
           join_branch_condition.lhs->immediate == 0;

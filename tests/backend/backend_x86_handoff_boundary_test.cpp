@@ -3909,12 +3909,27 @@ int check_short_circuit_route_consumes_prepared_control_flow(const bir::Module& 
                     .c_str());
   }
   auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
-  if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1) {
+  if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1 ||
+      mutable_control_flow->branch_conditions.size() != 2) {
     return fail((std::string(failure_context) +
                  ": prepared short-circuit fixture lost its mutable join-transfer contract")
                     .c_str());
   }
   auto& join_transfer = mutable_control_flow->join_transfers.front();
+  auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : mutable_control_flow->branch_conditions) {
+      if (branch_condition.block_label == join_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  if (join_branch_condition == nullptr || !join_branch_condition->lhs.has_value() ||
+      !join_branch_condition->rhs.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the authoritative join compare contract")
+                    .c_str());
+  }
   if (join_transfer.edge_transfers.size() != 2 ||
       !join_transfer.source_true_transfer_index.has_value() ||
       !join_transfer.source_false_transfer_index.has_value() ||
@@ -3962,6 +3977,24 @@ int check_short_circuit_route_consumes_prepared_control_flow(const bir::Module& 
   entry_compare->opcode = bir::BinaryOpcode::Eq;
   entry_compare->lhs = bir::Value::immediate_i32(7);
   entry_compare->rhs = bir::Value::immediate_i32(7);
+  const std::string original_join_carrier_name = join_select->result.name;
+  join_select->result = bir::Value::named(bir::TypeKind::I32, "carrier.short_circuit.join");
+  if (join_compare->lhs.kind == bir::Value::Kind::Named &&
+      join_compare->lhs.name == original_join_carrier_name) {
+    join_compare->lhs = join_select->result;
+  }
+  if (join_compare->rhs.kind == bir::Value::Kind::Named &&
+      join_compare->rhs.name == original_join_carrier_name) {
+    join_compare->rhs = join_select->result;
+  }
+  if (join_branch_condition->lhs->kind == bir::Value::Kind::Named &&
+      join_branch_condition->lhs->name == join_transfer.result.name) {
+    *join_branch_condition->lhs = join_select->result;
+  }
+  if (join_branch_condition->rhs->kind == bir::Value::Kind::Named &&
+      join_branch_condition->rhs->name == join_transfer.result.name) {
+    *join_branch_condition->rhs = join_select->result;
+  }
   join_select->predicate = bir::BinaryOpcode::Eq;
   join_select->lhs = bir::Value::immediate_i32(2);
   join_select->rhs = bir::Value::immediate_i32(9);
@@ -4019,13 +4052,28 @@ int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
   }
 
   auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
-  if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1) {
+  if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1 ||
+      mutable_control_flow->branch_conditions.size() != 2) {
     return fail((std::string(failure_context) +
                  ": prepared short-circuit fixture lost its mutable join-transfer contract")
                     .c_str());
   }
 
   auto& join_transfer = mutable_control_flow->join_transfers.front();
+  auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : mutable_control_flow->branch_conditions) {
+      if (branch_condition.block_label == join_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  if (join_branch_condition == nullptr || !join_branch_condition->lhs.has_value() ||
+      !join_branch_condition->rhs.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the authoritative join compare contract")
+                    .c_str());
+  }
   if (join_transfer.edge_transfers.size() != 2 ||
       !join_transfer.source_true_transfer_index.has_value() ||
       !join_transfer.source_false_transfer_index.has_value() ||
@@ -4082,10 +4130,27 @@ int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
       .align_bytes = 4,
       .is_address_taken = false,
   });
+  const auto load_result = bir::Value::named(bir::TypeKind::I32, "carrier.short_circuit.join");
   join_block->insts.front() = bir::LoadLocalInst{
-      .result = join_select->result,
+      .result = load_result,
       .slot_name = *join_transfer.storage_name,
   };
+  if (join_compare->lhs.kind == bir::Value::Kind::Named &&
+      join_compare->lhs.name == join_transfer.result.name) {
+    join_compare->lhs = load_result;
+  }
+  if (join_compare->rhs.kind == bir::Value::Kind::Named &&
+      join_compare->rhs.name == join_transfer.result.name) {
+    join_compare->rhs = load_result;
+  }
+  if (join_branch_condition->lhs->kind == bir::Value::Kind::Named &&
+      join_branch_condition->lhs->name == join_transfer.result.name) {
+    *join_branch_condition->lhs = load_result;
+  }
+  if (join_branch_condition->rhs->kind == bir::Value::Kind::Named &&
+      join_branch_condition->rhs->name == join_transfer.result.name) {
+    *join_branch_condition->rhs = load_result;
+  }
 
   entry_compare->opcode = bir::BinaryOpcode::Eq;
   entry_compare->lhs = bir::Value::immediate_i32(7);
