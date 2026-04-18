@@ -3807,11 +3807,15 @@ int check_short_circuit_route_consumes_prepared_control_flow(const bir::Module& 
   join_compare->opcode = bir::BinaryOpcode::Eq;
   join_compare->lhs = bir::Value::immediate_i32(5);
   join_compare->rhs = bir::Value::immediate_i32(5);
+  entry_block->terminator.true_label = "carrier.short_circuit";
+  entry_block->terminator.false_label = "carrier.rhs";
+  join_block->terminator.true_label = "carrier.join.true";
+  join_block->terminator.false_label = "carrier.join.false";
 
   const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
   if (prepared_asm != expected_minimal_local_i32_short_circuit_or_guard_asm(function_name)) {
     return fail((std::string(failure_context) +
-                 ": x86 prepared-module consumer stopped following the authoritative short-circuit control-flow contract")
+                 ": x86 prepared-module consumer stopped following authoritative short-circuit metadata over carrier labels")
                     .c_str());
   }
 

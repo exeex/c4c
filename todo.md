@@ -5,39 +5,35 @@ Source Plan: plan.md
 # Current Packet
 
 ## Just Finished
-- Plan Step: Step 2 / Step 3 - extended the shared short-circuit join contract
-  so `PreparedJoinTransfer` records which originating branch-condition block
-  produced a select-materialized join and which concrete join incoming label
-  corresponds to the compare-true vs compare-false arms after linear branch
-  collapse.
-- Updated the bounded short-circuit x86 lane in
-  `src/backend/mir/x86/codegen/prepared_module_emit.cpp` to use that prepared
-  compare-truth mapping directly instead of walking empty CFG branch chains to
-  rediscover which side short-circuits before the join.
-- Added contract coverage in
-  `tests/backend/backend_prepare_phi_materialize_test.cpp` and a prepared-x86
-  ownership check in `tests/backend/backend_x86_handoff_boundary_test.cpp` that
-  rewrites the prepared short-circuit join incoming labels to metadata-only
-  names while keeping the authoritative prepared compare-truth mapping intact.
+- Plan Step: Step 2 / Step 3 - pushed the bounded short-circuit x86 consumer to
+  seed its entry-side routing from the prepared branch-condition contract
+  instead of the entry block's carrier `CondBranch` labels, keeping the
+  short-circuit route authoritative on prepared control-flow metadata.
+- Added a prepared-x86 ownership check in
+  `tests/backend/backend_x86_handoff_boundary_test.cpp` that poisons both the
+  entry and join carrier branch labels after preparation while leaving the
+  prepared control-flow metadata intact; the route now still emits the same
+  short-circuit asm from the shared contract.
 
 ## Suggested Next
-- Plan Step: Step 2 / Step 3 - push the bounded short-circuit lane further so
-  x86 can take the join continuation path from prepared control-flow metadata
-  without depending on the join block's remaining local carrier layout beyond
-  the authoritative branch-condition record.
+- Plan Step: Step 3 - de-authorize the remaining shape-recovery fallback for
+  this bounded short-circuit family when prepared control-flow metadata is
+  present, so the lane fails closed instead of silently recovering through CFG
+  shape if the shared contract regresses.
 
 ## Watchouts
 - Do not treat x86 matcher widening as progress for this idea.
 - Keep semantic transfer ownership separate from idea `60` physical location
   ownership.
-- The short-circuit slice now relies on the new
-  `PreparedJoinTransfer.{source_branch_block_label,source_true_incoming_label,source_false_incoming_label}`
-  mapping; new select-materialized join producers must populate those fields
-  consistently or x86 will correctly reject the route.
-- The bounded short-circuit lane still depends on the join block's prepared
-  branch-condition record and continuation return leaves; if that remaining
-  meaning needs to survive more carrier rewrites, extend the shared contract
-  again instead of restoring CFG-shape recovery.
+- The short-circuit slice now relies on
+  `PreparedBranchCondition.{true_label,false_label}` plus
+  `PreparedJoinTransfer.{source_branch_block_label,source_true_incoming_label,source_false_incoming_label}`;
+  shared preparation must keep those records aligned or x86 will correctly
+  reject the route.
+- The bounded short-circuit lane still keeps a legacy shape-recovery fallback
+  behind the contract-first path and still depends on real continuation leaf
+  bodies; remove that fallback before treating this family as fully
+  de-authorized from CFG recovery.
 - Loop countdown support from the prior packet remains intentionally bounded to
   the decrement-by-one register lane; broader loop families still need shared
   metadata first.

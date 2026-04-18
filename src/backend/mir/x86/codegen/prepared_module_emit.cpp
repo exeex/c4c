@@ -2249,13 +2249,6 @@ std::string emit_prepared_module(
             return std::nullopt;
           }
 
-          const auto* true_block = find_block(block.terminator.true_label);
-          const auto* false_block = find_block(block.terminator.false_label);
-          if (true_block == nullptr || false_block == nullptr || true_block == &block ||
-              false_block == &block) {
-            return std::nullopt;
-          }
-
           const auto detect_short_circuit_plan_from_control_flow =
               [&]() -> std::optional<ShortCircuitPlan> {
             if (entry_branch_condition == nullptr || function_control_flow == nullptr ||
@@ -2266,9 +2259,14 @@ std::string emit_prepared_module(
                 entry_branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
                 entry_branch_condition->condition_value.kind !=
                     c4c::backend::bir::Value::Kind::Named ||
-                entry_branch_condition->condition_value.name != block.terminator.condition.name ||
-                entry_branch_condition->true_label != block.terminator.true_label ||
-                entry_branch_condition->false_label != block.terminator.false_label) {
+                entry_branch_condition->condition_value.name != block.terminator.condition.name) {
+              return std::nullopt;
+            }
+
+            const auto* true_block = find_block(entry_branch_condition->true_label);
+            const auto* false_block = find_block(entry_branch_condition->false_label);
+            if (true_block == nullptr || false_block == nullptr || true_block == &block ||
+                false_block == &block) {
               return std::nullopt;
             }
 
@@ -2423,6 +2421,12 @@ std::string emit_prepared_module(
             if (const auto contract_plan = detect_short_circuit_plan_from_control_flow();
                 contract_plan.has_value()) {
               return contract_plan;
+            }
+            const auto* true_block = find_block(block.terminator.true_label);
+            const auto* false_block = find_block(block.terminator.false_label);
+            if (true_block == nullptr || false_block == nullptr || true_block == &block ||
+                false_block == &block) {
+              return std::nullopt;
             }
             const auto classify_bool_value =
                 [&](const c4c::backend::bir::Value& value)
@@ -2681,6 +2685,13 @@ std::string emit_prepared_module(
             return body + false_branch_compare->first + "    " + false_branch_compare->second + " " +
                    false_label + "\n" + *rendered_true + false_label + ":\n" +
                    *rendered_false;
+          }
+
+          const auto* true_block = find_block(block.terminator.true_label);
+          const auto* false_block = find_block(block.terminator.false_label);
+          if (true_block == nullptr || false_block == nullptr || true_block == &block ||
+              false_block == &block) {
+            return std::nullopt;
           }
 
           const auto rendered_true = render_block(*true_block, std::nullopt);
