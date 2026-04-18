@@ -9,19 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by removing the copied
-`classified_incoming` field from `ShortCircuitEntryRoutingContext` and routing
-`build_short_circuit_plan()` through the lane classification already owned by
-`ShortCircuitJoinContext`. Short-circuit entry routing now carries only direct
-branch targets and RHS-entry selection, while join-lane ownership stays on the
-prepared join helper contract.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by deleting
+`ShortCircuitEntryRoutingContext` and routing short-circuit entry plus plain
+conditional compare-driven fallback through one helper-owned direct-branch
+`ShortCircuitPlan` contract. `build_short_circuit_plan()` now derives only the
+RHS-entry choice from that shared plan while compare-driven rendering consumes
+the same target contract in both paths.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect whether the short-circuit direct-
-branch fallback and compare-driven render paths can share one helper-owned
-branch target contract, so compare-and-branch assembly stops carrying parallel
-`true_block` / `false_block` plumbing beside `resolve_direct_branch_targets()`.
+The next small Step 3 packet is to inspect whether the compare-join
+continuation path can also enter compare-driven rendering through a helper-
+built direct-branch plan, so the local `compare_join_plan` assembly beside
+`build_direct_branch_plan()` does not remain as a parallel target-plumbing
+path.
 
 ## Watchouts
 
@@ -40,9 +41,10 @@ branch target contract, so compare-and-branch assembly stops carrying parallel
   circuit lane classification; keep join-input ownership validation there
   instead of re-growing `classify_short_circuit_join_incoming()` calls in entry
   routing or render paths.
-- `ShortCircuitEntryRoutingContext` now carries only direct branch targets and
-  RHS-entry routing; do not re-copy join-lane classification there when
-  `ShortCircuitJoinContext` already owns the prepared classification contract.
+- `build_direct_branch_plan_from_labels()` now owns direct true/false target
+  lookup for short-circuit entry routing and plain cond-branch compare-driven
+  fallback; keep branch-target null/self checks there instead of re-growing
+  local `resolve_direct_branch_targets()` plumbing in compare render paths.
 - `build_compare_join_continuation()` remains the Step 3 gate for the join-
   result zero-compare contract; keep `Eq`/`Ne` mapping and jump-target choice
   data-driven there instead of pushing them back into renderer assembly.
@@ -65,5 +67,5 @@ branch target contract, so compare-and-branch assembly stops carrying parallel
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 routing-context ownership
+The build and narrow proof passed for this Step 3 direct-branch contract
 cleanup packet; proof output is in `test_after.log`.

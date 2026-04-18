@@ -1557,11 +1557,6 @@ std::string emit_prepared_module(
       std::string rendered_true;
       RenderedShortCircuitFalseLane rendered_false_lane;
     };
-    struct ShortCircuitEntryRoutingContext {
-      const c4c::backend::bir::Block* true_block = nullptr;
-      const c4c::backend::bir::Block* false_block = nullptr;
-      const c4c::backend::bir::Block* rhs_entry = nullptr;
-    };
     struct DirectBranchTargets {
       const c4c::backend::bir::Block* true_block = nullptr;
       const c4c::backend::bir::Block* false_block = nullptr;
@@ -1590,6 +1585,30 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
       return targets;
+    };
+    const auto build_direct_branch_plan_from_labels =
+        [&](const c4c::backend::bir::Block& source_block,
+            std::string_view true_label,
+            std::string_view false_label) -> std::optional<ShortCircuitPlan> {
+      const auto direct_targets = resolve_direct_branch_targets(source_block,
+                                                                true_label,
+                                                                false_label);
+      if (!direct_targets.has_value()) {
+        return std::nullopt;
+      }
+
+      return ShortCircuitPlan{
+          .on_compare_true =
+              ShortCircuitTarget{
+                  .block = direct_targets->true_block,
+                  .continuation = std::nullopt,
+              },
+          .on_compare_false =
+              ShortCircuitTarget{
+                  .block = direct_targets->false_block,
+                  .continuation = std::nullopt,
+              },
+      };
     };
     const auto build_compare_join_continuation =
         [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
@@ -1764,11 +1783,10 @@ std::string emit_prepared_module(
       return build_short_circuit_join_context_from_transfer(*join_transfer,
                                                             find_branch_condition_fn);
     };
-    const auto build_short_circuit_entry_routing_context =
+    const auto build_short_circuit_entry_direct_branch_plan =
         [&](const c4c::backend::prepare::PreparedBranchCondition* branch_condition,
-            const c4c::backend::bir::Block& source_block,
-            const ShortCircuitJoinContext& join_context)
-        -> std::optional<ShortCircuitEntryRoutingContext> {
+            const c4c::backend::bir::Block& source_block)
+        -> std::optional<ShortCircuitPlan> {
       if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
           !branch_condition->compare_type.has_value() ||
           !branch_condition->lhs.has_value() || !branch_condition->rhs.has_value() ||
@@ -1779,13 +1797,14 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
 
-      const auto direct_targets = resolve_direct_branch_targets(source_block,
-                                                                branch_condition->true_label,
-                                                                branch_condition->false_label);
-      if (!direct_targets.has_value()) {
-        return std::nullopt;
-      }
-
+      return build_direct_branch_plan_from_labels(source_block,
+                                                  branch_condition->true_label,
+                                                  branch_condition->false_label);
+    };
+    const auto build_short_circuit_plan =
+        [&](const ShortCircuitJoinContext& join_context,
+            const ShortCircuitPlan& direct_branch_plan)
+        -> std::optional<ShortCircuitPlan> {
       const bool short_circuit_on_compare_true =
           join_context.classified_incoming.transfer_index ==
           *join_context.join_transfer->source_true_transfer_index;
@@ -1796,30 +1815,26 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
 
-      return ShortCircuitEntryRoutingContext{
-          .true_block = direct_targets->true_block,
-          .false_block = direct_targets->false_block,
-          .rhs_entry = short_circuit_on_compare_true ? direct_targets->false_block
-                                                     : direct_targets->true_block,
-      };
-    };
-    const auto build_short_circuit_plan =
-        [&](const ShortCircuitJoinContext& join_context,
-            const ShortCircuitEntryRoutingContext& routing_context)
-        -> std::optional<ShortCircuitPlan> {
+      const auto* rhs_entry = short_circuit_on_compare_true
+                                  ? direct_branch_plan.on_compare_false.block
+                                  : direct_branch_plan.on_compare_true.block;
+      if (rhs_entry == nullptr) {
+        return std::nullopt;
+      }
+
       const auto on_compare_true =
           build_short_circuit_target_from_transfer(
               *join_context.join_transfer,
               *join_context.join_transfer->source_true_transfer_index,
               join_context.classified_incoming,
-              *routing_context.rhs_entry,
+              *rhs_entry,
               join_context.continuation_plan);
       const auto on_compare_false =
           build_short_circuit_target_from_transfer(
               *join_context.join_transfer,
               *join_context.join_transfer->source_false_transfer_index,
               join_context.classified_incoming,
-              *routing_context.rhs_entry,
+              *rhs_entry,
               join_context.continuation_plan);
       if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
         return std::nullopt;
@@ -1861,15 +1876,9 @@ std::string emit_prepared_module(
     const auto build_plain_cond_branch_plan =
         [&](const c4c::backend::bir::Block& source_block)
         -> std::optional<ShortCircuitPlan> {
-      const auto direct_targets = resolve_direct_branch_targets(source_block,
-                                                                source_block.terminator.true_label,
-                                                                source_block.terminator.false_label);
-      if (!direct_targets.has_value()) {
-        return std::nullopt;
-      }
-      return build_direct_branch_plan(source_block,
-                                      direct_targets->true_block,
-                                      direct_targets->false_block);
+      return build_direct_branch_plan_from_labels(source_block,
+                                                  source_block.terminator.true_label,
+                                                  source_block.terminator.false_label);
     };
     const auto render_short_circuit_target =
         [&](const auto& render_block_fn,
@@ -2700,16 +2709,16 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
-            const auto routing_context =
-                build_short_circuit_entry_routing_context(entry_compare_context->branch_condition,
-                                                          block,
-                                                          *join_context);
-            if (!routing_context.has_value()) {
+            const auto direct_branch_plan =
+                build_short_circuit_entry_direct_branch_plan(
+                    entry_compare_context->branch_condition,
+                    block);
+            if (!direct_branch_plan.has_value()) {
               return std::nullopt;
             }
 
             const auto short_circuit_plan = build_short_circuit_plan(*join_context,
-                                                                     *routing_context);
+                                                                     *direct_branch_plan);
             if (!short_circuit_plan.has_value()) {
               return std::nullopt;
             }
