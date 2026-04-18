@@ -9,19 +9,18 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting the
-remaining plain true/false cond-branch fallback render into
-`build_plain_cond_branch_plan()`. The cond-branch path now runs both the
-short-circuit route and the ordinary true/false fallback through the same
-helper-owned plan/render assembly instead of keeping one last inline fallback
-branch spelling path.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting
+`build_direct_branch_plan()` plus `render_compare_driven_branch_plan()`. The
+continuation-aware plain `Branch` compare-join lane now reuses the same
+helper-owned plan/render assembly as the short-circuit and plain cond-branch
+routes instead of keeping its own inline false-label rendering path.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect the remaining continuation-aware
-branch path in the plain `Branch` terminator lane and decide whether its
-compare-and-join rendering can share more of the same helper-owned plan/render
-assembly without weakening the prepared predecessor contract.
+The next small Step 3 packet is to inspect whether the continuation-aware plain
+`Branch` lane can share compare discovery and false-branch fallback selection
+with `build_short_circuit_entry_compare_context()` so the trailing guard-
+compare validation also stays helper-owned.
 
 ## Watchouts
 
@@ -34,6 +33,13 @@ assembly without weakening the prepared predecessor contract.
 - `build_compare_join_continuation()` remains the Step 3 gate for the join-
   result zero-compare contract; keep `Eq`/`Ne` mapping and jump-target choice
   data-driven there instead of pushing them back into renderer assembly.
+- `build_direct_branch_plan()` now owns direct true/false target validation
+  for both plain cond-branch fallback and continuation-aware plain `Branch`
+  rendering; keep block-null and self-target rejection there instead of
+  re-growing those checks in branch emit paths.
+- `render_compare_driven_branch_plan()` now owns compare-driven lane rendering
+  once a plan exists; future cleanup should route compare-and-branch assembly
+  through that helper instead of re-growing inline false-label strings.
 - `build_short_circuit_entry_routing_context()` now owns entry-branch contract
   validation, resolved true/false block lookup, and RHS-entry selection; keep
   that ownership in the helper cluster instead of re-growing those checks
@@ -41,7 +47,8 @@ assembly without weakening the prepared predecessor contract.
 - `build_short_circuit_entry_compare_context()` now owns prepared entry-branch
   lookup plus false-branch compare fallback selection; keep that ownership in
   the helper cluster instead of re-growing compare-shape selection beside the
-  cond-branch emitter.
+  cond-branch emitter, and prefer extending that helper over duplicating the
+  same guard-compare checks in the plain `Branch` continuation lane.
 - `build_plain_cond_branch_plan()` now owns plain true/false cond-branch target
   selection; keep ordinary fallback block lookup in that helper instead of
   re-growing inline branch assembly inside the cond-branch emitter.
@@ -74,5 +81,5 @@ assembly without weakening the prepared predecessor contract.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 plain cond-branch fallback
-plan extraction packet; proof output is in `test_after.log`.
+The build and narrow proof passed for this Step 3 compare-driven branch-plan
+helper reuse packet; proof output is in `test_after.log`.
