@@ -9,18 +9,17 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed another Step 3 cleanup in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by deleting the raw
-short-circuit select/phi reconstruction fallback. Supported short-circuit
-continuation now routes only through prepared branch and join metadata instead
-of dropping back to CFG-shape recovery when detecting that lane.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by switching the
+materialized joined-compare consumer from an emitter-local join-transfer scan
+to the authoritative prepared join record for the actual join block/result,
+while enforcing source-branch metadata when shared lowering publishes it.
 
 ## Suggested Next
 
-Step 3 now looks ready for supervisor-chosen validation beyond the narrow
-handoff subset before treating this route as a stronger milestone. If more x86
-consumer cleanup is still needed after that, the next small packet is checking
-for any remaining prepared-control-flow consumers in `prepared_module_emit.cpp`
-that still fall back to emitter-local topology inference.
+The next small Step 3 packet is inspecting the remaining countdown and guard
+lanes in `prepared_module_emit.cpp` for any control-flow consumers that still
+rely on emitter-local topology matching instead of prepared branch/join
+metadata.
 
 ## Watchouts
 
@@ -30,6 +29,10 @@ that still fall back to emitter-local topology inference.
 - Shared lowering still publishes both `incomings` and `edge_transfers`; keep
   migrating consumers before considering any producer-side compatibility
   cleanup.
+- The joined compare lane should now key off the prepared join record for the
+  actual join block/result and only tighten to `source_branch_block_label`
+  when that producer metadata exists; reintroducing a generic join-transfer
+  scan here would be route drift.
 - Select-materialization consumers should now treat missing
   `source_branch_block_label` as malformed prepared metadata, not as a reason
   to match by surrounding CFG shape.

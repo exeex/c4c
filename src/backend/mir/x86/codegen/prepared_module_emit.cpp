@@ -3856,50 +3856,17 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto* join_transfer = [&]() -> const c4c::backend::prepare::PreparedJoinTransfer* {
-      const c4c::backend::prepare::PreparedJoinTransfer* match = nullptr;
-      for (const auto& candidate : function_control_flow->join_transfers) {
-        if (candidate.result.type != c4c::backend::bir::TypeKind::I32 ||
-            candidate.edge_transfers.size() != 2) {
-          continue;
-        }
-        bool saw_true = false;
-        bool saw_false = false;
-        for (const auto& edge_transfer : candidate.edge_transfers) {
-          saw_true = saw_true || edge_transfer.predecessor_label == branch_condition->true_label;
-          saw_false = saw_false || edge_transfer.predecessor_label == branch_condition->false_label;
-        }
-        if (!saw_true || !saw_false) {
-          continue;
-        }
-        if (match != nullptr) {
-          return nullptr;
-        }
-        match = &candidate;
-      }
-      return match;
-    }();
-    if (join_transfer == nullptr) {
-      return std::nullopt;
-    }
-    const auto* join_edges = incoming_transfers_for_join(
-        *function_control_flow, join_transfer->join_block_label, join_transfer->result.name);
-    if (join_edges == nullptr || join_edges->size() != 2) {
-      return std::nullopt;
-    }
-
     const auto* true_block = find_block(branch_condition->true_label);
     const auto* false_block = find_block(branch_condition->false_label);
     if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
         false_block == &entry || true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
         false_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
         !true_block->insts.empty() || !false_block->insts.empty() ||
-        true_block->terminator.target_label != join_transfer->join_block_label ||
-        false_block->terminator.target_label != join_transfer->join_block_label) {
+        true_block->terminator.target_label != false_block->terminator.target_label) {
       return std::nullopt;
     }
 
-    const auto* join_block = find_block(join_transfer->join_block_label);
+    const auto* join_block = find_block(true_block->terminator.target_label);
     if (join_block == nullptr || join_block == &entry || join_block == true_block ||
         join_block == false_block || join_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
         !join_block->terminator.value.has_value() || join_block->insts.empty()) {
@@ -3924,16 +3891,14 @@ std::string emit_prepared_module(
     if (const auto* select =
             std::get_if<c4c::backend::bir::SelectInst>(&join_block->insts[select_index]);
         select != nullptr) {
-      if (select->result.type != c4c::backend::bir::TypeKind::I32 ||
-          select->result.name != join_transfer->result.name) {
+      if (select->result.type != c4c::backend::bir::TypeKind::I32) {
         return std::nullopt;
       }
       joined_value_name = select->result.name;
     } else if (const auto* load_local =
                    std::get_if<c4c::backend::bir::LoadLocalInst>(&join_block->insts[select_index]);
                load_local != nullptr) {
-      if (load_local->result.type != c4c::backend::bir::TypeKind::I32 ||
-          load_local->result.name != join_transfer->result.name) {
+      if (load_local->result.type != c4c::backend::bir::TypeKind::I32) {
         return std::nullopt;
       }
       joined_value_name = load_local->result.name;
@@ -3943,6 +3908,33 @@ std::string emit_prepared_module(
     if (
         join_block->terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
         (trailing_binary == nullptr && join_block->terminator.value->name != joined_value_name)) {
+      return std::nullopt;
+    }
+
+    const auto* join_transfer = c4c::backend::prepare::find_prepared_join_transfer(
+        *function_control_flow, join_block->label, joined_value_name);
+    if (join_transfer == nullptr ||
+        join_transfer->kind != c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
+        join_transfer->result.type != c4c::backend::bir::TypeKind::I32 ||
+        join_transfer->edge_transfers.size() != 2) {
+      return std::nullopt;
+    }
+    if (join_transfer->source_branch_block_label.has_value() &&
+        *join_transfer->source_branch_block_label != entry.label) {
+      return std::nullopt;
+    }
+    if (join_transfer->source_true_incoming_label.has_value() &&
+        *join_transfer->source_true_incoming_label != branch_condition->true_label) {
+      return std::nullopt;
+    }
+    if (join_transfer->source_false_incoming_label.has_value() &&
+        *join_transfer->source_false_incoming_label != branch_condition->false_label) {
+      return std::nullopt;
+    }
+
+    const auto* join_edges = incoming_transfers_for_join(
+        *function_control_flow, join_transfer->join_block_label, join_transfer->result.name);
+    if (join_edges == nullptr || join_edges->size() != 2) {
       return std::nullopt;
     }
 
