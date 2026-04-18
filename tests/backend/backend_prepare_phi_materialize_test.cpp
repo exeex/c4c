@@ -57,6 +57,11 @@ bool is_immediate_i32(const bir::Value& value, std::int64_t expected) {
          value.immediate == expected;
 }
 
+bool is_named_i32(const bir::Value& value, std::string_view expected_name) {
+  return value.kind == bir::Value::Kind::Named && value.type == bir::TypeKind::I32 &&
+         value.name == expected_name;
+}
+
 bool function_contains_i1(const bir::Function& function) {
   const auto value_is_i1 = [](const bir::Value& value) { return value.type == bir::TypeKind::I1; };
   const auto address_is_i1 = [&](const std::optional<bir::MemoryAddress>& address) {
@@ -259,6 +264,45 @@ int check_prepared_control_flow_contract(const prepare::PreparedBirModule& prepa
   return 0;
 }
 
+int check_two_way_branch_join_control_flow_contract(const prepare::PreparedBirModule& prepared,
+                                                    const char* function_name) {
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    return fail("expected legalize to publish prepared control-flow metadata for the joined branch lane");
+  }
+  if (control_flow->branch_conditions.size() != 1 || control_flow->join_transfers.size() != 1) {
+    return fail("expected the joined branch lane to publish one branch-condition and one join-transfer record");
+  }
+
+  const auto& branch_condition = control_flow->branch_conditions.front();
+  if (branch_condition.block_label != "entry" || !branch_condition.predicate.has_value() ||
+      !branch_condition.compare_type.has_value() || !branch_condition.lhs.has_value() ||
+      !branch_condition.rhs.has_value() ||
+      *branch_condition.predicate != bir::BinaryOpcode::Eq ||
+      *branch_condition.compare_type != bir::TypeKind::I32 ||
+      !is_named_i32(*branch_condition.lhs, "p.x") ||
+      !is_immediate_i32(*branch_condition.rhs, 0) ||
+      branch_condition.true_label != "is_zero" || branch_condition.false_label != "is_nonzero" ||
+      !is_named_i32(branch_condition.condition_value, "cond0")) {
+    return fail("expected joined branch metadata to preserve the compare-against-zero branch contract");
+  }
+
+  const auto& join_transfer = control_flow->join_transfers.front();
+  if (join_transfer.kind != prepare::PreparedJoinTransferKind::SelectMaterialization ||
+      join_transfer.join_block_label != "join" || !is_named_i32(join_transfer.result, "merge") ||
+      join_transfer.incomings.size() != 2 || join_transfer.storage_name.has_value()) {
+    return fail("expected joined branch metadata to publish a select-materialized join contract");
+  }
+  if (join_transfer.incomings[0].label != "is_zero" ||
+      !is_named_i32(join_transfer.incomings[0].value, "zero.adjusted") ||
+      join_transfer.incomings[1].label != "is_nonzero" ||
+      !is_named_i32(join_transfer.incomings[1].value, "nonzero.adjusted")) {
+    return fail("expected joined branch metadata to preserve the predecessor-to-join incoming mapping");
+  }
+
+  return 0;
+}
+
 prepare::PreparedBirModule legalize_call_abi_module() {
   bir::Module module;
   module.globals.push_back(bir::Global{
@@ -328,6 +372,96 @@ prepare::PreparedBirModule legalize_call_abi_module() {
 
   module.functions.push_back(std::move(callee));
   module.functions.push_back(std::move(caller));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  return std::move(planner.prepared());
+}
+
+prepare::PreparedBirModule legalize_two_way_branch_join_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "branch_join_prepare_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I1, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond0"),
+      .true_label = "is_zero",
+      .false_label = "is_nonzero",
+  };
+
+  bir::Block is_zero;
+  is_zero.label = "is_zero";
+  is_zero.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "zero.adjusted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(5),
+  });
+  is_zero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block is_nonzero;
+  is_nonzero.label = "is_nonzero";
+  is_nonzero.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "nonzero.adjusted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  is_nonzero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "is_zero",
+              .value = bir::Value::named(bir::TypeKind::I32, "zero.adjusted"),
+          },
+          bir::PhiIncoming{
+              .label = "is_nonzero",
+              .value = bir::Value::named(bir::TypeKind::I32, "nonzero.adjusted"),
+          },
+      },
+  });
+  join.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "merge"),
+  };
+
+  function.blocks = {
+      std::move(entry),
+      std::move(is_zero),
+      std::move(is_nonzero),
+      std::move(join),
+  };
+  module.functions.push_back(std::move(function));
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
@@ -886,6 +1020,45 @@ int check_materialized_join(const bir::Function& legalized, bool add_trailing_us
   return 0;
 }
 
+int check_two_way_materialized_join(const bir::Function& legalized) {
+  if (!legalized.local_slots.empty()) {
+    return fail("expected joined compare-branch phi materialization to avoid fallback local slots");
+  }
+
+  const auto* join_block = find_block(legalized, "join");
+  if (join_block == nullptr || join_block->insts.size() != 3) {
+    return fail("expected the joined compare-branch lane to materialize into two arithmetic defs plus one select");
+  }
+
+  const auto* true_adjust = std::get_if<bir::BinaryInst>(&join_block->insts[0]);
+  const auto* false_adjust = std::get_if<bir::BinaryInst>(&join_block->insts[1]);
+  const auto* select = std::get_if<bir::SelectInst>(&join_block->insts[2]);
+  if (true_adjust == nullptr || false_adjust == nullptr || select == nullptr) {
+    return fail("expected the joined compare-branch lane to end in a select-backed join");
+  }
+  if (true_adjust->result.name != "zero.adjusted" || false_adjust->result.name != "nonzero.adjusted" ||
+      select->result.name != "merge" || !is_named_i32(select->true_value, "zero.adjusted") ||
+      !is_named_i32(select->false_value, "nonzero.adjusted")) {
+    return fail("expected the joined compare-branch lane to preserve the materialized join values");
+  }
+  if (join_block->terminator.kind != bir::TerminatorKind::Return ||
+      !join_block->terminator.value.has_value() ||
+      !is_named_i32(*join_block->terminator.value, "merge")) {
+    return fail("expected the joined compare-branch lane to return the materialized join result");
+  }
+
+  for (const auto& block : legalized.blocks) {
+    for (const auto& inst : block.insts) {
+      if (std::holds_alternative<bir::PhiInst>(inst) || std::holds_alternative<bir::LoadLocalInst>(inst) ||
+          std::holds_alternative<bir::StoreLocalInst>(inst)) {
+        return fail("unexpected fallback phi lowering remained in the joined compare-branch lane");
+      }
+    }
+  }
+
+  return 0;
+}
+
 int check_materialized_successor_join(const bir::Function& legalized) {
   if (!legalized.local_slots.empty()) {
     return fail("expected successor-consumed reducible phi tree to materialize without local slots");
@@ -1250,6 +1423,24 @@ int main() {
   }
   if (const int status =
           check_materialized_forwarded_successor_join(prepared_forwarded_successor_use.module.functions.front());
+      status != 0) {
+    return status;
+  }
+
+  const auto prepared_two_way_join = legalize_two_way_branch_join_module();
+  if (const int status = check_prepare_phi_invariant(prepared_two_way_join); status != 0) {
+    return status;
+  }
+  if (const int status = check_prepare_i1_invariant(prepared_two_way_join); status != 0) {
+    return status;
+  }
+  if (const int status =
+          check_two_way_branch_join_control_flow_contract(prepared_two_way_join,
+                                                          "branch_join_prepare_contract");
+      status != 0) {
+    return status;
+  }
+  if (const int status = check_two_way_materialized_join(prepared_two_way_join.module.functions.front());
       status != 0) {
     return status;
   }

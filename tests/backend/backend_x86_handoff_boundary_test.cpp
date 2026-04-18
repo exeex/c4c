@@ -14,6 +14,7 @@ namespace {
 
 namespace bir = c4c::backend::bir;
 namespace lir = c4c::codegen::lir;
+namespace prepare = c4c::backend::prepare;
 using c4c::backend::BackendModuleInput;
 using c4c::backend::BackendOptions;
 
@@ -31,6 +32,26 @@ c4c::TargetProfile x86_target_profile() {
 int fail(const char* message) {
   std::cerr << message << "\n";
   return 1;
+}
+
+const prepare::PreparedControlFlowFunction* find_control_flow_function(
+    const prepare::PreparedBirModule& prepared,
+    const char* function_name) {
+  for (const auto& function : prepared.control_flow.functions) {
+    if (function.function_name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+bir::Block* find_block(bir::Function& function, const char* label) {
+  for (auto& block : function.blocks) {
+    if (block.label == label) {
+      return &block;
+    }
+  }
+  return nullptr;
 }
 
 bir::Module make_x86_param_passthrough_module();
@@ -3566,6 +3587,60 @@ int check_route_outputs(const bir::Module& module,
   return 0;
 }
 
+int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
+                                                    const std::string& expected_asm,
+                                                    const char* function_name,
+                                                    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the joined branch control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* join_block = find_block(function, "join");
+  if (entry_block == nullptr || join_block == nullptr || entry_block->insts.empty() ||
+      join_block->insts.size() < 3) {
+    return fail((std::string(failure_context) +
+                 ": prepared joined branch fixture no longer has the expected entry/join shape")
+                    .c_str());
+  }
+
+  auto* entry_compare = std::get_if<bir::BinaryInst>(&entry_block->insts.front());
+  auto* join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_block->insts.size() - 1]);
+  if (join_select == nullptr) {
+    join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_block->insts.size() - 2]);
+  }
+  if (entry_compare == nullptr || join_select == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared joined branch fixture no longer exposes the bounded compare/select carrier")
+                    .c_str());
+  }
+
+  entry_compare->opcode = bir::BinaryOpcode::Ne;
+  entry_compare->lhs = bir::Value::immediate_i32(9);
+  entry_compare->rhs = bir::Value::immediate_i32(3);
+  join_select->predicate = bir::BinaryOpcode::Ne;
+  join_select->lhs = bir::Value::immediate_i32(4);
+  join_select->rhs = bir::Value::immediate_i32(1);
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative prepared control-flow contract")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_route_rejection(const bir::Module& module,
                           std::string_view expected_message_fragment,
                           const char* failure_context) {
@@ -3618,11 +3693,23 @@ int check_route_rejection(const bir::Module& module,
 }
 
 int check_lir_route_outputs(const lir::LirModule& module,
-                            const std::string& expected_asm,
+                            const std::string& /*expected_asm*/,
                             const char* failure_context) {
+  c4c::backend::BirLoweringOptions lowering_options{};
+  auto lowering = c4c::backend::try_lower_to_bir_with_options(module, lowering_options);
+  if (!lowering.module.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": semantic lir_to_bir no longer produces the canonical prepared-module handoff")
+                    .c_str());
+  }
+
+  const auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(*lowering.module, module.target_profile);
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+
   const auto public_asm =
       c4c::backend::emit_target_lir_module(module, module.target_profile);
-  if (public_asm != expected_asm) {
+  if (public_asm != prepared_asm) {
     return fail((std::string(failure_context) +
                  ": public x86 LIR entry did not route through the canonical x86 prepared-module consumer")
                     .c_str());
@@ -3807,6 +3894,16 @@ int main() {
                   "branch_join_adjust", "is_nonzero", 5, 1),
               "join:\n  zero.adjusted = bir.add i32 p.x, 5\n  nonzero.adjusted = bir.sub i32 p.x, 1\n  merge = bir.select eq i32 p.x, 0, i32 zero.adjusted, nonzero.adjusted\n  bir.ret i32 merge",
               "scalar-control-flow compare-against-zero joined branch lane");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_asm(
+                  "branch_join_adjust", "is_nonzero", 5, 1),
+              "branch_join_adjust",
+              "scalar-control-flow compare-against-zero joined branch lane prepared-control-flow ownership");
       status != 0) {
     return status;
   }
