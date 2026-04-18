@@ -1057,7 +1057,7 @@ inline std::string emit_prepared_module(
   }
   if (function_ptr == nullptr) {
     throw std::invalid_argument(
-        "x86 backend emitter only supports a single-function prepared module through the canonical prepared-module handoff");
+        "x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff");
   }
 
   const auto& function = *function_ptr;
@@ -1694,7 +1694,7 @@ inline std::string emit_prepared_module(
   }
   if (defined_functions.size() > 1) {
     throw std::invalid_argument(
-        "x86 backend emitter only supports a single-function prepared module through the canonical prepared-module handoff");
+        "x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff");
   }
   if (function.is_declaration || function.params.size() > 1 ||
       function.return_type != c4c::backend::bir::TypeKind::I32 || function.blocks.empty()) {
