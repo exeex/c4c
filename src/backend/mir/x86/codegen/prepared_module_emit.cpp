@@ -4255,7 +4255,8 @@ std::string emit_prepared_module(
     return std::nullopt;
   };
   const auto find_prepared_i32_eq_or_ne_branch_condition =
-      [&](const c4c::backend::bir::Block& source_block)
+      [&](const c4c::backend::bir::Block& source_block,
+          bool require_label_match)
       -> const c4c::backend::prepare::PreparedBranchCondition* {
     if (source_block.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
         source_block.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named) {
@@ -4276,9 +4277,12 @@ std::string emit_prepared_module(
          *branch_condition->predicate != c4c::backend::bir::BinaryOpcode::Ne) ||
         *branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
         branch_condition->condition_value.kind != c4c::backend::bir::Value::Kind::Named ||
-        branch_condition->condition_value.name != source_block.terminator.condition.name ||
-        branch_condition->true_label != source_block.terminator.true_label ||
-        branch_condition->false_label != source_block.terminator.false_label) {
+        branch_condition->condition_value.name != source_block.terminator.condition.name) {
+      return nullptr;
+    }
+    if (require_label_match &&
+        (branch_condition->true_label != source_block.terminator.true_label ||
+         branch_condition->false_label != source_block.terminator.false_label)) {
       return nullptr;
     }
 
@@ -4293,7 +4297,51 @@ std::string emit_prepared_module(
       [&](const c4c::backend::bir::Block& source_block,
           const c4c::backend::bir::Param& param)
       -> std::optional<PreparedParamZeroBranchCondition> {
-    const auto* branch_condition = find_prepared_i32_eq_or_ne_branch_condition(source_block);
+    const auto* branch_condition =
+        find_prepared_i32_eq_or_ne_branch_condition(source_block, true);
+    if (branch_condition == nullptr) {
+      return std::nullopt;
+    }
+
+    const bool lhs_is_param_rhs_is_zero =
+        branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
+        branch_condition->lhs->name == param.name &&
+        branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+        branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32 &&
+        branch_condition->rhs->immediate == 0;
+    const bool rhs_is_param_lhs_is_zero =
+        branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Named &&
+        branch_condition->rhs->name == param.name &&
+        branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+        branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32 &&
+        branch_condition->lhs->immediate == 0;
+    if (!lhs_is_param_rhs_is_zero && !rhs_is_param_lhs_is_zero) {
+      return std::nullopt;
+    }
+
+    if (*branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Eq) {
+      return PreparedParamZeroBranchCondition{
+          .branch_condition = branch_condition,
+          .false_label = branch_condition->false_label,
+          .false_branch_opcode = "jne",
+      };
+    }
+    if (*branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Ne) {
+      return PreparedParamZeroBranchCondition{
+          .branch_condition = branch_condition,
+          .false_label = branch_condition->false_label,
+          .false_branch_opcode = "je",
+      };
+    }
+
+    return std::nullopt;
+  };
+  const auto find_prepared_param_zero_branch_condition_without_label_match =
+      [&](const c4c::backend::bir::Block& source_block,
+          const c4c::backend::bir::Param& param)
+      -> std::optional<PreparedParamZeroBranchCondition> {
+    const auto* branch_condition =
+        find_prepared_i32_eq_or_ne_branch_condition(source_block, false);
     if (branch_condition == nullptr) {
       return std::nullopt;
     }
@@ -4478,7 +4526,7 @@ std::string emit_prepared_module(
 
     const auto* function_control_flow = find_control_flow_function();
     const auto prepared_branch =
-        find_prepared_param_zero_branch_condition(entry, param);
+        find_prepared_param_zero_branch_condition_without_label_match(entry, param);
     if (function_control_flow == nullptr || !prepared_branch.has_value() ||
         prepared_branch->branch_condition == nullptr) {
       return std::nullopt;

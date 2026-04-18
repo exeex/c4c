@@ -9,22 +9,25 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by tightening the
-local-slot short-circuit join consumer so that the short-circuit entry render
-path now requires prepared branch-condition data instead of falling back to
-the trailing entry compare when building the compare/branch setup for that
-authoritative branch-owned join route. The plain non-join conditional path
-still keeps its existing fallback behavior, but the short-circuit join lane
-now consumes the shared prepared branch contract directly.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving the
+materialized compare-join lane off raw entry terminator labels and onto the
+prepared branch-condition contract for its compare-against-zero branch setup.
+The plain three-block param-zero branch helper still keeps its stricter
+label-match gate, but the joined-branch consumer now accepts entry label drift
+when the authoritative prepared condition still names the compare semantics
+and carrier blocks. `backend_x86_handoff_boundary` now proves this by
+desynchronizing the raw joined-branch entry labels from prepared metadata
+while expecting identical x86 output.
 
 ## Suggested Next
 
-The next accepted packet should remove one more Step 3 consumer seam in the
-same family by moving the compare-join continuation branch setup onto
-prepared branch-condition data as well, not just the short-circuit entry
-setup. If the remaining work in this area is mostly helper extraction or file
-placement inside `prepared_module_emit.cpp`, hand lifecycle back for an
-explicit Step 4 transition instead of stretching Step 3.
+The next accepted packet should keep shrinking Step 3 emitter-local seams in
+the same joined-branch family, preferably by reusing shared prepared
+branch/join consumer helpers around the materialized compare-join and
+EdgeStoreSlot paths instead of growing more route-local lookup code. If the
+remaining work is mostly extraction and file placement inside
+`prepared_module_emit.cpp`, hand lifecycle back for an explicit Step 4
+transition instead of stretching Step 3.
 
 ## Watchouts
 
@@ -61,6 +64,9 @@ explicit Step 4 transition instead of stretching Step 3.
 - Treat any future fix here as capability repair, not expectation weakening:
   the eq/ne joined-branch and loop-countdown routes are covered by
   `backend_x86_handoff_boundary`.
+- The joined-branch ownership tests now intentionally desynchronize raw entry
+  terminator labels from prepared branch metadata; do not restore source-label
+  equality requirements in the compare-join consumer.
 
 ## Proof
 
@@ -68,5 +74,5 @@ Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 This packet passed with the same focused `backend_x86_handoff_boundary` proof
 command, and `test_after.log` remains the fresh canonical narrow log for the
-short-circuit entry consumer path that now requires prepared branch metadata
-for the authoritative branch-owned join route.
+joined-branch consumer path that now follows prepared branch metadata even
+when raw entry terminator labels drift away from that authoritative contract.

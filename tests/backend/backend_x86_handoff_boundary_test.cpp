@@ -3910,10 +3910,10 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
   }
   true_carrier->label = renamed_true_label;
   false_carrier->label = renamed_false_label;
-  entry_block->terminator.true_label = renamed_true_label;
-  entry_block->terminator.false_label = renamed_false_label;
   branch_condition.true_label = renamed_true_label;
   branch_condition.false_label = renamed_false_label;
+  entry_block->terminator.true_label = "carrier.raw.zero";
+  entry_block->terminator.false_label = "carrier.raw.nonzero";
 
   join_transfer.source_true_incoming_label = "contract.true_lane";
   join_transfer.source_false_incoming_label = "contract.false_lane";
