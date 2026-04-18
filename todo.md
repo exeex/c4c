@@ -9,17 +9,19 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed Step 3 packet work in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by narrowing the
-remaining guarded short-circuit fallback so prepared-route cases now fail
-closed unless the prepared control-flow contract can provide the plan, instead
-of reconstructing select/phi meaning from raw join blocks.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by tightening the
+contract-backed guard-chain continuation path so prepared short-circuit joins
+now accept only the prepared join predecessor named in control-flow metadata,
+instead of following an arbitrary empty branch chain when control-flow data
+exists.
 
 ## Suggested Next
 
-Step 3 likely needs a supervisor route check next: the remaining raw
-short-circuit reconstruction now only serves the no-control-flow fallback, so
-the next bounded packet should verify whether any covered x86 consumer lanes
-still depend on non-contract join semantics before choosing more code work.
+Step 3 likely needs supervisor-chosen broader proof next before treating the
+shared-control-flow/x86 route as a milestone; after that, the smallest
+remaining code packet is probably tightening
+`find_select_materialization_join_transfer(...)` so source-branch labels stay
+authoritative instead of optional debt.
 
 ## Watchouts
 
@@ -33,12 +35,15 @@ still depend on non-contract join semantics before choosing more code work.
   `source_false_transfer_index` are now the authoritative truth-to-edge mapping
   for select-materialization joins; future producers in that family must
   populate them consistently with `edge_transfers`.
-- The guarded short-circuit raw select/phi reconstruction still exists only as a
-  no-control-flow fallback path; if a future packet touches it, treat any
-  prepared-route re-expansion as route drift.
+- Contract-backed guard-chain continuation now trusts the prepared join
+  predecessor label; if a future packet loosens that back into arbitrary empty
+  branch-chain traversal, treat it as route drift.
+- The guarded short-circuit raw select/phi reconstruction still exists only as
+  a no-control-flow fallback path; keep any future edits to that lane isolated
+  from prepared-route consumers.
 
 ## Proof
 
 Ran `cmake --build --preset default` and
-`ctest --test-dir build -j --output-on-failure -R '^backend_(prepare_phi_materialize|x86_handoff_boundary)$'`.
+`ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$'`.
 Proof passed and was recorded in `test_after.log`.

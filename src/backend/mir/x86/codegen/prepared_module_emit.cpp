@@ -1527,6 +1527,7 @@ std::string emit_prepared_module(
       const c4c::backend::bir::Block* true_block = nullptr;
       const c4c::backend::bir::Block* false_block = nullptr;
       const c4c::backend::bir::BinaryInst* hoisted_compare = nullptr;
+      std::optional<std::string_view> expected_join_predecessor_label;
       std::optional<std::string> true_entry_label;
     };
     struct ShortCircuitPlan {
@@ -2158,8 +2159,28 @@ std::string emit_prepared_module(
 
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
             if (continuation.has_value()) {
-              const auto* chained_target = resolve_empty_branch_chain(block.terminator.target_label);
-              if (chained_target != nullptr && chained_target->label == continuation->join_label) {
+              bool reaches_continuation_join = false;
+              const auto* branch_target = find_block(block.terminator.target_label);
+              if (branch_target != nullptr && branch_target->label == continuation->join_label) {
+                reaches_continuation_join = true;
+              } else if (continuation->expected_join_predecessor_label.has_value()) {
+                if (branch_target == nullptr ||
+                    branch_target->label != *continuation->expected_join_predecessor_label ||
+                    !branch_target->insts.empty() ||
+                    branch_target->terminator.kind !=
+                        c4c::backend::bir::TerminatorKind::Branch ||
+                    branch_target->terminator.target_label != continuation->join_label) {
+                  return std::nullopt;
+                }
+                reaches_continuation_join = true;
+              } else {
+                const auto* chained_target =
+                    resolve_empty_branch_chain(block.terminator.target_label);
+                reaches_continuation_join =
+                    chained_target != nullptr &&
+                    chained_target->label == continuation->join_label;
+              }
+              if (reaches_continuation_join) {
                 const c4c::backend::bir::BinaryInst* compare = nullptr;
                 if (compare_index + 1 == block.insts.size()) {
                   compare = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts.back());
@@ -2368,6 +2389,9 @@ std::string emit_prepared_module(
                 .true_block = nullptr,
                 .false_block = nullptr,
                 .hoisted_compare = nullptr,
+                .expected_join_predecessor_label =
+                    join_transfer->edge_transfers[short_circuit_index == 0 ? 1 : 0]
+                        .predecessor_label,
             };
             if (*join_branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Ne) {
               continuation_plan.true_block = join_true;
