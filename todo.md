@@ -9,20 +9,18 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by collapsing the
-duplicated short-circuit branch-render cases into a single helper over
-`ShortCircuitTarget`. The x86 consumer now decides whether a compare arm
-renders its opposite lane from one shared path instead of maintaining separate
-special-case render branches.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by mapping prepared
+join-transfer indices into `ShortCircuitTarget` through one direct helper
+inside `detect_short_circuit_plan_from_control_flow()`. The x86 consumer no
+longer needs separate `assign_short_circuit` and `assign_rhs` closures to
+build the compare-true and compare-false targets.
 
 ## Suggested Next
 
-The next small Step 3 packet is to simplify
-`detect_short_circuit_plan_from_control_flow()` in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` so the prepared
-join-transfer indices map into `ShortCircuitTarget` construction through one
-direct helper instead of separate `assign_short_circuit` and `assign_rhs`
-closures.
+The next small Step 3 packet is to extract the compare-join recognition in
+`detect_short_circuit_plan_from_control_flow()` into a tighter helper so the
+prepared join-result zero-compare check and continuation-target selection stay
+data-driven without expanding x86-local CFG inference.
 
 ## Watchouts
 
@@ -33,6 +31,10 @@ closures.
   prepared predecessor recorded by the selected join-transfer edge is
   authoritative for continuation entry, whether the rhs block branches directly
   to the join or through one empty carrier.
+- The new target builder assumes exactly one prepared transfer index represents
+  the short-circuit boolean and the other represents rhs continuation entry;
+  preserve that direct prepared-data mapping instead of reintroducing
+  compare-truth-specific assignment code.
 - Do not reintroduce arm-local booleans or continuation fallbacks that bypass
   the rhs branch block's own compare; continuation ownership now lives on the
   selected `ShortCircuitTarget`, and prepared predecessor ownership, not
@@ -55,6 +57,6 @@ closures.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof both passed; `test_after.log` is the canonical proof
-log and was sufficient for this Step 3 short-circuit-render cleanup packet
-after the duplicated branch assembly paths were folded into one helper.
+The build and narrow proof are the delegated proof for this Step 3
+short-circuit-target construction cleanup packet; `test_after.log` remains the
+canonical proof log path.

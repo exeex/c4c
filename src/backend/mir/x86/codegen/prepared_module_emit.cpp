@@ -2345,40 +2345,40 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
-            ShortCircuitPlan plan;
-            auto assign_short_circuit = [&](bool compare_truth, bool bool_value) {
-              const auto* target =
-                  bool_value ? continuation_plan.true_block : continuation_plan.false_block;
-              if (compare_truth) {
-                plan.on_compare_true.block = target;
-                plan.on_compare_true.continuation.reset();
-              } else {
-                plan.on_compare_false.block = target;
-                plan.on_compare_false.continuation.reset();
+            const auto build_short_circuit_target =
+                [&](std::size_t transfer_index) -> std::optional<ShortCircuitTarget> {
+              if (transfer_index >= join_transfer->edge_transfers.size()) {
+                return std::nullopt;
               }
-            };
-            auto assign_rhs = [&](bool compare_truth) {
-              const auto transfer_index =
-                  compare_truth ? *join_transfer->source_true_transfer_index
-                                : *join_transfer->source_false_transfer_index;
-              continuation_plan.incoming_label =
+              if (transfer_index == short_circuit_index) {
+                const auto* target =
+                    short_circuit_value ? continuation_plan.true_block
+                                        : continuation_plan.false_block;
+                return ShortCircuitTarget{
+                    .block = target,
+                    .continuation = std::nullopt,
+                };
+              }
+
+              GuardJoinContinuation continuation = continuation_plan;
+              continuation.incoming_label =
                   join_transfer->edge_transfers[transfer_index].predecessor_label;
-              if (compare_truth) {
-                plan.on_compare_true.block = rhs_entry;
-                plan.on_compare_true.continuation = continuation_plan;
-              } else {
-                plan.on_compare_false.block = rhs_entry;
-                plan.on_compare_false.continuation = continuation_plan;
-              }
+              return ShortCircuitTarget{
+                  .block = rhs_entry,
+                  .continuation = continuation,
+              };
             };
 
-            if (short_circuit_on_compare_true) {
-              assign_short_circuit(true, short_circuit_value);
-              assign_rhs(false);
-            } else {
-              assign_rhs(true);
-              assign_short_circuit(false, short_circuit_value);
+            ShortCircuitPlan plan;
+            const auto on_compare_true =
+                build_short_circuit_target(*join_transfer->source_true_transfer_index);
+            const auto on_compare_false =
+                build_short_circuit_target(*join_transfer->source_false_transfer_index);
+            if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
+              return std::nullopt;
             }
+            plan.on_compare_true = *on_compare_true;
+            plan.on_compare_false = *on_compare_false;
             if (plan.on_compare_true.block == nullptr || plan.on_compare_false.block == nullptr) {
               return std::nullopt;
             }
