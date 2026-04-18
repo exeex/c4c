@@ -1,148 +1,147 @@
-# LIR To BIR Memory Semantic Ownership Split Runbook
+# X86 Prepared-Module Renderer De-Headerization Runbook
 
 Status: Active
-Source Idea: ideas/open/55_lir_to_bir_memory_semantic_ownership_split.md
-Supersedes: ideas/open/54_x86_backend_c_testsuite_capability_families.md
-Activated from: ideas/open/55_lir_to_bir_memory_semantic_ownership_split.md
+Source Idea: ideas/open/56_x86_prepared_module_renderer_deheaderization.md
+Activated from: ideas/open/56_x86_prepared_module_renderer_deheaderization.md
 
 ## Purpose
 
-Switch the active route from x86 capability-family execution to the reopened
-memory-ownership prerequisite so `lir_to_bir_memory.cpp` can become a real
-coordinator again before more backend lane work widens the monolith.
+Move the x86 prepared-module renderer implementation out of
+`x86_codegen.hpp` so the header returns to being a shared contract surface
+before the x86 capability-family route widens again.
 
 ## Goal
 
-Land behavior-preserving second-layer ownership splits for
-`lir_to_bir_memory.cpp` while keeping semantic lowering contracts and proof
-surfaces honest.
+Land a behavior-preserving de-headerization of the prepared-module renderer,
+with `emit.cpp` owning the main orchestration flow and the header reduced to
+declarations, shared types, and contract helpers only.
 
 ## Core Rule
 
-This runbook is refactor-only. Do not claim backend capability growth, change
-admission behavior, or smuggle x86 family progress into these packets.
+This runbook is refactor-only. Do not mix new x86 backend capability growth,
+expectation changes, or testcase-lane claims into these packets.
 
 ## Read First
 
-- [ideas/open/55_lir_to_bir_memory_semantic_ownership_split.md](/workspaces/c4c/ideas/open/55_lir_to_bir_memory_semantic_ownership_split.md)
-- [review/lir_to_bir_memory_split_review.md](/workspaces/c4c/review/lir_to_bir_memory_split_review.md)
-- [src/backend/bir/lir_to_bir.hpp](/workspaces/c4c/src/backend/bir/lir_to_bir.hpp)
-- [src/backend/bir/lir_to_bir_memory.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory.cpp)
-- [src/backend/bir/lir_to_bir_memory_addressing.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory_addressing.cpp)
-- [src/backend/bir/lir_to_bir_memory_provenance.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory_provenance.cpp)
+- [ideas/open/56_x86_prepared_module_renderer_deheaderization.md](/workspaces/c4c/ideas/open/56_x86_prepared_module_renderer_deheaderization.md)
+- [review/x86_codegen_header_split_review.md](/workspaces/c4c/review/x86_codegen_header_split_review.md)
+- [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
+- [src/backend/mir/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/emit.cpp)
+- [src/backend/mir/x86/codegen/memory.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/memory.cpp)
+- [src/backend/mir/x86/codegen/calls.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/calls.cpp)
+- [src/backend/mir/x86/codegen/comparison.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/comparison.cpp)
+- [src/backend/mir/x86/codegen/globals.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/globals.cpp)
 
 ## Current Targets
 
-- [src/backend/bir/lir_to_bir_memory.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory.cpp)
-- [src/backend/bir/lir_to_bir.hpp](/workspaces/c4c/src/backend/bir/lir_to_bir.hpp)
-- [src/backend/bir/lir_to_bir_memory_addressing.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory_addressing.cpp)
-- [src/backend/bir/lir_to_bir_memory_provenance.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory_provenance.cpp)
-- likely follow-on files under `src/backend/bir/` such as
-  `lir_to_bir_memory_value_materialization.cpp` and
-  `lir_to_bir_memory_local_slots.cpp`
-- backend-owned proof surfaces already active around this route
+- [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
+- [src/backend/mir/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/emit.cpp)
+- existing x86 codegen owners under `src/backend/mir/x86/codegen/*.cpp`
+- [tests/backend/backend_x86_handoff_boundary_test.cpp](/workspaces/c4c/tests/backend/backend_x86_handoff_boundary_test.cpp)
+- [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
 
 ## Non-Goals
 
-- claiming progress on the x86 c-testsuite capability-family route
-- de-headerizing `src/backend/mir/x86/codegen/x86_codegen.hpp`
-- splitting by testcase, packet nickname, or equal line counts
-- forcing a fake `local` versus `global` file divide
-- moving `lower_scalar_or_local_memory_inst` out of the main coordinator TU
+- claiming x86 backend capability-family progress from this refactor
+- broad AArch64 or non-x86 cleanup
+- moving implementation by testcase lane name or arbitrary line-count slicing
+- leaving `x86_codegen.hpp` as a thin wrapper around another monolithic inline
+  blob
+- reopening idea `55` instead of continuing through the x86 codegen owner
+  surfaces
 
 ## Working Model
 
-- `lir_to_bir_memory.cpp` should remain the opcode-lowering coordinator.
-- `lir_to_bir_memory_addressing.cpp` owns shared layout and address-walking
-  helpers.
-- `lir_to_bir_memory_provenance.cpp` owns pointer provenance and addressed
-  object reasoning.
-- The reopened route adds explicit homes for value materialization and
-  local-slot or local-aggregate mechanics when read-through confirms those
-  seams.
-- Each packet must be understandable as move/extract work first, with behavior
-  preserved and proof run afterward.
+- `x86_codegen.hpp` should keep shared declarations, shared types, and public
+  contract helpers used across sibling x86 translation units.
+- `emit.cpp` should own the main `emit_prepared_module(...)` orchestration
+  flow.
+- Existing `.cpp` owners such as `memory.cpp`, `calls.cpp`, `comparison.cpp`,
+  and `globals.cpp` should absorb extracted implementation when ownership is
+  already clear.
+- New support `.cpp` files are allowed only when an existing owner is not
+  coherent.
+- Each packet must read as move/extract work first, with behavior preserved and
+  proof run afterward.
 
 ## Execution Rules
 
-- Prefer semantic ownership seams over convenience slices.
-- Keep new declarations and definitions coherent across `lir_to_bir.hpp` and
-  the extracted `.cpp` owners.
-- If a helper is ambiguous, choose the strongest semantic owner rather than
-  leaving it in `lir_to_bir_memory.cpp` by default.
-- Validate every packet as `build -> narrow backend proof`, and broaden proof
-  if the extraction reaches beyond the immediate seam.
+- Preserve the current public API shape while moving implementation.
+- Prefer semantic owner files over temporary staging files.
+- Keep the first packet centered on de-headerization, not deep sub-splitting.
+- Validate every packet as `build -> narrow x86 handoff proof`, and broaden
+  only if the moved implementation reaches beyond the handoff surface.
 - If execution uncovers a separate initiative, stop and route it through
   lifecycle instead of stretching this refactor plan.
 
-## Step 1. Re-Read And Confirm Ownership Buckets
+## Step 1. Re-Read The Header Contract
 
-Goal: Reconfirm the next extraction seam before moving code.
-
-Primary targets:
-- [src/backend/bir/lir_to_bir.hpp](/workspaces/c4c/src/backend/bir/lir_to_bir.hpp)
-- [src/backend/bir/lir_to_bir_memory.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory.cpp)
-- [src/backend/bir/lir_to_bir_memory_addressing.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory_addressing.cpp)
-- [src/backend/bir/lir_to_bir_memory_provenance.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory_provenance.cpp)
-
-Actions:
-- inspect the remaining helpers still owned by `lir_to_bir_memory.cpp`
-- classify them as coordinator glue, value materialization, local-slot or
-  local-aggregate mechanics, or remaining provenance/addressing work
-- choose one extraction packet whose ownership is coherent and behavior
-  preserving
-- name the narrow backend proof surface that stays active for the packet
-
-Completion check:
-- the next packet has one explicit ownership seam, owned files are clear, and
-  the proof command is chosen before edits begin
-
-## Step 2. Extract One Second-Layer Ownership Bucket
-
-Goal: Move one coherent helper family out of the coordinator TU.
+Goal: Confirm which pieces of `x86_codegen.hpp` are true shared contract and
+which are renderer implementation.
 
 Primary targets:
-- [src/backend/bir/lir_to_bir_memory.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory.cpp)
-- [src/backend/bir/lir_to_bir.hpp](/workspaces/c4c/src/backend/bir/lir_to_bir.hpp)
-- one extracted owner file under `src/backend/bir/`
+- [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
+- [src/backend/mir/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/emit.cpp)
+- [review/x86_codegen_header_split_review.md](/workspaces/c4c/review/x86_codegen_header_split_review.md)
 
 Actions:
-- move one coherent helper cluster into its semantic owner
-- keep `lower_scalar_or_local_memory_inst` as the main coordinator
-- preserve signatures and call flow clarity across the split
-- keep the packet free of claimed lowering or backend-capability behavior
-  changes
+- identify the exact declaration surface that must remain in the header
+- map the current `emit_prepared_module(...)` body to its natural `.cpp`
+  owners
+- choose the first extraction packet so owned files and proof are clear before
+  edits begin
 
 Completion check:
-- one helper family now lives under a clearer owner and the main coordinator TU
-  shrinks without changing the route's behavior contract
+- the next packet names one explicit ownership move for the renderer body and
+  leaves the public contract surface unchanged
+
+## Step 2. Move The Prepared-Module Renderer Out Of The Header
+
+Goal: Relocate the main renderer implementation into `.cpp` ownership without
+changing behavior.
+
+Primary targets:
+- [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
+- [src/backend/mir/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/emit.cpp)
+- any existing sibling x86 codegen owner that naturally absorbs part of the
+  move
+
+Actions:
+- move the `emit_prepared_module(...)` implementation out of the header
+- keep public declarations and shared types coherent in `x86_codegen.hpp`
+- place moved implementation under `emit.cpp` and existing semantic owners
+  where read-through already justifies them
+- keep the packet free of capability-family behavior claims
+
+Completion check:
+- the header no longer owns the full renderer body, and the orchestration flow
+  lives in `.cpp` ownership with unchanged API shape
 
 ## Step 3. Prove The Refactor Packet Narrowly
 
-Goal: Show the extraction is behavior preserving on the active backend proof
+Goal: Show the de-headerization is behavior preserving on the x86 handoff
 surface.
 
 Actions:
 - run `cmake --build --preset default`
-- run the chosen narrow backend proof command for this packet
+- run `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|backend_lir_to_bir_notes)$'`
 - capture the exact proving command and result in `todo.md`
 
 Completion check:
-- the build passes, the narrow proof passes, and the packet is recorded as
-  refactor-only progress
+- the build passes, the narrow x86 handoff proof passes, and `todo.md` records
+  the packet as refactor-only progress
 
-## Step 4. Check Coordinator Health
+## Step 4. Check Remaining Ownership Pressure
 
-Goal: Decide whether the coordinator still carries the next obvious ownership
-bucket or whether activation should return to the x86 umbrella later.
+Goal: Decide whether the renderer still has one obvious follow-on split or
+whether the next lifecycle return should go back to the x86 umbrella idea.
 
 Actions:
-- compare the remaining helper mix in `lir_to_bir_memory.cpp` against the idea
-  55 target seams
+- compare the remaining header and `.cpp` ownership mix against idea `56`
 - record the next honest extraction candidate in `todo.md`
-- if the reopened split is no longer the active blocker, leave a clear handoff
-  for the next lifecycle checkpoint
+- if the header is back to a contract role, leave a clear handoff for the next
+  lifecycle checkpoint
 
 Completion check:
-- the next packet is described by ownership, not by a testcase or temporary
-  lane name
+- the next packet is described by owner surface, not by testcase lane or
+  temporary nickname
