@@ -8,19 +8,21 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed the next Step 3 ownership packet in
-`tests/backend/backend_x86_handoff_boundary_test.cpp` by extending
-`check_join_route_consumes_prepared_control_flow` coverage to the trailing
-join-`add` arithmetic variant, so the compare-join lane is now proven to keep
-following prepared true/false transfer ownership even when the join result is
-consumed by one more immediate arithmetic step before return.
+Completed a Step 2/3 control-flow contract packet in
+`src/backend/prealloc/legalize.cpp` and
+`tests/backend/backend_x86_handoff_boundary_test.cpp` by teaching shared
+prepare to publish `source_branch_block_label`,
+`source_true/source_false_transfer_index`, and incoming labels for the
+ordinary phi-lowered compare-join base case, then tightening the joined-branch
+ownership test so it now fails if x86 falls back to predecessor-label matching
+instead of consuming the prepared true/false transfer mapping.
 
 ## Suggested Next
 
-The next small Step 3 packet is broadening the same compare-join ownership
-proof to one additional trailing-join arithmetic family such as xor or and, so
-the prepared true/false lane mapping is no longer only proven for the base
-join and the trailing-`add` follow-on case.
+The next small Step 3 packet is broadening the same ownership assertion to one
+trailing-join arithmetic family such as xor or and, so the prepared
+true/false transfer mapping is proven beyond the base join after this contract
+publication slice.
 
 ## Watchouts
 
@@ -29,10 +31,10 @@ join and the trailing-`add` follow-on case.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth.
 - Keep the compare-join lane aligned with the continuation lane: only empty
   branch-only carriers on the way to the prepared join are in scope.
-- The compare-join route still needs a label-based fallback because current
-  shared preparation does not publish source true/false transfer indices for
-  the ordinary base case; do not delete that fallback until shared lowering
-  makes those indices part of the stable contract.
+- Shared lowering now publishes ordinary compare-join true/false transfer
+  ownership for the base phi-lowered lane, but x86 still keeps a label-based
+  fallback for routes that do not yet expose those indices; remove that
+  fallback only when the remaining families are covered by the same contract.
 - Treat any future fix here as capability repair, not expectation weakening:
   the joined branch route is covered by `backend_x86_handoff_boundary`.
 

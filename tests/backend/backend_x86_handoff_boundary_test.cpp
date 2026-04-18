@@ -3720,13 +3720,24 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
   }
   auto& branch_condition = mutable_control_flow->branch_conditions.front();
   auto& join_transfer = mutable_control_flow->join_transfers.front();
-  if (join_transfer.edge_transfers.size() != 2) {
+  if (join_transfer.edge_transfers.size() != 2 ||
+      !join_transfer.source_true_transfer_index.has_value() ||
+      !join_transfer.source_false_transfer_index.has_value() ||
+      !join_transfer.source_true_incoming_label.has_value() ||
+      !join_transfer.source_false_incoming_label.has_value()) {
     return fail((std::string(failure_context) +
-                 ": prepared joined branch contract no longer exposes the expected two-lane join transfer")
+                 ": prepared joined branch contract no longer publishes authoritative true/false join ownership")
                     .c_str());
   }
-  join_transfer.source_true_transfer_index = 0;
-  join_transfer.source_false_transfer_index = 1;
+  const auto true_transfer_index = *join_transfer.source_true_transfer_index;
+  const auto false_transfer_index = *join_transfer.source_false_transfer_index;
+  if (true_transfer_index >= join_transfer.edge_transfers.size() ||
+      false_transfer_index >= join_transfer.edge_transfers.size() ||
+      true_transfer_index == false_transfer_index) {
+    return fail((std::string(failure_context) +
+                 ": prepared joined branch contract published invalid true/false join ownership indices")
+                    .c_str());
+  }
 
   const std::string renamed_true_label = "carrier.zero";
   const std::string renamed_false_label = "carrier.nonzero";
@@ -3745,16 +3756,18 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
   branch_condition.true_label = renamed_true_label;
   branch_condition.false_label = renamed_false_label;
 
-  join_transfer.edge_transfers[*join_transfer.source_true_transfer_index].predecessor_label =
-      renamed_true_label;
-  join_transfer.edge_transfers[*join_transfer.source_false_transfer_index].predecessor_label =
-      renamed_false_label;
   join_transfer.source_true_incoming_label = "contract.true_lane";
   join_transfer.source_false_incoming_label = "contract.false_lane";
+  join_transfer.edge_transfers[true_transfer_index].predecessor_label =
+      *join_transfer.source_true_incoming_label;
+  join_transfer.edge_transfers[false_transfer_index].predecessor_label =
+      *join_transfer.source_false_incoming_label;
   for (auto& incoming : join_transfer.incomings) {
-    if (incoming.label == renamed_true_label) {
+    if (incoming.label == *join_transfer.source_true_incoming_label ||
+        incoming.label == renamed_true_label) {
       incoming.label = *join_transfer.source_true_incoming_label;
-    } else if (incoming.label == renamed_false_label) {
+    } else if (incoming.label == *join_transfer.source_false_incoming_label ||
+               incoming.label == renamed_false_label) {
       incoming.label = *join_transfer.source_false_incoming_label;
     }
   }

@@ -1003,6 +1003,89 @@ std::optional<std::string> find_linear_join_predecessor(
   return std::nullopt;
 }
 
+std::optional<std::size_t> find_join_transfer_edge_index_by_predecessor(
+    const PreparedJoinTransfer& transfer,
+    std::string_view predecessor_label) {
+  for (std::size_t index = 0; index < transfer.edge_transfers.size(); ++index) {
+    if (transfer.edge_transfers[index].predecessor_label == predecessor_label) {
+      return index;
+    }
+  }
+  return std::nullopt;
+}
+
+void annotate_branch_owned_join_transfers(
+    const bir::Function& function,
+    const std::vector<PreparedBranchCondition>& branch_conditions,
+    std::vector<PreparedJoinTransfer>* join_transfers) {
+  if (join_transfers == nullptr || branch_conditions.empty()) {
+    return;
+  }
+
+  std::unordered_map<std::string, const bir::Block*> blocks_by_label;
+  for (const auto& block : function.blocks) {
+    blocks_by_label.emplace(block.label, &block);
+  }
+
+  for (auto& transfer : *join_transfers) {
+    if (transfer.edge_transfers.size() != 2 || transfer.source_true_transfer_index.has_value() ||
+        transfer.source_false_transfer_index.has_value()) {
+      continue;
+    }
+
+    struct CandidateMapping {
+      std::string source_branch_block_label;
+      std::size_t true_transfer_index = 0;
+      std::size_t false_transfer_index = 0;
+      std::string true_incoming_label;
+      std::string false_incoming_label;
+    };
+
+    std::optional<CandidateMapping> candidate;
+    bool ambiguous = false;
+    for (const auto& branch_condition : branch_conditions) {
+      const auto true_incoming_label = find_linear_join_predecessor(
+          blocks_by_label, branch_condition.true_label, transfer.join_block_label);
+      const auto false_incoming_label = find_linear_join_predecessor(
+          blocks_by_label, branch_condition.false_label, transfer.join_block_label);
+      if (!true_incoming_label.has_value() || !false_incoming_label.has_value() ||
+          *true_incoming_label == *false_incoming_label) {
+        continue;
+      }
+
+      const auto true_transfer_index =
+          find_join_transfer_edge_index_by_predecessor(transfer, *true_incoming_label);
+      const auto false_transfer_index =
+          find_join_transfer_edge_index_by_predecessor(transfer, *false_incoming_label);
+      if (!true_transfer_index.has_value() || !false_transfer_index.has_value() ||
+          *true_transfer_index == *false_transfer_index) {
+        continue;
+      }
+
+      if (candidate.has_value()) {
+        ambiguous = true;
+        break;
+      }
+
+      candidate = CandidateMapping{
+          .source_branch_block_label = branch_condition.block_label,
+          .true_transfer_index = *true_transfer_index,
+          .false_transfer_index = *false_transfer_index,
+          .true_incoming_label = *true_incoming_label,
+          .false_incoming_label = *false_incoming_label,
+      };
+    }
+
+    if (!ambiguous && candidate.has_value()) {
+      transfer.source_branch_block_label = std::move(candidate->source_branch_block_label);
+      transfer.source_true_transfer_index = candidate->true_transfer_index;
+      transfer.source_false_transfer_index = candidate->false_transfer_index;
+      transfer.source_true_incoming_label = std::move(candidate->true_incoming_label);
+      transfer.source_false_incoming_label = std::move(candidate->false_incoming_label);
+    }
+  }
+}
+
 void collect_select_materialized_join_transfers(
     const bir::Function& function,
     const std::vector<PreparedBranchCondition>& branch_conditions,
@@ -1230,6 +1313,8 @@ void legalize_module(const c4c::TargetProfile& target_profile,
         function,
         function_control_flow.branch_conditions,
         &function_control_flow.join_transfers);
+    annotate_branch_owned_join_transfers(
+        function, function_control_flow.branch_conditions, &function_control_flow.join_transfers);
 
     if (control_flow != nullptr &&
         (!function_control_flow.branch_conditions.empty() ||
