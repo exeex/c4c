@@ -1543,33 +1543,6 @@ std::string emit_prepared_module(
       c4c::backend::bir::BinaryOpcode opcode = c4c::backend::bir::BinaryOpcode::Eq;
       std::string compare_setup;
     };
-    const auto resolve_empty_branch_chain =
-        [&](std::string_view label) -> const c4c::backend::bir::Block* {
-      std::unordered_set<std::string_view> visited;
-      const auto* current = find_block(label);
-      while (current != nullptr && visited.insert(current->label).second &&
-             current->insts.empty() &&
-             current->terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
-        current = find_block(current->terminator.target_label);
-      }
-      return current;
-    };
-    const auto empty_branch_chain_contains_label =
-        [&](const c4c::backend::bir::Block& start, std::string_view target_label) {
-          std::unordered_set<std::string_view> visited;
-          const auto* current = &start;
-          while (current != nullptr && visited.insert(current->label).second) {
-            if (current->label == target_label) {
-              return true;
-            }
-            if (!current->insts.empty() ||
-                current->terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
-              return false;
-            }
-            current = find_block(current->terminator.target_label);
-          }
-          return false;
-        };
     const auto* function_control_flow = find_control_flow_function();
 
     const auto render_function_return =

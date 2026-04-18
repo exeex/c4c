@@ -9,31 +9,30 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed Step 3 consumer tightening in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by making the local
-`i32` countdown-loop helper reject leftover empty-branch trampolines and
-require its matched init/cond/body/guard/return blocks to account for the
-whole function directly instead of accepting CFG-only continuation wrappers.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by deleting the stale
+empty-branch-chain helper utilities from the local guard/join lane now that
+the active consumer path no longer calls them for continuation matching.
 
 ## Suggested Next
 
-The next small Step 3 packet is checking the remaining guard/join helpers in
-`prepared_module_emit.cpp` for any other acceptance of branch trampolines or
-indirect continuation/join recovery and either tightening them to direct
-prepared labels or rejecting those shapes outright.
+The next small Step 3 packet is checking whether the live continuation and
+`render_materialized_compare_join_if_supported` lanes can be tightened away
+from branch-only join wrappers without dropping the currently exercised joined
+branch capability family.
 
 ## Watchouts
 
 - Do not activate umbrella idea 57 as executable work.
 - Do not pull in idea 59 instruction-selection scope.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth.
-- The local `i32` countdown-loop helper now fails closed on extra branch-only
-  wrappers; do not reintroduce leftover-block acceptance there as a fallback.
-- The loop-join countdown lane already consumes prepared loop-carry metadata;
-  keep that prepared contract as the authority for loop meaning rather than
-  broadening the local-slot fallback.
-- If another guard/join helper still needs indirect continuation recovery,
-  treat that as a consumer-contract gap to tighten or reject, not as a reason
-  to grow more raw CFG matching.
+- The attempted direct-label-only continuation tightening regressed the
+  joined-branch proof subset, so a future packet needs to preserve the live
+  prepared join family while reducing wrapper dependence.
+- The remaining `render_materialized_compare_join_if_supported` helper still
+  deserves scrutiny because it encodes a join-wrapper family explicitly rather
+  than consuming a direct prepared join label.
+- Treat any future fix here as capability repair, not expectation weakening:
+  the joined branch route is covered by `backend_x86_handoff_boundary`.
 
 ## Proof
 
