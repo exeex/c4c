@@ -736,6 +736,9 @@ class BirFunctionLowerer {
   bool try_lower_tracked_local_pointer_slot_load(
       std::string_view result_name,
       std::string_view slot_name,
+      const LocalAggregateFieldSet& local_aggregate_field_slots,
+      const LocalArraySlotMap& local_array_slots,
+      const LocalPointerValueAliasMap& local_pointer_value_aliases,
       const TypeDeclMap& type_decls,
       const LocalIndirectPointerSlotSet& local_indirect_pointer_slots,
       const LocalAddressSlots& local_address_slots,

@@ -1790,21 +1790,6 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return fail_load();
     }
 
-    const bool tracks_pointer_value_slot =
-        local_aggregate_field_slots.find(ptr_it->second) != local_aggregate_field_slots.end() ||
-        is_local_array_element_slot(ptr_it->second, local_array_slots);
-    if (*value_type == bir::TypeKind::Ptr && tracks_pointer_value_slot) {
-      const auto pointer_alias = local_pointer_value_aliases.find(ptr_it->second);
-      if (pointer_alias != local_pointer_value_aliases.end()) {
-        value_aliases[load->result.str()] = pointer_alias->second;
-        if (const auto addr_it = local_address_slots.find(ptr_it->second);
-            addr_it != local_address_slots.end()) {
-          global_pointer_slots[load->result.str()] = addr_it->second;
-        }
-        return true;
-      }
-    }
-
     if (*value_type == bir::TypeKind::I64) {
       if (const auto addr_it = local_address_slots.find(ptr_it->second);
           addr_it != local_address_slots.end()) {
@@ -1814,6 +1799,9 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     } else if (*value_type == bir::TypeKind::Ptr) {
       if (!try_lower_tracked_local_pointer_slot_load(load->result.str(),
                                                      ptr_it->second,
+                                                     local_aggregate_field_slots,
+                                                     local_array_slots,
+                                                     local_pointer_value_aliases,
                                                      type_decls,
                                                      local_indirect_pointer_slots,
                                                      local_address_slots,
