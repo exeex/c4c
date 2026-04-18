@@ -1,7 +1,7 @@
 #include "x86_codegen.hpp"
 #include "peephole/peephole.hpp"
 
-#include "../../backend.hpp"
+#include "../../../backend.hpp"
 #include "../../../bir/lir_to_bir.hpp"
 
 #include <stdexcept>
@@ -28,6 +28,7 @@ const c4c::TargetProfile& resolve_direct_bir_target_profile(
 }
 
 }  // namespace
+
 
 std::string emit_module(const c4c::backend::bir::Module& module) {
   c4c::TargetProfile target_profile;
