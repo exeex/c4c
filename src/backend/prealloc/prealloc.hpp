@@ -449,6 +449,7 @@ enum class PreparedComputedBaseKind {
   ImmediateI32,
   ParamValue,
   GlobalI32Load,
+  PointerBackedGlobalI32Load,
 };
 
 struct PreparedComputedBase {
@@ -457,6 +458,7 @@ struct PreparedComputedBase {
   std::string param_name;
   std::string global_name;
   std::size_t global_byte_offset = 0;
+  std::string pointer_root_global_name;
 };
 
 struct PreparedComputedValue {
@@ -1017,8 +1019,22 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
       const auto* load_global = load_global_it->second;
       if (load_global->result.type != bir::TypeKind::I32 ||
           load_global->result.kind != bir::Value::Kind::Named ||
-          load_global->result.name != value.name || load_global->address.has_value()) {
+          load_global->result.name != value.name) {
         return std::nullopt;
+      }
+      if (load_global->address.has_value()) {
+        if (load_global->address->base_kind != bir::MemoryAddress::BaseKind::GlobalSymbol ||
+            load_global->address->base_name.empty() || load_global->address->byte_offset != 0) {
+          return std::nullopt;
+        }
+        return PreparedComputedValue{
+            .base = PreparedComputedBase{
+                .kind = PreparedComputedBaseKind::PointerBackedGlobalI32Load,
+                .global_name = load_global->global_name,
+                .global_byte_offset = load_global->byte_offset,
+                .pointer_root_global_name = load_global->address->base_name,
+            },
+        };
       }
       return PreparedComputedValue{
           .base = PreparedComputedBase{

@@ -4024,6 +4024,32 @@ std::string emit_prepared_module(
         rendered += "]\n";
         break;
       }
+      case c4c::backend::prepare::PreparedComputedBaseKind::PointerBackedGlobalI32Load: {
+        const auto* pointer_root =
+            find_same_module_global(computed_value.base.pointer_root_global_name);
+        const auto* global = find_same_module_global(computed_value.base.global_name);
+        if (pointer_root == nullptr || pointer_root->type != c4c::backend::bir::TypeKind::Ptr ||
+            global == nullptr ||
+            !same_module_global_supports_scalar_load(
+                *global,
+                c4c::backend::bir::TypeKind::I32,
+                computed_value.base.global_byte_offset)) {
+          return std::nullopt;
+        }
+        if (same_module_global_names != nullptr) {
+          same_module_global_names->push_back(pointer_root->name);
+          same_module_global_names->push_back(global->name);
+        }
+        rendered = "    mov rax, QWORD PTR [rip + " +
+                   render_asm_symbol_name(computed_value.base.pointer_root_global_name) +
+                   "]\n    mov " + *return_register + ", DWORD PTR [rip + " +
+                   render_asm_symbol_name(computed_value.base.global_name);
+        if (computed_value.base.global_byte_offset != 0) {
+          rendered += " + " + std::to_string(computed_value.base.global_byte_offset);
+        }
+        rendered += "]\n";
+        break;
+      }
     }
     for (const auto& operation : computed_value.operations) {
       const auto operation_render = render_supported_immediate_binary(operation);
