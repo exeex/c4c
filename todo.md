@@ -9,19 +9,19 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by switching the
-compare-driven entry helper surface from a local branch-condition scan to the
-shared `c4c::backend::prepare::find_prepared_branch_condition()` lookup. The
-entry-path compare-context builder now consumes the prepared branch contract
-through the shared helper instead of carrying another emitter-local
-`branch_conditions` walk.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by collapsing the last
+two emitter-local prepared-branch consumers onto
+`c4c::backend::prepare::find_prepared_branch_condition()`. The loop-join
+countdown and materialized-compare join fast paths now query prepared branch
+semantics through the shared control-flow lookup instead of relying on local
+`branch_conditions.front()` or an emitter-local scan.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect the remaining x86 prepared-branch
-consumers in `prepared_module_emit.cpp` and decide whether another local
-branch-condition scan can collapse onto shared prepared-control-flow helpers
-without widening beyond Step 3 cleanup.
+The next small Step 3 packet is to inspect the remaining Step 3 x86
+consumer-side helper surface in `prepared_module_emit.cpp` and decide whether
+another lookup-only cleanup remains, or whether Step 3 should shift from local
+helper simplification toward broader validation or a plan-owner closeout check.
 
 ## Watchouts
 
@@ -47,6 +47,10 @@ without widening beyond Step 3 cleanup.
 - Keep Step 3 lookup cleanup aligned with the shared prepared-control-flow
   helpers in `prealloc.hpp`; prefer those lookups over re-growing local
   `branch_conditions` walks in x86.
+- `render_loop_join_countdown_if_supported()` and
+  `render_materialized_compare_join_if_supported()` now depend on the shared
+  prepared-branch lookup surface; if either fast path needs more branch facts,
+  strengthen the shared contract rather than reintroducing emitter-local scans.
 - `classify_short_circuit_join_incoming()` still assumes the prepared select
   join carries exactly one bool-like immediate lane and one named RHS lane; if
   that invariant changes, repair the shared contract instead of extending
@@ -58,5 +62,5 @@ without widening beyond Step 3 cleanup.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 prepared-branch lookup
-cleanup packet; proof output is in `test_after.log`.
+The build and narrow proof passed for this Step 3 remaining prepared-branch
+consumer cleanup packet; proof output is in `test_after.log`.

@@ -3082,39 +3082,40 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto& branch_condition = function_control_flow->branch_conditions.front();
-    if (branch_condition.block_label != join_transfer.join_block_label ||
-        !branch_condition.predicate.has_value() || !branch_condition.compare_type.has_value() ||
-        !branch_condition.lhs.has_value() || !branch_condition.rhs.has_value() ||
-        *branch_condition.compare_type != c4c::backend::bir::TypeKind::I32 ||
-        branch_condition.condition_value.kind != c4c::backend::bir::Value::Kind::Named) {
+    const auto* branch_condition = c4c::backend::prepare::find_prepared_branch_condition(
+        *function_control_flow, join_transfer.join_block_label);
+    if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
+        !branch_condition->compare_type.has_value() || !branch_condition->lhs.has_value() ||
+        !branch_condition->rhs.has_value() ||
+        *branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
+        branch_condition->condition_value.kind != c4c::backend::bir::Value::Kind::Named) {
       return std::nullopt;
     }
 
     const bool lhs_is_counter_rhs_is_zero =
-        branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Named &&
-        branch_condition.lhs->name == join_transfer.result.name &&
-        branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-        branch_condition.rhs->type == c4c::backend::bir::TypeKind::I32 &&
-        branch_condition.rhs->immediate == 0;
+        branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
+        branch_condition->lhs->name == join_transfer.result.name &&
+        branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+        branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32 &&
+        branch_condition->rhs->immediate == 0;
     const bool rhs_is_counter_lhs_is_zero =
-        branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Named &&
-        branch_condition.rhs->name == join_transfer.result.name &&
-        branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-        branch_condition.lhs->type == c4c::backend::bir::TypeKind::I32 &&
-        branch_condition.lhs->immediate == 0;
+        branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Named &&
+        branch_condition->rhs->name == join_transfer.result.name &&
+        branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+        branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32 &&
+        branch_condition->lhs->immediate == 0;
     if (!lhs_is_counter_rhs_is_zero && !rhs_is_counter_lhs_is_zero) {
       return std::nullopt;
     }
 
     std::string body_label;
     std::string exit_label;
-    if (*branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Ne) {
-      body_label = branch_condition.true_label;
-      exit_label = branch_condition.false_label;
-    } else if (*branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Eq) {
-      body_label = branch_condition.false_label;
-      exit_label = branch_condition.true_label;
+    if (*branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Ne) {
+      body_label = branch_condition->true_label;
+      exit_label = branch_condition->false_label;
+    } else if (*branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Eq) {
+      body_label = branch_condition->false_label;
+      exit_label = branch_condition->true_label;
     } else {
       return std::nullopt;
     }
@@ -3127,8 +3128,8 @@ std::string emit_prepared_module(
         body_block == &entry || exit_block == &entry || body_block == loop_block ||
         exit_block == loop_block || exit_block == body_block ||
         loop_block->terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
-        loop_block->terminator.true_label != branch_condition.true_label ||
-        loop_block->terminator.false_label != branch_condition.false_label ||
+        loop_block->terminator.true_label != branch_condition->true_label ||
+        loop_block->terminator.false_label != branch_condition->false_label ||
         body_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
         body_block->terminator.target_label != loop_block->label ||
         exit_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
@@ -4082,13 +4083,8 @@ std::string emit_prepared_module(
     }
     const auto& prepared_join_transfer = function_control_flow->join_transfers.front();
 
-    const c4c::backend::prepare::PreparedBranchCondition* branch_condition = nullptr;
-    for (const auto& candidate : function_control_flow->branch_conditions) {
-      if (candidate.block_label == entry.label) {
-        branch_condition = &candidate;
-        break;
-      }
-    }
+    const auto* branch_condition = c4c::backend::prepare::find_prepared_branch_condition(
+        *function_control_flow, entry.label);
     if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
         !branch_condition->compare_type.has_value() || !branch_condition->lhs.has_value() ||
         !branch_condition->rhs.has_value() ||
