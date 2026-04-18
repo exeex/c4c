@@ -9,18 +9,19 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving
-`find_short_circuit_join_context()` into the short-circuit helper cluster beside
-the other plan-building helpers. `try_render_short_circuit_plan()` now treats
-prepared join-context discovery as helper-owned contract validation instead of
-re-growing that lookup inline in the cond-branch emitter.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting entry
+false-branch compare selection into helper-owned
+`build_short_circuit_entry_compare_context()`. The cond-branch path now reuses
+the same helper-owned entry compare context for prepared-branch lookup and
+fallback compare rendering instead of re-growing that selection inline beside
+the short-circuit orchestration path.
 
 ## Suggested Next
 
-The next small Step 3 packet is to decide whether false-branch compare
-selection should join the same short-circuit helper cluster so
-`try_render_short_circuit_plan()` only orchestrates helper calls and final
-render assembly without re-growing compare-shape fallback logic inline.
+The next small Step 3 packet is to decide whether the remaining plain
+true/false branch fallback render in the cond-branch path should join the same
+short-circuit helper cluster so this emitter lane becomes entirely helper-
+assembled rather than keeping one last inline branch-spelling fallback.
 
 ## Watchouts
 
@@ -37,6 +38,10 @@ render assembly without re-growing compare-shape fallback logic inline.
   validation, resolved true/false block lookup, and RHS-entry selection; keep
   that ownership in the helper cluster instead of re-growing those checks
   inside `try_render_short_circuit_plan()`.
+- `build_short_circuit_entry_compare_context()` now owns prepared entry-branch
+  lookup plus false-branch compare fallback selection; keep that ownership in
+  the helper cluster instead of re-growing compare-shape selection beside the
+  cond-branch emitter.
 - `find_short_circuit_join_context()` now owns the prepared select-join shape
   checks plus continuation lookup; future contract edits should land there
   instead of re-growing those checks inside `try_render_short_circuit_plan()`.
@@ -66,5 +71,5 @@ render assembly without re-growing compare-shape fallback logic inline.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 short-circuit join-context
+The build and narrow proof passed for this Step 3 short-circuit entry compare
 helper extraction packet; proof output is in `test_after.log`.

@@ -1562,6 +1562,10 @@ std::string emit_prepared_module(
       const c4c::backend::bir::Block* false_block = nullptr;
       const c4c::backend::bir::Block* rhs_entry = nullptr;
     };
+    struct ShortCircuitEntryCompareContext {
+      const c4c::backend::prepare::PreparedBranchCondition* branch_condition = nullptr;
+      std::pair<std::string, std::string> false_branch_compare;
+    };
     struct MaterializedI32Compare {
       std::string_view i1_name;
       std::optional<std::string_view> i32_name;
@@ -2458,6 +2462,27 @@ std::string emit_prepared_module(
             };
             return render_false_branch_compare(compare);
           };
+          const auto build_short_circuit_entry_compare_context =
+              [&](const auto& find_branch_condition_fn,
+                  const c4c::backend::bir::Block& source_block,
+                  const c4c::backend::bir::BinaryInst& compare)
+              -> std::optional<ShortCircuitEntryCompareContext> {
+            const auto* branch_condition = find_branch_condition_fn(source_block.label);
+            auto false_branch_compare =
+                branch_condition != nullptr
+                    ? render_false_branch_compare_from_condition(*branch_condition)
+                    : std::optional<std::pair<std::string, std::string>>{};
+            if (!false_branch_compare.has_value()) {
+              false_branch_compare = render_false_branch_compare(compare);
+            }
+            if (!false_branch_compare.has_value()) {
+              return std::nullopt;
+            }
+            return ShortCircuitEntryCompareContext{
+                .branch_condition = branch_condition,
+                .false_branch_compare = *false_branch_compare,
+            };
+          };
 
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Return) {
             if (compare_index != block.insts.size() || !block.terminator.value.has_value()) {
@@ -2555,15 +2580,9 @@ std::string emit_prepared_module(
             }
             return nullptr;
           };
-          const auto entry_branch_condition = find_branch_condition(block.label);
-          auto false_branch_compare =
-              entry_branch_condition != nullptr
-                  ? render_false_branch_compare_from_condition(*entry_branch_condition)
-                  : std::optional<std::pair<std::string, std::string>>{};
-          if (!false_branch_compare.has_value()) {
-            false_branch_compare = render_false_branch_compare(*compare);
-          }
-          if (!false_branch_compare.has_value()) {
+          const auto entry_compare_context =
+              build_short_circuit_entry_compare_context(find_branch_condition, block, *compare);
+          if (!entry_compare_context.has_value()) {
             return std::nullopt;
           }
 
@@ -2581,7 +2600,7 @@ std::string emit_prepared_module(
             }
 
             const auto routing_context =
-                build_short_circuit_entry_routing_context(entry_branch_condition,
+                build_short_circuit_entry_routing_context(entry_compare_context->branch_condition,
                                                           block,
                                                           *join_context);
             if (!routing_context.has_value()) {
@@ -2607,8 +2626,8 @@ std::string emit_prepared_module(
             }
             return assemble_short_circuit_rendered_plan(
                 body,
-                false_branch_compare->first,
-                false_branch_compare->second,
+                entry_compare_context->false_branch_compare.first,
+                entry_compare_context->false_branch_compare.second,
                 rendered_lanes->rendered_true,
                 rendered_lanes->rendered_false_lane);
           };
@@ -2631,9 +2650,9 @@ std::string emit_prepared_module(
           }
 
           const std::string false_label = ".L" + function.name + "_" + false_block->label;
-          return body + false_branch_compare->first + "    " + false_branch_compare->second + " " +
-                 false_label + "\n" + *rendered_true + false_label + ":\n" +
-                 *rendered_false;
+          return body + entry_compare_context->false_branch_compare.first + "    " +
+                 entry_compare_context->false_branch_compare.second + " " + false_label + "\n" +
+                 *rendered_true + false_label + ":\n" + *rendered_false;
         };
 
     auto asm_text = asm_prefix;
