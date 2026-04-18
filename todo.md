@@ -6,21 +6,21 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 3 for the bounded single-defined-function prepared-
-module direct external-call lane. The owned slice now keeps declaration-only
-neighbors out of the x86 defined-function gate, preserves string-backed direct
-call pointer provenance through the semantic-BIR lowering result, and admits
-straight-line direct extern-call prepared modules that still end in the
-minimal `i32` return envelope. With that route in place, the delegated proving
-cluster `00131` and `00211` both pass while the backend notes and handoff
-tests remain green.
+Completed `plan.md` Step 1 for the frontier re-baseline checkpoint. The
+current evidence shows that `00210` is the smallest honest next
+prepared-module boundary: it still fails exactly at the multi-defined-function
+prepared-module gate. `00189` hits the same top-level gate but remains an
+adjacent out-of-scope neighbor because it also layers indirect/global-function-
+pointer and variadic-runtime behavior on top of that boundary, while `00057`
+and `00124` remain separate emitter and scalar-control-flow families.
 
 ## Suggested Next
 
-Execute the new `plan.md` Step 1 checkpoint: re-baseline `00210` against the
-remaining nearby prepared-module neighbors and name one truthful next family
-before delegating more implementation. Do not fold that broader route into the
-completed single-defined-function direct extern-call slice after the fact.
+Execute `plan.md` Step 2 and name the next bounded packet as the
+multi-defined-function prepared-module lane centered on `00210`, while keeping
+`00189` explicit as an adjacent indirect/global-pointer/variadic-runtime
+neighbor and leaving `00057` and `00124` in their existing out-of-scope
+families.
 
 ## Watchouts
 
@@ -41,9 +41,12 @@ completed single-defined-function direct extern-call slice after the fact.
 
 ## Proof
 
-Delegated proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00131_c|c_testsuite_x86_backend_src_00211_c)$' | tee test_after.log`
+Step 1 evidence:
+`ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_x86_backend_src_00210_c|c_testsuite_x86_backend_src_00189_c|c_testsuite_x86_backend_src_00057_c|c_testsuite_x86_backend_src_00124_c|backend_lir_to_bir_notes|backend_x86_handoff_boundary)$'`
 
-Result: `backend_lir_to_bir_notes` passed, `backend_x86_handoff_boundary`
-passed, `c_testsuite_x86_backend_src_00131_c` passed, and
-`c_testsuite_x86_backend_src_00211_c` passed. Proof log: `test_after.log`.
+Result: `backend_lir_to_bir_notes` passed and `backend_x86_handoff_boundary`
+passed. `c_testsuite_x86_backend_src_00210_c` and
+`c_testsuite_x86_backend_src_00189_c` both fail with the single-function
+prepared-module gate. `c_testsuite_x86_backend_src_00057_c` still fails in the
+minimal emitter family, and `c_testsuite_x86_backend_src_00124_c` still fails
+in scalar-control-flow lowering.
