@@ -2634,6 +2634,26 @@ std::string emit_prepared_module(
             }
             return nullptr;
           };
+          const auto build_compare_driven_entry_render_plan =
+              [&](const c4c::backend::bir::Block& source_block,
+                  const c4c::backend::bir::BinaryInst& compare,
+                  const auto& branch_plan_builder)
+              -> std::optional<CompareDrivenBranchRenderPlan> {
+            const auto compare_context =
+                build_short_circuit_entry_compare_context(find_branch_condition,
+                                                          source_block,
+                                                          compare);
+            if (!compare_context.has_value()) {
+              return std::nullopt;
+            }
+
+            const auto branch_plan = branch_plan_builder(*compare_context);
+            if (!branch_plan.has_value()) {
+              return std::nullopt;
+            }
+
+            return build_compare_driven_render_plan(*branch_plan, *compare_context);
+          };
 
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Return) {
             if (compare_index != block.insts.size() || !block.terminator.value.has_value()) {
@@ -2667,24 +2687,20 @@ std::string emit_prepared_module(
                 if (compare == nullptr) {
                   return std::nullopt;
                 }
-                const auto entry_compare_context =
-                    build_short_circuit_entry_compare_context(find_branch_condition,
-                                                              block,
-                                                              *compare);
-                if (!entry_compare_context.has_value()) {
-                  return std::nullopt;
-                }
-                const auto compare_join_plan =
-                    build_compare_join_branch_plan(block, *continuation);
-                if (!compare_join_plan.has_value()) {
-                  return std::nullopt;
-                }
                 const auto compare_join_render_plan =
-                    build_compare_driven_render_plan(*compare_join_plan,
-                                                     *entry_compare_context);
+                    build_compare_driven_entry_render_plan(
+                        block,
+                        *compare,
+                        [&](const ShortCircuitEntryCompareContext&)
+                            -> std::optional<ShortCircuitPlan> {
+                          return build_compare_join_branch_plan(block, *continuation);
+                        });
+                if (!compare_join_render_plan.has_value()) {
+                  return std::nullopt;
+                }
                 return render_compare_driven_branch_plan(render_block,
                                                          body,
-                                                         compare_join_render_plan);
+                                                         *compare_join_render_plan);
               }
             }
             if (compare_index != block.insts.size()) {
@@ -2714,11 +2730,6 @@ std::string emit_prepared_module(
           if (compare == nullptr) {
             return std::nullopt;
           }
-          const auto entry_compare_context =
-              build_short_circuit_entry_compare_context(find_branch_condition, block, *compare);
-          if (!entry_compare_context.has_value()) {
-            return std::nullopt;
-          }
 
           const auto try_render_short_circuit_plan =
               [&]() -> std::optional<std::string> {
@@ -2733,41 +2744,48 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
-            const auto direct_branch_plan =
-                build_short_circuit_entry_direct_branch_plan(
-                    entry_compare_context->branch_condition,
-                    block);
-            if (!direct_branch_plan.has_value()) {
-              return std::nullopt;
-            }
-
-            const auto short_circuit_plan = build_short_circuit_plan(*join_context,
-                                                                     *direct_branch_plan);
-            if (!short_circuit_plan.has_value()) {
-              return std::nullopt;
-            }
             const auto short_circuit_render_plan =
-                build_compare_driven_render_plan(*short_circuit_plan,
-                                                 *entry_compare_context);
+                build_compare_driven_entry_render_plan(
+                    block,
+                    *compare,
+                    [&](const ShortCircuitEntryCompareContext& compare_context)
+                        -> std::optional<ShortCircuitPlan> {
+                      const auto direct_branch_plan =
+                          build_short_circuit_entry_direct_branch_plan(
+                              compare_context.branch_condition,
+                              block);
+                      if (!direct_branch_plan.has_value()) {
+                        return std::nullopt;
+                      }
+
+                      return build_short_circuit_plan(*join_context, *direct_branch_plan);
+                    });
+            if (!short_circuit_render_plan.has_value()) {
+              return std::nullopt;
+            }
             return render_compare_driven_branch_plan(render_block,
                                                      body,
-                                                     short_circuit_render_plan);
+                                                     *short_circuit_render_plan);
           };
           if (const auto rendered_short_circuit = try_render_short_circuit_plan();
               rendered_short_circuit.has_value()) {
             return rendered_short_circuit;
           }
 
-          const auto plain_cond_branch_plan = build_plain_cond_branch_plan(block);
-          if (!plain_cond_branch_plan.has_value()) {
+          const auto plain_cond_render_plan =
+              build_compare_driven_entry_render_plan(
+                  block,
+                  *compare,
+                  [&](const ShortCircuitEntryCompareContext&)
+                      -> std::optional<ShortCircuitPlan> {
+                    return build_plain_cond_branch_plan(block);
+                  });
+          if (!plain_cond_render_plan.has_value()) {
             return std::nullopt;
           }
-          const auto plain_cond_render_plan =
-              build_compare_driven_render_plan(*plain_cond_branch_plan,
-                                               *entry_compare_context);
           return render_compare_driven_branch_plan(render_block,
                                                    body,
-                                                   plain_cond_render_plan);
+                                                   *plain_cond_render_plan);
         };
 
     auto asm_text = asm_prefix;

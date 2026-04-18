@@ -9,20 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by introducing a
-helper-owned compare-driven render plan that carries both branch-lane targets
-and compare setup/opcode data. The compare-join continuation path, short-
-circuit path, and plain conditional fallback now all hand
-`render_compare_driven_branch_plan()` the same `CompareDrivenBranchRenderPlan`
-contract instead of keeping branch-plan and false-branch compare plumbing
-separate at each render site.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by collapsing entry-path
+compare-driven render-plan assembly behind
+`build_compare_driven_entry_render_plan()`. The compare-join continuation path,
+short-circuit path, and plain conditional fallback now ask one helper for the
+final `CompareDrivenBranchRenderPlan` instead of locally pairing
+`build_*_branch_plan()` results with
+`build_short_circuit_entry_compare_context()` at each call site.
 
 ## Suggested Next
 
-The next small Step 3 packet is to collapse compare-driven plan construction
-further so entry routing can ask one helper for the final render plan instead
-of locally pairing `build_*_branch_plan()` results with
-`build_short_circuit_entry_compare_context()` at each call site.
+The next small Step 3 packet is to keep tightening compare-driven branch-plan
+ownership so the continuation and plain-entry helpers converge on one shared
+branch-plan builder contract instead of carrying separate direct-branch helper
+variants.
 
 ## Watchouts
 
@@ -60,6 +60,10 @@ of locally pairing `build_*_branch_plan()` results with
   branch-lane targets that feed `render_compare_driven_branch_plan()`; future
   cleanup should extend that contract instead of re-splitting compare plumbing
   from branch-plan selection at the render sites.
+- `build_compare_driven_entry_render_plan()` now owns entry-path assembly of
+  `ShortCircuitEntryCompareContext` plus the final
+  `CompareDrivenBranchRenderPlan`; keep future entry cleanup inside that helper
+  instead of re-growing local compare-context/branch-plan pairing.
 - `classify_short_circuit_join_incoming()` still assumes the prepared select
   join carries exactly one bool-like immediate lane and one named RHS lane; if
   that invariant changes, repair the shared contract instead of extending
@@ -71,5 +75,5 @@ of locally pairing `build_*_branch_plan()` results with
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 compare-driven render-plan
-cleanup packet; proof output is in `test_after.log`.
+The build and narrow proof passed for this Step 3 compare-driven entry render-
+plan cleanup packet; proof output is in `test_after.log`.
