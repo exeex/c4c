@@ -8,19 +8,19 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Repaired Step 3's ordinary joined compare-against-zero branch consumer in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` so it accepts the
-authoritative prepared join-transfer contract for phi-backed joins instead of
-requiring a select-materialization-specific carrier. The x86 lane now keys off
-prepared edge transfers and the prepared join result name, which restores the
-joined branch route without reopening CFG-shape fallback.
+Completed another Step 3 cleanup in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by deleting the raw
+short-circuit select/phi reconstruction fallback. Supported short-circuit
+continuation now routes only through prepared branch and join metadata instead
+of dropping back to CFG-shape recovery when detecting that lane.
 
 ## Suggested Next
 
-Step 3 still has a remaining raw short-circuit select/phi reconstruction lane
-in `prepared_module_emit.cpp`. The next small packet is isolating or deleting
-that no-control-flow fallback so prepared-route consumers stay lookup-driven
-across both ordinary joins and short-circuit continuation.
+Step 3 now looks ready for supervisor-chosen validation beyond the narrow
+handoff subset before treating this route as a stronger milestone. If more x86
+consumer cleanup is still needed after that, the next small packet is checking
+for any remaining prepared-control-flow consumers in `prepared_module_emit.cpp`
+that still fall back to emitter-local topology inference.
 
 ## Watchouts
 
@@ -44,9 +44,10 @@ across both ordinary joins and short-circuit continuation.
   prepared joins as well as select-materialization joins; x86 consumers in
   that lane must use prepared join transfers as the authority, not demand a
   select carrier.
-- The guarded short-circuit raw select/phi reconstruction still exists only as
-  a no-control-flow fallback path; keep any future edits to that lane isolated
-  from prepared-route consumers.
+- The short-circuit continuation lane now assumes prepared control-flow is
+  present; if a future caller bypasses semantic preparation entirely, that
+  should be treated as a contract violation rather than patched with new raw
+  CFG matching here.
 
 ## Proof
 
