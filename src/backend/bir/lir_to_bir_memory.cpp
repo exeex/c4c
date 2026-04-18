@@ -1211,43 +1211,17 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
                                                            lowered_insts);
     if (local_slot_load == LocalSlotLoadResult::NotHandled) {
       if (*value_type == bir::TypeKind::Ptr) {
-        if (const auto local_array_it = dynamic_local_pointer_arrays.find(load->ptr.str());
-            local_array_it != dynamic_local_pointer_arrays.end()) {
-          const auto element_values = collect_local_pointer_values(
-              local_array_it->second.element_slots, local_pointer_value_aliases);
-          if (!element_values.has_value()) {
-            return fail_load();
-          }
-          const auto selected_value = synthesize_pointer_array_selects(
-              load->result.str(), *element_values, local_array_it->second.index, lowered_insts);
-          if (!selected_value.has_value()) {
-            return fail_load();
-          }
-          if (selected_value->kind == bir::Value::Kind::Named &&
-              selected_value->name == load->result.str()) {
-            return true;
-          }
-          value_aliases[load->result.str()] = *selected_value;
-          return true;
-        }
-        if (const auto global_array_it = dynamic_global_pointer_arrays.find(load->ptr.str());
-            global_array_it != dynamic_global_pointer_arrays.end()) {
-          const auto element_values =
-              collect_global_array_pointer_values(global_array_it->second, global_types);
-          if (!element_values.has_value()) {
-            return fail_load();
-          }
-          const auto selected_value = synthesize_pointer_array_selects(
-              load->result.str(), *element_values, global_array_it->second.index, lowered_insts);
-          if (!selected_value.has_value()) {
-            return fail_load();
-          }
-          if (selected_value->kind == bir::Value::Kind::Named &&
-              selected_value->name == load->result.str()) {
-            return true;
-          }
-          value_aliases[load->result.str()] = *selected_value;
-          return true;
+        if (const auto dynamic_pointer_array_load = try_lower_dynamic_pointer_array_load(
+                load->result.str(),
+                load->ptr.str(),
+                dynamic_local_pointer_arrays,
+                dynamic_global_pointer_arrays,
+                local_pointer_value_aliases,
+                global_types,
+                &value_aliases,
+                lowered_insts);
+            dynamic_pointer_array_load.has_value()) {
+          return *dynamic_pointer_array_load ? true : fail_load();
         }
       }
       return fail_load();

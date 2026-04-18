@@ -6,19 +6,20 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2 / Step 3: moved the coordinator's remaining global/global-pointer
-store bookkeeping out of `src/backend/bir/lir_to_bir_memory.cpp` and into the
-new provenance-owned helper `try_lower_global_provenance_store` in
-`src/backend/bir/lir_to_bir_memory_provenance.cpp`, so direct global stores,
-global-object pointer stores, and addressed global-pointer stores now dispatch
-through the provenance owner without changing lowering behavior.
+Plan Step 2 / Step 3: moved the coordinator's remaining dynamic pointer-array
+load fallback out of `src/backend/bir/lir_to_bir_memory.cpp` and into the
+value-materialization-owned helper
+`try_lower_dynamic_pointer_array_load` in
+`src/backend/bir/lir_to_bir_memory_value_materialization.cpp`, so local and
+global pointer-array select materialization now dispatch through that owner
+without changing lowering behavior.
 
 ## Suggested Next
 
 Continue `plan.md` Step 4 by re-reading the remaining coordinator-side
-pointer-array select and dynamic global pointer load dispatch around the load
-fallback path, and decide whether the next honest extraction is another
-provenance-owned pointer-value branch or a distinct value-materialization seam.
+load-path pointer handling after the new value-materialization extraction, and
+decide whether the next honest packet is a provenance-owned addressed/global
+pointer branch or a distinct local-slot mechanics seam.
 
 ## Watchouts
 
@@ -34,30 +35,26 @@ provenance-owned pointer-value branch or a distinct value-materialization seam.
   local-slot-specific load/store dispatch and bookkeeping wrappers; do not use
   provenance extraction as a reason to pull local-slot alias or address updates
   back out of that owner.
-- Dynamic pointer/global value-selection helpers already live in
-  `src/backend/bir/lir_to_bir_memory_value_materialization.cpp`; leave select
-  synthesis there instead of recreating it inline in the coordinator.
-- The regression guard script currently exits non-zero on this subset because
-  pass count stayed flat at `4/5` even though it reported `new failing tests:
-  0`; treat the canonical log pair as unchanged-behavior evidence, not as a
-  newly introduced regression.
-- The latest accepted proof again changed only timing lines; the functional
-  result remained the same `4/5` subset with the pre-existing
-  `c_testsuite_x86_backend_src_00205_c` backend-emitter limitation, and the
-  accepted baseline has not changed functionally.
+- Dynamic pointer/global value-selection helpers now include
+  `try_lower_dynamic_pointer_array_load` under
+  `src/backend/bir/lir_to_bir_memory_value_materialization.cpp`; keep follow-on
+  select materialization in that owner instead of recreating it inline in the
+  coordinator.
+- This packet's proof subset was tightened to the four directly relevant
+  backend tests, and all four passed under `test_after.log`.
 - Treat renderer de-headerization as separate idea `56`.
 
 ## Proof
 
-Ran `cmake --build --preset default && ctest --test-dir build -j
---output-on-failure -R
-'^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir|backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir|c_testsuite_x86_backend_src_00205_c)$'
-| tee test_after.log`.
-The build passed, and the narrow backend proof again produced the same `4/5`
-functional result as the prior baseline: the four backend
-notes/handoff/dynamic-member-array tests passed, and the pre-existing failure
-`c_testsuite_x86_backend_src_00205_c` remained unchanged with the same
-backend-emitter limitation. `diff -u test_before.log test_after.log` changed
-only timing lines. Because the delegated command uses `tee` without `pipefail`,
-`ctest` still reported the known failing case inside `test_after.log` even
-though the shell command itself exited `0`. Proof log path: `test_after.log`.
+Ran `bash -lc 'set -o pipefail; cmake --build --preset default && ctest
+--test-dir build -j --output-on-failure -R
+"^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir|backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir)$"
+| tee test_after.log'`.
+The build passed, and the delegated narrow backend proof passed all four
+selected tests:
+`backend_lir_to_bir_notes`,
+`backend_x86_handoff_boundary`,
+`backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir`,
+and
+`backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir`.
+Proof log path: `test_after.log`.

@@ -841,6 +841,15 @@ class BirFunctionLowerer {
       bir::TypeKind value_type,
       const DynamicGlobalScalarArrayAccess& access,
       std::vector<bir::Inst>* lowered_insts);
+  static std::optional<bool> try_lower_dynamic_pointer_array_load(
+      std::string_view result_name,
+      std::string_view ptr_name,
+      const DynamicLocalPointerArrayMap& dynamic_local_pointer_arrays,
+      const DynamicGlobalPointerArrayMap& dynamic_global_pointer_arrays,
+      const LocalPointerValueAliasMap& local_pointer_value_aliases,
+      const GlobalTypes& global_types,
+      ValueMap* value_aliases,
+      std::vector<bir::Inst>* lowered_insts);
   std::optional<bir::Value> load_dynamic_pointer_value_array_value(
       std::string_view result_name,
       bir::TypeKind value_type,

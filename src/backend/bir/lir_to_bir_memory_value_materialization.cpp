@@ -252,6 +252,56 @@ std::optional<bir::Value> BirFunctionLowerer::load_dynamic_pointer_value_array_v
   return synthesize_value_array_selects(result_name, element_values, access.index, lowered_insts);
 }
 
+std::optional<bool> BirFunctionLowerer::try_lower_dynamic_pointer_array_load(
+    std::string_view result_name,
+    std::string_view ptr_name,
+    const DynamicLocalPointerArrayMap& dynamic_local_pointer_arrays,
+    const DynamicGlobalPointerArrayMap& dynamic_global_pointer_arrays,
+    const LocalPointerValueAliasMap& local_pointer_value_aliases,
+    const GlobalTypes& global_types,
+    ValueMap* value_aliases,
+    std::vector<bir::Inst>* lowered_insts) {
+  auto record_selected_value = [&](const bir::Value& selected_value) -> bool {
+    if (selected_value.kind == bir::Value::Kind::Named && selected_value.name == result_name) {
+      return true;
+    }
+    (*value_aliases)[std::string(result_name)] = selected_value;
+    return true;
+  };
+
+  if (const auto local_array_it = dynamic_local_pointer_arrays.find(std::string(ptr_name));
+      local_array_it != dynamic_local_pointer_arrays.end()) {
+    const auto element_values = collect_local_pointer_values(local_array_it->second.element_slots,
+                                                             local_pointer_value_aliases);
+    if (!element_values.has_value()) {
+      return false;
+    }
+    const auto selected_value = synthesize_pointer_array_selects(
+        result_name, *element_values, local_array_it->second.index, lowered_insts);
+    if (!selected_value.has_value()) {
+      return false;
+    }
+    return record_selected_value(*selected_value);
+  }
+
+  if (const auto global_array_it = dynamic_global_pointer_arrays.find(std::string(ptr_name));
+      global_array_it != dynamic_global_pointer_arrays.end()) {
+    const auto element_values =
+        collect_global_array_pointer_values(global_array_it->second, global_types);
+    if (!element_values.has_value()) {
+      return false;
+    }
+    const auto selected_value = synthesize_pointer_array_selects(
+        result_name, *element_values, global_array_it->second.index, lowered_insts);
+    if (!selected_value.has_value()) {
+      return false;
+    }
+    return record_selected_value(*selected_value);
+  }
+
+  return std::nullopt;
+}
+
 bool BirFunctionLowerer::append_dynamic_pointer_value_array_store(
     std::string_view scratch_prefix,
     bir::TypeKind value_type,
