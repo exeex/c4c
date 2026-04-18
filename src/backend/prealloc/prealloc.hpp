@@ -4,6 +4,7 @@
 #include "../../target_profile.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -439,6 +440,11 @@ struct PreparedJoinCarrier {
   std::string_view result_name;
 };
 
+struct PreparedSupportedImmediateBinary {
+  bir::BinaryOpcode opcode = bir::BinaryOpcode::Add;
+  std::int64_t immediate = 0;
+};
+
 struct PreparedMaterializedCompareJoinContext {
   const PreparedJoinTransfer* join_transfer = nullptr;
   const PreparedEdgeValueTransfer* true_transfer = nullptr;
@@ -460,7 +466,7 @@ struct PreparedMaterializedCompareJoinBranches {
 
 struct PreparedMaterializedCompareJoinReturnContext {
   bir::Value selected_value;
-  const bir::BinaryInst* trailing_binary = nullptr;
+  std::optional<PreparedSupportedImmediateBinary> trailing_binary;
   std::string_view carrier_result_name;
   std::unordered_map<std::string_view, const bir::BinaryInst*> named_binaries;
 };
@@ -862,6 +868,51 @@ find_authoritative_short_circuit_join_sources(
   return std::nullopt;
 }
 
+[[nodiscard]] inline std::optional<PreparedSupportedImmediateBinary>
+classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_view source_name) {
+  if (binary.operand_type != bir::TypeKind::I32 || binary.result.type != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  const bool lhs_is_source_rhs_is_imm =
+      binary.lhs.kind == bir::Value::Kind::Named && binary.lhs.name == source_name &&
+      binary.rhs.kind == bir::Value::Kind::Immediate && binary.rhs.type == bir::TypeKind::I32;
+  const bool rhs_is_source_lhs_is_imm =
+      binary.rhs.kind == bir::Value::Kind::Named && binary.rhs.name == source_name &&
+      binary.lhs.kind == bir::Value::Kind::Immediate && binary.lhs.type == bir::TypeKind::I32;
+  if (!lhs_is_source_rhs_is_imm && !rhs_is_source_lhs_is_imm) {
+    return std::nullopt;
+  }
+
+  const auto immediate = lhs_is_source_rhs_is_imm ? binary.rhs.immediate : binary.lhs.immediate;
+  switch (binary.opcode) {
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+      return PreparedSupportedImmediateBinary{
+          .opcode = binary.opcode,
+          .immediate = immediate,
+      };
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+      if (!lhs_is_source_rhs_is_imm) {
+        return std::nullopt;
+      }
+      return PreparedSupportedImmediateBinary{
+          .opcode = binary.opcode,
+          .immediate = binary.rhs.immediate,
+      };
+    default:
+      break;
+  }
+
+  return std::nullopt;
+}
+
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinContext>
 find_materialized_compare_join_context(
     const PreparedAuthoritativeBranchJoinTransfer& authoritative_join_transfer,
@@ -966,9 +1017,18 @@ find_prepared_materialized_compare_join_return_context(
     named_binaries.emplace(binary->result.name, binary);
   }
 
+  std::optional<PreparedSupportedImmediateBinary> trailing_binary;
+  if (compare_join_context.trailing_binary != nullptr) {
+    trailing_binary = classify_supported_immediate_binary(*compare_join_context.trailing_binary,
+                                                          compare_join_context.carrier_result_name);
+    if (!trailing_binary.has_value()) {
+      return std::nullopt;
+    }
+  }
+
   return PreparedMaterializedCompareJoinReturnContext{
       .selected_value = selected_value,
-      .trailing_binary = compare_join_context.trailing_binary,
+      .trailing_binary = std::move(trailing_binary),
       .carrier_result_name = compare_join_context.carrier_result_name,
       .named_binaries = std::move(named_binaries),
   };
