@@ -9,17 +9,18 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting short-
-circuit render-context construction out of `render_short_circuit_plan()`. The
-plan renderer now delegates lane-omission policy to
-`build_short_circuit_render_context()` instead of rebuilding that policy
-inline.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting the final
+short-circuit rendered-string assembly out of
+`render_short_circuit_plan()`. The plan renderer now delegates branch-jump
+prefix and false-lane string assembly to
+`assemble_short_circuit_rendered_plan()` instead of rebuilding that final
+string inline.
 
 ## Suggested Next
 
-The next small Step 3 packet is to extract the final rendered-string assembly
-out of `render_short_circuit_plan()` so the wrapper only sequences helper
-calls plus the returned render fragments.
+The next small Step 3 packet is to extract the remaining rendered-lane
+collection out of `render_short_circuit_plan()` so the wrapper only sequences
+helper calls for render-context, lane rendering, and final assembly.
 
 ## Watchouts
 
@@ -35,8 +36,9 @@ calls plus the returned render fragments.
 - `build_short_circuit_render_context()` now owns rendered true/false lane
   omission,
   `render_short_circuit_target()` owns per-target block rendering plus
-  continuation omission, and `render_short_circuit_false_lane()` owns the final
-  false-label splice; future cleanup should keep those responsibilities in
+  continuation omission, `render_short_circuit_false_lane()` owns the false-
+  label splice, and `assemble_short_circuit_rendered_plan()` now owns the
+  final string assembly; future cleanup should keep those responsibilities in
   helpers instead of re-growing inline target handling in
   `render_short_circuit_plan()`.
 - `classify_short_circuit_join_incoming()` still assumes the prepared select
@@ -50,5 +52,5 @@ calls plus the returned render fragments.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 render-context cleanup
-packet; `test_after.log` remains the canonical proof log path.
+The build and narrow proof passed for this Step 3 rendered-string assembly
+cleanup packet; `test_after.log` remains the canonical proof log path.
