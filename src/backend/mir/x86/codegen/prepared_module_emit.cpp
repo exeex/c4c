@@ -3065,42 +3065,66 @@ std::string emit_prepared_module(
     }
 
     const auto* function_control_flow = find_control_flow_function();
-    if (function_control_flow == nullptr || function_control_flow->branch_conditions.size() != 1 ||
-        function_control_flow->join_transfers.size() != 1) {
-      return std::nullopt;
-    }
-
-    const auto& join_transfer = function_control_flow->join_transfers.front();
-    if (join_transfer.kind != c4c::backend::prepare::PreparedJoinTransferKind::LoopCarry ||
-        !join_transfer.storage_name.has_value() || join_transfer.result.type != c4c::backend::bir::TypeKind::I32 ||
-        join_transfer.edge_transfers.size() != 2) {
-      return std::nullopt;
-    }
-    const auto* join_edges = incoming_transfers_for_join(
-        *function_control_flow, join_transfer.join_block_label, join_transfer.result.name);
-    if (join_edges == nullptr || join_edges->size() != 2) {
+    const auto* loop_block = find_block(entry.terminator.target_label);
+    if (function_control_flow == nullptr || loop_block == nullptr || loop_block == &entry ||
+        loop_block->terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
       return std::nullopt;
     }
 
     const auto* branch_condition = c4c::backend::prepare::find_prepared_branch_condition(
-        *function_control_flow, join_transfer.join_block_label);
+        *function_control_flow, loop_block->label);
     if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
         !branch_condition->compare_type.has_value() || !branch_condition->lhs.has_value() ||
         !branch_condition->rhs.has_value() ||
         *branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
-        branch_condition->condition_value.kind != c4c::backend::bir::Value::Kind::Named) {
+        branch_condition->condition_value.kind != c4c::backend::bir::Value::Kind::Named ||
+        branch_condition->condition_value.name != loop_block->terminator.condition.name) {
+      return std::nullopt;
+    }
+
+    const auto* carried_counter = [&]() -> const c4c::backend::bir::Value* {
+      if (branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
+          branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+          branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32 &&
+          branch_condition->rhs->immediate == 0) {
+        return &*branch_condition->lhs;
+      }
+      if (branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Named &&
+          branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+          branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32 &&
+          branch_condition->lhs->immediate == 0) {
+        return &*branch_condition->rhs;
+      }
+      return static_cast<const c4c::backend::bir::Value*>(nullptr);
+    }();
+    if (carried_counter == nullptr) {
+      return std::nullopt;
+    }
+
+    const auto* join_transfer = c4c::backend::prepare::find_prepared_join_transfer(
+        *function_control_flow, loop_block->label, carried_counter->name);
+    if (join_transfer == nullptr ||
+        join_transfer->kind != c4c::backend::prepare::PreparedJoinTransferKind::LoopCarry ||
+        !join_transfer->storage_name.has_value() ||
+        join_transfer->result.type != c4c::backend::bir::TypeKind::I32 ||
+        join_transfer->edge_transfers.size() != 2) {
+      return std::nullopt;
+    }
+    const auto* join_edges = incoming_transfers_for_join(
+        *function_control_flow, join_transfer->join_block_label, join_transfer->result.name);
+    if (join_edges == nullptr || join_edges->size() != 2) {
       return std::nullopt;
     }
 
     const bool lhs_is_counter_rhs_is_zero =
         branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
-        branch_condition->lhs->name == join_transfer.result.name &&
+        branch_condition->lhs->name == join_transfer->result.name &&
         branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
         branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32 &&
         branch_condition->rhs->immediate == 0;
     const bool rhs_is_counter_lhs_is_zero =
         branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Named &&
-        branch_condition->rhs->name == join_transfer.result.name &&
+        branch_condition->rhs->name == join_transfer->result.name &&
         branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
         branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32 &&
         branch_condition->lhs->immediate == 0;
@@ -3120,7 +3144,6 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto* loop_block = find_block(join_transfer.join_block_label);
     const auto* body_block = find_block(body_label);
     const auto* exit_block = find_block(exit_label);
     if (loop_block == nullptr || body_block == nullptr || exit_block == nullptr ||
@@ -3141,7 +3164,7 @@ std::string emit_prepared_module(
     const bool exit_returns_counter =
         exit_value.kind == c4c::backend::bir::Value::Kind::Named &&
         exit_value.type == c4c::backend::bir::TypeKind::I32 &&
-        exit_value.name == join_transfer.result.name;
+        exit_value.name == join_transfer->result.name;
     const bool exit_returns_zero =
         exit_value.kind == c4c::backend::bir::Value::Kind::Immediate &&
         exit_value.type == c4c::backend::bir::TypeKind::I32 && exit_value.immediate == 0;
@@ -3158,7 +3181,7 @@ std::string emit_prepared_module(
         body_update->operand_type != c4c::backend::bir::TypeKind::I32 ||
         body_update->result.type != c4c::backend::bir::TypeKind::I32 ||
         body_update->lhs.kind != c4c::backend::bir::Value::Kind::Named ||
-        body_update->lhs.name != join_transfer.result.name ||
+        body_update->lhs.name != join_transfer->result.name ||
         body_update->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
         body_update->rhs.type != c4c::backend::bir::TypeKind::I32 ||
         body_update->rhs.immediate != 1) {

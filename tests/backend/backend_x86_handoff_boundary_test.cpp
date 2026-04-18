@@ -3979,6 +3979,56 @@ int check_loop_countdown_route_consumes_prepared_control_flow(const bir::Module&
                  ": prepare no longer classifies the loop countdown join as explicit loop-carry traffic")
                     .c_str());
   }
+  auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+  if (mutable_control_flow == nullptr || mutable_control_flow->branch_conditions.size() != 1 ||
+      mutable_control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture lost its mutable loop-countdown control-flow contract")
+                    .c_str());
+  }
+  mutable_control_flow->branch_conditions.insert(
+      mutable_control_flow->branch_conditions.begin(),
+      prepare::PreparedBranchCondition{
+          .function_name = function_name,
+          .block_label = "carrier.loop",
+          .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+          .condition_value = bir::Value::named(bir::TypeKind::I32, "carrier.cond"),
+          .predicate = bir::BinaryOpcode::Eq,
+          .compare_type = bir::TypeKind::I32,
+          .lhs = bir::Value::named(bir::TypeKind::I32, "carrier.counter"),
+          .rhs = bir::Value::immediate_i32(0),
+          .can_fuse_with_branch = true,
+          .true_label = "carrier.body",
+          .false_label = "carrier.exit",
+      });
+  mutable_control_flow->join_transfers.insert(
+      mutable_control_flow->join_transfers.begin(),
+      prepare::PreparedJoinTransfer{
+          .function_name = function_name,
+          .join_block_label = "carrier.loop",
+          .result = bir::Value::named(bir::TypeKind::I32, "carrier.counter"),
+          .kind = prepare::PreparedJoinTransferKind::LoopCarry,
+          .storage_name = "%carrier.counter",
+          .edge_transfers =
+              {
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = "carrier.entry",
+                      .successor_label = "carrier.loop",
+                      .incoming_value = bir::Value::immediate_i32(9),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32, "carrier.counter"),
+                      .storage_name = "%carrier.counter",
+                  },
+                  prepare::PreparedEdgeValueTransfer{
+                      .predecessor_label = "carrier.body",
+                      .successor_label = "carrier.loop",
+                      .incoming_value = bir::Value::named(bir::TypeKind::I32, "carrier.next"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32, "carrier.counter"),
+                      .storage_name = "%carrier.counter",
+                  },
+              },
+      });
 
   auto& function = prepared.module.functions.front();
   auto* entry_block = find_block(function, "entry");
@@ -4009,7 +4059,7 @@ int check_loop_countdown_route_consumes_prepared_control_flow(const bir::Module&
   const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
-                 ": x86 prepared-module consumer stopped following the authoritative loop control-flow contract")
+                 ": x86 prepared-module consumer stopped following the authoritative loop control-flow contract over unrelated prepared records")
                     .c_str());
   }
 
