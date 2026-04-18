@@ -7,20 +7,19 @@ Source Plan: plan.md
 ## Just Finished
 
 Plan Step 2: extracted the remaining coordinator-side dynamic local-aggregate
-store/load handling from `src/backend/bir/lir_to_bir_memory.cpp` into
+GEP projection lookup from `src/backend/bir/lir_to_bir_memory.cpp` into
 `src/backend/bir/lir_to_bir_memory_local_slots.cpp` as
-`try_lower_dynamic_local_aggregate_store` and
-`try_lower_dynamic_local_aggregate_load`, so the coordinator now only dispatches
-that family while local-slot ownership handles the map lookup, value load/store
-sequencing, and alias update path.
+`try_lower_dynamic_local_aggregate_gep_projection`, so the coordinator now only
+dispatches that family while local-slot ownership handles the dynamic local
+aggregate map lookup and pointer-array projection result.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by extracting the remaining
-`dynamic_local_aggregate_arrays.find(...)` GEP projection branch in
-`src/backend/bir/lir_to_bir_memory.cpp` behind a local-slot-owned wrapper so
-the coordinator no longer performs dynamic local aggregate map lookup for that
-family either.
+Continue `plan.md` Step 2 by re-reading the remaining local dynamic
+pointer-array and local-slot helper branches in
+`src/backend/bir/lir_to_bir_memory.cpp`, then choose the next coherent
+coordinator-owned local-slot mechanics wrapper rather than widening into
+addressing or provenance helpers.
 
 ## Watchouts
 
@@ -32,9 +31,11 @@ family either.
   per-element slot projection, while
   `try_lower_dynamic_local_aggregate_store` and
   `try_lower_dynamic_local_aggregate_load` now own the dynamic local aggregate
-  store/load dispatch mechanics; keep future packets focused on the last
-  coordinator-side GEP lookup for this family instead of pulling shared
-  addressing helpers across ownership buckets.
+  store/load dispatch mechanics, and
+  `try_lower_dynamic_local_aggregate_gep_projection` now owns the remaining GEP
+  map lookup and dispatch for that family; keep future packets focused on the
+  next honest local-slot-owned wrapper instead of pulling shared addressing
+  helpers across ownership buckets.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:
   0`; treat the canonical log pair as unchanged-behavior evidence, not as a

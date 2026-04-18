@@ -900,14 +900,16 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           .index = *index_value,
       };
       return true;
-    } else if (const auto local_aggregate_it = dynamic_local_aggregate_arrays.find(gep->ptr.str());
-               local_aggregate_it != dynamic_local_aggregate_arrays.end()) {
-      const auto projection = resolve_dynamic_local_aggregate_gep_projection(
-          *gep, value_aliases, type_decls, local_aggregate_it->second);
-      if (!projection.has_value()) {
+    } else if (const auto handled_dynamic_local_aggregate_gep =
+                   try_lower_dynamic_local_aggregate_gep_projection(*gep,
+                                                                    dynamic_local_aggregate_arrays,
+                                                                    value_aliases,
+                                                                    type_decls,
+                                                                    &dynamic_local_pointer_arrays);
+               handled_dynamic_local_aggregate_gep.has_value()) {
+      if (!*handled_dynamic_local_aggregate_gep) {
         return fail_gep();
       }
-      dynamic_local_pointer_arrays[gep->result.str()] = std::move(*projection);
       return true;
     } else if (const auto local_slot_ptr_it = local_slot_pointer_values.find(gep->ptr.str());
                local_slot_ptr_it != local_slot_pointer_values.end()) {

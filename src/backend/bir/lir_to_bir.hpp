@@ -651,6 +651,12 @@ class BirFunctionLowerer {
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls,
       const DynamicLocalAggregateArrayAccess& access);
+  static std::optional<bool> try_lower_dynamic_local_aggregate_gep_projection(
+      const c4c::codegen::lir::LirGepOp& gep,
+      const DynamicLocalAggregateArrayMap& dynamic_local_aggregate_arrays,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays);
   static std::optional<bir::Value> load_dynamic_local_aggregate_array_value(
       std::string_view result_name,
       bir::TypeKind value_type,

@@ -681,6 +681,28 @@ BirFunctionLowerer::resolve_dynamic_local_aggregate_gep_projection(
   };
 }
 
+std::optional<bool> BirFunctionLowerer::try_lower_dynamic_local_aggregate_gep_projection(
+    const c4c::codegen::lir::LirGepOp& gep,
+    const DynamicLocalAggregateArrayMap& dynamic_local_aggregate_arrays,
+    const ValueMap& value_aliases,
+    const TypeDeclMap& type_decls,
+    DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays) {
+  const auto dynamic_local_aggregate_it =
+      dynamic_local_aggregate_arrays.find(std::string(gep.ptr.str()));
+  if (dynamic_local_aggregate_it == dynamic_local_aggregate_arrays.end()) {
+    return std::nullopt;
+  }
+
+  const auto projection = resolve_dynamic_local_aggregate_gep_projection(
+      gep, value_aliases, type_decls, dynamic_local_aggregate_it->second);
+  if (!projection.has_value()) {
+    return false;
+  }
+
+  (*dynamic_local_pointer_arrays)[std::string(gep.result.str())] = std::move(*projection);
+  return true;
+}
+
 std::optional<bir::Value> BirFunctionLowerer::load_dynamic_local_aggregate_array_value(
     std::string_view result_name,
     bir::TypeKind value_type,
