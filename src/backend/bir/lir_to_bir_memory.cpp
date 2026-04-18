@@ -1812,42 +1812,13 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         return true;
       }
     } else if (*value_type == bir::TypeKind::Ptr) {
-      if (const auto local_slot_it = local_slot_address_slots.find(ptr_it->second);
-          local_slot_it != local_slot_address_slots.end()) {
-        local_slot_pointer_values[load->result.str()] = local_slot_it->second;
-        const auto loaded_layout =
-            compute_aggregate_type_layout(local_slot_it->second.type_text, type_decls);
-        if (loaded_layout.kind == AggregateTypeLayout::Kind::Array &&
-            !local_slot_it->second.array_element_slots.empty() &&
-            local_slot_it->second.byte_offset >= 0) {
-          const auto element_layout =
-              compute_aggregate_type_layout(loaded_layout.element_type_text, type_decls);
-          if (element_layout.kind == AggregateTypeLayout::Kind::Scalar &&
-              element_layout.size_bytes != 0) {
-            LocalAggregateSlots aggregate_view{
-                .storage_type_text = local_slot_it->second.storage_type_text,
-                .type_text = local_slot_it->second.type_text,
-                .base_byte_offset =
-                    static_cast<std::size_t>(local_slot_it->second.byte_offset),
-            };
-            for (std::size_t index = 0; index < local_slot_it->second.array_element_slots.size();
-                 ++index) {
-              aggregate_view.leaf_slots.emplace(index * element_layout.size_bytes,
-                                                local_slot_it->second.array_element_slots[index]);
-            }
-            local_aggregate_slots[load->result.str()] = std::move(aggregate_view);
-          }
-        }
-        if (!local_slot_it->second.array_element_slots.empty() &&
-            local_slot_it->second.byte_offset >= 0 &&
-            !(loaded_layout.kind == AggregateTypeLayout::Kind::Array &&
-              local_slot_it->second.array_element_slots.size() > loaded_layout.array_count)) {
-          local_pointer_array_bases[load->result.str()] = LocalPointerArrayBase{
-              .element_slots = local_slot_it->second.array_element_slots,
-              .base_index = local_slot_it->second.array_base_index,
-          };
-        }
-      }
+      record_loaded_local_pointer_slot_state(load->result.str(),
+                                             ptr_it->second,
+                                             local_slot_address_slots,
+                                             type_decls,
+                                             &local_slot_pointer_values,
+                                             &local_aggregate_slots,
+                                             &local_pointer_array_bases);
       if (const auto addr_it = local_address_slots.find(ptr_it->second);
           addr_it != local_address_slots.end()) {
         const bool preserve_loaded_pointer_provenance =

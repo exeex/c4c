@@ -1884,6 +1884,54 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_load(
   return true;
 }
 
+void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
+    std::string_view result_name,
+    std::string_view slot_name,
+    const LocalSlotAddressSlots& local_slot_address_slots,
+    const TypeDeclMap& type_decls,
+    LocalSlotPointerValues* local_slot_pointer_values,
+    LocalAggregateSlotMap* local_aggregate_slots,
+    LocalPointerArrayBaseMap* local_pointer_array_bases) {
+  const auto local_slot_it = local_slot_address_slots.find(std::string(slot_name));
+  if (local_slot_it == local_slot_address_slots.end()) {
+    return;
+  }
+
+  const auto result = std::string(result_name);
+  (*local_slot_pointer_values)[result] = local_slot_it->second;
+  const auto loaded_layout =
+      compute_aggregate_type_layout(local_slot_it->second.type_text, type_decls);
+  if (loaded_layout.kind == AggregateTypeLayout::Kind::Array &&
+      !local_slot_it->second.array_element_slots.empty() &&
+      local_slot_it->second.byte_offset >= 0) {
+    const auto element_layout =
+        compute_aggregate_type_layout(loaded_layout.element_type_text, type_decls);
+    if (element_layout.kind == AggregateTypeLayout::Kind::Scalar &&
+        element_layout.size_bytes != 0) {
+      LocalAggregateSlots aggregate_view{
+          .storage_type_text = local_slot_it->second.storage_type_text,
+          .type_text = local_slot_it->second.type_text,
+          .base_byte_offset = static_cast<std::size_t>(local_slot_it->second.byte_offset),
+      };
+      for (std::size_t index = 0; index < local_slot_it->second.array_element_slots.size();
+           ++index) {
+        aggregate_view.leaf_slots.emplace(index * element_layout.size_bytes,
+                                          local_slot_it->second.array_element_slots[index]);
+      }
+      (*local_aggregate_slots)[result] = std::move(aggregate_view);
+    }
+  }
+  if (!local_slot_it->second.array_element_slots.empty() &&
+      local_slot_it->second.byte_offset >= 0 &&
+      !(loaded_layout.kind == AggregateTypeLayout::Kind::Array &&
+        local_slot_it->second.array_element_slots.size() > loaded_layout.array_count)) {
+    (*local_pointer_array_bases)[result] = LocalPointerArrayBase{
+        .element_slots = local_slot_it->second.array_element_slots,
+        .base_index = local_slot_it->second.array_base_index,
+    };
+  }
+}
+
 std::optional<bir::Value> BirFunctionLowerer::load_dynamic_local_aggregate_array_value(
     std::string_view result_name,
     bir::TypeKind value_type,
