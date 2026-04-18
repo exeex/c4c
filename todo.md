@@ -9,20 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by removing the
-remaining compare-join continuation CFG reachability walk, so the x86
-short-circuit continuation lane now recognizes the prepared join predecessor
-directly from the authoritative `edge_transfers[source_*_transfer_index]`
-contract instead of tracing branch-only topology to the join block.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by collapsing leftover
+`GuardJoinContinuation` scaffolding that no longer participates in the
+prepared-predecessor route: the x86 short-circuit continuation lane no longer
+carries unused `join_label`, `hoisted_compare`, or `true_entry_label` state,
+and the continuation render path now requires the branch block's own compare
+instead of keeping dead fallback branches for pre-prepared CFG recovery.
 
 ## Suggested Next
 
-The next small Step 3 packet is to collapse any leftover
-`GuardJoinContinuation` scaffolding in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` that still exists only
-to support pre-prepared control-flow recovery, especially fields or branches
-that are no longer needed once prepared predecessor ownership drives the
-continuation entry.
+The next small Step 3 packet is to simplify the remaining
+`ShortCircuitPlan` continuation toggles in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` so the true/false lane
+selection is expressed directly in the prepared-control-flow consumer contract
+instead of through paired `on_compare_*_uses_continuation` booleans.
 
 ## Watchouts
 
@@ -33,6 +33,10 @@ continuation entry.
   prepared predecessor recorded by the selected join-transfer edge is
   authoritative for continuation entry, whether the rhs block branches directly
   to the join or through one empty carrier.
+- Do not reintroduce continuation fallbacks that bypass the rhs branch block's
+  own compare; this packet intentionally removed the dead hoisted-compare path
+  because prepared predecessor ownership, not speculative CFG rescue, is the
+  active Step 3 contract.
 - Do not treat `source_true_incoming_label` or `source_false_incoming_label` as
   the x86 continuation ownership contract here; the prepared-control-flow tests
   intentionally rewrite those aliases while the authoritative predecessor still
@@ -48,5 +52,5 @@ continuation entry.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The build and narrow proof both passed; `test_after.log` is the canonical proof
-log and was sufficient for this Step 3 continuation-ownership packet after the
-x86 CFG reachability walk was removed.
+log and was sufficient for this Step 3 continuation-scaffolding cleanup packet
+after the dead `GuardJoinContinuation` fallback state was removed.

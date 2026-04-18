@@ -1523,12 +1523,9 @@ std::string emit_prepared_module(
                  opcode == c4c::backend::bir::BinaryOpcode::Sle;
         };
     struct GuardJoinContinuation {
-      std::string_view join_label;
       std::string_view incoming_label;
       const c4c::backend::bir::Block* true_block = nullptr;
       const c4c::backend::bir::Block* false_block = nullptr;
-      const c4c::backend::bir::BinaryInst* hoisted_compare = nullptr;
-      std::optional<std::string> true_entry_label;
     };
     struct ShortCircuitPlan {
       const c4c::backend::bir::Block* on_compare_true = nullptr;
@@ -2139,8 +2136,6 @@ std::string emit_prepared_module(
                 const c4c::backend::bir::BinaryInst* compare = nullptr;
                 if (compare_index + 1 == block.insts.size()) {
                   compare = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts.back());
-                } else if (compare_index == block.insts.size()) {
-                  compare = continuation->hoisted_compare;
                 }
                 if (compare == nullptr ||
                     !is_supported_guard_compare_opcode(compare->opcode) ||
@@ -2160,14 +2155,8 @@ std::string emit_prepared_module(
                 }
                 const std::string false_label =
                     ".L" + function.name + "_" + std::string(continuation->false_block->label);
-                std::string rendered_true_block;
-                if (continuation->true_entry_label.has_value()) {
-                  rendered_true_block += *continuation->true_entry_label;
-                  rendered_true_block += ":\n";
-                }
-                rendered_true_block += *rendered_true;
                 return body + false_branch_compare->first + "    " + false_branch_compare->second + " " +
-                       false_label + "\n" + rendered_true_block + false_label + ":\n" +
+                       false_label + "\n" + *rendered_true + false_label + ":\n" +
                        *rendered_false;
               }
             }
@@ -2340,11 +2329,9 @@ std::string emit_prepared_module(
             }
 
             GuardJoinContinuation continuation_plan{
-                .join_label = join_block->label,
                 .incoming_label = {},
                 .true_block = nullptr,
                 .false_block = nullptr,
-                .hoisted_compare = nullptr,
             };
             if (*join_branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Ne) {
               continuation_plan.true_block = join_true;
