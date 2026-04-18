@@ -1,0 +1,155 @@
+#include "lir_to_bir.hpp"
+
+#include <limits>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace c4c::backend {
+
+using lir_to_bir_detail::lower_integer_type;
+
+std::optional<bir::Value> BirFunctionLowerer::lower_zero_initializer_value(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+      return bir::Value::immediate_i1(false);
+    case bir::TypeKind::I8:
+      return bir::Value::immediate_i8(0);
+    case bir::TypeKind::I16:
+      return bir::Value::immediate_i16(0);
+    case bir::TypeKind::I32:
+      return bir::Value::immediate_i32(0);
+    case bir::TypeKind::I64:
+      return bir::Value::immediate_i64(0);
+    case bir::TypeKind::Ptr:
+      return bir::Value{
+          .kind = bir::Value::Kind::Immediate,
+          .type = bir::TypeKind::Ptr,
+          .immediate = 0,
+          .immediate_bits = 0,
+      };
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<bir::Value> BirFunctionLowerer::lower_repeated_byte_initializer_value(
+    bir::TypeKind type,
+    std::uint8_t fill_byte) {
+  if (fill_byte == 0) {
+    return lower_zero_initializer_value(type);
+  }
+
+  switch (type) {
+    case bir::TypeKind::I8:
+      return bir::Value::immediate_i8(static_cast<std::int8_t>(fill_byte));
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+      break;
+    default:
+      return std::nullopt;
+  }
+
+  const auto bit_width = integer_type_bit_width(type);
+  if (!bit_width.has_value() || *bit_width % 8u != 0u) {
+    return std::nullopt;
+  }
+
+  std::uint64_t repeated_bits = 0;
+  for (unsigned shift = 0; shift < *bit_width; shift += 8u) {
+    repeated_bits |= std::uint64_t{fill_byte} << shift;
+  }
+
+  if (*bit_width < 64u) {
+    return make_integer_immediate(type, sign_extend_bits(repeated_bits, *bit_width));
+  }
+
+  if ((repeated_bits & (std::uint64_t{1} << 63u)) == 0u) {
+    return bir::Value::immediate_i64(static_cast<std::int64_t>(repeated_bits));
+  }
+  if (repeated_bits == (std::uint64_t{1} << 63u)) {
+    return bir::Value::immediate_i64(std::numeric_limits<std::int64_t>::min());
+  }
+  return bir::Value::immediate_i64(-static_cast<std::int64_t>((~repeated_bits) + 1u));
+}
+
+std::optional<bir::Value> BirFunctionLowerer::lower_typed_index_value(
+    const ParsedTypedOperand& index_operand,
+    const ValueMap& value_aliases) {
+  const auto index_type = lower_integer_type(index_operand.type_text);
+  if (!index_type.has_value() ||
+      (*index_type != bir::TypeKind::I32 && *index_type != bir::TypeKind::I64)) {
+    return std::nullopt;
+  }
+  return BirFunctionLowerer::lower_value(index_operand.operand, *index_type, value_aliases);
+}
+
+std::optional<bir::Value> BirFunctionLowerer::make_index_immediate(bir::TypeKind type,
+                                                                   std::size_t value) {
+  switch (type) {
+    case bir::TypeKind::I32:
+      return bir::Value::immediate_i32(static_cast<std::int32_t>(value));
+    case bir::TypeKind::I64:
+      return bir::Value::immediate_i64(static_cast<std::int64_t>(value));
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<bir::Value> BirFunctionLowerer::synthesize_value_array_selects(
+    std::string_view result_name,
+    const std::vector<bir::Value>& element_values,
+    const bir::Value& index_value,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (element_values.empty() ||
+      (index_value.type != bir::TypeKind::I32 && index_value.type != bir::TypeKind::I64)) {
+    return std::nullopt;
+  }
+  if (element_values.size() == 1) {
+    return element_values.front();
+  }
+
+  bir::Value current = element_values.back();
+  for (std::size_t rev_index = element_values.size() - 1; rev_index-- > 0;) {
+    const auto compare_rhs = make_index_immediate(index_value.type, rev_index);
+    if (!compare_rhs.has_value()) {
+      return std::nullopt;
+    }
+
+    const bool is_final = rev_index == 0;
+    const std::string select_name =
+        is_final ? std::string(result_name)
+                 : std::string(result_name) + ".sel" + std::to_string(rev_index);
+    lowered_insts->push_back(bir::SelectInst{
+        .predicate = bir::BinaryOpcode::Eq,
+        .result = bir::Value::named(current.type, select_name),
+        .compare_type = index_value.type,
+        .lhs = index_value,
+        .rhs = *compare_rhs,
+        .true_value = element_values[rev_index],
+        .false_value = current,
+    });
+    current = bir::Value::named(current.type, select_name);
+  }
+  return current;
+}
+
+std::optional<bir::Value> BirFunctionLowerer::synthesize_pointer_array_selects(
+    std::string_view result_name,
+    const std::vector<bir::Value>& element_values,
+    const bir::Value& index_value,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (element_values.empty()) {
+    return std::nullopt;
+  }
+  for (const auto& value : element_values) {
+    if (value.type != bir::TypeKind::Ptr) {
+      return std::nullopt;
+    }
+  }
+  return synthesize_value_array_selects(result_name, element_values, index_value, lowered_insts);
+}
+
+}  // namespace c4c::backend

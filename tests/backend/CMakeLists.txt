@@ -88,6 +88,7 @@ add_executable(backend_lir_to_bir_notes_test
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_globals.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_memory_addressing.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_memory_provenance.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_memory_value_materialization.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_memory.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_module.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir_scalar.cpp"
