@@ -4063,14 +4063,19 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
+    const auto prepared_same_module_globals =
+        c4c::backend::prepare::resolve_prepared_materialized_compare_join_same_module_globals(
+            module.module, *prepared_render_contract);
+    if (!prepared_same_module_globals.has_value()) {
+      return std::nullopt;
+    }
+
     std::string rendered_same_module_globals;
-    for (const auto& global : module.module.globals) {
-      if (std::find(prepared_render_contract->same_module_global_names.begin(),
-                    prepared_render_contract->same_module_global_names.end(),
-                    global.name) == prepared_render_contract->same_module_global_names.end()) {
-        continue;
+    for (const auto* global : *prepared_same_module_globals) {
+      if (global == nullptr) {
+        return std::nullopt;
       }
-      const auto rendered_global_data = emit_same_module_global_data(global);
+      const auto rendered_global_data = emit_same_module_global_data(*global);
       if (!rendered_global_data.has_value()) {
         return std::nullopt;
       }

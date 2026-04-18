@@ -5361,6 +5361,23 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
                  ": shared helper stopped packaging compare-join same-module globals")
                     .c_str());
   }
+  const auto resolved_same_module_globals =
+      prepare::resolve_prepared_materialized_compare_join_same_module_globals(
+          prepared.module, *render_contract);
+  if (!resolved_same_module_globals.has_value() ||
+      resolved_same_module_globals->size() != expected_same_module_global_names.size()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped resolving compare-join same-module globals")
+                    .c_str());
+  }
+  for (std::size_t index = 0; index < resolved_same_module_globals->size(); ++index) {
+    if ((*resolved_same_module_globals)[index] == nullptr ||
+        (*resolved_same_module_globals)[index]->name != expected_same_module_global_names[index]) {
+      return fail((std::string(failure_context) +
+                   ": shared helper stopped resolving compare-join same-module globals in authoritative order")
+                      .c_str());
+    }
+  }
   if (render_contract->true_return_shape !=
           prepare::classify_prepared_materialized_compare_join_return_shape(
               prepared_compare_join_branches->prepared_join_branches.true_return_context) ||

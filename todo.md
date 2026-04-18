@@ -11,24 +11,26 @@ Source Plan: plan.md
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/prealloc/prealloc.hpp`,
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp`, and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` by extending the shared
-prepared compare-join render contract with authoritative true/false return-lane
-shape classification, switching the x86 consumer to use those shared lane
-shapes instead of deciding locally whether each compare-join lane is direct or
-trailing-immediate, and extending the handoff-boundary test suite to prove the
-render contract still packages the authoritative branch plan, return contexts,
-return-lane shapes, and same-module-global ownership for this materialized
-compare-join family.
+`tests/backend/backend_x86_handoff_boundary_test.cpp` by adding a shared helper
+that resolves the materialized compare-join render contract's authoritative
+same-module globals directly from the prepared module in published order,
+switching the x86 compare-join consumer to render those resolved globals
+instead of filtering `module.globals` locally, and extending the
+handoff-boundary test suite to prove the render contract still packages and now
+resolves the authoritative same-module-global emission order for this
+materialized compare-join family.
 
 ## Suggested Next
 
 The next accepted packet should stay in Step 3 and remove one more small
 x86-local compare/join composition seam by moving one more materialized
-compare-join consumer seam into shared helpers, most likely packaging one more
-authoritative selected-value family or same-module-global emission decision so
+compare-join consumer seam into shared helpers, most likely moving one more
+authoritative selected-value rendering decision out of
+`render_materialized_compare_join_if_supported()` so
 `prepared_module_emit.cpp` keeps shrinking its compare-join-specific control
 logic without drifting into Step 4 file organization. Keep the work in shared
-consumer helpers and focused proof, not emitter cleanup.
+consumer helpers and focused proof, not emitter cleanup or broader backend
+route changes.
 
 ## Watchouts
 
@@ -37,12 +39,13 @@ consumer helpers and focused proof, not emitter cleanup.
   route changes.
 - Do not solve remaining compare-join gaps with x86-side CFG scans or
   testcase-shaped matcher growth.
-- The new shared compare-join render contract now packages the authoritative
+- The shared compare-join render contract now packages the authoritative
   branch labels, false-branch opcode, true/false return contexts, true/false
-  return-lane shapes, and same-module-global ownership set, but x86 still owns
-  target-specific spelling and support checks for those packaged lane forms.
-  Follow-on work should keep moving authoritative compare/join composition into
-  shared helpers instead of rebuilding lane semantics in x86.
+  return-lane shapes, and same-module-global ownership set, and the new helper
+  resolves those globals from the prepared module in authoritative order. Keep
+  follow-on work focused on moving the remaining compare/join composition
+  decisions into shared helpers instead of rebuilding lane semantics or global
+  ownership in x86.
 - The x86 short-circuit and compare-join consumers should continue treating
   returned prepared lane ownership, continuation labels, and compare-join
   branch labels as authoritative; do not reintroduce raw selected-value
@@ -59,6 +62,6 @@ Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The focused proof refreshes `test_after.log` with the
 `backend_x86_handoff_boundary` subset for the new shared compare-join
-render-contract helper, the x86 consumer that now resolves it, and the
-existing prepared branch/join ownership families that still prove the same
-handoff contracts.
+same-module-global resolution helper, the x86 consumer that now uses resolved
+authoritative globals instead of local filtering, and the existing prepared
+branch/join ownership families that still prove the same handoff contracts.
