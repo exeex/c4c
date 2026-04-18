@@ -1542,6 +1542,57 @@ std::string emit_prepared_module(
       std::string compare_setup;
     };
     const auto* function_control_flow = find_control_flow_function();
+    const auto build_compare_join_continuation =
+        [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
+            const c4c::backend::bir::Block& join_block,
+            const c4c::backend::prepare::PreparedBranchCondition& join_branch_condition)
+        -> std::optional<GuardJoinContinuation> {
+      if (!join_branch_condition.predicate.has_value() ||
+          !join_branch_condition.compare_type.has_value() ||
+          !join_branch_condition.lhs.has_value() || !join_branch_condition.rhs.has_value() ||
+          *join_branch_condition.compare_type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+
+      const bool lhs_is_join_result_rhs_is_zero =
+          join_branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Named &&
+          join_branch_condition.lhs->name == join_transfer.result.name &&
+          join_branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+          join_branch_condition.rhs->type == c4c::backend::bir::TypeKind::I32 &&
+          join_branch_condition.rhs->immediate == 0;
+      const bool rhs_is_join_result_lhs_is_zero =
+          join_branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Named &&
+          join_branch_condition.rhs->name == join_transfer.result.name &&
+          join_branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+          join_branch_condition.lhs->type == c4c::backend::bir::TypeKind::I32 &&
+          join_branch_condition.lhs->immediate == 0;
+      if (!lhs_is_join_result_rhs_is_zero && !rhs_is_join_result_lhs_is_zero) {
+        return std::nullopt;
+      }
+
+      const auto* join_true = find_block(join_branch_condition.true_label);
+      const auto* join_false = find_block(join_branch_condition.false_label);
+      if (join_true == nullptr || join_false == nullptr || join_true == &join_block ||
+          join_false == &join_block) {
+        return std::nullopt;
+      }
+
+      GuardJoinContinuation continuation{
+          .incoming_label = {},
+          .true_block = nullptr,
+          .false_block = nullptr,
+      };
+      if (*join_branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Ne) {
+        continuation.true_block = join_true;
+        continuation.false_block = join_false;
+      } else if (*join_branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Eq) {
+        continuation.true_block = join_false;
+        continuation.false_block = join_true;
+      } else {
+        return std::nullopt;
+      }
+      return continuation;
+    };
 
     const auto render_function_return =
         [&](std::int32_t returned_imm) -> std::string {
@@ -2262,26 +2313,7 @@ std::string emit_prepared_module(
             }
 
             const auto* join_branch_condition = find_branch_condition(join_block->label);
-            if (join_branch_condition == nullptr || !join_branch_condition->predicate.has_value() ||
-                !join_branch_condition->lhs.has_value() || !join_branch_condition->rhs.has_value() ||
-                !join_branch_condition->compare_type.has_value() ||
-                *join_branch_condition->compare_type != c4c::backend::bir::TypeKind::I32) {
-              return std::nullopt;
-            }
-
-            const bool lhs_is_join_result_rhs_is_zero =
-                join_branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
-                join_branch_condition->lhs->name == join_transfer->result.name &&
-                join_branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-                join_branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32 &&
-                join_branch_condition->rhs->immediate == 0;
-            const bool rhs_is_join_result_lhs_is_zero =
-                join_branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Named &&
-                join_branch_condition->rhs->name == join_transfer->result.name &&
-                join_branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-                join_branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32 &&
-                join_branch_condition->lhs->immediate == 0;
-            if (!lhs_is_join_result_rhs_is_zero && !rhs_is_join_result_lhs_is_zero) {
+            if (join_branch_condition == nullptr) {
               return std::nullopt;
             }
 
@@ -2321,27 +2353,9 @@ std::string emit_prepared_module(
             }
 
             const auto* rhs_entry = short_circuit_on_compare_true ? false_block : true_block;
-
-            const auto* join_true = find_block(join_branch_condition->true_label);
-            const auto* join_false = find_block(join_branch_condition->false_label);
-            if (join_true == nullptr || join_false == nullptr || join_true == join_block ||
-                join_false == join_block) {
-              return std::nullopt;
-            }
-
-            GuardJoinContinuation continuation_plan{
-                .incoming_label = {},
-                .true_block = nullptr,
-                .false_block = nullptr,
-            };
-            if (*join_branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Ne) {
-              continuation_plan.true_block = join_true;
-              continuation_plan.false_block = join_false;
-            } else if (*join_branch_condition->predicate ==
-                       c4c::backend::bir::BinaryOpcode::Eq) {
-              continuation_plan.true_block = join_false;
-              continuation_plan.false_block = join_true;
-            } else {
+            auto continuation_plan = build_compare_join_continuation(
+                *join_transfer, *join_block, *join_branch_condition);
+            if (!continuation_plan.has_value()) {
               return std::nullopt;
             }
 
@@ -2352,15 +2366,15 @@ std::string emit_prepared_module(
               }
               if (transfer_index == short_circuit_index) {
                 const auto* target =
-                    short_circuit_value ? continuation_plan.true_block
-                                        : continuation_plan.false_block;
+                    short_circuit_value ? continuation_plan->true_block
+                                        : continuation_plan->false_block;
                 return ShortCircuitTarget{
                     .block = target,
                     .continuation = std::nullopt,
                 };
               }
 
-              GuardJoinContinuation continuation = continuation_plan;
+              GuardJoinContinuation continuation = *continuation_plan;
               continuation.incoming_label =
                   join_transfer->edge_transfers[transfer_index].predecessor_label;
               return ShortCircuitTarget{
