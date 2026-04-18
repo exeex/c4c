@@ -6,15 +6,18 @@ Activated from: ideas/open/54_x86_backend_c_testsuite_capability_families.md
 
 ## Purpose
 
-Repair the active runbook after two blocked handoff-only packets showed that
-the chosen `00210` lane is real, but its honest boundary crosses from the x86
-prepared-module consumer into prepared-BIR address provenance.
+Repair the active runbook after the delegated proof rerun showed that the
+chosen `00210` lane is real, but the earlier direct-call framing was wrong:
+its honest boundary crosses from the x86 prepared-module consumer into
+prepared-BIR pointer-arg provenance plus bounded indirect-callee identity for
+same-module function-pointer calls.
 
 ## Goal
 
-Land one bounded slice for the `00210`-anchored direct-call multi-function
-prepared-module lane, with the required string/global-address provenance made
-explicit, without expectation weakening or testcase overfit.
+Land one bounded slice for the `00210`-anchored same-module
+function-pointer indirect-call multi-function prepared-module lane, with the
+required string/global-address provenance made explicit, without expectation
+weakening or testcase overfit.
 
 ## Core Rule
 
@@ -38,14 +41,17 @@ and do not add testcase-named or rendered-text recognizers.
 - Start from the blocker notes recorded in `todo.md`, not the earlier
   `00189`-anchored assumption that the next lane was x86-handoff-only work.
 - Treat `c_testsuite_x86_backend_src_00210_c` as the current proving anchor
-  for a bounded direct-call multi-function prepared-module lane.
+  for a bounded same-module function-pointer indirect-call multi-function
+  prepared-module lane.
 - Include the prepared-BIR or lowering surface required to preserve
-  string/global-address provenance for direct-call pointer args used by
-  external calls.
+  string/global-address provenance for external call pointer args plus the
+  bounded callee identity needed when same-module function-pointer calls
+  arrive indirect in prepared BIR.
 - Keep adjacent families explicit when they are not required by this lane:
-  `00189` remains the indirect-call/global-function-pointer/variadic-runtime
-  neighbor, while `00057` and `00124` remain emitter/control-flow and
-  scalar-control-flow neighbors.
+  `00189` remains the broader
+  indirect-call/global-function-pointer/variadic-runtime neighbor, while
+  `00057` and `00124` remain emitter/control-flow and scalar-control-flow
+  neighbors.
 
 ## Non-Goals
 
@@ -64,16 +70,20 @@ and do not add testcase-named or rendered-text recognizers.
 
 - The current source idea remains open, but the prior runbook is exhausted.
 - Step 1-2 route selection is complete enough to name one honest current lane:
-  `00210`'s direct-call multi-function prepared-module path.
+  `00210`'s bounded same-module function-pointer indirect-call
+  multi-function prepared-module path.
 - The blocked executor packets showed that this lane is not satisfied by x86
-  handoff work alone because prepared-BIR pointer args lose the
-  string/global-address provenance needed at the external `printf` call sites.
-- The next coherent packet therefore spans prepared-BIR provenance plus the
-  canonical x86 prepared-module consumer, while keeping broader indirect-call,
-  global-function-pointer, and variadic-runtime plumbing out of scope.
-- If the next honest family expands further than direct-call multi-function
-  plus pointer-address provenance, stop and record that lifecycle blocker
-  instead of silently broadening again.
+  handoff work alone because the prepared module still needs both
+  string/global-address provenance at the external `printf` call sites and a
+  bounded same-module indirect-callee representation for the
+  `function_pointer -> actual_function` calls.
+- The next coherent packet therefore spans prepared-BIR provenance or call
+  classification plus the canonical x86 prepared-module consumer, while
+  keeping broader indirect-call, global-function-pointer, and
+  variadic-runtime plumbing out of scope.
+- If the next honest family expands further than bounded same-module indirect
+  calls plus pointer-address provenance, stop and record that lifecycle
+  blocker instead of silently broadening again.
 
 ## Execution Rules
 
@@ -88,8 +98,8 @@ and do not add testcase-named or rendered-text recognizers.
   idea, stop and record that lifecycle blocker instead of mutating the plan ad
   hoc.
 - Do not delegate a packet that claims `00210` as x86-only handoff work unless
-  it also names how pointer-address provenance is preserved into the prepared
-  module.
+  it also names how pointer-address provenance and bounded same-module
+  indirect-callee identity are preserved into the prepared module.
 
 ## Step 1. Re-Baseline The Remaining Frontier
 
@@ -125,9 +135,10 @@ Actions:
 - record the intended proving cluster and the nearby out-of-scope neighbors
 - make explicit whether the chosen route stays at the prepared x86
   handoff/emitter boundary or needs broader semantic work
-- current checkpoint: the chosen family is the `00210`-anchored direct-call
-  multi-function prepared-module lane, and it needs prepared-BIR
-  string/global-address provenance in addition to x86 handoff work
+- current checkpoint: the chosen family is the `00210`-anchored bounded
+  same-module function-pointer indirect-call multi-function prepared-module
+  lane, and it needs prepared-BIR string/global-address provenance plus
+  bounded indirect-callee identity in addition to x86 handoff work
 
 Completion check:
 - one bounded family and one proving cluster are named clearly enough for a
@@ -136,7 +147,8 @@ Completion check:
 ## Step 3. Extend The Chosen Family Honestly
 
 Goal: Implement the smallest shared capability widening required by the chosen
-family across prepared-BIR provenance plus the x86 prepared-module consumer.
+family across prepared-BIR provenance or call classification plus the x86
+prepared-module consumer.
 
 Primary targets:
 - implementation files selected by Step 2's family choice, including the
@@ -144,21 +156,25 @@ Primary targets:
   prepared-module handoff
 
 Actions:
-- preserve enough address-origin information for direct-call pointer args that
-  denote string/global symbols at external call sites
+- preserve enough address-origin information for pointer args that denote
+  string/global symbols at external call sites
+- preserve or recover the bounded same-module indirect-callee identity needed
+  when `00210`-style function-pointer calls still arrive indirect in prepared
+  BIR
 - change shared lowering or backend logic only where the chosen family
   requires it
-- reuse shared direct-call and symbol/data emission paths instead of adding
-  testcase-shaped prepared-module matchers
+- reuse shared indirect-call/direct-call plus symbol/data emission paths
+  instead of adding testcase-shaped prepared-module matchers
 - keep adjacent families unsupported when they are not part of the named lane,
-  especially `00189`-style indirect/global-function-pointer/variadic-runtime
-  plumbing
+  especially broader `00189`-style
+  indirect/global-function-pointer/variadic-runtime plumbing
 - do not use expectation downgrades, testcase-named shortcuts, or rendered-text
   matching as proof of progress
 
 Completion check:
-- the chosen family is admitted through shared provenance plus shared codegen
-  logic rather than testcase recognition
+- the chosen family is admitted through shared provenance plus bounded
+  same-module indirect-callee support and shared codegen logic rather than
+  testcase recognition
 
 ## Step 4. Keep The Boundary Truthful
 

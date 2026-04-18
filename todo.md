@@ -6,52 +6,47 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Investigated the expanded `plan.md` Step 3 `00210` packet across
-`x86_codegen.hpp`, `calls.cpp`, and `mod.cpp` and confirmed it is still
-blocked before a coherent owned-file code change. The direct-call multi-function
-piece is only part of the lane: in the prepared-module handoff, `00210`'s
-external `printf` calls arrive with pointer args as named temps (`%t2`, `%t7`)
-rather than explicit global or string-constant addresses, and the owned x86
-prepared-module surface does not carry enough provenance to recover which
-string/global symbol those pointer values denote. The split x86 call/data
-helpers can cover call ABI setup and function/data preludes, but they do not
-solve the missing prepared-BIR address-origin representation needed to emit the
-`printf` string arguments honestly.
+Reverted the incomplete owned-file code changes from the `plan.md` Step 3
+`00210` packet after rerunning the delegated proof. The rerun proved that
+`backend_lir_to_bir_notes` and `backend_x86_handoff_boundary` still pass, but
+`c_testsuite_x86_backend_src_00210_c` still fails on `error: x86 backend
+emitter only supports a single-function prepared module through the canonical
+prepared-module handoff`. Local inspection of prepared BIR showed the sharper
+route issue: the `printf` calls carry string-address provenance, but
+`00210`'s `actual_function` calls still remain indirect in prepared BIR, so the
+current Step 3 direct-call framing is suspect.
 
 ## Suggested Next
 
 Implement the repaired `plan.md` Step 3 route with `00210` as the proving
-anchor. The next executor packet should own the prepared-BIR or lowering
-surface that preserves string/global-address provenance for direct-call pointer
-args plus the canonical x86 prepared-module consumer and its shared call/data
-helpers. Keep `00189`, `00057`, and `00124` out of scope unless the packet
-explicitly re-opens the route.
+anchor. The next executor packet should own the smallest prepared-BIR or x86
+handoff change that preserves external string/global pointer-arg provenance and
+admits the bounded same-module function-pointer indirect-call lane without
+reopening broader `00189`-style indirect/global-function-pointer/variadic
+plumbing. Keep `00189`, `00057`, and `00124` out of scope unless a new packet
+explicitly reopens them.
 
 ## Watchouts
 
 - Do not weaken `x86_backend` expectations to accept fallback LLVM IR.
 - Do not add testcase-named shortcuts or rendered-text recognizers.
-- `00210` still does not prove global function-pointer plumbing: semantic BIR
-  folds its casted function-pointer calls to direct `@actual_function` calls.
-- The external `printf` calls in `00210` still require string/global-address
-  provenance for pointer args even though the same-module helper call is direct.
-- The x86 split codegen already has generic call ABI and symbol-prelude helpers
-  in sibling translation units, but the canonical prepared-module consumer does
-  not receive enough address-origin information to use them honestly for
-  `00210` today.
+- The delegated proof now shows the external `printf` string-arg provenance was
+  not the surviving gate for `00210`; the surviving gate is that the
+  `actual_function` calls still arrive as indirect in prepared BIR.
+- The active runbook has been repaired around that boundary: treat `00210` as
+  a bounded same-module function-pointer indirect-call lane, not as a
+  direct-call lane.
 - Do not satisfy the next packet by merely deleting the
   `functions.size() != 1` rejection or by adding a testcase-shaped `00210`
-  matcher. The route must admit a reusable direct-call prepared-module family.
+  matcher. The route must match the real prepared-BIR family.
 - Keep `00189`, `00057`, and `00124` out of this packet; they remain adjacent
   indirect-runtime, emitter/control-flow, and scalar-control-flow families.
 
 ## Proof
 
-Baseline capture for the narrowed `00210` packet is in `test_before.log`:
-`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00210_c)$' | tee test_before.log`
+Delegated proof rerun:
+`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00210_c)$' | tee test_after.log`
 
-Step 3 blocker investigation reused the existing semantic-BIR dumps for
-`00189` and `00210` plus owned-file inspection of the x86 prepared-module
-consumer and sibling call/data helpers. The delegated proof command was not
-rerun because the packet blocked before any owned-file code change. No
-`test_after.log` was produced for this blocked packet.
+Result: `backend_lir_to_bir_notes` passed, `backend_x86_handoff_boundary`
+passed, and `c_testsuite_x86_backend_src_00210_c` failed on the single-function
+prepared-module gate. Proof log: `test_after.log`.
