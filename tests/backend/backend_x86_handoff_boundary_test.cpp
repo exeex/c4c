@@ -4132,7 +4132,7 @@ int check_join_route_selected_value_chain_consumes_prepared_control_flow(
       module, expected_asm, function_name, failure_context, true, true);
 }
 
-int check_materialized_compare_join_return_context_publishes_prepared_base_render(
+int check_materialized_compare_join_branches_publish_prepared_return_contexts(
     const bir::Module& module,
     const char* function_name,
     const char* failure_context) {
@@ -4169,17 +4169,7 @@ int check_materialized_compare_join_return_context_publishes_prepared_base_rende
           compare_join_context->compare_join_context);
   if (!prepared_join_branches.has_value()) {
     return fail((std::string(failure_context) +
-                 ": shared helper no longer publishes the true/false selected values")
-                    .c_str());
-  }
-
-  const auto true_return_context = prepare::find_prepared_materialized_compare_join_return_context(
-      compare_join_context->compare_join_context, prepared_join_branches->true_selected_value);
-  const auto false_return_context = prepare::find_prepared_materialized_compare_join_return_context(
-      compare_join_context->compare_join_context, prepared_join_branches->false_selected_value);
-  if (!true_return_context.has_value() || !false_return_context.has_value()) {
-    return fail((std::string(failure_context) +
-                 ": shared helper no longer publishes prepared compare-join return metadata")
+                 ": shared helper no longer publishes the compare-join branch contract")
                     .c_str());
   }
 
@@ -4211,11 +4201,12 @@ int check_materialized_compare_join_return_context_publishes_prepared_base_rende
   };
 
   if (const auto status = require_prepared_param_base(
-          *true_return_context, bir::BinaryOpcode::Add, 5);
+          prepared_join_branches->true_return_context, bir::BinaryOpcode::Add, 5);
       status != 0) {
     return status;
   }
-  return require_prepared_param_base(*false_return_context, bir::BinaryOpcode::Sub, 1);
+  return require_prepared_param_base(
+      prepared_join_branches->false_return_context, bir::BinaryOpcode::Sub, 1);
 }
 
 int check_minimal_compare_branch_consumes_prepared_control_flow(const bir::Module& module,
@@ -5057,10 +5048,10 @@ int main() {
     return status;
   }
   if (const auto status =
-          check_materialized_compare_join_return_context_publishes_prepared_base_render(
+          check_materialized_compare_join_branches_publish_prepared_return_contexts(
               make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
               "branch_join_adjust_then_xor",
-              "scalar-control-flow compare-against-zero prepared compare-join return context base render ownership");
+              "scalar-control-flow compare-against-zero prepared compare-join branch return context ownership");
       status != 0) {
     return status;
   }

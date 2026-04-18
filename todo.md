@@ -11,22 +11,24 @@ Source Plan: plan.md
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/prealloc/prealloc.hpp`,
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp`, and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` by extending the shared
-materialized compare-join return contract with explicit prepared base-render
-metadata for selected values, switching the x86 compare-join return renderer
-to consume that prepared base contract instead of reusing the generic
-param-derived helper for the base move decision, and adding focused ownership
-coverage that asserts the shared helper now publishes the param-backed base
-plus trailing immediate-op contract before asm emission.
+`tests/backend/backend_x86_handoff_boundary_test.cpp` by teaching
+`find_prepared_materialized_compare_join_branches()` to publish fully prepared
+true/false compare-join return contexts, switching the x86 compare-join
+branch renderer to consume those branch-specific prepared return contexts
+directly instead of passing raw selected values back into shared helpers, and
+adding focused ownership coverage that asserts the shared branch contract now
+includes the prepared param-backed base plus trailing immediate-op data for
+both arms.
 
 ## Suggested Next
 
 The next accepted packet should keep shrinking Step 3 emitter-local seams in
-the same joined-branch family by extending the prepared compare-join return
-contract and ownership tests to cover direct immediate selected-value bases in
-addition to param-backed bases, so the remaining compare-join return path stays
-fully on shared consumer metadata for both immediate and param-origin values.
-Keep that work in semantic consumer helpers, not Step 4 file organization.
+the same joined-branch family by extending the prepared compare-join branch
+return contract and ownership coverage to direct immediate selected-value
+bases, so the same shared branch-return helper surface proves both
+param-origin and immediate-origin selected values without routing that decision
+back through x86-local value classification. Keep that work in semantic
+consumer helpers, not Step 4 file organization.
 
 ## Watchouts
 
@@ -35,15 +37,15 @@ Keep that work in semantic consumer helpers, not Step 4 file organization.
   route changes.
 - Do not solve remaining compare-join gaps with x86-side CFG scans or
   testcase-shaped matcher growth.
-- The shared return-context helper in `prealloc.hpp` now owns the selected
-  value base classification (`ParamValue` vs immediate), the selected-value
-  immediate-op chain, and the supported trailing immediate-op classification
-  for materialized compare joins; follow-on work should extend that prepared
-  helper surface rather than routing base rendering back through generic x86
-  value helpers.
-- The compare-join return renderer should now treat prepared computed-value
-  base metadata as authoritative; do not reintroduce raw named-value or
-  join-block prefix binary lookups just to recover the base move decision.
+- The shared compare-join branch helper in `prealloc.hpp` now owns the
+  per-arm prepared return contexts, including selected-value base
+  classification, selected-value immediate-op chains, and the supported
+  trailing immediate-op contract; follow-on work should extend that prepared
+  branch-return surface rather than recomputing per-arm return metadata in the
+  emitter.
+- The x86 compare-join branch renderer should now treat the prepared true/false
+  return contexts as authoritative; do not reintroduce raw selected-value
+  plumbing just to call shared classification helpers from x86 again.
 - The joined-branch ownership tests still intentionally desynchronize raw entry
   terminator labels from prepared branch metadata; do not restore source-label
   equality checks in the x86 consumer.
@@ -56,6 +58,6 @@ Keep that work in semantic consumer helpers, not Step 4 file organization.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The focused proof passed and refreshed `test_after.log` with the
-`backend_x86_handoff_boundary` subset for the prepared compare-join base-render
-contract, the selected-value computed metadata handoff, and the chained
-selected-value xor `EdgeStoreSlot` ownership coverage.
+`backend_x86_handoff_boundary` subset for the direct prepared compare-join
+branch return contexts, the selected-value computed metadata handoff, and the
+chained selected-value xor `EdgeStoreSlot` ownership coverage.

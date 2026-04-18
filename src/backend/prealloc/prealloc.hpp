@@ -474,16 +474,16 @@ struct PreparedMaterializedCompareJoinContext {
   std::string_view carrier_result_name;
 };
 
-struct PreparedMaterializedCompareJoinBranches {
-  PreparedMaterializedCompareJoinContext compare_join_context;
-  bir::Value true_selected_value;
-  bir::Value false_selected_value;
-  std::string_view false_predecessor_label;
-};
-
 struct PreparedMaterializedCompareJoinReturnContext {
   PreparedComputedValue selected_value;
   std::optional<PreparedSupportedImmediateBinary> trailing_binary;
+};
+
+struct PreparedMaterializedCompareJoinBranches {
+  PreparedMaterializedCompareJoinContext compare_join_context;
+  PreparedMaterializedCompareJoinReturnContext true_return_context;
+  PreparedMaterializedCompareJoinReturnContext false_return_context;
+  std::string_view false_predecessor_label;
 };
 
 // Shared consumers must take branch semantics from `branch_conditions` and former
@@ -530,6 +530,11 @@ struct PreparedParamZeroMaterializedCompareJoinContext {
   PreparedParamZeroBranchCondition prepared_branch;
   PreparedMaterializedCompareJoinContext compare_join_context;
 };
+
+[[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinReturnContext>
+find_prepared_materialized_compare_join_return_context(
+    const PreparedMaterializedCompareJoinContext& compare_join_context,
+    const bir::Value& selected_value);
 
 [[nodiscard]] inline std::optional<PreparedParamZeroBranchCondition>
 find_prepared_param_zero_branch_condition(const PreparedControlFlowFunction& function_cf,
@@ -1088,10 +1093,18 @@ find_prepared_materialized_compare_join_branches(
     return std::nullopt;
   }
 
+  const auto true_return_context = find_prepared_materialized_compare_join_return_context(
+      compare_join_context, compare_join_context.true_transfer->incoming_value);
+  const auto false_return_context = find_prepared_materialized_compare_join_return_context(
+      compare_join_context, compare_join_context.false_transfer->incoming_value);
+  if (!true_return_context.has_value() || !false_return_context.has_value()) {
+    return std::nullopt;
+  }
+
   return PreparedMaterializedCompareJoinBranches{
       .compare_join_context = compare_join_context,
-      .true_selected_value = compare_join_context.true_transfer->incoming_value,
-      .false_selected_value = compare_join_context.false_transfer->incoming_value,
+      .true_return_context = std::move(*true_return_context),
+      .false_return_context = std::move(*false_return_context),
       .false_predecessor_label = compare_join_context.false_predecessor->label,
   };
 }

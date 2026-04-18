@@ -4012,28 +4012,20 @@ std::string emit_prepared_module(
     return rendered;
   };
   const auto render_materialized_compare_join_return_if_supported =
-      [&](const c4c::backend::prepare::PreparedMaterializedCompareJoinContext&
-              compare_join_context,
-          const c4c::backend::bir::Value& selected_value,
+      [&](const c4c::backend::prepare::PreparedMaterializedCompareJoinReturnContext&
+              prepared_return_context,
           const c4c::backend::bir::Param& param) -> std::optional<std::string> {
-    const auto prepared_return_context =
-        c4c::backend::prepare::find_prepared_materialized_compare_join_return_context(
-            compare_join_context, selected_value);
-    if (!prepared_return_context.has_value()) {
-      return std::nullopt;
-    }
-
     const auto value_render =
-        render_prepared_computed_value_if_supported(prepared_return_context->selected_value, param);
+        render_prepared_computed_value_if_supported(prepared_return_context.selected_value, param);
     if (!value_render.has_value()) {
       return std::nullopt;
     }
-    if (!prepared_return_context->trailing_binary.has_value()) {
+    if (!prepared_return_context.trailing_binary.has_value()) {
       return *value_render + "    ret\n";
     }
 
     const auto trailing_render =
-        render_supported_immediate_binary(*prepared_return_context->trailing_binary);
+        render_supported_immediate_binary(*prepared_return_context.trailing_binary);
     if (!trailing_render.has_value()) {
       return std::nullopt;
     }
@@ -4045,12 +4037,10 @@ std::string emit_prepared_module(
           const c4c::backend::bir::Param& param)
       -> std::optional<MaterializedCompareJoinRender> {
     const auto true_return = render_materialized_compare_join_return_if_supported(
-        prepared_join_branches.compare_join_context,
-        prepared_join_branches.true_selected_value,
+        prepared_join_branches.true_return_context,
         param);
     const auto false_return = render_materialized_compare_join_return_if_supported(
-        prepared_join_branches.compare_join_context,
-        prepared_join_branches.false_selected_value,
+        prepared_join_branches.false_return_context,
         param);
     if (!true_return.has_value() || !false_return.has_value()) {
       return std::nullopt;
