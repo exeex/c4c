@@ -1698,6 +1698,24 @@ std::string emit_prepared_module(
           rendered_false_lane.label + ":\n" + *rendered_false;
       return rendered_false_lane;
     };
+    const auto build_short_circuit_render_context =
+        [&](const ShortCircuitPlan& plan) -> std::optional<ShortCircuitRenderContext> {
+      const bool true_target_renders_false_lane =
+          plan.on_compare_true.continuation.has_value() &&
+          plan.on_compare_false.block ==
+              plan.on_compare_true.continuation->false_block;
+      const bool false_target_renders_true_lane =
+          plan.on_compare_false.continuation.has_value() &&
+          plan.on_compare_true.block ==
+              plan.on_compare_false.continuation->true_block;
+      if (true_target_renders_false_lane && false_target_renders_true_lane) {
+        return std::nullopt;
+      }
+      return ShortCircuitRenderContext{
+          .omit_true_continuation = false_target_renders_true_lane,
+          .omit_false_lane = true_target_renders_false_lane,
+      };
+    };
 
     const auto render_function_return =
         [&](std::int32_t returned_imm) -> std::string {
@@ -2532,26 +2550,8 @@ std::string emit_prepared_module(
           };
           const auto render_short_circuit_plan =
               [&](const ShortCircuitPlan& short_circuit_plan) -> std::optional<std::string> {
-            const auto build_render_context =
-                [&](const ShortCircuitPlan& plan) -> std::optional<ShortCircuitRenderContext> {
-              const bool true_target_renders_false_lane =
-                  plan.on_compare_true.continuation.has_value() &&
-                  plan.on_compare_false.block ==
-                      plan.on_compare_true.continuation->false_block;
-              const bool false_target_renders_true_lane =
-                  plan.on_compare_false.continuation.has_value() &&
-                  plan.on_compare_true.block ==
-                      plan.on_compare_false.continuation->true_block;
-              if (true_target_renders_false_lane && false_target_renders_true_lane) {
-                return std::nullopt;
-              }
-              return ShortCircuitRenderContext{
-                  .omit_true_continuation = false_target_renders_true_lane,
-                  .omit_false_lane = true_target_renders_false_lane,
-              };
-            };
-
-            const auto render_context = build_render_context(short_circuit_plan);
+            const auto render_context =
+                build_short_circuit_render_context(short_circuit_plan);
             if (!render_context.has_value()) {
               return std::nullopt;
             }

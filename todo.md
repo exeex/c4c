@@ -9,17 +9,17 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting the final
-short-circuit false-label stitching out of `render_short_circuit_plan()`. The
-plan renderer now delegates false-lane rendering and label assembly to a
-reusable helper instead of rebuilding that final false-block splice inline.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting short-
+circuit render-context construction out of `render_short_circuit_plan()`. The
+plan renderer now delegates lane-omission policy to
+`build_short_circuit_render_context()` instead of rebuilding that policy
+inline.
 
 ## Suggested Next
 
-The next small Step 3 packet is to extract the remaining render-context
-construction out of `render_short_circuit_plan()` so the plan renderer becomes
-a thin wrapper that only sequences context-building and the existing target and
-false-lane helpers.
+The next small Step 3 packet is to extract the final rendered-string assembly
+out of `render_short_circuit_plan()` so the wrapper only sequences helper
+calls plus the returned render fragments.
 
 ## Watchouts
 
@@ -32,7 +32,8 @@ false-lane helpers.
 - `build_compare_join_continuation()` remains the Step 3 gate for the join-
   result zero-compare contract; keep `Eq`/`Ne` mapping and jump-target choice
   data-driven there instead of pushing them back into renderer assembly.
-- `build_render_context()` now owns rendered true/false lane omission,
+- `build_short_circuit_render_context()` now owns rendered true/false lane
+  omission,
   `render_short_circuit_target()` owns per-target block rendering plus
   continuation omission, and `render_short_circuit_false_lane()` owns the final
   false-label splice; future cleanup should keep those responsibilities in
