@@ -9,20 +9,19 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving the
-short-circuit bool-lane classification and `edge_transfers.size() == 2` gate
-behind a dedicated `find_authoritative_short_circuit_join_sources()` helper,
-then making `find_short_circuit_join_context()` and its context builder
-consume that authoritative short-circuit seam instead of rechecking raw join
-transfer details inline.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by making
+`render_materialized_compare_join_if_supported()` treat the prepared join
+transfer result as the authoritative joined value identity, then validating the
+supported `select`/`load_local` carrier against that prepared result instead of
+rediscovering the joined value name from raw join-block instruction shape.
 
 ## Suggested Next
 
-The next small Step 3 packet is to reuse the new authoritative short-circuit
-helper from adjacent select/join consumer code where the same prepared
-select-materialization contract applies, so the remaining short-circuit branch
-entry planning keeps collapsing around prepared lookups rather than scattered
-route-local checks.
+The next small Step 3 packet is to see whether the joined compare-return path
+can lift its supported join carrier validation behind a dedicated helper that
+is keyed by the prepared join result and authoritative transfer lookup, so the
+remaining compare-join consumer keeps collapsing around prepared facts instead
+of block-local carrier discovery.
 
 ## Watchouts
 
@@ -43,6 +42,10 @@ route-local checks.
   materialized-compare consumer path only where the existing prepared
   authoritative transfer contract already applies; do not grow a new matcher
   family around it.
+- The compare-join path should now treat `prepared_join_transfer->result` as
+  the authoritative joined value identity; if another route needs more than
+  that named-result contract, strengthen shared prepared metadata instead of
+  recovering the value name from raw join-block instruction scans.
 - The short-circuit path still intentionally differs from
   `find_authoritative_join_branch_sources()`: it consumes the authoritative
   transfer indices and prepared ownership metadata, but its continuation
@@ -85,8 +88,6 @@ route-local checks.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This Step 3 authoritative short-circuit helper packet passed with the same
-focused proof command after preserving the route's distinction between shared
-authoritative transfer lookup, short-circuit-only lane classification, and
-joined-branch-only topology checks, and `test_after.log` is the canonical proof
-log path for the result.
+This prepared-result-authoritative compare-join packet passed with the focused
+handoff-boundary proof command, and `test_after.log` remains the fresh
+canonical proof log for supervisor review.

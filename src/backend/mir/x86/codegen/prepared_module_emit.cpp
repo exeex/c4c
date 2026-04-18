@@ -4379,33 +4379,33 @@ std::string emit_prepared_module(
       select_index = join_block->insts.size() - 2;
     }
 
-    std::string_view joined_value_name;
+    if (prepared_join_transfer->join_block_label != join_block->label ||
+        prepared_join_transfer->result.kind != c4c::backend::bir::Value::Kind::Named) {
+      return std::nullopt;
+    }
+    const std::string_view joined_value_name = prepared_join_transfer->result.name;
+    const auto join_result_matches_prepared_value =
+        [&](const auto& result) {
+          return result.type == c4c::backend::bir::TypeKind::I32 &&
+                 result.name == joined_value_name;
+        };
     if (const auto* select =
             std::get_if<c4c::backend::bir::SelectInst>(&join_block->insts[select_index]);
         select != nullptr) {
-      if (select->result.type != c4c::backend::bir::TypeKind::I32) {
+      if (!join_result_matches_prepared_value(select->result)) {
         return std::nullopt;
       }
-      joined_value_name = select->result.name;
     } else if (const auto* load_local =
                    std::get_if<c4c::backend::bir::LoadLocalInst>(&join_block->insts[select_index]);
                load_local != nullptr) {
-      if (load_local->result.type != c4c::backend::bir::TypeKind::I32) {
+      if (!join_result_matches_prepared_value(load_local->result)) {
         return std::nullopt;
       }
-      joined_value_name = load_local->result.name;
     } else {
       return std::nullopt;
     }
-    if (
-        join_block->terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+    if (join_block->terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
         (trailing_binary == nullptr && join_block->terminator.value->name != joined_value_name)) {
-      return std::nullopt;
-    }
-
-    if (prepared_join_transfer->join_block_label != join_block->label ||
-        prepared_join_transfer->result.kind != c4c::backend::bir::Value::Kind::Named ||
-        prepared_join_transfer->result.name != joined_value_name) {
       return std::nullopt;
     }
 
