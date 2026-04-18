@@ -9,21 +9,19 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by routing the
-short-circuit entry path through the same
-`build_compare_driven_direct_entry_render_plan()` helper used by plain
-conditional fallback and compare-join continuation. The short-circuit entry
-lane now reuses the shared compare-context plus direct-branch-plan assembly
-before converting that direct plan into the prepared short-circuit plan, so
-the dedicated short-circuit entry branch-plan wrapper was removed without
-moving join ownership checks out of the existing join helpers.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by switching the
+compare-driven entry helper surface from a local branch-condition scan to the
+shared `c4c::backend::prepare::find_prepared_branch_condition()` lookup. The
+entry-path compare-context builder now consumes the prepared branch contract
+through the shared helper instead of carrying another emitter-local
+`branch_conditions` walk.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect the remaining compare-driven helper
-surface around prepared branch-condition lookup and decide whether the entry
-paths can share more of that lookup plumbing without weakening the prepared
-branch contract or widening into idea 59 instruction-selection scope.
+The next small Step 3 packet is to inspect the remaining x86 prepared-branch
+consumers in `prepared_module_emit.cpp` and decide whether another local
+branch-condition scan can collapse onto shared prepared-control-flow helpers
+without widening beyond Step 3 cleanup.
 
 ## Watchouts
 
@@ -46,6 +44,9 @@ branch contract or widening into idea 59 instruction-selection scope.
   continuation, and the short-circuit entry seed plan; future cleanup should
   extend that helper instead of reintroducing case-specific compare-context or
   direct-branch assembly.
+- Keep Step 3 lookup cleanup aligned with the shared prepared-control-flow
+  helpers in `prealloc.hpp`; prefer those lookups over re-growing local
+  `branch_conditions` walks in x86.
 - `classify_short_circuit_join_incoming()` still assumes the prepared select
   join carries exactly one bool-like immediate lane and one named RHS lane; if
   that invariant changes, repair the shared contract instead of extending
@@ -57,5 +58,5 @@ branch contract or widening into idea 59 instruction-selection scope.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 short-circuit
-compare-driven-entry helper cleanup packet; proof output is in `test_after.log`.
+The build and narrow proof passed for this Step 3 prepared-branch lookup
+cleanup packet; proof output is in `test_after.log`.

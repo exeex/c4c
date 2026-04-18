@@ -2602,12 +2602,8 @@ std::string emit_prepared_module(
             if (function_control_flow == nullptr) {
               return nullptr;
             }
-            for (const auto& condition : function_control_flow->branch_conditions) {
-              if (condition.block_label == block_label) {
-                return &condition;
-              }
-            }
-            return nullptr;
+            return c4c::backend::prepare::find_prepared_branch_condition(
+                *function_control_flow, block_label);
           };
           const auto build_compare_driven_entry_render_plan =
               [&](const c4c::backend::bir::Block& source_block,
