@@ -713,6 +713,26 @@ class BirFunctionLowerer {
       const LocalPointerArrayBaseMap& local_pointer_array_bases,
       const LocalAggregateSlotMap& local_aggregate_slots,
       std::vector<bir::Inst>* lowered_insts);
+  bool try_lower_local_slot_pointer_store(
+      const LocalSlotAddress& local_slot_ptr,
+      bir::TypeKind value_type,
+      const bir::Value& value,
+      const LocalSlotTypes& local_slot_types,
+      std::vector<bir::Inst>* lowered_insts);
+  bool try_lower_local_slot_pointer_load(
+      std::string_view result_name,
+      const LocalSlotAddress& local_slot_ptr,
+      bir::TypeKind value_type,
+      const LocalSlotTypes& local_slot_types,
+      const LocalIndirectPointerSlotSet& local_indirect_pointer_slots,
+      const LocalAddressSlots& local_address_slots,
+      const LocalSlotAddressSlots& local_slot_address_slots,
+      const GlobalTypes& global_types,
+      const FunctionSymbolSet& function_symbols,
+      ValueMap* value_aliases,
+      LocalSlotPointerValues* local_slot_pointer_values,
+      GlobalPointerMap* global_pointer_slots,
+      std::vector<bir::Inst>* lowered_insts);
   static std::optional<bir::Value> load_dynamic_local_aggregate_array_value(
       std::string_view result_name,
       bir::TypeKind value_type,
