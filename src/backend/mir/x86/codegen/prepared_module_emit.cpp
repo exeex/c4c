@@ -1873,6 +1873,14 @@ std::string emit_prepared_module(
               },
       };
     };
+    const auto build_compare_join_branch_plan =
+        [&](const c4c::backend::bir::Block& source_block,
+            const GuardJoinContinuation& continuation_plan)
+        -> std::optional<ShortCircuitPlan> {
+      return build_direct_branch_plan(source_block,
+                                      continuation_plan.true_block,
+                                      continuation_plan.false_block);
+    };
     const auto build_plain_cond_branch_plan =
         [&](const c4c::backend::bir::Block& source_block)
         -> std::optional<ShortCircuitPlan> {
@@ -2651,9 +2659,7 @@ std::string emit_prepared_module(
                   return std::nullopt;
                 }
                 const auto compare_join_plan =
-                    build_direct_branch_plan(block,
-                                             continuation->true_block,
-                                             continuation->false_block);
+                    build_compare_join_branch_plan(block, *continuation);
                 if (!compare_join_plan.has_value()) {
                   return std::nullopt;
                 }
