@@ -1613,17 +1613,21 @@ std::string emit_prepared_module(
               },
       };
     };
-    const auto build_direct_branch_plan_from_labels =
-        [&](const c4c::backend::bir::Block& source_block,
-            std::string_view true_label,
-            std::string_view false_label) -> std::optional<ShortCircuitPlan> {
-      const auto direct_targets = resolve_direct_branch_targets(source_block,
-                                                                true_label,
-                                                                false_label);
-      if (!direct_targets.has_value()) {
+    const auto build_plain_cond_direct_branch_targets =
+        [&](const c4c::backend::bir::Block& source_block) -> std::optional<DirectBranchTargets> {
+      return resolve_direct_branch_targets(source_block,
+                                           source_block.terminator.true_label,
+                                           source_block.terminator.false_label);
+    };
+    const auto build_direct_branch_targets_from_continuation =
+        [&](const GuardJoinContinuation& continuation_plan) -> std::optional<DirectBranchTargets> {
+      if (continuation_plan.true_block == nullptr || continuation_plan.false_block == nullptr) {
         return std::nullopt;
       }
-      return build_direct_branch_plan_from_targets(source_block, *direct_targets);
+      return DirectBranchTargets{
+          .true_block = continuation_plan.true_block,
+          .false_block = continuation_plan.false_block,
+      };
     };
     const auto build_compare_join_continuation =
         [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
@@ -1876,24 +1880,6 @@ std::string emit_prepared_module(
       }
       return plan;
     };
-    const auto build_compare_join_branch_plan =
-        [&](const c4c::backend::bir::Block& source_block,
-            const GuardJoinContinuation& continuation_plan)
-        -> std::optional<ShortCircuitPlan> {
-      return build_direct_branch_plan_from_targets(
-          source_block,
-          DirectBranchTargets{
-              .true_block = continuation_plan.true_block,
-              .false_block = continuation_plan.false_block,
-          });
-    };
-    const auto build_plain_cond_branch_plan =
-        [&](const c4c::backend::bir::Block& source_block)
-        -> std::optional<ShortCircuitPlan> {
-      return build_direct_branch_plan_from_labels(source_block,
-                                                  source_block.terminator.true_label,
-                                                  source_block.terminator.false_label);
-    };
     const auto build_short_circuit_entry_branch_plan =
         [&](const c4c::backend::bir::Block& source_block,
             const ShortCircuitJoinContext& join_context,
@@ -1907,12 +1893,6 @@ std::string emit_prepared_module(
       }
 
       return build_short_circuit_plan(join_context, *direct_branch_plan);
-    };
-    const auto build_plain_cond_entry_branch_plan =
-        [&](const c4c::backend::bir::Block& source_block,
-            const ShortCircuitEntryCompareContext&)
-        -> std::optional<ShortCircuitPlan> {
-      return build_plain_cond_branch_plan(source_block);
     };
     const auto render_short_circuit_target =
         [&](const auto& render_block_fn,
@@ -2674,6 +2654,23 @@ std::string emit_prepared_module(
 
             return build_compare_driven_render_plan(*branch_plan, *compare_context);
           };
+          const auto build_compare_driven_direct_entry_render_plan =
+              [&](const c4c::backend::bir::Block& source_block,
+                  const c4c::backend::bir::BinaryInst& compare,
+                  const auto& direct_target_builder)
+              -> std::optional<CompareDrivenBranchRenderPlan> {
+            return build_compare_driven_entry_render_plan(
+                source_block,
+                compare,
+                [&](const ShortCircuitEntryCompareContext&)
+                    -> std::optional<ShortCircuitPlan> {
+                  const auto direct_targets = direct_target_builder();
+                  if (!direct_targets.has_value()) {
+                    return std::nullopt;
+                  }
+                  return build_direct_branch_plan_from_targets(source_block, *direct_targets);
+                });
+          };
           const auto build_short_circuit_entry_render_plan =
               [&](const c4c::backend::bir::Block& source_block,
                   const c4c::backend::bir::BinaryInst& compare,
@@ -2693,12 +2690,11 @@ std::string emit_prepared_module(
               [&](const c4c::backend::bir::Block& source_block,
                   const c4c::backend::bir::BinaryInst& compare)
               -> std::optional<CompareDrivenBranchRenderPlan> {
-            return build_compare_driven_entry_render_plan(
+            return build_compare_driven_direct_entry_render_plan(
                 source_block,
                 compare,
-                [&](const ShortCircuitEntryCompareContext& compare_context)
-                    -> std::optional<ShortCircuitPlan> {
-                  return build_plain_cond_entry_branch_plan(source_block, compare_context);
+                [&]() -> std::optional<DirectBranchTargets> {
+                  return build_plain_cond_direct_branch_targets(source_block);
                 });
           };
           const auto build_compare_join_entry_render_plan =
@@ -2706,12 +2702,11 @@ std::string emit_prepared_module(
                   const c4c::backend::bir::BinaryInst& compare,
                   const GuardJoinContinuation& continuation_plan)
               -> std::optional<CompareDrivenBranchRenderPlan> {
-            return build_compare_driven_entry_render_plan(
+            return build_compare_driven_direct_entry_render_plan(
                 source_block,
                 compare,
-                [&](const ShortCircuitEntryCompareContext&)
-                    -> std::optional<ShortCircuitPlan> {
-                  return build_compare_join_branch_plan(source_block, continuation_plan);
+                [&]() -> std::optional<DirectBranchTargets> {
+                  return build_direct_branch_targets_from_continuation(continuation_plan);
                 });
           };
 

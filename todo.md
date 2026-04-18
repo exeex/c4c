@@ -9,75 +9,44 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by lifting the
-compare-join continuation branch path onto the same dedicated compare-driven
-entry-helper pattern as the short-circuit and plain conditional entry cases.
-`build_compare_join_entry_render_plan()` now owns the continuation render-plan
-assembly, so the branch renderer no longer wires a one-off inline lambda for
-compare-join continuation branch-plan selection at the render site.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by collapsing
+compare-join continuation and plain conditional compare-driven entry routing
+onto one shared direct-target helper contract. Plain fallback now resolves
+direct branch targets through `build_plain_cond_direct_branch_targets()`,
+compare-join continuation resolves them through
+`build_direct_branch_targets_from_continuation()`, and
+`build_compare_driven_direct_entry_render_plan()` now owns the common
+compare-context plus direct-branch-plan assembly instead of keeping a
+continuation-only wrapper.
 
 ## Suggested Next
 
-The next small Step 3 packet is to tighten the remaining compare-driven branch
-helpers by deciding whether `build_compare_join_branch_plan()` should collapse
-into a more general direct-branch helper contract shared by plain fallback and
-continuation entry, without widening into new CFG matching or idea 59
-instruction-selection scope.
+The next small Step 3 packet is to inspect the remaining compare-driven entry
+helpers and decide whether the short-circuit entry path can share more of the
+common compare-context/render-plan plumbing without weakening prepared
+join-transfer ownership checks or widening into idea 59 instruction-selection
+scope.
 
 ## Watchouts
 
-- Do not activate umbrella idea 57 as executable work.
-- Do not pull in idea 59 instruction-selection scope.
+- Do not activate umbrella idea 57 or idea 59 while cleaning this helper
+  surface.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth.
-- Keep the compare-join lane aligned with the continuation lane: only the
-  prepared predecessor recorded by the selected join-transfer edge is
-  authoritative for continuation entry.
-- `find_short_circuit_join_context()` now owns only prepared select-join
-  discovery and transfer-shape validation; keep join-block lookup, prepared
-  join-branch lookup, and continuation-plan assembly in
-  `build_short_circuit_join_context_from_transfer()` instead of re-growing
-  those checks beside join discovery.
-- `build_short_circuit_join_context_from_transfer()` now also owns short-
-  circuit lane classification; keep join-input ownership validation there
-  instead of re-growing `classify_short_circuit_join_incoming()` calls in entry
-  routing or render paths.
-- `build_direct_branch_plan_from_labels()` now owns direct true/false target
-  lookup for short-circuit entry routing and plain cond-branch compare-driven
-  fallback; keep branch-target null/self checks there instead of re-growing
-  local `resolve_direct_branch_targets()` plumbing in compare render paths.
 - `build_compare_join_continuation()` remains the Step 3 gate for the join-
   result zero-compare contract; keep `Eq`/`Ne` mapping and jump-target choice
   data-driven there instead of pushing them back into renderer assembly.
-- `resolve_direct_branch_targets()` now owns direct true/false block lookup for
-  plain cond-branch entry and compare-join continuation successor selection;
-  keep label-to-block resolution there, but keep branch-plan validity checks in
-  `build_direct_branch_plan_from_targets()` instead of re-growing local
-  pointer/null/self-target checks in emitter paths.
-- `build_short_circuit_entry_direct_branch_targets()` now owns the prepared
-  branch-condition contract for plain conditional entry; keep condition-name,
-  compare-shape, and label-resolution validation there instead of re-growing
-  those checks in `build_short_circuit_entry_direct_branch_plan()` or render
-  call sites.
-- `build_short_circuit_entry_render_plan()` and
-  `build_plain_cond_entry_render_plan()` now own the compare-driven entry
-  helper shape for short-circuit and plain fallback paths; keep future entry
-  cleanup inside those helpers instead of re-growing case-specific inline
-  branch-plan lambdas at the cond-branch render sites.
-- `build_compare_join_entry_render_plan()` now owns compare-join continuation
-  render-plan assembly; keep future continuation-entry cleanup there instead
-  of re-growing inline lambdas at the branch render site.
-- `build_compare_join_branch_plan()` now owns the compare-join continuation
-  handoff into `build_direct_branch_plan_from_targets()`; keep future
-  continuation target plumbing there instead of re-growing plan assembly or
-  local continuation-target checks beside render sites.
+- Keep `build_short_circuit_join_context_from_transfer()` responsible for join
+  discovery, lane classification, and prepared predecessor ownership checks;
+  direct-entry helper cleanup must not pull those checks back into render
+  paths.
 - `CompareDrivenBranchRenderPlan` now owns the compare setup/opcode plus
   branch-lane targets that feed `render_compare_driven_branch_plan()`; future
   cleanup should extend that contract instead of re-splitting compare plumbing
   from branch-plan selection at the render sites.
-- `build_compare_driven_entry_render_plan()` now owns entry-path assembly of
-  `ShortCircuitEntryCompareContext` plus the final
-  `CompareDrivenBranchRenderPlan`; keep future entry cleanup inside that helper
-  instead of re-growing local compare-context/branch-plan pairing.
+- `build_compare_driven_direct_entry_render_plan()` now owns the shared
+  compare-driven direct-target path for plain fallback and compare-join
+  continuation; future cleanup should extend that helper instead of
+  reintroducing continuation-only branch-plan assembly.
 - `classify_short_circuit_join_incoming()` still assumes the prepared select
   join carries exactly one bool-like immediate lane and one named RHS lane; if
   that invariant changes, repair the shared contract instead of extending
@@ -89,5 +58,5 @@ instruction-selection scope.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 compare-join continuation
-entry-helper cleanup packet; proof output is in `test_after.log`.
+The build and narrow proof passed for this Step 3 shared compare-driven
+direct-target helper cleanup packet; proof output is in `test_after.log`.
