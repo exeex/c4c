@@ -638,6 +638,13 @@ struct PreparedMaterializedCompareJoinBranchPlan {
   const char* false_branch_opcode = nullptr;
 };
 
+struct PreparedMaterializedCompareJoinRenderContract {
+  PreparedMaterializedCompareJoinBranchPlan branch_plan;
+  PreparedMaterializedCompareJoinReturnContext true_return_context;
+  PreparedMaterializedCompareJoinReturnContext false_return_context;
+  std::vector<std::string_view> same_module_global_names;
+};
+
 [[nodiscard]] inline std::vector<std::string_view>
 collect_prepared_computed_value_same_module_globals(
     const PreparedComputedValue& computed_value) {
@@ -661,6 +668,10 @@ collect_prepared_computed_value_same_module_globals(
 find_prepared_materialized_compare_join_return_context(
     const PreparedMaterializedCompareJoinContext& compare_join_context,
     const bir::Value& selected_value);
+
+[[nodiscard]] inline std::vector<std::string_view>
+collect_prepared_materialized_compare_join_same_module_globals(
+    const PreparedMaterializedCompareJoinBranches& prepared_join_branches);
 
 [[nodiscard]] inline std::optional<PreparedParamZeroBranchCondition>
 find_prepared_param_zero_branch_condition(const PreparedControlFlowFunction& function_cf,
@@ -1589,7 +1600,28 @@ find_prepared_materialized_compare_join_branch_plan(
               .false_label = compare_join_context.false_predecessor->label,
           },
       .false_branch_opcode =
-          prepared_compare_join_branches.prepared_branch.false_branch_opcode,
+      prepared_compare_join_branches.prepared_branch.false_branch_opcode,
+  };
+}
+
+[[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinRenderContract>
+find_prepared_materialized_compare_join_render_contract(
+    const PreparedParamZeroMaterializedCompareJoinBranches& prepared_compare_join_branches) {
+  const auto branch_plan =
+      find_prepared_materialized_compare_join_branch_plan(prepared_compare_join_branches);
+  if (!branch_plan.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedMaterializedCompareJoinRenderContract{
+      .branch_plan = std::move(*branch_plan),
+      .true_return_context =
+          prepared_compare_join_branches.prepared_join_branches.true_return_context,
+      .false_return_context =
+          prepared_compare_join_branches.prepared_join_branches.false_return_context,
+      .same_module_global_names =
+          collect_prepared_materialized_compare_join_same_module_globals(
+              prepared_compare_join_branches.prepared_join_branches),
   };
 }
 

@@ -4022,29 +4022,26 @@ std::string emit_prepared_module(
     if (!prepared_compare_join_branches.has_value()) {
       return std::nullopt;
     }
-    const auto prepared_branch_plan =
-        c4c::backend::prepare::find_prepared_materialized_compare_join_branch_plan(
+    const auto prepared_render_contract =
+        c4c::backend::prepare::find_prepared_materialized_compare_join_render_contract(
             *prepared_compare_join_branches);
-    if (!prepared_branch_plan.has_value()) {
+    if (!prepared_render_contract.has_value()) {
       return std::nullopt;
     }
 
     const auto true_return = render_materialized_compare_join_return_if_supported(
-        prepared_compare_join_branches->prepared_join_branches.true_return_context, param);
+        prepared_render_contract->true_return_context, param);
     const auto false_return = render_materialized_compare_join_return_if_supported(
-        prepared_compare_join_branches->prepared_join_branches.false_return_context, param);
+        prepared_render_contract->false_return_context, param);
     if (!true_return.has_value() || !false_return.has_value()) {
       return std::nullopt;
     }
 
     std::string rendered_same_module_globals;
-    const auto rendered_same_module_global_names =
-        c4c::backend::prepare::collect_prepared_materialized_compare_join_same_module_globals(
-            prepared_compare_join_branches->prepared_join_branches);
     for (const auto& global : module.module.globals) {
-      if (std::find(rendered_same_module_global_names.begin(),
-                    rendered_same_module_global_names.end(),
-                    global.name) == rendered_same_module_global_names.end()) {
+      if (std::find(prepared_render_contract->same_module_global_names.begin(),
+                    prepared_render_contract->same_module_global_names.end(),
+                    global.name) == prepared_render_contract->same_module_global_names.end()) {
         continue;
       }
       const auto rendered_global_data = emit_same_module_global_data(global);
@@ -4056,9 +4053,9 @@ std::string emit_prepared_module(
 
     const std::string false_label =
         ".L" + function.name + "_" +
-        std::string(prepared_branch_plan->target_labels.false_label);
+        std::string(prepared_render_contract->branch_plan.target_labels.false_label);
     return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    " +
-           prepared_branch_plan->false_branch_opcode + " " + false_label + "\n" +
+           prepared_render_contract->branch_plan.false_branch_opcode + " " + false_label + "\n" +
            *true_return + false_label + ":\n" + *false_return +
            rendered_same_module_globals;
   };

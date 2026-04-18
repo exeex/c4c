@@ -5272,6 +5272,154 @@ int check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels
   return 0;
 }
 
+int check_materialized_compare_join_render_contract_publishes_prepared_globals_and_labels(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-join control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  if (entry_block == nullptr || function.params.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer has the expected entry block and param")
+                    .c_str());
+  }
+
+  const auto* entry_branch_condition =
+      prepare::find_prepared_branch_condition(*control_flow, entry_block->label);
+  if (entry_branch_condition == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer exposes entry branch metadata")
+                    .c_str());
+  }
+
+  const std::string expected_true_label = entry_branch_condition->true_label;
+  const std::string expected_false_label = entry_branch_condition->false_label;
+  entry_block->terminator.true_label = "carrier.compare.true";
+  entry_block->terminator.false_label = "carrier.compare.false";
+
+  const auto prepared_compare_join_branches =
+      prepare::find_prepared_param_zero_materialized_compare_join_branches(
+          *control_flow, function, *entry_block, function.params.front(), false);
+  if (!prepared_compare_join_branches.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer recognizes the materialized compare-join branch packet")
+                    .c_str());
+  }
+
+  const auto render_contract =
+      prepare::find_prepared_materialized_compare_join_render_contract(
+          *prepared_compare_join_branches);
+  if (!render_contract.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer publishes the compare-join render contract")
+                    .c_str());
+  }
+
+  const auto expected_branch_plan =
+      prepare::find_prepared_materialized_compare_join_branch_plan(
+          *prepared_compare_join_branches);
+  if (!expected_branch_plan.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer publishes the compare-join branch plan")
+                    .c_str());
+  }
+  if (expected_branch_plan->target_labels.true_label != expected_true_label ||
+      expected_branch_plan->target_labels.false_label != expected_false_label ||
+      std::string(expected_branch_plan->false_branch_opcode) != "jne") {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer publishes authoritative compare-join entry branch labels")
+                    .c_str());
+  }
+  if (render_contract->branch_plan.target_labels.true_label !=
+          expected_branch_plan->target_labels.true_label ||
+      render_contract->branch_plan.target_labels.false_label !=
+          expected_branch_plan->target_labels.false_label ||
+      std::string(render_contract->branch_plan.false_branch_opcode) !=
+          expected_branch_plan->false_branch_opcode) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped packaging the compare-join branch plan")
+                    .c_str());
+  }
+
+  const auto expected_same_module_global_names =
+      prepare::collect_prepared_materialized_compare_join_same_module_globals(
+          prepared_compare_join_branches->prepared_join_branches);
+  if (render_contract->same_module_global_names != expected_same_module_global_names) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped packaging compare-join same-module globals")
+                    .c_str());
+  }
+
+  const auto require_return_context =
+      [&](const prepare::PreparedMaterializedCompareJoinReturnContext& return_context,
+          const prepare::PreparedMaterializedCompareJoinReturnContext& expected_return_context) -> int {
+        const auto operations_match =
+            [&]() -> bool {
+              if (return_context.selected_value.operations.size() !=
+                  expected_return_context.selected_value.operations.size()) {
+                return false;
+              }
+              for (std::size_t index = 0; index < return_context.selected_value.operations.size();
+                   ++index) {
+                const auto& actual = return_context.selected_value.operations[index];
+                const auto& expected = expected_return_context.selected_value.operations[index];
+                if (actual.opcode != expected.opcode || actual.immediate != expected.immediate) {
+                  return false;
+                }
+              }
+              return true;
+            }();
+        if (return_context.selected_value.base.kind != expected_return_context.selected_value.base.kind ||
+            return_context.selected_value.base.global_name != expected_return_context.selected_value.base.global_name ||
+            return_context.selected_value.base.global_byte_offset !=
+                expected_return_context.selected_value.base.global_byte_offset ||
+            return_context.selected_value.base.pointer_root_global_name !=
+                expected_return_context.selected_value.base.pointer_root_global_name ||
+            !operations_match) {
+          return fail((std::string(failure_context) +
+                       ": shared helper stopped packaging compare-join selected-value return contexts")
+                          .c_str());
+        }
+        const bool trailing_binary_matches =
+            return_context.trailing_binary.has_value() ==
+                expected_return_context.trailing_binary.has_value() &&
+            (!return_context.trailing_binary.has_value() ||
+             (return_context.trailing_binary->opcode ==
+                  expected_return_context.trailing_binary->opcode &&
+              return_context.trailing_binary->immediate ==
+                  expected_return_context.trailing_binary->immediate));
+        if (!trailing_binary_matches) {
+          return fail((std::string(failure_context) +
+                       ": shared helper stopped packaging compare-join trailing immediate ops")
+                          .c_str());
+        }
+        return 0;
+      };
+
+  if (const auto status =
+          require_return_context(render_contract->true_return_context,
+                                 prepared_compare_join_branches->prepared_join_branches
+                                     .true_return_context);
+      status != 0) {
+    return status;
+  }
+  return require_return_context(
+      render_contract->false_return_context,
+      prepared_compare_join_branches->prepared_join_branches.false_return_context);
+}
+
 int check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts_impl(
     const bir::Module& module,
     const char* function_name,
@@ -7271,6 +7419,14 @@ int main() {
               make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
               "branch_join_global_then_xor",
               "scalar-control-flow compare-against-zero prepared compare-join same-module global return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_render_contract_publishes_prepared_globals_and_labels(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join render-contract ownership");
       status != 0) {
     return status;
   }

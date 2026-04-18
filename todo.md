@@ -12,21 +12,22 @@ Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/prealloc/prealloc.hpp`,
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp`, and
 `tests/backend/backend_x86_handoff_boundary_test.cpp` by adding a shared
-prepared helper that publishes the authoritative same-module-global ownership
-set for materialized compare-join return contexts, switching the x86
-compare-join consumer to use that helper instead of accumulating global names
-lane-by-lane in the emitter, and extending the handoff-boundary test suite to
-prove the shared helper returns the expected ordered global set across direct,
-fixed-offset, and pointer-backed compare-join cases.
+prepared compare-join render-contract helper that packages the authoritative
+branch plan, true/false return contexts, and same-module-global ownership set
+for one materialized compare-join branch family, switching the x86 consumer to
+use that shared contract instead of assembling those pieces inline in
+`prepared_module_emit.cpp`, and extending the handoff-boundary test suite to
+prove the packaged render contract matches the existing authoritative shared
+helpers for labels, trailing immediate ops, and same-module-global ownership.
 
 ## Suggested Next
 
 The next accepted packet should stay in Step 3 and remove one more small
-x86-local compare/join composition seam, most likely by moving one more
-materialized compare-join return-lane render decision such as trailing
-immediate-op ownership or return-context selection behind a shared prepared
-consumer helper instead of open-coded lane-specific branching in
-`prepared_module_emit.cpp`. Keep the work in shared consumer helpers and
+x86-local compare/join composition seam by moving one more materialized
+compare-join return-lane renderability decision into shared helpers, most
+likely the selected-value base or trailing-immediate classification that still
+forces `prepared_module_emit.cpp` to spell compare-join return forms with
+open-coded branch-local checks. Keep the work in shared consumer helpers and
 focused proof, not Step 4 file organization.
 
 ## Watchouts
@@ -36,11 +37,12 @@ focused proof, not Step 4 file organization.
   route changes.
 - Do not solve remaining compare-join gaps with x86-side CFG scans or
   testcase-shaped matcher growth.
-- The new shared compare-join same-module-global helper only covers the ordered
-  ownership set for selected-value global roots; x86 still spells the actual
-  loads and emitted data, so follow-on work should keep moving authoritative
-  compare/join composition into shared helpers instead of rebuilding lane
-  ownership in x86.
+- The new shared compare-join render contract now packages the authoritative
+  branch labels, false-branch opcode, true/false return contexts, and
+  same-module-global ownership set, but x86 still decides whether each packaged
+  return context is directly renderable. Follow-on work should keep moving
+  authoritative compare/join composition into shared helpers instead of
+  rebuilding lane semantics in x86.
 - The x86 short-circuit and compare-join consumers should continue treating
   returned prepared lane ownership, continuation labels, and compare-join
   branch labels as authoritative; do not reintroduce raw selected-value
@@ -48,8 +50,8 @@ focused proof, not Step 4 file organization.
   in the emitter.
 - `test_before.log` remains the narrow baseline for
   `^backend_x86_handoff_boundary$`, and this packet refreshes `test_after.log`
-  with the same focused proof command after moving compare-join same-module
-  global ownership publication into shared prepare helpers.
+  with the same focused proof command after moving compare-join branch-plan and
+  same-module-global packaging into a shared render contract helper.
 
 ## Proof
 
@@ -57,6 +59,6 @@ Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The focused proof refreshes `test_after.log` with the
 `backend_x86_handoff_boundary` subset for the new shared compare-join
-same-module-global ownership helper, the x86 consumer that now resolves it,
-and the existing prepared branch/join ownership families that still prove the
-same handoff contracts.
+render-contract helper, the x86 consumer that now resolves it, and the
+existing prepared branch/join ownership families that still prove the same
+handoff contracts.
