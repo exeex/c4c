@@ -10,19 +10,18 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting the
-remaining `detect_short_circuit_plan_from_control_flow()` entry-condition
-validation into `find_short_circuit_entry_blocks()`. The short-circuit
-detector now reads as entry prepared-condition validation, join-transfer
-lookup, continuation lookup, and prepared target selection instead of one
-front-loaded guard chain.
+remaining short-circuit join-transfer lookup plus join-block and join-branch
+validation into `find_short_circuit_join_context()`. The detector now reads
+as entry lookup, join lookup, continuation lookup, incoming classification,
+and prepared target selection instead of another long guard sequence.
 
 ## Suggested Next
 
 The next small Step 3 packet is to trim the remaining
-`detect_short_circuit_plan_from_control_flow()` join-transfer and join-branch
-validation into one helper so the body reads as entry lookup, join lookup,
-continuation lookup, and final target assembly without another long guard
-sequence.
+`detect_short_circuit_plan_from_control_flow()` incoming-classification and
+compare-true/compare-false routing into one helper so the body reads as entry
+lookup, join lookup, target routing, continuation lookup, and final target
+assembly.
 
 ## Watchouts
 
@@ -40,6 +39,10 @@ sequence.
   true/false successor validation for this path; if the prepared branch
   contract changes, update that helper instead of re-expanding the guard chain
   in `detect_short_circuit_plan_from_control_flow()`.
+- `find_short_circuit_join_context()` now owns select-join lookup plus
+  join-block and join-branch validation for this path; keep additional
+  prepared join invariants there rather than folding them back into the main
+  detector.
 - `classify_short_circuit_join_incoming()` assumes the prepared select join
   still carries exactly one bool-like immediate lane and one named RHS lane;
   if that invariant changes, fix the shared contract rather than re-growing
@@ -54,5 +57,5 @@ sequence.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 short-circuit detector
+The build and narrow proof passed for this Step 3 short-circuit join-context
 cleanup packet; `test_after.log` remains the canonical proof log path.
