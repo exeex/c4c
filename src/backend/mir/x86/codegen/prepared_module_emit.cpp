@@ -1528,14 +1528,9 @@ std::string emit_prepared_module(
                  opcode == c4c::backend::bir::BinaryOpcode::Slt ||
                  opcode == c4c::backend::bir::BinaryOpcode::Sle;
         };
-    struct GuardJoinContinuation {
-      std::string_view incoming_label;
-      const c4c::backend::bir::Block* true_block = nullptr;
-      const c4c::backend::bir::Block* false_block = nullptr;
-    };
     struct ShortCircuitTarget {
       const c4c::backend::bir::Block* block = nullptr;
-      std::optional<GuardJoinContinuation> continuation;
+      std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels> continuation;
     };
     struct ShortCircuitPlan {
       ShortCircuitTarget on_compare_true;
@@ -1552,7 +1547,7 @@ std::string emit_prepared_module(
       const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
       const c4c::backend::prepare::PreparedEdgeValueTransfer* false_transfer = nullptr;
       c4c::backend::prepare::PreparedClassifiedShortCircuitIncoming classified_incoming;
-      GuardJoinContinuation continuation_plan;
+      c4c::backend::prepare::PreparedShortCircuitContinuationLabels continuation_plan;
     };
     struct ShortCircuitRenderContext {
       bool omit_true_continuation = false;
@@ -1624,14 +1619,19 @@ std::string emit_prepared_module(
                                            source_block.terminator.false_label);
     };
     const auto build_direct_branch_targets_from_continuation =
-        [&](const GuardJoinContinuation& continuation_plan) -> std::optional<DirectBranchTargets> {
-      if (continuation_plan.true_block == nullptr || continuation_plan.false_block == nullptr) {
+        [&](const c4c::backend::prepare::PreparedShortCircuitContinuationLabels&
+                continuation_plan)
+        -> std::optional<DirectBranchTargets> {
+      const auto continuation_targets =
+          c4c::backend::prepare::prepared_branch_target_labels(continuation_plan);
+      DirectBranchTargets targets{
+          .true_block = find_block(continuation_targets.true_label),
+          .false_block = find_block(continuation_targets.false_label),
+      };
+      if (targets.true_block == nullptr || targets.false_block == nullptr) {
         return std::nullopt;
       }
-      return DirectBranchTargets{
-          .true_block = continuation_plan.true_block,
-          .false_block = continuation_plan.false_block,
-      };
+      return targets;
     };
     const auto build_short_circuit_target_from_transfer =
         [&](const c4c::backend::prepare::PreparedShortCircuitTargetLabels& prepared_target)
@@ -1641,20 +1641,9 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
 
-      std::optional<GuardJoinContinuation> continuation;
+      std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels> continuation;
       if (prepared_target.continuation.has_value()) {
-        const auto direct_targets = resolve_direct_branch_targets(
-            *block,
-            prepared_target.continuation->true_label,
-            prepared_target.continuation->false_label);
-        if (!direct_targets.has_value()) {
-          return std::nullopt;
-        }
-        continuation = GuardJoinContinuation{
-            .incoming_label = prepared_target.continuation->incoming_label,
-            .true_block = direct_targets->true_block,
-            .false_block = direct_targets->false_block,
-        };
+        continuation = *prepared_target.continuation;
       }
 
       return ShortCircuitTarget{
@@ -1676,14 +1665,6 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
 
-      const auto direct_targets = resolve_direct_branch_targets(
-          *prepared_join_context->join_block,
-          prepared_join_context->continuation_true_label,
-          prepared_join_context->continuation_false_label);
-      if (!direct_targets.has_value()) {
-        return std::nullopt;
-      }
-
       return ShortCircuitJoinContext{
           .join_transfer = prepared_join_context->join_transfer,
           .join_block = prepared_join_context->join_block,
@@ -1691,10 +1672,10 @@ std::string emit_prepared_module(
           .false_transfer = prepared_join_context->false_transfer,
           .classified_incoming = prepared_join_context->classified_incoming,
           .continuation_plan =
-              GuardJoinContinuation{
+              c4c::backend::prepare::PreparedShortCircuitContinuationLabels{
                   .incoming_label = {},
-                  .true_block = direct_targets->true_block,
-                  .false_block = direct_targets->false_block,
+                  .true_label = prepared_join_context->continuation_true_label,
+                  .false_label = prepared_join_context->continuation_false_label,
               },
       };
     };
@@ -1785,11 +1766,11 @@ std::string emit_prepared_module(
       const bool true_target_renders_false_lane =
           plan.on_compare_true.continuation.has_value() &&
           plan.on_compare_false.block ==
-              plan.on_compare_true.continuation->false_block;
+              find_block(plan.on_compare_true.continuation->false_label);
       const bool false_target_renders_true_lane =
           plan.on_compare_false.continuation.has_value() &&
           plan.on_compare_true.block ==
-              plan.on_compare_false.continuation->true_block;
+              find_block(plan.on_compare_false.continuation->true_label);
       if (true_target_renders_false_lane && false_target_renders_true_lane) {
         return std::nullopt;
       }
@@ -1846,11 +1827,13 @@ std::string emit_prepared_module(
     std::unordered_set<std::string_view> same_module_global_names;
 
     std::unordered_set<std::string_view> rendered_blocks;
-    std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
-                                             const std::optional<GuardJoinContinuation>&)>
+    std::function<std::optional<std::string>(
+        const c4c::backend::bir::Block&,
+        const std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels>&)>
         render_block =
             [&](const c4c::backend::bir::Block& block,
-                const std::optional<GuardJoinContinuation>& continuation)
+                const std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels>&
+                    continuation)
         -> std::optional<std::string> {
           if (!rendered_blocks.insert(block.label).second &&
               block.terminator.kind != c4c::backend::bir::TerminatorKind::Return) {
@@ -2533,9 +2516,9 @@ std::string emit_prepared_module(
                         .join_block = join_context.join_block,
                         .classified_incoming = join_context.classified_incoming,
                         .continuation_true_label =
-                            join_context.continuation_plan.true_block->label,
+                            join_context.continuation_plan.true_label,
                         .continuation_false_label =
-                            join_context.continuation_plan.false_block->label,
+                            join_context.continuation_plan.false_label,
                     },
                     *prepared_target_labels);
             if (!prepared_short_circuit_plan.has_value()) {
@@ -2566,7 +2549,8 @@ std::string emit_prepared_module(
           const auto build_compare_join_entry_render_plan =
               [&](const c4c::backend::bir::Block& source_block,
                   const c4c::backend::bir::BinaryInst& compare,
-                  const GuardJoinContinuation& continuation_plan)
+                  const c4c::backend::prepare::PreparedShortCircuitContinuationLabels&
+                      continuation_plan)
               -> std::optional<CompareDrivenBranchRenderPlan> {
             return build_compare_driven_direct_entry_render_plan(
                 source_block,

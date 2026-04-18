@@ -527,6 +527,14 @@ struct PreparedBranchTargetLabels {
   std::string_view false_label;
 };
 
+[[nodiscard]] constexpr PreparedBranchTargetLabels prepared_branch_target_labels(
+    const PreparedShortCircuitContinuationLabels& continuation_labels) {
+  return PreparedBranchTargetLabels{
+      .true_label = continuation_labels.true_label,
+      .false_label = continuation_labels.false_label,
+  };
+}
+
 // Shared consumers must take branch semantics from `branch_conditions` and former
 // phi/join obligations from `join_transfers` instead of reconstructing them from CFG shape.
 struct PreparedControlFlow {

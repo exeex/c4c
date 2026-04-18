@@ -11,21 +11,22 @@ Source Plan: plan.md
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/prealloc/prealloc.hpp`,
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp`, and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` by moving short-circuit
-branch-plan assembly into shared prepare code. Shared lowering now exposes one
-helper that combines the authoritative short-circuit join context with the
-prepared entry branch-target labels and returns the compare-true/compare-false
-branch-plan labels plus continuation labels, and the Step 3 x86 consumer now
-resolves that prepared branch plan instead of composing the short-circuit lane
-targets from join transfers in the emitter.
+`tests/backend/backend_x86_handoff_boundary_test.cpp` by replacing the
+emitter-local continuation block carrier with shared prepared continuation
+labels plus one shared branch-target-label helper. The Step 3 x86 consumer now
+threads prepared continuation labels through both short-circuit and compare-join
+entry rendering, then resolves direct targets from those prepared labels
+instead of storing compare-join continuation block pointers in emitter-local
+structs.
 
 ## Suggested Next
 
 The next accepted packet should stay in Step 3 and remove one more small
-x86-local compare/join composition seam, most likely by promoting the
-compare-join continuation entry-plan assembly that still threads continuation
-blocks through emitter-local structs. Keep the work in shared consumer helpers
-and focused proof, not Step 4 file organization.
+x86-local compare/join composition seam, most likely by moving one more
+materialized compare-join return/branch assembly path behind a shared prepared
+consumer helper instead of emitter-local compare-join render structs. Keep the
+work in shared consumer helpers and focused proof, not Step 4 file
+organization.
 
 ## Watchouts
 
@@ -38,6 +39,10 @@ and focused proof, not Step 4 file organization.
   compare-true/compare-false lane ownership and continuation labels; follow-on
   work should continue moving compare/join composition into shared prepare code
   instead of rebuilding continuation routing in x86.
+- The emitter now consumes shared prepared continuation labels for both
+  short-circuit and compare-join entry rendering; follow-on Step 3 work should
+  continue collapsing compare/join semantics into shared consumer helpers
+  rather than reintroducing emitter-local continuation carriers.
 - The x86 short-circuit and compare-join consumers should continue treating
   returned prepared true/false ownership and continuation labels as
   authoritative; do not reintroduce raw selected-value plumbing or local join
