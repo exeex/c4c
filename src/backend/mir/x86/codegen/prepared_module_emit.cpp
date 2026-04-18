@@ -1703,6 +1703,32 @@ std::string emit_prepared_module(
           .continuation = continuation,
       };
     };
+    const auto build_short_circuit_join_context_from_transfer =
+        [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
+            const auto& find_branch_condition_fn)
+        -> std::optional<ShortCircuitJoinContext> {
+      const auto* join_block = find_block(join_transfer.join_block_label);
+      if (join_block == nullptr) {
+        return std::nullopt;
+      }
+
+      const auto* join_branch_condition = find_branch_condition_fn(join_block->label);
+      if (join_branch_condition == nullptr) {
+        return std::nullopt;
+      }
+
+      const auto continuation_plan = build_compare_join_continuation(
+          join_transfer, *join_block, *join_branch_condition);
+      if (!continuation_plan.has_value()) {
+        return std::nullopt;
+      }
+
+      return ShortCircuitJoinContext{
+          .join_transfer = &join_transfer,
+          .join_block = join_block,
+          .continuation_plan = *continuation_plan,
+      };
+    };
     const auto find_short_circuit_join_context =
         [&](const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
             const auto& find_branch_condition_fn,
@@ -1729,28 +1755,8 @@ std::string emit_prepared_module(
               *join_transfer->source_false_transfer_index) {
         return std::nullopt;
       }
-
-      const auto* join_block = find_block(join_transfer->join_block_label);
-      if (join_block == nullptr) {
-        return std::nullopt;
-      }
-
-      const auto* join_branch_condition = find_branch_condition_fn(join_block->label);
-      if (join_branch_condition == nullptr) {
-        return std::nullopt;
-      }
-
-      const auto continuation_plan = build_compare_join_continuation(
-          *join_transfer, *join_block, *join_branch_condition);
-      if (!continuation_plan.has_value()) {
-        return std::nullopt;
-      }
-
-      return ShortCircuitJoinContext{
-          .join_transfer = join_transfer,
-          .join_block = join_block,
-          .continuation_plan = *continuation_plan,
-      };
+      return build_short_circuit_join_context_from_transfer(*join_transfer,
+                                                            find_branch_condition_fn);
     };
     const auto build_short_circuit_entry_routing_context =
         [&](const c4c::backend::prepare::PreparedBranchCondition* branch_condition,

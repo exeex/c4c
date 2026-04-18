@@ -9,20 +9,19 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving
-`resolve_direct_branch_targets()` ahead of
-`build_compare_join_continuation()` and routing the compare-join continuation
-lane through that helper. Join-successor lookup and self-target rejection for
-the continuation path now use the shared direct-target helper family instead of
-an ad hoc `find_block()` branch beside join-result zero-compare handling.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting
+`build_short_circuit_join_context_from_transfer()` and routing
+`find_short_circuit_join_context()` through it. The join-context path now keeps
+prepared join-transfer discovery in `find_short_circuit_join_context()` while
+the new helper owns join-block lookup, prepared join-branch lookup, and
+compare-join continuation-plan assembly.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect whether the remaining compare-join
-continuation validation can move farther into the helper cluster, especially by
-keeping `find_short_circuit_join_context()` focused on prepared join discovery
-while `build_compare_join_continuation()` stays the only owner of
-continuation-target selection.
+The next small Step 3 packet is to inspect whether the short-circuit join lane
+classification can move beside `build_short_circuit_join_context_from_transfer()`
+so `build_short_circuit_entry_routing_context()` stops rediscovering join-input
+ownership from the transfer list after join context has already been validated.
 
 ## Watchouts
 
@@ -32,6 +31,11 @@ continuation-target selection.
 - Keep the compare-join lane aligned with the continuation lane: only the
   prepared predecessor recorded by the selected join-transfer edge is
   authoritative for continuation entry.
+- `find_short_circuit_join_context()` now owns only prepared select-join
+  discovery and transfer-shape validation; keep join-block lookup, prepared
+  join-branch lookup, and continuation-plan assembly in
+  `build_short_circuit_join_context_from_transfer()` instead of re-growing
+  those checks beside join discovery.
 - `build_compare_join_continuation()` remains the Step 3 gate for the join-
   result zero-compare contract; keep `Eq`/`Ne` mapping and jump-target choice
   data-driven there instead of pushing them back into renderer assembly.
@@ -54,5 +58,5 @@ continuation-target selection.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 compare-join continuation
-direct-target helper reuse packet; proof output is in `test_after.log`.
+The build and narrow proof passed for this Step 3 join-context helper
+extraction packet; proof output is in `test_after.log`.
