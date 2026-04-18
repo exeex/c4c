@@ -445,6 +445,22 @@ struct PreparedShortCircuitJoinContext {
   std::string_view continuation_false_label;
 };
 
+struct PreparedShortCircuitContinuationLabels {
+  std::string_view incoming_label;
+  std::string_view true_label;
+  std::string_view false_label;
+};
+
+struct PreparedShortCircuitTargetLabels {
+  std::string_view block_label;
+  std::optional<PreparedShortCircuitContinuationLabels> continuation;
+};
+
+struct PreparedShortCircuitBranchPlan {
+  PreparedShortCircuitTargetLabels on_compare_true;
+  PreparedShortCircuitTargetLabels on_compare_false;
+};
+
 struct PreparedJoinCarrier {
   std::size_t carrier_index = 0;
   std::string_view result_name;
@@ -556,6 +572,33 @@ find_prepared_compare_branch_target_labels(const PreparedBranchCondition& branch
   return PreparedBranchTargetLabels{
       .true_label = branch_condition.true_label,
       .false_label = branch_condition.false_label,
+  };
+}
+
+[[nodiscard]] inline std::optional<PreparedShortCircuitTargetLabels>
+build_prepared_short_circuit_target_labels(
+    const PreparedEdgeValueTransfer& transfer,
+    bool is_short_circuit_lane,
+    bool short_circuit_value,
+    std::string_view rhs_entry_label,
+    std::string_view continuation_true_label,
+    std::string_view continuation_false_label) {
+  if (is_short_circuit_lane) {
+    return PreparedShortCircuitTargetLabels{
+        .block_label = short_circuit_value ? continuation_true_label
+                                           : continuation_false_label,
+        .continuation = std::nullopt,
+    };
+  }
+
+  return PreparedShortCircuitTargetLabels{
+      .block_label = rhs_entry_label,
+      .continuation =
+          PreparedShortCircuitContinuationLabels{
+              .incoming_label = transfer.predecessor_label,
+              .true_label = continuation_true_label,
+              .false_label = continuation_false_label,
+          },
   };
 }
 
@@ -1304,6 +1347,51 @@ find_prepared_short_circuit_join_context(const PreparedControlFlowFunction& func
       .classified_incoming = join_sources->classified_incoming,
       .continuation_true_label = continuation_targets->true_label,
       .continuation_false_label = continuation_targets->false_label,
+  };
+}
+
+[[nodiscard]] inline std::optional<PreparedShortCircuitBranchPlan>
+find_prepared_short_circuit_branch_plan(
+    const PreparedShortCircuitJoinContext& join_context,
+    const PreparedBranchTargetLabels& direct_branch_targets) {
+  if (join_context.true_transfer == nullptr || join_context.false_transfer == nullptr ||
+      direct_branch_targets.true_label.empty() || direct_branch_targets.false_label.empty()) {
+    return std::nullopt;
+  }
+
+  const bool short_circuit_on_compare_true =
+      join_context.classified_incoming.short_circuit_on_compare_true;
+  const bool short_circuit_on_compare_false = !short_circuit_on_compare_true;
+
+  const auto rhs_entry_label = short_circuit_on_compare_true
+                                   ? direct_branch_targets.false_label
+                                   : direct_branch_targets.true_label;
+  if (rhs_entry_label.empty()) {
+    return std::nullopt;
+  }
+
+  const auto on_compare_true = build_prepared_short_circuit_target_labels(
+      *join_context.true_transfer,
+      short_circuit_on_compare_true,
+      join_context.classified_incoming.short_circuit_value,
+      rhs_entry_label,
+      join_context.continuation_true_label,
+      join_context.continuation_false_label);
+  const auto on_compare_false = build_prepared_short_circuit_target_labels(
+      *join_context.false_transfer,
+      short_circuit_on_compare_false,
+      join_context.classified_incoming.short_circuit_value,
+      rhs_entry_label,
+      join_context.continuation_true_label,
+      join_context.continuation_false_label);
+  if (!on_compare_true.has_value() || !on_compare_false.has_value() ||
+      on_compare_true->block_label.empty() || on_compare_false->block_label.empty()) {
+    return std::nullopt;
+  }
+
+  return PreparedShortCircuitBranchPlan{
+      .on_compare_true = *on_compare_true,
+      .on_compare_false = *on_compare_false,
   };
 }
 

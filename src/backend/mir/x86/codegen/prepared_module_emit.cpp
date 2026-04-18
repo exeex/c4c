@@ -1634,27 +1634,32 @@ std::string emit_prepared_module(
       };
     };
     const auto build_short_circuit_target_from_transfer =
-        [&](const c4c::backend::prepare::PreparedEdgeValueTransfer& transfer,
-            bool is_short_circuit_lane,
-            bool short_circuit_value,
-            const c4c::backend::bir::Block& rhs_entry,
-            const GuardJoinContinuation& continuation_plan)
+        [&](const c4c::backend::prepare::PreparedShortCircuitTargetLabels& prepared_target)
         -> std::optional<ShortCircuitTarget> {
-      if (is_short_circuit_lane) {
-        const auto* target =
-            short_circuit_value ? continuation_plan.true_block
-                                : continuation_plan.false_block;
-        return ShortCircuitTarget{
-            .block = target,
-            .continuation = std::nullopt,
+      const auto* block = find_block(prepared_target.block_label);
+      if (block == nullptr) {
+        return std::nullopt;
+      }
+
+      std::optional<GuardJoinContinuation> continuation;
+      if (prepared_target.continuation.has_value()) {
+        const auto direct_targets = resolve_direct_branch_targets(
+            *block,
+            prepared_target.continuation->true_label,
+            prepared_target.continuation->false_label);
+        if (!direct_targets.has_value()) {
+          return std::nullopt;
+        }
+        continuation = GuardJoinContinuation{
+            .incoming_label = prepared_target.continuation->incoming_label,
+            .true_block = direct_targets->true_block,
+            .false_block = direct_targets->false_block,
         };
       }
 
-      GuardJoinContinuation continuation = continuation_plan;
-      continuation.incoming_label = transfer.predecessor_label;
       return ShortCircuitTarget{
-          .block = &rhs_entry,
-          .continuation = continuation,
+          .block = block,
+          .continuation = std::move(continuation),
       };
     };
     const auto build_short_circuit_join_context =
@@ -1699,59 +1704,13 @@ std::string emit_prepared_module(
         -> std::optional<ShortCircuitJoinContext> {
       return build_short_circuit_join_context(control_flow, source_block_label);
     };
-    const auto build_short_circuit_entry_direct_branch_targets =
-        [&](const c4c::backend::prepare::PreparedBranchCondition* branch_condition,
-            const c4c::backend::bir::Block& source_block)
-        -> std::optional<DirectBranchTargets> {
-      if (branch_condition == nullptr) {
-        return std::nullopt;
-      }
-
-      const auto prepared_targets =
-          c4c::backend::prepare::find_prepared_compare_branch_target_labels(
-              *branch_condition, source_block);
-      if (!prepared_targets.has_value()) {
-        return std::nullopt;
-      }
-
-      return resolve_direct_branch_targets(source_block,
-                                           prepared_targets->true_label,
-                                           prepared_targets->false_label);
-    };
     const auto build_short_circuit_plan =
-        [&](const ShortCircuitJoinContext& join_context,
-            const ShortCircuitPlan& direct_branch_plan)
+        [&](const c4c::backend::prepare::PreparedShortCircuitBranchPlan& prepared_plan)
         -> std::optional<ShortCircuitPlan> {
-      if (join_context.true_transfer == nullptr ||
-          join_context.false_transfer == nullptr) {
-        return std::nullopt;
-      }
-
-      const bool short_circuit_on_compare_true =
-          join_context.classified_incoming.short_circuit_on_compare_true;
-      const bool short_circuit_on_compare_false = !short_circuit_on_compare_true;
-
-      const auto* rhs_entry = short_circuit_on_compare_true
-                                  ? direct_branch_plan.on_compare_false.block
-                                  : direct_branch_plan.on_compare_true.block;
-      if (rhs_entry == nullptr) {
-        return std::nullopt;
-      }
-
       const auto on_compare_true =
-          build_short_circuit_target_from_transfer(
-              *join_context.true_transfer,
-              short_circuit_on_compare_true,
-              join_context.classified_incoming.short_circuit_value,
-              *rhs_entry,
-              join_context.continuation_plan);
+          build_short_circuit_target_from_transfer(prepared_plan.on_compare_true);
       const auto on_compare_false =
-          build_short_circuit_target_from_transfer(
-              *join_context.false_transfer,
-              short_circuit_on_compare_false,
-              join_context.classified_incoming.short_circuit_value,
-              *rhs_entry,
-              join_context.continuation_plan);
+          build_short_circuit_target_from_transfer(prepared_plan.on_compare_false);
       if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
         return std::nullopt;
       }
@@ -2558,21 +2517,33 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
-            const auto direct_targets = build_short_circuit_entry_direct_branch_targets(
-                compare_context->branch_condition, source_block);
-            if (!direct_targets.has_value()) {
+            const auto prepared_target_labels =
+                c4c::backend::prepare::find_prepared_compare_branch_target_labels(
+                    *compare_context->branch_condition, source_block);
+            if (!prepared_target_labels.has_value()) {
               return std::nullopt;
             }
 
-            const auto direct_branch_plan =
-                build_direct_branch_plan_from_targets(source_block, *direct_targets);
-            if (!direct_branch_plan.has_value()) {
+            const auto prepared_short_circuit_plan =
+                c4c::backend::prepare::find_prepared_short_circuit_branch_plan(
+                    c4c::backend::prepare::PreparedShortCircuitJoinContext{
+                        .join_transfer = join_context.join_transfer,
+                        .true_transfer = join_context.true_transfer,
+                        .false_transfer = join_context.false_transfer,
+                        .join_block = join_context.join_block,
+                        .classified_incoming = join_context.classified_incoming,
+                        .continuation_true_label =
+                            join_context.continuation_plan.true_block->label,
+                        .continuation_false_label =
+                            join_context.continuation_plan.false_block->label,
+                    },
+                    *prepared_target_labels);
+            if (!prepared_short_circuit_plan.has_value()) {
               return std::nullopt;
             }
 
             const auto short_circuit_branch_plan =
-                build_short_circuit_plan(join_context,
-                                         *direct_branch_plan);
+                build_short_circuit_plan(*prepared_short_circuit_plan);
             if (!short_circuit_branch_plan.has_value()) {
               return std::nullopt;
             }

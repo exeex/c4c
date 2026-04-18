@@ -6277,6 +6277,111 @@ int check_short_circuit_entry_branch_helper_publishes_prepared_target_labels(
   return 0;
 }
 
+int check_short_circuit_branch_plan_helper_publishes_prepared_labels(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 2 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit branch-plan contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* join_block = find_block(function, "logic.end.10");
+  if (entry_block == nullptr || join_block == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer has the expected entry/join blocks")
+                    .c_str());
+  }
+
+  auto* entry_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (branch_condition.block_label == entry_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (branch_condition.block_label == join_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  if (entry_branch_condition == nullptr || join_branch_condition == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the expected branch metadata")
+                    .c_str());
+  }
+
+  auto& join_transfer = control_flow->join_transfers.front();
+  entry_block->terminator.true_label = "carrier.short_circuit";
+  entry_block->terminator.false_label = "carrier.rhs";
+  entry_branch_condition->true_label = "logic.rhs.9";
+  entry_branch_condition->false_label = "logic.end.10";
+  join_block->terminator.true_label = "carrier.join.true";
+  join_block->terminator.false_label = "carrier.join.false";
+  join_branch_condition->true_label = join_block->terminator.true_label;
+  join_branch_condition->false_label = join_block->terminator.false_label;
+  join_branch_condition->predicate = bir::BinaryOpcode::Eq;
+
+  const auto prepared_join_context =
+      prepare::find_prepared_short_circuit_join_context(*control_flow, function, "entry");
+  if (!prepared_join_context.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer recognizes the short-circuit join context")
+                    .c_str());
+  }
+
+  const auto prepared_entry_targets = prepare::find_prepared_compare_branch_target_labels(
+      *entry_branch_condition, *entry_block);
+  if (!prepared_entry_targets.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer recognizes the short-circuit entry branch contract")
+                    .c_str());
+  }
+
+  const auto prepared_branch_plan = prepare::find_prepared_short_circuit_branch_plan(
+      *prepared_join_context, *prepared_entry_targets);
+  if (!prepared_branch_plan.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer publishes the short-circuit branch plan")
+                    .c_str());
+  }
+  if (!join_transfer.source_false_transfer_index.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit join transfer no longer exposes false-lane ownership")
+                    .c_str());
+  }
+
+  if (prepared_branch_plan->on_compare_true.block_label != "carrier.join.false" ||
+      !prepared_branch_plan->on_compare_false.continuation.has_value() ||
+      prepared_branch_plan->on_compare_false.block_label != "logic.end.10" ||
+      prepared_branch_plan->on_compare_false.continuation->incoming_label !=
+          join_transfer.edge_transfers[*join_transfer.source_false_transfer_index]
+              .predecessor_label ||
+      prepared_branch_plan->on_compare_false.continuation->true_label !=
+          "carrier.join.false" ||
+      prepared_branch_plan->on_compare_false.continuation->false_label !=
+          "carrier.join.true") {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped publishing the authoritative short-circuit branch-plan labels")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
     const bir::Module& module,
     const char* function_name,
@@ -7613,6 +7718,14 @@ int main() {
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
               "minimal local-slot short-circuit entry-branch prepared target-label ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_branch_plan_helper_publishes_prepared_labels(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit branch-plan prepared label ownership");
       status != 0) {
     return status;
   }
