@@ -1641,6 +1641,10 @@ std::string emit_prepared_module(
     std::size_t carrier_index = 0;
     std::string_view carrier_result_name;
   };
+  struct PreparedJoinCarrier {
+    std::size_t carrier_index = 0;
+    std::string_view result_name;
+  };
   struct MaterializedCompareJoinRender {
     std::string false_label;
     std::string true_return;
@@ -1710,6 +1714,47 @@ std::string emit_prepared_module(
         .false_predecessor = false_predecessor,
     };
   };
+  const auto find_prepared_join_carrier =
+      [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
+          const c4c::backend::bir::Block& join_block,
+          std::size_t carrier_index) -> std::optional<PreparedJoinCarrier> {
+    if (carrier_index >= join_block.insts.size()) {
+      return std::nullopt;
+    }
+
+    const auto& join_carrier = join_block.insts[carrier_index];
+    if (const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&join_carrier);
+        select != nullptr) {
+      if (join_transfer.kind !=
+              c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
+          select->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          select->result.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      return PreparedJoinCarrier{
+          .carrier_index = carrier_index,
+          .result_name = select->result.name,
+      };
+    }
+
+    if (const auto* load_local =
+            std::get_if<c4c::backend::bir::LoadLocalInst>(&join_carrier);
+        load_local != nullptr) {
+      if (join_transfer.kind != c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
+          !join_transfer.storage_name.has_value() ||
+          load_local->slot_name != *join_transfer.storage_name ||
+          load_local->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          load_local->result.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      return PreparedJoinCarrier{
+          .carrier_index = carrier_index,
+          .result_name = load_local->result.name,
+      };
+    }
+
+    return std::nullopt;
+  };
   const auto find_materialized_compare_join_context =
       [&](const AuthoritativeBranchJoinTransfer& authoritative_join_transfer,
           std::string_view true_block_label,
@@ -1732,8 +1777,7 @@ std::string emit_prepared_module(
         !join_block->terminator.value.has_value() || join_block->insts.empty() ||
         join_sources->true_predecessor == join_block ||
         join_sources->false_predecessor == join_block ||
-        join_transfer->join_block_label != join_block->label ||
-        join_transfer->result.kind != c4c::backend::bir::Value::Kind::Named) {
+        join_transfer->join_block_label != join_block->label) {
       return std::nullopt;
     }
 
@@ -1751,37 +1795,14 @@ std::string emit_prepared_module(
       carrier_index = join_block->insts.size() - 2;
     }
 
-    std::optional<std::string_view> carrier_result_name;
-    if (const auto* select =
-            std::get_if<c4c::backend::bir::SelectInst>(&join_block->insts[carrier_index]);
-        select != nullptr) {
-      if (join_transfer->kind !=
-              c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
-          select->result.kind != c4c::backend::bir::Value::Kind::Named ||
-          select->result.type != c4c::backend::bir::TypeKind::I32) {
-        return std::nullopt;
-      }
-      carrier_result_name = select->result.name;
-    } else if (const auto* load_local =
-                   std::get_if<c4c::backend::bir::LoadLocalInst>(&join_block->insts[carrier_index]);
-               load_local != nullptr) {
-      if (join_transfer->kind != c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
-          !join_transfer->storage_name.has_value() ||
-          load_local->slot_name != *join_transfer->storage_name ||
-          load_local->result.kind != c4c::backend::bir::Value::Kind::Named ||
-          load_local->result.type != c4c::backend::bir::TypeKind::I32) {
-        return std::nullopt;
-      }
-      carrier_result_name = load_local->result.name;
-    } else {
-      return std::nullopt;
-    }
-    if (!carrier_result_name.has_value()) {
+    const auto prepared_carrier =
+        find_prepared_join_carrier(*join_transfer, *join_block, carrier_index);
+    if (!prepared_carrier.has_value()) {
       return std::nullopt;
     }
     if (join_block->terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
         (trailing_binary == nullptr &&
-         join_block->terminator.value->name != *carrier_result_name)) {
+         join_block->terminator.value->name != prepared_carrier->result_name)) {
       return std::nullopt;
     }
 
@@ -1793,8 +1814,8 @@ std::string emit_prepared_module(
         .false_predecessor = join_sources->false_predecessor,
         .join_block = join_block,
         .trailing_binary = trailing_binary,
-        .carrier_index = carrier_index,
-        .carrier_result_name = *carrier_result_name,
+        .carrier_index = prepared_carrier->carrier_index,
+        .carrier_result_name = prepared_carrier->result_name,
     };
   };
   const auto render_local_slot_guard_chain_if_supported =
@@ -1934,50 +1955,25 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
 
-      if (join_block.insts.size() < 2 ||
-          join_transfer.result.kind != c4c::backend::bir::Value::Kind::Named) {
+      if (join_block.insts.size() < 2) {
         return std::nullopt;
       }
 
-      std::optional<std::string_view> carrier_result_name;
-      const auto& join_carrier = join_block.insts[join_block.insts.size() - 2];
-      if (const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&join_carrier);
-          select != nullptr) {
-        if (join_transfer.kind !=
-                c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
-            select->result.kind != c4c::backend::bir::Value::Kind::Named ||
-            select->result.type != c4c::backend::bir::TypeKind::I32) {
-          return std::nullopt;
-        }
-        carrier_result_name = select->result.name;
-      } else if (const auto* load_local =
-                     std::get_if<c4c::backend::bir::LoadLocalInst>(&join_carrier);
-                 load_local != nullptr) {
-        if (join_transfer.kind !=
-                c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
-            !join_transfer.storage_name.has_value() ||
-            load_local->slot_name != *join_transfer.storage_name ||
-            load_local->result.kind != c4c::backend::bir::Value::Kind::Named ||
-            load_local->result.type != c4c::backend::bir::TypeKind::I32) {
-          return std::nullopt;
-        }
-        carrier_result_name = load_local->result.name;
-      } else {
-        return std::nullopt;
-      }
-      if (!carrier_result_name.has_value()) {
+      const auto prepared_carrier =
+          find_prepared_join_carrier(join_transfer, join_block, join_block.insts.size() - 2);
+      if (!prepared_carrier.has_value()) {
         return std::nullopt;
       }
 
       const bool lhs_is_join_result_rhs_is_zero =
           join_branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Named &&
-          join_branch_condition.lhs->name == *carrier_result_name &&
+          join_branch_condition.lhs->name == prepared_carrier->result_name &&
           join_branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
           join_branch_condition.rhs->type == c4c::backend::bir::TypeKind::I32 &&
           join_branch_condition.rhs->immediate == 0;
       const bool rhs_is_join_result_lhs_is_zero =
           join_branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Named &&
-          join_branch_condition.rhs->name == *carrier_result_name &&
+          join_branch_condition.rhs->name == prepared_carrier->result_name &&
           join_branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
           join_branch_condition.lhs->type == c4c::backend::bir::TypeKind::I32 &&
           join_branch_condition.lhs->immediate == 0;
@@ -4458,8 +4454,7 @@ std::string emit_prepared_module(
     const auto* true_join_predecessor = compare_join_context.true_predecessor;
     const auto* false_join_predecessor = compare_join_context.false_predecessor;
     if (join_transfer == nullptr || true_transfer == nullptr || false_transfer == nullptr ||
-        true_join_predecessor == nullptr || false_join_predecessor == nullptr ||
-        join_transfer->result.kind != c4c::backend::bir::Value::Kind::Named) {
+        true_join_predecessor == nullptr || false_join_predecessor == nullptr) {
       return std::nullopt;
     }
 

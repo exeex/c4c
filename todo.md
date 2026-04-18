@@ -9,22 +9,21 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by tightening the
-materialized-compare join return seam to carry the validated carrier result
-name through `find_materialized_compare_join_context()` and
-`render_materialized_compare_join_return_if_supported()` instead of coupling
-those checks to `join_transfer.result.name`. `backend_x86_handoff_boundary`
-now mutates the joined-branch ownership fixture so the validated carrier result
-intentionally diverges from the prepared join destination name, and it adds an
-`EdgeStoreSlot` variant of that same route.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by introducing
+`find_prepared_join_carrier()` and routing both
+`find_materialized_compare_join_context()` and
+`build_compare_join_continuation()` through that shared carrier validation
+helper. The non-countdown materialized-compare join consumers no longer
+require `join_transfer.result` itself to be a named value when the prepared
+carrier already supplies the named result they actually consume.
 
 ## Suggested Next
 
-The next small Step 3 packet is to audit the remaining non-countdown
-materialized-compare join route for any remaining consumer that still assumes
-the prepared join destination name must match the validated carrier or trailing
-join arithmetic operands, then tighten one such seam or declare this
-carrier-name sub-route exhausted.
+Treat the non-countdown materialized-compare join carrier-name cleanup as
+exhausted and pick the next small Step 3 packet from the adjacent
+authoritative-join consumers, preferably another path that can reuse prepared
+join-carrier validation without widening into countdown loops or Step 4 file
+reorganization.
 
 ## Watchouts
 
@@ -37,13 +36,14 @@ carrier-name sub-route exhausted.
   file-organization cleanup.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth or new
   emitter-local CFG scans.
-- The materialized-compare join context now carries the validated carrier
-  result name, so follow-on work should preserve that split rather than
-  reintroducing checks against `join_transfer.result.name`.
-- The joined-branch ownership helper now proves both `SelectMaterialization`
-  and `PreparedJoinTransferKind::EdgeStoreSlot` carriers with a renamed
-  carrier result; keep any further coverage in this family focused on prepared
-  carrier validation rather than broader route expansion.
+- The materialized-compare join helpers now share one prepared-carrier
+  validation path, so follow-on work should reuse that seam instead of
+  reintroducing per-helper carrier parsing or destination-name assumptions.
+- The joined-branch ownership helper still proves both
+  `SelectMaterialization` and `PreparedJoinTransferKind::EdgeStoreSlot`
+  carriers with a renamed carrier result; keep any further coverage in this
+  family focused on prepared carrier validation rather than broader route
+  expansion.
 - If another consumer path needs extra branch or join facts, strengthen the
   shared prepared-control-flow contract in `prealloc.hpp` rather than growing
   emitter-local scans or CFG-shape recovery.
@@ -58,6 +58,6 @@ carrier-name sub-route exhausted.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This materialized-compare join carrier-result packet passed with the focused
+This shared prepared-join-carrier validation packet passed with the focused
 `backend_x86_handoff_boundary` proof command, and `test_after.log` remains the
 fresh canonical proof log for supervisor review.
