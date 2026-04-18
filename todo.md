@@ -9,18 +9,18 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting the final
-short-circuit rendered-string assembly out of
-`render_short_circuit_plan()`. The plan renderer now delegates branch-jump
-prefix and false-lane string assembly to
-`assemble_short_circuit_rendered_plan()` instead of rebuilding that final
-string inline.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting the
+remaining short-circuit rendered-lane collection out of
+`render_short_circuit_plan()`. The plan renderer now delegates paired true/false
+lane rendering to `render_short_circuit_lanes()` instead of rebuilding that
+lane collection inline.
 
 ## Suggested Next
 
-The next small Step 3 packet is to extract the remaining rendered-lane
-collection out of `render_short_circuit_plan()` so the wrapper only sequences
-helper calls for render-context, lane rendering, and final assembly.
+The next small Step 3 packet is to extract the remaining short-circuit plan
+detection plus render handshake out of the conditional-branch fast path so the
+branch emitter only checks one helper for the optional rendered short-circuit
+result.
 
 ## Watchouts
 
@@ -36,11 +36,11 @@ helper calls for render-context, lane rendering, and final assembly.
 - `build_short_circuit_render_context()` now owns rendered true/false lane
   omission,
   `render_short_circuit_target()` owns per-target block rendering plus
-  continuation omission, `render_short_circuit_false_lane()` owns the false-
-  label splice, and `assemble_short_circuit_rendered_plan()` now owns the
-  final string assembly; future cleanup should keep those responsibilities in
-  helpers instead of re-growing inline target handling in
-  `render_short_circuit_plan()`.
+  continuation omission, `render_short_circuit_lanes()` now owns paired lane
+  collection, `render_short_circuit_false_lane()` owns the false-label splice,
+  and `assemble_short_circuit_rendered_plan()` owns the final string assembly;
+  future cleanup should keep those responsibilities in helpers instead of re-
+  growing inline target handling in `render_short_circuit_plan()`.
 - `classify_short_circuit_join_incoming()` still assumes the prepared select
   join carries exactly one bool-like immediate lane and one named RHS lane; if
   that invariant changes, repair the shared contract instead of extending
@@ -52,5 +52,5 @@ helper calls for render-context, lane rendering, and final assembly.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 rendered-string assembly
+The build and narrow proof passed for this Step 3 rendered-lane collection
 cleanup packet; `test_after.log` remains the canonical proof log path.
