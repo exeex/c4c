@@ -9,22 +9,23 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting a shared
-authoritative select-materialization join lookup for the materialized-compare
-and short-circuit consumers, while keeping the short-circuit-only exact-two-lane
-guard local so the joined-branch route does not lose broader authoritative
-select-join coverage.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` and
+`src/backend/prealloc/prealloc.hpp` by adding one shared prepared Eq/I32
+branch-condition lookup/helper path, adding one shared branch-owned
+join-transfer lookup/helper path, migrating
+`render_materialized_compare_join_if_supported()` onto those helpers, and
+beginning to consume `PreparedJoinTransferKind::EdgeStoreSlot` through the same
+prepared join-contract path where the joined materialized-compare consumer can
+use it.
 
 ## Suggested Next
 
-The next small Step 3 packet is to build one unified prepared branch/join
-consumer path in `src/backend/mir/x86/codegen/prepared_module_emit.cpp`:
-add one shared branch-condition lookup/helper path, add one shared
-join-transfer lookup/helper path, migrate
-`render_materialized_compare_join_if_supported()` and adjacent
-authoritative-join consumer code toward those helpers, and begin consuming
-`PreparedJoinTransferKind::EdgeStoreSlot` as prepared join-contract data where
-the same consumer contract applies.
+The next small Step 3 packet is to keep migrating adjacent authoritative-join
+consumers in `src/backend/mir/x86/codegen/prepared_module_emit.cpp` onto the
+new shared branch-owned join helper path, especially where
+`find_authoritative_join_branch_sources()` and short-circuit continuation
+planning still duplicate local join-source validation that could instead be
+driven by prepared control-flow data.
 
 ## Watchouts
 
@@ -37,9 +38,14 @@ the same consumer contract applies.
   file-organization cleanup.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth or new
   emitter-local CFG scans.
-- Do not treat `PreparedJoinTransferKind::EdgeStoreSlot` as a cue for a new
-  matcher family; consume it as prepared join-contract data through the shared
-  helper path.
+- `find_branch_owned_join_transfer()` now returns null on ambiguity, so if a
+  later route needs to distinguish multiple branch-owned join transfers from
+  the same source block, strengthen the prepared lookup contract in
+  `prealloc.hpp` instead of reintroducing emitter-local scans.
+- `PreparedJoinTransferKind::EdgeStoreSlot` now flows through the joined
+  materialized-compare consumer path only where the existing prepared
+  authoritative transfer contract already applies; do not grow a new matcher
+  family around it.
 - The short-circuit path still intentionally differs from
   `find_authoritative_join_branch_sources()`: it consumes the authoritative
   prepared incoming ownership labels from the transfer records, but its
@@ -70,6 +76,6 @@ the same consumer contract applies.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This Step 3 shared authoritative select-join lookup packet uses the same
+This Step 3 shared prepared branch/join helper packet passed with the same
 focused proof command, and `test_after.log` is the canonical proof log path
 for the result.

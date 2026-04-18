@@ -1550,16 +1550,17 @@ std::string emit_prepared_module(
         .false_transfer = false_transfer,
     };
   };
-  struct AuthoritativeSelectJoinTransfer {
+  struct AuthoritativeBranchJoinTransfer {
     const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
     const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
     const c4c::backend::prepare::PreparedEdgeValueTransfer* false_transfer = nullptr;
   };
-  const auto build_authoritative_select_join_transfer =
+  const auto build_authoritative_branch_join_transfer =
       [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer)
-      -> std::optional<AuthoritativeSelectJoinTransfer> {
-    if (join_transfer.kind !=
-            c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
+      -> std::optional<AuthoritativeBranchJoinTransfer> {
+    if ((join_transfer.kind !=
+             c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization &&
+         join_transfer.kind != c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot) ||
         join_transfer.result.type != c4c::backend::bir::TypeKind::I32) {
       return std::nullopt;
     }
@@ -1569,23 +1570,34 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    return AuthoritativeSelectJoinTransfer{
+    return AuthoritativeBranchJoinTransfer{
         .join_transfer = &join_transfer,
         .true_transfer = authoritative_transfers->true_transfer,
         .false_transfer = authoritative_transfers->false_transfer,
     };
   };
+  const auto find_authoritative_branch_owned_join_transfer =
+      [&](const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+          std::string_view source_block_label)
+      -> std::optional<AuthoritativeBranchJoinTransfer> {
+    const auto* join_transfer =
+        c4c::backend::prepare::find_branch_owned_join_transfer(control_flow, source_block_label);
+    if (join_transfer == nullptr) {
+      return std::nullopt;
+    }
+    return build_authoritative_branch_join_transfer(*join_transfer);
+  };
   const auto find_authoritative_select_materialization_join_transfer =
       [&](const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
           std::string_view source_block_label)
-      -> std::optional<AuthoritativeSelectJoinTransfer> {
+      -> std::optional<AuthoritativeBranchJoinTransfer> {
     const auto* join_transfer =
         c4c::backend::prepare::find_select_materialization_join_transfer(control_flow,
                                                                          source_block_label);
     if (join_transfer == nullptr) {
       return std::nullopt;
     }
-    return build_authoritative_select_join_transfer(*join_transfer);
+    return build_authoritative_branch_join_transfer(*join_transfer);
   };
   struct AuthoritativeJoinBranchSources {
     const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
@@ -1870,7 +1882,7 @@ std::string emit_prepared_module(
       };
     };
     const auto build_short_circuit_join_context_from_transfer =
-        [&](const AuthoritativeSelectJoinTransfer& authoritative_join_transfer,
+        [&](const AuthoritativeBranchJoinTransfer& authoritative_join_transfer,
             const auto& find_branch_condition_fn)
         -> std::optional<ShortCircuitJoinContext> {
       const auto* join_transfer = authoritative_join_transfer.join_transfer;
@@ -4127,6 +4139,35 @@ std::string emit_prepared_module(
     }
     return std::nullopt;
   };
+  const auto find_prepared_eq_i32_branch_condition =
+      [&](const c4c::backend::bir::Block& source_block)
+      -> const c4c::backend::prepare::PreparedBranchCondition* {
+    if (source_block.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
+        source_block.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named) {
+      return nullptr;
+    }
+
+    const auto* function_control_flow = find_control_flow_function();
+    if (function_control_flow == nullptr) {
+      return nullptr;
+    }
+
+    const auto* branch_condition = c4c::backend::prepare::find_prepared_branch_condition(
+        *function_control_flow, source_block.label);
+    if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
+        !branch_condition->compare_type.has_value() || !branch_condition->lhs.has_value() ||
+        !branch_condition->rhs.has_value() ||
+        *branch_condition->predicate != c4c::backend::bir::BinaryOpcode::Eq ||
+        *branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
+        branch_condition->condition_value.kind != c4c::backend::bir::Value::Kind::Named ||
+        branch_condition->condition_value.name != source_block.terminator.condition.name ||
+        branch_condition->true_label != source_block.terminator.true_label ||
+        branch_condition->false_label != source_block.terminator.false_label) {
+      return nullptr;
+    }
+
+    return branch_condition;
+  };
   const auto render_param_derived_return_if_supported =
       [&](const c4c::backend::bir::Value& value,
           const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>&
@@ -4156,22 +4197,8 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto* function_control_flow = find_control_flow_function();
-    const auto* branch_condition =
-        function_control_flow == nullptr
-            ? nullptr
-            : c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
-                                                                    entry.label);
-    if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
-        !branch_condition->compare_type.has_value() || !branch_condition->lhs.has_value() ||
-        !branch_condition->rhs.has_value() ||
-        *branch_condition->predicate != c4c::backend::bir::BinaryOpcode::Eq ||
-        *branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
-        branch_condition->condition_value.kind != c4c::backend::bir::Value::Kind::Named ||
-        entry.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named ||
-        branch_condition->condition_value.name != entry.terminator.condition.name ||
-        branch_condition->true_label != entry.terminator.true_label ||
-        branch_condition->false_label != entry.terminator.false_label) {
+    const auto* branch_condition = find_prepared_eq_i32_branch_condition(entry);
+    if (branch_condition == nullptr) {
       return std::nullopt;
     }
 
@@ -4236,28 +4263,13 @@ std::string emit_prepared_module(
     }
 
     const auto* function_control_flow = find_control_flow_function();
-    if (function_control_flow == nullptr) {
-      return std::nullopt;
-    }
-
-    const auto* branch_condition = c4c::backend::prepare::find_prepared_branch_condition(
-        *function_control_flow, entry.label);
-    if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
-        !branch_condition->compare_type.has_value() || !branch_condition->lhs.has_value() ||
-        !branch_condition->rhs.has_value() ||
-        *branch_condition->predicate != c4c::backend::bir::BinaryOpcode::Eq ||
-        *branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
-        branch_condition->condition_value.kind != c4c::backend::bir::Value::Kind::Named ||
-        entry.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named ||
-        branch_condition->condition_value.name != entry.terminator.condition.name ||
-        branch_condition->true_label != entry.terminator.true_label ||
-        branch_condition->false_label != entry.terminator.false_label) {
+    const auto* branch_condition = find_prepared_eq_i32_branch_condition(entry);
+    if (function_control_flow == nullptr || branch_condition == nullptr) {
       return std::nullopt;
     }
 
     const auto authoritative_join_transfer =
-        find_authoritative_select_materialization_join_transfer(*function_control_flow,
-                                                                entry.label);
+        find_authoritative_branch_owned_join_transfer(*function_control_flow, entry.label);
     if (!authoritative_join_transfer.has_value()) {
       return std::nullopt;
     }

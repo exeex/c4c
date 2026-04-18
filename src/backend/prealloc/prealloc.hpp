@@ -449,18 +449,19 @@ struct PreparedControlFlow {
   return nullptr;
 }
 
-[[nodiscard]] inline const PreparedJoinTransfer* find_select_materialization_join_transfer(
+[[nodiscard]] inline const PreparedJoinTransfer* find_branch_owned_join_transfer(
     const PreparedControlFlowFunction& function_cf,
     std::string_view source_branch_block_label,
+    std::optional<PreparedJoinTransferKind> required_kind = std::nullopt,
     std::optional<std::string_view> true_predecessor_label = std::nullopt,
     std::optional<std::string_view> false_predecessor_label = std::nullopt) {
   const PreparedJoinTransfer* match = nullptr;
   for (const auto& transfer : function_cf.join_transfers) {
-    if (transfer.kind != PreparedJoinTransferKind::SelectMaterialization) {
-      continue;
-    }
     if (!transfer.source_branch_block_label.has_value() ||
         *transfer.source_branch_block_label != source_branch_block_label) {
+      continue;
+    }
+    if (required_kind.has_value() && transfer.kind != *required_kind) {
       continue;
     }
     if (true_predecessor_label.has_value() && false_predecessor_label.has_value()) {
@@ -480,6 +481,18 @@ struct PreparedControlFlow {
     match = &transfer;
   }
   return match;
+}
+
+[[nodiscard]] inline const PreparedJoinTransfer* find_select_materialization_join_transfer(
+    const PreparedControlFlowFunction& function_cf,
+    std::string_view source_branch_block_label,
+    std::optional<std::string_view> true_predecessor_label = std::nullopt,
+    std::optional<std::string_view> false_predecessor_label = std::nullopt) {
+  return find_branch_owned_join_transfer(function_cf,
+                                         source_branch_block_label,
+                                         PreparedJoinTransferKind::SelectMaterialization,
+                                         true_predecessor_label,
+                                         false_predecessor_label);
 }
 
 [[nodiscard]] inline const std::vector<PreparedEdgeValueTransfer>* incoming_transfers_for_join(
