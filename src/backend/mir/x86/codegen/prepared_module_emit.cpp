@@ -3926,22 +3926,44 @@ std::string emit_prepared_module(
   const auto render_materialized_compare_join_return_if_supported =
       [&](const c4c::backend::prepare::PreparedMaterializedCompareJoinReturnContext&
               prepared_return_context,
+          c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape
+              prepared_return_shape,
           const c4c::backend::bir::Param& param) -> std::optional<std::string> {
     const auto value_render =
         render_prepared_computed_value_if_supported(prepared_return_context.selected_value, param);
     if (!value_render.has_value()) {
       return std::nullopt;
     }
-    if (!prepared_return_context.trailing_binary.has_value()) {
-      return *value_render + "    ret\n";
+    switch (prepared_return_shape) {
+      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::ImmediateI32:
+      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::ParamValue:
+      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::GlobalI32Load:
+      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
+          PointerBackedGlobalI32Load:
+        if (prepared_return_context.trailing_binary.has_value()) {
+          return std::nullopt;
+        }
+        return *value_render + "    ret\n";
+      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
+          ImmediateI32WithTrailingImmediateBinary:
+      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
+          ParamValueWithTrailingImmediateBinary:
+      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
+          GlobalI32LoadWithTrailingImmediateBinary:
+      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
+          PointerBackedGlobalI32LoadWithTrailingImmediateBinary: {
+        if (!prepared_return_context.trailing_binary.has_value()) {
+          return std::nullopt;
+        }
+        const auto trailing_render =
+            render_supported_immediate_binary(*prepared_return_context.trailing_binary);
+        if (!trailing_render.has_value()) {
+          return std::nullopt;
+        }
+        return *value_render + *trailing_render + "    ret\n";
+      }
     }
-
-    const auto trailing_render =
-        render_supported_immediate_binary(*prepared_return_context.trailing_binary);
-    if (!trailing_render.has_value()) {
-      return std::nullopt;
-    }
-    return *value_render + *trailing_render + "    ret\n";
+    return std::nullopt;
   };
   const auto render_minimal_compare_branch_if_supported =
       [&]() -> std::optional<std::string> {
@@ -4030,9 +4052,13 @@ std::string emit_prepared_module(
     }
 
     const auto true_return = render_materialized_compare_join_return_if_supported(
-        prepared_render_contract->true_return_context, param);
+        prepared_render_contract->true_return_context,
+        prepared_render_contract->true_return_shape,
+        param);
     const auto false_return = render_materialized_compare_join_return_if_supported(
-        prepared_render_contract->false_return_context, param);
+        prepared_render_contract->false_return_context,
+        prepared_render_contract->false_return_shape,
+        param);
     if (!true_return.has_value() || !false_return.has_value()) {
       return std::nullopt;
     }

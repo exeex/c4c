@@ -3,6 +3,7 @@
 #include "../bir/bir.hpp"
 #include "../../target_profile.hpp"
 
+#include <cstdlib>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -511,6 +512,17 @@ struct PreparedMaterializedCompareJoinReturnContext {
   std::optional<PreparedSupportedImmediateBinary> trailing_binary;
 };
 
+enum class PreparedMaterializedCompareJoinReturnShape {
+  ImmediateI32,
+  ImmediateI32WithTrailingImmediateBinary,
+  ParamValue,
+  ParamValueWithTrailingImmediateBinary,
+  GlobalI32Load,
+  GlobalI32LoadWithTrailingImmediateBinary,
+  PointerBackedGlobalI32Load,
+  PointerBackedGlobalI32LoadWithTrailingImmediateBinary,
+};
+
 struct PreparedMaterializedCompareJoinBranches {
   PreparedMaterializedCompareJoinContext compare_join_context;
   PreparedMaterializedCompareJoinReturnContext true_return_context;
@@ -641,7 +653,9 @@ struct PreparedMaterializedCompareJoinBranchPlan {
 struct PreparedMaterializedCompareJoinRenderContract {
   PreparedMaterializedCompareJoinBranchPlan branch_plan;
   PreparedMaterializedCompareJoinReturnContext true_return_context;
+  PreparedMaterializedCompareJoinReturnShape true_return_shape;
   PreparedMaterializedCompareJoinReturnContext false_return_context;
+  PreparedMaterializedCompareJoinReturnShape false_return_shape;
   std::vector<std::string_view> same_module_global_names;
 };
 
@@ -668,6 +682,35 @@ collect_prepared_computed_value_same_module_globals(
 find_prepared_materialized_compare_join_return_context(
     const PreparedMaterializedCompareJoinContext& compare_join_context,
     const bir::Value& selected_value);
+
+[[nodiscard]] inline PreparedMaterializedCompareJoinReturnShape
+classify_prepared_materialized_compare_join_return_shape(
+    const PreparedMaterializedCompareJoinReturnContext& return_context) {
+  switch (return_context.selected_value.base.kind) {
+    case PreparedComputedBaseKind::ImmediateI32:
+      return return_context.trailing_binary.has_value()
+                 ? PreparedMaterializedCompareJoinReturnShape::
+                       ImmediateI32WithTrailingImmediateBinary
+                 : PreparedMaterializedCompareJoinReturnShape::ImmediateI32;
+    case PreparedComputedBaseKind::ParamValue:
+      return return_context.trailing_binary.has_value()
+                 ? PreparedMaterializedCompareJoinReturnShape::
+                       ParamValueWithTrailingImmediateBinary
+                 : PreparedMaterializedCompareJoinReturnShape::ParamValue;
+    case PreparedComputedBaseKind::GlobalI32Load:
+      return return_context.trailing_binary.has_value()
+                 ? PreparedMaterializedCompareJoinReturnShape::
+                       GlobalI32LoadWithTrailingImmediateBinary
+                 : PreparedMaterializedCompareJoinReturnShape::GlobalI32Load;
+    case PreparedComputedBaseKind::PointerBackedGlobalI32Load:
+      return return_context.trailing_binary.has_value()
+                 ? PreparedMaterializedCompareJoinReturnShape::
+                       PointerBackedGlobalI32LoadWithTrailingImmediateBinary
+                 : PreparedMaterializedCompareJoinReturnShape::PointerBackedGlobalI32Load;
+  }
+
+  std::abort();
+}
 
 [[nodiscard]] inline std::vector<std::string_view>
 collect_prepared_materialized_compare_join_same_module_globals(
@@ -1617,8 +1660,12 @@ find_prepared_materialized_compare_join_render_contract(
       .branch_plan = std::move(*branch_plan),
       .true_return_context =
           prepared_compare_join_branches.prepared_join_branches.true_return_context,
+      .true_return_shape = classify_prepared_materialized_compare_join_return_shape(
+          prepared_compare_join_branches.prepared_join_branches.true_return_context),
       .false_return_context =
           prepared_compare_join_branches.prepared_join_branches.false_return_context,
+      .false_return_shape = classify_prepared_materialized_compare_join_return_shape(
+          prepared_compare_join_branches.prepared_join_branches.false_return_context),
       .same_module_global_names =
           collect_prepared_materialized_compare_join_same_module_globals(
               prepared_compare_join_branches.prepared_join_branches),
