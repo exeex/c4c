@@ -1,181 +1,148 @@
-# X86 Backend C-Testsuite Capability Families Runbook
+# LIR To BIR Memory Semantic Ownership Split Runbook
 
 Status: Active
-Source Idea: ideas/open/54_x86_backend_c_testsuite_capability_families.md
-Activated from: ideas/open/54_x86_backend_c_testsuite_capability_families.md
+Source Idea: ideas/open/55_lir_to_bir_memory_semantic_ownership_split.md
+Supersedes: ideas/open/54_x86_backend_c_testsuite_capability_families.md
+Activated from: ideas/open/55_lir_to_bir_memory_semantic_ownership_split.md
 
 ## Purpose
 
-Resume the umbrella x86 backend capability-family route now that the
-`lir_to_bir_memory.cpp` ownership split is complete and closed as its own
-refactor idea.
+Switch the active route from x86 capability-family execution to the reopened
+memory-ownership prerequisite so `lir_to_bir_memory.cpp` can become a real
+coordinator again before more backend lane work widens the monolith.
 
 ## Goal
 
-Pick one honest x86 backend capability family, prove it across a bounded case
-cluster, and improve the backend-owned x86 surface without testcase overfit or
-fallback-to-IR relaxation.
+Land behavior-preserving second-layer ownership splits for
+`lir_to_bir_memory.cpp` while keeping semantic lowering contracts and proof
+surfaces honest.
 
 ## Core Rule
 
-This runbook is capability work, not another refactor packet. Do not hide
-prepared-module renderer cleanup or unrelated structural churn inside the first
-family packet. If idea `56` turns out to be a real blocker, stop and route that
-through lifecycle instead of silently expanding this plan.
+This runbook is refactor-only. Do not claim backend capability growth, change
+admission behavior, or smuggle x86 family progress into these packets.
 
 ## Read First
 
-- [ideas/open/54_x86_backend_c_testsuite_capability_families.md](/workspaces/c4c/ideas/open/54_x86_backend_c_testsuite_capability_families.md)
-- [ideas/closed/55_lir_to_bir_memory_semantic_ownership_split.md](/workspaces/c4c/ideas/closed/55_lir_to_bir_memory_semantic_ownership_split.md)
-- [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
-- [tests/backend/backend_x86_handoff_boundary_test.cpp](/workspaces/c4c/tests/backend/backend_x86_handoff_boundary_test.cpp)
-- `tests/c/external/c-testsuite/src/*.c` only as probe inputs for family selection
+- [ideas/open/55_lir_to_bir_memory_semantic_ownership_split.md](/workspaces/c4c/ideas/open/55_lir_to_bir_memory_semantic_ownership_split.md)
+- [review/lir_to_bir_memory_split_review.md](/workspaces/c4c/review/lir_to_bir_memory_split_review.md)
+- [src/backend/bir/lir_to_bir.hpp](/workspaces/c4c/src/backend/bir/lir_to_bir.hpp)
+- [src/backend/bir/lir_to_bir_memory.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory.cpp)
+- [src/backend/bir/lir_to_bir_memory_addressing.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory_addressing.cpp)
+- [src/backend/bir/lir_to_bir_memory_provenance.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory_provenance.cpp)
 
 ## Current Targets
 
-- [src/backend/bir/lir_to_bir.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir.cpp)
-- [src/backend/bir/lir_to_bir.hpp](/workspaces/c4c/src/backend/bir/lir_to_bir.hpp)
 - [src/backend/bir/lir_to_bir_memory.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory.cpp)
-- [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
-- [tests/backend/backend_x86_handoff_boundary_test.cpp](/workspaces/c4c/tests/backend/backend_x86_handoff_boundary_test.cpp)
-- bounded `tests/c/external/c-testsuite/src/*.c` cases from one shared family
+- [src/backend/bir/lir_to_bir.hpp](/workspaces/c4c/src/backend/bir/lir_to_bir.hpp)
+- [src/backend/bir/lir_to_bir_memory_addressing.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory_addressing.cpp)
+- [src/backend/bir/lir_to_bir_memory_provenance.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory_provenance.cpp)
+- likely follow-on files under `src/backend/bir/` such as
+  `lir_to_bir_memory_value_materialization.cpp` and
+  `lir_to_bir_memory_local_slots.cpp`
+- backend-owned proof surfaces already active around this route
 
 ## Non-Goals
 
-- re-opening the closed memory ownership split from idea `55`
-- silently absorbing idea `56` into this runbook
-- weakening `x86_backend` expectations to tolerate fallback LLVM IR
-- single-testcase shortcuts that leave the same family unsupported nearby
-- claiming broad backend readiness from one bounded packet
+- claiming progress on the x86 c-testsuite capability-family route
+- de-headerizing `src/backend/mir/x86/codegen/x86_codegen.hpp`
+- splitting by testcase, packet nickname, or equal line counts
+- forcing a fake `local` versus `global` file divide
+- moving `lower_scalar_or_local_memory_inst` out of the main coordinator TU
 
 ## Working Model
 
-- Idea `54` is the umbrella source idea for real x86 backend capability-family
-  convergence.
-- Idea `55` is complete, so the next packet must re-baseline the active fail
-  surface instead of assuming the earlier local-memory proving cluster is still
-  the right first move.
-- Idea `56` stays a parallel open idea unless the currently selected capability
-  packet proves the prepared-module renderer boundary is the immediate blocker.
-- The first coherent packet should name one dominant capability family and
-  prove it across a small related case cluster plus the backend notes and x86
-  handoff tests.
-
-## Route Checkpoint
-
-- The attempted bounded integer-switch packet showed that `00158` and `00193`
-  were not a coherent first proving cluster for this runbook.
-- Backend-only integer-switch lowering and handoff support can be useful probe
-  work, but it does not count as the first accepted capability-family packet
-  unless at least one chosen c-testsuite lane shares the same remaining
-  mechanism.
-- Treat loop-plus-direct-runtime control flow and multi-defined-helper-function
-  prepared-module support as deeper x86 handoff subfamilies, not as evidence
-  that a pure switch-lowering lane is already proven.
+- `lir_to_bir_memory.cpp` should remain the opcode-lowering coordinator.
+- `lir_to_bir_memory_addressing.cpp` owns shared layout and address-walking
+  helpers.
+- `lir_to_bir_memory_provenance.cpp` owns pointer provenance and addressed
+  object reasoning.
+- The reopened route adds explicit homes for value materialization and
+  local-slot or local-aggregate mechanics when read-through confirms those
+  seams.
+- Each packet must be understandable as move/extract work first, with behavior
+  preserved and proof run afterward.
 
 ## Execution Rules
 
-- Prefer semantic lowering or prepared-module boundary repair over testcase
-  recognition.
-- Keep proof honest: build first, then narrow backend or x86 proofs, then the
-  broader `x86_backend` checkpoint when a coherent slice lands.
-- If the chosen family touches shared lowering outside the bounded lane,
-  escalate validation before acceptance.
-- If renderer de-headerization becomes required, stop and request lifecycle
-  repair rather than mixing idea `56` into a capability packet.
+- Prefer semantic ownership seams over convenience slices.
+- Keep new declarations and definitions coherent across `lir_to_bir.hpp` and
+  the extracted `.cpp` owners.
+- If a helper is ambiguous, choose the strongest semantic owner rather than
+  leaving it in `lir_to_bir_memory.cpp` by default.
+- Validate every packet as `build -> narrow backend proof`, and broaden proof
+  if the extraction reaches beyond the immediate seam.
+- If execution uncovers a separate initiative, stop and route it through
+  lifecycle instead of stretching this refactor plan.
 
-## Step 1. Re-Baseline And Choose The First Family
+## Step 1. Re-Read And Confirm Ownership Buckets
 
-Goal: Refresh the current x86 backend fail surface after the completed memory
-split and choose one dominant family for the first capability packet.
-
-Primary targets:
-- `tests/c/external/c-testsuite/src/*.c`
-- [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
-- [tests/backend/backend_x86_handoff_boundary_test.cpp](/workspaces/c4c/tests/backend/backend_x86_handoff_boundary_test.cpp)
-
-Actions:
-- inspect the current `x86_backend` or equivalent bounded fail surface
-- cluster the visible failures by shared backend mechanism
-- separate backend-only scalar-control-flow probes from c-testsuite-credible
-  proving lanes
-- pick one first family and name a narrow proving set from that cluster
-- require the proving set to share one remaining semantic-lowering or x86
-  prepared-module mechanism after backend boundary probes are added
-- decide whether idea `56` remains parallel for this packet or is a real blocker
-
-Completion check:
-- the next packet has one named capability family, one bounded proving cluster
-  whose cases share the same remaining mechanism, and an explicit judgment on
-  whether idea `56` stays out of scope
-
-## Step 2. Lock The Family Boundary In Backend Tests
-
-Goal: Make the supported versus unsupported line visible in backend-owned proof
-surfaces before widening implementation.
+Goal: Reconfirm the next extraction seam before moving code.
 
 Primary targets:
-- [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
-- [tests/backend/backend_x86_handoff_boundary_test.cpp](/workspaces/c4c/tests/backend/backend_x86_handoff_boundary_test.cpp)
-
-Actions:
-- update or add the narrowest backend notes and x86 handoff assertions needed
-  for the chosen family
-- describe the lane by capability family rather than by testcase name
-- keep existing unsupported boundaries truthful where support has not landed yet
-
-Completion check:
-- backend notes and handoff proofs describe the chosen family clearly enough to
-  keep later packets honest
-
-## Step 3. Implement One Honest Capability Lane
-
-Goal: Land one bounded semantic-lowering or prepared-module boundary repair for
-the chosen family.
-
-Primary targets:
-- [src/backend/bir/lir_to_bir.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir.cpp)
 - [src/backend/bir/lir_to_bir.hpp](/workspaces/c4c/src/backend/bir/lir_to_bir.hpp)
 - [src/backend/bir/lir_to_bir_memory.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory.cpp)
-- adjacent prepared-module ingestion files only if the family truly requires them
+- [src/backend/bir/lir_to_bir_memory_addressing.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory_addressing.cpp)
+- [src/backend/bir/lir_to_bir_memory_provenance.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory_provenance.cpp)
 
 Actions:
-- implement the smallest truthful capability repair that explains the chosen
-  family
-- keep the route in semantic lowering and honest prepared-module ingestion
-- check nearby same-family cases so the change is not just one testcase-shaped fix
-- if backend-only probe support lands but the chosen c-tests still fail on a
-  deeper loop/runtime or multi-function handoff gate, stop and repair the
-  family selection before claiming packet progress
+- inspect the remaining helpers still owned by `lir_to_bir_memory.cpp`
+- classify them as coordinator glue, value materialization, local-slot or
+  local-aggregate mechanics, or remaining provenance/addressing work
+- choose one extraction packet whose ownership is coherent and behavior
+  preserving
+- name the narrow backend proof surface that stays active for the packet
 
 Completion check:
-- one bounded family lane is supported honestly across more than one nearby case
+- the next packet has one explicit ownership seam, owned files are clear, and
+  the proof command is chosen before edits begin
 
-## Step 4. Prove The Packet Narrowly
+## Step 2. Extract One Second-Layer Ownership Bucket
 
-Goal: Validate the chosen lane on the narrow backend and x86 proofs that
-directly cover the packet.
+Goal: Move one coherent helper family out of the coordinator TU.
+
+Primary targets:
+- [src/backend/bir/lir_to_bir_memory.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory.cpp)
+- [src/backend/bir/lir_to_bir.hpp](/workspaces/c4c/src/backend/bir/lir_to_bir.hpp)
+- one extracted owner file under `src/backend/bir/`
+
+Actions:
+- move one coherent helper cluster into its semantic owner
+- keep `lower_scalar_or_local_memory_inst` as the main coordinator
+- preserve signatures and call flow clarity across the split
+- keep the packet free of claimed lowering or backend-capability behavior
+  changes
+
+Completion check:
+- one helper family now lives under a clearer owner and the main coordinator TU
+  shrinks without changing the route's behavior contract
+
+## Step 3. Prove The Refactor Packet Narrowly
+
+Goal: Show the extraction is behavior preserving on the active backend proof
+surface.
 
 Actions:
 - run `cmake --build --preset default`
-- run the backend notes and x86 handoff proofs relevant to the chosen family
-- run the targeted c-testsuite cases chosen in Step 1
+- run the chosen narrow backend proof command for this packet
+- capture the exact proving command and result in `todo.md`
 
 Completion check:
-- the narrow proving set passes and still describes the lane truthfully
+- the build passes, the narrow proof passes, and the packet is recorded as
+  refactor-only progress
 
-## Step 5. Checkpoint The X86 Backend Surface
+## Step 4. Check Coordinator Health
 
-Goal: Confirm the packet moves the backend-owned x86 surface honestly and
-record whether more work remains in the same family.
+Goal: Decide whether the coordinator still carries the next obvious ownership
+bucket or whether activation should return to the x86 umbrella later.
 
 Actions:
-- run `ctest --test-dir build -L x86_backend --output-on-failure`
-- compare the pass/fail surface against the pre-packet baseline
-- record the family-level result in `todo.md`
-- if the packet reveals a separate blocker initiative, route it into
-  `ideas/open/` instead of stretching this runbook
+- compare the remaining helper mix in `lir_to_bir_memory.cpp` against the idea
+  55 target seams
+- record the next honest extraction candidate in `todo.md`
+- if the reopened split is no longer the active blocker, leave a clear handoff
+  for the next lifecycle checkpoint
 
 Completion check:
-- the packet can be described as real family progress, or it stops with an
-  explicit blocker and truthful boundary notes instead of pretending success
+- the next packet is described by ownership, not by a testcase or temporary
+  lane name
