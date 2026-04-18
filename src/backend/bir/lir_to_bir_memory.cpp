@@ -911,81 +911,13 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         return fail_gep();
       }
       return true;
-    } else if (const auto local_slot_ptr_it = local_slot_pointer_values.find(gep->ptr.str());
-               local_slot_ptr_it != local_slot_pointer_values.end()) {
-      auto resolved_target = resolve_relative_gep_target(
-          local_slot_ptr_it->second.type_text,
-          local_slot_ptr_it->second.byte_offset,
-          *gep,
-          value_aliases,
-          type_decls);
-      if (!local_slot_ptr_it->second.array_element_slots.empty() && gep->indices.size() == 1) {
-        const auto parsed_index = parse_typed_operand(gep->indices.front());
-        if (!parsed_index.has_value()) {
-          return fail_gep();
-        }
-        const auto index_imm = resolve_index_operand(parsed_index->operand, value_aliases);
-        if (!index_imm.has_value()) {
-          return fail_gep();
-        }
-        const auto base_slot = local_slot_ptr_it->second.array_element_slots.front();
-        const auto slot_type_it = local_slot_types.find(base_slot);
-        if (slot_type_it == local_slot_types.end()) {
-          return fail_gep();
-        }
-        const auto slot_size = type_size_bytes(slot_type_it->second);
-        if (slot_size == 0) {
-          return fail_gep();
-        }
-        const auto final_byte_offset =
-            local_slot_ptr_it->second.byte_offset +
-            *index_imm * static_cast<std::int64_t>(slot_size);
-        if (!resolved_target.has_value()) {
-          resolved_target = LocalAggregateGepTarget{
-              .type_text = render_type(slot_type_it->second),
-              .byte_offset = final_byte_offset,
-          };
-        }
-      }
-      if (!resolved_target.has_value()) {
+    } else if (const auto handled_local_slot_gep =
+                   try_lower_local_slot_pointer_gep(
+                       *gep, value_aliases, type_decls, local_slot_types, &local_slot_pointer_values);
+               handled_local_slot_gep.has_value()) {
+      if (!*handled_local_slot_gep) {
         return fail_gep();
       }
-      const auto leaf_layout = compute_aggregate_type_layout(resolved_target->type_text, type_decls);
-      LocalSlotAddress resolved_address{
-          .slot_name = local_slot_ptr_it->second.slot_name,
-          .value_type = leaf_layout.kind == AggregateTypeLayout::Kind::Scalar
-                            ? leaf_layout.scalar_type
-                            : bir::TypeKind::Void,
-          .byte_offset = resolved_target->byte_offset,
-          .storage_type_text = local_slot_ptr_it->second.storage_type_text,
-          .type_text = std::move(resolved_target->type_text),
-      };
-      if (!local_slot_ptr_it->second.array_element_slots.empty()) {
-        const auto base_slot = local_slot_ptr_it->second.array_element_slots.front();
-        const auto slot_type_it = local_slot_types.find(base_slot);
-        if (slot_type_it != local_slot_types.end()) {
-          const auto slot_size = type_size_bytes(slot_type_it->second);
-          if (slot_size != 0 &&
-              resolved_address.value_type == slot_type_it->second &&
-              resolved_address.byte_offset >= 0 &&
-              resolved_address.byte_offset % slot_size == 0 &&
-              static_cast<std::size_t>(resolved_address.byte_offset / slot_size) <=
-                  local_slot_ptr_it->second.array_element_slots.size()) {
-            resolved_address.slot_name = base_slot;
-            resolved_address.storage_type_text = render_type(slot_type_it->second);
-            resolved_address.type_text = render_type(slot_type_it->second);
-            resolved_address.array_element_slots = local_slot_ptr_it->second.array_element_slots;
-            resolved_address.array_base_index =
-                static_cast<std::size_t>(resolved_address.byte_offset / slot_size);
-          } else {
-            resolved_address.slot_name = base_slot;
-            resolved_address.storage_type_text = render_type(slot_type_it->second);
-            resolved_address.type_text = render_type(slot_type_it->second);
-            resolved_address.array_element_slots = local_slot_ptr_it->second.array_element_slots;
-          }
-        }
-      }
-      local_slot_pointer_values[gep->result.str()] = std::move(resolved_address);
       return true;
     } else {
       const auto addressed_ptr_it = pointer_value_addresses.find(gep->ptr.str());

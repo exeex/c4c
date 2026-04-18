@@ -6,19 +6,20 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2: extracted the remaining coordinator-side dynamic local-aggregate
-GEP projection lookup from `src/backend/bir/lir_to_bir_memory.cpp` into
+Plan Step 2: extracted the coordinator-side
+`local_slot_pointer_values.find(...)` GEP branch from
+`src/backend/bir/lir_to_bir_memory.cpp` into
 `src/backend/bir/lir_to_bir_memory_local_slots.cpp` as
-`try_lower_dynamic_local_aggregate_gep_projection`, so the coordinator now only
-dispatches that family while local-slot ownership handles the dynamic local
-aggregate map lookup and pointer-array projection result.
+`try_lower_local_slot_pointer_gep`, so the coordinator now only dispatches that
+local-slot-owned family while the helper owns the local-slot map lookup,
+relative GEP target resolution, and rewritten `LocalSlotAddress` result.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by re-reading the remaining local dynamic
-pointer-array and local-slot helper branches in
-`src/backend/bir/lir_to_bir_memory.cpp`, then choose the next coherent
-coordinator-owned local-slot mechanics wrapper rather than widening into
+Continue `plan.md` Step 2 by extracting the remaining
+`local_pointer_array_bases.find(...)` GEP branch in
+`src/backend/bir/lir_to_bir_memory.cpp` into a local-slot-owned helper, keeping
+the packet limited to that coordinator dispatch seam rather than widening into
 addressing or provenance helpers.
 
 ## Watchouts
@@ -26,23 +27,17 @@ addressing or provenance helpers.
 - This plan is refactor-only; do not claim x86 backend capability progress from
   it.
 - Keep `lower_scalar_or_local_memory_inst` in the main coordinator TU.
-- `build_dynamic_local_aggregate_array_access` now owns repeated-extent
-  packaging, and `resolve_dynamic_local_aggregate_gep_projection` now owns the
-  per-element slot projection, while
-  `try_lower_dynamic_local_aggregate_store` and
-  `try_lower_dynamic_local_aggregate_load` now own the dynamic local aggregate
-  store/load dispatch mechanics, and
-  `try_lower_dynamic_local_aggregate_gep_projection` now owns the remaining GEP
-  map lookup and dispatch for that family; keep future packets focused on the
-  next honest local-slot-owned wrapper instead of pulling shared addressing
-  helpers across ownership buckets.
+- `try_lower_local_slot_pointer_gep` now owns the
+  `local_slot_pointer_values` lookup and relative-address rewrite path; the
+  next packet should not pull that logic back into the coordinator while
+  extracting the adjacent `local_pointer_array_bases` family.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:
   0`; treat the canonical log pair as unchanged-behavior evidence, not as a
   newly introduced regression.
-- The next packet should still be chosen by the next coherent
-  coordinator-owned local dynamic aggregate helper family, not by line counts
-  or by emptying `lir_to_bir_memory.cpp` for its own sake.
+- Keep future packets focused on the next honest local-slot-owned wrapper
+  instead of pulling shared addressing helpers across ownership buckets or
+  emptying `lir_to_bir_memory.cpp` for its own sake.
 - Treat renderer de-headerization as separate idea `56`.
 
 ## Proof
