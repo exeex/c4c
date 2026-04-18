@@ -2977,7 +2977,12 @@ std::string emit_prepared_module(
     const auto& join_transfer = function_control_flow->join_transfers.front();
     if (join_transfer.kind != c4c::backend::prepare::PreparedJoinTransferKind::LoopCarry ||
         !join_transfer.storage_name.has_value() || join_transfer.result.type != c4c::backend::bir::TypeKind::I32 ||
-        join_transfer.incomings.size() != 2) {
+        join_transfer.edge_transfers.size() != 2) {
+      return std::nullopt;
+    }
+    const auto* join_edges = incoming_transfers_for_join(
+        *function_control_flow, join_transfer.join_block_label, join_transfer.result.name);
+    if (join_edges == nullptr || join_edges->size() != 2) {
       return std::nullopt;
     }
 
@@ -3063,22 +3068,22 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const c4c::backend::bir::PhiIncoming* entry_incoming = nullptr;
-    const c4c::backend::bir::PhiIncoming* body_incoming = nullptr;
-    for (const auto& incoming : join_transfer.incomings) {
-      if (incoming.label == entry.label) {
+    const c4c::backend::prepare::PreparedEdgeValueTransfer* entry_incoming = nullptr;
+    const c4c::backend::prepare::PreparedEdgeValueTransfer* body_incoming = nullptr;
+    for (const auto& incoming : *join_edges) {
+      if (incoming.predecessor_label == entry.label) {
         entry_incoming = &incoming;
-      } else if (incoming.label == body_block->label) {
+      } else if (incoming.predecessor_label == body_block->label) {
         body_incoming = &incoming;
       }
     }
     if (entry_incoming == nullptr || body_incoming == nullptr ||
-        entry_incoming->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
-        entry_incoming->value.type != c4c::backend::bir::TypeKind::I32 ||
-        entry_incoming->value.immediate < 0 ||
-        body_incoming->value.kind != c4c::backend::bir::Value::Kind::Named ||
-        body_incoming->value.type != c4c::backend::bir::TypeKind::I32 ||
-        body_incoming->value.name != body_update->result.name) {
+        entry_incoming->incoming_value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        entry_incoming->incoming_value.type != c4c::backend::bir::TypeKind::I32 ||
+        entry_incoming->incoming_value.immediate < 0 ||
+        body_incoming->incoming_value.kind != c4c::backend::bir::Value::Kind::Named ||
+        body_incoming->incoming_value.type != c4c::backend::bir::TypeKind::I32 ||
+        body_incoming->incoming_value.name != body_update->result.name) {
       return std::nullopt;
     }
 
@@ -3088,7 +3093,8 @@ std::string emit_prepared_module(
 
     auto asm_text = asm_prefix;
     asm_text += "    mov eax, " +
-                std::to_string(static_cast<std::int32_t>(entry_incoming->value.immediate)) + "\n";
+                std::to_string(static_cast<std::int32_t>(entry_incoming->incoming_value.immediate)) +
+                "\n";
     asm_text += loop_label + ":\n";
     asm_text += "    test eax, eax\n";
     asm_text += "    je " + exit_label_asm + "\n";
@@ -4042,14 +4048,15 @@ std::string emit_prepared_module(
     const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
     for (const auto& candidate : function_control_flow->join_transfers) {
       if (candidate.kind != c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
-          candidate.result.type != c4c::backend::bir::TypeKind::I32 || candidate.incomings.size() != 2) {
+          candidate.result.type != c4c::backend::bir::TypeKind::I32 ||
+          candidate.edge_transfers.size() != 2) {
         continue;
       }
       bool saw_true = false;
       bool saw_false = false;
-      for (const auto& incoming : candidate.incomings) {
-        saw_true = saw_true || incoming.label == branch_condition->true_label;
-        saw_false = saw_false || incoming.label == branch_condition->false_label;
+      for (const auto& incoming : candidate.edge_transfers) {
+        saw_true = saw_true || incoming.predecessor_label == branch_condition->true_label;
+        saw_false = saw_false || incoming.predecessor_label == branch_condition->false_label;
       }
       if (!saw_true || !saw_false) {
         continue;
@@ -4060,6 +4067,11 @@ std::string emit_prepared_module(
       join_transfer = &candidate;
     }
     if (join_transfer == nullptr) {
+      return std::nullopt;
+    }
+    const auto* join_edges = incoming_transfers_for_join(
+        *function_control_flow, join_transfer->join_block_label, join_transfer->result.name);
+    if (join_edges == nullptr || join_edges->size() != 2) {
       return std::nullopt;
     }
 
@@ -4116,9 +4128,9 @@ std::string emit_prepared_module(
 
     const auto find_incoming_value =
         [&](std::string_view label) -> const c4c::backend::bir::Value* {
-      for (const auto& incoming : join_transfer->incomings) {
-        if (incoming.label == label) {
-          return &incoming.value;
+      for (const auto& incoming : *join_edges) {
+        if (incoming.predecessor_label == label) {
+          return &incoming.incoming_value;
         }
       }
       return nullptr;

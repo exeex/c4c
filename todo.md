@@ -8,25 +8,29 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed Step 2 packet work in `src/backend/prealloc/legalize.cpp` and
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by classifying the
-countdown loop join as explicit `LoopCarry` prepared control-flow and keeping
-the current x86 loop consumer keyed to that stronger contract.
+Completed Step 3 packet work in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving the covered
+return-select and countdown loop consumers onto prepared `edge_transfers`
+lookups instead of relying on legacy join `incomings`.
 
 ## Suggested Next
 
-Continue Step 2 with a bounded packet that publishes explicit loop-carry edge
-membership beyond the minimal countdown lane so later x86 consumers can stop
-depending on legacy `incomings` shape for backedge ownership.
+Continue Step 3 with a bounded packet that removes the remaining x86
+short-circuit helper dependence on legacy `PreparedJoinTransfer::incomings`,
+likely by extending the prepared contract so truth-to-edge ownership is explicit
+without inferring it from rewritten incoming labels.
 
 ## Watchouts
 
 - Do not activate umbrella idea 57 as executable work.
 - Do not pull in idea 59 instruction-selection scope.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth.
-- The countdown loop route now expects `LoopCarry`, but most consumers still
-  rely on legacy `incomings` and branch fields; follow-up packets should move
-  those consumers in bounded slices instead of deleting compatibility fields.
+- Shared lowering still publishes both `incomings` and `edge_transfers`; follow-up
+  packets should keep migrating consumers before considering any producer-side
+  compatibility cleanup.
+- The short-circuit control-flow ownership check currently mutates join incoming
+  labels independently of `edge_transfers`, so that consumer site needs a
+  stronger prepared truth-to-edge contract before it can migrate cleanly.
 
 ## Proof
 
