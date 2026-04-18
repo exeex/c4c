@@ -1577,6 +1577,20 @@ std::string emit_prepared_module(
       std::string compare_setup;
     };
     const auto* function_control_flow = find_control_flow_function();
+    const auto resolve_direct_branch_targets =
+        [&](const c4c::backend::bir::Block& source_block,
+            std::string_view true_label,
+            std::string_view false_label) -> std::optional<DirectBranchTargets> {
+      DirectBranchTargets targets{
+          .true_block = find_block(true_label),
+          .false_block = find_block(false_label),
+      };
+      if (targets.true_block == nullptr || targets.false_block == nullptr ||
+          targets.true_block == &source_block || targets.false_block == &source_block) {
+        return std::nullopt;
+      }
+      return targets;
+    };
     const auto build_compare_join_continuation =
         [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
             const c4c::backend::bir::Block& join_block,
@@ -1605,10 +1619,10 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
 
-      const auto* join_true = find_block(join_branch_condition.true_label);
-      const auto* join_false = find_block(join_branch_condition.false_label);
-      if (join_true == nullptr || join_false == nullptr || join_true == &join_block ||
-          join_false == &join_block) {
+      const auto direct_targets = resolve_direct_branch_targets(join_block,
+                                                                join_branch_condition.true_label,
+                                                                join_branch_condition.false_label);
+      if (!direct_targets.has_value()) {
         return std::nullopt;
       }
 
@@ -1618,29 +1632,15 @@ std::string emit_prepared_module(
           .false_block = nullptr,
       };
       if (*join_branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Ne) {
-        continuation.true_block = join_true;
-        continuation.false_block = join_false;
+        continuation.true_block = direct_targets->true_block;
+        continuation.false_block = direct_targets->false_block;
       } else if (*join_branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Eq) {
-        continuation.true_block = join_false;
-        continuation.false_block = join_true;
+        continuation.true_block = direct_targets->false_block;
+        continuation.false_block = direct_targets->true_block;
       } else {
         return std::nullopt;
       }
       return continuation;
-    };
-    const auto resolve_direct_branch_targets =
-        [&](const c4c::backend::bir::Block& source_block,
-            std::string_view true_label,
-            std::string_view false_label) -> std::optional<DirectBranchTargets> {
-      DirectBranchTargets targets{
-          .true_block = find_block(true_label),
-          .false_block = find_block(false_label),
-      };
-      if (targets.true_block == nullptr || targets.false_block == nullptr ||
-          targets.true_block == &source_block || targets.false_block == &source_block) {
-        return std::nullopt;
-      }
-      return targets;
     };
     const auto classify_short_circuit_join_incoming =
         [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer)
