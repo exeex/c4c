@@ -9,19 +9,22 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting the
-compare-join recognition in `detect_short_circuit_plan_from_control_flow()`
-into `build_compare_join_continuation()`. The x86 consumer now validates the
-prepared join-result zero-compare and continuation target mapping through one
-helper before assigning compare-true and compare-false targets from prepared
-transfer ownership.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by splitting the
+remaining short-circuit plan assembly in
+`detect_short_circuit_plan_from_control_flow()` into prepared-data-oriented
+helpers. Join incoming classification now flows through
+`classify_short_circuit_join_incoming()`, and compare-true/compare-false
+target construction now flows through
+`build_short_circuit_target_from_transfer()` using prepared transfer indices
+and predecessor labels as the ownership contract.
 
 ## Suggested Next
 
-The next small Step 3 packet is to tighten the remaining
-`detect_short_circuit_plan_from_control_flow()` plan assembly so join incoming
-classification and `ShortCircuitTarget` construction read more directly as
-prepared-data lookups instead of one monolithic lambda.
+The next small Step 3 packet is to trim the remaining
+`detect_short_circuit_plan_from_control_flow()` entry-condition validation into
+one helper so the body reads as prepared branch lookup, join-transfer lookup,
+continuation lookup, and final render selection instead of one long guard
+chain.
 
 ## Watchouts
 
@@ -35,6 +38,10 @@ prepared-data lookups instead of one monolithic lambda.
   zero-compare contract; future cleanup here should keep `Eq`/`Ne` mapping and
   jump-target choice data-driven rather than pushing them back into the main
   matcher body.
+- `classify_short_circuit_join_incoming()` assumes the prepared select join
+  still carries exactly one bool-like immediate lane and one named RHS lane;
+  if that invariant changes, fix the shared contract rather than re-growing
+  emitter-local pattern matching.
 - Do not treat `source_true_incoming_label` or `source_false_incoming_label` as
   the x86 continuation ownership contract; the authoritative predecessor still
   lives in `edge_transfers[source_*_transfer_index].predecessor_label`.

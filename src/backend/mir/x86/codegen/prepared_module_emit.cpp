@@ -1535,6 +1535,10 @@ std::string emit_prepared_module(
       ShortCircuitTarget on_compare_true;
       ShortCircuitTarget on_compare_false;
     };
+    struct ClassifiedShortCircuitIncoming {
+      std::size_t transfer_index = 0;
+      bool short_circuit_value = false;
+    };
     struct MaterializedI32Compare {
       std::string_view i1_name;
       std::optional<std::string_view> i32_name;
@@ -1592,6 +1596,67 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
       return continuation;
+    };
+    const auto classify_short_circuit_join_incoming =
+        [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer)
+        -> std::optional<ClassifiedShortCircuitIncoming> {
+      const auto classify_join_incoming =
+          [](const c4c::backend::prepare::PreparedEdgeValueTransfer& incoming)
+          -> std::variant<std::monostate, bool, std::string_view> {
+        if (incoming.incoming_value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+            incoming.incoming_value.type == c4c::backend::bir::TypeKind::I32 &&
+            (incoming.incoming_value.immediate == 0 || incoming.incoming_value.immediate == 1)) {
+          return incoming.incoming_value.immediate != 0;
+        }
+        if (incoming.incoming_value.kind == c4c::backend::bir::Value::Kind::Named) {
+          return incoming.incoming_value.name;
+        }
+        return std::monostate{};
+      };
+
+      const auto incoming0_kind = classify_join_incoming(join_transfer.edge_transfers[0]);
+      const auto incoming1_kind = classify_join_incoming(join_transfer.edge_transfers[1]);
+      const bool incoming0_is_bool = std::holds_alternative<bool>(incoming0_kind);
+      const bool incoming1_is_bool = std::holds_alternative<bool>(incoming1_kind);
+      const bool incoming0_is_named = std::holds_alternative<std::string_view>(incoming0_kind);
+      const bool incoming1_is_named = std::holds_alternative<std::string_view>(incoming1_kind);
+      if (!((incoming0_is_bool && incoming1_is_named) ||
+            (incoming0_is_named && incoming1_is_bool))) {
+        return std::nullopt;
+      }
+
+      return ClassifiedShortCircuitIncoming{
+          .transfer_index = incoming0_is_bool ? std::size_t{0} : std::size_t{1},
+          .short_circuit_value =
+              incoming0_is_bool ? std::get<bool>(incoming0_kind) : std::get<bool>(incoming1_kind),
+      };
+    };
+    const auto build_short_circuit_target_from_transfer =
+        [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
+            std::size_t transfer_index,
+            const ClassifiedShortCircuitIncoming& classified_incoming,
+            const c4c::backend::bir::Block& rhs_entry,
+            const GuardJoinContinuation& continuation_plan)
+        -> std::optional<ShortCircuitTarget> {
+      if (transfer_index >= join_transfer.edge_transfers.size()) {
+        return std::nullopt;
+      }
+      if (transfer_index == classified_incoming.transfer_index) {
+        const auto* target =
+            classified_incoming.short_circuit_value ? continuation_plan.true_block
+                                                    : continuation_plan.false_block;
+        return ShortCircuitTarget{
+            .block = target,
+            .continuation = std::nullopt,
+        };
+      }
+
+      GuardJoinContinuation continuation = continuation_plan;
+      continuation.incoming_label = join_transfer.edge_transfers[transfer_index].predecessor_label;
+      return ShortCircuitTarget{
+          .block = &rhs_entry,
+          .continuation = continuation,
+      };
     };
 
     const auto render_function_return =
@@ -2317,77 +2382,40 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
-            const auto classify_join_incoming =
-                [](const c4c::backend::prepare::PreparedEdgeValueTransfer& incoming)
-                -> std::variant<std::monostate, bool, std::string_view> {
-              if (incoming.incoming_value.kind == c4c::backend::bir::Value::Kind::Immediate &&
-                  incoming.incoming_value.type == c4c::backend::bir::TypeKind::I32 &&
-                  (incoming.incoming_value.immediate == 0 || incoming.incoming_value.immediate == 1)) {
-                return incoming.incoming_value.immediate != 0;
-              }
-              if (incoming.incoming_value.kind == c4c::backend::bir::Value::Kind::Named) {
-                return incoming.incoming_value.name;
-              }
-              return std::monostate{};
-            };
-            const auto incoming0_kind = classify_join_incoming(join_transfer->edge_transfers[0]);
-            const auto incoming1_kind = classify_join_incoming(join_transfer->edge_transfers[1]);
-            const bool incoming0_is_bool = std::holds_alternative<bool>(incoming0_kind);
-            const bool incoming1_is_bool = std::holds_alternative<bool>(incoming1_kind);
-            const bool incoming0_is_named = std::holds_alternative<std::string_view>(incoming0_kind);
-            const bool incoming1_is_named = std::holds_alternative<std::string_view>(incoming1_kind);
-            if (!((incoming0_is_bool && incoming1_is_named) ||
-                  (incoming0_is_named && incoming1_is_bool))) {
+            const auto classified_incoming =
+                classify_short_circuit_join_incoming(*join_transfer);
+            if (!classified_incoming.has_value()) {
               return std::nullopt;
             }
-
-            const std::size_t short_circuit_index = incoming0_is_bool ? 0 : 1;
-            const bool short_circuit_value =
-                incoming0_is_bool ? std::get<bool>(incoming0_kind) : std::get<bool>(incoming1_kind);
             const bool short_circuit_on_compare_true =
-                short_circuit_index == *join_transfer->source_true_transfer_index;
+                classified_incoming->transfer_index == *join_transfer->source_true_transfer_index;
             const bool short_circuit_on_compare_false =
-                short_circuit_index == *join_transfer->source_false_transfer_index;
+                classified_incoming->transfer_index == *join_transfer->source_false_transfer_index;
             if (short_circuit_on_compare_true == short_circuit_on_compare_false) {
               return std::nullopt;
             }
 
             const auto* rhs_entry = short_circuit_on_compare_true ? false_block : true_block;
-            auto continuation_plan = build_compare_join_continuation(
+            const auto continuation_plan = build_compare_join_continuation(
                 *join_transfer, *join_block, *join_branch_condition);
             if (!continuation_plan.has_value()) {
               return std::nullopt;
             }
 
-            const auto build_short_circuit_target =
-                [&](std::size_t transfer_index) -> std::optional<ShortCircuitTarget> {
-              if (transfer_index >= join_transfer->edge_transfers.size()) {
-                return std::nullopt;
-              }
-              if (transfer_index == short_circuit_index) {
-                const auto* target =
-                    short_circuit_value ? continuation_plan->true_block
-                                        : continuation_plan->false_block;
-                return ShortCircuitTarget{
-                    .block = target,
-                    .continuation = std::nullopt,
-                };
-              }
-
-              GuardJoinContinuation continuation = *continuation_plan;
-              continuation.incoming_label =
-                  join_transfer->edge_transfers[transfer_index].predecessor_label;
-              return ShortCircuitTarget{
-                  .block = rhs_entry,
-                  .continuation = continuation,
-              };
-            };
-
             ShortCircuitPlan plan;
             const auto on_compare_true =
-                build_short_circuit_target(*join_transfer->source_true_transfer_index);
+                build_short_circuit_target_from_transfer(*join_transfer,
+                                                        *join_transfer->source_true_transfer_index,
+                                                        *classified_incoming,
+                                                        *rhs_entry,
+                                                        *continuation_plan);
             const auto on_compare_false =
-                build_short_circuit_target(*join_transfer->source_false_transfer_index);
+                build_short_circuit_target_from_transfer(
+                    *join_transfer,
+                    *join_transfer->source_false_transfer_index,
+                    *classified_incoming,
+                    *rhs_entry,
+                    *continuation_plan);
             if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
               return std::nullopt;
             }
