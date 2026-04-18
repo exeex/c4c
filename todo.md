@@ -50,5 +50,5 @@ calls plus the returned render fragments.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 false-label cleanup packet;
-`test_after.log` remains the canonical proof log path.
+The build and narrow proof passed for this Step 3 render-context cleanup
+packet; `test_after.log` remains the canonical proof log path.
