@@ -1681,6 +1681,38 @@ std::string emit_prepared_module(
           .continuation = continuation,
       };
     };
+    const auto build_short_circuit_plan =
+        [&](const ShortCircuitJoinContext& join_context,
+            const ShortCircuitEntryRoutingContext& routing_context)
+        -> std::optional<ShortCircuitPlan> {
+      const auto on_compare_true =
+          build_short_circuit_target_from_transfer(
+              *join_context.join_transfer,
+              *join_context.join_transfer->source_true_transfer_index,
+              routing_context.classified_incoming,
+              *routing_context.rhs_entry,
+              join_context.continuation_plan);
+      const auto on_compare_false =
+          build_short_circuit_target_from_transfer(
+              *join_context.join_transfer,
+              *join_context.join_transfer->source_false_transfer_index,
+              routing_context.classified_incoming,
+              *routing_context.rhs_entry,
+              join_context.continuation_plan);
+      if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
+        return std::nullopt;
+      }
+
+      ShortCircuitPlan plan{
+          .on_compare_true = *on_compare_true,
+          .on_compare_false = *on_compare_false,
+      };
+      if (plan.on_compare_true.block == nullptr ||
+          plan.on_compare_false.block == nullptr) {
+        return std::nullopt;
+      }
+      return plan;
+    };
     const auto render_short_circuit_target =
         [&](const auto& render_block_fn,
             const ShortCircuitTarget& target,
@@ -2535,38 +2567,6 @@ std::string emit_prepared_module(
                   .false_block = false_block,
                   .rhs_entry = short_circuit_on_compare_true ? false_block : true_block,
               };
-            };
-            const auto build_short_circuit_plan =
-                [&](const ShortCircuitJoinContext& join_context,
-                    const ShortCircuitEntryRoutingContext& routing_context)
-                -> std::optional<ShortCircuitPlan> {
-              const auto on_compare_true =
-                  build_short_circuit_target_from_transfer(
-                      *join_context.join_transfer,
-                      *join_context.join_transfer->source_true_transfer_index,
-                      routing_context.classified_incoming,
-                      *routing_context.rhs_entry,
-                      join_context.continuation_plan);
-              const auto on_compare_false =
-                  build_short_circuit_target_from_transfer(
-                      *join_context.join_transfer,
-                      *join_context.join_transfer->source_false_transfer_index,
-                      routing_context.classified_incoming,
-                      *routing_context.rhs_entry,
-                      join_context.continuation_plan);
-              if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
-                return std::nullopt;
-              }
-
-              ShortCircuitPlan plan{
-                  .on_compare_true = *on_compare_true,
-                  .on_compare_false = *on_compare_false,
-              };
-              if (plan.on_compare_true.block == nullptr ||
-                  plan.on_compare_false.block == nullptr) {
-                return std::nullopt;
-              }
-              return plan;
             };
             const auto join_context = find_short_circuit_join_context(block.label);
             if (!join_context.has_value()) {

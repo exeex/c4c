@@ -10,17 +10,19 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting the
-short-circuit entry-block validation plus RHS-routing choice into
-`find_short_circuit_entry_routing_context()`. `try_render_short_circuit_plan()`
-now consumes one entry/routing helper and one join-context helper instead of
-rebuilding that prepared-data discovery inline.
+compare-true/compare-false short-circuit target assembly into
+`build_short_circuit_plan()`. `try_render_short_circuit_plan()` now reads as
+prepared join lookup, entry-routing lookup, plan assembly, render-context
+assembly, and final render assembly instead of rebuilding compare-lane targets
+inline.
 
 ## Suggested Next
 
 The next small Step 3 packet is to trim `try_render_short_circuit_plan()`
-around plan assembly by moving the compare-true/compare-false target build into
-one helper so the planner becomes a straight-line sequence of prepared-context
-lookups, plan assembly, and render assembly.
+further by hoisting `find_short_circuit_entry_routing_context()` into the local
+helper cluster beside `find_short_circuit_join_context()` and
+`build_short_circuit_plan()` so the planner becomes a pure straight-line
+orchestration helper.
 
 ## Watchouts
 
@@ -34,15 +36,19 @@ lookups, plan assembly, and render assembly.
   result zero-compare contract; keep `Eq`/`Ne` mapping and jump-target choice
   data-driven there instead of pushing them back into renderer assembly.
 - `find_short_circuit_entry_routing_context()` now owns entry-branch contract
-  validation, resolved true/false block lookup, and RHS-entry selection; keep
-  future route checks there instead of re-growing those checks inside
-  `try_render_short_circuit_plan()`.
+  validation, resolved true/false block lookup, and RHS-entry selection; the
+  next cleanup should move that ownership into the surrounding helper cluster
+  instead of re-growing those checks inside `try_render_short_circuit_plan()`.
 - `find_short_circuit_join_context()` now owns the prepared select-join shape
   checks plus continuation lookup; future contract edits should land there
   instead of re-growing those checks inside `try_render_short_circuit_plan()`.
+- `build_short_circuit_plan()` now owns compare-true/compare-false target
+  assembly; keep transfer-index validation and block-null checks there instead
+  of re-growing them inside `try_render_short_circuit_plan()`.
 - `try_render_short_circuit_plan()` now owns the short-circuit detect-plus-
-  render handshake; keep future cleanup inside that helper instead of
-  re-growing plan discovery in the cond-branch emitter.
+  render handshake; future cleanup should keep pushing validation into the
+  helper cluster instead of re-growing plan discovery in the cond-branch
+  emitter.
 - `build_short_circuit_render_context()` now owns rendered true/false lane
   omission,
   `render_short_circuit_target()` owns per-target block rendering plus
@@ -62,5 +68,5 @@ lookups, plan assembly, and render assembly.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 entry-routing extraction
-packet; `test_after.log` remains the canonical proof log path.
+The build and narrow proof passed for this Step 3 short-circuit plan-assembly
+extraction packet; `test_after.log` remains the canonical proof log path.
