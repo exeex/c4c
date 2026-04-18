@@ -3720,7 +3720,7 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
   }
   auto& branch_condition = mutable_control_flow->branch_conditions.front();
   auto& join_transfer = mutable_control_flow->join_transfers.front();
-  if (join_transfer.edge_transfers.size() != 2 ||
+  if (join_transfer.edge_transfers.size() < 2 ||
       !join_transfer.source_true_transfer_index.has_value() ||
       !join_transfer.source_false_transfer_index.has_value() ||
       !join_transfer.source_true_incoming_label.has_value() ||
@@ -3762,6 +3762,15 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
       *join_transfer.source_true_incoming_label;
   join_transfer.edge_transfers[false_transfer_index].predecessor_label =
       *join_transfer.source_false_incoming_label;
+  join_transfer.incomings.push_back(
+      bir::PhiIncoming{.label = "contract.extra_lane", .value = bir::Value::immediate_i32(77)});
+  join_transfer.edge_transfers.push_back(prepare::PreparedEdgeValueTransfer{
+      .predecessor_label = "contract.extra_lane",
+      .successor_label = join_transfer.join_block_label,
+      .incoming_value = bir::Value::immediate_i32(77),
+      .destination_value = join_transfer.result,
+      .storage_name = std::nullopt,
+  });
   for (auto& incoming : join_transfer.incomings) {
     if (incoming.label == *join_transfer.source_true_incoming_label ||
         incoming.label == renamed_true_label) {

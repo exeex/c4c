@@ -4210,20 +4210,11 @@ std::string emit_prepared_module(
             c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
         prepared_join_transfer->result.type != c4c::backend::bir::TypeKind::I32 ||
         prepared_join_transfer->result.kind != c4c::backend::bir::Value::Kind::Named ||
-        prepared_join_transfer->result.name != joined_value_name ||
-        prepared_join_transfer->edge_transfers.size() != 2) {
+        prepared_join_transfer->result.name != joined_value_name) {
       return std::nullopt;
     }
     if (prepared_join_transfer->source_branch_block_label.has_value() &&
         *prepared_join_transfer->source_branch_block_label != entry.label) {
-      return std::nullopt;
-    }
-
-    const auto* join_edges = incoming_transfers_for_join(
-        *function_control_flow,
-        prepared_join_transfer->join_block_label,
-        prepared_join_transfer->result.name);
-    if (join_edges == nullptr || join_edges->size() != 2) {
       return std::nullopt;
     }
 
@@ -4239,18 +4230,30 @@ std::string emit_prepared_module(
 
     if (!prepared_join_transfer->source_true_transfer_index.has_value() ||
         !prepared_join_transfer->source_false_transfer_index.has_value() ||
-        *prepared_join_transfer->source_true_transfer_index >= join_edges->size() ||
-        *prepared_join_transfer->source_false_transfer_index >= join_edges->size() ||
+        *prepared_join_transfer->source_true_transfer_index >=
+            prepared_join_transfer->edge_transfers.size() ||
+        *prepared_join_transfer->source_false_transfer_index >=
+            prepared_join_transfer->edge_transfers.size() ||
         *prepared_join_transfer->source_true_transfer_index ==
             *prepared_join_transfer->source_false_transfer_index) {
       return std::nullopt;
     }
-    const auto* true_transfer = &(*join_edges)[*prepared_join_transfer->source_true_transfer_index];
-    const auto* false_transfer =
-        &(*join_edges)[*prepared_join_transfer->source_false_transfer_index];
+    const auto* true_transfer =
+        &prepared_join_transfer->edge_transfers[*prepared_join_transfer->source_true_transfer_index];
+    const auto* false_transfer = &prepared_join_transfer
+                                      ->edge_transfers[*prepared_join_transfer
+                                                           ->source_false_transfer_index];
     if (true_transfer == nullptr || false_transfer == nullptr ||
         true_transfer->successor_label != prepared_join_transfer->join_block_label ||
         false_transfer->successor_label != prepared_join_transfer->join_block_label) {
+      return std::nullopt;
+    }
+    if (prepared_join_transfer->source_true_incoming_label.has_value() &&
+        true_transfer->predecessor_label != *prepared_join_transfer->source_true_incoming_label) {
+      return std::nullopt;
+    }
+    if (prepared_join_transfer->source_false_incoming_label.has_value() &&
+        false_transfer->predecessor_label != *prepared_join_transfer->source_false_incoming_label) {
       return std::nullopt;
     }
 
