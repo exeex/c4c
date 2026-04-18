@@ -127,7 +127,37 @@ Completion check:
 - x86 branch/join emission for the covered cases consults prepared control-flow
   data instead of recovering those semantics from CFG shape
 
-## Step 4: Validate The Route
+## Step 4: Organize `prepared_module_emit.cpp` For Prepared Control-Flow Consumption
+
+Goal: shrink the emitter's mixed responsibilities so prepared control-flow
+consumption can land in stable, reviewable seams instead of one growing file.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- existing x86 codegen translation units that can responsibly own extracted
+  helper logic
+
+Actions:
+
+- identify helper groups in `prepared_module_emit.cpp` by responsibility, not
+  by testcase or matcher family
+- prefer extracting reusable comparison, shared consumer, or local query logic
+  into existing x86 codegen `.cpp` files before introducing any new filename
+- create a new `.cpp` name only when no current translation unit can own the
+  logic without violating responsibility boundaries
+- keep branch, join, and loop-carry fact production in shared
+  prepare/prealloc code; this step only reorganizes x86-side consumption
+- reject cleanup that merely renames or relocates matcher growth without
+  reducing emitter-local semantic recovery
+
+Completion check:
+
+- `prepared_module_emit.cpp` has a narrower orchestration role, and the
+  extracted logic lives primarily in existing x86 codegen `.cpp` files unless a
+  new file was strictly necessary
+
+## Step 5: Validate The Route
 
 Goal: prove the new shared/consumer boundary without relying on a single named
 testcase.
