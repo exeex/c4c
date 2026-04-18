@@ -796,6 +796,15 @@ find_prepared_resolved_materialized_compare_join_render_contract(
     const bir::Module& module,
     const PreparedParamZeroMaterializedCompareJoinBranches& prepared_compare_join_branches);
 
+[[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
+find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
+    const bir::Module& module,
+    const PreparedControlFlowFunction& function_cf,
+    const bir::Function& function,
+    const bir::Block& source_block,
+    const bir::Param& param,
+    bool require_label_match);
+
 [[nodiscard]] inline std::optional<PreparedParamZeroBranchCondition>
 find_prepared_param_zero_branch_condition(const PreparedControlFlowFunction& function_cf,
                                           const bir::Block& source_block,
@@ -1879,6 +1888,27 @@ find_prepared_resolved_materialized_compare_join_render_contract(
     return std::nullopt;
   }
   return resolve_prepared_materialized_compare_join_render_contract(module, *render_contract);
+}
+
+[[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
+find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
+    const bir::Module& module,
+    const PreparedControlFlowFunction& function_cf,
+    const bir::Function& function,
+    const bir::Block& source_block,
+    const bir::Param& param,
+    bool require_label_match) {
+  const auto prepared_compare_join_branches =
+      find_prepared_param_zero_materialized_compare_join_branches(function_cf,
+                                                                  function,
+                                                                  source_block,
+                                                                  param,
+                                                                  require_label_match);
+  if (!prepared_compare_join_branches.has_value()) {
+    return std::nullopt;
+  }
+  return find_prepared_resolved_materialized_compare_join_render_contract(
+      module, *prepared_compare_join_branches);
 }
 
 [[nodiscard]] inline const std::vector<PreparedEdgeValueTransfer>* incoming_transfers_for_join(

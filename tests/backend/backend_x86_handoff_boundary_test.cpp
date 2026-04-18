@@ -5394,6 +5394,14 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
                  ": shared helper stopped publishing the direct resolved compare-join contract")
                     .c_str());
   }
+  const auto direct_param_zero_resolved_render_contract =
+      prepare::find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
+          prepared.module, *control_flow, function, *entry_block, function.params.front(), false);
+  if (!direct_param_zero_resolved_render_contract.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped publishing the direct param-zero resolved compare-join contract")
+                    .c_str());
+  }
   if (resolved_render_contract->branch_plan.target_labels.true_label !=
           render_contract->branch_plan.target_labels.true_label ||
       resolved_render_contract->branch_plan.target_labels.false_label !=
@@ -5434,6 +5442,28 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
         resolved_render_contract->same_module_globals[index]) {
       return fail((std::string(failure_context) +
                    ": shared helper stopped preserving direct resolved compare-join globals")
+                      .c_str());
+    }
+  }
+  if (direct_param_zero_resolved_render_contract->branch_plan.target_labels.true_label !=
+          directly_resolved_render_contract->branch_plan.target_labels.true_label ||
+      direct_param_zero_resolved_render_contract->branch_plan.target_labels.false_label !=
+          directly_resolved_render_contract->branch_plan.target_labels.false_label ||
+      std::string(direct_param_zero_resolved_render_contract->branch_plan.false_branch_opcode) !=
+          directly_resolved_render_contract->branch_plan.false_branch_opcode ||
+      direct_param_zero_resolved_render_contract->same_module_globals.size() !=
+          directly_resolved_render_contract->same_module_globals.size()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped preserving the direct param-zero resolved compare-join contract")
+                    .c_str());
+  }
+  for (std::size_t index = 0;
+       index < direct_param_zero_resolved_render_contract->same_module_globals.size();
+       ++index) {
+    if (direct_param_zero_resolved_render_contract->same_module_globals[index] !=
+        directly_resolved_render_contract->same_module_globals[index]) {
+      return fail((std::string(failure_context) +
+                   ": shared helper stopped preserving direct param-zero resolved compare-join globals")
                       .c_str());
     }
   }
@@ -5481,6 +5511,20 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
   }
   if (const auto status =
           require_binary_plan(render_contract->false_return,
+                              prepared_compare_join_branches->prepared_join_branches
+                                  .false_return_context);
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          require_binary_plan(direct_param_zero_resolved_render_contract->true_return.arm,
+                              prepared_compare_join_branches->prepared_join_branches
+                                  .true_return_context);
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          require_binary_plan(direct_param_zero_resolved_render_contract->false_return.arm,
                               prepared_compare_join_branches->prepared_join_branches
                                   .false_return_context);
       status != 0) {
@@ -5537,6 +5581,32 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
           require_return_context(render_contract->true_return.context,
                                  prepared_compare_join_branches->prepared_join_branches
                                      .true_return_context);
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          require_return_context(
+              direct_param_zero_resolved_render_contract->true_return.arm.context,
+              prepared_compare_join_branches->prepared_join_branches.true_return_context);
+      status != 0) {
+    return status;
+  }
+  if (direct_param_zero_resolved_render_contract->true_return.global !=
+          directly_resolved_render_contract->true_return.global ||
+      direct_param_zero_resolved_render_contract->true_return.pointer_root_global !=
+          directly_resolved_render_contract->true_return.pointer_root_global ||
+      direct_param_zero_resolved_render_contract->false_return.global !=
+          directly_resolved_render_contract->false_return.global ||
+      direct_param_zero_resolved_render_contract->false_return.pointer_root_global !=
+          directly_resolved_render_contract->false_return.pointer_root_global) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped preserving direct param-zero resolved compare-join arm ownership")
+                    .c_str());
+  }
+  if (const auto status =
+          require_return_context(
+              direct_param_zero_resolved_render_contract->false_return.arm.context,
+              prepared_compare_join_branches->prepared_join_branches.false_return_context);
       status != 0) {
     return status;
   }

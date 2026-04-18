@@ -4084,15 +4084,10 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto prepared_compare_join_branches =
-        c4c::backend::prepare::find_prepared_param_zero_materialized_compare_join_branches(
-            *function_control_flow, function, entry, param, false);
-    if (!prepared_compare_join_branches.has_value()) {
-      return std::nullopt;
-    }
     const auto resolved_render_contract =
-        c4c::backend::prepare::find_prepared_resolved_materialized_compare_join_render_contract(
-            module.module, *prepared_compare_join_branches);
+        c4c::backend::prepare::
+            find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
+                module.module, *function_control_flow, function, entry, param, false);
     if (!resolved_render_contract.has_value()) {
       return std::nullopt;
     }
