@@ -2578,15 +2578,9 @@ std::string emit_prepared_module(
 
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
             if (continuation.has_value()) {
-              const bool reaches_continuation_join =
-                  block.label == continuation->incoming_label ||
-                  block.terminator.target_label == continuation->incoming_label;
-              if (reaches_continuation_join) {
-                const auto* compare =
-                    find_trailing_guard_compare(block, compare_index, std::nullopt);
-                if (compare == nullptr) {
-                  return std::nullopt;
-                }
+              const auto* compare =
+                  find_trailing_guard_compare(block, compare_index, std::nullopt);
+              if (compare != nullptr) {
                 const auto compare_join_render_plan =
                     build_compare_join_entry_render_plan(block, *compare, *continuation);
                 if (!compare_join_render_plan.has_value()) {
