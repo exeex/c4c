@@ -2173,12 +2173,6 @@ std::string emit_prepared_module(
                   return std::nullopt;
                 }
                 reaches_continuation_join = true;
-              } else {
-                const auto* chained_target =
-                    resolve_empty_branch_chain(block.terminator.target_label);
-                reaches_continuation_join =
-                    chained_target != nullptr &&
-                    chained_target->label == continuation->join_label;
               }
               if (reaches_continuation_join) {
                 const c4c::backend::bir::BinaryInst* compare = nullptr;

@@ -9,17 +9,18 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed another Step 3 cleanup in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by switching the
-materialized joined-compare consumer from an emitter-local join-transfer scan
-to the authoritative prepared join record for the actual join block/result,
-while enforcing source-branch metadata when shared lowering publishes it.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by removing the
+short-circuit continuation lane's fallback empty-branch-chain topology scan
+and requiring the x86 consumer to reach the join only through the prepared
+join label or the prepared predecessor label that shared lowering already
+publishes.
 
 ## Suggested Next
 
 The next small Step 3 packet is inspecting the remaining countdown and guard
-lanes in `prepared_module_emit.cpp` for any control-flow consumers that still
-rely on emitter-local topology matching instead of prepared branch/join
-metadata.
+lanes in `prepared_module_emit.cpp` for any other branch/join consumers that
+still recover loop or continuation meaning from raw CFG chains instead of
+requiring prepared control-flow metadata.
 
 ## Watchouts
 
@@ -48,9 +49,9 @@ metadata.
   that lane must use prepared join transfers as the authority, not demand a
   select carrier.
 - The short-circuit continuation lane now assumes prepared control-flow is
-  present; if a future caller bypasses semantic preparation entirely, that
-  should be treated as a contract violation rather than patched with new raw
-  CFG matching here.
+  present and no longer falls back to arbitrary empty-branch-chain traversal;
+  if a future caller bypasses semantic preparation entirely, treat that as a
+  contract violation rather than patching it with new raw CFG matching here.
 
 ## Proof
 
