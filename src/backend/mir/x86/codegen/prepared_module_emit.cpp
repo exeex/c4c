@@ -1639,7 +1639,7 @@ std::string emit_prepared_module(
     const c4c::backend::bir::Block* join_block = nullptr;
     const c4c::backend::bir::BinaryInst* trailing_binary = nullptr;
     std::size_t carrier_index = 0;
-    std::string_view joined_value_name;
+    std::string_view carrier_result_name;
   };
   struct MaterializedCompareJoinRender {
     std::string false_label;
@@ -1751,39 +1751,37 @@ std::string emit_prepared_module(
       carrier_index = join_block->insts.size() - 2;
     }
 
-    const std::string_view joined_value_name = join_transfer->result.name;
-    const auto join_result_matches_prepared_value =
-        [&](const auto& result) {
-          return result.type == c4c::backend::bir::TypeKind::I32 &&
-                 result.name == joined_value_name;
-        };
+    std::optional<std::string_view> carrier_result_name;
     if (const auto* select =
             std::get_if<c4c::backend::bir::SelectInst>(&join_block->insts[carrier_index]);
         select != nullptr) {
       if (join_transfer->kind !=
-          c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization) {
+              c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
+          select->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          select->result.type != c4c::backend::bir::TypeKind::I32) {
         return std::nullopt;
       }
-      if (!join_result_matches_prepared_value(select->result)) {
-        return std::nullopt;
-      }
+      carrier_result_name = select->result.name;
     } else if (const auto* load_local =
                    std::get_if<c4c::backend::bir::LoadLocalInst>(&join_block->insts[carrier_index]);
                load_local != nullptr) {
       if (join_transfer->kind != c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
           !join_transfer->storage_name.has_value() ||
-          load_local->slot_name != *join_transfer->storage_name) {
+          load_local->slot_name != *join_transfer->storage_name ||
+          load_local->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          load_local->result.type != c4c::backend::bir::TypeKind::I32) {
         return std::nullopt;
       }
-      if (!join_result_matches_prepared_value(load_local->result)) {
-        return std::nullopt;
-      }
+      carrier_result_name = load_local->result.name;
     } else {
+      return std::nullopt;
+    }
+    if (!carrier_result_name.has_value()) {
       return std::nullopt;
     }
     if (join_block->terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
         (trailing_binary == nullptr &&
-         join_block->terminator.value->name != joined_value_name)) {
+         join_block->terminator.value->name != *carrier_result_name)) {
       return std::nullopt;
     }
 
@@ -1796,7 +1794,7 @@ std::string emit_prepared_module(
         .join_block = join_block,
         .trailing_binary = trailing_binary,
         .carrier_index = carrier_index,
-        .joined_value_name = joined_value_name,
+        .carrier_result_name = *carrier_result_name,
     };
   };
   const auto render_local_slot_guard_chain_if_supported =
@@ -4444,7 +4442,7 @@ std::string emit_prepared_module(
     }
 
     const auto trailing_render = apply_supported_immediate_binary(
-        *compare_join_context.trailing_binary, compare_join_context.joined_value_name);
+        *compare_join_context.trailing_binary, compare_join_context.carrier_result_name);
     if (!trailing_render.has_value()) {
       return std::nullopt;
     }

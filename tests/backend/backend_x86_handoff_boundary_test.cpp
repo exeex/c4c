@@ -3675,10 +3675,11 @@ int check_route_outputs(const bir::Module& module,
   return 0;
 }
 
-int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
-                                                    const std::string& expected_asm,
-                                                    const char* function_name,
-                                                    const char* failure_context) {
+int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& module,
+                                                         const std::string& expected_asm,
+                                                         const char* function_name,
+                                                         const char* failure_context,
+                                                         bool use_edge_store_slot_carrier) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -3702,9 +3703,11 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
   }
 
   auto* entry_compare = std::get_if<bir::BinaryInst>(&entry_block->insts.front());
-  auto* join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_block->insts.size() - 1]);
-  if (join_select == nullptr) {
-    join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_block->insts.size() - 2]);
+  std::size_t join_select_index = join_block->insts.size() - 1;
+  auto* join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
+  if (join_select == nullptr && join_block->insts.size() >= 2) {
+    join_select_index = join_block->insts.size() - 2;
+    join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
   }
   if (entry_compare == nullptr || join_select == nullptr) {
     return fail((std::string(failure_context) +
@@ -3784,9 +3787,48 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
   entry_compare->opcode = bir::BinaryOpcode::Ne;
   entry_compare->lhs = bir::Value::immediate_i32(9);
   entry_compare->rhs = bir::Value::immediate_i32(3);
-  join_select->predicate = bir::BinaryOpcode::Ne;
-  join_select->lhs = bir::Value::immediate_i32(4);
-  join_select->rhs = bir::Value::immediate_i32(1);
+  const std::string original_carrier_result_name = join_select->result.name;
+  const auto renamed_carrier_result =
+      bir::Value::named(bir::TypeKind::I32, "carrier.join.contract.result");
+  if (use_edge_store_slot_carrier) {
+    join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
+    join_transfer.storage_name = "%contract.join.slot";
+    join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
+    join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
+    function.local_slots.push_back(bir::LocalSlot{
+        .name = *join_transfer.storage_name,
+        .type = bir::TypeKind::I32,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .is_address_taken = false,
+    });
+    join_block->insts[join_select_index] = bir::LoadLocalInst{
+        .result = renamed_carrier_result,
+        .slot_name = *join_transfer.storage_name,
+    };
+  } else {
+    join_select->result = renamed_carrier_result;
+    join_select->predicate = bir::BinaryOpcode::Ne;
+    join_select->lhs = bir::Value::immediate_i32(4);
+    join_select->rhs = bir::Value::immediate_i32(1);
+  }
+  for (auto& inst : join_block->insts) {
+    if (auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+      if (binary->lhs.kind == bir::Value::Kind::Named &&
+          binary->lhs.name == original_carrier_result_name) {
+        binary->lhs = renamed_carrier_result;
+      }
+      if (binary->rhs.kind == bir::Value::Kind::Named &&
+          binary->rhs.name == original_carrier_result_name) {
+        binary->rhs = renamed_carrier_result;
+      }
+    }
+  }
+  if (join_block->terminator.value.has_value() &&
+      join_block->terminator.value->kind == bir::Value::Kind::Named &&
+      join_block->terminator.value->name == original_carrier_result_name) {
+    join_block->terminator.value = renamed_carrier_result;
+  }
   mutable_control_flow->branch_conditions.push_back(prepare::PreparedBranchCondition{
       .function_name = function_name,
       .block_label = "dead.cond",
@@ -3828,6 +3870,23 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
   }
 
   return 0;
+}
+
+int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
+                                                    const std::string& expected_asm,
+                                                    const char* function_name,
+                                                    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, false);
+}
+
+int check_join_route_edge_store_slot_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, true);
 }
 
 int check_minimal_compare_branch_consumes_prepared_control_flow(const bir::Module& module,
@@ -4552,6 +4611,16 @@ int main() {
                   "branch_join_adjust", "is_nonzero", 5, 1),
               "branch_join_adjust",
               "scalar-control-flow compare-against-zero joined branch lane prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_asm(
+                  "branch_join_adjust", "is_nonzero", 5, 1),
+              "branch_join_adjust",
+              "scalar-control-flow compare-against-zero joined branch lane EdgeStoreSlot prepared-control-flow ownership");
       status != 0) {
     return status;
   }
