@@ -9,20 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by giving plain
-conditional fallback the same dedicated compare-driven entry-helper shape as
-the short-circuit path. `build_plain_cond_entry_render_plan()` now mirrors
-`build_short_circuit_entry_render_plan()`, so the cond-branch entry path stops
-wiring separate inline lambdas for plain fallback versus prepared direct-branch
-plan selection at the render call sites.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by lifting the
+compare-join continuation branch path onto the same dedicated compare-driven
+entry-helper pattern as the short-circuit and plain conditional entry cases.
+`build_compare_join_entry_render_plan()` now owns the continuation render-plan
+assembly, so the branch renderer no longer wires a one-off inline lambda for
+compare-join continuation branch-plan selection at the render site.
 
 ## Suggested Next
 
-The next small Step 3 packet is to keep tightening compare-driven branch-plan
-ownership by lifting the compare-join continuation case onto the same dedicated
-entry-helper pattern, so all compare-driven entry variants route through named
-helpers instead of leaving the continuation case as the remaining ad hoc
-lambda-fed branch-plan selection path.
+The next small Step 3 packet is to tighten the remaining compare-driven branch
+helpers by deciding whether `build_compare_join_branch_plan()` should collapse
+into a more general direct-branch helper contract shared by plain fallback and
+continuation entry, without widening into new CFG matching or idea 59
+instruction-selection scope.
 
 ## Watchouts
 
@@ -63,6 +63,9 @@ lambda-fed branch-plan selection path.
   helper shape for short-circuit and plain fallback paths; keep future entry
   cleanup inside those helpers instead of re-growing case-specific inline
   branch-plan lambdas at the cond-branch render sites.
+- `build_compare_join_entry_render_plan()` now owns compare-join continuation
+  render-plan assembly; keep future continuation-entry cleanup there instead
+  of re-growing inline lambdas at the branch render site.
 - `build_compare_join_branch_plan()` now owns the compare-join continuation
   handoff into `build_direct_branch_plan_from_targets()`; keep future
   continuation target plumbing there instead of re-growing plan assembly or
@@ -86,5 +89,5 @@ lambda-fed branch-plan selection path.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 direct-branch helper
+The build and narrow proof passed for this Step 3 compare-join continuation
 entry-helper cleanup packet; proof output is in `test_after.log`.

@@ -2701,6 +2701,19 @@ std::string emit_prepared_module(
                   return build_plain_cond_entry_branch_plan(source_block, compare_context);
                 });
           };
+          const auto build_compare_join_entry_render_plan =
+              [&](const c4c::backend::bir::Block& source_block,
+                  const c4c::backend::bir::BinaryInst& compare,
+                  const GuardJoinContinuation& continuation_plan)
+              -> std::optional<CompareDrivenBranchRenderPlan> {
+            return build_compare_driven_entry_render_plan(
+                source_block,
+                compare,
+                [&](const ShortCircuitEntryCompareContext&)
+                    -> std::optional<ShortCircuitPlan> {
+                  return build_compare_join_branch_plan(source_block, continuation_plan);
+                });
+          };
 
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Return) {
             if (compare_index != block.insts.size() || !block.terminator.value.has_value()) {
@@ -2735,13 +2748,7 @@ std::string emit_prepared_module(
                   return std::nullopt;
                 }
                 const auto compare_join_render_plan =
-                    build_compare_driven_entry_render_plan(
-                        block,
-                        *compare,
-                        [&](const ShortCircuitEntryCompareContext&)
-                            -> std::optional<ShortCircuitPlan> {
-                          return build_compare_join_branch_plan(block, *continuation);
-                        });
+                    build_compare_join_entry_render_plan(block, *compare, *continuation);
                 if (!compare_join_render_plan.has_value()) {
                   return std::nullopt;
                 }
