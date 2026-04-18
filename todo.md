@@ -9,20 +9,21 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by making the
-materialized compare-join consumer validate `PreparedJoinTransferKind::EdgeStoreSlot`
-through the prepared join contract instead of accepting any same-named
-`LoadLocal` carrier. The authoritative branch-owned join helper now requires
-the prepared slot metadata on `EdgeStoreSlot` transfers, and the compare-join
-context only accepts a `LoadLocal` carrier when it names the prepared storage
-slot published by that join transfer.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extending the
+short-circuit join continuation path to consume authoritative branch-owned join
+transfers, including `PreparedJoinTransferKind::EdgeStoreSlot` carriers. The
+join-continuation helper now validates a `LoadLocal` carrier against the
+prepared join storage slot instead of accepting a same-named joined value
+alone, and `backend_x86_handoff_boundary` now covers that `EdgeStoreSlot`
+short-circuit route explicitly.
 
 ## Suggested Next
 
-The next small Step 3 packet is to carry the same authoritative join-slot
-contract into the next branch-owned `LoadLocal` consumer path that still keys
-off the joined value name alone, while keeping short-circuit topology rules,
-countdown-loop handling, and Step 4 emitter cleanup out of scope.
+The next small Step 3 packet is to audit the remaining non-countdown
+branch-owned join consumers in `prepared_module_emit.cpp` for any path that
+still keys a continuation compare off `join_transfer.result.name` without an
+authoritative carrier check, then tighten one such seam or declare this
+`LoadLocal` consumer sub-route exhausted.
 
 ## Watchouts
 
@@ -39,10 +40,18 @@ countdown-loop handling, and Step 4 emitter cleanup out of scope.
   slot contract: if a future consumer accepts a `LoadLocal` carrier, it should
   validate the prepared storage name instead of matching only the joined value
   result.
+- The short-circuit route now follows the same rule: it may consume an
+  authoritative branch-owned `EdgeStoreSlot` join, but only when the join
+  carrier `LoadLocal` names the prepared storage slot published by that join
+  transfer.
 - `find_materialized_compare_join_context()` is still intentionally scoped to
   the joined compare-return route: it validates the authoritative prepared join
   carrier and trailing binary around the prepared join result, but it should
   not absorb the short-circuit route's continuation/topology rules.
+- `find_short_circuit_join_context()` now accepts branch-owned joins instead of
+  select-only joins; keep any follow-on work bounded to carrier validation and
+  prepared join ownership rather than widening into generic short-circuit
+  topology changes.
 - `render_materialized_compare_join_branches_if_supported()` is the current
   prepared join-consumer seam for this route. Keep follow-on work keyed by the
   prepared join transfer and edge metadata instead of rebuilding transfer
@@ -61,6 +70,6 @@ countdown-loop handling, and Step 4 emitter cleanup out of scope.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This `EdgeStoreSlot` consumer packet passed with the focused
+This short-circuit `EdgeStoreSlot` consumer packet passed with the focused
 `backend_x86_handoff_boundary` proof command, and `test_after.log` remains the
 fresh canonical proof log for supervisor review.

@@ -1936,6 +1936,39 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
 
+      if (join_block.insts.size() < 2 ||
+          join_transfer.result.kind != c4c::backend::bir::Value::Kind::Named) {
+        return std::nullopt;
+      }
+
+      const auto carrier_names_prepared_value =
+          [&](const auto& carrier_result) {
+            return carrier_result.kind == c4c::backend::bir::Value::Kind::Named &&
+                   carrier_result.type == c4c::backend::bir::TypeKind::I32 &&
+                   carrier_result.name == join_transfer.result.name;
+          };
+      const auto& join_carrier = join_block.insts[join_block.insts.size() - 2];
+      if (const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&join_carrier);
+          select != nullptr) {
+        if (join_transfer.kind !=
+                c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
+            !carrier_names_prepared_value(select->result)) {
+          return std::nullopt;
+        }
+      } else if (const auto* load_local =
+                     std::get_if<c4c::backend::bir::LoadLocalInst>(&join_carrier);
+                 load_local != nullptr) {
+        if (join_transfer.kind !=
+                c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
+            !join_transfer.storage_name.has_value() ||
+            load_local->slot_name != *join_transfer.storage_name ||
+            !carrier_names_prepared_value(load_local->result)) {
+          return std::nullopt;
+        }
+      } else {
+        return std::nullopt;
+      }
+
       const bool lhs_is_join_result_rhs_is_zero =
           join_branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Named &&
           join_branch_condition.lhs->name == join_transfer.result.name &&
@@ -2100,8 +2133,7 @@ std::string emit_prepared_module(
             std::string_view source_block_label)
         -> std::optional<ShortCircuitJoinContext> {
       const auto authoritative_join_transfer =
-          find_authoritative_select_materialization_join_transfer(control_flow,
-                                                                 source_block_label);
+          find_authoritative_branch_owned_join_transfer(control_flow, source_block_label);
       if (!authoritative_join_transfer.has_value()) {
         return std::nullopt;
       }
