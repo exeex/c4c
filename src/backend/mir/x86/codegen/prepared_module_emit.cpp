@@ -1502,6 +1502,29 @@ std::string emit_prepared_module(
     asm_text += "    ret\n";
     return asm_text;
   };
+  const auto find_authoritative_join_edge_transfers =
+      [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer)
+      -> std::optional<std::pair<
+          const c4c::backend::prepare::PreparedEdgeValueTransfer*,
+          const c4c::backend::prepare::PreparedEdgeValueTransfer*>> {
+    if (!join_transfer.source_true_transfer_index.has_value() ||
+        !join_transfer.source_false_transfer_index.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto true_index = *join_transfer.source_true_transfer_index;
+    const auto false_index = *join_transfer.source_false_transfer_index;
+    if (true_index >= join_transfer.edge_transfers.size() ||
+        false_index >= join_transfer.edge_transfers.size() ||
+        true_index == false_index) {
+      return std::nullopt;
+    }
+
+    return std::pair{
+        &join_transfer.edge_transfers[true_index],
+        &join_transfer.edge_transfers[false_index],
+    };
+  };
   const auto render_local_slot_guard_chain_if_supported =
       [&]() -> std::optional<std::string> {
     if (!function.params.empty() || function.blocks.empty() ||
@@ -1683,15 +1706,9 @@ std::string emit_prepared_module(
     const auto classify_short_circuit_join_incoming =
         [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer)
         -> std::optional<ClassifiedShortCircuitIncoming> {
-      if (!join_transfer.source_true_transfer_index.has_value() ||
-          !join_transfer.source_false_transfer_index.has_value()) {
-        return std::nullopt;
-      }
-
-      if (*join_transfer.source_true_transfer_index >= join_transfer.edge_transfers.size() ||
-          *join_transfer.source_false_transfer_index >= join_transfer.edge_transfers.size() ||
-          *join_transfer.source_true_transfer_index ==
-              *join_transfer.source_false_transfer_index) {
+      const auto authoritative_transfers =
+          find_authoritative_join_edge_transfers(join_transfer);
+      if (!authoritative_transfers.has_value()) {
         return std::nullopt;
       }
 
@@ -1707,11 +1724,9 @@ std::string emit_prepared_module(
       };
 
       const auto true_lane_short_circuit_value =
-          classify_join_incoming(
-              join_transfer.edge_transfers[*join_transfer.source_true_transfer_index]);
+          classify_join_incoming(*authoritative_transfers->first);
       const auto false_lane_short_circuit_value =
-          classify_join_incoming(
-              join_transfer.edge_transfers[*join_transfer.source_false_transfer_index]);
+          classify_join_incoming(*authoritative_transfers->second);
       if (true_lane_short_circuit_value.has_value() ==
           false_lane_short_circuit_value.has_value()) {
         return std::nullopt;
@@ -1797,16 +1812,7 @@ std::string emit_prepared_module(
       }
       if (join_transfer->result.type != c4c::backend::bir::TypeKind::I32 ||
           join_transfer->edge_transfers.size() != 2 ||
-          !join_transfer->source_true_transfer_index.has_value() ||
-          !join_transfer->source_false_transfer_index.has_value()) {
-        return std::nullopt;
-      }
-      if (*join_transfer->source_true_transfer_index >=
-              join_transfer->edge_transfers.size() ||
-          *join_transfer->source_false_transfer_index >=
-              join_transfer->edge_transfers.size() ||
-          *join_transfer->source_true_transfer_index ==
-              *join_transfer->source_false_transfer_index) {
+          !find_authoritative_join_edge_transfers(*join_transfer).has_value()) {
         return std::nullopt;
       }
       return build_short_circuit_join_context_from_transfer(*join_transfer,
@@ -4228,21 +4234,13 @@ std::string emit_prepared_module(
       named_binaries.emplace(binary->result.name, binary);
     }
 
-    if (!prepared_join_transfer->source_true_transfer_index.has_value() ||
-        !prepared_join_transfer->source_false_transfer_index.has_value() ||
-        *prepared_join_transfer->source_true_transfer_index >=
-            prepared_join_transfer->edge_transfers.size() ||
-        *prepared_join_transfer->source_false_transfer_index >=
-            prepared_join_transfer->edge_transfers.size() ||
-        *prepared_join_transfer->source_true_transfer_index ==
-            *prepared_join_transfer->source_false_transfer_index) {
+    const auto authoritative_transfers =
+        find_authoritative_join_edge_transfers(*prepared_join_transfer);
+    if (!authoritative_transfers.has_value()) {
       return std::nullopt;
     }
-    const auto* true_transfer =
-        &prepared_join_transfer->edge_transfers[*prepared_join_transfer->source_true_transfer_index];
-    const auto* false_transfer = &prepared_join_transfer
-                                      ->edge_transfers[*prepared_join_transfer
-                                                           ->source_false_transfer_index];
+    const auto* true_transfer = authoritative_transfers->first;
+    const auto* false_transfer = authoritative_transfers->second;
     if (true_transfer == nullptr || false_transfer == nullptr ||
         true_transfer->successor_label != prepared_join_transfer->join_block_label ||
         false_transfer->successor_label != prepared_join_transfer->join_block_label) {
