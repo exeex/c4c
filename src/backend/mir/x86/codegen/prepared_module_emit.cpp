@@ -2270,30 +2270,23 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
-            const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
-            for (const auto& candidate : function_control_flow->join_transfers) {
-              if (candidate.kind !=
-                      c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
-                  candidate.result.type != c4c::backend::bir::TypeKind::I32 ||
-                  candidate.edge_transfers.size() != 2 ||
-                  !candidate.source_branch_block_label.has_value() ||
-                  !candidate.source_true_transfer_index.has_value() ||
-                  !candidate.source_false_transfer_index.has_value() ||
-                  *candidate.source_branch_block_label != block.label) {
-                continue;
-              }
-              if (*candidate.source_true_transfer_index >= candidate.edge_transfers.size() ||
-                  *candidate.source_false_transfer_index >= candidate.edge_transfers.size() ||
-                  *candidate.source_true_transfer_index ==
-                      *candidate.source_false_transfer_index) {
-                continue;
-              }
-              if (join_transfer != nullptr) {
-                return std::nullopt;
-              }
-              join_transfer = &candidate;
-            }
+            const auto* join_transfer =
+                c4c::backend::prepare::find_select_materialization_join_transfer(
+                    *function_control_flow,
+                    block.label);
             if (join_transfer == nullptr) {
+              return std::nullopt;
+            }
+            if (join_transfer->result.type != c4c::backend::bir::TypeKind::I32 ||
+                join_transfer->edge_transfers.size() != 2 ||
+                !join_transfer->source_true_transfer_index.has_value() ||
+                !join_transfer->source_false_transfer_index.has_value()) {
+              return std::nullopt;
+            }
+            if (*join_transfer->source_true_transfer_index >= join_transfer->edge_transfers.size() ||
+                *join_transfer->source_false_transfer_index >= join_transfer->edge_transfers.size() ||
+                *join_transfer->source_true_transfer_index ==
+                    *join_transfer->source_false_transfer_index) {
               return std::nullopt;
             }
 
