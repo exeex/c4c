@@ -118,14 +118,29 @@ Actions:
 - replace emitter-local reconstruction of branch meaning with prepared
   branch-condition lookups
 - drive join and loop-carried handling from prepared transfer data
-- delete or simplify matcher logic that only existed to re-derive control-flow
-  semantics
 - keep target-specific decisions limited to x86 legality and spelling
+- for the next concrete packet, add one shared branch-condition lookup/helper
+  path in `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- for the next concrete packet, add one shared join-transfer lookup/helper
+  path in `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- for the next concrete packet, migrate
+  `render_materialized_compare_join_if_supported()` and adjacent
+  authoritative-join consumer code toward those shared helpers
+- for the next concrete packet, begin consuming
+  `PreparedJoinTransferKind::EdgeStoreSlot` as prepared join-contract data
+  where the same consumer contract applies
+- do not widen this step into generic instruction selection, idea 60
+  value-location work, idea 61 frame/addressing work, countdown-loop route
+  changes, or Step 4 emitter-file organization
+- delete or simplify matcher logic only when the prepared branch/join consumer
+  path makes the emitter-local semantic recovery unnecessary
 
 Completion check:
 
 - x86 branch/join emission for the covered cases consults prepared control-flow
   data instead of recovering those semantics from CFG shape
+- the first Step 3 branch/join consumer packet leaves countdown-loop handling,
+  value-home work, frame/addressing work, and emitter cleanup out of scope
 
 ## Step 4: Organize `prepared_module_emit.cpp` For Prepared Control-Flow Consumption
 

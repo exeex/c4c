@@ -17,18 +17,29 @@ select-join coverage.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect whether
-`find_authoritative_join_branch_sources()` can consume the already-validated
-authoritative select-join context from the materialized-compare path, so x86
-stops reclassifying the same prepared transfers while preserving the existing
-topology and incoming-label checks.
+The next small Step 3 packet is to build one unified prepared branch/join
+consumer path in `src/backend/mir/x86/codegen/prepared_module_emit.cpp`:
+add one shared branch-condition lookup/helper path, add one shared
+join-transfer lookup/helper path, migrate
+`render_materialized_compare_join_if_supported()` and adjacent
+authoritative-join consumer code toward those helpers, and begin consuming
+`PreparedJoinTransferKind::EdgeStoreSlot` as prepared join-contract data where
+the same consumer contract applies.
 
 ## Watchouts
 
 - Do not activate umbrella idea 57 or idea 59 while cleaning this helper
   surface.
+- Do not widen this Step 3 packet into generic instruction selection.
+- Do not pull in idea 60 value-location work or idea 61 frame/addressing work.
+- Do not touch countdown-loop routes in this packet.
+- Do not pre-spend Step 4 by turning this into `prepared_module_emit.cpp`
+  file-organization cleanup.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth or new
   emitter-local CFG scans.
+- Do not treat `PreparedJoinTransferKind::EdgeStoreSlot` as a cue for a new
+  matcher family; consume it as prepared join-contract data through the shared
+  helper path.
 - The short-circuit path still intentionally differs from
   `find_authoritative_join_branch_sources()`: it consumes the authoritative
   prepared incoming ownership labels from the transfer records, but its
