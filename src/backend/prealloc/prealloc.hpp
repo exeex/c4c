@@ -632,6 +632,11 @@ struct PreparedParamZeroMaterializedCompareJoinBranches {
   PreparedMaterializedCompareJoinBranches prepared_join_branches;
 };
 
+struct PreparedMaterializedCompareJoinBranchPlan {
+  PreparedBranchTargetLabels target_labels;
+  const char* false_branch_opcode = nullptr;
+};
+
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinReturnContext>
 find_prepared_materialized_compare_join_return_context(
     const PreparedMaterializedCompareJoinContext& compare_join_context,
@@ -1541,6 +1546,30 @@ find_prepared_param_zero_materialized_compare_join_branches(
   return PreparedParamZeroMaterializedCompareJoinBranches{
       .prepared_branch = prepared_compare_join_context->prepared_branch,
       .prepared_join_branches = std::move(*prepared_join_branches),
+  };
+}
+
+[[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinBranchPlan>
+find_prepared_materialized_compare_join_branch_plan(
+    const PreparedParamZeroMaterializedCompareJoinBranches& prepared_compare_join_branches) {
+  const auto& compare_join_context =
+      prepared_compare_join_branches.prepared_join_branches.compare_join_context;
+  if (prepared_compare_join_branches.prepared_branch.branch_condition == nullptr ||
+      prepared_compare_join_branches.prepared_branch.false_branch_opcode == nullptr ||
+      compare_join_context.true_predecessor == nullptr ||
+      compare_join_context.false_predecessor == nullptr ||
+      compare_join_context.true_predecessor == compare_join_context.false_predecessor) {
+    return std::nullopt;
+  }
+
+  return PreparedMaterializedCompareJoinBranchPlan{
+      .target_labels =
+          PreparedBranchTargetLabels{
+              .true_label = compare_join_context.true_predecessor->label,
+              .false_label = compare_join_context.false_predecessor->label,
+          },
+      .false_branch_opcode =
+          prepared_compare_join_branches.prepared_branch.false_branch_opcode,
   };
 }
 

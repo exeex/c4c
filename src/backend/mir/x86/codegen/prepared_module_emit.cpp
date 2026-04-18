@@ -1502,12 +1502,6 @@ std::string emit_prepared_module(
     asm_text += "    ret\n";
     return asm_text;
   };
-  struct MaterializedCompareJoinRender {
-    std::string false_label;
-    std::string true_return;
-    std::string false_return;
-    std::vector<std::string_view> same_module_global_names;
-  };
   const auto render_local_slot_guard_chain_if_supported =
       [&]() -> std::optional<std::string> {
     if (!function.params.empty() || function.blocks.empty() ||
@@ -3958,32 +3952,6 @@ std::string emit_prepared_module(
     }
     return *value_render + *trailing_render + "    ret\n";
   };
-  const auto render_materialized_compare_join_branches_if_supported =
-      [&](const c4c::backend::prepare::PreparedMaterializedCompareJoinBranches&
-              prepared_join_branches,
-          const c4c::backend::bir::Param& param)
-      -> std::optional<MaterializedCompareJoinRender> {
-    std::vector<std::string_view> same_module_global_names;
-    const auto true_return = render_materialized_compare_join_return_if_supported(
-        prepared_join_branches.true_return_context,
-        param,
-        &same_module_global_names);
-    const auto false_return = render_materialized_compare_join_return_if_supported(
-        prepared_join_branches.false_return_context,
-        param,
-        &same_module_global_names);
-    if (!true_return.has_value() || !false_return.has_value()) {
-      return std::nullopt;
-    }
-
-    return MaterializedCompareJoinRender{
-        .false_label =
-            ".L" + function.name + "_" + std::string(prepared_join_branches.false_predecessor_label),
-        .true_return = std::move(*true_return),
-        .false_return = std::move(*false_return),
-        .same_module_global_names = std::move(same_module_global_names),
-    };
-  };
   const auto render_minimal_compare_branch_if_supported =
       [&]() -> std::optional<std::string> {
     if (function.blocks.size() != 3 || function.params.size() != 1 ||
@@ -4063,19 +4031,30 @@ std::string emit_prepared_module(
     if (!prepared_compare_join_branches.has_value()) {
       return std::nullopt;
     }
-    const auto& prepared_branch = prepared_compare_join_branches->prepared_branch;
+    const auto prepared_branch_plan =
+        c4c::backend::prepare::find_prepared_materialized_compare_join_branch_plan(
+            *prepared_compare_join_branches);
+    if (!prepared_branch_plan.has_value()) {
+      return std::nullopt;
+    }
 
-    const auto rendered_join =
-        render_materialized_compare_join_branches_if_supported(
-            prepared_compare_join_branches->prepared_join_branches, param);
-    if (!rendered_join.has_value()) {
+    std::vector<std::string_view> same_module_global_names;
+    const auto true_return = render_materialized_compare_join_return_if_supported(
+        prepared_compare_join_branches->prepared_join_branches.true_return_context,
+        param,
+        &same_module_global_names);
+    const auto false_return = render_materialized_compare_join_return_if_supported(
+        prepared_compare_join_branches->prepared_join_branches.false_return_context,
+        param,
+        &same_module_global_names);
+    if (!true_return.has_value() || !false_return.has_value()) {
       return std::nullopt;
     }
 
     std::string rendered_same_module_globals;
     std::unordered_set<std::string_view> rendered_same_module_global_names(
-        rendered_join->same_module_global_names.begin(),
-        rendered_join->same_module_global_names.end());
+        same_module_global_names.begin(),
+        same_module_global_names.end());
     for (const auto& global : module.module.globals) {
       if (rendered_same_module_global_names.find(global.name) ==
           rendered_same_module_global_names.end()) {
@@ -4088,10 +4067,12 @@ std::string emit_prepared_module(
       rendered_same_module_globals += *rendered_global_data;
     }
 
+    const std::string false_label =
+        ".L" + function.name + "_" +
+        std::string(prepared_branch_plan->target_labels.false_label);
     return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    " +
-           prepared_branch.false_branch_opcode + " " + rendered_join->false_label + "\n" +
-           rendered_join->true_return +
-           rendered_join->false_label + ":\n" + rendered_join->false_return +
+           prepared_branch_plan->false_branch_opcode + " " + false_label + "\n" +
+           *true_return + false_label + ":\n" + *false_return +
            rendered_same_module_globals;
   };
   if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
