@@ -8,21 +8,28 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Activated `plan.md` and `todo.md` for idea 58. No executor packet has run yet.
+Completed Step 1 packet work in `src/backend/prealloc/prealloc.hpp` and
+`src/backend/prealloc/legalize.cpp` by adding explicit branch-condition kind
+metadata, edge-transfer records for join traffic, and shared lookup helpers
+for prepared control-flow consumers.
 
 ## Suggested Next
 
-Start Step 1 by defining the prepared control-flow contract in
-`src/backend/prealloc/prealloc.hpp`, keeping the scope limited to branch/join
-and loop-carry semantics from idea 58.
+Start Step 2 by teaching shared lowering to classify loop-carried join traffic
+with the new contract so later x86 consumers can stop inferring loop meaning
+from CFG shape.
 
 ## Watchouts
 
 - Do not activate umbrella idea 57 as executable work.
 - Do not pull in idea 59 instruction-selection scope.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth.
-- Keep routine packet progress here instead of rewriting `plan.md`.
+- X86 still reads legacy `incomings` and branch fields, so follow-up packets
+  should migrate consumers in bounded slices rather than deleting compatibility
+  fields early.
 
 ## Proof
 
-No proof run yet. Activation-only lifecycle slice.
+Ran `cmake --build --preset default` and
+`ctest --test-dir build -j --output-on-failure -R '^backend_(prepare_phi_materialize|x86_handoff_boundary)$'`.
+Proof passed and was recorded in `test_after.log`.

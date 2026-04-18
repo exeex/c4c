@@ -332,6 +332,7 @@ enum class PrepareRoute {
 enum class PreparedJoinTransferKind {
   SelectMaterialization,
   EdgeStoreSlot,
+  LoopCarry,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_join_transfer_kind_name(
@@ -341,18 +342,46 @@ enum class PreparedJoinTransferKind {
       return "select_materialization";
     case PreparedJoinTransferKind::EdgeStoreSlot:
       return "edge_store_slot";
+    case PreparedJoinTransferKind::LoopCarry:
+      return "loop_carry";
   }
   return "unknown";
 }
 
+enum class PreparedBranchConditionKind {
+  MaterializedBool,
+  FusedCompare,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_branch_condition_kind_name(
+    PreparedBranchConditionKind kind) {
+  switch (kind) {
+    case PreparedBranchConditionKind::MaterializedBool:
+      return "materialized_bool";
+    case PreparedBranchConditionKind::FusedCompare:
+      return "fused_compare";
+  }
+  return "unknown";
+}
+
+struct PreparedEdgeValueTransfer {
+  std::string predecessor_label;
+  std::string successor_label;
+  bir::Value incoming_value;
+  bir::Value destination_value;
+  std::optional<std::string> storage_name;
+};
+
 struct PreparedBranchCondition {
   std::string function_name;
   std::string block_label;
+  PreparedBranchConditionKind kind = PreparedBranchConditionKind::MaterializedBool;
   bir::Value condition_value;
   std::optional<bir::BinaryOpcode> predicate;
   std::optional<bir::TypeKind> compare_type;
   std::optional<bir::Value> lhs;
   std::optional<bir::Value> rhs;
+  bool can_fuse_with_branch = false;
   std::string true_label;
   std::string false_label;
 };
@@ -364,6 +393,7 @@ struct PreparedJoinTransfer {
   PreparedJoinTransferKind kind = PreparedJoinTransferKind::SelectMaterialization;
   std::optional<std::string> storage_name;
   std::vector<bir::PhiIncoming> incomings;
+  std::vector<PreparedEdgeValueTransfer> edge_transfers;
   std::optional<std::string> source_branch_block_label;
   std::optional<std::string> source_true_incoming_label;
   std::optional<std::string> source_false_incoming_label;
@@ -380,6 +410,54 @@ struct PreparedControlFlowFunction {
 struct PreparedControlFlow {
   std::vector<PreparedControlFlowFunction> functions;
 };
+
+[[nodiscard]] inline const PreparedControlFlowFunction* find_prepared_control_flow_function(
+    const PreparedControlFlow& control_flow,
+    std::string_view function_name) {
+  for (const auto& function : control_flow.functions) {
+    if (function.function_name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedBranchCondition* find_prepared_branch_condition(
+    const PreparedControlFlowFunction& function_cf,
+    std::string_view block_label) {
+  for (const auto& condition : function_cf.branch_conditions) {
+    if (condition.block_label == block_label) {
+      return &condition;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedJoinTransfer* find_prepared_join_transfer(
+    const PreparedControlFlowFunction& function_cf,
+    std::string_view join_block_label,
+    std::string_view destination_value_name) {
+  for (const auto& transfer : function_cf.join_transfers) {
+    if (transfer.join_block_label == join_block_label &&
+        transfer.result.kind == bir::Value::Kind::Named &&
+        transfer.result.name == destination_value_name) {
+      return &transfer;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const std::vector<PreparedEdgeValueTransfer>* incoming_transfers_for_join(
+    const PreparedControlFlowFunction& function_cf,
+    std::string_view join_block_label,
+    std::string_view destination_value_name) {
+  const auto* transfer =
+      find_prepared_join_transfer(function_cf, join_block_label, destination_value_name);
+  if (transfer == nullptr) {
+    return nullptr;
+  }
+  return &transfer->edge_transfers;
+}
 
 enum class PreparedBirInvariant {
   NoTargetFacingI1,

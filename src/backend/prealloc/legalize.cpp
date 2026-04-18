@@ -427,6 +427,17 @@ PreparedJoinTransfer make_join_transfer(std::string_view function_name,
                                         const bir::PhiInst& phi,
                                         PreparedJoinTransferKind kind,
                                         std::optional<std::string> storage_name = std::nullopt) {
+  std::vector<PreparedEdgeValueTransfer> edge_transfers;
+  edge_transfers.reserve(phi.incomings.size());
+  for (const auto& incoming : phi.incomings) {
+    edge_transfers.push_back(PreparedEdgeValueTransfer{
+        .predecessor_label = incoming.label,
+        .successor_label = std::string(join_block_label),
+        .incoming_value = incoming.value,
+        .destination_value = phi.result,
+        .storage_name = storage_name,
+    });
+  }
   return PreparedJoinTransfer{
       .function_name = std::string(function_name),
       .join_block_label = std::string(join_block_label),
@@ -434,6 +445,7 @@ PreparedJoinTransfer make_join_transfer(std::string_view function_name,
       .kind = kind,
       .storage_name = std::move(storage_name),
       .incomings = phi.incomings,
+      .edge_transfers = std::move(edge_transfers),
   };
 }
 
@@ -866,10 +878,12 @@ PreparedBranchCondition make_branch_condition(const std::string& function_name,
   };
   if (const auto* compare = find_compare_for_condition(block, block.terminator.condition);
       compare != nullptr) {
+    condition.kind = PreparedBranchConditionKind::FusedCompare;
     condition.predicate = compare->opcode;
     condition.compare_type = compare->operand_type;
     condition.lhs = compare->lhs;
     condition.rhs = compare->rhs;
+    condition.can_fuse_with_branch = true;
   }
   return condition;
 }
@@ -962,6 +976,23 @@ void collect_select_materialized_join_transfers(
                   bir::PhiIncoming{
                       .label = *false_incoming_label,
                       .value = select->false_value,
+                  },
+              },
+          .edge_transfers =
+              {
+                  PreparedEdgeValueTransfer{
+                      .predecessor_label = *true_incoming_label,
+                      .successor_label = block.label,
+                      .incoming_value = select->true_value,
+                      .destination_value = select->result,
+                      .storage_name = std::nullopt,
+                  },
+                  PreparedEdgeValueTransfer{
+                      .predecessor_label = *false_incoming_label,
+                      .successor_label = block.label,
+                      .incoming_value = select->false_value,
+                      .destination_value = select->result,
+                      .storage_name = std::nullopt,
                   },
               },
           .source_branch_block_label = branch_condition.block_label,
