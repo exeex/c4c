@@ -4180,24 +4180,17 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto prepared_compare_join_context =
-        c4c::backend::prepare::find_prepared_param_zero_materialized_compare_join_context(
+    const auto prepared_compare_join_branches =
+        c4c::backend::prepare::find_prepared_param_zero_materialized_compare_join_branches(
             *function_control_flow, function, entry, param, false);
-    if (!prepared_compare_join_context.has_value()) {
+    if (!prepared_compare_join_branches.has_value()) {
       return std::nullopt;
     }
-    const auto& prepared_branch = prepared_compare_join_context->prepared_branch;
-    const auto& compare_join_context = prepared_compare_join_context->compare_join_context;
-
-    const auto prepared_join_branches =
-        c4c::backend::prepare::find_prepared_materialized_compare_join_branches(
-            compare_join_context);
-    if (!prepared_join_branches.has_value()) {
-      return std::nullopt;
-    }
+    const auto& prepared_branch = prepared_compare_join_branches->prepared_branch;
 
     const auto rendered_join =
-        render_materialized_compare_join_branches_if_supported(*prepared_join_branches, param);
+        render_materialized_compare_join_branches_if_supported(
+            prepared_compare_join_branches->prepared_join_branches, param);
     if (!rendered_join.has_value()) {
       return std::nullopt;
     }

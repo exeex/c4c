@@ -536,6 +536,11 @@ struct PreparedParamZeroMaterializedCompareJoinContext {
   PreparedMaterializedCompareJoinContext compare_join_context;
 };
 
+struct PreparedParamZeroMaterializedCompareJoinBranches {
+  PreparedParamZeroBranchCondition prepared_branch;
+  PreparedMaterializedCompareJoinBranches prepared_join_branches;
+};
+
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinReturnContext>
 find_prepared_materialized_compare_join_return_context(
     const PreparedMaterializedCompareJoinContext& compare_join_context,
@@ -1272,6 +1277,35 @@ find_prepared_param_zero_materialized_compare_join_context(
   return PreparedParamZeroMaterializedCompareJoinContext{
       .prepared_branch = *prepared_branch,
       .compare_join_context = *compare_join_context,
+  };
+}
+
+[[nodiscard]] inline std::optional<PreparedParamZeroMaterializedCompareJoinBranches>
+find_prepared_param_zero_materialized_compare_join_branches(
+    const PreparedControlFlowFunction& function_cf,
+    const bir::Function& function,
+    const bir::Block& source_block,
+    const bir::Param& param,
+    bool require_label_match) {
+  const auto prepared_compare_join_context =
+      find_prepared_param_zero_materialized_compare_join_context(function_cf,
+                                                                 function,
+                                                                 source_block,
+                                                                 param,
+                                                                 require_label_match);
+  if (!prepared_compare_join_context.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto prepared_join_branches = find_prepared_materialized_compare_join_branches(
+      prepared_compare_join_context->compare_join_context);
+  if (!prepared_join_branches.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedParamZeroMaterializedCompareJoinBranches{
+      .prepared_branch = prepared_compare_join_context->prepared_branch,
+      .prepared_join_branches = std::move(*prepared_join_branches),
   };
 }
 
