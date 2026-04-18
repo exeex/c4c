@@ -9,21 +9,18 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`tests/backend/backend_x86_handoff_boundary_test.cpp` by extending
-`check_join_route_consumes_prepared_control_flow` to the trailing join-`ashr`
-family, so the compare-join route is now proven to keep following prepared
-true/false transfer ownership after one trailing arithmetic-right-shift use of
-the joined value instead of stopping at the base, trailing-`add`,
-trailing-`xor`, trailing-`and`, trailing-`or`, trailing-`mul`,
-trailing-`shl`, and trailing-`lshr` cases.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by removing the
+compare-join predecessor-label fallback, so the x86 materialized-compare join
+lane now requires prepared true/false transfer indices instead of recovering
+join ownership from predecessor labels when consuming the existing
+select-materialization handoff.
 
 ## Suggested Next
 
-The next small Step 3 packet is broadening the same compare-join ownership
-proof beyond the current arithmetic and shift follow-on families to another
-prepared join consumer that still relies on the same generalized helper path,
-so the label-based fallback can keep shrinking without introducing x86
-testcase-shaped ownership logic.
+The next small Step 3 packet is shrinking the remaining emitter-local shape
+recovery around compare-join continuation handling, especially any join-lane
+logic that still walks CFG topology after prepared control-flow data is already
+available for the same handoff.
 
 ## Watchouts
 
@@ -32,15 +29,13 @@ testcase-shaped ownership logic.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth.
 - Keep the compare-join lane aligned with the continuation lane: only empty
   branch-only carriers on the way to the prepared join are in scope.
-- Shared lowering now publishes ordinary compare-join true/false transfer
-  ownership for the base phi-lowered lane, but x86 still keeps a label-based
-  fallback for routes that do not yet expose those indices; remove that
-  fallback only when the remaining families are covered by the same contract.
-- The trailing-`ashr` ownership proof reuses the same helper and mutation path
-  as the base, trailing-`add`, trailing-`xor`, trailing-`and`,
-  trailing-`or`, trailing-`mul`, trailing-`shl`, and trailing-`lshr` cases;
-  keep future families on that generalized route instead of cloning
-  testcase-shaped ownership logic.
+- The compare-join materialization path now rejects routes that do not publish
+  prepared true/false transfer indices; if any remaining family still depends
+  on predecessor-label ownership recovery, fix the shared producer contract
+  instead of reintroducing an x86 fallback.
+- The existing base and trailing binary compare-join proofs still exercise the
+  same generalized helper path; keep future Step 3 work on that shared route
+  instead of cloning testcase-shaped ownership logic.
 - Treat any future fix here as capability repair, not expectation weakening:
   the joined branch route is covered by `backend_x86_handoff_boundary`.
 
@@ -49,4 +44,5 @@ testcase-shaped ownership logic.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The build and narrow proof both passed; `test_after.log` is the canonical proof
-log and was sufficient for this handoff-boundary Step 3 ownership packet.
+log and was sufficient for this Step 3 compare-join ownership packet after the
+x86 fallback removal.

@@ -3906,33 +3906,17 @@ std::string emit_prepared_module(
       named_binaries.emplace(binary->result.name, binary);
     }
 
-    const auto find_transfer_by_predecessor =
-        [&](std::string_view predecessor_label)
-        -> const c4c::backend::prepare::PreparedEdgeValueTransfer* {
-      for (const auto& edge_transfer : *join_edges) {
-        if (edge_transfer.predecessor_label == predecessor_label) {
-          return &edge_transfer;
-        }
-      }
-      return nullptr;
-    };
-
-    const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
-    const c4c::backend::prepare::PreparedEdgeValueTransfer* false_transfer = nullptr;
-    if (prepared_join_transfer.source_true_transfer_index.has_value() &&
-        prepared_join_transfer.source_false_transfer_index.has_value()) {
-      if (*prepared_join_transfer.source_true_transfer_index >= join_edges->size() ||
-          *prepared_join_transfer.source_false_transfer_index >= join_edges->size() ||
-          *prepared_join_transfer.source_true_transfer_index ==
-              *prepared_join_transfer.source_false_transfer_index) {
-        return std::nullopt;
-      }
-      true_transfer = &(*join_edges)[*prepared_join_transfer.source_true_transfer_index];
-      false_transfer = &(*join_edges)[*prepared_join_transfer.source_false_transfer_index];
-    } else {
-      true_transfer = find_transfer_by_predecessor(true_join_predecessor->label);
-      false_transfer = find_transfer_by_predecessor(false_join_predecessor->label);
+    if (!prepared_join_transfer.source_true_transfer_index.has_value() ||
+        !prepared_join_transfer.source_false_transfer_index.has_value() ||
+        *prepared_join_transfer.source_true_transfer_index >= join_edges->size() ||
+        *prepared_join_transfer.source_false_transfer_index >= join_edges->size() ||
+        *prepared_join_transfer.source_true_transfer_index ==
+            *prepared_join_transfer.source_false_transfer_index) {
+      return std::nullopt;
     }
+    const auto* true_transfer = &(*join_edges)[*prepared_join_transfer.source_true_transfer_index];
+    const auto* false_transfer =
+        &(*join_edges)[*prepared_join_transfer.source_false_transfer_index];
     if (true_transfer == nullptr || false_transfer == nullptr ||
         true_transfer->successor_label != prepared_join_transfer.join_block_label ||
         false_transfer->successor_label != prepared_join_transfer.join_block_label) {
