@@ -4381,6 +4381,16 @@ int main() {
       status != 0) {
     return status;
   }
+  if (const auto status =
+          check_join_route_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_ashr_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_ashr_asm(
+                  "branch_join_adjust_then_ashr", "is_nonzero", 5, 1, 2),
+              "branch_join_adjust_then_ashr",
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join ashr prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
 
   if (const auto status =
           check_route_outputs(make_x86_local_i32_immediate_guard_module(),
