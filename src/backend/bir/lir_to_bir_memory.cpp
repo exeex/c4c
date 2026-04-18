@@ -1740,8 +1740,30 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return true;
     }
 
-    const auto ptr_it = local_pointer_slots.find(load->ptr.str());
-    if (ptr_it == local_pointer_slots.end()) {
+    const auto local_slot_load = try_lower_local_slot_load(load->result.str(),
+                                                           load->ptr.str(),
+                                                           *value_type,
+                                                           local_pointer_slots,
+                                                           local_slot_types,
+                                                           local_aggregate_field_slots,
+                                                           local_array_slots,
+                                                           local_pointer_value_aliases,
+                                                           type_decls,
+                                                           local_indirect_pointer_slots,
+                                                           local_address_slots,
+                                                           local_slot_address_slots,
+                                                           local_pointer_slot_addresses,
+                                                           global_types,
+                                                           function_symbols,
+                                                           &value_aliases,
+                                                           &local_slot_pointer_values,
+                                                           &local_aggregate_slots,
+                                                           &local_pointer_array_bases,
+                                                           &global_pointer_slots,
+                                                           &pointer_value_addresses,
+                                                           &global_address_ints,
+                                                           lowered_insts);
+    if (local_slot_load == LocalSlotLoadResult::NotHandled) {
       if (*value_type == bir::TypeKind::Ptr) {
         if (const auto local_array_it = dynamic_local_pointer_arrays.find(load->ptr.str());
             local_array_it != dynamic_local_pointer_arrays.end()) {
@@ -1784,46 +1806,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       }
       return fail_load();
     }
-
-    const auto slot_it = local_slot_types.find(ptr_it->second);
-    if (slot_it == local_slot_types.end() || slot_it->second != *value_type) {
-      return fail_load();
-    }
-
-    if (*value_type == bir::TypeKind::Ptr) {
-      if (!try_lower_tracked_local_pointer_slot_load(load->result.str(),
-                                                     ptr_it->second,
-                                                     local_aggregate_field_slots,
-                                                     local_array_slots,
-                                                     local_pointer_value_aliases,
-                                                     type_decls,
-                                                     local_indirect_pointer_slots,
-                                                     local_address_slots,
-                                                     local_slot_address_slots,
-                                                     local_pointer_slot_addresses,
-                                                     global_types,
-                                                     function_symbols,
-                                                     &value_aliases,
-                                                     &local_slot_pointer_values,
-                                                     &local_aggregate_slots,
-                                                     &local_pointer_array_bases,
-                                                     &global_pointer_slots,
-                                                     &pointer_value_addresses,
-                                                     lowered_insts)) {
-        return fail_load();
-      }
-      return true;
-    }
-
-    if (!try_lower_nonpointer_local_slot_load(load->result.str(),
-                                              ptr_it->second,
-                                              *value_type,
-                                              local_address_slots,
-                                              &global_address_ints,
-                                              lowered_insts)) {
-      return fail_load();
-    }
-    return true;
+    return local_slot_load == LocalSlotLoadResult::Lowered ? true : fail_load();
   }
 
   if (const auto* memcpy = std::get_if<c4c::codegen::lir::LirMemcpyOp>(&inst)) {

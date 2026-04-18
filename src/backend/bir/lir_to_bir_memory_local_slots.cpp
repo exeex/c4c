@@ -1908,6 +1908,74 @@ bool BirFunctionLowerer::try_lower_nonpointer_local_slot_load(
   return true;
 }
 
+BirFunctionLowerer::LocalSlotLoadResult BirFunctionLowerer::try_lower_local_slot_load(
+    std::string_view result_name,
+    std::string_view ptr_name,
+    bir::TypeKind value_type,
+    const LocalPointerSlots& local_pointer_slots,
+    const LocalSlotTypes& local_slot_types,
+    const LocalAggregateFieldSet& local_aggregate_field_slots,
+    const LocalArraySlotMap& local_array_slots,
+    const LocalPointerValueAliasMap& local_pointer_value_aliases,
+    const TypeDeclMap& type_decls,
+    const LocalIndirectPointerSlotSet& local_indirect_pointer_slots,
+    const LocalAddressSlots& local_address_slots,
+    const LocalSlotAddressSlots& local_slot_address_slots,
+    const PointerAddressMap& local_pointer_slot_addresses,
+    const GlobalTypes& global_types,
+    const FunctionSymbolSet& function_symbols,
+    ValueMap* value_aliases,
+    LocalSlotPointerValues* local_slot_pointer_values,
+    LocalAggregateSlotMap* local_aggregate_slots,
+    LocalPointerArrayBaseMap* local_pointer_array_bases,
+    GlobalPointerMap* global_pointer_slots,
+    PointerAddressMap* pointer_value_addresses,
+    GlobalAddressIntMap* global_address_ints,
+    std::vector<bir::Inst>* lowered_insts) {
+  const auto ptr_it = local_pointer_slots.find(std::string(ptr_name));
+  if (ptr_it == local_pointer_slots.end()) {
+    return LocalSlotLoadResult::NotHandled;
+  }
+
+  const auto slot_it = local_slot_types.find(ptr_it->second);
+  if (slot_it == local_slot_types.end() || slot_it->second != value_type) {
+    return LocalSlotLoadResult::Failed;
+  }
+
+  if (value_type == bir::TypeKind::Ptr) {
+    return try_lower_tracked_local_pointer_slot_load(result_name,
+                                                     ptr_it->second,
+                                                     local_aggregate_field_slots,
+                                                     local_array_slots,
+                                                     local_pointer_value_aliases,
+                                                     type_decls,
+                                                     local_indirect_pointer_slots,
+                                                     local_address_slots,
+                                                     local_slot_address_slots,
+                                                     local_pointer_slot_addresses,
+                                                     global_types,
+                                                     function_symbols,
+                                                     value_aliases,
+                                                     local_slot_pointer_values,
+                                                     local_aggregate_slots,
+                                                     local_pointer_array_bases,
+                                                     global_pointer_slots,
+                                                     pointer_value_addresses,
+                                                     lowered_insts)
+               ? LocalSlotLoadResult::Lowered
+               : LocalSlotLoadResult::Failed;
+  }
+
+  return try_lower_nonpointer_local_slot_load(result_name,
+                                              ptr_it->second,
+                                              value_type,
+                                              local_address_slots,
+                                              global_address_ints,
+                                              lowered_insts)
+             ? LocalSlotLoadResult::Lowered
+             : LocalSlotLoadResult::Failed;
+}
+
 bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
     std::string_view result_name,
     std::string_view slot_name,

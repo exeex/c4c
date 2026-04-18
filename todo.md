@@ -6,33 +6,34 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2: moved the remaining non-pointer local-slot load wrapper out of
+Plan Step 2: moved the remaining local-slot load dispatch wrapper out of
 `src/backend/bir/lir_to_bir_memory.cpp` and into
 `src/backend/bir/lir_to_bir_memory_local_slots.cpp` by adding
-`try_lower_nonpointer_local_slot_load`, so the local-slot owner now handles
-both the `bir::TypeKind::I64` `global_address_ints_` fast path and the plain
-scalar `bir::LoadLocalInst` fallback after the coordinator confirms the slot
-type and keeps pointer-valued tracked-slot dispatch in its separate helper.
+`try_lower_local_slot_load` plus the `LocalSlotLoadResult` tri-state, so the
+local-slot owner now handles slot lookup, slot-type validation, and the
+pointer-vs-nonpointer dispatch between
+`try_lower_tracked_local_pointer_slot_load` and
+`try_lower_nonpointer_local_slot_load` while the coordinator keeps only the
+broader load-admission flow and dynamic-array fallback paths.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by re-reading the remaining local-slot load handling
-still left in `src/backend/bir/lir_to_bir_memory.cpp`, especially the
-coordinator-side slot lookup and failure routing around `local_pointer_slots`
-and `local_slot_types`, and decide whether one more thin dispatch wrapper can
-move into `src/backend/bir/lir_to_bir_memory_local_slots.cpp` without
-absorbing dynamic pointer-array selection or broader opcode admission logic.
+Continue `plan.md` Step 2 by re-reading the remaining coordinator-side
+local-slot store/update handling in `src/backend/bir/lir_to_bir_memory.cpp`
+and decide whether one thin local-slot-owned dispatch wrapper can move next
+into `src/backend/bir/lir_to_bir_memory_local_slots.cpp` without absorbing
+global-address admission, dynamic pointer-array selection, or broader opcode
+routing.
 
 ## Watchouts
 
 - This plan is refactor-only; do not claim x86 backend capability progress from
   it.
 - Keep `lower_scalar_or_local_memory_inst` in the main coordinator TU.
-- `try_lower_tracked_local_pointer_slot_load` still owns the tracked
-  local-pointer alias fast path and reload-state bookkeeping, while
-  `try_lower_nonpointer_local_slot_load` now owns the remaining non-pointer
-  local-slot load wrapper; the next packet should preserve that split instead
-  of re-embedding either fallback family in the coordinator.
+- `try_lower_local_slot_load` now owns local-slot load lookup, slot-type
+  validation, and pointer-vs-nonpointer dispatch; future packets should keep
+  that wrapper in the local-slot owner instead of re-embedding the split in
+  the coordinator.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:
   0`; treat the canonical log pair as unchanged-behavior evidence, not as a
