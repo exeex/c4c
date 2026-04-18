@@ -1,7 +1,22 @@
 # X86 Prepared-Module Renderer De-Headerization
 
-Status: Open
+Status: Closed
 Created: 2026-04-18
+Completed: 2026-04-18
+
+## Closure Note
+
+The prepared-module renderer no longer lives inline in
+`src/backend/mir/x86/codegen/x86_codegen.hpp`. The public handoff surface stays
+declared in the header, while compiled `.cpp` ownership now carries
+`emit_prepared_module(...)` through
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp`.
+
+Close proof:
+
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary(_test)?|backend_lir_to_bir_notes)$'`
+- regression guard pass against `test_before.log` and `test_after.log`
 
 ## Why This Idea Exists
 

@@ -1,157 +1,144 @@
-# X86 Prepared-Module Renderer De-Headerization Runbook
+# X86 Backend C-Testsuite Capability Families Runbook
 
 Status: Active
-Source Idea: ideas/open/56_x86_prepared_module_renderer_deheaderization.md
-Activated from: ideas/open/56_x86_prepared_module_renderer_deheaderization.md
+Source Idea: ideas/open/57_x86_backend_c_testsuite_capability_families.md
+Activated from: ideas/open/57_x86_backend_c_testsuite_capability_families.md
 
 ## Purpose
 
-Move the x86 prepared-module renderer implementation out of
-`x86_codegen.hpp` so the header returns to being a shared contract surface
-before the x86 capability-family route widens again.
+Turn the current x86 backend c-testsuite fail surface into honest capability
+family work packets instead of testcase-shaped repairs.
 
 ## Goal
 
-Land a behavior-preserving de-headerization of the prepared-module renderer,
-with compiled `.cpp` ownership holding the main orchestration flow and the
-header reduced to declarations, shared types, and contract helpers only.
+Choose one dominant x86 backend capability family, land one bounded lane in
+that family through semantic `lir_to_bir` into the prepared-module handoff,
+and prove the result across nearby cases without weakening `x86_backend`
+contracts.
 
 ## Core Rule
 
-This runbook is refactor-only. Do not mix new x86 backend capability growth,
-expectation changes, or testcase-lane claims into these packets.
+This route is capability-family work only. Do not claim progress through
+fallback-to-IR acceptance, testcase-named shortcuts, or expectation downgrades.
 
 ## Read First
 
-- [ideas/open/56_x86_prepared_module_renderer_deheaderization.md](/workspaces/c4c/ideas/open/56_x86_prepared_module_renderer_deheaderization.md)
-- [review/x86_codegen_header_split_review.md](/workspaces/c4c/review/x86_codegen_header_split_review.md)
+- [ideas/open/57_x86_backend_c_testsuite_capability_families.md](/workspaces/c4c/ideas/open/57_x86_backend_c_testsuite_capability_families.md)
+- [src/backend/bir/lir_to_bir_memory.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir_memory.cpp)
+- [src/backend/bir/lir_to_bir.cpp](/workspaces/c4c/src/backend/bir/lir_to_bir.cpp)
+- [src/backend/bir/lir_to_bir.hpp](/workspaces/c4c/src/backend/bir/lir_to_bir.hpp)
 - [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
-- [src/backend/mir/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/emit.cpp)
-- [src/backend/mir/x86/codegen/prepared_module_emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/prepared_module_emit.cpp)
-- [src/backend/mir/x86/codegen/memory.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/memory.cpp)
-- [src/backend/mir/x86/codegen/calls.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/calls.cpp)
-- [src/backend/mir/x86/codegen/comparison.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/comparison.cpp)
-- [src/backend/mir/x86/codegen/globals.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/globals.cpp)
+- [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
+- [tests/backend/backend_x86_handoff_boundary_test.cpp](/workspaces/c4c/tests/backend/backend_x86_handoff_boundary_test.cpp)
 
 ## Current Targets
 
-- [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
-- [src/backend/mir/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/emit.cpp)
-- [src/backend/mir/x86/codegen/prepared_module_emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/prepared_module_emit.cpp)
-- existing x86 codegen owners under `src/backend/mir/x86/codegen/*.cpp`
-- [tests/backend/backend_x86_handoff_boundary_test.cpp](/workspaces/c4c/tests/backend/backend_x86_handoff_boundary_test.cpp)
-- [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
+- `src/backend/bir/lir_to_bir_memory.cpp`
+- `src/backend/bir/lir_to_bir.cpp`
+- `src/backend/bir/lir_to_bir.hpp`
+- `src/backend/mir/x86/codegen/x86_codegen.hpp`
+- `tests/backend/backend_lir_to_bir_notes_test.cpp`
+- `tests/backend/backend_x86_handoff_boundary_test.cpp`
+- targeted `tests/c/external/c-testsuite/src/*.c` probes from one family
 
 ## Non-Goals
 
-- claiming x86 backend capability-family progress from this refactor
-- broad AArch64 or non-x86 cleanup
-- moving implementation by testcase lane name or arbitrary line-count slicing
-- leaving `x86_codegen.hpp` as a thin wrapper around another monolithic inline
-  blob
-- reopening idea `55` instead of continuing through the x86 codegen owner
-  surfaces
+- solving the whole x86 backend c-testsuite surface in one packet
+- reviving legacy adapter-growth as the main mechanism
+- mixing AArch64 cleanup or unrelated emitter restructuring into this route
+- weakening expected-output contracts or converting supported paths to
+  unsupported
 
 ## Working Model
 
-- `x86_codegen.hpp` should keep shared declarations, shared types, and public
-  contract helpers used across sibling x86 translation units.
-- compiled `.cpp` ownership should own the main
-  `emit_prepared_module(...)` orchestration flow.
-- `emit.cpp` remains the public entry surface, while
-  `prepared_module_emit.cpp` is an acceptable focused owner when pulling more
-  of the translated x86 codegen tree into the build would widen the packet.
-- Existing `.cpp` owners such as `memory.cpp`, `calls.cpp`, `comparison.cpp`,
-  and `globals.cpp` should absorb extracted implementation when ownership is
-  already clear.
-- New support `.cpp` files are allowed only when an existing owner is not
-  coherent.
-- Each packet must read as move/extract work first, with behavior preserved and
-  proof run afterward.
+- Treat the fail surface as a small number of capability families, not a pile
+  of isolated testcase names.
+- Prefer semantic lowering growth in `lir_to_bir_*`; use x86 handoff tests to
+  prove prepared-module ingestion boundaries honestly.
+- Nearby cases in the same lane must be checked so the packet does not overfit
+  one named failing testcase.
+- Route-reset constraints remain active: if the next honest packet still needs
+  an ownership split in `lir_to_bir_memory.cpp`, stop and hand that back
+  through lifecycle instead of stretching this runbook.
 
 ## Execution Rules
 
-- Preserve the current public API shape while moving implementation.
-- Prefer semantic owner files over temporary staging files.
-- Accept a focused support owner such as `prepared_module_emit.cpp` when an
-  existing owner is not yet a coherent compiled surface.
-- Keep the first packet centered on de-headerization, not deep sub-splitting.
-- Validate every packet as `build -> narrow x86 handoff proof`, and broaden
-  only if the moved implementation reaches beyond the handoff surface.
-- If execution uncovers a separate initiative, stop and route it through
-  lifecycle instead of stretching this refactor plan.
+- Start by re-baselining the current dominant family from current tests, not
+  from stale packet assumptions.
+- Name packets by capability family and lane, not by testcase ID.
+- Keep proving shaped as `build -> backend notes/handoff tests -> targeted
+  c-testsuite cluster -> x86_backend checkpoint when justified`.
+- Escalate to broader backend validation when shared lowering or prepared-module
+  legality changes beyond the bounded lane.
+- Reject any slice whose main effect is expectation churn or matcher growth
+  instead of backend capability repair.
 
-## Step 1. Re-Read The Header Contract
+## Step 1. Re-Baseline The Active Family
 
-Goal: Confirm which pieces of `x86_codegen.hpp` are true shared contract and
-which are renderer implementation.
-
-Primary targets:
-- [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
-- [src/backend/mir/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/emit.cpp)
-- [review/x86_codegen_header_split_review.md](/workspaces/c4c/review/x86_codegen_header_split_review.md)
-
-Actions:
-- identify the exact declaration surface that must remain in the header
-- map the current `emit_prepared_module(...)` body to its natural `.cpp`
-  owners
-- choose the first extraction packet so owned files and proof are clear before
-  edits begin
-
-Completion check:
-- the next packet names one explicit ownership move for the renderer body and
-  leaves the public contract surface unchanged
-
-## Step 2. Move The Prepared-Module Renderer Out Of The Header
-
-Goal: Relocate the main renderer implementation into `.cpp` ownership without
-changing behavior.
+Goal: Choose the first honest capability-family packet from the current x86
+backend failure surface.
 
 Primary targets:
-- [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
-- [src/backend/mir/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/emit.cpp)
-- [src/backend/mir/x86/codegen/prepared_module_emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/prepared_module_emit.cpp)
-- any existing sibling x86 codegen owner that naturally absorbs part of the
-  move
+- `tests/c/external/c-testsuite/src/*.c`
+- `tests/backend/backend_lir_to_bir_notes_test.cpp`
+- `tests/backend/backend_x86_handoff_boundary_test.cpp`
 
 Actions:
-- move the `emit_prepared_module(...)` implementation out of the header
-- keep public declarations and shared types coherent in `x86_codegen.hpp`
-- place moved implementation under compiled `.cpp` ownership, using
-  `prepared_module_emit.cpp` and existing semantic owners where read-through
-  already justifies them
-- keep the packet free of capability-family behavior claims
+- inspect the current x86 backend failure notes and handoff boundaries
+- group the immediate failing probes by one dominant capability family
+- select one bounded lane and a nearby-case proving cluster for that family
 
 Completion check:
-- the header no longer owns the full renderer body, and the orchestration flow
-  lives in `.cpp` ownership with unchanged API shape
+- the next packet names one capability family and one bounded lane with a
+  concrete proving cluster
 
-## Step 3. Prove The Refactor Packet Narrowly
+## Step 2. Repair One Bounded Capability Lane
 
-Goal: Show the de-headerization is behavior preserving on the x86 handoff
-surface.
+Goal: Land one honest backend improvement for the selected family.
+
+Primary targets:
+- `src/backend/bir/lir_to_bir_memory.cpp`
+- `src/backend/bir/lir_to_bir.cpp`
+- `src/backend/bir/lir_to_bir.hpp`
+- any prepared-module boundary surface required by the same lane
+
+Actions:
+- implement the smallest semantic lowering or legality change that repairs the
+  chosen lane
+- keep the packet aligned to the selected capability family instead of one test
+  name
+- update backend-owned notes or boundary checks to describe the new supported
+  edge honestly
+
+Completion check:
+- one bounded lane from the chosen family lowers honestly through the prepared
+  x86 handoff without expectation weakening
+
+## Step 3. Prove The Lane And Nearby Cases
+
+Goal: Show the packet improves a family lane rather than one named case.
 
 Actions:
 - run `cmake --build --preset default`
-- run `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|backend_lir_to_bir_notes)$'`
-- capture the exact proving command and result in `todo.md`
+- run `ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary(_test)?)$'`
+- run the targeted `c_testsuite_x86_backend_*` cluster chosen in Step 1
+- capture the exact proving commands and results in `todo.md`
 
 Completion check:
-- the build passes, the narrow x86 handoff proof passes, and `todo.md` records
-  the packet as refactor-only progress
+- backend notes, x86 handoff proof, and the targeted nearby-case cluster all
+  pass for the same lane
 
-## Step 4. Check Remaining Ownership Pressure
+## Step 4. Re-Checkpoint The X86 Backend Surface
 
-Goal: Decide whether the renderer still has one obvious follow-on split from
-`prepared_module_emit.cpp` into existing semantic owners or whether the next
-lifecycle return should go back to the x86 umbrella idea.
+Goal: Decide whether the route should continue on the same family, switch
+family, or return through lifecycle because a prerequisite refactor surfaced.
 
 Actions:
-- compare the remaining header and `.cpp` ownership mix against idea `56`
-- record the next honest extraction candidate in `todo.md`
-- if the header is back to a contract role, leave a clear handoff for the next
-  lifecycle checkpoint
+- compare the landed lane against nearby remaining failures
+- run `ctest --test-dir build -L x86_backend --output-on-failure` when the
+  slice is coherent enough for a checkpoint
+- record the next honest family packet or blocker in `todo.md`
 
 Completion check:
-- the next packet is described by owner surface, not by testcase lane or
-  temporary nickname
+- the next packet is described by a capability family and blocker/proof state,
+  not by isolated testcase names
