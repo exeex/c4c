@@ -5668,6 +5668,94 @@ int check_join_route_edge_store_slot_pointer_backed_global_selected_value_chain_
       false);
 }
 
+int check_join_route_pointer_backed_global_selected_value_chain_with_true_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      true,
+      false);
+}
+
+int check_join_route_edge_store_slot_pointer_backed_global_selected_value_chain_with_true_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      true,
+      false);
+}
+
+int check_join_route_pointer_backed_global_selected_value_chain_with_false_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true);
+}
+
+int check_join_route_edge_store_slot_pointer_backed_global_selected_value_chain_with_false_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true);
+}
+
 int check_join_route_offset_pointer_backed_global_selected_values_consumes_prepared_control_flow(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -8759,6 +8847,78 @@ int main() {
                   3),
               "branch_join_pointer_backed_global_then_xor",
               "scalar-control-flow compare-against-zero joined branch lane with pointer-backed same-module global selected-value chain EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_pointer_backed_global_selected_value_chain_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_pointer_backed_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_pointer_backed_global_chains_then_xor_asm(
+                  "branch_join_pointer_backed_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero_root",
+                  "selected_zero_backing",
+                  4,
+                  "selected_nonzero_root",
+                  "selected_nonzero_backing",
+                  1,
+                  3),
+              "branch_join_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with pointer-backed same-module global selected-value chain ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_pointer_backed_global_selected_value_chain_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_pointer_backed_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_pointer_backed_global_chains_then_xor_asm(
+                  "branch_join_pointer_backed_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero_root",
+                  "selected_zero_backing",
+                  4,
+                  "selected_nonzero_root",
+                  "selected_nonzero_backing",
+                  1,
+                  3),
+              "branch_join_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with pointer-backed same-module global selected-value chain EdgeStoreSlot ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_pointer_backed_global_selected_value_chain_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_pointer_backed_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_pointer_backed_global_chains_then_xor_asm(
+                  "branch_join_pointer_backed_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero_root",
+                  "selected_zero_backing",
+                  4,
+                  "selected_nonzero_root",
+                  "selected_nonzero_backing",
+                  1,
+                  3),
+              "branch_join_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with pointer-backed same-module global selected-value chain ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_pointer_backed_global_selected_value_chain_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_pointer_backed_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_pointer_backed_global_chains_then_xor_asm(
+                  "branch_join_pointer_backed_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero_root",
+                  "selected_zero_backing",
+                  4,
+                  "selected_nonzero_root",
+                  "selected_nonzero_backing",
+                  1,
+                  3),
+              "branch_join_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with pointer-backed same-module global selected-value chain EdgeStoreSlot ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }

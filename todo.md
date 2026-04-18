@@ -11,8 +11,8 @@ Source Plan: plan.md
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `tests/backend/backend_x86_handoff_boundary_test.cpp` and `todo.md` by
 extending the compare-join handoff-boundary fixture to the non-fixed-offset
-pointer-backed same-module global selected-values passthrough topology on both
-true and false lanes, keeping the same prepared branch/join ownership
+pointer-backed same-module global selected-value chain passthrough topology on
+both true and false lanes, keeping the same prepared branch/join ownership
 contract and proving both the plain prepared consumer and the
 `PreparedJoinTransferKind::EdgeStoreSlot` carrier still emit the same
 canonical asm when one extra empty authoritative bridge sits between the
@@ -23,10 +23,9 @@ source branch lane and the join.
 The next accepted packet should stay in Step 3 and keep shrinking residual
 compare-join topology sensitivity only where prepared ownership is already
 authoritative, most likely by extending the same passthrough check to the
-adjacent pointer-backed same-module global selected-value chain family that
-already has baseline and EdgeStoreSlot coverage without yet tolerating one
-extra empty authoritative bridge on both lanes before widening into broader
-CFG shapes, instruction-selection work, or Step 4 file organization.
+adjacent prepared compare-join return-context ownership checks for the same
+pointer-backed selected-value chain family before widening into broader CFG
+shapes, instruction-selection work, or Step 4 file organization.
 
 ## Watchouts
 
@@ -38,7 +37,7 @@ CFG shapes, instruction-selection work, or Step 4 file organization.
   family should only allow one extra empty passthrough after an already-
   authoritative compare lane when the prepared branch labels and join-transfer
   ownership already identify the real source edges, including the
-  pointer-backed selected-values variant that now has both true-lane and
+  pointer-backed selected-value chain variant that now has both true-lane and
   false-lane passthrough proof without any x86 consumer change.
 - Keep follow-on work focused on places where prepared branch labels and join
   ownership are already authoritative; do not reintroduce source-label
@@ -47,7 +46,7 @@ CFG shapes, instruction-selection work, or Step 4 file organization.
 - `test_before.log` remains the narrow baseline for
   `^backend_x86_handoff_boundary$`, and this packet refreshes `test_after.log`
   with the same focused proof command after proving the compare-join
-  pointer-backed same-module global selected-values consumer and paired
+  pointer-backed same-module global selected-value chain consumer and paired
   EdgeStoreSlot carrier also ignore one extra empty true-lane or false-lane
   passthrough block when prepared control-flow ownership is authoritative.
 
@@ -57,7 +56,7 @@ Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The focused proof refreshes `test_after.log` with the
 `backend_x86_handoff_boundary` subset for the new pointer-backed same-module
-global selected-values true-lane and false-lane passthrough coverage, the
-paired EdgeStoreSlot carrier coverage, and the existing prepared branch/join
-ownership families that continue proving the same handoff contracts. The
-proof passed and `test_after.log` is the preserved proof log.
+global selected-value chain true-lane and false-lane passthrough coverage,
+the paired EdgeStoreSlot carrier coverage, and the existing prepared
+branch/join ownership families that continue proving the same handoff
+contracts. The proof passed and `test_after.log` is the preserved proof log.
