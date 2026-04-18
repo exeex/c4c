@@ -1527,7 +1527,6 @@ std::string emit_prepared_module(
       const c4c::backend::bir::Block* true_block = nullptr;
       const c4c::backend::bir::Block* false_block = nullptr;
       const c4c::backend::bir::BinaryInst* hoisted_compare = nullptr;
-      std::optional<std::string_view> expected_join_predecessor_label;
       std::optional<std::string> true_entry_label;
     };
     struct ShortCircuitPlan {
@@ -1543,6 +1542,22 @@ std::string emit_prepared_module(
       c4c::backend::bir::BinaryOpcode opcode = c4c::backend::bir::BinaryOpcode::Eq;
       std::string compare_setup;
     };
+    const auto continuation_target_reaches_join =
+        [&](std::string_view start_label, std::string_view join_label) {
+          std::unordered_set<std::string_view> visited;
+          const auto* current = find_block(start_label);
+          while (current != nullptr && visited.insert(current->label).second) {
+            if (current->label == join_label) {
+              return true;
+            }
+            if (!current->insts.empty() ||
+                current->terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
+              return false;
+            }
+            current = find_block(current->terminator.target_label);
+          }
+          return false;
+        };
     const auto* function_control_flow = find_control_flow_function();
 
     const auto render_function_return =
@@ -2132,21 +2147,9 @@ std::string emit_prepared_module(
 
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
             if (continuation.has_value()) {
-              bool reaches_continuation_join = false;
-              const auto* branch_target = find_block(block.terminator.target_label);
-              if (branch_target != nullptr && branch_target->label == continuation->join_label) {
-                reaches_continuation_join = true;
-              } else if (continuation->expected_join_predecessor_label.has_value()) {
-                if (branch_target == nullptr ||
-                    branch_target->label != *continuation->expected_join_predecessor_label ||
-                    !branch_target->insts.empty() ||
-                    branch_target->terminator.kind !=
-                        c4c::backend::bir::TerminatorKind::Branch ||
-                    branch_target->terminator.target_label != continuation->join_label) {
-                  return std::nullopt;
-                }
-                reaches_continuation_join = true;
-              }
+              const bool reaches_continuation_join =
+                  continuation_target_reaches_join(block.terminator.target_label,
+                                                   continuation->join_label);
               if (reaches_continuation_join) {
                 const c4c::backend::bir::BinaryInst* compare = nullptr;
                 if (compare_index + 1 == block.insts.size()) {
@@ -2356,9 +2359,6 @@ std::string emit_prepared_module(
                 .true_block = nullptr,
                 .false_block = nullptr,
                 .hoisted_compare = nullptr,
-                .expected_join_predecessor_label =
-                    join_transfer->edge_transfers[short_circuit_index == 0 ? 1 : 0]
-                        .predecessor_label,
             };
             if (*join_branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Ne) {
               continuation_plan.true_block = join_true;
