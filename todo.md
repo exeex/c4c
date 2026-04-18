@@ -20,11 +20,13 @@ branch-owned join cases.
 
 ## Suggested Next
 
-Pick the next small Step 3 consumer packet that replaces another
-equality-shaped prepared-branch assumption with a predicate-driven prepared
-lookup, or hand lifecycle back for route refresh if the remaining Step 3 work
-would otherwise spill into countdown-loop routing or Step 4 file
-reorganization.
+Do not spend another packet on proof-only expansion of already-green `ne`
+trailing-join cases. The next accepted packet must either remove one remaining
+Step 3 emitter-local semantic-recovery seam in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` with a real prepared
+branch/join consumer change, or hand lifecycle back for an explicit Step 4
+transition if inspection shows the remaining gap is file organization rather
+than consumer capability.
 
 ## Watchouts
 
@@ -43,6 +45,10 @@ reorganization.
   prepared-carrier validation seam, so follow-on work should extend that
   seam instead of reintroducing per-helper carrier parsing or destination-name
   assumptions.
+- A reverted proof-only packet tried to add nonzero trailing-join `add`
+  coverage without any paired consumer change; treat more test-only `ne`
+  trailing-op expansion as route drift unless the next slice also lands real
+  Step 3 code.
 - The joined-branch ownership helper still proves both
   `SelectMaterialization` and `PreparedJoinTransferKind::EdgeStoreSlot`
   carriers; keep further work in this family focused on prepared carrier
