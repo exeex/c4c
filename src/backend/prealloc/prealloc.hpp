@@ -445,8 +445,19 @@ struct PreparedSupportedImmediateBinary {
   std::int64_t immediate = 0;
 };
 
+enum class PreparedComputedBaseKind {
+  ImmediateI32,
+  ParamValue,
+};
+
+struct PreparedComputedBase {
+  PreparedComputedBaseKind kind = PreparedComputedBaseKind::ImmediateI32;
+  std::int64_t immediate = 0;
+  std::string param_name;
+};
+
 struct PreparedComputedValue {
-  bir::Value base_value;
+  PreparedComputedBase base;
   std::vector<PreparedSupportedImmediateBinary> operations;
 };
 
@@ -454,6 +465,7 @@ struct PreparedMaterializedCompareJoinContext {
   const PreparedJoinTransfer* join_transfer = nullptr;
   const PreparedEdgeValueTransfer* true_transfer = nullptr;
   const PreparedEdgeValueTransfer* false_transfer = nullptr;
+  const bir::Function* function = nullptr;
   const bir::Block* true_predecessor = nullptr;
   const bir::Block* false_predecessor = nullptr;
   const bir::Block* join_block = nullptr;
@@ -918,6 +930,7 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
 
 [[nodiscard]] inline std::optional<PreparedComputedValue> classify_computed_value(
     const bir::Value& value,
+    const bir::Function& function,
     const std::unordered_map<std::string_view, const bir::BinaryInst*>& named_binaries,
     std::vector<std::string_view>* active_names = nullptr) {
   if (value.type != bir::TypeKind::I32) {
@@ -925,7 +938,10 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
   }
   if (value.kind != bir::Value::Kind::Named) {
     return PreparedComputedValue{
-        .base_value = value,
+        .base = PreparedComputedBase{
+            .kind = PreparedComputedBaseKind::ImmediateI32,
+            .immediate = value.immediate,
+        },
     };
   }
 
@@ -939,9 +955,17 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
 
   const auto binary_it = named_binaries.find(value.name);
   if (binary_it == named_binaries.end()) {
-    return PreparedComputedValue{
-        .base_value = value,
-    };
+    for (const auto& param : function.params) {
+      if (param.type == bir::TypeKind::I32 && param.name == value.name) {
+        return PreparedComputedValue{
+            .base = PreparedComputedBase{
+                .kind = PreparedComputedBaseKind::ParamValue,
+                .param_name = param.name,
+            },
+        };
+      }
+    }
+    return std::nullopt;
   }
 
   const auto* binary = binary_it->second;
@@ -959,7 +983,8 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
     if (!operation.has_value()) {
       return std::nullopt;
     }
-    auto computed_value = classify_computed_value(source_value, named_binaries, recursion_stack);
+    auto computed_value =
+        classify_computed_value(source_value, function, named_binaries, recursion_stack);
     if (!computed_value.has_value()) {
       return std::nullopt;
     }
@@ -1042,6 +1067,7 @@ find_materialized_compare_join_context(
       .join_transfer = join_transfer,
       .true_transfer = join_sources->true_transfer,
       .false_transfer = join_sources->false_transfer,
+      .function = &function,
       .true_predecessor = join_sources->true_predecessor,
       .false_predecessor = join_sources->false_predecessor,
       .join_block = join_block,
@@ -1075,7 +1101,8 @@ find_prepared_materialized_compare_join_return_context(
     const PreparedMaterializedCompareJoinContext& compare_join_context,
     const bir::Value& selected_value) {
   const auto* join_block = compare_join_context.join_block;
-  if (join_block == nullptr || compare_join_context.carrier_index > join_block->insts.size()) {
+  if (join_block == nullptr || compare_join_context.function == nullptr ||
+      compare_join_context.carrier_index > join_block->insts.size()) {
     return std::nullopt;
   }
 
@@ -1088,7 +1115,8 @@ find_prepared_materialized_compare_join_return_context(
     named_binaries.emplace(binary->result.name, binary);
   }
 
-  const auto computed_selected_value = classify_computed_value(selected_value, named_binaries);
+  const auto computed_selected_value = classify_computed_value(
+      selected_value, *compare_join_context.function, named_binaries);
   if (!computed_selected_value.has_value()) {
     return std::nullopt;
   }

@@ -4132,6 +4132,92 @@ int check_join_route_selected_value_chain_consumes_prepared_control_flow(
       module, expected_asm, function_name, failure_context, true, true);
 }
 
+int check_materialized_compare_join_return_context_publishes_prepared_base_render(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-join control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  if (entry_block == nullptr || function.params.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer has the expected entry block and param")
+                    .c_str());
+  }
+
+  const auto compare_join_context = prepare::find_prepared_param_zero_materialized_compare_join_context(
+      *control_flow, function, *entry_block, function.params.front(), true);
+  if (!compare_join_context.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer recognizes the materialized compare-join context")
+                    .c_str());
+  }
+
+  const auto prepared_join_branches =
+      prepare::find_prepared_materialized_compare_join_branches(
+          compare_join_context->compare_join_context);
+  if (!prepared_join_branches.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer publishes the true/false selected values")
+                    .c_str());
+  }
+
+  const auto true_return_context = prepare::find_prepared_materialized_compare_join_return_context(
+      compare_join_context->compare_join_context, prepared_join_branches->true_selected_value);
+  const auto false_return_context = prepare::find_prepared_materialized_compare_join_return_context(
+      compare_join_context->compare_join_context, prepared_join_branches->false_selected_value);
+  if (!true_return_context.has_value() || !false_return_context.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer publishes prepared compare-join return metadata")
+                    .c_str());
+  }
+
+  const auto require_prepared_param_base =
+      [&](const prepare::PreparedMaterializedCompareJoinReturnContext& return_context,
+          bir::BinaryOpcode expected_opcode,
+          std::int64_t expected_immediate) -> int {
+    if (return_context.selected_value.base.kind != prepare::PreparedComputedBaseKind::ParamValue ||
+        return_context.selected_value.base.param_name != "p.x") {
+      return fail((std::string(failure_context) +
+                   ": shared helper stopped classifying the selected-value base as the function param")
+                      .c_str());
+    }
+    if (return_context.selected_value.operations.size() != 1 ||
+        return_context.selected_value.operations.front().opcode != expected_opcode ||
+        return_context.selected_value.operations.front().immediate != expected_immediate) {
+      return fail((std::string(failure_context) +
+                   ": shared helper stopped publishing the selected-value immediate-op chain")
+                      .c_str());
+    }
+    if (!return_context.trailing_binary.has_value() ||
+        return_context.trailing_binary->opcode != bir::BinaryOpcode::Xor ||
+        return_context.trailing_binary->immediate != 3) {
+      return fail((std::string(failure_context) +
+                   ": shared helper stopped publishing the trailing immediate-op contract")
+                      .c_str());
+    }
+    return 0;
+  };
+
+  if (const auto status = require_prepared_param_base(
+          *true_return_context, bir::BinaryOpcode::Add, 5);
+      status != 0) {
+    return status;
+  }
+  return require_prepared_param_base(*false_return_context, bir::BinaryOpcode::Sub, 1);
+}
+
 int check_minimal_compare_branch_consumes_prepared_control_flow(const bir::Module& module,
                                                                 const std::string& expected_asm,
                                                                 const char* function_name,
@@ -4967,6 +5053,14 @@ int main() {
                   "branch_join_adjust_then_xor", "is_nonzero", 5, 1, 3),
               "branch_join_adjust_then_xor",
               "scalar-control-flow compare-against-zero joined branch lane with trailing join xor prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_return_context_publishes_prepared_base_render(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join return context base render ownership");
       status != 0) {
     return status;
   }

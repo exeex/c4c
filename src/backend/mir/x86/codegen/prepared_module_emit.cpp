@@ -3983,15 +3983,25 @@ std::string emit_prepared_module(
   const auto render_prepared_computed_value_if_supported =
       [&](const c4c::backend::prepare::PreparedComputedValue& computed_value,
           const c4c::backend::bir::Param& param) -> std::optional<std::string> {
-    const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>
-        empty_named_binaries;
-    const auto base_render = render_param_derived_value_if_supported(
-        computed_value.base_value, empty_named_binaries, param);
-    if (!base_render.has_value()) {
-      return std::nullopt;
+    std::string rendered;
+    switch (computed_value.base.kind) {
+      case c4c::backend::prepare::PreparedComputedBaseKind::ImmediateI32:
+        rendered = "    mov " + *return_register + ", " +
+                   std::to_string(static_cast<std::int32_t>(computed_value.base.immediate)) +
+                   "\n";
+        break;
+      case c4c::backend::prepare::PreparedComputedBaseKind::ParamValue: {
+        if (computed_value.base.param_name != param.name) {
+          return std::nullopt;
+        }
+        const auto param_register = minimal_param_register(param);
+        if (!param_register.has_value()) {
+          return std::nullopt;
+        }
+        rendered = "    mov " + *return_register + ", " + *param_register + "\n";
+        break;
+      }
     }
-
-    std::string rendered = *base_render;
     for (const auto& operation : computed_value.operations) {
       const auto operation_render = render_supported_immediate_binary(operation);
       if (!operation_render.has_value()) {
