@@ -6,42 +6,25 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed `plan.md` Step 4 by updating the x86 prepared-module boundary
-contract and handoff coverage to describe the landed `00210` lane truthfully as
-one bounded multi-defined-function `main`-entry route with same-module symbol
-calls and direct variadic runtime calls, while keeping the adjacent
-`00189`-style global-function-pointer plus indirect variadic-runtime boundary
-explicitly unsupported.
+Lifecycle reset for the new local-memory semantic family runbook. No executor
+packet has completed against this runbook yet.
 
 ## Suggested Next
 
-Execute `plan.md` Step 5 by re-running the bounded prepared-module proving
-cluster, including the explicit `00189`-style out-of-scope boundary check, and
-use that result to decide whether the runbook is ready for close/switch review
-or still needs another bounded prepared-module packet.
+Choose a bounded `plan.md` Step 1 packet that re-baselines the current
+local-memory failure surface and names one same-family proving cluster plus its
+adjacent out-of-scope neighbors before implementation starts.
 
 ## Watchouts
 
-- Do not weaken `x86_backend` expectations to accept fallback LLVM IR.
-- Do not add testcase-named shortcuts or rendered-text recognizers.
-- Do not generalize this slice into opaque indirect-call support; the admitted
-  provenance remains bounded to same-module symbols, not loaded global function
-  pointers.
+- Keep the admitted `00131` / `00211` / `00210` prepared-module lane as
+  regression baseline coverage.
 - Keep `00189` explicit as the adjacent indirect/global-function-pointer plus
-  indirect variadic-runtime neighbor even though direct variadic runtime calls
-  inside the admitted `00210` lane are now documented as supported.
-- Keep `00057` and `00124` out of the next packet; they remain emitter and
-  scalar-control-flow families unrelated to this prepared-module lane.
+  indirect variadic-runtime boundary rather than silently widening into it.
+- Keep `00057` and `00124` out of the next packet unless Step 1 proves they
+  belong to the same honest capability family.
+- Do not weaken `x86_backend` expectations or add testcase-shaped recognizers.
 
 ## Proof
 
-Step 4 proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00131_c|c_testsuite_x86_backend_src_00211_c|c_testsuite_x86_backend_src_00210_c)$' > test_after.log 2>&1`
-
-Result: `backend_lir_to_bir_notes`, `backend_x86_handoff_boundary`,
-`c_testsuite_x86_backend_src_00131_c`,
-`c_testsuite_x86_backend_src_00211_c`, and
-`c_testsuite_x86_backend_src_00210_c` all pass after the Step 4 contract-note
-update, and `backend_x86_handoff_boundary` now also keeps the adjacent
-multi-defined global-function-pointer plus indirect variadic-runtime boundary
-explicitly rejected. Proof log path: `test_after.log`.
+Lifecycle rewrite only. No additional validation run for this reset.
