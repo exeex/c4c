@@ -1621,6 +1621,17 @@ std::string emit_prepared_module(
     const c4c::backend::bir::Block* true_predecessor = nullptr;
     const c4c::backend::bir::Block* false_predecessor = nullptr;
   };
+  struct MaterializedCompareJoinContext {
+    const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
+    const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
+    const c4c::backend::prepare::PreparedEdgeValueTransfer* false_transfer = nullptr;
+    const c4c::backend::bir::Block* true_predecessor = nullptr;
+    const c4c::backend::bir::Block* false_predecessor = nullptr;
+    const c4c::backend::bir::Block* join_block = nullptr;
+    const c4c::backend::bir::BinaryInst* trailing_binary = nullptr;
+    std::size_t carrier_index = 0;
+    std::string_view joined_value_name;
+  };
   const auto find_authoritative_join_transfer_sources =
       [&](const AuthoritativeBranchJoinTransfer& authoritative_join_transfer)
       -> std::optional<AuthoritativeJoinTransferSources> {
@@ -1683,6 +1694,86 @@ std::string emit_prepared_module(
         .false_transfer = false_transfer,
         .true_predecessor = true_predecessor,
         .false_predecessor = false_predecessor,
+    };
+  };
+  const auto find_materialized_compare_join_context =
+      [&](const AuthoritativeBranchJoinTransfer& authoritative_join_transfer,
+          std::string_view true_block_label,
+          std::string_view false_block_label)
+      -> std::optional<MaterializedCompareJoinContext> {
+    const auto join_sources = find_authoritative_join_branch_sources(authoritative_join_transfer,
+                                                                     true_block_label,
+                                                                     false_block_label);
+    if (!join_sources.has_value() || join_sources->join_transfer == nullptr ||
+        join_sources->true_transfer == nullptr || join_sources->false_transfer == nullptr ||
+        join_sources->true_predecessor == nullptr || join_sources->false_predecessor == nullptr ||
+        join_sources->true_predecessor == join_sources->false_predecessor) {
+      return std::nullopt;
+    }
+
+    const auto* join_transfer = join_sources->join_transfer;
+    const auto* join_block = find_block(join_transfer->join_block_label);
+    if (join_block == nullptr || join_block == &entry ||
+        join_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        !join_block->terminator.value.has_value() || join_block->insts.empty() ||
+        join_sources->true_predecessor == join_block ||
+        join_sources->false_predecessor == join_block ||
+        join_transfer->join_block_label != join_block->label ||
+        join_transfer->result.kind != c4c::backend::bir::Value::Kind::Named) {
+      return std::nullopt;
+    }
+
+    std::size_t carrier_index = join_block->insts.size() - 1;
+    const c4c::backend::bir::BinaryInst* trailing_binary = nullptr;
+    if (const auto* trailing =
+            std::get_if<c4c::backend::bir::BinaryInst>(&join_block->insts.back());
+        trailing != nullptr &&
+        join_block->terminator.value->kind == c4c::backend::bir::Value::Kind::Named &&
+        join_block->terminator.value->name == trailing->result.name) {
+      if (join_block->insts.size() < 2) {
+        return std::nullopt;
+      }
+      trailing_binary = trailing;
+      carrier_index = join_block->insts.size() - 2;
+    }
+
+    const std::string_view joined_value_name = join_transfer->result.name;
+    const auto join_result_matches_prepared_value =
+        [&](const auto& result) {
+          return result.type == c4c::backend::bir::TypeKind::I32 &&
+                 result.name == joined_value_name;
+        };
+    if (const auto* select =
+            std::get_if<c4c::backend::bir::SelectInst>(&join_block->insts[carrier_index]);
+        select != nullptr) {
+      if (!join_result_matches_prepared_value(select->result)) {
+        return std::nullopt;
+      }
+    } else if (const auto* load_local =
+                   std::get_if<c4c::backend::bir::LoadLocalInst>(&join_block->insts[carrier_index]);
+               load_local != nullptr) {
+      if (!join_result_matches_prepared_value(load_local->result)) {
+        return std::nullopt;
+      }
+    } else {
+      return std::nullopt;
+    }
+    if (join_block->terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+        (trailing_binary == nullptr &&
+         join_block->terminator.value->name != joined_value_name)) {
+      return std::nullopt;
+    }
+
+    return MaterializedCompareJoinContext{
+        .join_transfer = join_transfer,
+        .true_transfer = join_sources->true_transfer,
+        .false_transfer = join_sources->false_transfer,
+        .true_predecessor = join_sources->true_predecessor,
+        .false_predecessor = join_sources->false_predecessor,
+        .join_block = join_block,
+        .trailing_binary = trailing_binary,
+        .carrier_index = carrier_index,
+        .joined_value_name = joined_value_name,
     };
   };
   const auto render_local_slot_guard_chain_if_supported =
@@ -4333,14 +4424,13 @@ std::string emit_prepared_module(
     if (!authoritative_join_transfer.has_value()) {
       return std::nullopt;
     }
-    const auto join_sources = find_authoritative_join_branch_sources(
-        *authoritative_join_transfer, branch_condition->true_label, branch_condition->false_label);
-    if (!join_sources.has_value() || join_sources->join_transfer == nullptr ||
-        join_sources->true_predecessor == nullptr || join_sources->false_predecessor == nullptr ||
-        join_sources->true_predecessor == join_sources->false_predecessor) {
+    const auto compare_join_context =
+        find_materialized_compare_join_context(*authoritative_join_transfer,
+                                              branch_condition->true_label,
+                                              branch_condition->false_label);
+    if (!compare_join_context.has_value()) {
       return std::nullopt;
     }
-    const auto* prepared_join_transfer = join_sources->join_transfer;
 
     const bool lhs_is_param_rhs_is_zero =
         branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
@@ -4358,59 +4448,11 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto* join_block = find_block(prepared_join_transfer->join_block_label);
-    if (join_block == nullptr || join_block == &entry ||
-        join_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-        !join_block->terminator.value.has_value() || join_block->insts.empty()) {
-      return std::nullopt;
-    }
-
-    std::size_t select_index = join_block->insts.size() - 1;
-    const c4c::backend::bir::BinaryInst* trailing_binary = nullptr;
-    if (const auto* trailing =
-            std::get_if<c4c::backend::bir::BinaryInst>(&join_block->insts.back());
-        trailing != nullptr &&
-        join_block->terminator.value->kind == c4c::backend::bir::Value::Kind::Named &&
-        join_block->terminator.value->name == trailing->result.name) {
-      if (join_block->insts.size() < 2) {
-        return std::nullopt;
-      }
-      trailing_binary = trailing;
-      select_index = join_block->insts.size() - 2;
-    }
-
-    if (prepared_join_transfer->join_block_label != join_block->label ||
-        prepared_join_transfer->result.kind != c4c::backend::bir::Value::Kind::Named) {
-      return std::nullopt;
-    }
-    const std::string_view joined_value_name = prepared_join_transfer->result.name;
-    const auto join_result_matches_prepared_value =
-        [&](const auto& result) {
-          return result.type == c4c::backend::bir::TypeKind::I32 &&
-                 result.name == joined_value_name;
-        };
-    if (const auto* select =
-            std::get_if<c4c::backend::bir::SelectInst>(&join_block->insts[select_index]);
-        select != nullptr) {
-      if (!join_result_matches_prepared_value(select->result)) {
-        return std::nullopt;
-      }
-    } else if (const auto* load_local =
-                   std::get_if<c4c::backend::bir::LoadLocalInst>(&join_block->insts[select_index]);
-               load_local != nullptr) {
-      if (!join_result_matches_prepared_value(load_local->result)) {
-        return std::nullopt;
-      }
-    } else {
-      return std::nullopt;
-    }
-    if (join_block->terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
-        (trailing_binary == nullptr && join_block->terminator.value->name != joined_value_name)) {
-      return std::nullopt;
-    }
-
+    const auto* join_block = compare_join_context->join_block;
+    const auto* trailing_binary = compare_join_context->trailing_binary;
     std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*> named_binaries;
-    for (std::size_t inst_index = 0; inst_index < select_index; ++inst_index) {
+    for (std::size_t inst_index = 0; inst_index < compare_join_context->carrier_index;
+         ++inst_index) {
       const auto* binary =
           std::get_if<c4c::backend::bir::BinaryInst>(&join_block->insts[inst_index]);
       if (binary == nullptr) {
@@ -4419,14 +4461,10 @@ std::string emit_prepared_module(
       named_binaries.emplace(binary->result.name, binary);
     }
 
-    if (join_sources->true_predecessor == join_block ||
-        join_sources->false_predecessor == join_block) {
-      return std::nullopt;
-    }
-    const auto* true_transfer = join_sources->true_transfer;
-    const auto* false_transfer = join_sources->false_transfer;
-    const auto* true_join_predecessor = join_sources->true_predecessor;
-    const auto* false_join_predecessor = join_sources->false_predecessor;
+    const auto* true_transfer = compare_join_context->true_transfer;
+    const auto* false_transfer = compare_join_context->false_transfer;
+    const auto* true_join_predecessor = compare_join_context->true_predecessor;
+    const auto* false_join_predecessor = compare_join_context->false_predecessor;
 
     const auto render_join_return =
         [&](const c4c::backend::bir::Value& selected_value) -> std::optional<std::string> {
@@ -4439,7 +4477,7 @@ std::string emit_prepared_module(
         return *value_render + "    ret\n";
       }
       const auto trailing_render =
-          apply_supported_immediate_binary(*trailing_binary, joined_value_name);
+          apply_supported_immediate_binary(*trailing_binary, compare_join_context->joined_value_name);
       if (!trailing_render.has_value()) {
         return std::nullopt;
       }
