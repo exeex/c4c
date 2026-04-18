@@ -3906,26 +3906,41 @@ int check_short_circuit_route_consumes_prepared_control_flow(const bir::Module& 
                     .c_str());
   }
   auto& join_transfer = mutable_control_flow->join_transfers.front();
-  if (!join_transfer.source_true_incoming_label.has_value() ||
+  if (join_transfer.edge_transfers.size() != 2 ||
+      !join_transfer.source_true_transfer_index.has_value() ||
+      !join_transfer.source_false_transfer_index.has_value() ||
+      !join_transfer.source_true_incoming_label.has_value() ||
       !join_transfer.source_false_incoming_label.has_value()) {
     return fail((std::string(failure_context) +
-                 ": prepared short-circuit join transfer no longer maps compare truth to join incomings")
+                 ": prepared short-circuit join transfer no longer maps compare truth to authoritative join ownership")
                     .c_str());
   }
+  const auto true_transfer_index = *join_transfer.source_true_transfer_index;
+  const auto false_transfer_index = *join_transfer.source_false_transfer_index;
+  if (true_transfer_index >= join_transfer.edge_transfers.size() ||
+      false_transfer_index >= join_transfer.edge_transfers.size() ||
+      true_transfer_index == false_transfer_index) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit join transfer published invalid true/false ownership indices")
+                    .c_str());
+  }
+
+  const std::string original_true_incoming_label = *join_transfer.source_true_incoming_label;
+  const std::string original_false_incoming_label = *join_transfer.source_false_incoming_label;
   join_transfer.source_true_incoming_label = "contract.short_circuit";
   join_transfer.source_false_incoming_label = "contract.rhs";
+  join_transfer.edge_transfers[false_transfer_index].incoming_value = bir::Value::immediate_i32(9);
   bool rewrote_short_circuit_label = false;
   bool rewrote_rhs_label = false;
   for (auto& incoming : join_transfer.incomings) {
-    if (incoming.value.kind == bir::Value::Kind::Immediate &&
-        incoming.value.type == bir::TypeKind::I32 &&
-        (incoming.value.immediate == 0 || incoming.value.immediate == 1)) {
+    if (incoming.label == original_true_incoming_label) {
       incoming.label = *join_transfer.source_true_incoming_label;
       rewrote_short_circuit_label = true;
       continue;
     }
-    if (incoming.value.kind == bir::Value::Kind::Named) {
+    if (incoming.label == original_false_incoming_label) {
       incoming.label = *join_transfer.source_false_incoming_label;
+      incoming.value = bir::Value::immediate_i32(9);
       rewrote_rhs_label = true;
     }
   }
