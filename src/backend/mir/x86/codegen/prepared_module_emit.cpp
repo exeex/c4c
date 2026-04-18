@@ -1596,18 +1596,6 @@ std::string emit_prepared_module(
     }
     return build_authoritative_branch_join_transfer(*join_transfer);
   };
-  const auto find_authoritative_select_materialization_join_transfer =
-      [&](const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
-          std::string_view source_block_label)
-      -> std::optional<AuthoritativeBranchJoinTransfer> {
-    const auto* join_transfer =
-        c4c::backend::prepare::find_select_materialization_join_transfer(control_flow,
-                                                                         source_block_label);
-    if (join_transfer == nullptr) {
-      return std::nullopt;
-    }
-    return build_authoritative_branch_join_transfer(*join_transfer);
-  };
   struct AuthoritativeJoinTransferSources {
     const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
     const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;

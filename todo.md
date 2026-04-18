@@ -9,21 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by introducing
-`find_prepared_join_carrier()` and routing both
-`find_materialized_compare_join_context()` and
-`build_compare_join_continuation()` through that shared carrier validation
-helper. The non-countdown materialized-compare join consumers no longer
-require `join_transfer.result` itself to be a named value when the prepared
-carrier already supplies the named result they actually consume.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by deleting the stale
+`find_authoritative_select_materialization_join_transfer()` helper after the
+adjacent non-countdown branch-owned join consumers converged on the shared
+prepared-carrier validation path. The active Step 3 x86 join consumers now use
+the branch-owned authoritative lookup seam consistently instead of carrying a
+dead select-only variant.
 
 ## Suggested Next
 
-Treat the non-countdown materialized-compare join carrier-name cleanup as
-exhausted and pick the next small Step 3 packet from the adjacent
-authoritative-join consumers, preferably another path that can reuse prepared
-join-carrier validation without widening into countdown loops or Step 4 file
-reorganization.
+Treat the non-countdown authoritative-join carrier cleanup as exhausted and
+pick the next small Step 3 packet from a still-live prepared-control-flow
+consumer seam, or hand lifecycle back for route refresh if the remaining work
+is no longer a real Step 3 consumer packet without entering countdown loops or
+Step 4 file reorganization.
 
 ## Watchouts
 
@@ -36,9 +35,10 @@ reorganization.
   file-organization cleanup.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth or new
   emitter-local CFG scans.
-- The materialized-compare join helpers now share one prepared-carrier
-  validation path, so follow-on work should reuse that seam instead of
-  reintroducing per-helper carrier parsing or destination-name assumptions.
+- The materialized-compare and short-circuit join helpers now share one
+  prepared-carrier validation path, so follow-on work should reuse that seam
+  instead of reintroducing per-helper carrier parsing or destination-name
+  assumptions.
 - The joined-branch ownership helper still proves both
   `SelectMaterialization` and `PreparedJoinTransferKind::EdgeStoreSlot`
   carriers with a renamed carrier result; keep any further coverage in this
@@ -58,6 +58,6 @@ reorganization.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This shared prepared-join-carrier validation packet passed with the focused
+This cleanup packet passed with the same focused
 `backend_x86_handoff_boundary` proof command, and `test_after.log` remains the
-fresh canonical proof log for supervisor review.
+fresh canonical narrow log for the authoritative-join helper surface.
