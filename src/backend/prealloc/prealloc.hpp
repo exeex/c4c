@@ -413,9 +413,29 @@ struct PreparedAuthoritativeBranchJoinTransfer {
   const PreparedEdgeValueTransfer* false_transfer = nullptr;
 };
 
+struct PreparedAuthoritativeJoinBranchSources {
+  const PreparedJoinTransfer* join_transfer = nullptr;
+  const PreparedEdgeValueTransfer* true_transfer = nullptr;
+  const PreparedEdgeValueTransfer* false_transfer = nullptr;
+  const bir::Block* true_predecessor = nullptr;
+  const bir::Block* false_predecessor = nullptr;
+};
+
 struct PreparedJoinCarrier {
   std::size_t carrier_index = 0;
   std::string_view result_name;
+};
+
+struct PreparedMaterializedCompareJoinContext {
+  const PreparedJoinTransfer* join_transfer = nullptr;
+  const PreparedEdgeValueTransfer* true_transfer = nullptr;
+  const PreparedEdgeValueTransfer* false_transfer = nullptr;
+  const bir::Block* true_predecessor = nullptr;
+  const bir::Block* false_predecessor = nullptr;
+  const bir::Block* join_block = nullptr;
+  const bir::BinaryInst* trailing_binary = nullptr;
+  std::size_t carrier_index = 0;
+  std::string_view carrier_result_name;
 };
 
 // Shared consumers must take branch semantics from `branch_conditions` and former
@@ -441,6 +461,16 @@ struct PreparedControlFlow {
   for (const auto& condition : function_cf.branch_conditions) {
     if (condition.block_label == block_label) {
       return &condition;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const bir::Block* find_block_in_function(const bir::Function& function,
+                                                              std::string_view block_label) {
+  for (const auto& block : function.blocks) {
+    if (block.label == block_label) {
+      return &block;
     }
   }
   return nullptr;
@@ -558,6 +588,52 @@ find_authoritative_branch_owned_join_transfer(
   };
 }
 
+[[nodiscard]] inline std::optional<PreparedAuthoritativeJoinBranchSources>
+find_authoritative_join_branch_sources(
+    const PreparedAuthoritativeBranchJoinTransfer& authoritative_join_transfer,
+    const bir::Function& function,
+    const bir::Block& entry_block,
+    std::string_view true_block_label,
+    std::string_view false_block_label) {
+  const auto* join_transfer = authoritative_join_transfer.join_transfer;
+  const auto* true_transfer = authoritative_join_transfer.true_transfer;
+  const auto* false_transfer = authoritative_join_transfer.false_transfer;
+  if (join_transfer == nullptr || true_transfer == nullptr || false_transfer == nullptr) {
+    return std::nullopt;
+  }
+  if (join_transfer->source_true_incoming_label.has_value() &&
+      true_transfer->predecessor_label != *join_transfer->source_true_incoming_label) {
+    return std::nullopt;
+  }
+  if (join_transfer->source_false_incoming_label.has_value() &&
+      false_transfer->predecessor_label != *join_transfer->source_false_incoming_label) {
+    return std::nullopt;
+  }
+
+  const auto* true_predecessor = find_block_in_function(function, true_block_label);
+  const auto* false_predecessor = find_block_in_function(function, false_block_label);
+  if (true_predecessor == nullptr || false_predecessor == nullptr ||
+      true_predecessor == &entry_block || false_predecessor == &entry_block ||
+      true_predecessor == false_predecessor || !true_predecessor->insts.empty() ||
+      !false_predecessor->insts.empty()) {
+    return std::nullopt;
+  }
+  if (true_predecessor->terminator.kind != bir::TerminatorKind::Branch ||
+      false_predecessor->terminator.kind != bir::TerminatorKind::Branch ||
+      true_predecessor->terminator.target_label != join_transfer->join_block_label ||
+      false_predecessor->terminator.target_label != join_transfer->join_block_label) {
+    return std::nullopt;
+  }
+
+  return PreparedAuthoritativeJoinBranchSources{
+      .join_transfer = join_transfer,
+      .true_transfer = true_transfer,
+      .false_transfer = false_transfer,
+      .true_predecessor = true_predecessor,
+      .false_predecessor = false_predecessor,
+  };
+}
+
 [[nodiscard]] inline std::optional<PreparedJoinCarrier> find_supported_join_carrier(
     const PreparedJoinTransfer& join_transfer,
     const bir::Block& join_block,
@@ -595,6 +671,73 @@ find_authoritative_branch_owned_join_transfer(
   }
 
   return std::nullopt;
+}
+
+[[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinContext>
+find_materialized_compare_join_context(
+    const PreparedAuthoritativeBranchJoinTransfer& authoritative_join_transfer,
+    const bir::Function& function,
+    const bir::Block& entry_block,
+    std::string_view true_block_label,
+    std::string_view false_block_label) {
+  const auto join_sources = find_authoritative_join_branch_sources(authoritative_join_transfer,
+                                                                   function,
+                                                                   entry_block,
+                                                                   true_block_label,
+                                                                   false_block_label);
+  if (!join_sources.has_value() || join_sources->join_transfer == nullptr ||
+      join_sources->true_transfer == nullptr || join_sources->false_transfer == nullptr ||
+      join_sources->true_predecessor == nullptr || join_sources->false_predecessor == nullptr ||
+      join_sources->true_predecessor == join_sources->false_predecessor) {
+    return std::nullopt;
+  }
+
+  const auto* join_transfer = join_sources->join_transfer;
+  const auto* join_block = find_block_in_function(function, join_transfer->join_block_label);
+  if (join_block == nullptr || join_block == &entry_block ||
+      join_block->terminator.kind != bir::TerminatorKind::Return ||
+      !join_block->terminator.value.has_value() || join_block->insts.empty() ||
+      join_sources->true_predecessor == join_block ||
+      join_sources->false_predecessor == join_block ||
+      join_transfer->join_block_label != join_block->label) {
+    return std::nullopt;
+  }
+
+  std::size_t carrier_index = join_block->insts.size() - 1;
+  const bir::BinaryInst* trailing_binary = nullptr;
+  if (const auto* trailing = std::get_if<bir::BinaryInst>(&join_block->insts.back());
+      trailing != nullptr &&
+      join_block->terminator.value->kind == bir::Value::Kind::Named &&
+      join_block->terminator.value->name == trailing->result.name) {
+    if (join_block->insts.size() < 2) {
+      return std::nullopt;
+    }
+    trailing_binary = trailing;
+    carrier_index = join_block->insts.size() - 2;
+  }
+
+  const auto prepared_carrier =
+      find_supported_join_carrier(*join_transfer, *join_block, carrier_index);
+  if (!prepared_carrier.has_value()) {
+    return std::nullopt;
+  }
+  if (join_block->terminator.value->kind != bir::Value::Kind::Named ||
+      (trailing_binary == nullptr &&
+       join_block->terminator.value->name != prepared_carrier->result_name)) {
+    return std::nullopt;
+  }
+
+  return PreparedMaterializedCompareJoinContext{
+      .join_transfer = join_transfer,
+      .true_transfer = join_sources->true_transfer,
+      .false_transfer = join_sources->false_transfer,
+      .true_predecessor = join_sources->true_predecessor,
+      .false_predecessor = join_sources->false_predecessor,
+      .join_block = join_block,
+      .trailing_binary = trailing_binary,
+      .carrier_index = prepared_carrier->carrier_index,
+      .carrier_result_name = prepared_carrier->result_name,
+  };
 }
 
 [[nodiscard]] inline const std::vector<PreparedEdgeValueTransfer>* incoming_transfers_for_join(

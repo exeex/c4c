@@ -1524,17 +1524,6 @@ std::string emit_prepared_module(
     const c4c::backend::bir::Block* true_predecessor = nullptr;
     const c4c::backend::bir::Block* false_predecessor = nullptr;
   };
-  struct MaterializedCompareJoinContext {
-    const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
-    const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
-    const c4c::backend::prepare::PreparedEdgeValueTransfer* false_transfer = nullptr;
-    const c4c::backend::bir::Block* true_predecessor = nullptr;
-    const c4c::backend::bir::Block* false_predecessor = nullptr;
-    const c4c::backend::bir::Block* join_block = nullptr;
-    const c4c::backend::bir::BinaryInst* trailing_binary = nullptr;
-    std::size_t carrier_index = 0;
-    std::string_view carrier_result_name;
-  };
   struct MaterializedCompareJoinRender {
     std::string false_label;
     std::string true_return;
@@ -1604,72 +1593,6 @@ std::string emit_prepared_module(
         .false_transfer = false_transfer,
         .true_predecessor = true_predecessor,
         .false_predecessor = false_predecessor,
-    };
-  };
-  const auto find_materialized_compare_join_context =
-      [&](const c4c::backend::prepare::PreparedAuthoritativeBranchJoinTransfer&
-              authoritative_join_transfer,
-          std::string_view true_block_label,
-          std::string_view false_block_label)
-      -> std::optional<MaterializedCompareJoinContext> {
-    const auto join_sources = find_authoritative_join_branch_sources(authoritative_join_transfer,
-                                                                     true_block_label,
-                                                                     false_block_label);
-    if (!join_sources.has_value() || join_sources->join_transfer == nullptr ||
-        join_sources->true_transfer == nullptr || join_sources->false_transfer == nullptr ||
-        join_sources->true_predecessor == nullptr || join_sources->false_predecessor == nullptr ||
-        join_sources->true_predecessor == join_sources->false_predecessor) {
-      return std::nullopt;
-    }
-
-    const auto* join_transfer = join_sources->join_transfer;
-    const auto* join_block = find_block(join_transfer->join_block_label);
-    if (join_block == nullptr || join_block == &entry ||
-        join_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-        !join_block->terminator.value.has_value() || join_block->insts.empty() ||
-        join_sources->true_predecessor == join_block ||
-        join_sources->false_predecessor == join_block ||
-        join_transfer->join_block_label != join_block->label) {
-      return std::nullopt;
-    }
-
-    std::size_t carrier_index = join_block->insts.size() - 1;
-    const c4c::backend::bir::BinaryInst* trailing_binary = nullptr;
-    if (const auto* trailing =
-            std::get_if<c4c::backend::bir::BinaryInst>(&join_block->insts.back());
-        trailing != nullptr &&
-        join_block->terminator.value->kind == c4c::backend::bir::Value::Kind::Named &&
-        join_block->terminator.value->name == trailing->result.name) {
-      if (join_block->insts.size() < 2) {
-        return std::nullopt;
-      }
-      trailing_binary = trailing;
-      carrier_index = join_block->insts.size() - 2;
-    }
-
-    const auto prepared_carrier =
-        c4c::backend::prepare::find_supported_join_carrier(*join_transfer,
-                                                           *join_block,
-                                                           carrier_index);
-    if (!prepared_carrier.has_value()) {
-      return std::nullopt;
-    }
-    if (join_block->terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
-        (trailing_binary == nullptr &&
-         join_block->terminator.value->name != prepared_carrier->result_name)) {
-      return std::nullopt;
-    }
-
-    return MaterializedCompareJoinContext{
-        .join_transfer = join_transfer,
-        .true_transfer = join_sources->true_transfer,
-        .false_transfer = join_sources->false_transfer,
-        .true_predecessor = join_sources->true_predecessor,
-        .false_predecessor = join_sources->false_predecessor,
-        .join_block = join_block,
-        .trailing_binary = trailing_binary,
-        .carrier_index = prepared_carrier->carrier_index,
-        .carrier_result_name = prepared_carrier->result_name,
     };
   };
   const auto render_local_slot_guard_chain_if_supported =
@@ -4350,7 +4273,8 @@ std::string emit_prepared_module(
     return *value_render + "    ret\n";
   };
   const auto render_materialized_compare_join_return_if_supported =
-      [&](const MaterializedCompareJoinContext& compare_join_context,
+      [&](const c4c::backend::prepare::PreparedMaterializedCompareJoinContext&
+              compare_join_context,
           const c4c::backend::bir::Value& selected_value,
           const c4c::backend::bir::Param& param) -> std::optional<std::string> {
     const auto* join_block = compare_join_context.join_block;
@@ -4386,7 +4310,8 @@ std::string emit_prepared_module(
     return *value_render + *trailing_render + "    ret\n";
   };
   const auto render_materialized_compare_join_branches_if_supported =
-      [&](const MaterializedCompareJoinContext& compare_join_context,
+      [&](const c4c::backend::prepare::PreparedMaterializedCompareJoinContext&
+              compare_join_context,
           const c4c::backend::bir::Param& param)
       -> std::optional<MaterializedCompareJoinRender> {
     const auto* join_transfer = compare_join_context.join_transfer;
@@ -4499,9 +4424,12 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
     const auto compare_join_context =
-        find_materialized_compare_join_context(*authoritative_join_transfer,
-                                              branch_condition->true_label,
-                                              branch_condition->false_label);
+        c4c::backend::prepare::find_materialized_compare_join_context(
+            *authoritative_join_transfer,
+            function,
+            entry,
+            branch_condition->true_label,
+            branch_condition->false_label);
     if (!compare_join_context.has_value()) {
       return std::nullopt;
     }

@@ -11,21 +11,20 @@ Source Plan: plan.md
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/prealloc/prealloc.hpp` and
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by promoting the
-supported authoritative join-carrier query into shared prepared-control-flow
-helpers and switching the materialized compare-join x86 consumer to use that
-prepared helper instead of an emitter-local SelectMaterialization /
-EdgeStoreSlot discriminator. The joined-branch and guard-continuation paths
-now share the same prepared carrier contract, so x86 keeps consuming the
-authoritative join handoff instead of maintaining its own carrier matcher.
+materialized compare-join predecessor, join-block, and return-shape validation
+into a shared prepared-control-flow helper and switching the x86 compare-join
+consumer to use that prepared context directly. The joined-branch carrier and
+join-shape checks now sit in the same shared contract, so x86 no longer keeps
+its own copy of that authoritative compare-join lookup logic.
 
 ## Suggested Next
 
 The next accepted packet should keep shrinking Step 3 emitter-local seams in
-the same joined-branch family by lifting one more authoritative join/branch
-lookup or validation helper out of `prepared_module_emit.cpp`, preferably the
-remaining materialized compare-join context validation around predecessor and
-return-shape checks. Keep that packet in semantic consumer helpers, not file
-organization.
+the same joined-branch family by lifting the remaining prepared param-zero
+branch predicate/value validation seam out of `prepared_module_emit.cpp` so
+the minimal compare-branch and materialized compare-join lanes share a single
+prepared branch-consumer helper. Keep that packet in semantic consumer
+helpers, not file organization.
 
 ## Watchouts
 
@@ -42,9 +41,10 @@ organization.
   equality-only assumptions in the emitter.
 - The shared helpers in `prealloc.hpp` now own both authoritative
   branch-owned join-transfer validation and the supported SelectMaterialization
-  / EdgeStoreSlot carrier query, so follow-on work should keep extending
-  prepared consumer lookups rather than reintroducing x86-side transfer-index,
-  storage-name, or carrier-kind checks.
+  / EdgeStoreSlot carrier query plus the supported materialized compare-join
+  predecessor and join-block shape validation, so follow-on work should keep
+  extending prepared consumer lookups rather than reintroducing x86-side
+  transfer-index, storage-name, predecessor, or carrier-kind checks.
 - The short-circuit ownership tests intentionally rewrite carrier labels and
   entry compares to prove x86 trusts prepared metadata over emitter-local
   carrier naming; do not add source-label equality checks that undercut that
@@ -71,7 +71,7 @@ organization.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This packet passed with the same focused `backend_x86_handoff_boundary` proof
-command, and `test_after.log` remains the fresh canonical narrow log for the
-joined-branch consumer path after moving the supported join-carrier query into
-shared prepared-control-flow helpers.
+This packet refreshes `test_after.log` with the same focused
+`backend_x86_handoff_boundary` proof command for the compare-join consumer
+path after moving the remaining predecessor/join-shape validation into shared
+prepared-control-flow helpers.
