@@ -27,7 +27,8 @@ bool match_floatn_keyword_base(std::string_view name, TypeBase* out_base) {
         base = TB_FLOAT;
     } else if (name == "_Float64" || name == "_Float32x") {
         base = TB_DOUBLE;
-    } else if (name == "_Float128" || name == "_Float64x" || name == "_Float128x") {
+    } else if (name == "__float128" || name == "_Float128" || name == "_Float64x" ||
+               name == "_Float128x") {
         base = TB_LONGDOUBLE;
     } else {
         return false;

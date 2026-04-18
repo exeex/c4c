@@ -1,3 +1,9 @@
+[submodule "ref/EASTL"]
+	path = ref/EASTL
+	url = https://github.com/electronicarts/EASTL.git
+[submodule "ref/EABase"]
+	path = ref/EABase
+	url = https://github.com/electronicarts/EABase.git
 [submodule "ref/claudes-c-compiler"]
 	path = ref/claudes-c-compiler
 	url = https://github.com/anthropics/claudes-c-compiler.git

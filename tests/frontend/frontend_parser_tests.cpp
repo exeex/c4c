@@ -593,6 +593,17 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
   c4c::Token seed{};
 
   parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "__float128"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "gnu_value"),
+  };
+  parser.pos_ = 0;
+  c4c::TypeSpec gnu_floatn_ts = parser.parse_base_type();
+  expect_true(gnu_floatn_ts.base == c4c::TB_LONGDOUBLE,
+              "parse_base_type should map GNU __float128 spelling onto the fixed-width float path");
+  expect_eq(parser.token_spelling(parser.cur()), "gnu_value",
+            "__float128 parsing should leave the declarator token in place");
+
+  parser.tokens_ = {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "_Float128"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
   };
