@@ -6,39 +6,38 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2: extracted the remaining coordinator-side local-pointer-slot GEP
-fallback branch from `src/backend/bir/lir_to_bir_memory.cpp` into
+Plan Step 2: extracted the immediate local `memset`/`memcpy` helper family from
+`src/backend/bir/lir_to_bir_memory.cpp` into
 `src/backend/bir/lir_to_bir_memory_local_slots.cpp` as
-`try_lower_local_pointer_slot_base_gep`, so the local-slot owner now handles
-dotted slot-name interpretation, `local_array_slots.find(base_name)`, and
-`local_aggregate_slots.find(base_name)` while the coordinator only dispatches
-that seam.
+`try_lower_immediate_local_memset` and `try_lower_immediate_local_memcpy`, so
+the local-slot owner now handles array or aggregate view resolution, leaf-slot
+collection, and scalar-slot copy or fill mechanics while the coordinator keeps
+only the call-family admission and aliasing glue.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by re-reading the remaining local-slot and
-value-materialization helpers in `src/backend/bir/lir_to_bir_memory.cpp` and
-choose the next semantically coherent extraction bucket, keeping shared
-addressing/provenance helpers outside that packet.
+Continue `plan.md` Step 2 by re-reading the remaining coordinator-side
+local-slot wrappers in `src/backend/bir/lir_to_bir_memory.cpp` and choosing one
+coherent seam that still belongs with `lir_to_bir_memory_local_slots.cpp`
+without pulling direct-call family admission or other coordinator-only glue out
+of the main TU.
 
 ## Watchouts
 
 - This plan is refactor-only; do not claim x86 backend capability progress from
   it.
 - Keep `lower_scalar_or_local_memory_inst` in the main coordinator TU.
-- `try_lower_local_slot_pointer_gep`,
-  `try_lower_local_array_slot_gep`, and
-  `try_lower_local_pointer_array_base_gep` now sit alongside the new
-  `try_lower_local_pointer_slot_base_gep`; the next packet should keep moving
-  one honest ownership bucket at a time instead of re-centralizing that
-  dispatch in the coordinator.
+- `try_lower_immediate_local_memset` and
+  `try_lower_immediate_local_memcpy` now sit alongside the other local-slot
+  owners; the next packet should preserve that ownership boundary instead of
+  re-embedding view resolution or leaf-copy logic back into the coordinator.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:
   0`; treat the canonical log pair as unchanged-behavior evidence, not as a
   newly introduced regression.
-- Keep future packets focused on the next honest local-slot-owned wrapper
-  instead of pulling shared addressing helpers across ownership buckets or
-  emptying `lir_to_bir_memory.cpp` for its own sake.
+- Keep future packets focused on the next honest local-slot-owned wrapper or
+  helper family instead of pulling shared addressing helpers across ownership
+  buckets or emptying `lir_to_bir_memory.cpp` for its own sake.
 - Treat renderer de-headerization as separate idea `56`.
 
 ## Proof
@@ -47,5 +46,6 @@ Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-fai
 The build passed, and the narrow backend proof reproduced the same `4/5`
 result recorded in `test_before.log`: the four backend notes/handoff/dynamic
 member-array tests passed, and the pre-existing failure
-`c_testsuite_x86_backend_src_00205_c` remained unchanged. `test_after.log`
-remains the canonical proof log for this packet.
+`c_testsuite_x86_backend_src_00205_c` remained unchanged apart from timing and
+ordering noise in the log. `test_after.log` remains the canonical proof log
+for this packet.
