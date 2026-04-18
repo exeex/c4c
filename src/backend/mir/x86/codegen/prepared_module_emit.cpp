@@ -4090,22 +4090,15 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto prepared_branch = c4c::backend::prepare::find_prepared_param_zero_branch_condition(
-        *function_control_flow, entry, param, true);
-    if (!prepared_branch.has_value() || prepared_branch->branch_condition == nullptr) {
+    const auto prepared_branch_context =
+        c4c::backend::prepare::find_prepared_param_zero_branch_return_context(
+            *function_control_flow, function, entry, param, true);
+    if (!prepared_branch_context.has_value()) {
       return std::nullopt;
     }
-
-    const auto* branch_condition = prepared_branch->branch_condition;
-    const auto* true_block = find_block(branch_condition->true_label);
-    const auto* false_block = find_block(branch_condition->false_label);
-    if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
-        false_block == &entry || true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-        false_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-        !true_block->terminator.value.has_value() || !false_block->terminator.value.has_value() ||
-        !true_block->insts.empty() || !false_block->insts.empty()) {
-      return std::nullopt;
-    }
+    const auto& prepared_branch = prepared_branch_context->prepared_branch;
+    const auto* true_block = prepared_branch_context->true_block;
+    const auto* false_block = prepared_branch_context->false_block;
 
     const auto& true_value = *true_block->terminator.value;
     const auto& false_value = *false_block->terminator.value;
@@ -4119,9 +4112,9 @@ std::string emit_prepared_module(
     }
 
     const std::string false_label = ".L" + function.name + "_" +
-                                    std::string(prepared_branch->false_label);
+                                    std::string(prepared_branch.false_label);
     return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    " +
-           prepared_branch->false_branch_opcode + " " + false_label + "\n" + *true_return +
+           prepared_branch.false_branch_opcode + " " + false_label + "\n" + *true_return +
            false_label + ":\n" + *false_return;
   };
   const auto render_materialized_compare_join_if_supported =

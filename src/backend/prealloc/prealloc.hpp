@@ -484,6 +484,12 @@ struct PreparedParamZeroBranchCondition {
   const char* false_branch_opcode = nullptr;
 };
 
+struct PreparedParamZeroBranchReturnContext {
+  PreparedParamZeroBranchCondition prepared_branch;
+  const bir::Block* true_block = nullptr;
+  const bir::Block* false_block = nullptr;
+};
+
 [[nodiscard]] inline std::optional<PreparedParamZeroBranchCondition>
 find_prepared_param_zero_branch_condition(const PreparedControlFlowFunction& function_cf,
                                           const bir::Block& source_block,
@@ -553,6 +559,39 @@ find_prepared_param_zero_branch_condition(const PreparedControlFlowFunction& fun
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] inline std::optional<PreparedParamZeroBranchReturnContext>
+find_prepared_param_zero_branch_return_context(const PreparedControlFlowFunction& function_cf,
+                                               const bir::Function& function,
+                                               const bir::Block& source_block,
+                                               const bir::Param& param,
+                                               bool require_label_match) {
+  const auto prepared_branch = find_prepared_param_zero_branch_condition(function_cf,
+                                                                         source_block,
+                                                                         param,
+                                                                         require_label_match);
+  if (!prepared_branch.has_value() || prepared_branch->branch_condition == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* branch_condition = prepared_branch->branch_condition;
+  const auto* true_block = find_block_in_function(function, branch_condition->true_label);
+  const auto* false_block = find_block_in_function(function, branch_condition->false_label);
+  if (true_block == nullptr || false_block == nullptr || true_block == &source_block ||
+      false_block == &source_block ||
+      true_block->terminator.kind != bir::TerminatorKind::Return ||
+      false_block->terminator.kind != bir::TerminatorKind::Return ||
+      !true_block->terminator.value.has_value() || !false_block->terminator.value.has_value() ||
+      !true_block->insts.empty() || !false_block->insts.empty()) {
+    return std::nullopt;
+  }
+
+  return PreparedParamZeroBranchReturnContext{
+      .prepared_branch = *prepared_branch,
+      .true_block = true_block,
+      .false_block = false_block,
+  };
 }
 
 [[nodiscard]] inline const PreparedJoinTransfer* find_prepared_join_transfer(

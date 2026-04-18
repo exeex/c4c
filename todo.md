@@ -10,20 +10,20 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/prealloc/prealloc.hpp` and
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving the
-authoritative short-circuit branch-owned join-source classification and lookup
-into shared prepared-control-flow helpers and switching the x86 short-circuit
-consumer to use that shared contract. The emitter no longer keeps its own
-duplicate short-circuit lane classification or branch-owned join-source wrapper
-seam for this packet.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by adding a shared
+prepared-control-flow helper for param-zero compare branches whose true/false
+targets are authoritative return blocks and switching the direct x86 branch
+consumer to use that helper instead of validating those return-lane details
+locally in the emitter.
 
 ## Suggested Next
 
 The next accepted packet should keep shrinking Step 3 emitter-local seams in
-the same joined-branch family by lifting more compare-join continuation or
-direct-branch planning checks out of `prepared_module_emit.cpp` and into
-shared prepared consumer helpers where the contract is already authoritative.
-Keep that work in semantic consumer helpers, not Step 4 file organization.
+the same joined-branch family by lifting one more compare-join continuation
+planning seam out of `prepared_module_emit.cpp` and into shared prepared
+consumer helpers so the materialized-join lane follows the same lookup-first
+route as the direct branch lane. Keep that work in semantic consumer helpers,
+not Step 4 file organization.
 
 ## Watchouts
 
@@ -42,12 +42,13 @@ Keep that work in semantic consumer helpers, not Step 4 file organization.
   join-transfer validation, supported SelectMaterialization / EdgeStoreSlot
   carrier queries, supported materialized compare-join predecessor and
   join-block shape validation, the prepared i32 eq/ne param-zero branch lookup
-  used by both compare-consumer lanes, and the short-circuit incoming-lane
+  used by both compare-consumer lanes, the authoritative direct-branch
+  return-lane validation helper, and the short-circuit incoming-lane
   classification / authoritative join-source lookup used by the short-circuit
   consumer. Follow-on work should keep extending prepared consumer lookups
   rather than reintroducing x86-side transfer-index, storage-name,
-  predecessor, carrier-kind, predicate, param-zero operand, or short-circuit
-  lane classification checks.
+  predecessor, carrier-kind, predicate, param-zero operand, direct-return
+  branch validation, or short-circuit lane classification checks.
 - The short-circuit ownership tests intentionally rewrite carrier labels and
   entry compares to prove x86 trusts prepared metadata over emitter-local
   carrier naming; do not add source-label equality checks that undercut that
@@ -69,16 +70,15 @@ Keep that work in semantic consumer helpers, not Step 4 file organization.
 - The joined-branch ownership tests now intentionally desynchronize raw entry
   terminator labels from prepared branch metadata; do not restore source-label
   equality requirements in the compare-join consumer.
-- `test_before.log` remains the narrow baseline for
-  `^backend_x86_handoff_boundary$`, and this packet refreshed `test_after.log`
-  with the same focused proof command after moving the short-circuit
-  branch-owned join-source seam into shared prepared control-flow helpers.
+- Keep the new direct-branch helper scoped to prepared consumer validation for
+  param-zero return leaves; do not widen it into generic branch lowering or
+  non-return leaf matching in this packet family.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 This packet refreshes `test_after.log` with the same focused
-`backend_x86_handoff_boundary` proof command for the shared short-circuit
-join-source classification/lookup helper now consumed by the x86
-short-circuit path.
+`backend_x86_handoff_boundary` proof command for the new shared direct-branch
+return-context helper now consumed by the x86 compare-against-zero branch
+path.
