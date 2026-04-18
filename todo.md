@@ -10,17 +10,17 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by removing the
-compare-join predecessor-label fallback, so the x86 materialized-compare join
-lane now requires prepared true/false transfer indices instead of recovering
-join ownership from predecessor labels when consuming the existing
-select-materialization handoff.
+remaining materialized-compare join CFG walk, so the x86 lane now uses the
+prepared true/false transfer records directly for join ownership and only
+validates the referenced predecessor blocks instead of rediscovering them from
+topology.
 
 ## Suggested Next
 
-The next small Step 3 packet is shrinking the remaining emitter-local shape
-recovery around compare-join continuation handling, especially any join-lane
-logic that still walks CFG topology after prepared control-flow data is already
-available for the same handoff.
+The next small Step 3 packet is the remaining compare-join continuation path in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp`, especially any helper
+that still traces continuation reachability from block topology after the
+prepared branch and join handoff already names the participating blocks.
 
 ## Watchouts
 
@@ -29,10 +29,10 @@ available for the same handoff.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth.
 - Keep the compare-join lane aligned with the continuation lane: only empty
   branch-only carriers on the way to the prepared join are in scope.
-- The compare-join materialization path now rejects routes that do not publish
-  prepared true/false transfer indices; if any remaining family still depends
-  on predecessor-label ownership recovery, fix the shared producer contract
-  instead of reintroducing an x86 fallback.
+- The compare-join materialization path now depends on prepared true/false
+  transfer indices plus prepared predecessor labels; if continuation handling
+  still needs topology recovery beyond that contract, fix the shared producer
+  surface instead of reintroducing an x86 fallback.
 - The existing base and trailing binary compare-join proofs still exercise the
   same generalized helper path; keep future Step 3 work on that shared route
   instead of cloning testcase-shaped ownership logic.

@@ -3800,37 +3800,8 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto find_empty_branch_join_predecessor =
-        [&](std::string_view start_label,
-            std::string_view join_label) -> const c4c::backend::bir::Block* {
-      std::unordered_set<std::string_view> visited;
-      const auto* current = find_block(start_label);
-      while (current != nullptr && visited.insert(current->label).second) {
-        if (current == &entry || !current->insts.empty() ||
-            current->terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
-          return nullptr;
-        }
-        if (current->terminator.target_label == join_label) {
-          return current;
-        }
-        current = find_block(current->terminator.target_label);
-      }
-      return nullptr;
-    };
-
-    const auto join_block_label = std::string_view(prepared_join_transfer.join_block_label);
-    const auto* true_join_predecessor =
-        find_empty_branch_join_predecessor(branch_condition->true_label, join_block_label);
-    const auto* false_join_predecessor =
-        find_empty_branch_join_predecessor(branch_condition->false_label, join_block_label);
-    if (true_join_predecessor == nullptr || false_join_predecessor == nullptr ||
-        true_join_predecessor == false_join_predecessor) {
-      return std::nullopt;
-    }
-
     const auto* join_block = find_block(prepared_join_transfer.join_block_label);
     if (join_block == nullptr || join_block == &entry ||
-        join_block == true_join_predecessor || join_block == false_join_predecessor ||
         join_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
         !join_block->terminator.value.has_value() || join_block->insts.empty()) {
       return std::nullopt;
@@ -3920,6 +3891,20 @@ std::string emit_prepared_module(
     if (true_transfer == nullptr || false_transfer == nullptr ||
         true_transfer->successor_label != prepared_join_transfer.join_block_label ||
         false_transfer->successor_label != prepared_join_transfer.join_block_label) {
+      return std::nullopt;
+    }
+
+    const auto* true_join_predecessor = find_block(branch_condition->true_label);
+    const auto* false_join_predecessor = find_block(branch_condition->false_label);
+    if (true_join_predecessor == nullptr || false_join_predecessor == nullptr ||
+        true_join_predecessor == &entry || false_join_predecessor == &entry ||
+        true_join_predecessor == false_join_predecessor || true_join_predecessor == join_block ||
+        false_join_predecessor == join_block || !true_join_predecessor->insts.empty() ||
+        !false_join_predecessor->insts.empty() ||
+        true_join_predecessor->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
+        false_join_predecessor->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
+        true_join_predecessor->terminator.target_label != prepared_join_transfer.join_block_label ||
+        false_join_predecessor->terminator.target_label != prepared_join_transfer.join_block_label) {
       return std::nullopt;
     }
 
