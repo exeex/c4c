@@ -11,21 +11,21 @@ Source Plan: plan.md
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp`,
 `tests/backend/backend_x86_handoff_boundary_test.cpp`, and `todo.md` by
-removing the x86 materialized compare-join `function.blocks.size() == 4`
-topology gate so the consumer can rely on the prepared branch/join contract
-instead of total block count, and by extending the handoff-boundary test suite
-with an extra unreachable-block fixture that proves the compare-join route
-still emits the same canonical asm when unrelated CFG shape changes do not
-change the authoritative prepared control-flow facts.
+removing the x86 minimal compare-against-zero branch
+`function.blocks.size() == 3` topology gate so the consumer now relies on the
+prepared branch-return contract instead of total block count, and by extending
+the handoff-boundary test suite with an extra unreachable-block fixture that
+proves the same canonical asm still emits when unrelated CFG shape changes do
+not change the authoritative prepared control-flow facts.
 
 ## Suggested Next
 
 The next accepted packet should stay in Step 3 and remove one more small
 x86-local topology gate only where the prepared contract is already
 authoritative, most likely by auditing the remaining compare-against-zero
-branch helpers in `prepared_module_emit.cpp` for fixed block-count or carrier
-shape checks that can be replaced by prepared branch/join lookups without
-widening into generic route acceptance or Step 4 file organization.
+consumer helpers in `prepared_module_emit.cpp` for another fixed total-block
+or carrier-shape rejection that can be replaced by prepared branch/join data
+without widening into generic route acceptance or Step 4 file organization.
 
 ## Watchouts
 
@@ -38,6 +38,10 @@ widening into generic route acceptance or Step 4 file organization.
   not on widening the accepted route. Prepared facts should replace raw CFG
   shape checks only when the existing shared helper already proves the same
   ownership contract.
+- The minimal compare-against-zero branch route now tolerates unrelated extra
+  unreachable blocks, but it should still stay bounded to the existing
+  prepared branch-return contract rather than growing new x86-local CFG
+  discovery.
 - The x86 short-circuit and compare-join consumers should continue treating
   prepared lane ownership, continuation labels, and compare-join branch labels
   as authoritative; do not reintroduce source-label equality checks, local
@@ -45,17 +49,17 @@ widening into generic route acceptance or Step 4 file organization.
   function matcher growth in the emitter.
 - `test_before.log` remains the narrow baseline for
   `^backend_x86_handoff_boundary$`, and this packet refreshes `test_after.log`
-  with the same focused proof command after proving the compare-join consumer
-  ignores unrelated extra block count when prepared control-flow data remains
-  authoritative.
+  with the same focused proof command after proving the minimal
+  compare-against-zero branch consumer ignores unrelated extra block count
+  when prepared control-flow data remains authoritative.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The focused proof refreshes `test_after.log` with the
-`backend_x86_handoff_boundary` subset for the materialized compare-join block-
-count gate removal, the new unreachable-block prepared-fixture coverage, and
-the existing prepared branch/join ownership families that continue proving the
-same handoff contracts. The proof passed and `test_after.log` is the preserved
-proof log.
+`backend_x86_handoff_boundary` subset for the minimal compare-against-zero
+branch block-count gate removal, the new unreachable-block prepared-fixture
+coverage, and the existing prepared branch/join ownership families that
+continue proving the same handoff contracts. The proof passed and
+`test_after.log` is the preserved proof log.

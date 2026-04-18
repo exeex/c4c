@@ -4013,8 +4013,8 @@ std::string emit_prepared_module(
   };
   const auto render_minimal_compare_branch_if_supported =
       [&]() -> std::optional<std::string> {
-    if (function.blocks.size() != 3 || function.params.size() != 1 ||
-        prepared_arch != c4c::TargetArch::X86_64 || entry.insts.size() != 1 ||
+    if (function.params.size() != 1 || prepared_arch != c4c::TargetArch::X86_64 ||
+        entry.insts.size() != 1 ||
         entry.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
       return std::nullopt;
     }

@@ -6624,10 +6624,36 @@ int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_of
       module, function_name, failure_context, true, true, true, true);
 }
 
+int check_minimal_compare_branch_consumes_prepared_control_flow_impl(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context,
+    bool add_unreachable_block);
+
 int check_minimal_compare_branch_consumes_prepared_control_flow(const bir::Module& module,
                                                                 const std::string& expected_asm,
                                                                 const char* function_name,
                                                                 const char* failure_context) {
+  return check_minimal_compare_branch_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, false);
+}
+
+int check_minimal_compare_branch_with_unreachable_block_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_minimal_compare_branch_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, true);
+}
+
+int check_minimal_compare_branch_consumes_prepared_control_flow_impl(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context,
+    bool add_unreachable_block) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -6658,6 +6684,12 @@ int check_minimal_compare_branch_consumes_prepared_control_flow(const bir::Modul
   entry_compare->opcode = bir::BinaryOpcode::Ne;
   entry_compare->lhs = bir::Value::immediate_i32(9);
   entry_compare->rhs = bir::Value::immediate_i32(3);
+  if (add_unreachable_block) {
+    function.blocks.push_back(bir::Block{
+        .label = "contract.dead.unreachable",
+        .terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(99)},
+    });
+  }
 
   const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
@@ -7642,6 +7674,15 @@ int main() {
               expected_minimal_param_eq_zero_branch_asm("branch_on_zero", "is_nonzero", 7, 11),
               "branch_on_zero",
               "scalar-control-flow compare-against-zero branch lane prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_with_unreachable_block_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_module(),
+              expected_minimal_param_eq_zero_branch_asm("branch_on_zero", "is_nonzero", 7, 11),
+              "branch_on_zero",
+              "scalar-control-flow compare-against-zero branch lane ignores unrelated block count when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }
