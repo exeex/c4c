@@ -422,6 +422,21 @@ struct PhiMaterializeContext {
   std::size_t next_temp_index = 0;
 };
 
+PreparedJoinTransfer make_join_transfer(std::string_view function_name,
+                                        std::string_view join_block_label,
+                                        const bir::PhiInst& phi,
+                                        PreparedJoinTransferKind kind,
+                                        std::optional<std::string> storage_name = std::nullopt) {
+  return PreparedJoinTransfer{
+      .function_name = std::string(function_name),
+      .join_block_label = std::string(join_block_label),
+      .result = phi.result,
+      .kind = kind,
+      .storage_name = std::move(storage_name),
+      .incomings = phi.incomings,
+  };
+}
+
 std::optional<bir::Value> materialize_value(const bir::Value& value, PhiMaterializeContext* context);
 
 std::string make_materialized_select_name(std::string_view result_name,
@@ -638,7 +653,10 @@ std::optional<bir::Value> materialize_value(const bir::Value& value, PhiMaterial
   return value;
 }
 
-bool try_materialize_root_phi_block(bir::Function* function, const BlockAnalysis& analysis, bir::Block* block) {
+bool try_materialize_root_phi_block(bir::Function* function,
+                                    const BlockAnalysis& analysis,
+                                    bir::Block* block,
+                                    std::vector<PreparedJoinTransfer>* join_transfers) {
   bool saw_phi = false;
   bool has_non_phi_after_top = false;
   std::unordered_set<std::string> phi_names;
@@ -677,6 +695,7 @@ bool try_materialize_root_phi_block(bir::Function* function, const BlockAnalysis
       .analysis = &analysis,
       .target_block = block,
   };
+  std::vector<PreparedJoinTransfer> block_join_transfers;
 
   for (const auto& inst : block->insts) {
     const auto* phi = std::get_if<bir::PhiInst>(&inst);
@@ -685,6 +704,10 @@ bool try_materialize_root_phi_block(bir::Function* function, const BlockAnalysis
     }
     if (!materialize_phi(*phi, *block, &context).has_value()) {
       return false;
+    }
+    if (join_transfers != nullptr) {
+      block_join_transfers.push_back(make_join_transfer(
+          function->name, block->label, *phi, PreparedJoinTransferKind::SelectMaterialization));
     }
   }
 
@@ -708,10 +731,17 @@ bool try_materialize_root_phi_block(bir::Function* function, const BlockAnalysis
     rewrite_block.insts = std::move(rewritten);
   }
 
+  if (join_transfers != nullptr) {
+    join_transfers->insert(join_transfers->end(),
+                           std::make_move_iterator(block_join_transfers.begin()),
+                           std::make_move_iterator(block_join_transfers.end()));
+  }
+
   return true;
 }
 
-void materialize_reducible_phi_trees(bir::Function* function) {
+void materialize_reducible_phi_trees(bir::Function* function,
+                                     std::vector<PreparedJoinTransfer>* join_transfers) {
   while (true) {
     const auto analysis = analyze_function(function);
     bir::Block* root_block = nullptr;
@@ -720,19 +750,20 @@ void materialize_reducible_phi_trees(bir::Function* function) {
         root_block = &block;
       }
     }
-    if (root_block == nullptr || !try_materialize_root_phi_block(function, analysis, root_block)) {
+    if (root_block == nullptr ||
+        !try_materialize_root_phi_block(function, analysis, root_block, join_transfers)) {
       return;
     }
   }
 }
 
-void lower_phi_nodes(bir::Function* function) {
+void lower_phi_nodes(bir::Function* function, std::vector<PreparedJoinTransfer>* join_transfers) {
   struct PhiLoweringPlan {
     std::string slot_name;
     std::vector<bir::PhiIncoming> incomings;
   };
 
-  materialize_reducible_phi_trees(function);
+  materialize_reducible_phi_trees(function, join_transfers);
 
   std::unordered_map<std::string, std::vector<PhiLoweringPlan>> phis_by_block;
   std::unordered_set<std::string> used_slot_names;
@@ -777,6 +808,13 @@ void lower_phi_nodes(bir::Function* function) {
             .slot_name = slot_name,
             .incomings = phi->incomings,
         });
+        if (join_transfers != nullptr) {
+          join_transfers->push_back(make_join_transfer(function->name,
+                                                       block.label,
+                                                       *phi,
+                                                       PreparedJoinTransferKind::EdgeStoreSlot,
+                                                       slot_name));
+        }
         rewritten.push_back(bir::LoadLocalInst{
             .result = phi->result,
             .slot_name = std::move(slot_name),
@@ -817,7 +855,28 @@ void lower_phi_nodes(bir::Function* function) {
   }
 }
 
-void legalize_module(const c4c::TargetProfile& target_profile, bir::Module& module) {
+PreparedBranchCondition make_branch_condition(const std::string& function_name,
+                                              const bir::Block& block) {
+  PreparedBranchCondition condition{
+      .function_name = function_name,
+      .block_label = block.label,
+      .condition_value = block.terminator.condition,
+      .true_label = block.terminator.true_label,
+      .false_label = block.terminator.false_label,
+  };
+  if (const auto* compare = find_compare_for_condition(block, block.terminator.condition);
+      compare != nullptr) {
+    condition.predicate = compare->opcode;
+    condition.compare_type = compare->operand_type;
+    condition.lhs = compare->lhs;
+    condition.rhs = compare->rhs;
+  }
+  return condition;
+}
+
+void legalize_module(const c4c::TargetProfile& target_profile,
+                     bir::Module& module,
+                     PreparedControlFlow* control_flow) {
   for (auto& global : module.globals) {
     legalize_sized_type(target_profile, global.type, global.size_bytes, global.align_bytes);
     if (global.initializer.has_value()) {
@@ -829,7 +888,10 @@ void legalize_module(const c4c::TargetProfile& target_profile, bir::Module& modu
   }
 
   for (auto& function : module.functions) {
-    lower_phi_nodes(&function);
+    PreparedControlFlowFunction function_control_flow{
+        .function_name = function.name,
+    };
+    lower_phi_nodes(&function, &function_control_flow.join_transfers);
     legalize_sized_type(
         target_profile, function.return_type, function.return_size_bytes, function.return_align_bytes);
     if (!function.return_abi.has_value()) {
@@ -940,6 +1002,15 @@ void legalize_module(const c4c::TargetProfile& target_profile, bir::Module& modu
         legalize_value(target_profile, *block.terminator.value);
       }
       legalize_value(target_profile, block.terminator.condition);
+      if (block.terminator.kind == bir::TerminatorKind::CondBranch) {
+        function_control_flow.branch_conditions.push_back(make_branch_condition(function.name, block));
+      }
+    }
+
+    if (control_flow != nullptr &&
+        (!function_control_flow.branch_conditions.empty() ||
+         !function_control_flow.join_transfers.empty())) {
+      control_flow->functions.push_back(std::move(function_control_flow));
     }
   }
 }
@@ -948,7 +1019,8 @@ void legalize_module(const c4c::TargetProfile& target_profile, bir::Module& modu
 
 void BirPreAlloc::run_legalize() {
   prepared_.completed_phases.push_back("legalize");
-  legalize_module(prepared_.target_profile, prepared_.module);
+  prepared_.control_flow.functions.clear();
+  legalize_module(prepared_.target_profile, prepared_.module, &prepared_.control_flow);
   prepared_.invariants.push_back(PreparedBirInvariant::NoPhiNodes);
   if (should_promote_i1(prepared_.target_profile)) {
     prepared_.invariants.push_back(PreparedBirInvariant::NoTargetFacingI1);
@@ -959,7 +1031,8 @@ void BirPreAlloc::run_legalize() {
       .message =
           "bootstrap BIR legalize removed phi nodes and promoted i1 values plus function "
           "signature/storage bookkeeping, memory-address/load-store bookkeeping, call ABI "
-          "metadata, and call return type text to i32 for x86/i686/aarch64/riscv64",
+          "metadata, call return type text to i32 for x86/i686/aarch64/riscv64, and explicit "
+          "prepared branch-condition/join-transfer control-flow records",
   });
 }
 

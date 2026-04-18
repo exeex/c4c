@@ -32,6 +32,17 @@ bool contains_invariant(const prepare::PreparedBirModule& module,
   return false;
 }
 
+const prepare::PreparedControlFlowFunction* find_control_flow_function(
+    const prepare::PreparedBirModule& prepared,
+    const char* function_name) {
+  for (const auto& function : prepared.control_flow.functions) {
+    if (function.function_name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
 const bir::Block* find_block(const bir::Function& function, const char* label) {
   for (const auto& block : function.blocks) {
     if (block.label == label) {
@@ -187,6 +198,64 @@ int check_prepare_i1_invariant(const prepare::PreparedBirModule& prepared) {
   if (prepared.module.functions.empty()) {
     return fail("expected at least one function when checking the i1 legality invariant");
   }
+  return 0;
+}
+
+int check_prepared_control_flow_contract(const prepare::PreparedBirModule& prepared,
+                                         const char* function_name,
+                                         std::size_t expected_branch_conditions,
+                                         prepare::PreparedJoinTransferKind expected_join_kind) {
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    return fail("expected legalize to publish prepared control-flow metadata for the function");
+  }
+  if (control_flow->branch_conditions.size() != expected_branch_conditions) {
+    return fail("unexpected number of prepared branch-condition records");
+  }
+  if (control_flow->join_transfers.size() != 1) {
+    return fail("expected exactly one prepared join-transfer record");
+  }
+
+  const auto& entry_condition = control_flow->branch_conditions.front();
+  if (entry_condition.block_label != "entry" || !entry_condition.predicate.has_value() ||
+      !entry_condition.compare_type.has_value() || !entry_condition.lhs.has_value() ||
+      !entry_condition.rhs.has_value()) {
+    return fail("expected entry branch-condition metadata to publish compare semantics");
+  }
+  if (*entry_condition.predicate != bir::BinaryOpcode::Eq ||
+      *entry_condition.compare_type != bir::TypeKind::I32 ||
+      !is_immediate_i32(*entry_condition.lhs, 0) || !is_immediate_i32(*entry_condition.rhs, 0) ||
+      entry_condition.true_label != "left" || entry_condition.false_label != "split") {
+    return fail("expected entry branch-condition metadata to match the legalized compare branch");
+  }
+  if (entry_condition.condition_value.kind != bir::Value::Kind::Named ||
+      entry_condition.condition_value.name != "cond0" ||
+      entry_condition.condition_value.type != bir::TypeKind::I32) {
+    return fail("expected entry branch-condition metadata to track the legalized condition value");
+  }
+
+  const auto& join_transfer = control_flow->join_transfers.front();
+  if (join_transfer.join_block_label != "join" || join_transfer.result.name != "merge") {
+    return fail("expected join-transfer metadata to name the legalized join result");
+  }
+  if (join_transfer.kind != expected_join_kind ||
+      prepare::prepared_join_transfer_kind_name(join_transfer.kind) ==
+          std::string_view("unknown")) {
+    return fail("expected a stable prepared join-transfer kind for the join metadata");
+  }
+  if (join_transfer.incomings.size() != 3) {
+    return fail("expected join-transfer metadata to preserve every predecessor incoming");
+  }
+  if (!is_immediate_i32(join_transfer.incomings[0].value, 11) ||
+      !is_immediate_i32(join_transfer.incomings[1].value, 22) ||
+      !is_immediate_i32(join_transfer.incomings[2].value, 33)) {
+    return fail("expected join-transfer metadata to preserve the original incoming values");
+  }
+  if (expected_join_kind == prepare::PreparedJoinTransferKind::SelectMaterialization &&
+      join_transfer.storage_name.has_value()) {
+    return fail("expected select-materialized join metadata to avoid fallback slot ownership");
+  }
+
   return 0;
 }
 
@@ -1129,6 +1198,14 @@ int main() {
   if (const int status = check_prepare_i1_invariant(prepared_with_add); status != 0) {
     return status;
   }
+  if (const int status = check_prepared_control_flow_contract(
+          prepared_with_add,
+          "merge3_add",
+          2,
+          prepare::PreparedJoinTransferKind::SelectMaterialization);
+      status != 0) {
+    return status;
+  }
   if (const int status = check_materialized_join(prepared_with_add.module.functions.front(), true); status != 0) {
     return status;
   }
@@ -1149,6 +1226,14 @@ int main() {
     return status;
   }
   if (const int status = check_prepare_i1_invariant(prepared_successor_use); status != 0) {
+    return status;
+  }
+  if (const int status = check_prepared_control_flow_contract(
+          prepared_successor_use,
+          "merge3_successor_use",
+          2,
+          prepare::PreparedJoinTransferKind::SelectMaterialization);
+      status != 0) {
     return status;
   }
   if (const int status = check_materialized_successor_join(prepared_successor_use.module.functions.front());

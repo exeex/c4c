@@ -329,6 +329,55 @@ enum class PrepareRoute {
   return "unknown";
 }
 
+enum class PreparedJoinTransferKind {
+  SelectMaterialization,
+  EdgeStoreSlot,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_join_transfer_kind_name(
+    PreparedJoinTransferKind kind) {
+  switch (kind) {
+    case PreparedJoinTransferKind::SelectMaterialization:
+      return "select_materialization";
+    case PreparedJoinTransferKind::EdgeStoreSlot:
+      return "edge_store_slot";
+  }
+  return "unknown";
+}
+
+struct PreparedBranchCondition {
+  std::string function_name;
+  std::string block_label;
+  bir::Value condition_value;
+  std::optional<bir::BinaryOpcode> predicate;
+  std::optional<bir::TypeKind> compare_type;
+  std::optional<bir::Value> lhs;
+  std::optional<bir::Value> rhs;
+  std::string true_label;
+  std::string false_label;
+};
+
+struct PreparedJoinTransfer {
+  std::string function_name;
+  std::string join_block_label;
+  bir::Value result;
+  PreparedJoinTransferKind kind = PreparedJoinTransferKind::SelectMaterialization;
+  std::optional<std::string> storage_name;
+  std::vector<bir::PhiIncoming> incomings;
+};
+
+struct PreparedControlFlowFunction {
+  std::string function_name;
+  std::vector<PreparedBranchCondition> branch_conditions;
+  std::vector<PreparedJoinTransfer> join_transfers;
+};
+
+// Shared consumers must take branch semantics from `branch_conditions` and former
+// phi/join obligations from `join_transfers` instead of reconstructing them from CFG shape.
+struct PreparedControlFlow {
+  std::vector<PreparedControlFlowFunction> functions;
+};
+
 enum class PreparedBirInvariant {
   NoTargetFacingI1,
   NoPhiNodes,
@@ -350,6 +399,7 @@ struct PreparedBirModule {
   c4c::TargetProfile target_profile{};
   PrepareRoute route = PrepareRoute::SemanticBirShared;
   std::vector<PreparedBirInvariant> invariants;
+  PreparedControlFlow control_flow;
   PreparedStackLayout stack_layout;
   PreparedLiveness liveness;
   PreparedRegalloc regalloc;
