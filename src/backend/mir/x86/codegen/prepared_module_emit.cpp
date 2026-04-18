@@ -4051,27 +4051,27 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
+    const auto resolved_render_contract =
+        c4c::backend::prepare::resolve_prepared_materialized_compare_join_render_contract(
+            module.module, *prepared_render_contract);
+    if (!resolved_render_contract.has_value()) {
+      return std::nullopt;
+    }
+
     const auto true_return = render_materialized_compare_join_return_if_supported(
-        prepared_render_contract->true_return_context,
-        prepared_render_contract->true_return_shape,
+        resolved_render_contract->true_return_context,
+        resolved_render_contract->true_return_shape,
         param);
     const auto false_return = render_materialized_compare_join_return_if_supported(
-        prepared_render_contract->false_return_context,
-        prepared_render_contract->false_return_shape,
+        resolved_render_contract->false_return_context,
+        resolved_render_contract->false_return_shape,
         param);
     if (!true_return.has_value() || !false_return.has_value()) {
       return std::nullopt;
     }
 
-    const auto prepared_same_module_globals =
-        c4c::backend::prepare::resolve_prepared_materialized_compare_join_same_module_globals(
-            module.module, *prepared_render_contract);
-    if (!prepared_same_module_globals.has_value()) {
-      return std::nullopt;
-    }
-
     std::string rendered_same_module_globals;
-    for (const auto* global : *prepared_same_module_globals) {
+    for (const auto* global : resolved_render_contract->same_module_globals) {
       if (global == nullptr) {
         return std::nullopt;
       }
@@ -4084,9 +4084,9 @@ std::string emit_prepared_module(
 
     const std::string false_label =
         ".L" + function.name + "_" +
-        std::string(prepared_render_contract->branch_plan.target_labels.false_label);
+        std::string(resolved_render_contract->branch_plan.target_labels.false_label);
     return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    " +
-           prepared_render_contract->branch_plan.false_branch_opcode + " " + false_label + "\n" +
+           resolved_render_contract->branch_plan.false_branch_opcode + " " + false_label + "\n" +
            *true_return + false_label + ":\n" + *false_return +
            rendered_same_module_globals;
   };

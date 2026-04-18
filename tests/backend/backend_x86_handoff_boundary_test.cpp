@@ -5378,6 +5378,35 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
                       .c_str());
     }
   }
+  const auto resolved_render_contract =
+      prepare::resolve_prepared_materialized_compare_join_render_contract(
+          prepared.module, *render_contract);
+  if (!resolved_render_contract.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped resolving the compare-join render contract")
+                    .c_str());
+  }
+  if (resolved_render_contract->branch_plan.target_labels.true_label !=
+          render_contract->branch_plan.target_labels.true_label ||
+      resolved_render_contract->branch_plan.target_labels.false_label !=
+          render_contract->branch_plan.target_labels.false_label ||
+      std::string(resolved_render_contract->branch_plan.false_branch_opcode) !=
+          render_contract->branch_plan.false_branch_opcode ||
+      resolved_render_contract->same_module_globals.size() !=
+          resolved_same_module_globals->size()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped preserving the compare-join render contract contents")
+                    .c_str());
+  }
+  for (std::size_t index = 0; index < resolved_render_contract->same_module_globals.size();
+       ++index) {
+    if (resolved_render_contract->same_module_globals[index] !=
+        (*resolved_same_module_globals)[index]) {
+      return fail((std::string(failure_context) +
+                   ": shared helper stopped preserving resolved compare-join globals")
+                      .c_str());
+    }
+  }
   if (render_contract->true_return_shape !=
           prepare::classify_prepared_materialized_compare_join_return_shape(
               prepared_compare_join_branches->prepared_join_branches.true_return_context) ||

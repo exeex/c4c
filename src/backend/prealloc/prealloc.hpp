@@ -659,6 +659,15 @@ struct PreparedMaterializedCompareJoinRenderContract {
   std::vector<std::string_view> same_module_global_names;
 };
 
+struct PreparedResolvedMaterializedCompareJoinRenderContract {
+  PreparedMaterializedCompareJoinBranchPlan branch_plan;
+  PreparedMaterializedCompareJoinReturnContext true_return_context;
+  PreparedMaterializedCompareJoinReturnShape true_return_shape;
+  PreparedMaterializedCompareJoinReturnContext false_return_context;
+  PreparedMaterializedCompareJoinReturnShape false_return_shape;
+  std::vector<const bir::Global*> same_module_globals;
+};
+
 [[nodiscard]] inline std::vector<std::string_view>
 collect_prepared_computed_value_same_module_globals(
     const PreparedComputedValue& computed_value) {
@@ -718,6 +727,11 @@ collect_prepared_materialized_compare_join_same_module_globals(
 
 [[nodiscard]] inline std::optional<std::vector<const bir::Global*>>
 resolve_prepared_materialized_compare_join_same_module_globals(
+    const bir::Module& module,
+    const PreparedMaterializedCompareJoinRenderContract& render_contract);
+
+[[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
+resolve_prepared_materialized_compare_join_render_contract(
     const bir::Module& module,
     const PreparedMaterializedCompareJoinRenderContract& render_contract);
 
@@ -1720,6 +1734,26 @@ resolve_prepared_materialized_compare_join_same_module_globals(
     globals.push_back(resolved_global);
   }
   return globals;
+}
+
+[[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
+resolve_prepared_materialized_compare_join_render_contract(
+    const bir::Module& module,
+    const PreparedMaterializedCompareJoinRenderContract& render_contract) {
+  const auto same_module_globals =
+      resolve_prepared_materialized_compare_join_same_module_globals(module, render_contract);
+  if (!same_module_globals.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedResolvedMaterializedCompareJoinRenderContract{
+      .branch_plan = render_contract.branch_plan,
+      .true_return_context = render_contract.true_return_context,
+      .true_return_shape = render_contract.true_return_shape,
+      .false_return_context = render_contract.false_return_context,
+      .false_return_shape = render_contract.false_return_shape,
+      .same_module_globals = std::move(*same_module_globals),
+  };
 }
 
 [[nodiscard]] inline const std::vector<PreparedEdgeValueTransfer>* incoming_transfers_for_join(
