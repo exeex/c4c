@@ -6,16 +6,12 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Attempted `plan.md` Step 3 ("Implement One Honest Capability Lane") by adding
-bounded semantic integer-switch lowering in `lir_to_bir` plus backend-test
-fixtures for a minimal i32 parameter switch lane. That moved the route past the
-earlier scalar-control-flow lowering failure, but the delegated proof stopped
-at deeper x86 prepared-module gates: `00158` still requires looped control flow
-plus direct variadic runtime calls inside one function, and `00193` still
-requires a nontrivial multi-defined helper-function route with parameterized
-switch control flow plus direct variadic runtime calls. This packet therefore
-stops as a truthful blocker instead of widening into a broader x86 CFG/runtime
-renderer.
+Rejected the probe-only `plan.md` Step 3 ("Implement One Honest Capability
+Lane") attempt by removing the bounded integer-switch lowering/test scaffolding
+that only advanced backend-local probing. The c-testsuite blockers remain the
+same truthful boundary: `00158` still needs loop-plus-direct-runtime support in
+one function, and `00193` still needs a nontrivial multi-defined helper route
+with parameterized switch control flow plus direct variadic runtime calls.
 
 ## Suggested Next
 
@@ -31,8 +27,6 @@ same-mechanism c-testsuite cluster is also proven.
 - Treat idea `56` as a separate initiative; the current Step 1 baseline did
   not show renderer de-headerization as the immediate blocker.
 - Do not weaken `x86_backend` expectations or add testcase-shaped shortcuts.
-- The in-progress diff currently adds bounded integer-switch lowering and
-  backend fixtures, but it does not make the delegated c-tests pass yet.
 - `00158` is not a pure switch lane: it includes a counted loop and direct
   `printf` calls around the switch body.
 - `00193` is not a single-function lane: it includes a nontrivial helper
@@ -43,11 +37,8 @@ same-mechanism c-testsuite cluster is also proven.
 
 ## Proof
 
-Executor packet proof:
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_(lir_to_bir_notes|x86_handoff_boundary)|c_testsuite_x86_backend_src_(00158|00193)_c)$" |& tee test_after.log'`
+Cleanup proof:
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_(lir_to_bir_notes|x86_handoff_boundary))$" |& tee test_after.log'`
 
-Result: `backend_lir_to_bir_notes` passed, but `backend_x86_handoff_boundary`,
-`c_testsuite_x86_backend_src_00158_c`, and
-`c_testsuite_x86_backend_src_00193_c` failed in `test_after.log`. The current
-blocking messages are x86 prepared-module route gates, not the earlier
-semantic `lir_to_bir` scalar-control-flow family failure.
+Result: both backend-owned proof tests passed after removing the rejected
+integer-switch probe slice. `test_after.log` is the cleanup proof log.
