@@ -3980,6 +3980,27 @@ std::string emit_prepared_module(
     }
     return *value_render + "    ret\n";
   };
+  const auto render_prepared_computed_value_if_supported =
+      [&](const c4c::backend::prepare::PreparedComputedValue& computed_value,
+          const c4c::backend::bir::Param& param) -> std::optional<std::string> {
+    const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>
+        empty_named_binaries;
+    const auto base_render = render_param_derived_value_if_supported(
+        computed_value.base_value, empty_named_binaries, param);
+    if (!base_render.has_value()) {
+      return std::nullopt;
+    }
+
+    std::string rendered = *base_render;
+    for (const auto& operation : computed_value.operations) {
+      const auto operation_render = render_supported_immediate_binary(operation);
+      if (!operation_render.has_value()) {
+        return std::nullopt;
+      }
+      rendered += *operation_render;
+    }
+    return rendered;
+  };
   const auto render_materialized_compare_join_return_if_supported =
       [&](const c4c::backend::prepare::PreparedMaterializedCompareJoinContext&
               compare_join_context,
@@ -3992,8 +4013,8 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto value_render = render_param_derived_value_if_supported(
-        prepared_return_context->selected_value, prepared_return_context->named_binaries, param);
+    const auto value_render =
+        render_prepared_computed_value_if_supported(prepared_return_context->selected_value, param);
     if (!value_render.has_value()) {
       return std::nullopt;
     }

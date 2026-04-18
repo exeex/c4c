@@ -11,21 +11,23 @@ Source Plan: plan.md
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/prealloc/prealloc.hpp`,
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp`, and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` by adding a shared
-prepared supported-immediate trailing-op classification helper for
-materialized compare-join returns, switching the x86 compare-join return
-renderer to consume prepared trailing-op metadata instead of revalidating raw
-trailing binaries locally, and extending ownership coverage to the trailing
-join xor `EdgeStoreSlot` carrier path.
+`tests/backend/backend_x86_handoff_boundary_test.cpp` by promoting the
+selected-value named-binary chain used before materialized compare-join
+trailing returns into shared prepared computed-value metadata, switching the
+x86 compare-join return renderer to consume that prepared selected-value
+metadata instead of walking join-block prefix binaries locally, and extending
+ownership coverage with a chained selected-value `EdgeStoreSlot` compare-join
+fixture that would fail the old single-hop x86 lookup.
 
 ## Suggested Next
 
 The next accepted packet should keep shrinking Step 3 emitter-local seams in
 the same joined-branch family by lifting one more materialized compare-join
-return dependency out of `prepared_module_emit.cpp`, ideally by promoting the
-selected-value named-binary chain used before the prepared trailing op into a
-more explicit prepared consumer contract rather than x86-local value walking.
-Keep that work in semantic consumer helpers, not Step 4 file organization.
+return dependency out of `prepared_module_emit.cpp`, ideally by turning the
+base selected-value move decision itself into prepared consumer metadata so the
+compare-join return renderer no longer reuses the generic param-derived helper
+for prepared computed-value bases. Keep that work in semantic consumer helpers,
+not Step 4 file organization.
 
 ## Watchouts
 
@@ -35,14 +37,14 @@ Keep that work in semantic consumer helpers, not Step 4 file organization.
 - Do not solve remaining compare-join gaps with x86-side CFG scans or
   testcase-shaped matcher growth.
 - The shared return-context helper in `prealloc.hpp` now owns both the
-  authoritative join-block prefix binary collection and the supported trailing
-  immediate-op classification for materialized compare joins; follow-on work
-  should extend that prepared helper surface rather than rebuilding binary
-  shape checks in the emitter.
-- The trailing xor ownership test now also proves the
+  authoritative join-block selected-value computation classification and the
+  supported trailing immediate-op classification for materialized compare
+  joins; follow-on work should extend that prepared helper surface rather than
+  rebuilding join-block value walks or binary shape checks in the emitter.
+- The chained selected-value xor ownership test now also proves the
   `PreparedJoinTransferKind::EdgeStoreSlot` carrier path; do not reintroduce
-  select-only assumptions or raw trailing-binary validation in the compare-join
-  return renderer.
+  select-only assumptions, raw trailing-binary validation, or one-hop
+  join-prefix map walking in the compare-join return renderer.
 - The joined-branch ownership tests still intentionally desynchronize raw entry
   terminator labels from prepared branch metadata; do not restore source-label
   equality checks in the x86 consumer.
@@ -55,5 +57,6 @@ Keep that work in semantic consumer helpers, not Step 4 file organization.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The focused proof passed and refreshed `test_after.log` with the
-`backend_x86_handoff_boundary` subset for the prepared trailing-op metadata
-handoff plus the trailing-join xor `EdgeStoreSlot` ownership coverage.
+`backend_x86_handoff_boundary` subset for the prepared selected-value computed
+metadata handoff plus the chained selected-value xor `EdgeStoreSlot`
+ownership coverage.

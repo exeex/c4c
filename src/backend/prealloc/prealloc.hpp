@@ -445,6 +445,11 @@ struct PreparedSupportedImmediateBinary {
   std::int64_t immediate = 0;
 };
 
+struct PreparedComputedValue {
+  bir::Value base_value;
+  std::vector<PreparedSupportedImmediateBinary> operations;
+};
+
 struct PreparedMaterializedCompareJoinContext {
   const PreparedJoinTransfer* join_transfer = nullptr;
   const PreparedEdgeValueTransfer* true_transfer = nullptr;
@@ -465,10 +470,8 @@ struct PreparedMaterializedCompareJoinBranches {
 };
 
 struct PreparedMaterializedCompareJoinReturnContext {
-  bir::Value selected_value;
+  PreparedComputedValue selected_value;
   std::optional<PreparedSupportedImmediateBinary> trailing_binary;
-  std::string_view carrier_result_name;
-  std::unordered_map<std::string_view, const bir::BinaryInst*> named_binaries;
 };
 
 // Shared consumers must take branch semantics from `branch_conditions` and former
@@ -913,6 +916,74 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
   return std::nullopt;
 }
 
+[[nodiscard]] inline std::optional<PreparedComputedValue> classify_computed_value(
+    const bir::Value& value,
+    const std::unordered_map<std::string_view, const bir::BinaryInst*>& named_binaries,
+    std::vector<std::string_view>* active_names = nullptr) {
+  if (value.type != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  if (value.kind != bir::Value::Kind::Named) {
+    return PreparedComputedValue{
+        .base_value = value,
+    };
+  }
+
+  std::vector<std::string_view> local_active_names;
+  auto* recursion_stack = active_names == nullptr ? &local_active_names : active_names;
+  for (const auto active_name : *recursion_stack) {
+    if (active_name == value.name) {
+      return std::nullopt;
+    }
+  }
+
+  const auto binary_it = named_binaries.find(value.name);
+  if (binary_it == named_binaries.end()) {
+    return PreparedComputedValue{
+        .base_value = value,
+    };
+  }
+
+  const auto* binary = binary_it->second;
+  if (binary == nullptr) {
+    return std::nullopt;
+  }
+
+  recursion_stack->push_back(value.name);
+  auto pop_active_name = [&]() { recursion_stack->pop_back(); };
+
+  const auto try_extend =
+      [&](const bir::Value& source_value,
+          std::optional<PreparedSupportedImmediateBinary> operation)
+      -> std::optional<PreparedComputedValue> {
+    if (!operation.has_value()) {
+      return std::nullopt;
+    }
+    auto computed_value = classify_computed_value(source_value, named_binaries, recursion_stack);
+    if (!computed_value.has_value()) {
+      return std::nullopt;
+    }
+    computed_value->operations.push_back(*operation);
+    return computed_value;
+  };
+
+  if (const auto computed_value = try_extend(
+          binary->lhs, classify_supported_immediate_binary(*binary, binary->lhs.name));
+      computed_value.has_value()) {
+    pop_active_name();
+    return computed_value;
+  }
+  if (const auto computed_value = try_extend(
+          binary->rhs, classify_supported_immediate_binary(*binary, binary->rhs.name));
+      computed_value.has_value()) {
+    pop_active_name();
+    return computed_value;
+  }
+
+  pop_active_name();
+  return std::nullopt;
+}
+
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinContext>
 find_materialized_compare_join_context(
     const PreparedAuthoritativeBranchJoinTransfer& authoritative_join_transfer,
@@ -1017,6 +1088,11 @@ find_prepared_materialized_compare_join_return_context(
     named_binaries.emplace(binary->result.name, binary);
   }
 
+  const auto computed_selected_value = classify_computed_value(selected_value, named_binaries);
+  if (!computed_selected_value.has_value()) {
+    return std::nullopt;
+  }
+
   std::optional<PreparedSupportedImmediateBinary> trailing_binary;
   if (compare_join_context.trailing_binary != nullptr) {
     trailing_binary = classify_supported_immediate_binary(*compare_join_context.trailing_binary,
@@ -1027,10 +1103,8 @@ find_prepared_materialized_compare_join_return_context(
   }
 
   return PreparedMaterializedCompareJoinReturnContext{
-      .selected_value = selected_value,
+      .selected_value = std::move(*computed_selected_value),
       .trailing_binary = std::move(trailing_binary),
-      .carrier_result_name = compare_join_context.carrier_result_name,
-      .named_binaries = std::move(named_binaries),
   };
 }
 

@@ -590,6 +590,27 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm
          minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
+std::string expected_minimal_param_eq_zero_branch_joined_chained_add_or_sub_then_xor_asm(
+    const char* function_name,
+    const char* false_label,
+    int true_immediate,
+    int false_immediate,
+    int selected_chain_immediate,
+    int joined_immediate) {
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() +
+         "\n    add " + minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
+         "\n    xor " + minimal_i32_return_register() + ", " +
+         std::to_string(selected_chain_immediate) + "\n    xor " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    sub " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) +
+         "\n    xor " + minimal_i32_return_register() + ", " +
+         std::to_string(selected_chain_immediate) + "\n    xor " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
+}
+
 std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_and_asm(
     const char* function_name,
     const char* false_label,
@@ -3835,7 +3856,8 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
                                                          const std::string& expected_asm,
                                                          const char* function_name,
                                                          const char* failure_context,
-                                                         bool use_edge_store_slot_carrier) {
+                                                         bool use_edge_store_slot_carrier,
+                                                         bool use_selected_value_chain) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -3985,6 +4007,62 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
       join_block->terminator.value->name == original_carrier_result_name) {
     join_block->terminator.value = renamed_carrier_result;
   }
+
+  if (use_selected_value_chain) {
+    const auto true_chain_root =
+        bir::Value::named(bir::TypeKind::I32, "contract.true.selected.root");
+    const auto true_chain_selected =
+        bir::Value::named(bir::TypeKind::I32, "contract.true.selected.chain");
+    const auto false_chain_root =
+        bir::Value::named(bir::TypeKind::I32, "contract.false.selected.root");
+    const auto false_chain_selected =
+        bir::Value::named(bir::TypeKind::I32, "contract.false.selected.chain");
+    join_block->insts.insert(join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+                             bir::BinaryInst{
+                                 .opcode = bir::BinaryOpcode::Add,
+                                 .result = true_chain_root,
+                                 .operand_type = bir::TypeKind::I32,
+                                 .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+                                 .rhs = bir::Value::immediate_i32(5),
+                             });
+    ++join_select_index;
+    join_block->insts.insert(join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+                             bir::BinaryInst{
+                                 .opcode = bir::BinaryOpcode::Xor,
+                                 .result = true_chain_selected,
+                                 .operand_type = bir::TypeKind::I32,
+                                 .lhs = true_chain_root,
+                                 .rhs = bir::Value::immediate_i32(0),
+                             });
+    ++join_select_index;
+    join_block->insts.insert(join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+                             bir::BinaryInst{
+                                 .opcode = bir::BinaryOpcode::Sub,
+                                 .result = false_chain_root,
+                                 .operand_type = bir::TypeKind::I32,
+                                 .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+                                 .rhs = bir::Value::immediate_i32(1),
+                             });
+    ++join_select_index;
+    join_block->insts.insert(join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+                             bir::BinaryInst{
+                                 .opcode = bir::BinaryOpcode::Xor,
+                                 .result = false_chain_selected,
+                                 .operand_type = bir::TypeKind::I32,
+                                 .lhs = false_chain_root,
+                                 .rhs = bir::Value::immediate_i32(0),
+                             });
+    join_transfer.edge_transfers[true_transfer_index].incoming_value = true_chain_selected;
+    join_transfer.edge_transfers[false_transfer_index].incoming_value = false_chain_selected;
+    for (auto& incoming : join_transfer.incomings) {
+      if (incoming.label == *join_transfer.source_true_incoming_label) {
+        incoming.value = true_chain_selected;
+      } else if (incoming.label == *join_transfer.source_false_incoming_label) {
+        incoming.value = false_chain_selected;
+      }
+    }
+  }
+
   mutable_control_flow->branch_conditions.push_back(prepare::PreparedBranchCondition{
       .function_name = function_name,
       .block_label = "dead.cond",
@@ -4033,7 +4111,7 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
                                                     const char* function_name,
                                                     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false);
+      module, expected_asm, function_name, failure_context, false, false);
 }
 
 int check_join_route_edge_store_slot_consumes_prepared_control_flow(
@@ -4042,7 +4120,16 @@ int check_join_route_edge_store_slot_consumes_prepared_control_flow(
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true);
+      module, expected_asm, function_name, failure_context, true, false);
+}
+
+int check_join_route_selected_value_chain_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, true, true);
 }
 
 int check_minimal_compare_branch_consumes_prepared_control_flow(const bir::Module& module,
@@ -4890,6 +4977,16 @@ int main() {
                   "branch_join_adjust_then_xor", "is_nonzero", 5, 1, 3),
               "branch_join_adjust_then_xor",
               "scalar-control-flow compare-against-zero joined branch lane with trailing join xor EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_selected_value_chain_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_chained_add_or_sub_then_xor_asm(
+                  "branch_join_adjust_then_xor", "carrier.nonzero", 5, 1, 0, 3),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with selected-value chain prepared-control-flow ownership");
       status != 0) {
     return status;
   }
