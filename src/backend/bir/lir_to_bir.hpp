@@ -898,6 +898,15 @@ class BirFunctionLowerer {
       bir::TypeKind accessed_type,
       const GlobalTypes& global_types);
   static GlobalPointerSlotKey make_global_pointer_slot_key(const GlobalAddress& address);
+  static std::optional<bool> try_lower_global_provenance_load(
+      const c4c::codegen::lir::LirLoadOp& load,
+      bir::TypeKind value_type,
+      const GlobalTypes& global_types,
+      const GlobalAddressSlots& global_address_slots,
+      const AddressedGlobalPointerSlots& addressed_global_pointer_slots,
+      GlobalPointerMap* global_pointer_slots,
+      GlobalObjectPointerMap* global_object_pointer_slots,
+      std::vector<bir::Inst>* lowered_insts);
   bool ensure_local_scratch_slot(std::string_view slot_name,
                                  bir::TypeKind type,
                                  std::size_t align_bytes);

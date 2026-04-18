@@ -6,20 +6,21 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2 / Step 3: moved the dynamic global scalar-array load
-materialization path out of `src/backend/bir/lir_to_bir_memory.cpp` and into
-`src/backend/bir/lir_to_bir_memory_value_materialization.cpp`, so the
-value-materialization owner now handles the nested `LoadGlobalInst` emission
-and inner/outer select synthesis while the coordinator keeps only the
-dynamic-global-scalar admission and fail-routing flow.
+Plan Step 2 / Step 3: moved the direct-global, global-object, and
+tracked-global-pointer load bookkeeping out of
+`src/backend/bir/lir_to_bir_memory.cpp` and into the new provenance-owned
+helper `try_lower_global_provenance_load` in
+`src/backend/bir/lir_to_bir_memory_provenance.cpp`, so the coordinator load
+path now dispatches those global/provenance branches through the extracted
+owner without changing lowering behavior.
 
 ## Suggested Next
 
-Continue `plan.md` Step 4 by re-reading the remaining coordinator-side helper
-mix in `src/backend/bir/lir_to_bir_memory.cpp` and decide whether the next
-honest extraction is now the dynamic global-scalar GEP bookkeeping/admission
-path or another shared non-coordinator seam, rather than forcing another thin
-packet around already-extracted value-materialization or local-slot helpers.
+Continue `plan.md` Step 4 by re-reading the remaining coordinator-side load
+helpers and deciding whether the next honest extraction is the
+pointer-addressed scalar scratch-slot load path or another still-shared
+non-coordinator seam, rather than stretching the provenance bucket into local
+slot mechanics or re-touching already-extracted value materialization.
 
 ## Watchouts
 
@@ -38,6 +39,11 @@ packet around already-extracted value-materialization or local-slot helpers.
   `src/backend/bir/lir_to_bir_memory_value_materialization.cpp`; future packets
   should keep nested global element loads and inner/outer value-selection trees
   in that owner instead of re-expanding them in `lir_to_bir_memory.cpp`.
+- Direct-global, global-object, and tracked-global-pointer load bookkeeping now
+  lives in `try_lower_global_provenance_load` under
+  `src/backend/bir/lir_to_bir_memory_provenance.cpp`; follow-on packets should
+  keep global pointer alias recovery and addressed-global access rules in the
+  provenance owner instead of moving them back into the coordinator.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:
   0`; treat the canonical log pair as unchanged-behavior evidence, not as a
@@ -60,4 +66,6 @@ functional result as the prior baseline: the four backend
 notes/handoff/dynamic-member-array tests passed, and the pre-existing failure
 `c_testsuite_x86_backend_src_00205_c` remained unchanged with the same
 backend-emitter limitation. `diff -u test_before.log test_after.log` changed
-only timing lines. Proof log path: `test_after.log`.
+only timing lines. Because the delegated command uses `tee` without `pipefail`,
+`ctest` still reported the known failing case inside `test_after.log` even
+though the shell command itself exited `0`. Proof log path: `test_after.log`.
