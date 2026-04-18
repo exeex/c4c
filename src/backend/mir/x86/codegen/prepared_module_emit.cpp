@@ -1633,31 +1633,6 @@ std::string emit_prepared_module(
           .false_block = continuation_plan.false_block,
       };
     };
-    const auto build_compare_join_continuation =
-        [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
-            const c4c::backend::bir::Block& join_block,
-            const c4c::backend::prepare::PreparedBranchCondition& join_branch_condition)
-        -> std::optional<GuardJoinContinuation> {
-      const auto continuation_targets =
-          c4c::backend::prepare::find_prepared_compare_join_continuation_targets(
-              join_transfer, join_block, join_branch_condition);
-      if (!continuation_targets.has_value()) {
-        return std::nullopt;
-      }
-
-      const auto direct_targets = resolve_direct_branch_targets(join_block,
-                                                                continuation_targets->true_label,
-                                                                continuation_targets->false_label);
-      if (!direct_targets.has_value()) {
-        return std::nullopt;
-      }
-
-      return GuardJoinContinuation{
-          .incoming_label = {},
-          .true_block = direct_targets->true_block,
-          .false_block = direct_targets->false_block,
-      };
-    };
     const auto build_short_circuit_target_from_transfer =
         [&](const c4c::backend::prepare::PreparedEdgeValueTransfer& transfer,
             bool is_short_circuit_lane,
@@ -1682,62 +1657,47 @@ std::string emit_prepared_module(
           .continuation = continuation,
       };
     };
-    const auto build_short_circuit_join_context_from_sources =
-        [&](const c4c::backend::prepare::PreparedAuthoritativeShortCircuitJoinSources&
-                join_sources,
-            const auto& find_branch_condition_fn)
+    const auto build_short_circuit_join_context =
+        [&](const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+            std::string_view source_block_label)
         -> std::optional<ShortCircuitJoinContext> {
-      const auto* join_transfer = join_sources.join_transfer;
-      const auto* true_transfer = join_sources.true_transfer;
-      const auto* false_transfer = join_sources.false_transfer;
-      if (join_transfer == nullptr || true_transfer == nullptr || false_transfer == nullptr) {
+      const auto prepared_join_context =
+          c4c::backend::prepare::find_prepared_short_circuit_join_context(
+              control_flow, function, source_block_label);
+      if (!prepared_join_context.has_value() || prepared_join_context->join_transfer == nullptr ||
+          prepared_join_context->true_transfer == nullptr ||
+          prepared_join_context->false_transfer == nullptr ||
+          prepared_join_context->join_block == nullptr) {
         return std::nullopt;
       }
 
-      const auto* join_block = find_block(join_transfer->join_block_label);
-      if (join_block == nullptr) {
-        return std::nullopt;
-      }
-
-      const auto* join_branch_condition = find_branch_condition_fn(join_block->label);
-      if (join_branch_condition == nullptr) {
-        return std::nullopt;
-      }
-
-      const auto continuation_plan = build_compare_join_continuation(
-          *join_transfer, *join_block, *join_branch_condition);
-      if (!continuation_plan.has_value()) {
+      const auto direct_targets = resolve_direct_branch_targets(
+          *prepared_join_context->join_block,
+          prepared_join_context->continuation_true_label,
+          prepared_join_context->continuation_false_label);
+      if (!direct_targets.has_value()) {
         return std::nullopt;
       }
 
       return ShortCircuitJoinContext{
-          .join_transfer = join_transfer,
-          .join_block = join_block,
-          .true_transfer = true_transfer,
-          .false_transfer = false_transfer,
-          .classified_incoming = join_sources.classified_incoming,
-          .continuation_plan = *continuation_plan,
+          .join_transfer = prepared_join_context->join_transfer,
+          .join_block = prepared_join_context->join_block,
+          .true_transfer = prepared_join_context->true_transfer,
+          .false_transfer = prepared_join_context->false_transfer,
+          .classified_incoming = prepared_join_context->classified_incoming,
+          .continuation_plan =
+              GuardJoinContinuation{
+                  .incoming_label = {},
+                  .true_block = direct_targets->true_block,
+                  .false_block = direct_targets->false_block,
+              },
       };
     };
     const auto find_short_circuit_join_context =
         [&](const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
-            const auto& find_branch_condition_fn,
             std::string_view source_block_label)
         -> std::optional<ShortCircuitJoinContext> {
-      const auto authoritative_join_transfer =
-          c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-              control_flow, source_block_label);
-      if (!authoritative_join_transfer.has_value()) {
-        return std::nullopt;
-      }
-      const auto join_sources =
-          c4c::backend::prepare::find_authoritative_short_circuit_join_sources(
-              *authoritative_join_transfer);
-      if (!join_sources.has_value()) {
-        return std::nullopt;
-      }
-      return build_short_circuit_join_context_from_sources(*join_sources,
-                                                           find_branch_condition_fn);
+      return build_short_circuit_join_context(control_flow, source_block_label);
     };
     const auto build_short_circuit_entry_direct_branch_targets =
         [&](const c4c::backend::prepare::PreparedBranchCondition* branch_condition,
@@ -2721,9 +2681,8 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
-            const auto join_context = find_short_circuit_join_context(*function_control_flow,
-                                                                      find_branch_condition,
-                                                                      block.label);
+            const auto join_context =
+                find_short_circuit_join_context(*function_control_flow, block.label);
             if (!join_context.has_value()) {
               return std::nullopt;
             }

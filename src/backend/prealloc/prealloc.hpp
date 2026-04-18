@@ -435,6 +435,16 @@ struct PreparedAuthoritativeShortCircuitJoinSources {
   PreparedClassifiedShortCircuitIncoming classified_incoming;
 };
 
+struct PreparedShortCircuitJoinContext {
+  const PreparedJoinTransfer* join_transfer = nullptr;
+  const PreparedEdgeValueTransfer* true_transfer = nullptr;
+  const PreparedEdgeValueTransfer* false_transfer = nullptr;
+  const bir::Block* join_block = nullptr;
+  PreparedClassifiedShortCircuitIncoming classified_incoming;
+  std::string_view continuation_true_label;
+  std::string_view continuation_false_label;
+};
+
 struct PreparedJoinCarrier {
   std::size_t carrier_index = 0;
   std::string_view result_name;
@@ -1224,6 +1234,52 @@ find_prepared_compare_join_continuation_targets(
     };
   }
   return std::nullopt;
+}
+
+[[nodiscard]] inline std::optional<PreparedShortCircuitJoinContext>
+find_prepared_short_circuit_join_context(const PreparedControlFlowFunction& function_cf,
+                                         const bir::Function& function,
+                                         std::string_view source_block_label) {
+  const auto authoritative_join_transfer =
+      find_authoritative_branch_owned_join_transfer(function_cf, source_block_label);
+  if (!authoritative_join_transfer.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto join_sources =
+      find_authoritative_short_circuit_join_sources(*authoritative_join_transfer);
+  if (!join_sources.has_value() || join_sources->join_transfer == nullptr ||
+      join_sources->true_transfer == nullptr || join_sources->false_transfer == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* join_block =
+      find_block_in_function(function, join_sources->join_transfer->join_block_label);
+  if (join_block == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* join_branch_condition =
+      find_prepared_branch_condition(function_cf, join_block->label);
+  if (join_branch_condition == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto continuation_targets = find_prepared_compare_join_continuation_targets(
+      *join_sources->join_transfer, *join_block, *join_branch_condition);
+  if (!continuation_targets.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedShortCircuitJoinContext{
+      .join_transfer = join_sources->join_transfer,
+      .true_transfer = join_sources->true_transfer,
+      .false_transfer = join_sources->false_transfer,
+      .join_block = join_block,
+      .classified_incoming = join_sources->classified_incoming,
+      .continuation_true_label = continuation_targets->true_label,
+      .continuation_false_label = continuation_targets->false_label,
+  };
 }
 
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinBranches>
