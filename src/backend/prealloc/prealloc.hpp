@@ -650,21 +650,23 @@ struct PreparedMaterializedCompareJoinBranchPlan {
   const char* false_branch_opcode = nullptr;
 };
 
+struct PreparedMaterializedCompareJoinReturnArm {
+  PreparedMaterializedCompareJoinReturnContext context;
+  PreparedMaterializedCompareJoinReturnShape shape =
+      PreparedMaterializedCompareJoinReturnShape::ImmediateI32;
+};
+
 struct PreparedMaterializedCompareJoinRenderContract {
   PreparedMaterializedCompareJoinBranchPlan branch_plan;
-  PreparedMaterializedCompareJoinReturnContext true_return_context;
-  PreparedMaterializedCompareJoinReturnShape true_return_shape;
-  PreparedMaterializedCompareJoinReturnContext false_return_context;
-  PreparedMaterializedCompareJoinReturnShape false_return_shape;
+  PreparedMaterializedCompareJoinReturnArm true_return;
+  PreparedMaterializedCompareJoinReturnArm false_return;
   std::vector<std::string_view> same_module_global_names;
 };
 
 struct PreparedResolvedMaterializedCompareJoinRenderContract {
   PreparedMaterializedCompareJoinBranchPlan branch_plan;
-  PreparedMaterializedCompareJoinReturnContext true_return_context;
-  PreparedMaterializedCompareJoinReturnShape true_return_shape;
-  PreparedMaterializedCompareJoinReturnContext false_return_context;
-  PreparedMaterializedCompareJoinReturnShape false_return_shape;
+  PreparedMaterializedCompareJoinReturnArm true_return;
+  PreparedMaterializedCompareJoinReturnArm false_return;
   std::vector<const bir::Global*> same_module_globals;
 };
 
@@ -719,6 +721,15 @@ classify_prepared_materialized_compare_join_return_shape(
   }
 
   std::abort();
+}
+
+[[nodiscard]] inline PreparedMaterializedCompareJoinReturnArm
+build_prepared_materialized_compare_join_return_arm(
+    const PreparedMaterializedCompareJoinReturnContext& return_context) {
+  return PreparedMaterializedCompareJoinReturnArm{
+      .context = return_context,
+      .shape = classify_prepared_materialized_compare_join_return_shape(return_context),
+  };
 }
 
 [[nodiscard]] inline std::vector<std::string_view>
@@ -1682,13 +1693,9 @@ find_prepared_materialized_compare_join_render_contract(
 
   return PreparedMaterializedCompareJoinRenderContract{
       .branch_plan = std::move(*branch_plan),
-      .true_return_context =
-          prepared_compare_join_branches.prepared_join_branches.true_return_context,
-      .true_return_shape = classify_prepared_materialized_compare_join_return_shape(
+      .true_return = build_prepared_materialized_compare_join_return_arm(
           prepared_compare_join_branches.prepared_join_branches.true_return_context),
-      .false_return_context =
-          prepared_compare_join_branches.prepared_join_branches.false_return_context,
-      .false_return_shape = classify_prepared_materialized_compare_join_return_shape(
+      .false_return = build_prepared_materialized_compare_join_return_arm(
           prepared_compare_join_branches.prepared_join_branches.false_return_context),
       .same_module_global_names =
           collect_prepared_materialized_compare_join_same_module_globals(
@@ -1753,10 +1760,8 @@ resolve_prepared_materialized_compare_join_render_contract(
 
   return PreparedResolvedMaterializedCompareJoinRenderContract{
       .branch_plan = render_contract.branch_plan,
-      .true_return_context = render_contract.true_return_context,
-      .true_return_shape = render_contract.true_return_shape,
-      .false_return_context = render_contract.false_return_context,
-      .false_return_shape = render_contract.false_return_shape,
+      .true_return = render_contract.true_return,
+      .false_return = render_contract.false_return,
       .same_module_globals = std::move(*same_module_globals),
   };
 }

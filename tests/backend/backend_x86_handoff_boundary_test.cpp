@@ -5437,10 +5437,10 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
                       .c_str());
     }
   }
-  if (render_contract->true_return_shape !=
+  if (render_contract->true_return.shape !=
           prepare::classify_prepared_materialized_compare_join_return_shape(
               prepared_compare_join_branches->prepared_join_branches.true_return_context) ||
-      render_contract->false_return_shape !=
+      render_contract->false_return.shape !=
           prepare::classify_prepared_materialized_compare_join_return_shape(
               prepared_compare_join_branches->prepared_join_branches.false_return_context)) {
     return fail((std::string(failure_context) +
@@ -5495,14 +5495,14 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
       };
 
   if (const auto status =
-          require_return_context(render_contract->true_return_context,
+          require_return_context(render_contract->true_return.context,
                                  prepared_compare_join_branches->prepared_join_branches
                                      .true_return_context);
       status != 0) {
     return status;
   }
   return require_return_context(
-      render_contract->false_return_context,
+      render_contract->false_return.context,
       prepared_compare_join_branches->prepared_join_branches.false_return_context);
 }
 
