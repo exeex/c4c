@@ -6,20 +6,21 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2 / Step 3: moved the coordinator's remaining dynamic pointer-array
-load fallback out of `src/backend/bir/lir_to_bir_memory.cpp` and into the
-value-materialization-owned helper
-`try_lower_dynamic_pointer_array_load` in
-`src/backend/bir/lir_to_bir_memory_value_materialization.cpp`, so local and
-global pointer-array select materialization now dispatch through that owner
+Plan Step 2 / Step 3: moved the coordinator's pointer-addressed load/store
+dispatch out of `src/backend/bir/lir_to_bir_memory.cpp` and into the
+provenance-owned helpers `try_lower_pointer_provenance_store` and
+`try_lower_pointer_provenance_load` in
+`src/backend/bir/lir_to_bir_memory_provenance.cpp`, so addressed-pointer and
+reloaded local-slot pointer accesses now dispatch through the provenance owner
 without changing lowering behavior.
 
 ## Suggested Next
 
 Continue `plan.md` Step 4 by re-reading the remaining coordinator-side
-load-path pointer handling after the new value-materialization extraction, and
-decide whether the next honest packet is a provenance-owned addressed/global
-pointer branch or a distinct local-slot mechanics seam.
+pointer/global store-load dispatch after the new provenance extraction, and
+decide whether the next honest packet is moving the surviving
+global-provenance branch out of the coordinator or switching to a distinct
+local-slot mechanics seam.
 
 ## Watchouts
 
@@ -40,21 +41,28 @@ pointer branch or a distinct local-slot mechanics seam.
   `src/backend/bir/lir_to_bir_memory_value_materialization.cpp`; keep follow-on
   select materialization in that owner instead of recreating it inline in the
   coordinator.
+- Pointer-addressed and reloaded local-slot pointer dispatch now lives under
+  `src/backend/bir/lir_to_bir_memory_provenance.cpp`; follow-on pointer/global
+  branch work should keep pointer provenance routing there instead of moving it
+  back into the coordinator.
 - This packet's proof subset was tightened to the four directly relevant
-  backend tests, and all four passed under `test_after.log`.
+  pointer-provenance route tests plus the backend notes and handoff surfaces,
+  and all six passed under `test_after.log`.
 - Treat renderer de-headerization as separate idea `56`.
 
 ## Proof
 
 Ran `bash -lc 'set -o pipefail; cmake --build --preset default && ctest
 --test-dir build -j --output-on-failure -R
-"^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir|backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir)$"
+"^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|backend_codegen_route_x86_64_local_pointer_deref_observe_semantic_bir|backend_codegen_route_x86_64_pointer_param_direct_global_arg_observe_semantic_bir|backend_codegen_route_x86_64_pointer_param_global_pointer_value_arg_observe_semantic_bir|backend_codegen_route_x86_64_pointer_return_global_pointer_value_observe_semantic_bir)$"
 | tee test_after.log'`.
-The build passed, and the delegated narrow backend proof passed all four
+The build passed, and the delegated narrow backend proof passed all six
 selected tests:
 `backend_lir_to_bir_notes`,
 `backend_x86_handoff_boundary`,
-`backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir`,
+`backend_codegen_route_x86_64_local_pointer_deref_observe_semantic_bir`,
+`backend_codegen_route_x86_64_pointer_param_direct_global_arg_observe_semantic_bir`,
+`backend_codegen_route_x86_64_pointer_param_global_pointer_value_arg_observe_semantic_bir`,
 and
-`backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir`.
+`backend_codegen_route_x86_64_pointer_return_global_pointer_value_observe_semantic_bir`.
 Proof log path: `test_after.log`.

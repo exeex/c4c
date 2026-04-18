@@ -455,6 +455,37 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
   return true;
 }
 
+std::optional<bool> BirFunctionLowerer::try_lower_pointer_provenance_store(
+    std::string_view ptr_name,
+    bir::TypeKind value_type,
+    const bir::Value& value,
+    const TypeDeclMap& type_decls,
+    const LocalSlotTypes& local_slot_types,
+    const LocalSlotPointerValues& local_slot_pointer_values,
+    const PointerAddressMap& pointer_value_addresses,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (const auto addressed_store = try_lower_addressed_pointer_store(
+          ptr_name, value_type, value, type_decls, pointer_value_addresses, lowered_insts);
+      addressed_store.has_value()) {
+    return addressed_store;
+  }
+
+  const auto local_slot_ptr_it = local_slot_pointer_values.find(std::string(ptr_name));
+  if (local_slot_ptr_it == local_slot_pointer_values.end()) {
+    return std::nullopt;
+  }
+  if (!can_address_scalar_subobject(local_slot_ptr_it->second.byte_offset,
+                                    local_slot_ptr_it->second.value_type,
+                                    local_slot_ptr_it->second.type_text,
+                                    value_type,
+                                    type_decls,
+                                    false)) {
+    return false;
+  }
+  return try_lower_local_slot_pointer_store(
+      local_slot_ptr_it->second, value_type, value, local_slot_types, lowered_insts);
+}
+
 std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_store(
     std::string_view ptr_name,
     bir::TypeKind value_type,
@@ -499,6 +530,55 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_store(
           },
   });
   return true;
+}
+
+std::optional<bool> BirFunctionLowerer::try_lower_pointer_provenance_load(
+    std::string_view result_name,
+    std::string_view ptr_name,
+    bir::TypeKind value_type,
+    const TypeDeclMap& type_decls,
+    const LocalSlotTypes& local_slot_types,
+    const LocalIndirectPointerSlotSet& local_indirect_pointer_slots,
+    const LocalAddressSlots& local_address_slots,
+    const LocalSlotAddressSlots& local_slot_address_slots,
+    const GlobalTypes& global_types,
+    const FunctionSymbolSet& function_symbols,
+    ValueMap* value_aliases,
+    LocalSlotPointerValues* local_slot_pointer_values,
+    GlobalPointerMap* global_pointer_slots,
+    const PointerAddressMap& pointer_value_addresses,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (const auto addressed_load = try_lower_addressed_pointer_load(
+          result_name, ptr_name, value_type, type_decls, pointer_value_addresses, lowered_insts);
+      addressed_load.has_value()) {
+    return addressed_load;
+  }
+
+  const auto local_slot_ptr_it = local_slot_pointer_values->find(std::string(ptr_name));
+  if (local_slot_ptr_it == local_slot_pointer_values->end()) {
+    return std::nullopt;
+  }
+  if (!can_address_scalar_subobject(local_slot_ptr_it->second.byte_offset,
+                                    local_slot_ptr_it->second.value_type,
+                                    local_slot_ptr_it->second.type_text,
+                                    value_type,
+                                    type_decls,
+                                    false)) {
+    return false;
+  }
+  return try_lower_local_slot_pointer_load(result_name,
+                                           local_slot_ptr_it->second,
+                                           value_type,
+                                           local_slot_types,
+                                           local_indirect_pointer_slots,
+                                           local_address_slots,
+                                           local_slot_address_slots,
+                                           global_types,
+                                           function_symbols,
+                                           value_aliases,
+                                           local_slot_pointer_values,
+                                           global_pointer_slots,
+                                           lowered_insts);
 }
 
 std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_load(

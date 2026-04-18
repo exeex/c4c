@@ -927,11 +927,36 @@ class BirFunctionLowerer {
       GlobalAddressSlots* global_address_slots,
       AddressedGlobalPointerSlots* addressed_global_pointer_slots,
       std::vector<bir::Inst>* lowered_insts);
+  std::optional<bool> try_lower_pointer_provenance_store(
+      std::string_view ptr_name,
+      bir::TypeKind value_type,
+      const bir::Value& value,
+      const TypeDeclMap& type_decls,
+      const LocalSlotTypes& local_slot_types,
+      const LocalSlotPointerValues& local_slot_pointer_values,
+      const PointerAddressMap& pointer_value_addresses,
+      std::vector<bir::Inst>* lowered_insts);
   std::optional<bool> try_lower_addressed_pointer_store(
       std::string_view ptr_name,
       bir::TypeKind value_type,
       const bir::Value& value,
       const TypeDeclMap& type_decls,
+      const PointerAddressMap& pointer_value_addresses,
+      std::vector<bir::Inst>* lowered_insts);
+  std::optional<bool> try_lower_pointer_provenance_load(
+      std::string_view result_name,
+      std::string_view ptr_name,
+      bir::TypeKind value_type,
+      const TypeDeclMap& type_decls,
+      const LocalSlotTypes& local_slot_types,
+      const LocalIndirectPointerSlotSet& local_indirect_pointer_slots,
+      const LocalAddressSlots& local_address_slots,
+      const LocalSlotAddressSlots& local_slot_address_slots,
+      const GlobalTypes& global_types,
+      const FunctionSymbolSet& function_symbols,
+      ValueMap* value_aliases,
+      LocalSlotPointerValues* local_slot_pointer_values,
+      GlobalPointerMap* global_pointer_slots,
       const PointerAddressMap& pointer_value_addresses,
       std::vector<bir::Inst>* lowered_insts);
   std::optional<bool> try_lower_addressed_pointer_load(

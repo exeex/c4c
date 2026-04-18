@@ -16,7 +16,6 @@ using DynamicGlobalScalarArrayAccess = BirFunctionLowerer::DynamicGlobalScalarAr
 using DynamicLocalAggregateArrayAccess = BirFunctionLowerer::DynamicLocalAggregateArrayAccess;
 using DynamicLocalPointerArrayAccess = BirFunctionLowerer::DynamicLocalPointerArrayAccess;
 using GlobalAddress = BirFunctionLowerer::GlobalAddress;
-using GlobalPointerSlotKey = BirFunctionLowerer::GlobalPointerSlotKey;
 using LocalArraySlots = BirFunctionLowerer::LocalArraySlots;
 using LocalPointerArrayBase = BirFunctionLowerer::LocalPointerArrayBase;
 using lir_to_bir_detail::compute_aggregate_type_layout;
@@ -27,37 +26,6 @@ using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::parse_typed_operand;
 using lir_to_bir_detail::resolve_index_operand;
 using lir_to_bir_detail::type_size_bytes;
-
-static bool can_address_scalar_subobject(std::int64_t byte_offset,
-                                         bir::TypeKind stored_type,
-                                         std::string_view type_text,
-                                         bir::TypeKind access_type,
-                                         const BirFunctionLowerer::TypeDeclMap& type_decls,
-                                         bool allow_opaque_ptr_base) {
-  if (byte_offset < 0) {
-    return false;
-  }
-  if (stored_type == access_type) {
-    return true;
-  }
-  if (stored_type != bir::TypeKind::Void) {
-    return false;
-  }
-  if (allow_opaque_ptr_base && byte_offset == 0 && (type_text.empty() || type_text == "ptr")) {
-    return true;
-  }
-
-  const auto access_size = type_size_bytes(access_type);
-  if (access_size == 0) {
-    return false;
-  }
-  const auto view_layout = compute_aggregate_type_layout(type_text, type_decls);
-  if (view_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
-      view_layout.size_bytes == 0) {
-    return false;
-  }
-  return static_cast<std::size_t>(byte_offset) + access_size <= view_layout.size_bytes;
-}
 
 bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     const c4c::codegen::lir::LirInst& inst,
@@ -82,7 +50,6 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   auto& local_slot_address_slots = local_slot_address_slots_;
   auto& local_slot_pointer_values = local_slot_pointer_values_;
   auto& global_address_slots = global_address_slots_;
-  auto& addressed_global_pointer_slots = addressed_global_pointer_slots_;
   auto& global_pointer_slots = global_pointer_slots_;
   auto& dynamic_global_pointer_arrays = dynamic_global_pointer_arrays_;
   auto& dynamic_global_aggregate_arrays = dynamic_global_aggregate_arrays_;
@@ -982,27 +949,16 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return fail_store();
     }
 
-    if (const auto addressed_store = try_lower_addressed_pointer_store(
-            store->ptr.str(), *value_type, *value, type_decls, pointer_value_addresses, lowered_insts);
-        addressed_store.has_value()) {
-      return *addressed_store ? true : fail_store();
-    }
-
-    if (const auto local_slot_ptr_it = local_slot_pointer_values.find(store->ptr.str());
-        local_slot_ptr_it != local_slot_pointer_values.end()) {
-      if (!can_address_scalar_subobject(local_slot_ptr_it->second.byte_offset,
-                                        local_slot_ptr_it->second.value_type,
-                                        local_slot_ptr_it->second.type_text,
-                                        *value_type,
-                                        type_decls,
-                                        false)) {
-        return fail_store();
-      }
-      if (!try_lower_local_slot_pointer_store(
-              local_slot_ptr_it->second, *value_type, *value, local_slot_types, lowered_insts)) {
-        return fail_store();
-      }
-      return true;
+    if (const auto pointer_store = try_lower_pointer_provenance_store(store->ptr.str(),
+                                                                      *value_type,
+                                                                      *value,
+                                                                      type_decls,
+                                                                      local_slot_types,
+                                                                      local_slot_pointer_values,
+                                                                      pointer_value_addresses,
+                                                                      lowered_insts);
+        pointer_store.has_value()) {
+      return *pointer_store ? true : fail_store();
     }
 
     if (const auto dynamic_ptr_it = dynamic_pointer_value_arrays.find(store->ptr.str());
@@ -1037,7 +993,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
                                                                     global_pointer_slots,
                                                                     global_object_pointer_slots,
                                                                     &global_address_slots,
-                                                                    &addressed_global_pointer_slots,
+                                                                    &addressed_global_pointer_slots_,
                                                                     lowered_insts);
         global_store.has_value()) {
       return *global_store ? true : fail_store();
@@ -1098,7 +1054,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
                                                                   *value_type,
                                                                   global_types,
                                                                   global_address_slots,
-                                                                  addressed_global_pointer_slots,
+                                                                  addressed_global_pointer_slots_,
                                                                   &global_pointer_slots,
                                                                   &global_object_pointer_slots,
                                                                   lowered_insts);
@@ -1106,38 +1062,23 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return *global_load ? true : fail_load();
     }
 
-    if (const auto addressed_load = try_lower_addressed_pointer_load(
-            load->result.str(), load->ptr.str(), *value_type, type_decls, pointer_value_addresses, lowered_insts);
-        addressed_load.has_value()) {
-      return *addressed_load ? true : fail_load();
-    }
-
-    if (const auto local_slot_ptr_it = local_slot_pointer_values.find(load->ptr.str());
-        local_slot_ptr_it != local_slot_pointer_values.end()) {
-      if (!can_address_scalar_subobject(local_slot_ptr_it->second.byte_offset,
-                                        local_slot_ptr_it->second.value_type,
-                                        local_slot_ptr_it->second.type_text,
-                                        *value_type,
-                                        type_decls,
-                                        false)) {
-        return fail_load();
-      }
-      if (!try_lower_local_slot_pointer_load(load->result.str(),
-                                             local_slot_ptr_it->second,
-                                             *value_type,
-                                             local_slot_types,
-                                             local_indirect_pointer_slots,
-                                             local_address_slots,
-                                             local_slot_address_slots,
-                                             global_types,
-                                             function_symbols,
-                                             &value_aliases,
-                                             &local_slot_pointer_values,
-                                             &global_pointer_slots,
-                                             lowered_insts)) {
-        return fail_load();
-      }
-      return true;
+    if (const auto pointer_load = try_lower_pointer_provenance_load(load->result.str(),
+                                                                    load->ptr.str(),
+                                                                    *value_type,
+                                                                    type_decls,
+                                                                    local_slot_types,
+                                                                    local_indirect_pointer_slots,
+                                                                    local_address_slots,
+                                                                    local_slot_address_slots,
+                                                                    global_types,
+                                                                    function_symbols,
+                                                                    &value_aliases,
+                                                                    &local_slot_pointer_values,
+                                                                    &global_pointer_slots,
+                                                                    pointer_value_addresses,
+                                                                    lowered_insts);
+        pointer_load.has_value()) {
+      return *pointer_load ? true : fail_load();
     }
 
     if (const auto dynamic_ptr_it = dynamic_pointer_value_arrays.find(load->ptr.str());
