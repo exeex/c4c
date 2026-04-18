@@ -9,19 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by lifting the
-materialized compare-join return rendering behind a dedicated helper that is
-keyed by the prepared join context. The compare-join consumer now reuses one
-prepared-context helper for pre-carrier `named_binaries` collection and
-optional trailing-immediate application instead of open-coding that return
-rendering inline.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving the
+materialized compare-join entry-side prepared branch gate behind
+`find_prepared_eq_i32_param_zero_branch_condition()`. The compare-join path no
+longer open-codes the prepared `param == 0` operand check inline, and the same
+prepared-branch helper now also serves the adjacent minimal compare-branch
+route.
 
 ## Suggested Next
 
-The next small Step 3 packet is to see whether the remaining compare-join
-entry-side predicate checks can move behind a prepared-branch/join helper so
-`render_materialized_compare_join_if_supported()` narrows further without
-merging it with the short-circuit route's distinct topology rules.
+The next small Step 3 packet is to move the compare-join path's
+true/false-transfer fetch plus paired return rendering behind one prepared
+join-consumer helper so `render_materialized_compare_join_if_supported()`
+narrows further without merging with short-circuit topology rules or turning
+into Step 4 file cleanup.
 
 ## Watchouts
 
@@ -34,65 +35,22 @@ merging it with the short-circuit route's distinct topology rules.
   file-organization cleanup.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth or new
   emitter-local CFG scans.
-- `find_branch_owned_join_transfer()` now returns null on ambiguity, so if a
-  later route needs to distinguish multiple branch-owned join transfers from
-  the same source block, strengthen the prepared lookup contract in
-  `prealloc.hpp` instead of reintroducing emitter-local scans.
-- `PreparedJoinTransferKind::EdgeStoreSlot` now flows through the joined
-  materialized-compare consumer path only where the existing prepared
-  authoritative transfer contract already applies; do not grow a new matcher
-  family around it.
-- The compare-join path should now treat `prepared_join_transfer->result` as
-  the authoritative joined value identity; if another route needs more than
-  that named-result contract, strengthen shared prepared metadata instead of
-  recovering the value name from raw join-block instruction scans.
 - `find_materialized_compare_join_context()` is intentionally scoped to the
   joined compare-return route: it validates the authoritative prepared join
   carrier and trailing binary around the prepared join result, but it should
   not absorb the short-circuit route's continuation/topology rules.
-- The short-circuit path still intentionally differs from
-  `find_authoritative_join_branch_sources()`: it consumes the authoritative
-  transfer indices and prepared ownership metadata, but its continuation
-  routing still depends on carrier labels that can differ from the prepared
-  source ownership.
-- `find_authoritative_join_branch_sources()` now expects an
-  `AuthoritativeBranchJoinTransfer`; adjacent consumers should reuse that
-  authoritative helper result instead of re-running raw transfer
-  classification.
-- `AuthoritativeJoinTransferSources` is intentionally weaker than
-  `find_authoritative_join_branch_sources()`: keep source-label matching and
-  direct predecessor topology checks in the joined-branch helper only, because
-  the short-circuit route still permits carrier topology that does not look
-  like a direct branch-to-join pair.
-- `find_authoritative_short_circuit_join_sources()` is now the authoritative
-  place for the short-circuit route's `edge_transfers.size() == 2` gate and
-  single-bool-immediate lane classification; adjacent consumers should reuse
-  that helper instead of open-coding those checks again.
-- Predecessor block lookup and branch-to-join topology checks still belong in
-  x86 consumer code; do not push them into shared lowering while finishing this
-  Step 3 seam.
-- The short-circuit/select-join route still requires exactly one authoritative
-  prepared source lane to carry a bool immediate; do not widen this into
-  arbitrary edge scans or named-lane heuristics when touching adjacent helpers.
+- `find_prepared_eq_i32_param_zero_branch_condition()` is scoped to prepared
+  `Eq` `i32` conditions over the entry param and zero. If another route needs a
+  broader predicate shape, strengthen the helper around prepared branch
+  semantics instead of restoring inline operand scans.
 - If another consumer path needs extra branch or join facts, strengthen the
   shared prepared-control-flow contract in `prealloc.hpp` rather than growing
   emitter-local scans or CFG-shape recovery.
 - `test_before.log` remains the narrow baseline for
   `^backend_x86_handoff_boundary$`, and this packet refreshed `test_after.log`
   with the same focused proof command for supervisor review.
-- Keep the compare-join helper keyed by prepared join metadata, not by local
-  instruction names or join-block scans. If another route needs more carrier
-  facts, extend the helper around the authoritative prepared transfer contract
-  instead of reintroducing inline carrier rediscovery.
-- `render_materialized_compare_join_return_if_supported()` now owns the
-  compare-join path's pre-carrier `named_binaries` walk and optional
-  trailing-immediate replay. Adjacent work should keep that helper scoped to
-  prepared join-context return rendering rather than turning it into a generic
-  emitter utility.
-- Keep the short-circuit path's `edge_transfers.size() == 2` requirement local
-  to that route: the joined materialized-compare consumer still depends on
-  authoritative select-join metadata without requiring the transfer list to
-  collapse to exactly two total edges.
+- Keep the compare-join helper surfaces keyed by prepared branch/join metadata,
+  not by local instruction names or join-block scans.
 - Treat any future fix here as capability repair, not expectation weakening:
   the joined-branch and loop-countdown routes are covered by
   `backend_x86_handoff_boundary`.
@@ -101,6 +59,6 @@ merging it with the short-circuit route's distinct topology rules.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This dedicated compare-join return-helper packet passed with the focused
-handoff-boundary proof command, and `test_after.log` remains the fresh
-canonical proof log for supervisor review.
+This prepared-branch helper packet passed with the focused handoff-boundary
+proof command, and `test_after.log` remains the fresh canonical proof log for
+supervisor review.

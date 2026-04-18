@@ -4319,6 +4319,33 @@ std::string emit_prepared_module(
 
     return branch_condition;
   };
+  const auto find_prepared_eq_i32_param_zero_branch_condition =
+      [&](const c4c::backend::bir::Block& source_block,
+          const c4c::backend::bir::Param& param)
+      -> const c4c::backend::prepare::PreparedBranchCondition* {
+    const auto* branch_condition = find_prepared_eq_i32_branch_condition(source_block);
+    if (branch_condition == nullptr) {
+      return nullptr;
+    }
+
+    const bool lhs_is_param_rhs_is_zero =
+        branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
+        branch_condition->lhs->name == param.name &&
+        branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+        branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32 &&
+        branch_condition->rhs->immediate == 0;
+    const bool rhs_is_param_lhs_is_zero =
+        branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Named &&
+        branch_condition->rhs->name == param.name &&
+        branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+        branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32 &&
+        branch_condition->lhs->immediate == 0;
+    if (!lhs_is_param_rhs_is_zero && !rhs_is_param_lhs_is_zero) {
+      return nullptr;
+    }
+
+    return branch_condition;
+  };
   const auto render_param_derived_return_if_supported =
       [&](const c4c::backend::bir::Value& value,
           const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>&
@@ -4384,24 +4411,8 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto* branch_condition = find_prepared_eq_i32_branch_condition(entry);
+    const auto* branch_condition = find_prepared_eq_i32_param_zero_branch_condition(entry, param);
     if (branch_condition == nullptr) {
-      return std::nullopt;
-    }
-
-    const bool lhs_is_param_rhs_is_zero =
-        branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
-        branch_condition->lhs->name == param.name &&
-        branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-        branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32 &&
-        branch_condition->rhs->immediate == 0;
-    const bool rhs_is_param_lhs_is_zero =
-        branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Named &&
-        branch_condition->rhs->name == param.name &&
-        branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-        branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32 &&
-        branch_condition->lhs->immediate == 0;
-    if (!lhs_is_param_rhs_is_zero && !rhs_is_param_lhs_is_zero) {
       return std::nullopt;
     }
 
@@ -4450,7 +4461,7 @@ std::string emit_prepared_module(
     }
 
     const auto* function_control_flow = find_control_flow_function();
-    const auto* branch_condition = find_prepared_eq_i32_branch_condition(entry);
+    const auto* branch_condition = find_prepared_eq_i32_param_zero_branch_condition(entry, param);
     if (function_control_flow == nullptr || branch_condition == nullptr) {
       return std::nullopt;
     }
@@ -4465,22 +4476,6 @@ std::string emit_prepared_module(
                                               branch_condition->true_label,
                                               branch_condition->false_label);
     if (!compare_join_context.has_value()) {
-      return std::nullopt;
-    }
-
-    const bool lhs_is_param_rhs_is_zero =
-        branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
-        branch_condition->lhs->name == param.name &&
-        branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-        branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32 &&
-        branch_condition->rhs->immediate == 0;
-    const bool rhs_is_param_lhs_is_zero =
-        branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Named &&
-        branch_condition->rhs->name == param.name &&
-        branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-        branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32 &&
-        branch_condition->lhs->immediate == 0;
-    if (!lhs_is_param_rhs_is_zero && !rhs_is_param_lhs_is_zero) {
       return std::nullopt;
     }
 
