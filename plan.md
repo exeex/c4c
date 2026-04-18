@@ -1,4 +1,4 @@
-# X86 Backend Next Capability-Family Runbook
+# X86 Backend Prepared-Module Call Route Runbook
 
 Status: Active
 Source Idea: ideas/open/54_x86_backend_c_testsuite_capability_families.md
@@ -6,18 +6,18 @@ Activated from: ideas/open/54_x86_backend_c_testsuite_capability_families.md
 
 ## Purpose
 
-Repair the active runbook after the delegated proof rerun showed that the
-chosen `00210` lane is real, but the earlier direct-call framing was wrong:
-its honest boundary crosses from the x86 prepared-module consumer into
-prepared-BIR pointer-arg provenance plus bounded indirect-callee identity for
-same-module function-pointer calls.
+Repair the active runbook after fresh rebuilt-source evidence showed that the
+current `00210`-anchored indirect-callee framing is stale. The next honest
+lane is smaller: bounded single-defined-function prepared modules that already
+lower direct external calls correctly in semantic BIR but still fail at the
+canonical x86 prepared-module consumer boundary.
 
 ## Goal
 
-Land one bounded slice for the `00210`-anchored same-module
-function-pointer indirect-call multi-function prepared-module lane, with the
-required string/global-address provenance made explicit, without expectation
-weakening or testcase overfit.
+Land one bounded slice that admits the single-defined-function direct
+external-call prepared-module lane for cases like `00131` and `00211`, while
+keeping the adjacent multi-defined-function `00210` route explicit and out of
+scope until it is named honestly.
 
 ## Core Rule
 
@@ -31,80 +31,74 @@ and do not add testcase-named or rendered-text recognizers.
 - [tests/backend/backend_x86_handoff_boundary_test.cpp](/workspaces/c4c/tests/backend/backend_x86_handoff_boundary_test.cpp)
 - [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
 - [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
-- [src/backend/mir/x86/codegen/globals.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/globals.cpp)
-- [tests/c/external/c-testsuite/src/00045.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00045.c)
-- [tests/c/external/c-testsuite/src/00051.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00051.c)
-- [tests/c/external/c-testsuite/src/00189.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00189.c)
+- [src/backend/mir/x86/codegen/calls.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/calls.cpp)
+- [tests/c/external/c-testsuite/src/00131.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00131.c)
+- [tests/c/external/c-testsuite/src/00211.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00211.c)
+- [tests/c/external/c-testsuite/src/00210.c](/workspaces/c4c/tests/c/external/c-testsuite/src/00210.c)
 
 ## Current Targets
 
-- Start from the blocker notes recorded in `todo.md`, not the earlier
-  `00189`-anchored assumption that the next lane was x86-handoff-only work.
-- Treat `c_testsuite_x86_backend_src_00210_c` as the current proving anchor
-  for a bounded same-module function-pointer indirect-call multi-function
-  prepared-module lane.
-- Include the prepared-BIR or lowering surface required to preserve
-  string/global-address provenance for external call pointer args plus the
-  bounded callee identity needed when same-module function-pointer calls
-  arrive indirect in prepared BIR.
-- Keep adjacent families explicit when they are not required by this lane:
-  `00189` remains the broader
-  indirect-call/global-function-pointer/variadic-runtime neighbor, while
-  `00057` and `00124` remain emitter/control-flow and scalar-control-flow
-  neighbors.
+- Start from the rebuilt-source blocker notes recorded in `todo.md`, not the
+  stale `00210` indirect-callee route from the prior runbook.
+- Treat `c_testsuite_x86_backend_src_00131_c` and
+  `c_testsuite_x86_backend_src_00211_c` as the next proving cluster for the
+  bounded single-defined-function direct external-call prepared-module lane.
+- Treat `c_testsuite_x86_backend_src_00210_c` as the adjacent
+  multi-defined-function neighbor that currently still trips the
+  single-function prepared-module gate and should remain out of scope for the
+  next executor packet.
+- Keep broader neighbors explicit when they are not required by this lane:
+  `00189` remains the indirect/global-function-pointer/variadic-runtime
+  neighbor, while `00057` and `00124` remain emitter/control-flow and
+  scalar-control-flow neighbors.
 
 ## Non-Goals
 
-- Reopening the completed pointer-backed same-module global lane as routine
-  follow-up.
-- Hiding a route change inside an implementation packet.
-- Treating `00210` as a one-line `functions.size() != 1` relaxation inside the
-  x86 handoff.
-- Mixing prepared-BIR provenance work, indirect/runtime plumbing, bootstrap
-  scalar globals, and multi-block control flow into one packet without the plan
-  explicitly justifying that boundary.
+- Hiding another route change inside an implementation packet.
+- Treating `00210` as the proving anchor before the smaller single-defined-
+  function external-call lane is admitted.
+- Satisfying the next slice by deleting the `functions.size() != 1` rejection
+  globally or by adding testcase-shaped recognizers.
+- Mixing multi-defined-function routing, indirect/runtime plumbing, bootstrap
+  scalar globals, and control-flow growth into one packet without an explicit
+  runbook checkpoint.
 - Accepting fallback LLVM IR or weakening supported-path expectations.
-- Adding testcase-shaped helpers or recognizers keyed to rendered output.
 
 ## Working Model
 
 - The current source idea remains open, but the prior runbook is exhausted.
-- Step 1-2 route selection is complete enough to name one honest current lane:
-  `00210`'s bounded same-module function-pointer indirect-call
-  multi-function prepared-module path.
-- The blocked executor packets showed that this lane is not satisfied by x86
-  handoff work alone because the prepared module still needs both
-  string/global-address provenance at the external `printf` call sites and a
-  bounded same-module indirect-callee representation for the
-  `function_pointer -> actual_function` calls.
-- The next coherent packet therefore spans prepared-BIR provenance or call
-  classification plus the canonical x86 prepared-module consumer, while
-  keeping broader indirect-call, global-function-pointer, and
-  variadic-runtime plumbing out of scope.
-- If the next honest family expands further than bounded same-module indirect
-  calls plus pointer-address provenance, stop and record that lifecycle
-  blocker instead of silently broadening again.
+- Fresh rebuilt-source checks showed that `00210` already lowers
+  `actual_function` as a direct same-module call in semantic BIR, so the old
+  indirect-callee-identity framing no longer matches reality.
+- The surviving honest blocker is smaller and earlier at the x86 prepared-
+  module consumer boundary: even simpler single-defined-function cases with
+  direct external calls such as `00131` and `00211` are still not admitted.
+- The next coherent packet therefore targets one bounded prepared-module call
+  family: single-defined-function modules with otherwise already-supported
+  control flow and direct external calls.
+- `00210` remains a truthful adjacent blocker because it also crosses the
+  multi-defined-function prepared-module boundary; do not silently fold that
+  broader route back into the next packet.
 
 ## Execution Rules
 
-- Step 1 must name one family, one proving cluster, and the nearby out-of-scope
-  shapes before implementation starts.
+- Step 1 must name one family, one proving cluster, and the nearby out-of-
+  scope shapes before implementation starts.
 - Keep packet churn in `todo.md`; use `plan.md` only for genuine route
   checkpoint changes.
 - Validation ladder per packet: build, narrow backend proof, selected
   same-family `c_testsuite_x86_backend_*` probes, then `x86_backend`
   checkpoint once a coherent slice exists.
-- If Step 1 shows a distinct initiative that should live outside this source
-  idea, stop and record that lifecycle blocker instead of mutating the plan ad
-  hoc.
-- Do not delegate a packet that claims `00210` as x86-only handoff work unless
-  it also names how pointer-address provenance and bounded same-module
-  indirect-callee identity are preserved into the prepared module.
+- If Step 1 shows that the smaller single-defined-function external-call lane
+  is still not the honest next family, stop and record that lifecycle blocker
+  instead of silently broadening the plan again.
+- Do not delegate a packet that claims `00210` progress unless the plan has
+  been updated again to justify widening from the single-defined-function lane
+  into the multi-defined-function boundary.
 
 ## Step 1. Re-Baseline The Remaining Frontier
 
-Goal: Group the post-pointer-backed failures into credible next-family
-candidates before choosing new code work.
+Goal: Confirm the next honest family after the rebuilt-source correction.
 
 Primary targets:
 - current `x86_backend` checkpoint evidence
@@ -113,17 +107,16 @@ Primary targets:
 
 Actions:
 - inspect the current failure surface after the completed pointer-backed lane
-- cluster remaining failures by one dominant capability blocker rather than by
-  testcase name
-- separate neighboring families such as bootstrap scalar globals,
-  multi-function prepared-module routes, and multi-block control flow instead
-  of merging them prematurely
-- stop and record a route note if the best next family no longer fits the
-  active source-idea path
+- confirm that `00131` and `00211` move together as single-defined-function
+  external-call cases through the canonical prepared-module handoff
+- keep `00210` explicit as the adjacent multi-defined-function neighbor instead
+  of using it as the primary route anchor
+- stop and record a route note if the honest next family no longer fits this
+  source-idea path
 
 Completion check:
-- one or two credible next-family candidates are named with clear evidence and
-  without testcase-by-testcase repair framing
+- one bounded next-family candidate and its adjacent out-of-scope neighbor are
+  named clearly without testcase-by-testcase repair framing
 
 ## Step 2. Name The Next Bounded Family
 
@@ -131,14 +124,11 @@ Goal: Choose exactly one next capability family and its proving cluster.
 
 Actions:
 - select the smallest family whose nearby probes should move together if one
-  shared capability is widened honestly
-- record the intended proving cluster and the nearby out-of-scope neighbors
-- make explicit whether the chosen route stays at the prepared x86
-  handoff/emitter boundary or needs broader semantic work
-- current checkpoint: the chosen family is the `00210`-anchored bounded
-  same-module function-pointer indirect-call multi-function prepared-module
-  lane, and it needs prepared-BIR string/global-address provenance plus
-  bounded indirect-callee identity in addition to x86 handoff work
+  shared prepared-module capability is widened honestly
+- record the intended proving cluster around `00131` and `00211`
+- make explicit that `00210` remains outside the next packet because it also
+  needs multi-defined-function prepared-module support
+- keep `00189`, `00057`, and `00124` explicit as out-of-scope neighbors
 
 Completion check:
 - one bounded family and one proving cluster are named clearly enough for a
@@ -147,34 +137,28 @@ Completion check:
 ## Step 3. Extend The Chosen Family Honestly
 
 Goal: Implement the smallest shared capability widening required by the chosen
-family across prepared-BIR provenance or call classification plus the x86
-prepared-module consumer.
+single-defined-function prepared-module direct external-call family.
 
 Primary targets:
-- implementation files selected by Step 2's family choice, including the
-  prepared-BIR or lowering provenance surface and the canonical x86
-  prepared-module handoff
+- the canonical x86 prepared-module consumer and any directly supporting call
+  handling it requires
 
 Actions:
-- preserve enough address-origin information for pointer args that denote
-  string/global symbols at external call sites
-- preserve or recover the bounded same-module indirect-callee identity needed
-  when `00210`-style function-pointer calls still arrive indirect in prepared
-  BIR
-- change shared lowering or backend logic only where the chosen family
-  requires it
-- reuse shared indirect-call/direct-call plus symbol/data emission paths
-  instead of adding testcase-shaped prepared-module matchers
-- keep adjacent families unsupported when they are not part of the named lane,
-  especially broader `00189`-style
-  indirect/global-function-pointer/variadic-runtime plumbing
-- do not use expectation downgrades, testcase-named shortcuts, or rendered-text
-  matching as proof of progress
+- admit bounded single-defined-function modules whose bodies stay within the
+  already-supported minimal return/control-flow envelope while issuing direct
+  external calls
+- preserve the single-defined-function boundary for this packet instead of
+  broadening immediately into multi-defined-function modules
+- reuse shared call/data emission paths instead of adding testcase-shaped
+  prepared-module matchers
+- keep multi-defined-function `00210`, broader `00189`-style indirect/runtime
+  plumbing, and control-flow growth out of scope
+- do not use expectation downgrades, testcase-named shortcuts, or rendered-
+  text matching as proof of progress
 
 Completion check:
-- the chosen family is admitted through shared provenance plus bounded
-  same-module indirect-callee support and shared codegen logic rather than
-  testcase recognition
+- the chosen family is admitted through shared prepared-module call support and
+  shared x86 codegen logic rather than testcase recognition
 
 ## Step 4. Keep The Boundary Truthful
 
@@ -186,13 +170,12 @@ Primary targets:
 - [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
 
 Actions:
-- revise backend notes and handoff coverage to describe the chosen family by
-  capability
-- keep nearby unsupported neighbors explicit when they remain outside the lane,
-  especially the `00189` indirect/global-function-pointer/variadic-runtime
-  family
-- ensure the tests still prove honest prepared-module or lowering boundaries
-  rather than adapter growth
+- revise backend notes and handoff coverage to describe the bounded
+  single-defined-function external-call family by capability
+- keep the adjacent multi-defined-function `00210` boundary explicit when it
+  remains outside the lane
+- ensure the tests still prove honest prepared-module boundaries rather than
+  adapter growth
 
 Completion check:
 - backend notes and handoff tests describe the supported family and the nearby
@@ -204,9 +187,10 @@ Goal: Show the slice improved a capability family instead of one probe.
 
 Actions:
 - run the narrow backend tests for the touched boundary
-- run the chosen same-family `c_testsuite_x86_backend_*` probes without
-  re-pairing `00189` unless the packet explicitly widens into that adjacent
-  family
+- run the chosen same-family `c_testsuite_x86_backend_*` probes for `00131`
+  and `00211`
+- keep `00210` as a neighboring boundary check only if the packet explicitly
+  measures that out-of-scope edge
 - once a coherent slice exists, run the `x86_backend` checkpoint to measure the
   truthful pass-count effect
 
