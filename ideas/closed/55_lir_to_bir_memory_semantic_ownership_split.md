@@ -1,7 +1,7 @@
 # LIR To BIR Memory Semantic Ownership Split
 
-Status: Open
-Created: 2026-04-18
+Status: Complete
+Last Updated: 2026-04-18
 
 ## Why This Idea Exists
 
@@ -144,3 +144,24 @@ micro-split.
 - solving the x86 c-testsuite fail surface directly
 - de-headerizing `src/backend/mir/x86/codegen/x86_codegen.hpp`
 - AArch64 cleanup or parity work
+
+## Completion Notes
+
+- The memory-lowering split now lands across three translation units:
+  `src/backend/bir/lir_to_bir_memory.cpp`,
+  `src/backend/bir/lir_to_bir_memory_addressing.cpp`, and
+  `src/backend/bir/lir_to_bir_memory_provenance.cpp`.
+- The extracted helper families follow the intended semantic seams:
+  addressing/layout helpers live in the addressing TU, pointer-provenance
+  helpers live in the provenance TU, and
+  `lower_scalar_or_local_memory_inst` remains the coordinator in
+  `lir_to_bir_memory.cpp`.
+- The final Step 4 cleanup kept the refactor behavior-preserving by consolidating
+  shared scalar-subobject admission checks inside the coordinator TU instead of
+  widening the route into new capability work.
+- Close-time regression guard passed on the backend proof surface with
+  `cmake --build --preset default` and
+  `ctest --test-dir build -j --output-on-failure -R "^backend_"`.
+- The backend subset remains at the same inherited baseline:
+  68 passed, 4 failed, 72 total, with no new regressions relative to the
+  pre-close baseline.
