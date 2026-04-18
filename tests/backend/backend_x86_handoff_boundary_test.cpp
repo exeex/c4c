@@ -5736,6 +5736,44 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
                     .c_str());
   }
 
+  const auto published_global_names =
+      prepare::collect_prepared_materialized_compare_join_same_module_globals(
+          *prepared_join_branches);
+  const auto require_published_global_names =
+      [&](std::initializer_list<std::string_view> expected_names) -> int {
+        if (published_global_names.size() != expected_names.size()) {
+          return fail((std::string(failure_context) +
+                       ": shared helper stopped publishing the compare-join same-module global ownership set")
+                          .c_str());
+        }
+        std::size_t index = 0;
+        for (const auto expected_name : expected_names) {
+          if (published_global_names[index] != expected_name) {
+            return fail((std::string(failure_context) +
+                         ": shared helper stopped publishing compare-join same-module globals in authoritative order")
+                            .c_str());
+          }
+          ++index;
+        }
+        return 0;
+      };
+  if (use_pointer_backed_global_roots) {
+    if (const auto status = require_published_global_names(
+            {"selected_zero_root",
+             true_global_name,
+             "selected_nonzero_root",
+             false_global_name});
+        status != 0) {
+      return status;
+    }
+  } else {
+    if (const auto status =
+            require_published_global_names({true_global_name, false_global_name});
+        status != 0) {
+      return status;
+    }
+  }
+
   const auto require_prepared_global_base =
       [&](const prepare::PreparedMaterializedCompareJoinReturnContext& return_context,
           const char* expected_global_name,

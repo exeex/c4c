@@ -3854,8 +3854,7 @@ std::string emit_prepared_module(
   };
   const auto render_prepared_computed_value_if_supported =
       [&](const c4c::backend::prepare::PreparedComputedValue& computed_value,
-          const c4c::backend::bir::Param& param,
-          std::vector<std::string_view>* same_module_global_names)
+          const c4c::backend::bir::Param& param)
       -> std::optional<std::string> {
     std::string rendered;
     switch (computed_value.base.kind) {
@@ -3884,9 +3883,6 @@ std::string emit_prepared_module(
                 computed_value.base.global_byte_offset)) {
           return std::nullopt;
         }
-        if (same_module_global_names != nullptr) {
-          same_module_global_names->push_back(global->name);
-        }
         rendered = "    mov " + *return_register + ", DWORD PTR [rip + " +
                    render_asm_symbol_name(computed_value.base.global_name);
         if (computed_value.base.global_byte_offset != 0) {
@@ -3906,10 +3902,6 @@ std::string emit_prepared_module(
                 c4c::backend::bir::TypeKind::I32,
                 computed_value.base.global_byte_offset)) {
           return std::nullopt;
-        }
-        if (same_module_global_names != nullptr) {
-          same_module_global_names->push_back(pointer_root->name);
-          same_module_global_names->push_back(global->name);
         }
         rendered = "    mov rax, QWORD PTR [rip + " +
                    render_asm_symbol_name(computed_value.base.pointer_root_global_name) +
@@ -3934,10 +3926,9 @@ std::string emit_prepared_module(
   const auto render_materialized_compare_join_return_if_supported =
       [&](const c4c::backend::prepare::PreparedMaterializedCompareJoinReturnContext&
               prepared_return_context,
-          const c4c::backend::bir::Param& param,
-          std::vector<std::string_view>* same_module_global_names) -> std::optional<std::string> {
-    const auto value_render = render_prepared_computed_value_if_supported(
-        prepared_return_context.selected_value, param, same_module_global_names);
+          const c4c::backend::bir::Param& param) -> std::optional<std::string> {
+    const auto value_render =
+        render_prepared_computed_value_if_supported(prepared_return_context.selected_value, param);
     if (!value_render.has_value()) {
       return std::nullopt;
     }
@@ -4038,26 +4029,22 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    std::vector<std::string_view> same_module_global_names;
     const auto true_return = render_materialized_compare_join_return_if_supported(
-        prepared_compare_join_branches->prepared_join_branches.true_return_context,
-        param,
-        &same_module_global_names);
+        prepared_compare_join_branches->prepared_join_branches.true_return_context, param);
     const auto false_return = render_materialized_compare_join_return_if_supported(
-        prepared_compare_join_branches->prepared_join_branches.false_return_context,
-        param,
-        &same_module_global_names);
+        prepared_compare_join_branches->prepared_join_branches.false_return_context, param);
     if (!true_return.has_value() || !false_return.has_value()) {
       return std::nullopt;
     }
 
     std::string rendered_same_module_globals;
-    std::unordered_set<std::string_view> rendered_same_module_global_names(
-        same_module_global_names.begin(),
-        same_module_global_names.end());
+    const auto rendered_same_module_global_names =
+        c4c::backend::prepare::collect_prepared_materialized_compare_join_same_module_globals(
+            prepared_compare_join_branches->prepared_join_branches);
     for (const auto& global : module.module.globals) {
-      if (rendered_same_module_global_names.find(global.name) ==
-          rendered_same_module_global_names.end()) {
+      if (std::find(rendered_same_module_global_names.begin(),
+                    rendered_same_module_global_names.end(),
+                    global.name) == rendered_same_module_global_names.end()) {
         continue;
       }
       const auto rendered_global_data = emit_same_module_global_data(global);

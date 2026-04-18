@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -636,6 +637,25 @@ struct PreparedMaterializedCompareJoinBranchPlan {
   PreparedBranchTargetLabels target_labels;
   const char* false_branch_opcode = nullptr;
 };
+
+[[nodiscard]] inline std::vector<std::string_view>
+collect_prepared_computed_value_same_module_globals(
+    const PreparedComputedValue& computed_value) {
+  std::vector<std::string_view> names;
+  switch (computed_value.base.kind) {
+    case PreparedComputedBaseKind::ImmediateI32:
+    case PreparedComputedBaseKind::ParamValue:
+      break;
+    case PreparedComputedBaseKind::GlobalI32Load:
+      names.push_back(computed_value.base.global_name);
+      break;
+    case PreparedComputedBaseKind::PointerBackedGlobalI32Load:
+      names.push_back(computed_value.base.pointer_root_global_name);
+      names.push_back(computed_value.base.global_name);
+      break;
+  }
+  return names;
+}
 
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinReturnContext>
 find_prepared_materialized_compare_join_return_context(
@@ -1571,6 +1591,25 @@ find_prepared_materialized_compare_join_branch_plan(
       .false_branch_opcode =
           prepared_compare_join_branches.prepared_branch.false_branch_opcode,
   };
+}
+
+[[nodiscard]] inline std::vector<std::string_view>
+collect_prepared_materialized_compare_join_same_module_globals(
+    const PreparedMaterializedCompareJoinBranches& prepared_join_branches) {
+  std::vector<std::string_view> names;
+  std::unordered_set<std::string_view> seen_names;
+  const auto append_names =
+      [&](const PreparedMaterializedCompareJoinReturnContext& return_context) {
+        for (const auto name :
+             collect_prepared_computed_value_same_module_globals(return_context.selected_value)) {
+          if (seen_names.insert(name).second) {
+            names.push_back(name);
+          }
+        }
+      };
+  append_names(prepared_join_branches.true_return_context);
+  append_names(prepared_join_branches.false_return_context);
+  return names;
 }
 
 [[nodiscard]] inline const std::vector<PreparedEdgeValueTransfer>* incoming_transfers_for_join(
