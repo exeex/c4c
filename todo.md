@@ -10,17 +10,17 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting the
-remaining incoming-classification plus compare-true/compare-false routing into
-`find_short_circuit_routing_context()`. The detector now reads as entry
-lookup, join lookup, target routing, continuation lookup, and prepared target
-selection instead of carrying another inline ownership split.
+remaining compare-true/compare-false target construction into
+`build_short_circuit_plan()`. The detector now reads as entry lookup, join
+lookup, target routing, continuation lookup, and final plan assembly instead
+of building the target pair inline.
 
 ## Suggested Next
 
-The next small Step 3 packet is to trim the remaining
-`detect_short_circuit_plan_from_control_flow()` compare-true/compare-false
-target construction into one helper so the body reads as entry lookup, join
-lookup, target routing, continuation lookup, and final plan assembly.
+The next small Step 3 packet is to trim `render_short_circuit_plan()` by
+extracting its rendered-true/rendered-false lane selection into one helper so
+the renderer focuses on compare emission and label stitching instead of inline
+continuation omission rules.
 
 ## Watchouts
 
@@ -46,6 +46,9 @@ lookup, target routing, continuation lookup, and final plan assembly.
   classification and compare-true/compare-false ownership split; if select
   joins gain new routing invariants, keep them there instead of rebuilding the
   split inline in the detector.
+- `build_short_circuit_plan()` now owns compare-true/compare-false target
+  construction; future short-circuit target validation should stay there
+  instead of re-expanding plan assembly inside the detector.
 - `classify_short_circuit_join_incoming()` assumes the prepared select join
   still carries exactly one bool-like immediate lane and one named RHS lane;
   if that invariant changes, fix the shared contract rather than re-growing
@@ -60,5 +63,5 @@ lookup, target routing, continuation lookup, and final plan assembly.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 short-circuit routing
+The build and narrow proof passed for this Step 3 short-circuit plan assembly
 cleanup packet; `test_after.log` remains the canonical proof log path.

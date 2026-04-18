@@ -2434,6 +2434,37 @@ std::string emit_prepared_module(
                                                            : entry_blocks.true_block,
             };
           };
+          const auto build_short_circuit_plan =
+              [&](const ShortCircuitJoinContext& join_context,
+                  const ShortCircuitRoutingContext& routing_context,
+                  const GuardJoinContinuation& continuation_plan)
+              -> std::optional<ShortCircuitPlan> {
+            const auto on_compare_true =
+                build_short_circuit_target_from_transfer(*join_context.join_transfer,
+                                                        *join_context.join_transfer->source_true_transfer_index,
+                                                        routing_context.classified_incoming,
+                                                        *routing_context.rhs_entry,
+                                                        continuation_plan);
+            const auto on_compare_false =
+                build_short_circuit_target_from_transfer(
+                    *join_context.join_transfer,
+                    *join_context.join_transfer->source_false_transfer_index,
+                    routing_context.classified_incoming,
+                    *routing_context.rhs_entry,
+                    continuation_plan);
+            if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
+              return std::nullopt;
+            }
+
+            ShortCircuitPlan plan{
+                .on_compare_true = *on_compare_true,
+                .on_compare_false = *on_compare_false,
+            };
+            if (plan.on_compare_true.block == nullptr || plan.on_compare_false.block == nullptr) {
+              return std::nullopt;
+            }
+            return plan;
+          };
           const auto detect_short_circuit_plan_from_control_flow =
               [&]() -> std::optional<ShortCircuitPlan> {
             const auto entry_blocks = find_short_circuit_entry_blocks();
@@ -2457,30 +2488,7 @@ std::string emit_prepared_module(
             if (!continuation_plan.has_value()) {
               return std::nullopt;
             }
-
-            ShortCircuitPlan plan;
-            const auto on_compare_true =
-                build_short_circuit_target_from_transfer(*join_context->join_transfer,
-                                                        *join_context->join_transfer->source_true_transfer_index,
-                                                        routing_context->classified_incoming,
-                                                        *routing_context->rhs_entry,
-                                                        *continuation_plan);
-            const auto on_compare_false =
-                build_short_circuit_target_from_transfer(
-                    *join_context->join_transfer,
-                    *join_context->join_transfer->source_false_transfer_index,
-                    routing_context->classified_incoming,
-                    *routing_context->rhs_entry,
-                    *continuation_plan);
-            if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
-              return std::nullopt;
-            }
-            plan.on_compare_true = *on_compare_true;
-            plan.on_compare_false = *on_compare_false;
-            if (plan.on_compare_true.block == nullptr || plan.on_compare_false.block == nullptr) {
-              return std::nullopt;
-            }
-            return plan;
+            return build_short_circuit_plan(*join_context, *routing_context, *continuation_plan);
           };
           const auto render_short_circuit_plan =
               [&](const ShortCircuitPlan& short_circuit_plan) -> std::optional<std::string> {
