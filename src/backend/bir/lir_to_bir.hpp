@@ -666,6 +666,25 @@ class BirFunctionLowerer {
       const TypeDeclMap& type_decls,
       const LocalSlotTypes& local_slot_types,
       std::vector<bir::Inst>* lowered_insts);
+  static bool try_lower_dynamic_local_aggregate_store(
+      std::string_view ptr_name,
+      bir::TypeKind value_type,
+      const bir::Value& value,
+      const DynamicLocalAggregateArrayMap& dynamic_local_aggregate_arrays,
+      const TypeDeclMap& type_decls,
+      const LocalSlotTypes& local_slot_types,
+      std::vector<bir::Inst>* lowered_insts,
+      bool* handled);
+  static bool try_lower_dynamic_local_aggregate_load(
+      std::string_view result_name,
+      std::string_view ptr_name,
+      bir::TypeKind value_type,
+      const DynamicLocalAggregateArrayMap& dynamic_local_aggregate_arrays,
+      const TypeDeclMap& type_decls,
+      const LocalSlotTypes& local_slot_types,
+      ValueMap* value_aliases,
+      std::vector<bir::Inst>* lowered_insts,
+      bool* handled);
   static std::optional<bir::Value> resolve_local_aggregate_pointer_value_alias(
       const c4c::codegen::lir::LirOperand& operand,
       const ValueMap& value_aliases,

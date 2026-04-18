@@ -788,4 +788,63 @@ bool BirFunctionLowerer::append_dynamic_local_aggregate_store(
   return true;
 }
 
+bool BirFunctionLowerer::try_lower_dynamic_local_aggregate_store(
+    std::string_view ptr_name,
+    bir::TypeKind value_type,
+    const bir::Value& value,
+    const DynamicLocalAggregateArrayMap& dynamic_local_aggregate_arrays,
+    const TypeDeclMap& type_decls,
+    const LocalSlotTypes& local_slot_types,
+    std::vector<bir::Inst>* lowered_insts,
+    bool* handled) {
+  const auto dynamic_local_aggregate_it = dynamic_local_aggregate_arrays.find(std::string(ptr_name));
+  if (dynamic_local_aggregate_it == dynamic_local_aggregate_arrays.end()) {
+    *handled = false;
+    return true;
+  }
+
+  *handled = true;
+  return append_dynamic_local_aggregate_store(ptr_name,
+                                              value_type,
+                                              value,
+                                              dynamic_local_aggregate_it->second,
+                                              type_decls,
+                                              local_slot_types,
+                                              lowered_insts);
+}
+
+bool BirFunctionLowerer::try_lower_dynamic_local_aggregate_load(
+    std::string_view result_name,
+    std::string_view ptr_name,
+    bir::TypeKind value_type,
+    const DynamicLocalAggregateArrayMap& dynamic_local_aggregate_arrays,
+    const TypeDeclMap& type_decls,
+    const LocalSlotTypes& local_slot_types,
+    ValueMap* value_aliases,
+    std::vector<bir::Inst>* lowered_insts,
+    bool* handled) {
+  const auto dynamic_local_aggregate_it = dynamic_local_aggregate_arrays.find(std::string(ptr_name));
+  if (dynamic_local_aggregate_it == dynamic_local_aggregate_arrays.end()) {
+    *handled = false;
+    return true;
+  }
+
+  *handled = true;
+  const auto selected_value = load_dynamic_local_aggregate_array_value(result_name,
+                                                                       value_type,
+                                                                       dynamic_local_aggregate_it->second,
+                                                                       type_decls,
+                                                                       local_slot_types,
+                                                                       lowered_insts);
+  if (!selected_value.has_value()) {
+    return false;
+  }
+  if (selected_value->kind == bir::Value::Kind::Named &&
+      selected_value->name == result_name) {
+    return true;
+  }
+  (*value_aliases)[std::string(result_name)] = *selected_value;
+  return true;
+}
+
 }  // namespace c4c::backend

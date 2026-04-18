@@ -6,21 +6,21 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2: extracted the remaining coordinator-owned dynamic local-aggregate
-GEP projection from
-`src/backend/bir/lir_to_bir_memory.cpp` into
+Plan Step 2: extracted the remaining coordinator-side dynamic local-aggregate
+store/load handling from `src/backend/bir/lir_to_bir_memory.cpp` into
 `src/backend/bir/lir_to_bir_memory_local_slots.cpp` as
-`resolve_dynamic_local_aggregate_gep_projection`, so the coordinator still
-chooses the dynamic local-aggregate lane while local-slot mechanics now own
-the per-element slot projection for dynamic local aggregate GEP results.
+`try_lower_dynamic_local_aggregate_store` and
+`try_lower_dynamic_local_aggregate_load`, so the coordinator now only dispatches
+that family while local-slot ownership handles the map lookup, value load/store
+sequencing, and alias update path.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by extracting the next remaining
-`dynamic_local_aggregate_arrays.find(...)` consumer in
-`src/backend/bir/lir_to_bir_memory.cpp`, preferably the store or load path,
-into local-slot ownership helpers so the coordinator stops carrying dynamic
-local aggregate value mechanics inline.
+Continue `plan.md` Step 2 by extracting the remaining
+`dynamic_local_aggregate_arrays.find(...)` GEP projection branch in
+`src/backend/bir/lir_to_bir_memory.cpp` behind a local-slot-owned wrapper so
+the coordinator no longer performs dynamic local aggregate map lookup for that
+family either.
 
 ## Watchouts
 
@@ -29,8 +29,11 @@ local aggregate value mechanics inline.
 - Keep `lower_scalar_or_local_memory_inst` in the main coordinator TU.
 - `build_dynamic_local_aggregate_array_access` now owns repeated-extent
   packaging, and `resolve_dynamic_local_aggregate_gep_projection` now owns the
-  per-element slot projection; keep future packets focused on the remaining
-  dynamic local aggregate local-slot mechanics instead of pulling shared
+  per-element slot projection, while
+  `try_lower_dynamic_local_aggregate_store` and
+  `try_lower_dynamic_local_aggregate_load` now own the dynamic local aggregate
+  store/load dispatch mechanics; keep future packets focused on the last
+  coordinator-side GEP lookup for this family instead of pulling shared
   addressing helpers across ownership buckets.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:

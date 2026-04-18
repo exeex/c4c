@@ -1444,17 +1444,18 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return true;
     }
 
-    if (const auto dynamic_local_aggregate_it = dynamic_local_aggregate_arrays.find(store->ptr.str());
-        dynamic_local_aggregate_it != dynamic_local_aggregate_arrays.end()) {
-      if (!append_dynamic_local_aggregate_store(store->ptr.str(),
-                                                *value_type,
-                                                *value,
-                                                dynamic_local_aggregate_it->second,
-                                                type_decls,
-                                                local_slot_types,
-                                                lowered_insts)) {
+    bool handled_dynamic_local_aggregate_store = false;
+    if (!try_lower_dynamic_local_aggregate_store(store->ptr.str(),
+                                                 *value_type,
+                                                 *value,
+                                                 dynamic_local_aggregate_arrays,
+                                                 type_decls,
+                                                 local_slot_types,
+                                                 lowered_insts,
+                                                 &handled_dynamic_local_aggregate_store)) {
         return fail_store();
       }
+    if (handled_dynamic_local_aggregate_store) {
       return true;
     }
 
@@ -2093,22 +2094,19 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return true;
     }
 
-    if (const auto dynamic_local_aggregate_it = dynamic_local_aggregate_arrays.find(load->ptr.str());
-        dynamic_local_aggregate_it != dynamic_local_aggregate_arrays.end()) {
-      const auto selected_value = load_dynamic_local_aggregate_array_value(load->result.str(),
-                                                                           *value_type,
-                                                                           dynamic_local_aggregate_it->second,
-                                                                           type_decls,
-                                                                           local_slot_types,
-                                                                           lowered_insts);
-      if (!selected_value.has_value()) {
+    bool handled_dynamic_local_aggregate_load = false;
+    if (!try_lower_dynamic_local_aggregate_load(load->result.str(),
+                                                load->ptr.str(),
+                                                *value_type,
+                                                dynamic_local_aggregate_arrays,
+                                                type_decls,
+                                                local_slot_types,
+                                                &value_aliases,
+                                                lowered_insts,
+                                                &handled_dynamic_local_aggregate_load)) {
         return fail_load();
       }
-      if (selected_value->kind == bir::Value::Kind::Named &&
-          selected_value->name == load->result.str()) {
-        return true;
-      }
-      value_aliases[load->result.str()] = *selected_value;
+    if (handled_dynamic_local_aggregate_load) {
       return true;
     }
 
