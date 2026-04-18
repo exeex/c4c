@@ -2514,6 +2514,29 @@ std::string emit_prepared_module(
             };
             return render_false_branch_compare(compare);
           };
+          const auto find_trailing_guard_compare =
+              [&](const c4c::backend::bir::Block& source_block,
+                  std::size_t current_compare_index,
+                  std::optional<std::string_view> expected_condition_name)
+              -> const c4c::backend::bir::BinaryInst* {
+            if (current_compare_index + 1 != source_block.insts.size()) {
+              return nullptr;
+            }
+
+            const auto* compare =
+                std::get_if<c4c::backend::bir::BinaryInst>(&source_block.insts.back());
+            if (compare == nullptr || !is_supported_guard_compare_opcode(compare->opcode) ||
+                compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
+                (compare->result.type != c4c::backend::bir::TypeKind::I1 &&
+                 compare->result.type != c4c::backend::bir::TypeKind::I32)) {
+              return nullptr;
+            }
+            if (expected_condition_name.has_value() &&
+                compare->result.name != *expected_condition_name) {
+              return nullptr;
+            }
+            return compare;
+          };
           const auto build_short_circuit_entry_compare_context =
               [&](const auto& find_branch_condition_fn,
                   const c4c::backend::bir::Block& source_block,
@@ -2534,6 +2557,19 @@ std::string emit_prepared_module(
                 .branch_condition = branch_condition,
                 .false_branch_compare = *false_branch_compare,
             };
+          };
+          const auto find_branch_condition =
+              [&](std::string_view block_label)
+              -> const c4c::backend::prepare::PreparedBranchCondition* {
+            if (function_control_flow == nullptr) {
+              return nullptr;
+            }
+            for (const auto& condition : function_control_flow->branch_conditions) {
+              if (condition.block_label == block_label) {
+                return &condition;
+              }
+            }
+            return nullptr;
           };
 
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Return) {
@@ -2563,19 +2599,16 @@ std::string emit_prepared_module(
                   block.label == continuation->incoming_label ||
                   block.terminator.target_label == continuation->incoming_label;
               if (reaches_continuation_join) {
-                const c4c::backend::bir::BinaryInst* compare = nullptr;
-                if (compare_index + 1 == block.insts.size()) {
-                  compare = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts.back());
-                }
-                if (compare == nullptr ||
-                    !is_supported_guard_compare_opcode(compare->opcode) ||
-                    compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
-                    (compare->result.type != c4c::backend::bir::TypeKind::I1 &&
-                     compare->result.type != c4c::backend::bir::TypeKind::I32)) {
+                const auto* compare =
+                    find_trailing_guard_compare(block, compare_index, std::nullopt);
+                if (compare == nullptr) {
                   return std::nullopt;
                 }
-                const auto false_branch_compare = render_false_branch_compare(*compare);
-                if (!false_branch_compare.has_value()) {
+                const auto entry_compare_context =
+                    build_short_circuit_entry_compare_context(find_branch_condition,
+                                                              block,
+                                                              *compare);
+                if (!entry_compare_context.has_value()) {
                   return std::nullopt;
                 }
                 const auto compare_join_plan =
@@ -2587,7 +2620,7 @@ std::string emit_prepared_module(
                 }
                 return render_compare_driven_branch_plan(render_block,
                                                          body,
-                                                         *false_branch_compare,
+                                                         entry_compare_context->false_branch_compare,
                                                          *compare_join_plan);
               }
             }
@@ -2610,29 +2643,14 @@ std::string emit_prepared_module(
             return std::nullopt;
           }
 
-          const auto* compare =
-              std::get_if<c4c::backend::bir::BinaryInst>(&block.insts.back());
-          if (compare == nullptr || !is_supported_guard_compare_opcode(compare->opcode) ||
-              compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
-              (compare->result.type != c4c::backend::bir::TypeKind::I1 &&
-               compare->result.type != c4c::backend::bir::TypeKind::I32) ||
-              block.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named ||
-              block.terminator.condition.name != compare->result.name) {
+          if (block.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named) {
             return std::nullopt;
           }
-          const auto find_branch_condition =
-              [&](std::string_view block_label)
-              -> const c4c::backend::prepare::PreparedBranchCondition* {
-            if (function_control_flow == nullptr) {
-              return nullptr;
-            }
-            for (const auto& condition : function_control_flow->branch_conditions) {
-              if (condition.block_label == block_label) {
-                return &condition;
-              }
-            }
-            return nullptr;
-          };
+          const auto* compare = find_trailing_guard_compare(
+              block, compare_index, block.terminator.condition.name);
+          if (compare == nullptr) {
+            return std::nullopt;
+          }
           const auto entry_compare_context =
               build_short_circuit_entry_compare_context(find_branch_condition, block, *compare);
           if (!entry_compare_context.has_value()) {

@@ -10,17 +10,19 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting
-`build_direct_branch_plan()` plus `render_compare_driven_branch_plan()`. The
-continuation-aware plain `Branch` compare-join lane now reuses the same
-helper-owned plan/render assembly as the short-circuit and plain cond-branch
-routes instead of keeping its own inline false-label rendering path.
+`find_trailing_guard_compare()` and routing the continuation-aware plain
+`Branch` compare-join lane through `build_short_circuit_entry_compare_context()`.
+The compare-driven `Branch` continuation path now reuses the same helper-owned
+guard-compare validation and false-branch compare selection as the ordinary
+cond-branch entry lane instead of keeping its own inline compare fallback
+assembly.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect whether the continuation-aware plain
-`Branch` lane can share compare discovery and false-branch fallback selection
-with `build_short_circuit_entry_compare_context()` so the trailing guard-
-compare validation also stays helper-owned.
+The next small Step 3 packet is to inspect whether the compare-driven plain
+cond-branch and short-circuit lanes can also share direct-target plan
+construction more uniformly, so ordinary true/false target lookup keeps moving
+out of emitter-local assembly branches and into the helper cluster.
 
 ## Watchouts
 
@@ -45,10 +47,11 @@ compare validation also stays helper-owned.
   that ownership in the helper cluster instead of re-growing those checks
   inside `try_render_short_circuit_plan()`.
 - `build_short_circuit_entry_compare_context()` now owns prepared entry-branch
-  lookup plus false-branch compare fallback selection; keep that ownership in
-  the helper cluster instead of re-growing compare-shape selection beside the
-  cond-branch emitter, and prefer extending that helper over duplicating the
-  same guard-compare checks in the plain `Branch` continuation lane.
+  lookup plus false-branch compare fallback selection, and
+  `find_trailing_guard_compare()` now owns trailing guard-compare validation
+  for both plain cond-branch entry and continuation-aware plain `Branch`
+  routing; keep that ownership in the helper cluster instead of re-growing
+  compare-shape selection beside either emitter lane.
 - `build_plain_cond_branch_plan()` now owns plain true/false cond-branch target
   selection; keep ordinary fallback block lookup in that helper instead of
   re-growing inline branch assembly inside the cond-branch emitter.
@@ -81,5 +84,5 @@ compare validation also stays helper-owned.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 compare-driven branch-plan
-helper reuse packet; proof output is in `test_after.log`.
+The build and narrow proof passed for this Step 3 guard-compare helper reuse
+packet; proof output is in `test_after.log`.
