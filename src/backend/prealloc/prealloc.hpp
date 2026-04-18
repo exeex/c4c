@@ -421,6 +421,18 @@ struct PreparedAuthoritativeJoinBranchSources {
   const bir::Block* false_predecessor = nullptr;
 };
 
+struct PreparedClassifiedShortCircuitIncoming {
+  bool short_circuit_on_compare_true = false;
+  bool short_circuit_value = false;
+};
+
+struct PreparedAuthoritativeShortCircuitJoinSources {
+  const PreparedJoinTransfer* join_transfer = nullptr;
+  const PreparedEdgeValueTransfer* true_transfer = nullptr;
+  const PreparedEdgeValueTransfer* false_transfer = nullptr;
+  PreparedClassifiedShortCircuitIncoming classified_incoming;
+};
+
 struct PreparedJoinCarrier {
   std::size_t carrier_index = 0;
   std::string_view result_name;
@@ -698,6 +710,57 @@ find_authoritative_join_branch_sources(
       .false_transfer = false_transfer,
       .true_predecessor = true_predecessor,
       .false_predecessor = false_predecessor,
+  };
+}
+
+[[nodiscard]] inline std::optional<PreparedClassifiedShortCircuitIncoming>
+classify_short_circuit_join_incoming(const PreparedEdgeValueTransfer& true_transfer,
+                                     const PreparedEdgeValueTransfer& false_transfer) {
+  const auto classify_join_incoming =
+      [](const PreparedEdgeValueTransfer& incoming) -> std::optional<bool> {
+    if (incoming.incoming_value.kind == bir::Value::Kind::Immediate &&
+        incoming.incoming_value.type == bir::TypeKind::I32 &&
+        (incoming.incoming_value.immediate == 0 || incoming.incoming_value.immediate == 1)) {
+      return incoming.incoming_value.immediate != 0;
+    }
+    return std::nullopt;
+  };
+
+  const auto true_lane_short_circuit_value = classify_join_incoming(true_transfer);
+  const auto false_lane_short_circuit_value = classify_join_incoming(false_transfer);
+  if (true_lane_short_circuit_value.has_value() == false_lane_short_circuit_value.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedClassifiedShortCircuitIncoming{
+      .short_circuit_on_compare_true = true_lane_short_circuit_value.has_value(),
+      .short_circuit_value = true_lane_short_circuit_value.value_or(
+          *false_lane_short_circuit_value),
+  };
+}
+
+[[nodiscard]] inline std::optional<PreparedAuthoritativeShortCircuitJoinSources>
+find_authoritative_short_circuit_join_sources(
+    const PreparedAuthoritativeBranchJoinTransfer& authoritative_join_transfer) {
+  const auto* join_transfer = authoritative_join_transfer.join_transfer;
+  const auto* true_transfer = authoritative_join_transfer.true_transfer;
+  const auto* false_transfer = authoritative_join_transfer.false_transfer;
+  if (join_transfer == nullptr || true_transfer == nullptr || false_transfer == nullptr ||
+      join_transfer->edge_transfers.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto classified_incoming =
+      classify_short_circuit_join_incoming(*true_transfer, *false_transfer);
+  if (!classified_incoming.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedAuthoritativeShortCircuitJoinSources{
+      .join_transfer = join_transfer,
+      .true_transfer = true_transfer,
+      .false_transfer = false_transfer,
+      .classified_incoming = *classified_incoming,
   };
 }
 

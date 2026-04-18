@@ -11,20 +11,19 @@ Source Plan: plan.md
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/prealloc/prealloc.hpp` and
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving the
-prepared i32 eq/ne param-zero branch predicate/value validation into a shared
-prepared-control-flow helper and switching both the minimal compare-branch and
-materialized compare-join x86 consumers to use that same shared lookup. The
-emitter no longer keeps its own duplicate param-zero prepared-branch matcher
-for the label-matching and label-relaxed lanes.
+authoritative short-circuit branch-owned join-source classification and lookup
+into shared prepared-control-flow helpers and switching the x86 short-circuit
+consumer to use that shared contract. The emitter no longer keeps its own
+duplicate short-circuit lane classification or branch-owned join-source wrapper
+seam for this packet.
 
 ## Suggested Next
 
 The next accepted packet should keep shrinking Step 3 emitter-local seams in
-the same joined-branch family by lifting more of the authoritative
-branch-owned join lookup or compare-join render planning out of
-`prepared_module_emit.cpp` and into shared prepared consumer helpers where the
-contract is already authoritative. Keep that work in semantic consumer
-helpers, not Step 4 file organization.
+the same joined-branch family by lifting more compare-join continuation or
+direct-branch planning checks out of `prepared_module_emit.cpp` and into
+shared prepared consumer helpers where the contract is already authoritative.
+Keep that work in semantic consumer helpers, not Step 4 file organization.
 
 ## Watchouts
 
@@ -42,11 +41,13 @@ helpers, not Step 4 file organization.
 - The shared helpers in `prealloc.hpp` now own authoritative branch-owned
   join-transfer validation, supported SelectMaterialization / EdgeStoreSlot
   carrier queries, supported materialized compare-join predecessor and
-  join-block shape validation, and the prepared i32 eq/ne param-zero branch
-  lookup used by both compare-consumer lanes. Follow-on work should keep
-  extending prepared consumer lookups rather than reintroducing x86-side
-  transfer-index, storage-name, predecessor, carrier-kind, predicate, or
-  param-zero operand checks.
+  join-block shape validation, the prepared i32 eq/ne param-zero branch lookup
+  used by both compare-consumer lanes, and the short-circuit incoming-lane
+  classification / authoritative join-source lookup used by the short-circuit
+  consumer. Follow-on work should keep extending prepared consumer lookups
+  rather than reintroducing x86-side transfer-index, storage-name,
+  predecessor, carrier-kind, predicate, param-zero operand, or short-circuit
+  lane classification checks.
 - The short-circuit ownership tests intentionally rewrite carrier labels and
   entry compares to prove x86 trusts prepared metadata over emitter-local
   carrier naming; do not add source-label equality checks that undercut that
@@ -70,14 +71,14 @@ helpers, not Step 4 file organization.
   equality requirements in the compare-join consumer.
 - `test_before.log` remains the narrow baseline for
   `^backend_x86_handoff_boundary$`, and this packet refreshed `test_after.log`
-  with the same focused proof command after moving the remaining param-zero
-  branch validation seam into shared prepared control-flow helpers.
+  with the same focused proof command after moving the short-circuit
+  branch-owned join-source seam into shared prepared control-flow helpers.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 This packet refreshes `test_after.log` with the same focused
-`backend_x86_handoff_boundary` proof command for the shared param-zero branch
-consumer helper now used by both the minimal compare-branch and compare-join
-paths.
+`backend_x86_handoff_boundary` proof command for the shared short-circuit
+join-source classification/lookup helper now consumed by the x86
+short-circuit path.
