@@ -1556,6 +1556,12 @@ std::string emit_prepared_module(
       std::size_t transfer_index = 0;
       bool short_circuit_value = false;
     };
+    struct ShortCircuitEntryRoutingContext {
+      ClassifiedShortCircuitIncoming classified_incoming;
+      const c4c::backend::bir::Block* true_block = nullptr;
+      const c4c::backend::bir::Block* false_block = nullptr;
+      const c4c::backend::bir::Block* rhs_entry = nullptr;
+    };
     struct MaterializedI32Compare {
       std::string_view i1_name;
       std::optional<std::string_view> i32_name;
@@ -2484,16 +2490,9 @@ std::string emit_prepared_module(
 
           const auto try_render_short_circuit_plan =
               [&]() -> std::optional<std::string> {
-            struct ShortCircuitEntryBlocks {
-              const c4c::backend::bir::Block* true_block;
-              const c4c::backend::bir::Block* false_block;
-            };
-            struct ShortCircuitRoutingContext {
-              ClassifiedShortCircuitIncoming classified_incoming;
-              const c4c::backend::bir::Block* rhs_entry;
-            };
-            const auto find_short_circuit_entry_blocks =
-                [&]() -> std::optional<ShortCircuitEntryBlocks> {
+            const auto find_short_circuit_entry_routing_context =
+                [&](const ShortCircuitJoinContext& join_context)
+                -> std::optional<ShortCircuitEntryRoutingContext> {
               if (entry_branch_condition == nullptr || function_control_flow == nullptr ||
                   !entry_branch_condition->predicate.has_value() ||
                   !entry_branch_condition->compare_type.has_value() ||
@@ -2514,15 +2513,6 @@ std::string emit_prepared_module(
                 return std::nullopt;
               }
 
-              return ShortCircuitEntryBlocks{
-                  .true_block = true_block,
-                  .false_block = false_block,
-              };
-            };
-            const auto find_short_circuit_routing_context =
-                [&](const ShortCircuitEntryBlocks& entry_blocks,
-                    const ShortCircuitJoinContext& join_context)
-                -> std::optional<ShortCircuitRoutingContext> {
               const auto classified_incoming =
                   classify_short_circuit_join_incoming(*join_context.join_transfer);
               if (!classified_incoming.has_value()) {
@@ -2539,15 +2529,16 @@ std::string emit_prepared_module(
                 return std::nullopt;
               }
 
-              return ShortCircuitRoutingContext{
+              return ShortCircuitEntryRoutingContext{
                   .classified_incoming = *classified_incoming,
-                  .rhs_entry = short_circuit_on_compare_true ? entry_blocks.false_block
-                                                             : entry_blocks.true_block,
+                  .true_block = true_block,
+                  .false_block = false_block,
+                  .rhs_entry = short_circuit_on_compare_true ? false_block : true_block,
               };
             };
             const auto build_short_circuit_plan =
                 [&](const ShortCircuitJoinContext& join_context,
-                    const ShortCircuitRoutingContext& routing_context)
+                    const ShortCircuitEntryRoutingContext& routing_context)
                 -> std::optional<ShortCircuitPlan> {
               const auto on_compare_true =
                   build_short_circuit_target_from_transfer(
@@ -2577,18 +2568,13 @@ std::string emit_prepared_module(
               }
               return plan;
             };
-            const auto entry_blocks = find_short_circuit_entry_blocks();
-            if (!entry_blocks.has_value()) {
-              return std::nullopt;
-            }
-
             const auto join_context = find_short_circuit_join_context(block.label);
             if (!join_context.has_value()) {
               return std::nullopt;
             }
 
             const auto routing_context =
-                find_short_circuit_routing_context(*entry_blocks, *join_context);
+                find_short_circuit_entry_routing_context(*join_context);
             if (!routing_context.has_value()) {
               return std::nullopt;
             }
