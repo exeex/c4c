@@ -9,21 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving the
-materialized compare-join route's prepared true/false transfer fetch plus
-paired return rendering behind
-`render_materialized_compare_join_branches_if_supported()`. The compare-join
-consumer now asks one prepared join helper for its rendered branch arms
-instead of open-coding the authoritative join transfer lookup and per-edge
-return rendering inline.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by making the
+materialized compare-join consumer validate `PreparedJoinTransferKind::EdgeStoreSlot`
+through the prepared join contract instead of accepting any same-named
+`LoadLocal` carrier. The authoritative branch-owned join helper now requires
+the prepared slot metadata on `EdgeStoreSlot` transfers, and the compare-join
+context only accepts a `LoadLocal` carrier when it names the prepared storage
+slot published by that join transfer.
 
 ## Suggested Next
 
-The next small Step 3 packet is to start consuming
-`PreparedJoinTransferKind::EdgeStoreSlot` through the same authoritative
-join-consumer contract used by the compare-join path, without merging that
-work with short-circuit topology rules, countdown-loop handling, or Step 4
-emitter-file cleanup.
+The next small Step 3 packet is to carry the same authoritative join-slot
+contract into the next branch-owned `LoadLocal` consumer path that still keys
+off the joined value name alone, while keeping short-circuit topology rules,
+countdown-loop handling, and Step 4 emitter cleanup out of scope.
 
 ## Watchouts
 
@@ -36,6 +35,10 @@ emitter-file cleanup.
   file-organization cleanup.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth or new
   emitter-local CFG scans.
+- The compare-join route now treats `EdgeStoreSlot` as an explicit prepared
+  slot contract: if a future consumer accepts a `LoadLocal` carrier, it should
+  validate the prepared storage name instead of matching only the joined value
+  result.
 - `find_materialized_compare_join_context()` is still intentionally scoped to
   the joined compare-return route: it validates the authoritative prepared join
   carrier and trailing binary around the prepared join result, but it should
@@ -58,6 +61,6 @@ emitter-file cleanup.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This prepared-branch helper packet passed with the focused handoff-boundary
-proof command, and `test_after.log` remains the fresh canonical proof log for
-supervisor review.
+This `EdgeStoreSlot` consumer packet passed with the focused
+`backend_x86_handoff_boundary` proof command, and `test_after.log` remains the
+fresh canonical proof log for supervisor review.

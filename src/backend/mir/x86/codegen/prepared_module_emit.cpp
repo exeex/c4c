@@ -1569,6 +1569,15 @@ std::string emit_prepared_module(
     if (!authoritative_transfers.has_value()) {
       return std::nullopt;
     }
+    if (join_transfer.kind == c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot) {
+      if (!join_transfer.storage_name.has_value() ||
+          !authoritative_transfers->true_transfer->storage_name.has_value() ||
+          !authoritative_transfers->false_transfer->storage_name.has_value() ||
+          *authoritative_transfers->true_transfer->storage_name != *join_transfer.storage_name ||
+          *authoritative_transfers->false_transfer->storage_name != *join_transfer.storage_name) {
+        return std::nullopt;
+      }
+    }
 
     return AuthoritativeBranchJoinTransfer{
         .join_transfer = &join_transfer,
@@ -1751,12 +1760,21 @@ std::string emit_prepared_module(
     if (const auto* select =
             std::get_if<c4c::backend::bir::SelectInst>(&join_block->insts[carrier_index]);
         select != nullptr) {
+      if (join_transfer->kind !=
+          c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization) {
+        return std::nullopt;
+      }
       if (!join_result_matches_prepared_value(select->result)) {
         return std::nullopt;
       }
     } else if (const auto* load_local =
                    std::get_if<c4c::backend::bir::LoadLocalInst>(&join_block->insts[carrier_index]);
                load_local != nullptr) {
+      if (join_transfer->kind != c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
+          !join_transfer->storage_name.has_value() ||
+          load_local->slot_name != *join_transfer->storage_name) {
+        return std::nullopt;
+      }
       if (!join_result_matches_prepared_value(load_local->result)) {
         return std::nullopt;
       }
