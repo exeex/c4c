@@ -9,22 +9,21 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by broadening the
-minimal compare-against-zero branch and joined-branch consumers from prepared
-`eq i32 param, 0` only to prepared `eq/ne i32 param, 0` control-flow facts.
-The x86 handoff path now derives false-branch polarity from prepared branch
-metadata instead of hard-coding the equality-only lane, and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` now proves actual
-prepared `BinaryOpcode::Ne` ownership for both the plain branch and
-branch-owned join cases.
+`tests/backend/backend_x86_handoff_boundary_test.cpp` by adding a concrete
+nonzero trailing-join arithmetic fixture and route proof for the prepared
+compare-join consumer. The x86 handoff lane now has end-to-end coverage for an
+actual prepared `ne i32 param, 0` join-owning path with a trailing immediate
+`add`, and the prepared-control-flow ownership checks keep proving that the
+same consumer seam honors both direct prepared joins and
+`PreparedJoinTransferKind::EdgeStoreSlot` carriers without reintroducing
+emitter-local CFG recovery.
 
 ## Suggested Next
 
-Pick the next small Step 3 consumer packet that replaces another
-equality-shaped prepared-branch assumption with a predicate-driven prepared
-lookup, or hand lifecycle back for route refresh if the remaining Step 3 work
-would otherwise spill into countdown-loop routing or Step 4 file
-reorganization.
+Pick one more small Step 3 proof packet that adds a concrete nonzero
+trailing-join case for another already-supported immediate op such as `xor` or
+`shl`, or stop and reassess whether the remaining gap is now route coverage
+rather than consumer capability.
 
 ## Watchouts
 
@@ -43,6 +42,10 @@ reorganization.
   prepared-carrier validation seam, so follow-on work should extend that
   seam instead of reintroducing per-helper carrier parsing or destination-name
   assumptions.
+- The new nonzero trailing-join `add` coverage is intentionally one concrete
+  proof packet; do not balloon the next slice into a wholesale duplication of
+  every eq-only trailing op unless the supervisor explicitly wants broader
+  route proof.
 - The joined-branch ownership helper still proves both
   `SelectMaterialization` and `PreparedJoinTransferKind::EdgeStoreSlot`
   carriers; keep further work in this family focused on prepared carrier
@@ -63,4 +66,5 @@ Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 This packet passed with the same focused `backend_x86_handoff_boundary` proof
 command, and `test_after.log` remains the fresh canonical narrow log for the
-prepared eq/ne branch-owned consumer surface.
+prepared eq/ne branch-owned consumer surface including the new concrete
+nonzero trailing-join arithmetic lane.
