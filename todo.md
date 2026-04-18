@@ -6,21 +6,21 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2: moved the remaining local-slot store dispatch wrapper out of
-`src/backend/bir/lir_to_bir_memory.cpp` and into
-`src/backend/bir/lir_to_bir_memory_local_slots.cpp` by adding
-`try_lower_local_slot_store` plus the `LocalSlotStoreResult` tri-state, so the
-local-slot owner now validates destination slots, maintains the local pointer
-alias and address bookkeeping for `i64` and `ptr` local-slot stores, and emits
-the final `bir::StoreLocalInst` while the coordinator keeps only the broader
-global-address, dynamic-array, and fail-routing admission flow.
+Plan Step 2: moved the dynamic pointer-value-array load/store lowering helpers
+out of `src/backend/bir/lir_to_bir_memory.cpp` and into
+`src/backend/bir/lir_to_bir_memory_value_materialization.cpp`, so the
+value-materialization owner now handles the scratch-slot addressed loads, the
+select-based per-element store rewrite, and the final array-value selection
+while the coordinator keeps only the pointer-array admission and fail-routing
+flow.
 
 ## Suggested Next
 
 Continue `plan.md` Step 4 by re-reading the remaining coordinator-side helper
 mix in `src/backend/bir/lir_to_bir_memory.cpp` and decide whether the next
-honest extraction has shifted to a value-materialization or other non-local-slot
-ownership seam rather than forcing another thin local-slot packet.
+honest extraction is now the remaining dynamic global-scalar array materializer
+path or another shared non-coordinator seam, rather than forcing another thin
+packet around already-extracted local-slot or pointer-value helpers.
 
 ## Watchouts
 
@@ -31,6 +31,10 @@ ownership seam rather than forcing another thin local-slot packet.
   local-slot-specific load/store dispatch and bookkeeping wrappers; future
   packets should keep those wrappers in the local-slot owner instead of
   re-embedding local-slot alias or address updates in the coordinator.
+- Dynamic pointer-value-array load/store synthesis now lives in
+  `src/backend/bir/lir_to_bir_memory_value_materialization.cpp`; future packets
+  should keep select-tree materialization and addressed scratch-slot plumbing in
+  that owner instead of rebuilding it inline in the coordinator.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:
   0`; treat the canonical log pair as unchanged-behavior evidence, not as a
@@ -53,5 +57,4 @@ functional result as the prior baseline: the four backend
 notes/handoff/dynamic-member-array tests passed, and the pre-existing failure
 `c_testsuite_x86_backend_src_00205_c` remained unchanged with the same
 backend-emitter limitation. `diff -u test_before.log test_after.log` changed
-only timing lines, so the accepted proof was rolled forward into the canonical
-baseline at `test_before.log`.
+only timing lines.

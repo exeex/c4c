@@ -9,6 +9,7 @@
 namespace c4c::backend {
 
 using lir_to_bir_detail::lower_integer_type;
+using lir_to_bir_detail::type_size_bytes;
 
 std::optional<bir::Value> BirFunctionLowerer::lower_zero_initializer_value(bir::TypeKind type) {
   switch (type) {
@@ -150,6 +151,124 @@ std::optional<bir::Value> BirFunctionLowerer::synthesize_pointer_array_selects(
     }
   }
   return synthesize_value_array_selects(result_name, element_values, index_value, lowered_insts);
+}
+
+std::optional<bir::Value> BirFunctionLowerer::load_dynamic_pointer_value_array_value(
+    std::string_view result_name,
+    bir::TypeKind value_type,
+    const DynamicPointerValueArrayAccess& access,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (access.element_type != value_type || access.element_count == 0) {
+    return std::nullopt;
+  }
+
+  const auto slot_size = type_size_bytes(value_type);
+  if (slot_size == 0) {
+    return std::nullopt;
+  }
+
+  std::vector<bir::Value> element_values;
+  element_values.reserve(access.element_count);
+  for (std::size_t element_index = 0; element_index < access.element_count; ++element_index) {
+    const std::string element_name = std::string(result_name) + ".elt" + std::to_string(element_index);
+    const std::string scratch_slot = element_name + ".addr";
+    if (!ensure_local_scratch_slot(scratch_slot, value_type, slot_size)) {
+      return std::nullopt;
+    }
+    lowered_insts->push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(value_type, element_name),
+        .slot_name = scratch_slot,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                .base_value = access.base_value,
+                .byte_offset = static_cast<std::int64_t>(
+                    access.byte_offset + element_index * access.element_stride_bytes),
+                .size_bytes = slot_size,
+                .align_bytes = slot_size,
+            },
+    });
+    element_values.push_back(bir::Value::named(value_type, element_name));
+  }
+
+  return synthesize_value_array_selects(result_name, element_values, access.index, lowered_insts);
+}
+
+bool BirFunctionLowerer::append_dynamic_pointer_value_array_store(
+    std::string_view scratch_prefix,
+    bir::TypeKind value_type,
+    const bir::Value& value,
+    const DynamicPointerValueArrayAccess& access,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (access.element_type != value_type || access.element_count == 0) {
+    return false;
+  }
+
+  const auto slot_size = type_size_bytes(value_type);
+  if (slot_size == 0) {
+    return false;
+  }
+
+  for (std::size_t element_index = 0; element_index < access.element_count; ++element_index) {
+    const std::string element_name =
+        std::string(scratch_prefix) + ".elt" + std::to_string(element_index);
+    const std::string load_slot = element_name + ".load.addr";
+    if (!ensure_local_scratch_slot(load_slot, value_type, slot_size)) {
+      return false;
+    }
+    lowered_insts->push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(value_type, element_name),
+        .slot_name = load_slot,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                .base_value = access.base_value,
+                .byte_offset = static_cast<std::int64_t>(
+                    access.byte_offset + element_index * access.element_stride_bytes),
+                .size_bytes = slot_size,
+                .align_bytes = slot_size,
+            },
+    });
+
+    bir::Value stored_value = value;
+    if (access.element_count > 1) {
+      const auto compare_rhs = make_index_immediate(access.index.type, element_index);
+      if (!compare_rhs.has_value()) {
+        return false;
+      }
+      const std::string select_name =
+          std::string(scratch_prefix) + ".store" + std::to_string(element_index);
+      lowered_insts->push_back(bir::SelectInst{
+          .predicate = bir::BinaryOpcode::Eq,
+          .result = bir::Value::named(value_type, select_name),
+          .compare_type = access.index.type,
+          .lhs = access.index,
+          .rhs = *compare_rhs,
+          .true_value = value,
+          .false_value = bir::Value::named(value_type, element_name),
+      });
+      stored_value = bir::Value::named(value_type, select_name);
+    }
+
+    const std::string store_slot = element_name + ".store.addr";
+    if (!ensure_local_scratch_slot(store_slot, value_type, slot_size)) {
+      return false;
+    }
+    lowered_insts->push_back(bir::StoreLocalInst{
+        .slot_name = store_slot,
+        .value = stored_value,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                .base_value = access.base_value,
+                .byte_offset = static_cast<std::int64_t>(
+                    access.byte_offset + element_index * access.element_stride_bytes),
+                .size_bytes = slot_size,
+                .align_bytes = slot_size,
+            },
+    });
+  }
+  return true;
 }
 
 }  // namespace c4c::backend

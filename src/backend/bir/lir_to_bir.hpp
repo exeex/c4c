@@ -836,6 +836,11 @@ class BirFunctionLowerer {
       const TypeDeclMap& type_decls,
       const LocalSlotTypes& local_slot_types,
       std::vector<bir::Inst>* lowered_insts);
+  std::optional<bir::Value> load_dynamic_pointer_value_array_value(
+      std::string_view result_name,
+      bir::TypeKind value_type,
+      const DynamicPointerValueArrayAccess& access,
+      std::vector<bir::Inst>* lowered_insts);
   static bool append_dynamic_local_aggregate_store(
       std::string_view scratch_prefix,
       bir::TypeKind value_type,
@@ -843,6 +848,12 @@ class BirFunctionLowerer {
       const DynamicLocalAggregateArrayAccess& access,
       const TypeDeclMap& type_decls,
       const LocalSlotTypes& local_slot_types,
+      std::vector<bir::Inst>* lowered_insts);
+  bool append_dynamic_pointer_value_array_store(
+      std::string_view scratch_prefix,
+      bir::TypeKind value_type,
+      const bir::Value& value,
+      const DynamicPointerValueArrayAccess& access,
       std::vector<bir::Inst>* lowered_insts);
   static bool try_lower_dynamic_local_aggregate_store(
       std::string_view ptr_name,
