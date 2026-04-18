@@ -9,23 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` and
-`src/backend/prealloc/prealloc.hpp` by adding one shared prepared Eq/I32
-branch-condition lookup/helper path, adding one shared branch-owned
-join-transfer lookup/helper path, migrating
-`render_materialized_compare_join_if_supported()` onto those helpers, and
-beginning to consume `PreparedJoinTransferKind::EdgeStoreSlot` through the same
-prepared join-contract path where the joined materialized-compare consumer can
-use it.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by routing
+`find_authoritative_join_branch_sources()` through the existing
+`AuthoritativeBranchJoinTransfer` helper contract instead of reclassifying raw
+prepared join transfers, and by making
+`render_materialized_compare_join_if_supported()` reuse that authoritative
+join-source result as its single prepared-control-flow validation path.
 
 ## Suggested Next
 
-The next small Step 3 packet is to keep migrating adjacent authoritative-join
-consumers in `src/backend/mir/x86/codegen/prepared_module_emit.cpp` onto the
-new shared branch-owned join helper path, especially where
-`find_authoritative_join_branch_sources()` and short-circuit continuation
-planning still duplicate local join-source validation that could instead be
-driven by prepared control-flow data.
+The next small Step 3 packet is to migrate the adjacent short-circuit/select
+join consumer path onto the same single authoritative branch/join lookup seam
+end-to-end, so `find_short_circuit_join_context()` and its continuation
+planning stop carrying any remaining duplicate join-source validation outside
+the prepared helper contract.
 
 ## Watchouts
 
@@ -51,10 +48,13 @@ driven by prepared control-flow data.
   prepared incoming ownership labels from the transfer records, but its
   continuation routing still depends on carrier labels that can differ from the
   prepared source ownership.
-- The new shared authoritative-transfer helper only covers prepared transfer
-  validation and source-label consistency; predecessor block lookup and
-  branch-to-join topology checks still belong only to
-  `find_authoritative_join_branch_sources()`.
+- `find_authoritative_join_branch_sources()` now expects an
+  `AuthoritativeBranchJoinTransfer`; adjacent consumers should reuse that
+  authoritative helper result instead of re-running raw transfer
+  classification.
+- Predecessor block lookup and branch-to-join topology checks still belong in
+  x86 consumer code; do not push them into shared lowering while finishing this
+  Step 3 seam.
 - The short-circuit/select-join route still requires exactly one authoritative
   prepared source lane to carry a bool immediate; do not widen this into
   arbitrary edge scans or named-lane heuristics when touching adjacent helpers.
@@ -76,6 +76,6 @@ driven by prepared control-flow data.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This Step 3 shared prepared branch/join helper packet passed with the same
+This Step 3 materialized-compare join consumer packet passed with the same
 focused proof command, and `test_after.log` is the canonical proof log path
 for the result.
