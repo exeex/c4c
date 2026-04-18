@@ -9,20 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by splitting the
-authoritative branch/join lookup seam into a shared
-`AuthoritativeJoinTransferSources` helper plus the stricter
-`find_authoritative_join_branch_sources()` topology check, then making
-`find_short_circuit_join_context()` consume that shared authoritative transfer
-seam end-to-end without re-unwrapping raw prepared join transfers.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving the
+short-circuit bool-lane classification and `edge_transfers.size() == 2` gate
+behind a dedicated `find_authoritative_short_circuit_join_sources()` helper,
+then making `find_short_circuit_join_context()` and its context builder
+consume that authoritative short-circuit seam instead of rechecking raw join
+transfer details inline.
 
 ## Suggested Next
 
-The next small Step 3 packet is to see whether the remaining short-circuit
-bool-lane classification and `edge_transfers.size() == 2` gate can move behind
-a dedicated authoritative short-circuit helper, so this route keeps consuming
-prepared transfer facts through one seam without widening into countdown-loop
-or generic join work.
+The next small Step 3 packet is to reuse the new authoritative short-circuit
+helper from adjacent select/join consumer code where the same prepared
+select-materialization contract applies, so the remaining short-circuit branch
+entry planning keeps collapsing around prepared lookups rather than scattered
+route-local checks.
 
 ## Watchouts
 
@@ -57,6 +57,10 @@ or generic join work.
   direct predecessor topology checks in the joined-branch helper only, because
   the short-circuit route still permits carrier topology that does not look
   like a direct branch-to-join pair.
+- `find_authoritative_short_circuit_join_sources()` is now the authoritative
+  place for the short-circuit route's `edge_transfers.size() == 2` gate and
+  single-bool-immediate lane classification; adjacent consumers should reuse
+  that helper instead of open-coding those checks again.
 - Predecessor block lookup and branch-to-join topology checks still belong in
   x86 consumer code; do not push them into shared lowering while finishing this
   Step 3 seam.
@@ -81,7 +85,8 @@ or generic join work.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This Step 3 short-circuit authoritative-transfer packet passed with the same
+This Step 3 authoritative short-circuit helper packet passed with the same
 focused proof command after preserving the route's distinction between shared
-authoritative transfer lookup and joined-branch-only topology checks, and
-`test_after.log` is the canonical proof log path for the result.
+authoritative transfer lookup, short-circuit-only lane classification, and
+joined-branch-only topology checks, and `test_after.log` is the canonical proof
+log path for the result.
