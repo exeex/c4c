@@ -490,6 +490,11 @@ struct PreparedParamZeroBranchReturnContext {
   const bir::Block* false_block = nullptr;
 };
 
+struct PreparedParamZeroMaterializedCompareJoinContext {
+  PreparedParamZeroBranchCondition prepared_branch;
+  PreparedMaterializedCompareJoinContext compare_join_context;
+};
+
 [[nodiscard]] inline std::optional<PreparedParamZeroBranchCondition>
 find_prepared_param_zero_branch_condition(const PreparedControlFlowFunction& function_cf,
                                           const bir::Block& source_block,
@@ -906,6 +911,43 @@ find_materialized_compare_join_context(
       .trailing_binary = trailing_binary,
       .carrier_index = prepared_carrier->carrier_index,
       .carrier_result_name = prepared_carrier->result_name,
+  };
+}
+
+[[nodiscard]] inline std::optional<PreparedParamZeroMaterializedCompareJoinContext>
+find_prepared_param_zero_materialized_compare_join_context(
+    const PreparedControlFlowFunction& function_cf,
+    const bir::Function& function,
+    const bir::Block& source_block,
+    const bir::Param& param,
+    bool require_label_match) {
+  const auto prepared_branch = find_prepared_param_zero_branch_condition(function_cf,
+                                                                         source_block,
+                                                                         param,
+                                                                         require_label_match);
+  if (!prepared_branch.has_value() || prepared_branch->branch_condition == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto authoritative_join_transfer = find_authoritative_branch_owned_join_transfer(
+      function_cf, source_block.label);
+  if (!authoritative_join_transfer.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto compare_join_context = find_materialized_compare_join_context(
+      *authoritative_join_transfer,
+      function,
+      source_block,
+      prepared_branch->branch_condition->true_label,
+      prepared_branch->branch_condition->false_label);
+  if (!compare_join_context.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedParamZeroMaterializedCompareJoinContext{
+      .prepared_branch = *prepared_branch,
+      .compare_join_context = *compare_join_context,
   };
 }
 

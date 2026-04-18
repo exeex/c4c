@@ -4140,38 +4140,23 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto prepared_branch = c4c::backend::prepare::find_prepared_param_zero_branch_condition(
-        *function_control_flow, entry, param, false);
-    if (!prepared_branch.has_value() || prepared_branch->branch_condition == nullptr) {
+    const auto prepared_compare_join_context =
+        c4c::backend::prepare::find_prepared_param_zero_materialized_compare_join_context(
+            *function_control_flow, function, entry, param, false);
+    if (!prepared_compare_join_context.has_value()) {
       return std::nullopt;
     }
-    const auto* branch_condition = prepared_branch->branch_condition;
-
-    const auto authoritative_join_transfer =
-        c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-            *function_control_flow, entry.label);
-    if (!authoritative_join_transfer.has_value()) {
-      return std::nullopt;
-    }
-    const auto compare_join_context =
-        c4c::backend::prepare::find_materialized_compare_join_context(
-            *authoritative_join_transfer,
-            function,
-            entry,
-            branch_condition->true_label,
-            branch_condition->false_label);
-    if (!compare_join_context.has_value()) {
-      return std::nullopt;
-    }
+    const auto& prepared_branch = prepared_compare_join_context->prepared_branch;
+    const auto& compare_join_context = prepared_compare_join_context->compare_join_context;
 
     const auto rendered_join =
-        render_materialized_compare_join_branches_if_supported(*compare_join_context, param);
+        render_materialized_compare_join_branches_if_supported(compare_join_context, param);
     if (!rendered_join.has_value()) {
       return std::nullopt;
     }
 
     return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    " +
-           prepared_branch->false_branch_opcode + " " + rendered_join->false_label + "\n" +
+           prepared_branch.false_branch_opcode + " " + rendered_join->false_label + "\n" +
            rendered_join->true_return +
            rendered_join->false_label + ":\n" + rendered_join->false_return;
   };

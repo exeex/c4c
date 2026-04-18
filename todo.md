@@ -11,19 +11,19 @@ Source Plan: plan.md
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/prealloc/prealloc.hpp` and
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by adding a shared
-prepared-control-flow helper for param-zero compare branches whose true/false
-targets are authoritative return blocks and switching the direct x86 branch
-consumer to use that helper instead of validating those return-lane details
-locally in the emitter.
+prepared-control-flow helper that packages the param-zero compare branch lookup
+with the authoritative materialized compare-join context and switching the x86
+compare-join consumer to use that single prepared helper instead of assembling
+those branch and join lookups locally in the emitter.
 
 ## Suggested Next
 
 The next accepted packet should keep shrinking Step 3 emitter-local seams in
-the same joined-branch family by lifting one more compare-join continuation
-planning seam out of `prepared_module_emit.cpp` and into shared prepared
-consumer helpers so the materialized-join lane follows the same lookup-first
-route as the direct branch lane. Keep that work in semantic consumer helpers,
-not Step 4 file organization.
+the same joined-branch family by lifting one more compare-join continuation or
+return-render validation seam out of `prepared_module_emit.cpp` and into
+shared prepared consumer helpers so the materialized-join lane keeps moving
+toward a pure lookup-and-spell path. Keep that work in semantic consumer
+helpers, not Step 4 file organization.
 
 ## Watchouts
 
@@ -73,12 +73,17 @@ not Step 4 file organization.
 - Keep the new direct-branch helper scoped to prepared consumer validation for
   param-zero return leaves; do not widen it into generic branch lowering or
   non-return leaf matching in this packet family.
+- The materialized compare-join lane now takes one shared helper that bundles
+  the param-zero prepared branch metadata with the authoritative join context;
+  follow-on work should keep collapsing x86-side compare-join validation seams
+  into prepared consumer helpers instead of re-splitting those lookups in the
+  emitter.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 This packet refreshes `test_after.log` with the same focused
-`backend_x86_handoff_boundary` proof command for the new shared direct-branch
-return-context helper now consumed by the x86 compare-against-zero branch
+`backend_x86_handoff_boundary` proof command for the new shared compare-join
+context helper now consumed by the x86 param-zero materialized compare-join
 path.
