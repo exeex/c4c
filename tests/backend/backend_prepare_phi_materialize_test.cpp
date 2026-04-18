@@ -370,6 +370,47 @@ int check_short_circuit_or_control_flow_contract(const prepare::PreparedBirModul
   return 0;
 }
 
+int check_loop_countdown_control_flow_contract(const prepare::PreparedBirModule& prepared,
+                                               const char* function_name) {
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    return fail("expected legalize to publish prepared control-flow metadata for the loop lane");
+  }
+  if (control_flow->branch_conditions.size() != 1 || control_flow->join_transfers.size() != 1) {
+    return fail("expected the loop lane to publish one branch-condition and one join-transfer record");
+  }
+
+  const auto& branch_condition = control_flow->branch_conditions.front();
+  if (branch_condition.block_label != "loop" || !branch_condition.predicate.has_value() ||
+      !branch_condition.compare_type.has_value() || !branch_condition.lhs.has_value() ||
+      !branch_condition.rhs.has_value() ||
+      *branch_condition.predicate != bir::BinaryOpcode::Ne ||
+      *branch_condition.compare_type != bir::TypeKind::I32 ||
+      !is_named_i32(*branch_condition.lhs, "counter") ||
+      !is_immediate_i32(*branch_condition.rhs, 0) ||
+      branch_condition.true_label != "body" || branch_condition.false_label != "exit" ||
+      !is_named_i32(branch_condition.condition_value, "cmp0")) {
+    return fail("expected the loop branch metadata to preserve the countdown header compare");
+  }
+
+  const auto& join_transfer = control_flow->join_transfers.front();
+  if (join_transfer.kind != prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
+      prepare::prepared_join_transfer_kind_name(join_transfer.kind) != "edge_store_slot" ||
+      join_transfer.join_block_label != "loop" || !is_named_i32(join_transfer.result, "counter") ||
+      !join_transfer.storage_name.has_value() || *join_transfer.storage_name != "counter.phi" ||
+      join_transfer.incomings.size() != 2) {
+    return fail("expected the loop join metadata to publish an edge-store-slot contract");
+  }
+  if (join_transfer.incomings[0].label != "entry" ||
+      !is_immediate_i32(join_transfer.incomings[0].value, 3) ||
+      join_transfer.incomings[1].label != "body" ||
+      !is_named_i32(join_transfer.incomings[1].value, "next")) {
+    return fail("expected the loop join metadata to preserve entry and backedge incoming ownership");
+  }
+
+  return 0;
+}
+
 prepare::PreparedBirModule legalize_call_abi_module() {
   bir::Module module;
   module.globals.push_back(bir::Global{
@@ -671,6 +712,83 @@ prepare::PreparedBirModule legalize_short_circuit_or_guard_module() {
       std::move(logic_end),
       std::move(block_1),
       std::move(block_2),
+  };
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  return std::move(planner.prepared());
+}
+
+prepare::PreparedBirModule legalize_loop_countdown_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "loop_countdown_prepare_contract";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::BranchTerminator{.target_label = "loop"};
+
+  bir::Block loop;
+  loop.label = "loop";
+  loop.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "counter"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "entry",
+              .value = bir::Value::immediate_i32(3),
+          },
+          bir::PhiIncoming{
+              .label = "body",
+              .value = bir::Value::named(bir::TypeKind::I32, "next"),
+          },
+      },
+  });
+  loop.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I1, "cmp0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "counter"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  loop.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cmp0"),
+      .true_label = "body",
+      .false_label = "exit",
+  };
+
+  bir::Block body;
+  body.label = "body";
+  body.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "next"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "counter"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  body.terminator = bir::BranchTerminator{.target_label = "loop"};
+
+  bir::Block exit;
+  exit.label = "exit";
+  exit.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "counter"),
+  };
+
+  function.blocks = {
+      std::move(entry),
+      std::move(loop),
+      std::move(body),
+      std::move(exit),
   };
   module.functions.push_back(std::move(function));
 
@@ -1666,6 +1784,20 @@ int main() {
   if (const int status =
           check_short_circuit_or_control_flow_contract(prepared_short_circuit_or,
                                                        "short_circuit_or_prepare_contract");
+      status != 0) {
+    return status;
+  }
+
+  const auto prepared_loop_countdown = legalize_loop_countdown_module();
+  if (const int status = check_prepare_phi_invariant(prepared_loop_countdown); status != 0) {
+    return status;
+  }
+  if (const int status = check_prepare_i1_invariant(prepared_loop_countdown); status != 0) {
+    return status;
+  }
+  if (const int status =
+          check_loop_countdown_control_flow_contract(prepared_loop_countdown,
+                                                     "loop_countdown_prepare_contract");
       status != 0) {
     return status;
   }

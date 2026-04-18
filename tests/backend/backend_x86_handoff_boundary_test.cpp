@@ -335,6 +335,18 @@ std::string expected_minimal_local_i32_short_circuit_or_guard_asm(const char* fu
          "    ret\n";
 }
 
+std::string expected_minimal_loop_countdown_join_asm(const char* function_name) {
+  return asm_header(function_name) + "    mov eax, 3\n"
+         ".L" + function_name + "_loop:\n"
+         "    test eax, eax\n"
+         "    je .L" + function_name + "_exit\n"
+         ".L" + function_name + "_body:\n"
+         "    sub eax, 1\n"
+         "    jmp .L" + function_name + "_loop\n"
+         ".L" + function_name + "_exit:\n"
+         "    ret\n";
+}
+
 std::string expected_minimal_local_i16_increment_guard_asm(const char* function_name) {
   return asm_header(function_name) + "    sub rsp, 16\n"
          "    mov WORD PTR [rsp], 0\n"
@@ -2283,6 +2295,71 @@ bir::Module make_x86_local_i32_short_circuit_or_guard_module() {
   return module;
 }
 
+bir::Module make_x86_loop_countdown_join_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::BranchTerminator{.target_label = "loop"};
+
+  bir::Block loop;
+  loop.label = "loop";
+  loop.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "counter"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "entry",
+              .value = bir::Value::immediate_i32(3),
+          },
+          bir::PhiIncoming{
+              .label = "body",
+              .value = bir::Value::named(bir::TypeKind::I32, "next"),
+          },
+      },
+  });
+  loop.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cmp0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "counter"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  loop.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cmp0"),
+      .true_label = "body",
+      .false_label = "exit",
+  };
+
+  bir::Block body;
+  body.label = "body";
+  body.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "next"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "counter"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  body.terminator = bir::BranchTerminator{.target_label = "loop"};
+
+  bir::Block exit;
+  exit.label = "exit";
+  exit.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "counter"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(loop));
+  function.blocks.push_back(std::move(body));
+  function.blocks.push_back(std::move(exit));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_x86_local_i16_increment_guard_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3696,6 +3773,58 @@ int check_short_circuit_route_consumes_prepared_control_flow(const bir::Module& 
   return 0;
 }
 
+int check_loop_countdown_route_consumes_prepared_control_flow(const bir::Module& module,
+                                                              const std::string& expected_asm,
+                                                              const char* function_name,
+                                                              const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* loop_block = find_block(function, "loop");
+  auto* body_block = find_block(function, "body");
+  if (entry_block == nullptr || loop_block == nullptr || body_block == nullptr ||
+      entry_block->insts.empty() || loop_block->insts.size() < 2 || body_block->insts.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer has the expected entry/header/body shape")
+                    .c_str());
+  }
+
+  auto* entry_store = std::get_if<bir::StoreLocalInst>(&entry_block->insts.front());
+  auto* loop_compare = std::get_if<bir::BinaryInst>(&loop_block->insts.back());
+  auto* body_store = std::get_if<bir::StoreLocalInst>(&body_block->insts.back());
+  if (entry_store == nullptr || loop_compare == nullptr || body_store == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer exposes the bounded slot/compare carriers")
+                    .c_str());
+  }
+
+  entry_store->value = bir::Value::immediate_i32(99);
+  loop_compare->opcode = bir::BinaryOpcode::Eq;
+  loop_compare->lhs = bir::Value::immediate_i32(7);
+  loop_compare->rhs = bir::Value::immediate_i32(7);
+  body_store->value = bir::Value::immediate_i32(44);
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative loop control-flow contract")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_route_rejection(const bir::Module& module,
                           std::string_view expected_message_fragment,
                           const char* failure_context) {
@@ -4101,6 +4230,24 @@ int main() {
               expected_minimal_local_i32_short_circuit_or_guard_asm("main"),
               "main",
               "minimal local-slot short-circuit or-guard prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(make_x86_loop_countdown_join_module(),
+                              expected_minimal_loop_countdown_join_asm("main"),
+                              "entry:\n  bir.store_local counter.phi, i32 3\n  bir.br loop\nloop:\n  counter = bir.load_local i32 counter.phi\n  cmp0 = bir.ne i32 counter, 0\n  bir.cond_br i32 cmp0, body, exit",
+                              "minimal loop-carried join countdown route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_consumes_prepared_control_flow(
+              make_x86_loop_countdown_join_module(),
+              expected_minimal_loop_countdown_join_asm("main"),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership");
       status != 0) {
     return status;
   }

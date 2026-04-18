@@ -2954,6 +2954,148 @@ std::string emit_prepared_module(
     asm_text += *rendered_false;
     return asm_text;
   };
+  const auto render_loop_join_countdown_if_supported =
+      [&]() -> std::optional<std::string> {
+    if (!function.params.empty() || function.blocks.size() != 4 ||
+        entry.terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
+        prepared_arch != c4c::TargetArch::X86_64) {
+      return std::nullopt;
+    }
+
+    const auto* function_control_flow = find_control_flow_function();
+    if (function_control_flow == nullptr || function_control_flow->branch_conditions.size() != 1 ||
+        function_control_flow->join_transfers.size() != 1) {
+      return std::nullopt;
+    }
+
+    const auto& join_transfer = function_control_flow->join_transfers.front();
+    if (join_transfer.kind != c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
+        !join_transfer.storage_name.has_value() || join_transfer.result.type != c4c::backend::bir::TypeKind::I32 ||
+        join_transfer.incomings.size() != 2) {
+      return std::nullopt;
+    }
+
+    const auto& branch_condition = function_control_flow->branch_conditions.front();
+    if (branch_condition.block_label != join_transfer.join_block_label ||
+        !branch_condition.predicate.has_value() || !branch_condition.compare_type.has_value() ||
+        !branch_condition.lhs.has_value() || !branch_condition.rhs.has_value() ||
+        *branch_condition.compare_type != c4c::backend::bir::TypeKind::I32 ||
+        branch_condition.condition_value.kind != c4c::backend::bir::Value::Kind::Named) {
+      return std::nullopt;
+    }
+
+    const bool lhs_is_counter_rhs_is_zero =
+        branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Named &&
+        branch_condition.lhs->name == join_transfer.result.name &&
+        branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+        branch_condition.rhs->type == c4c::backend::bir::TypeKind::I32 &&
+        branch_condition.rhs->immediate == 0;
+    const bool rhs_is_counter_lhs_is_zero =
+        branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Named &&
+        branch_condition.rhs->name == join_transfer.result.name &&
+        branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+        branch_condition.lhs->type == c4c::backend::bir::TypeKind::I32 &&
+        branch_condition.lhs->immediate == 0;
+    if (!lhs_is_counter_rhs_is_zero && !rhs_is_counter_lhs_is_zero) {
+      return std::nullopt;
+    }
+
+    std::string body_label;
+    std::string exit_label;
+    if (*branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Ne) {
+      body_label = branch_condition.true_label;
+      exit_label = branch_condition.false_label;
+    } else if (*branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Eq) {
+      body_label = branch_condition.false_label;
+      exit_label = branch_condition.true_label;
+    } else {
+      return std::nullopt;
+    }
+
+    const auto* loop_block = find_block(join_transfer.join_block_label);
+    const auto* body_block = find_block(body_label);
+    const auto* exit_block = find_block(exit_label);
+    if (loop_block == nullptr || body_block == nullptr || exit_block == nullptr ||
+        entry.terminator.target_label != loop_block->label || loop_block == &entry ||
+        body_block == &entry || exit_block == &entry || body_block == loop_block ||
+        exit_block == loop_block || exit_block == body_block ||
+        loop_block->terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
+        loop_block->terminator.true_label != branch_condition.true_label ||
+        loop_block->terminator.false_label != branch_condition.false_label ||
+        body_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
+        body_block->terminator.target_label != loop_block->label ||
+        exit_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        !exit_block->terminator.value.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto& exit_value = *exit_block->terminator.value;
+    const bool exit_returns_counter =
+        exit_value.kind == c4c::backend::bir::Value::Kind::Named &&
+        exit_value.type == c4c::backend::bir::TypeKind::I32 &&
+        exit_value.name == join_transfer.result.name;
+    const bool exit_returns_zero =
+        exit_value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+        exit_value.type == c4c::backend::bir::TypeKind::I32 && exit_value.immediate == 0;
+    if (!exit_returns_counter && !exit_returns_zero) {
+      return std::nullopt;
+    }
+
+    if (body_block->insts.size() < 1 || loop_block->insts.size() < 1) {
+      return std::nullopt;
+    }
+    const auto* body_update =
+        std::get_if<c4c::backend::bir::BinaryInst>(&body_block->insts.front());
+    if (body_update == nullptr || body_update->opcode != c4c::backend::bir::BinaryOpcode::Sub ||
+        body_update->operand_type != c4c::backend::bir::TypeKind::I32 ||
+        body_update->result.type != c4c::backend::bir::TypeKind::I32 ||
+        body_update->lhs.kind != c4c::backend::bir::Value::Kind::Named ||
+        body_update->lhs.name != join_transfer.result.name ||
+        body_update->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        body_update->rhs.type != c4c::backend::bir::TypeKind::I32 ||
+        body_update->rhs.immediate != 1) {
+      return std::nullopt;
+    }
+
+    const c4c::backend::bir::PhiIncoming* entry_incoming = nullptr;
+    const c4c::backend::bir::PhiIncoming* body_incoming = nullptr;
+    for (const auto& incoming : join_transfer.incomings) {
+      if (incoming.label == entry.label) {
+        entry_incoming = &incoming;
+      } else if (incoming.label == body_block->label) {
+        body_incoming = &incoming;
+      }
+    }
+    if (entry_incoming == nullptr || body_incoming == nullptr ||
+        entry_incoming->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        entry_incoming->value.type != c4c::backend::bir::TypeKind::I32 ||
+        entry_incoming->value.immediate < 0 ||
+        body_incoming->value.kind != c4c::backend::bir::Value::Kind::Named ||
+        body_incoming->value.type != c4c::backend::bir::TypeKind::I32 ||
+        body_incoming->value.name != body_update->result.name) {
+      return std::nullopt;
+    }
+
+    const auto loop_label = ".L" + function.name + "_" + loop_block->label;
+    const auto body_label_asm = ".L" + function.name + "_" + body_block->label;
+    const auto exit_label_asm = ".L" + function.name + "_" + exit_block->label;
+
+    auto asm_text = asm_prefix;
+    asm_text += "    mov eax, " +
+                std::to_string(static_cast<std::int32_t>(entry_incoming->value.immediate)) + "\n";
+    asm_text += loop_label + ":\n";
+    asm_text += "    test eax, eax\n";
+    asm_text += "    je " + exit_label_asm + "\n";
+    asm_text += body_label_asm + ":\n";
+    asm_text += "    sub eax, 1\n";
+    asm_text += "    jmp " + loop_label + "\n";
+    asm_text += exit_label_asm + ":\n";
+    if (exit_returns_zero) {
+      asm_text += "    mov eax, 0\n";
+    }
+    asm_text += "    ret\n";
+    return asm_text;
+  };
   const auto render_local_i32_countdown_loop_if_supported =
       [&]() -> std::optional<std::string> {
     if (!function.params.empty() || function.blocks.size() < 4 ||
@@ -4022,6 +4164,10 @@ std::string emit_prepared_module(
     if (const auto rendered_local_i32_guard = render_local_i32_arithmetic_guard_if_supported();
         rendered_local_i32_guard.has_value()) {
       return *rendered_local_i32_guard;
+    }
+    if (const auto rendered_loop_join_countdown = render_loop_join_countdown_if_supported();
+        rendered_loop_join_countdown.has_value()) {
+      return *rendered_loop_join_countdown;
     }
     if (const auto rendered_countdown_loop = render_local_i32_countdown_loop_if_supported();
         rendered_countdown_loop.has_value()) {
