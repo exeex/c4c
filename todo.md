@@ -9,20 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by folding plain
-conditional entry's prepared branch-condition validation into
-`build_short_circuit_entry_direct_branch_targets()`. The plain-entry
-branch-plan path now resolves validated prepared targets through one helper and
-hands them to `build_direct_branch_plan_from_targets()` instead of re-checking
-the prepared contract inside `build_short_circuit_entry_direct_branch_plan()`.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by giving plain
+conditional fallback the same dedicated compare-driven entry-helper shape as
+the short-circuit path. `build_plain_cond_entry_render_plan()` now mirrors
+`build_short_circuit_entry_render_plan()`, so the cond-branch entry path stops
+wiring separate inline lambdas for plain fallback versus prepared direct-branch
+plan selection at the render call sites.
 
 ## Suggested Next
 
 The next small Step 3 packet is to keep tightening compare-driven branch-plan
-ownership by giving plain conditional fallback the same dedicated entry helper
-shape as the short-circuit path, so `build_compare_driven_entry_render_plan()`
-no longer has to wire separate inline lambdas for prepared direct-branch plan
-selection versus plain fallback plan selection.
+ownership by lifting the compare-join continuation case onto the same dedicated
+entry-helper pattern, so all compare-driven entry variants route through named
+helpers instead of leaving the continuation case as the remaining ad hoc
+lambda-fed branch-plan selection path.
 
 ## Watchouts
 
@@ -58,6 +58,11 @@ selection versus plain fallback plan selection.
   compare-shape, and label-resolution validation there instead of re-growing
   those checks in `build_short_circuit_entry_direct_branch_plan()` or render
   call sites.
+- `build_short_circuit_entry_render_plan()` and
+  `build_plain_cond_entry_render_plan()` now own the compare-driven entry
+  helper shape for short-circuit and plain fallback paths; keep future entry
+  cleanup inside those helpers instead of re-growing case-specific inline
+  branch-plan lambdas at the cond-branch render sites.
 - `build_compare_join_branch_plan()` now owns the compare-join continuation
   handoff into `build_direct_branch_plan_from_targets()`; keep future
   continuation target plumbing there instead of re-growing plan assembly or
@@ -82,4 +87,4 @@ selection versus plain fallback plan selection.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The build and narrow proof passed for this Step 3 direct-branch helper
-plain-entry validation cleanup packet; proof output is in `test_after.log`.
+entry-helper cleanup packet; proof output is in `test_after.log`.
