@@ -450,6 +450,13 @@ struct PreparedMaterializedCompareJoinContext {
   std::string_view carrier_result_name;
 };
 
+struct PreparedMaterializedCompareJoinBranches {
+  PreparedMaterializedCompareJoinContext compare_join_context;
+  bir::Value true_selected_value;
+  bir::Value false_selected_value;
+  std::string_view false_predecessor_label;
+};
+
 // Shared consumers must take branch semantics from `branch_conditions` and former
 // phi/join obligations from `join_transfers` instead of reconstructing them from CFG shape.
 struct PreparedControlFlow {
@@ -911,6 +918,25 @@ find_materialized_compare_join_context(
       .trailing_binary = trailing_binary,
       .carrier_index = prepared_carrier->carrier_index,
       .carrier_result_name = prepared_carrier->result_name,
+  };
+}
+
+[[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinBranches>
+find_prepared_materialized_compare_join_branches(
+    const PreparedMaterializedCompareJoinContext& compare_join_context) {
+  if (compare_join_context.join_transfer == nullptr || compare_join_context.true_transfer == nullptr ||
+      compare_join_context.false_transfer == nullptr ||
+      compare_join_context.true_predecessor == nullptr ||
+      compare_join_context.false_predecessor == nullptr ||
+      compare_join_context.true_predecessor == compare_join_context.false_predecessor) {
+    return std::nullopt;
+  }
+
+  return PreparedMaterializedCompareJoinBranches{
+      .compare_join_context = compare_join_context,
+      .true_selected_value = compare_join_context.true_transfer->incoming_value,
+      .false_selected_value = compare_join_context.false_transfer->incoming_value,
+      .false_predecessor_label = compare_join_context.false_predecessor->label,
   };
 }
 

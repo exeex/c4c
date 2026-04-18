@@ -4039,30 +4039,25 @@ std::string emit_prepared_module(
     return *value_render + *trailing_render + "    ret\n";
   };
   const auto render_materialized_compare_join_branches_if_supported =
-      [&](const c4c::backend::prepare::PreparedMaterializedCompareJoinContext&
-              compare_join_context,
+      [&](const c4c::backend::prepare::PreparedMaterializedCompareJoinBranches&
+              prepared_join_branches,
           const c4c::backend::bir::Param& param)
       -> std::optional<MaterializedCompareJoinRender> {
-    const auto* join_transfer = compare_join_context.join_transfer;
-    const auto* true_transfer = compare_join_context.true_transfer;
-    const auto* false_transfer = compare_join_context.false_transfer;
-    const auto* true_join_predecessor = compare_join_context.true_predecessor;
-    const auto* false_join_predecessor = compare_join_context.false_predecessor;
-    if (join_transfer == nullptr || true_transfer == nullptr || false_transfer == nullptr ||
-        true_join_predecessor == nullptr || false_join_predecessor == nullptr) {
-      return std::nullopt;
-    }
-
     const auto true_return = render_materialized_compare_join_return_if_supported(
-        compare_join_context, true_transfer->incoming_value, param);
+        prepared_join_branches.compare_join_context,
+        prepared_join_branches.true_selected_value,
+        param);
     const auto false_return = render_materialized_compare_join_return_if_supported(
-        compare_join_context, false_transfer->incoming_value, param);
+        prepared_join_branches.compare_join_context,
+        prepared_join_branches.false_selected_value,
+        param);
     if (!true_return.has_value() || !false_return.has_value()) {
       return std::nullopt;
     }
 
     return MaterializedCompareJoinRender{
-        .false_label = ".L" + function.name + "_" + false_join_predecessor->label,
+        .false_label =
+            ".L" + function.name + "_" + std::string(prepared_join_branches.false_predecessor_label),
         .true_return = std::move(*true_return),
         .false_return = std::move(*false_return),
     };
@@ -4149,8 +4144,15 @@ std::string emit_prepared_module(
     const auto& prepared_branch = prepared_compare_join_context->prepared_branch;
     const auto& compare_join_context = prepared_compare_join_context->compare_join_context;
 
+    const auto prepared_join_branches =
+        c4c::backend::prepare::find_prepared_materialized_compare_join_branches(
+            compare_join_context);
+    if (!prepared_join_branches.has_value()) {
+      return std::nullopt;
+    }
+
     const auto rendered_join =
-        render_materialized_compare_join_branches_if_supported(compare_join_context, param);
+        render_materialized_compare_join_branches_if_supported(*prepared_join_branches, param);
     if (!rendered_join.has_value()) {
       return std::nullopt;
     }

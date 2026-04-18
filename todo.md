@@ -11,19 +11,21 @@ Source Plan: plan.md
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/prealloc/prealloc.hpp` and
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by adding a shared
-prepared-control-flow helper that packages the param-zero compare branch lookup
-with the authoritative materialized compare-join context and switching the x86
-compare-join consumer to use that single prepared helper instead of assembling
-those branch and join lookups locally in the emitter.
+prepared-control-flow helper that packages the authoritative materialized
+compare-join branch lanes with their selected incoming values and false-lane
+predecessor label, then switching the x86 compare-join consumer to use that
+shared branch helper instead of validating those joined-branch seams locally
+in the emitter.
 
 ## Suggested Next
 
 The next accepted packet should keep shrinking Step 3 emitter-local seams in
-the same joined-branch family by lifting one more compare-join continuation or
-return-render validation seam out of `prepared_module_emit.cpp` and into
-shared prepared consumer helpers so the materialized-join lane keeps moving
-toward a pure lookup-and-spell path. Keep that work in semantic consumer
-helpers, not Step 4 file organization.
+the same joined-branch family by lifting one more compare-join return-render
+dependency out of `prepared_module_emit.cpp`, ideally by turning the join-block
+carrier and trailing-binary validation needed by
+`render_materialized_compare_join_return_if_supported()` into another shared
+prepared consumer helper. Keep that work in semantic consumer helpers, not
+Step 4 file organization.
 
 ## Watchouts
 
@@ -78,6 +80,10 @@ helpers, not Step 4 file organization.
   follow-on work should keep collapsing x86-side compare-join validation seams
   into prepared consumer helpers instead of re-splitting those lookups in the
   emitter.
+- The compare-join branch renderer now also takes a shared prepared helper that
+  owns the authoritative true/false selected incoming values and false-lane
+  predecessor label; the next packet should keep the emitter from reopening
+  those join-lane ownership checks.
 
 ## Proof
 
@@ -85,5 +91,5 @@ Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 This packet refreshes `test_after.log` with the same focused
 `backend_x86_handoff_boundary` proof command for the new shared compare-join
-context helper now consumed by the x86 param-zero materialized compare-join
+branch helper now consumed by the x86 param-zero materialized compare-join
 path.
