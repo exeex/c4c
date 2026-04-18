@@ -21,11 +21,11 @@ prepared loop contract.
 
 ## Suggested Next
 
-The next coherent packet is a Step 4 validation escalation: run a broader
-backend subset such as `ctest --test-dir build -j --output-on-failure -R
-'^backend_'` or the matching regression-guard flow before treating the recent
-Step 3 prepared-control-flow consumer cleanup as an acceptance-ready
-milestone.
+The next small Step 3 packet is to inspect
+`classify_short_circuit_join_incoming()` and its callers for any remaining
+emitter-local select-join lane classification that still depends on transfer-
+shape assumptions, and strengthen the shared prepared contract first if that
+consumer path now needs more explicit ownership facts.
 
 ## Watchouts
 
@@ -40,8 +40,9 @@ milestone.
 - If another consumer path needs extra branch or join facts, strengthen the
   shared prepared-control-flow contract in `prealloc.hpp` rather than growing
   emitter-local scans or CFG-shape recovery.
-- Multiple Step 3 consumer helpers changed under the same narrow handoff test,
-  so broader backend validation is the next risk-reducing move.
+- Supervisor follow-up broader backend validation held steady at `68` passed
+  and `4` failed with no new failures; the accepted canonical regression log
+  has been rolled forward to `test_before.log`.
 - Treat any future fix here as capability repair, not expectation weakening:
   the joined-branch and loop-countdown routes are covered by
   `backend_x86_handoff_boundary`.
@@ -51,4 +52,7 @@ milestone.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The build and narrow proof passed for this Step 3 loop-countdown prepared-
-control-flow lookup packet; proof output is in `test_after.log`.
+control-flow lookup packet. Supervisor follow-up also ran
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^backend_'` under regression guard with no new
+backend failures, and rolled the accepted baseline forward to `test_before.log`.
