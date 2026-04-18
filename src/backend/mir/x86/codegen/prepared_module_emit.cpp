@@ -2430,142 +2430,147 @@ std::string emit_prepared_module(
             return std::nullopt;
           }
 
-          struct ShortCircuitEntryBlocks {
-            const c4c::backend::bir::Block* true_block;
-            const c4c::backend::bir::Block* false_block;
-          };
-          struct ShortCircuitJoinContext {
-            const c4c::backend::prepare::PreparedJoinTransfer* join_transfer;
-            const c4c::backend::bir::Block* join_block;
-            const c4c::backend::prepare::PreparedBranchCondition* join_branch_condition;
-          };
-          struct ShortCircuitRoutingContext {
-            ClassifiedShortCircuitIncoming classified_incoming;
-            const c4c::backend::bir::Block* rhs_entry;
-          };
-          const auto find_short_circuit_entry_blocks =
-              [&]() -> std::optional<ShortCircuitEntryBlocks> {
-            if (entry_branch_condition == nullptr || function_control_flow == nullptr ||
-                !entry_branch_condition->predicate.has_value() ||
-                !entry_branch_condition->compare_type.has_value() ||
-                !entry_branch_condition->lhs.has_value() ||
-                !entry_branch_condition->rhs.has_value() ||
-                entry_branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
-                entry_branch_condition->condition_value.kind !=
-                    c4c::backend::bir::Value::Kind::Named ||
-                entry_branch_condition->condition_value.name != block.terminator.condition.name) {
-              return std::nullopt;
-            }
-
-            const auto* true_block = find_block(entry_branch_condition->true_label);
-            const auto* false_block = find_block(entry_branch_condition->false_label);
-            if (true_block == nullptr || false_block == nullptr || true_block == &block ||
-                false_block == &block) {
-              return std::nullopt;
-            }
-
-            return ShortCircuitEntryBlocks{
-                .true_block = true_block,
-                .false_block = false_block,
+          const auto try_render_short_circuit_plan =
+              [&]() -> std::optional<std::string> {
+            struct ShortCircuitEntryBlocks {
+              const c4c::backend::bir::Block* true_block;
+              const c4c::backend::bir::Block* false_block;
             };
-          };
-          const auto find_short_circuit_join_context =
-              [&]() -> std::optional<ShortCircuitJoinContext> {
-            const auto* join_transfer =
-                c4c::backend::prepare::find_select_materialization_join_transfer(
-                    *function_control_flow,
-                    block.label);
-            if (join_transfer == nullptr) {
-              return std::nullopt;
-            }
-            if (join_transfer->result.type != c4c::backend::bir::TypeKind::I32 ||
-                join_transfer->edge_transfers.size() != 2 ||
-                !join_transfer->source_true_transfer_index.has_value() ||
-                !join_transfer->source_false_transfer_index.has_value()) {
-              return std::nullopt;
-            }
-            if (*join_transfer->source_true_transfer_index >= join_transfer->edge_transfers.size() ||
-                *join_transfer->source_false_transfer_index >= join_transfer->edge_transfers.size() ||
-                *join_transfer->source_true_transfer_index ==
-                    *join_transfer->source_false_transfer_index) {
-              return std::nullopt;
-            }
-
-            const auto* join_block = find_block(join_transfer->join_block_label);
-            if (join_block == nullptr) {
-              return std::nullopt;
-            }
-
-            const auto* join_branch_condition = find_branch_condition(join_block->label);
-            if (join_branch_condition == nullptr) {
-              return std::nullopt;
-            }
-
-            return ShortCircuitJoinContext{
-                .join_transfer = join_transfer,
-                .join_block = join_block,
-                .join_branch_condition = join_branch_condition,
+            struct ShortCircuitJoinContext {
+              const c4c::backend::prepare::PreparedJoinTransfer* join_transfer;
+              const c4c::backend::bir::Block* join_block;
+              const c4c::backend::prepare::PreparedBranchCondition* join_branch_condition;
             };
-          };
-          const auto find_short_circuit_routing_context =
-              [&](const ShortCircuitEntryBlocks& entry_blocks,
-                  const ShortCircuitJoinContext& join_context)
-              -> std::optional<ShortCircuitRoutingContext> {
-            const auto classified_incoming =
-                classify_short_circuit_join_incoming(*join_context.join_transfer);
-            if (!classified_incoming.has_value()) {
-              return std::nullopt;
-            }
-
-            const bool short_circuit_on_compare_true =
-                classified_incoming->transfer_index ==
-                *join_context.join_transfer->source_true_transfer_index;
-            const bool short_circuit_on_compare_false =
-                classified_incoming->transfer_index ==
-                *join_context.join_transfer->source_false_transfer_index;
-            if (short_circuit_on_compare_true == short_circuit_on_compare_false) {
-              return std::nullopt;
-            }
-
-            return ShortCircuitRoutingContext{
-                .classified_incoming = *classified_incoming,
-                .rhs_entry = short_circuit_on_compare_true ? entry_blocks.false_block
-                                                           : entry_blocks.true_block,
+            struct ShortCircuitRoutingContext {
+              ClassifiedShortCircuitIncoming classified_incoming;
+              const c4c::backend::bir::Block* rhs_entry;
             };
-          };
-          const auto build_short_circuit_plan =
-              [&](const ShortCircuitJoinContext& join_context,
-                  const ShortCircuitRoutingContext& routing_context,
-                  const GuardJoinContinuation& continuation_plan)
-              -> std::optional<ShortCircuitPlan> {
-            const auto on_compare_true =
-                build_short_circuit_target_from_transfer(*join_context.join_transfer,
-                                                        *join_context.join_transfer->source_true_transfer_index,
-                                                        routing_context.classified_incoming,
-                                                        *routing_context.rhs_entry,
-                                                        continuation_plan);
-            const auto on_compare_false =
-                build_short_circuit_target_from_transfer(
-                    *join_context.join_transfer,
-                    *join_context.join_transfer->source_false_transfer_index,
-                    routing_context.classified_incoming,
-                    *routing_context.rhs_entry,
-                    continuation_plan);
-            if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
-              return std::nullopt;
-            }
+            const auto find_short_circuit_entry_blocks =
+                [&]() -> std::optional<ShortCircuitEntryBlocks> {
+              if (entry_branch_condition == nullptr || function_control_flow == nullptr ||
+                  !entry_branch_condition->predicate.has_value() ||
+                  !entry_branch_condition->compare_type.has_value() ||
+                  !entry_branch_condition->lhs.has_value() ||
+                  !entry_branch_condition->rhs.has_value() ||
+                  entry_branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
+                  entry_branch_condition->condition_value.kind !=
+                      c4c::backend::bir::Value::Kind::Named ||
+                  entry_branch_condition->condition_value.name !=
+                      block.terminator.condition.name) {
+                return std::nullopt;
+              }
 
-            ShortCircuitPlan plan{
-                .on_compare_true = *on_compare_true,
-                .on_compare_false = *on_compare_false,
+              const auto* true_block = find_block(entry_branch_condition->true_label);
+              const auto* false_block = find_block(entry_branch_condition->false_label);
+              if (true_block == nullptr || false_block == nullptr || true_block == &block ||
+                  false_block == &block) {
+                return std::nullopt;
+              }
+
+              return ShortCircuitEntryBlocks{
+                  .true_block = true_block,
+                  .false_block = false_block,
+              };
             };
-            if (plan.on_compare_true.block == nullptr || plan.on_compare_false.block == nullptr) {
-              return std::nullopt;
-            }
-            return plan;
-          };
-          const auto detect_short_circuit_plan_from_control_flow =
-              [&]() -> std::optional<ShortCircuitPlan> {
+            const auto find_short_circuit_join_context =
+                [&]() -> std::optional<ShortCircuitJoinContext> {
+              const auto* join_transfer =
+                  c4c::backend::prepare::find_select_materialization_join_transfer(
+                      *function_control_flow,
+                      block.label);
+              if (join_transfer == nullptr) {
+                return std::nullopt;
+              }
+              if (join_transfer->result.type != c4c::backend::bir::TypeKind::I32 ||
+                  join_transfer->edge_transfers.size() != 2 ||
+                  !join_transfer->source_true_transfer_index.has_value() ||
+                  !join_transfer->source_false_transfer_index.has_value()) {
+                return std::nullopt;
+              }
+              if (*join_transfer->source_true_transfer_index >=
+                      join_transfer->edge_transfers.size() ||
+                  *join_transfer->source_false_transfer_index >=
+                      join_transfer->edge_transfers.size() ||
+                  *join_transfer->source_true_transfer_index ==
+                      *join_transfer->source_false_transfer_index) {
+                return std::nullopt;
+              }
+
+              const auto* join_block = find_block(join_transfer->join_block_label);
+              if (join_block == nullptr) {
+                return std::nullopt;
+              }
+
+              const auto* join_branch_condition = find_branch_condition(join_block->label);
+              if (join_branch_condition == nullptr) {
+                return std::nullopt;
+              }
+
+              return ShortCircuitJoinContext{
+                  .join_transfer = join_transfer,
+                  .join_block = join_block,
+                  .join_branch_condition = join_branch_condition,
+              };
+            };
+            const auto find_short_circuit_routing_context =
+                [&](const ShortCircuitEntryBlocks& entry_blocks,
+                    const ShortCircuitJoinContext& join_context)
+                -> std::optional<ShortCircuitRoutingContext> {
+              const auto classified_incoming =
+                  classify_short_circuit_join_incoming(*join_context.join_transfer);
+              if (!classified_incoming.has_value()) {
+                return std::nullopt;
+              }
+
+              const bool short_circuit_on_compare_true =
+                  classified_incoming->transfer_index ==
+                  *join_context.join_transfer->source_true_transfer_index;
+              const bool short_circuit_on_compare_false =
+                  classified_incoming->transfer_index ==
+                  *join_context.join_transfer->source_false_transfer_index;
+              if (short_circuit_on_compare_true == short_circuit_on_compare_false) {
+                return std::nullopt;
+              }
+
+              return ShortCircuitRoutingContext{
+                  .classified_incoming = *classified_incoming,
+                  .rhs_entry = short_circuit_on_compare_true ? entry_blocks.false_block
+                                                             : entry_blocks.true_block,
+              };
+            };
+            const auto build_short_circuit_plan =
+                [&](const ShortCircuitJoinContext& join_context,
+                    const ShortCircuitRoutingContext& routing_context,
+                    const GuardJoinContinuation& continuation_plan)
+                -> std::optional<ShortCircuitPlan> {
+              const auto on_compare_true =
+                  build_short_circuit_target_from_transfer(
+                      *join_context.join_transfer,
+                      *join_context.join_transfer->source_true_transfer_index,
+                      routing_context.classified_incoming,
+                      *routing_context.rhs_entry,
+                      continuation_plan);
+              const auto on_compare_false =
+                  build_short_circuit_target_from_transfer(
+                      *join_context.join_transfer,
+                      *join_context.join_transfer->source_false_transfer_index,
+                      routing_context.classified_incoming,
+                      *routing_context.rhs_entry,
+                      continuation_plan);
+              if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
+                return std::nullopt;
+              }
+
+              ShortCircuitPlan plan{
+                  .on_compare_true = *on_compare_true,
+                  .on_compare_false = *on_compare_false,
+              };
+              if (plan.on_compare_true.block == nullptr ||
+                  plan.on_compare_false.block == nullptr) {
+                return std::nullopt;
+              }
+              return plan;
+            };
             const auto entry_blocks = find_short_circuit_entry_blocks();
             if (!entry_blocks.has_value()) {
               return std::nullopt;
@@ -2581,24 +2586,28 @@ std::string emit_prepared_module(
             if (!routing_context.has_value()) {
               return std::nullopt;
             }
+
             const auto continuation_plan = build_compare_join_continuation(
                 *join_context->join_transfer, *join_context->join_block,
                 *join_context->join_branch_condition);
             if (!continuation_plan.has_value()) {
               return std::nullopt;
             }
-            return build_short_circuit_plan(*join_context, *routing_context, *continuation_plan);
-          };
-          const auto render_short_circuit_plan =
-              [&](const ShortCircuitPlan& short_circuit_plan) -> std::optional<std::string> {
+
+            const auto short_circuit_plan =
+                build_short_circuit_plan(*join_context, *routing_context, *continuation_plan);
+            if (!short_circuit_plan.has_value()) {
+              return std::nullopt;
+            }
+
             const auto render_context =
-                build_short_circuit_render_context(short_circuit_plan);
+                build_short_circuit_render_context(*short_circuit_plan);
             if (!render_context.has_value()) {
               return std::nullopt;
             }
 
             const auto rendered_lanes =
-                render_short_circuit_lanes(render_block, short_circuit_plan, *render_context);
+                render_short_circuit_lanes(render_block, *short_circuit_plan, *render_context);
             if (!rendered_lanes.has_value()) {
               return std::nullopt;
             }
@@ -2609,9 +2618,9 @@ std::string emit_prepared_module(
                 rendered_lanes->rendered_true,
                 rendered_lanes->rendered_false_lane);
           };
-          if (const auto short_circuit_plan = detect_short_circuit_plan_from_control_flow();
-              short_circuit_plan.has_value()) {
-            return render_short_circuit_plan(*short_circuit_plan);
+          if (const auto rendered_short_circuit = try_render_short_circuit_plan();
+              rendered_short_circuit.has_value()) {
+            return rendered_short_circuit;
           }
 
           const auto* true_block = find_block(block.terminator.true_label);
