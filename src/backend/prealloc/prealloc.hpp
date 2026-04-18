@@ -491,6 +491,11 @@ struct PreparedMaterializedCompareJoinBranches {
   std::string_view false_predecessor_label;
 };
 
+struct PreparedCompareJoinContinuationTargets {
+  std::string_view true_label;
+  std::string_view false_label;
+};
+
 // Shared consumers must take branch semantics from `branch_conditions` and former
 // phi/join obligations from `join_transfers` instead of reconstructing them from CFG shape.
 struct PreparedControlFlow {
@@ -1166,6 +1171,59 @@ find_materialized_compare_join_context(
       .carrier_index = prepared_carrier->carrier_index,
       .carrier_result_name = prepared_carrier->result_name,
   };
+}
+
+[[nodiscard]] inline std::optional<PreparedCompareJoinContinuationTargets>
+find_prepared_compare_join_continuation_targets(
+    const PreparedJoinTransfer& join_transfer,
+    const bir::Block& join_block,
+    const PreparedBranchCondition& join_branch_condition) {
+  if (!join_branch_condition.predicate.has_value() ||
+      !join_branch_condition.compare_type.has_value() ||
+      !join_branch_condition.lhs.has_value() || !join_branch_condition.rhs.has_value() ||
+      *join_branch_condition.compare_type != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  if (join_block.insts.size() < 2) {
+    return std::nullopt;
+  }
+
+  const auto prepared_carrier =
+      find_supported_join_carrier(join_transfer, join_block, join_block.insts.size() - 2);
+  if (!prepared_carrier.has_value()) {
+    return std::nullopt;
+  }
+
+  const bool lhs_is_join_result_rhs_is_zero =
+      join_branch_condition.lhs->kind == bir::Value::Kind::Named &&
+      join_branch_condition.lhs->name == prepared_carrier->result_name &&
+      join_branch_condition.rhs->kind == bir::Value::Kind::Immediate &&
+      join_branch_condition.rhs->type == bir::TypeKind::I32 &&
+      join_branch_condition.rhs->immediate == 0;
+  const bool rhs_is_join_result_lhs_is_zero =
+      join_branch_condition.rhs->kind == bir::Value::Kind::Named &&
+      join_branch_condition.rhs->name == prepared_carrier->result_name &&
+      join_branch_condition.lhs->kind == bir::Value::Kind::Immediate &&
+      join_branch_condition.lhs->type == bir::TypeKind::I32 &&
+      join_branch_condition.lhs->immediate == 0;
+  if (!lhs_is_join_result_rhs_is_zero && !rhs_is_join_result_lhs_is_zero) {
+    return std::nullopt;
+  }
+
+  if (*join_branch_condition.predicate == bir::BinaryOpcode::Ne) {
+    return PreparedCompareJoinContinuationTargets{
+        .true_label = join_branch_condition.true_label,
+        .false_label = join_branch_condition.false_label,
+    };
+  }
+  if (*join_branch_condition.predicate == bir::BinaryOpcode::Eq) {
+    return PreparedCompareJoinContinuationTargets{
+        .true_label = join_branch_condition.false_label,
+        .false_label = join_branch_condition.true_label,
+    };
+  }
+  return std::nullopt;
 }
 
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinBranches>

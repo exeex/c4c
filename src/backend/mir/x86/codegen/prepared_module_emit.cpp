@@ -1638,63 +1638,25 @@ std::string emit_prepared_module(
             const c4c::backend::bir::Block& join_block,
             const c4c::backend::prepare::PreparedBranchCondition& join_branch_condition)
         -> std::optional<GuardJoinContinuation> {
-      if (!join_branch_condition.predicate.has_value() ||
-          !join_branch_condition.compare_type.has_value() ||
-          !join_branch_condition.lhs.has_value() || !join_branch_condition.rhs.has_value() ||
-          *join_branch_condition.compare_type != c4c::backend::bir::TypeKind::I32) {
-        return std::nullopt;
-      }
-
-      if (join_block.insts.size() < 2) {
-        return std::nullopt;
-      }
-
-      const auto prepared_carrier =
-          c4c::backend::prepare::find_supported_join_carrier(join_transfer,
-                                                             join_block,
-                                                             join_block.insts.size() - 2);
-      if (!prepared_carrier.has_value()) {
-        return std::nullopt;
-      }
-
-      const bool lhs_is_join_result_rhs_is_zero =
-          join_branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Named &&
-          join_branch_condition.lhs->name == prepared_carrier->result_name &&
-          join_branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-          join_branch_condition.rhs->type == c4c::backend::bir::TypeKind::I32 &&
-          join_branch_condition.rhs->immediate == 0;
-      const bool rhs_is_join_result_lhs_is_zero =
-          join_branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Named &&
-          join_branch_condition.rhs->name == prepared_carrier->result_name &&
-          join_branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-          join_branch_condition.lhs->type == c4c::backend::bir::TypeKind::I32 &&
-          join_branch_condition.lhs->immediate == 0;
-      if (!lhs_is_join_result_rhs_is_zero && !rhs_is_join_result_lhs_is_zero) {
+      const auto continuation_targets =
+          c4c::backend::prepare::find_prepared_compare_join_continuation_targets(
+              join_transfer, join_block, join_branch_condition);
+      if (!continuation_targets.has_value()) {
         return std::nullopt;
       }
 
       const auto direct_targets = resolve_direct_branch_targets(join_block,
-                                                                join_branch_condition.true_label,
-                                                                join_branch_condition.false_label);
+                                                                continuation_targets->true_label,
+                                                                continuation_targets->false_label);
       if (!direct_targets.has_value()) {
         return std::nullopt;
       }
 
-      GuardJoinContinuation continuation{
+      return GuardJoinContinuation{
           .incoming_label = {},
-          .true_block = nullptr,
-          .false_block = nullptr,
+          .true_block = direct_targets->true_block,
+          .false_block = direct_targets->false_block,
       };
-      if (*join_branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Ne) {
-        continuation.true_block = direct_targets->true_block;
-        continuation.false_block = direct_targets->false_block;
-      } else if (*join_branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Eq) {
-        continuation.true_block = direct_targets->false_block;
-        continuation.false_block = direct_targets->true_block;
-      } else {
-        return std::nullopt;
-      }
-      return continuation;
     };
     const auto build_short_circuit_target_from_transfer =
         [&](const c4c::backend::prepare::PreparedEdgeValueTransfer& transfer,
