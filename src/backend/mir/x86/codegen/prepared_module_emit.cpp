@@ -1506,6 +1506,7 @@ std::string emit_prepared_module(
     std::string false_label;
     std::string true_return;
     std::string false_return;
+    std::vector<std::string_view> same_module_global_names;
   };
   const auto render_local_slot_guard_chain_if_supported =
       [&]() -> std::optional<std::string> {
@@ -3982,7 +3983,9 @@ std::string emit_prepared_module(
   };
   const auto render_prepared_computed_value_if_supported =
       [&](const c4c::backend::prepare::PreparedComputedValue& computed_value,
-          const c4c::backend::bir::Param& param) -> std::optional<std::string> {
+          const c4c::backend::bir::Param& param,
+          std::vector<std::string_view>* same_module_global_names)
+      -> std::optional<std::string> {
     std::string rendered;
     switch (computed_value.base.kind) {
       case c4c::backend::prepare::PreparedComputedBaseKind::ImmediateI32:
@@ -4001,6 +4004,26 @@ std::string emit_prepared_module(
         rendered = "    mov " + *return_register + ", " + *param_register + "\n";
         break;
       }
+      case c4c::backend::prepare::PreparedComputedBaseKind::GlobalI32Load: {
+        const auto* global = find_same_module_global(computed_value.base.global_name);
+        if (global == nullptr ||
+            !same_module_global_supports_scalar_load(
+                *global,
+                c4c::backend::bir::TypeKind::I32,
+                computed_value.base.global_byte_offset)) {
+          return std::nullopt;
+        }
+        if (same_module_global_names != nullptr) {
+          same_module_global_names->push_back(global->name);
+        }
+        rendered = "    mov " + *return_register + ", DWORD PTR [rip + " +
+                   render_asm_symbol_name(computed_value.base.global_name);
+        if (computed_value.base.global_byte_offset != 0) {
+          rendered += " + " + std::to_string(computed_value.base.global_byte_offset);
+        }
+        rendered += "]\n";
+        break;
+      }
     }
     for (const auto& operation : computed_value.operations) {
       const auto operation_render = render_supported_immediate_binary(operation);
@@ -4014,9 +4037,10 @@ std::string emit_prepared_module(
   const auto render_materialized_compare_join_return_if_supported =
       [&](const c4c::backend::prepare::PreparedMaterializedCompareJoinReturnContext&
               prepared_return_context,
-          const c4c::backend::bir::Param& param) -> std::optional<std::string> {
-    const auto value_render =
-        render_prepared_computed_value_if_supported(prepared_return_context.selected_value, param);
+          const c4c::backend::bir::Param& param,
+          std::vector<std::string_view>* same_module_global_names) -> std::optional<std::string> {
+    const auto value_render = render_prepared_computed_value_if_supported(
+        prepared_return_context.selected_value, param, same_module_global_names);
     if (!value_render.has_value()) {
       return std::nullopt;
     }
@@ -4036,12 +4060,15 @@ std::string emit_prepared_module(
               prepared_join_branches,
           const c4c::backend::bir::Param& param)
       -> std::optional<MaterializedCompareJoinRender> {
+    std::vector<std::string_view> same_module_global_names;
     const auto true_return = render_materialized_compare_join_return_if_supported(
         prepared_join_branches.true_return_context,
-        param);
+        param,
+        &same_module_global_names);
     const auto false_return = render_materialized_compare_join_return_if_supported(
         prepared_join_branches.false_return_context,
-        param);
+        param,
+        &same_module_global_names);
     if (!true_return.has_value() || !false_return.has_value()) {
       return std::nullopt;
     }
@@ -4051,6 +4078,7 @@ std::string emit_prepared_module(
             ".L" + function.name + "_" + std::string(prepared_join_branches.false_predecessor_label),
         .true_return = std::move(*true_return),
         .false_return = std::move(*false_return),
+        .same_module_global_names = std::move(same_module_global_names),
     };
   };
   const auto render_minimal_compare_branch_if_supported =
@@ -4148,10 +4176,27 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
+    std::string rendered_same_module_globals;
+    std::unordered_set<std::string_view> rendered_same_module_global_names(
+        rendered_join->same_module_global_names.begin(),
+        rendered_join->same_module_global_names.end());
+    for (const auto& global : module.module.globals) {
+      if (rendered_same_module_global_names.find(global.name) ==
+          rendered_same_module_global_names.end()) {
+        continue;
+      }
+      const auto rendered_global_data = emit_same_module_global_data(global);
+      if (!rendered_global_data.has_value()) {
+        return std::nullopt;
+      }
+      rendered_same_module_globals += *rendered_global_data;
+    }
+
     return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    " +
            prepared_branch.false_branch_opcode + " " + rendered_join->false_label + "\n" +
            rendered_join->true_return +
-           rendered_join->false_label + ":\n" + rendered_join->false_return;
+           rendered_join->false_label + ":\n" + rendered_join->false_return +
+           rendered_same_module_globals;
   };
   if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !entry.terminator.value.has_value()) {

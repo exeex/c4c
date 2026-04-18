@@ -605,6 +605,25 @@ std::string expected_minimal_param_eq_zero_branch_joined_immediates_then_xor_asm
          "\n    ret\n";
 }
 
+std::string expected_minimal_param_eq_zero_branch_joined_globals_then_xor_asm(
+    const char* function_name,
+    const char* false_label,
+    const char* true_global_name,
+    const char* false_global_name,
+    int joined_immediate) {
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", DWORD PTR [rip + " + std::string(true_global_name) +
+         "]\n    xor " + minimal_i32_return_register() + ", " +
+         std::to_string(joined_immediate) + "\n    ret\n.L" + function_name + "_" +
+         false_label + ":\n    mov " + minimal_i32_return_register() + ", DWORD PTR [rip + " +
+         std::string(false_global_name) + "]\n    xor " + minimal_i32_return_register() + ", " +
+         std::to_string(joined_immediate) + "\n    ret\n.data\n.globl " +
+         std::string(true_global_name) + "\n.type " + std::string(true_global_name) +
+         ", @object\n.p2align 2\n" + std::string(true_global_name) + ":\n    .long 5\n.data\n.globl " +
+         std::string(false_global_name) + "\n.type " + std::string(false_global_name) +
+         ", @object\n.p2align 2\n" + std::string(false_global_name) + ":\n    .long 1\n";
+}
+
 std::string expected_minimal_param_eq_zero_branch_joined_immediate_chains_then_xor_asm(
     const char* function_name,
     const char* false_label,
@@ -1578,6 +1597,91 @@ bir::Module make_x86_param_eq_zero_branch_joined_immediates_then_xor_module() {
 
   bir::Function function;
   function.name = "branch_join_immediate_then_xor";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .true_label = "is_zero",
+      .false_label = "is_nonzero",
+  };
+
+  bir::Block is_zero;
+  is_zero.label = "is_zero";
+  is_zero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block is_nonzero;
+  is_nonzero.label = "is_nonzero";
+  is_nonzero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "is_zero",
+              .value = bir::Value::immediate_i32(5),
+          },
+          bir::PhiIncoming{
+              .label = "is_nonzero",
+              .value = bir::Value::immediate_i32(1),
+          },
+      },
+  });
+  join.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Xor,
+      .result = bir::Value::named(bir::TypeKind::I32, "joined"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  join.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "joined"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(is_zero));
+  function.blocks.push_back(std::move(is_nonzero));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_x86_param_eq_zero_branch_joined_globals_then_xor_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.globals.push_back(bir::Global{
+      .name = "selected_zero",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(5),
+  });
+  module.globals.push_back(bir::Global{
+      .name = "selected_nonzero",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(1),
+  });
+
+  bir::Function function;
+  function.name = "branch_join_global_then_xor";
   function.return_type = bir::TypeKind::I32;
   function.params.push_back(bir::Param{
       .type = bir::TypeKind::I32,
@@ -3970,7 +4074,8 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
                                                          const char* failure_context,
                                                          bool use_edge_store_slot_carrier,
                                                          bool use_selected_value_chain,
-                                                         bool use_immediate_selected_value_chain) {
+                                                         bool use_immediate_selected_value_chain,
+                                                         bool use_global_selected_value_roots) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -4220,6 +4325,35 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
         incoming.value = false_chain_selected;
       }
     }
+  } else if (use_global_selected_value_roots) {
+    const auto true_global_root =
+        bir::Value::named(bir::TypeKind::I32, "contract.true.global.root");
+    const auto false_global_root =
+        bir::Value::named(bir::TypeKind::I32, "contract.false.global.root");
+    join_block->insts.insert(
+        join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+        bir::LoadGlobalInst{
+            .result = true_global_root,
+            .global_name = "selected_zero",
+            .align_bytes = 4,
+        });
+    ++join_select_index;
+    join_block->insts.insert(
+        join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+        bir::LoadGlobalInst{
+            .result = false_global_root,
+            .global_name = "selected_nonzero",
+            .align_bytes = 4,
+        });
+    join_transfer.edge_transfers[true_transfer_index].incoming_value = true_global_root;
+    join_transfer.edge_transfers[false_transfer_index].incoming_value = false_global_root;
+    for (auto& incoming : join_transfer.incomings) {
+      if (incoming.label == *join_transfer.source_true_incoming_label) {
+        incoming.value = true_global_root;
+      } else if (incoming.label == *join_transfer.source_false_incoming_label) {
+        incoming.value = false_global_root;
+      }
+    }
   }
 
   mutable_control_flow->branch_conditions.push_back(prepare::PreparedBranchCondition{
@@ -4270,7 +4404,7 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
                                                     const char* function_name,
                                                     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false, false, false);
+      module, expected_asm, function_name, failure_context, false, false, false, false);
 }
 
 int check_join_route_edge_store_slot_consumes_prepared_control_flow(
@@ -4279,7 +4413,7 @@ int check_join_route_edge_store_slot_consumes_prepared_control_flow(
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, false, false);
+      module, expected_asm, function_name, failure_context, true, false, false, false);
 }
 
 int check_join_route_selected_value_chain_consumes_prepared_control_flow(
@@ -4288,7 +4422,7 @@ int check_join_route_selected_value_chain_consumes_prepared_control_flow(
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, true, false);
+      module, expected_asm, function_name, failure_context, true, true, false, false);
 }
 
 int check_join_route_immediate_selected_value_chain_consumes_prepared_control_flow(
@@ -4297,7 +4431,25 @@ int check_join_route_immediate_selected_value_chain_consumes_prepared_control_fl
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, true, true);
+      module, expected_asm, function_name, failure_context, true, true, true, false);
+}
+
+int check_join_route_global_selected_values_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, false, false, false, true);
+}
+
+int check_join_route_edge_store_slot_global_selected_values_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, true, false, false, true);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_return_contexts(
@@ -4635,6 +4787,201 @@ int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_im
     const char* failure_context) {
   return check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts_impl(
       module, function_name, failure_context, true, true);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context,
+    bool use_edge_store_slot_carrier) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-join control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* join_block = find_block(function, "join");
+  if (entry_block == nullptr || join_block == nullptr || function.params.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer has the expected entry/join blocks and param")
+                    .c_str());
+  }
+
+  auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+  if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture lost its mutable join-transfer contract")
+                    .c_str());
+  }
+
+  auto& join_transfer = mutable_control_flow->join_transfers.front();
+  if (join_transfer.edge_transfers.size() < 2 || !join_transfer.source_true_transfer_index.has_value() ||
+      !join_transfer.source_false_transfer_index.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer exposes authoritative true/false join ownership")
+                    .c_str());
+  }
+
+  std::size_t join_select_index = join_block->insts.size() - 1;
+  auto* join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
+  if (join_select == nullptr && join_block->insts.size() >= 2) {
+    join_select_index = join_block->insts.size() - 2;
+    join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
+  }
+  if (join_select == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer exposes the expected select carrier")
+                    .c_str());
+  }
+
+  const auto true_transfer_index = *join_transfer.source_true_transfer_index;
+  const auto false_transfer_index = *join_transfer.source_false_transfer_index;
+  if (true_transfer_index >= join_transfer.edge_transfers.size() ||
+      false_transfer_index >= join_transfer.edge_transfers.size() ||
+      true_transfer_index == false_transfer_index) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture published invalid true/false join ownership indices")
+                    .c_str());
+  }
+
+  if (use_edge_store_slot_carrier) {
+    join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
+    join_transfer.storage_name = "%contract.global.join.slot";
+    join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
+    join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
+    function.local_slots.push_back(bir::LocalSlot{
+        .name = *join_transfer.storage_name,
+        .type = bir::TypeKind::I32,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .is_address_taken = false,
+    });
+
+    const std::string original_carrier_result_name = join_select->result.name;
+    const auto renamed_carrier_result =
+        bir::Value::named(bir::TypeKind::I32, "carrier.join.global.edge.slot");
+    join_block->insts[join_select_index] = bir::LoadLocalInst{
+        .result = renamed_carrier_result,
+        .slot_name = *join_transfer.storage_name,
+    };
+    for (auto& inst : join_block->insts) {
+      if (auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+        if (binary->lhs.kind == bir::Value::Kind::Named &&
+            binary->lhs.name == original_carrier_result_name) {
+          binary->lhs = renamed_carrier_result;
+        }
+        if (binary->rhs.kind == bir::Value::Kind::Named &&
+            binary->rhs.name == original_carrier_result_name) {
+          binary->rhs = renamed_carrier_result;
+        }
+      }
+    }
+  }
+
+  const auto true_global_root =
+      bir::Value::named(bir::TypeKind::I32, "contract.true.global.root");
+  const auto false_global_root =
+      bir::Value::named(bir::TypeKind::I32, "contract.false.global.root");
+  join_block->insts.insert(
+      join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+      bir::LoadGlobalInst{
+          .result = true_global_root,
+          .global_name = "selected_zero",
+          .align_bytes = 4,
+      });
+  ++join_select_index;
+  join_block->insts.insert(
+      join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+      bir::LoadGlobalInst{
+          .result = false_global_root,
+          .global_name = "selected_nonzero",
+          .align_bytes = 4,
+      });
+  join_transfer.edge_transfers[true_transfer_index].incoming_value = true_global_root;
+  join_transfer.edge_transfers[false_transfer_index].incoming_value = false_global_root;
+  for (auto& incoming : join_transfer.incomings) {
+    if (incoming.label == join_transfer.edge_transfers[true_transfer_index].predecessor_label) {
+      incoming.value = true_global_root;
+    } else if (incoming.label ==
+               join_transfer.edge_transfers[false_transfer_index].predecessor_label) {
+      incoming.value = false_global_root;
+    }
+  }
+
+  const auto compare_join_context = prepare::find_prepared_param_zero_materialized_compare_join_context(
+      *control_flow, function, *entry_block, function.params.front(), true);
+  if (!compare_join_context.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer recognizes the materialized compare-join context")
+                    .c_str());
+  }
+
+  const auto prepared_join_branches =
+      prepare::find_prepared_materialized_compare_join_branches(
+          compare_join_context->compare_join_context);
+  if (!prepared_join_branches.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer publishes the compare-join branch contract")
+                    .c_str());
+  }
+
+  const auto require_prepared_global_base =
+      [&](const prepare::PreparedMaterializedCompareJoinReturnContext& return_context,
+          const char* expected_global_name) -> int {
+    if (return_context.selected_value.base.kind !=
+            prepare::PreparedComputedBaseKind::GlobalI32Load ||
+        return_context.selected_value.base.global_name != expected_global_name ||
+        return_context.selected_value.base.global_byte_offset != 0) {
+      return fail((std::string(failure_context) +
+                   ": shared helper stopped classifying the selected-value base as a same-module global load")
+                      .c_str());
+    }
+    if (!return_context.selected_value.operations.empty()) {
+      return fail((std::string(failure_context) +
+                   ": shared helper stopped keeping direct global selected values operation-free")
+                      .c_str());
+    }
+    if (!return_context.trailing_binary.has_value() ||
+        return_context.trailing_binary->opcode != bir::BinaryOpcode::Xor ||
+        return_context.trailing_binary->immediate != 3) {
+      return fail((std::string(failure_context) +
+                   ": shared helper stopped publishing the trailing immediate-op contract")
+                      .c_str());
+    }
+    return 0;
+  };
+
+  if (const auto status = require_prepared_global_base(
+          prepared_join_branches->true_return_context, "selected_zero");
+      status != 0) {
+    return status;
+  }
+  return require_prepared_global_base(
+      prepared_join_branches->false_return_context, "selected_nonzero");
+}
+
+int check_materialized_compare_join_branches_publish_prepared_global_return_contexts(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, false);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_global_return_contexts(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, true);
 }
 
 int check_minimal_compare_branch_consumes_prepared_control_flow(const bir::Module& module,
@@ -5572,6 +5919,42 @@ int main() {
               make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
               "branch_join_immediate_then_xor",
               "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot immediate selected-value chain return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_global_selected_values_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_globals_then_xor_asm(
+                  "branch_join_global_then_xor", "carrier.nonzero", "selected_zero", "selected_nonzero", 3),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with same-module global selected values prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_global_selected_values_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_globals_then_xor_asm(
+                  "branch_join_global_then_xor", "carrier.nonzero", "selected_zero", "selected_nonzero", 3),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with same-module global selected values EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_global_return_contexts(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join same-module global return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_edge_store_slot_global_return_contexts(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot same-module global return context ownership");
       status != 0) {
     return status;
   }

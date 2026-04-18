@@ -448,12 +448,15 @@ struct PreparedSupportedImmediateBinary {
 enum class PreparedComputedBaseKind {
   ImmediateI32,
   ParamValue,
+  GlobalI32Load,
 };
 
 struct PreparedComputedBase {
   PreparedComputedBaseKind kind = PreparedComputedBaseKind::ImmediateI32;
   std::int64_t immediate = 0;
   std::string param_name;
+  std::string global_name;
+  std::size_t global_byte_offset = 0;
 };
 
 struct PreparedComputedValue {
@@ -975,6 +978,7 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
     const bir::Value& value,
     const bir::Function& function,
     const std::unordered_map<std::string_view, const bir::BinaryInst*>& named_binaries,
+    const std::unordered_map<std::string_view, const bir::LoadGlobalInst*>& named_global_loads,
     std::vector<std::string_view>* active_names = nullptr) {
   if (value.type != bir::TypeKind::I32) {
     return std::nullopt;
@@ -1008,6 +1012,22 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
         };
       }
     }
+    const auto load_global_it = named_global_loads.find(value.name);
+    if (load_global_it != named_global_loads.end() && load_global_it->second != nullptr) {
+      const auto* load_global = load_global_it->second;
+      if (load_global->result.type != bir::TypeKind::I32 ||
+          load_global->result.kind != bir::Value::Kind::Named ||
+          load_global->result.name != value.name || load_global->address.has_value()) {
+        return std::nullopt;
+      }
+      return PreparedComputedValue{
+          .base = PreparedComputedBase{
+              .kind = PreparedComputedBaseKind::GlobalI32Load,
+              .global_name = load_global->global_name,
+              .global_byte_offset = load_global->byte_offset,
+          },
+      };
+    }
     return std::nullopt;
   }
 
@@ -1033,7 +1053,8 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
       return std::nullopt;
     }
     auto computed_value =
-        classify_computed_value(source_value, function, named_binaries, recursion_stack);
+        classify_computed_value(
+            source_value, function, named_binaries, named_global_loads, recursion_stack);
     if (!computed_value.has_value()) {
       return std::nullopt;
     }
@@ -1164,16 +1185,24 @@ find_prepared_materialized_compare_join_return_context(
   }
 
   std::unordered_map<std::string_view, const bir::BinaryInst*> named_binaries;
+  std::unordered_map<std::string_view, const bir::LoadGlobalInst*> named_global_loads;
   for (std::size_t inst_index = 0; inst_index < compare_join_context.carrier_index; ++inst_index) {
-    const auto* binary = std::get_if<bir::BinaryInst>(&join_block->insts[inst_index]);
-    if (binary == nullptr) {
-      return std::nullopt;
+    if (const auto* binary = std::get_if<bir::BinaryInst>(&join_block->insts[inst_index]);
+        binary != nullptr) {
+      named_binaries.emplace(binary->result.name, binary);
+      continue;
     }
-    named_binaries.emplace(binary->result.name, binary);
+    if (const auto* load_global =
+            std::get_if<bir::LoadGlobalInst>(&join_block->insts[inst_index]);
+        load_global != nullptr) {
+      named_global_loads.emplace(load_global->result.name, load_global);
+      continue;
+    }
+    return std::nullopt;
   }
 
   const auto computed_selected_value = classify_computed_value(
-      selected_value, *compare_join_context.function, named_binaries);
+      selected_value, *compare_join_context.function, named_binaries, named_global_loads);
   if (!computed_selected_value.has_value()) {
     return std::nullopt;
   }
