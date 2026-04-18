@@ -2926,22 +2926,10 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto resolve_empty_branch_chain =
-        [&](std::string_view label) -> const c4c::backend::bir::Block* {
-          std::unordered_set<std::string_view> visited;
-          const auto* current = find_block(label);
-          while (current != nullptr && visited.insert(current->label).second &&
-                 current->insts.empty() &&
-                 current->terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
-            current = find_block(current->terminator.target_label);
-          }
-          return current;
-        };
-
     const auto resolve_slot_return_block =
         [&](std::string_view label,
             std::string_view slot_name) -> const c4c::backend::bir::Block* {
-          const auto* block = resolve_empty_branch_chain(label);
+          const auto* block = find_block(label);
           if (block == nullptr || block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
               !block->terminator.value.has_value() || block->insts.size() != 1) {
             return nullptr;
@@ -2960,7 +2948,7 @@ std::string emit_prepared_module(
 
     const auto resolve_immediate_return_block =
         [&](std::string_view label) -> const c4c::backend::bir::Block* {
-          const auto* block = resolve_empty_branch_chain(label);
+          const auto* block = find_block(label);
           if (block == nullptr || block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
               !block->terminator.value.has_value() || !block->insts.empty() ||
               block->terminator.value->kind != c4c::backend::bir::Value::Kind::Immediate ||
@@ -2997,7 +2985,7 @@ std::string emit_prepared_module(
             last_store = store;
           }
 
-          const auto* next_block = resolve_empty_branch_chain(block->terminator.target_label);
+          const auto* next_block = find_block(block->terminator.target_label);
           if (last_store == nullptr || next_block == nullptr) {
             return std::nullopt;
           }
@@ -3093,12 +3081,11 @@ std::string emit_prepared_module(
                    body_store->value.kind == c4c::backend::bir::Value::Kind::Named &&
                    body_store->value.name == body_sub->result.name &&
                    body_store->value.type == c4c::backend::bir::TypeKind::I32 &&
-                   resolve_empty_branch_chain(body_block->terminator.target_label) == cond_block;
+                   find_block(body_block->terminator.target_label) == cond_block;
           };
 
           if (matches_cond_block(segment.entry_target)) {
-            const auto* candidate_body =
-                resolve_empty_branch_chain(segment.entry_target->terminator.true_label);
+            const auto* candidate_body = find_block(segment.entry_target->terminator.true_label);
             if (matches_body_block(candidate_body, segment.entry_target)) {
               segment.cond_block = segment.entry_target;
               segment.body_block = candidate_body;
@@ -3107,11 +3094,9 @@ std::string emit_prepared_module(
 
           if (segment.cond_block == nullptr &&
               segment.entry_target->terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
-            const auto* candidate_cond =
-                resolve_empty_branch_chain(segment.entry_target->terminator.target_label);
+            const auto* candidate_cond = find_block(segment.entry_target->terminator.target_label);
             if (matches_cond_block(candidate_cond) &&
-                resolve_empty_branch_chain(candidate_cond->terminator.true_label) ==
-                    segment.entry_target &&
+                find_block(candidate_cond->terminator.true_label) == segment.entry_target &&
                 matches_body_block(segment.entry_target, candidate_cond)) {
               segment.cond_block = candidate_cond;
               segment.body_block = segment.entry_target;
@@ -3134,8 +3119,7 @@ std::string emit_prepared_module(
             return std::nullopt;
           }
 
-          const auto* guard_block =
-              resolve_empty_branch_chain(segment.cond_block->terminator.false_label);
+          const auto* guard_block = find_block(segment.cond_block->terminator.false_label);
           if (guard_block == nullptr || guard_block->insts.size() != 2 ||
               guard_block->terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
             return std::nullopt;
@@ -3165,8 +3149,7 @@ std::string emit_prepared_module(
 
           const auto* guard_true_return =
               resolve_immediate_return_block(guard_block->terminator.true_label);
-          const auto* continuation_init =
-              resolve_empty_branch_chain(guard_block->terminator.false_label);
+          const auto* continuation_init = find_block(guard_block->terminator.false_label);
           if (guard_true_return == nullptr || continuation_init == nullptr ||
               continuation_init == guard_block) {
             return std::nullopt;
@@ -3234,7 +3217,7 @@ std::string emit_prepared_module(
       if (!block.insts.empty() || block.terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
         return std::nullopt;
       }
-      const auto* resolved = resolve_empty_branch_chain(block.terminator.target_label);
+      const auto* resolved = find_block(block.terminator.target_label);
       if (resolved == nullptr || used_blocks.find(resolved) == used_blocks.end()) {
         return std::nullopt;
       }
