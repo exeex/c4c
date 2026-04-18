@@ -9,20 +9,19 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving
-`classify_short_circuit_join_incoming()` into
-`build_short_circuit_join_context_from_transfer()` and storing the validated
-lane classification on `ShortCircuitJoinContext`. The short-circuit entry
-routing path now consumes join-input ownership from the helper-owned join
-context instead of rediscovering it from the transfer list.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by removing the copied
+`classified_incoming` field from `ShortCircuitEntryRoutingContext` and routing
+`build_short_circuit_plan()` through the lane classification already owned by
+`ShortCircuitJoinContext`. Short-circuit entry routing now carries only direct
+branch targets and RHS-entry selection, while join-lane ownership stays on the
+prepared join helper contract.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect whether
-`ShortCircuitEntryRoutingContext` still needs to carry a copied
-`classified_incoming` field, or whether `build_short_circuit_plan()` can
-consume the join-context-owned classification directly so the helper contract
-stops duplicating that ownership.
+The next small Step 3 packet is to inspect whether the short-circuit direct-
+branch fallback and compare-driven render paths can share one helper-owned
+branch target contract, so compare-and-branch assembly stops carrying parallel
+`true_block` / `false_block` plumbing beside `resolve_direct_branch_targets()`.
 
 ## Watchouts
 
@@ -41,6 +40,9 @@ stops duplicating that ownership.
   circuit lane classification; keep join-input ownership validation there
   instead of re-growing `classify_short_circuit_join_incoming()` calls in entry
   routing or render paths.
+- `ShortCircuitEntryRoutingContext` now carries only direct branch targets and
+  RHS-entry routing; do not re-copy join-lane classification there when
+  `ShortCircuitJoinContext` already owns the prepared classification contract.
 - `build_compare_join_continuation()` remains the Step 3 gate for the join-
   result zero-compare contract; keep `Eq`/`Ne` mapping and jump-target choice
   data-driven there instead of pushing them back into renderer assembly.
@@ -63,5 +65,5 @@ stops duplicating that ownership.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 join-lane classification
-ownership packet; proof output is in `test_after.log`.
+The build and narrow proof passed for this Step 3 routing-context ownership
+cleanup packet; proof output is in `test_after.log`.

@@ -1558,7 +1558,6 @@ std::string emit_prepared_module(
       RenderedShortCircuitFalseLane rendered_false_lane;
     };
     struct ShortCircuitEntryRoutingContext {
-      ClassifiedShortCircuitIncoming classified_incoming;
       const c4c::backend::bir::Block* true_block = nullptr;
       const c4c::backend::bir::Block* false_block = nullptr;
       const c4c::backend::bir::Block* rhs_entry = nullptr;
@@ -1798,7 +1797,6 @@ std::string emit_prepared_module(
       }
 
       return ShortCircuitEntryRoutingContext{
-          .classified_incoming = join_context.classified_incoming,
           .true_block = direct_targets->true_block,
           .false_block = direct_targets->false_block,
           .rhs_entry = short_circuit_on_compare_true ? direct_targets->false_block
@@ -1813,14 +1811,14 @@ std::string emit_prepared_module(
           build_short_circuit_target_from_transfer(
               *join_context.join_transfer,
               *join_context.join_transfer->source_true_transfer_index,
-              routing_context.classified_incoming,
+              join_context.classified_incoming,
               *routing_context.rhs_entry,
               join_context.continuation_plan);
       const auto on_compare_false =
           build_short_circuit_target_from_transfer(
               *join_context.join_transfer,
               *join_context.join_transfer->source_false_transfer_index,
-              routing_context.classified_incoming,
+              join_context.classified_incoming,
               *routing_context.rhs_entry,
               join_context.continuation_plan);
       if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
