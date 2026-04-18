@@ -9,6 +9,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -38,6 +39,16 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
     const prepare::PreparedBirModule& prepared,
     const char* function_name) {
   for (const auto& function : prepared.control_flow.functions) {
+    if (function.function_name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+prepare::PreparedControlFlowFunction* find_control_flow_function(prepare::PreparedBirModule& prepared,
+                                                                 const char* function_name) {
+  for (auto& function : prepared.control_flow.functions) {
     if (function.function_name == function_name) {
       return &function;
     }
@@ -3719,7 +3730,6 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
 }
 
 int check_short_circuit_route_consumes_prepared_control_flow(const bir::Module& module,
-                                                             const std::string& expected_asm,
                                                              const char* function_name,
                                                              const char* failure_context) {
   c4c::TargetProfile target_profile;
@@ -3752,6 +3762,41 @@ int check_short_circuit_route_consumes_prepared_control_flow(const bir::Module& 
                  ": prepared short-circuit fixture no longer exposes the bounded compare/select carriers")
                     .c_str());
   }
+  auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+  if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture lost its mutable join-transfer contract")
+                    .c_str());
+  }
+  auto& join_transfer = mutable_control_flow->join_transfers.front();
+  if (!join_transfer.source_true_incoming_label.has_value() ||
+      !join_transfer.source_false_incoming_label.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit join transfer no longer maps compare truth to join incomings")
+                    .c_str());
+  }
+  join_transfer.source_true_incoming_label = "contract.short_circuit";
+  join_transfer.source_false_incoming_label = "contract.rhs";
+  bool rewrote_short_circuit_label = false;
+  bool rewrote_rhs_label = false;
+  for (auto& incoming : join_transfer.incomings) {
+    if (incoming.value.kind == bir::Value::Kind::Immediate &&
+        incoming.value.type == bir::TypeKind::I32 &&
+        (incoming.value.immediate == 0 || incoming.value.immediate == 1)) {
+      incoming.label = *join_transfer.source_true_incoming_label;
+      rewrote_short_circuit_label = true;
+      continue;
+    }
+    if (incoming.value.kind == bir::Value::Kind::Named) {
+      incoming.label = *join_transfer.source_false_incoming_label;
+      rewrote_rhs_label = true;
+    }
+  }
+  if (!rewrote_short_circuit_label || !rewrote_rhs_label) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit join transfer no longer exposes both contract-owned join incoming lanes")
+                    .c_str());
+  }
 
   entry_compare->opcode = bir::BinaryOpcode::Eq;
   entry_compare->lhs = bir::Value::immediate_i32(7);
@@ -3764,7 +3809,7 @@ int check_short_circuit_route_consumes_prepared_control_flow(const bir::Module& 
   join_compare->rhs = bir::Value::immediate_i32(5);
 
   const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
-  if (prepared_asm != expected_asm) {
+  if (prepared_asm != expected_minimal_local_i32_short_circuit_or_guard_asm(function_name)) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative short-circuit control-flow contract")
                     .c_str());
@@ -4227,7 +4272,6 @@ int main() {
   if (const auto status =
           check_short_circuit_route_consumes_prepared_control_flow(
               make_x86_local_i32_short_circuit_or_guard_module(),
-              expected_minimal_local_i32_short_circuit_or_guard_asm("main"),
               "main",
               "minimal local-slot short-circuit or-guard prepared-control-flow ownership");
       status != 0) {

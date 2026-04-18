@@ -964,6 +964,9 @@ void collect_select_materialized_join_transfers(
                       .value = select->false_value,
                   },
               },
+          .source_branch_block_label = branch_condition.block_label,
+          .source_true_incoming_label = *true_incoming_label,
+          .source_false_incoming_label = *false_incoming_label,
       });
       existing_join_blocks.insert(join_transfers->back().join_block_label);
       break;

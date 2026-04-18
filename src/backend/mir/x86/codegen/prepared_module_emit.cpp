@@ -2272,18 +2272,28 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
-            const auto* direct_true_join = resolve_empty_branch_chain(true_block->label);
-            const auto* direct_false_join = resolve_empty_branch_chain(false_block->label);
-            const bool true_short_circuits =
-                direct_true_join != nullptr && direct_true_join != true_block;
-            const bool false_short_circuits =
-                direct_false_join != nullptr && direct_false_join != false_block;
-            if (true_short_circuits == false_short_circuits) {
+            const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
+            for (const auto& candidate : function_control_flow->join_transfers) {
+              if (candidate.kind !=
+                      c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
+                  candidate.result.type != c4c::backend::bir::TypeKind::I32 ||
+                  candidate.incomings.size() != 2 ||
+                  !candidate.source_branch_block_label.has_value() ||
+                  !candidate.source_true_incoming_label.has_value() ||
+                  !candidate.source_false_incoming_label.has_value() ||
+                  *candidate.source_branch_block_label != block.label) {
+                continue;
+              }
+              if (join_transfer != nullptr) {
+                return std::nullopt;
+              }
+              join_transfer = &candidate;
+            }
+            if (join_transfer == nullptr) {
               return std::nullopt;
             }
 
-            const auto* join_block = true_short_circuits ? direct_true_join : direct_false_join;
-            const auto* rhs_entry = true_short_circuits ? false_block : true_block;
+            const auto* join_block = find_block(join_transfer->join_block_label);
             if (join_block == nullptr) {
               return std::nullopt;
             }
@@ -2293,23 +2303,6 @@ std::string emit_prepared_module(
                 !join_branch_condition->lhs.has_value() || !join_branch_condition->rhs.has_value() ||
                 !join_branch_condition->compare_type.has_value() ||
                 *join_branch_condition->compare_type != c4c::backend::bir::TypeKind::I32) {
-              return std::nullopt;
-            }
-
-            const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
-            for (const auto& candidate : function_control_flow->join_transfers) {
-              if (candidate.join_block_label != join_block->label ||
-                  candidate.kind !=
-                      c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
-                  candidate.incomings.size() != 2) {
-                continue;
-              }
-              if (join_transfer != nullptr) {
-                return std::nullopt;
-              }
-              join_transfer = &candidate;
-            }
-            if (join_transfer == nullptr) {
               return std::nullopt;
             }
 
@@ -2358,12 +2351,14 @@ std::string emit_prepared_module(
             const bool short_circuit_value =
                 incoming0_is_bool ? std::get<bool>(incoming0_kind) : std::get<bool>(incoming1_kind);
             const bool short_circuit_on_compare_true =
-                empty_branch_chain_contains_label(*true_block, short_circuit_incoming.label);
+                short_circuit_incoming.label == *join_transfer->source_true_incoming_label;
             const bool short_circuit_on_compare_false =
-                empty_branch_chain_contains_label(*false_block, short_circuit_incoming.label);
+                short_circuit_incoming.label == *join_transfer->source_false_incoming_label;
             if (short_circuit_on_compare_true == short_circuit_on_compare_false) {
               return std::nullopt;
             }
+
+            const auto* rhs_entry = short_circuit_on_compare_true ? false_block : true_block;
 
             const auto* join_true = find_block(join_branch_condition->true_label);
             const auto* join_false = find_block(join_branch_condition->false_label);

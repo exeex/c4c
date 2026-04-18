@@ -5,41 +5,42 @@ Source Plan: plan.md
 # Current Packet
 
 ## Just Finished
-- Plan Step: Step 2 / Step 3 - proved one loop-carried join slice through the
-  shared prepared control-flow contract by checking that
-  `PreparedBirModule.control_flow.join_transfers` publishes the loop-header
-  `EdgeStoreSlot` incoming ownership together with the authoritative loop
-  branch-condition metadata.
-- Added a bounded phi-based countdown-loop x86 lane in
-  `src/backend/mir/x86/codegen/prepared_module_emit.cpp` that consumes the
-  prepared loop join and branch metadata to lower the loop in registers instead
-  of recovering the loop-header join meaning from CFG topology or legalized
-  store/compare carriers.
-- Added shared-contract coverage in
+- Plan Step: Step 2 / Step 3 - extended the shared short-circuit join contract
+  so `PreparedJoinTransfer` records which originating branch-condition block
+  produced a select-materialized join and which concrete join incoming label
+  corresponds to the compare-true vs compare-false arms after linear branch
+  collapse.
+- Updated the bounded short-circuit x86 lane in
+  `src/backend/mir/x86/codegen/prepared_module_emit.cpp` to use that prepared
+  compare-truth mapping directly instead of walking empty CFG branch chains to
+  rediscover which side short-circuits before the join.
+- Added contract coverage in
   `tests/backend/backend_prepare_phi_materialize_test.cpp` and a prepared-x86
   ownership check in `tests/backend/backend_x86_handoff_boundary_test.cpp` that
-  scrambles the legalized entry/body store carriers and loop compare carrier
-  while keeping the authoritative prepared control-flow metadata intact.
+  rewrites the prepared short-circuit join incoming labels to metadata-only
+  names while keeping the authoritative prepared compare-truth mapping intact.
 
 ## Suggested Next
-- Plan Step: Step 2 / Step 3 - expand contract-driven x86 loop consumption past
-  the single countdown decrement lane so another loop-carried join family can
-  use prepared join/branch metadata without reintroducing CFG-shape recovery.
+- Plan Step: Step 2 / Step 3 - push the bounded short-circuit lane further so
+  x86 can take the join continuation path from prepared control-flow metadata
+  without depending on the join block's remaining local carrier layout beyond
+  the authoritative branch-condition record.
 
 ## Watchouts
 - Do not treat x86 matcher widening as progress for this idea.
 - Keep semantic transfer ownership separate from idea `60` physical location
   ownership.
-- The new loop slice is intentionally bounded to a single decrement-by-one
-  countdown family whose backedge update still comes from the body arithmetic;
-  broader loop forms should extend shared metadata before adding another x86
-  shape-specific lane.
-- The older short-circuit slice still relies on CFG traversal to locate which
-  side reaches the join even though the branch predicate and join incoming
-  semantics now come from shared metadata.
-- If the next slice needs richer predecessor or carried-update identity than
-  the current `EdgeStoreSlot` contract publishes, extend the shared contract
-  instead of teaching x86 another whole-shape matcher.
+- The short-circuit slice now relies on the new
+  `PreparedJoinTransfer.{source_branch_block_label,source_true_incoming_label,source_false_incoming_label}`
+  mapping; new select-materialized join producers must populate those fields
+  consistently or x86 will correctly reject the route.
+- The bounded short-circuit lane still depends on the join block's prepared
+  branch-condition record and continuation return leaves; if that remaining
+  meaning needs to survive more carrier rewrites, extend the shared contract
+  again instead of restoring CFG-shape recovery.
+- Loop countdown support from the prior packet remains intentionally bounded to
+  the decrement-by-one register lane; broader loop families still need shared
+  metadata first.
 
 ## Proof
 - Ran the delegated proof command:

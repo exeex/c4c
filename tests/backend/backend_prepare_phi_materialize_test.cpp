@@ -350,8 +350,16 @@ int check_short_circuit_or_control_flow_contract(const prepare::PreparedBirModul
   const auto& join_transfer = control_flow->join_transfers.front();
   if (join_transfer.kind != prepare::PreparedJoinTransferKind::SelectMaterialization ||
       join_transfer.join_block_label != "logic.end.10" || !is_named_i32(join_transfer.result, "%t17") ||
-      join_transfer.incomings.size() != 2 || join_transfer.storage_name.has_value()) {
+      join_transfer.incomings.size() != 2 || join_transfer.storage_name.has_value() ||
+      !join_transfer.source_branch_block_label.has_value() ||
+      !join_transfer.source_true_incoming_label.has_value() ||
+      !join_transfer.source_false_incoming_label.has_value()) {
     return fail("expected the short-circuit join metadata to publish a select-materialized join contract");
+  }
+  if (*join_transfer.source_branch_block_label != "entry" ||
+      *join_transfer.source_true_incoming_label != "logic.skip.8" ||
+      *join_transfer.source_false_incoming_label != "logic.rhs.end.9") {
+    return fail("expected the short-circuit join metadata to map compare truth to the authoritative join incomings");
   }
   bool saw_rhs_incoming = false;
   bool saw_short_circuit_incoming = false;

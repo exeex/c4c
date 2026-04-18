@@ -364,6 +364,9 @@ struct PreparedJoinTransfer {
   PreparedJoinTransferKind kind = PreparedJoinTransferKind::SelectMaterialization;
   std::optional<std::string> storage_name;
   std::vector<bir::PhiIncoming> incomings;
+  std::optional<std::string> source_branch_block_label;
+  std::optional<std::string> source_true_incoming_label;
+  std::optional<std::string> source_false_incoming_label;
 };
 
 struct PreparedControlFlowFunction {
