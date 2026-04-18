@@ -3837,6 +3837,11 @@ int check_loop_countdown_route_consumes_prepared_control_flow(const bir::Module&
                  ": prepare no longer publishes the loop countdown control-flow contract")
                     .c_str());
   }
+  if (control_flow->join_transfers.front().kind != prepare::PreparedJoinTransferKind::LoopCarry) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer classifies the loop countdown join as explicit loop-carry traffic")
+                    .c_str());
+  }
 
   auto& function = prepared.module.functions.front();
   auto* entry_block = find_block(function, "entry");

@@ -402,12 +402,12 @@ int check_loop_countdown_control_flow_contract(const prepare::PreparedBirModule&
   }
 
   const auto& join_transfer = control_flow->join_transfers.front();
-  if (join_transfer.kind != prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
-      prepare::prepared_join_transfer_kind_name(join_transfer.kind) != "edge_store_slot" ||
+  if (join_transfer.kind != prepare::PreparedJoinTransferKind::LoopCarry ||
+      prepare::prepared_join_transfer_kind_name(join_transfer.kind) != "loop_carry" ||
       join_transfer.join_block_label != "loop" || !is_named_i32(join_transfer.result, "counter") ||
       !join_transfer.storage_name.has_value() || *join_transfer.storage_name != "counter.phi" ||
       join_transfer.incomings.size() != 2) {
-    return fail("expected the loop join metadata to publish an edge-store-slot contract");
+    return fail("expected the loop join metadata to publish a loop-carry contract");
   }
   if (join_transfer.incomings[0].label != "entry" ||
       !is_immediate_i32(join_transfer.incomings[0].value, 3) ||

@@ -2975,7 +2975,7 @@ std::string emit_prepared_module(
     }
 
     const auto& join_transfer = function_control_flow->join_transfers.front();
-    if (join_transfer.kind != c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
+    if (join_transfer.kind != c4c::backend::prepare::PreparedJoinTransferKind::LoopCarry ||
         !join_transfer.storage_name.has_value() || join_transfer.result.type != c4c::backend::bir::TypeKind::I32 ||
         join_transfer.incomings.size() != 2) {
       return std::nullopt;

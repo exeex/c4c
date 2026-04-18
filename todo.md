@@ -8,25 +8,25 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed Step 1 packet work in `src/backend/prealloc/prealloc.hpp` and
-`src/backend/prealloc/legalize.cpp` by adding explicit branch-condition kind
-metadata, edge-transfer records for join traffic, and shared lookup helpers
-for prepared control-flow consumers.
+Completed Step 2 packet work in `src/backend/prealloc/legalize.cpp` and
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by classifying the
+countdown loop join as explicit `LoopCarry` prepared control-flow and keeping
+the current x86 loop consumer keyed to that stronger contract.
 
 ## Suggested Next
 
-Start Step 2 by teaching shared lowering to classify loop-carried join traffic
-with the new contract so later x86 consumers can stop inferring loop meaning
-from CFG shape.
+Continue Step 2 with a bounded packet that publishes explicit loop-carry edge
+membership beyond the minimal countdown lane so later x86 consumers can stop
+depending on legacy `incomings` shape for backedge ownership.
 
 ## Watchouts
 
 - Do not activate umbrella idea 57 as executable work.
 - Do not pull in idea 59 instruction-selection scope.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth.
-- X86 still reads legacy `incomings` and branch fields, so follow-up packets
-  should migrate consumers in bounded slices rather than deleting compatibility
-  fields early.
+- The countdown loop route now expects `LoopCarry`, but most consumers still
+  rely on legacy `incomings` and branch fields; follow-up packets should move
+  those consumers in bounded slices instead of deleting compatibility fields.
 
 ## Proof
 

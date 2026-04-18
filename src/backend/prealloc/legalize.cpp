@@ -225,6 +225,91 @@ std::optional<std::string> inst_result_name(const bir::Inst& inst) {
   return std::nullopt;
 }
 
+const bir::Block* find_block(const bir::Function& function, std::string_view label) {
+  for (const auto& block : function.blocks) {
+    if (block.label == label) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
+bool block_has_successor(const bir::Block& block, std::string_view successor_label) {
+  if (block.terminator.kind == bir::TerminatorKind::Branch) {
+    return block.terminator.target_label == successor_label;
+  }
+  if (block.terminator.kind == bir::TerminatorKind::CondBranch) {
+    return block.terminator.true_label == successor_label ||
+           block.terminator.false_label == successor_label;
+  }
+  return false;
+}
+
+bool is_reachable_without_revisiting(const bir::Function& function,
+                                     std::string_view start_label,
+                                     std::string_view target_label) {
+  if (start_label == target_label) {
+    return true;
+  }
+
+  std::vector<std::string> worklist{std::string(start_label)};
+  std::unordered_set<std::string> visited;
+  bool found_target = false;
+  while (!worklist.empty()) {
+    auto label = std::move(worklist.back());
+    worklist.pop_back();
+    if (!visited.insert(label).second) {
+      continue;
+    }
+
+    const auto* block = find_block(function, label);
+    if (block == nullptr) {
+      continue;
+    }
+
+    const auto push_successor = [&](std::string_view successor_label) {
+      if (successor_label == target_label) {
+        found_target = true;
+        return true;
+      }
+      if (visited.find(std::string(successor_label)) == visited.end()) {
+        worklist.push_back(std::string(successor_label));
+      }
+      return false;
+    };
+
+    if (block->terminator.kind == bir::TerminatorKind::Branch) {
+      if (push_successor(block->terminator.target_label)) {
+        break;
+      }
+    } else if (block->terminator.kind == bir::TerminatorKind::CondBranch) {
+      if (push_successor(block->terminator.true_label)) {
+        break;
+      }
+      if (push_successor(block->terminator.false_label)) {
+        break;
+      }
+    }
+  }
+
+  return found_target;
+}
+
+PreparedJoinTransferKind classify_phi_join_transfer_kind(const bir::Function& function,
+                                                         std::string_view join_block_label,
+                                                         const bir::PhiInst& phi) {
+  for (const auto& incoming : phi.incomings) {
+    const auto* predecessor = find_block(function, incoming.label);
+    if (predecessor == nullptr || !block_has_successor(*predecessor, join_block_label)) {
+      continue;
+    }
+    if (is_reachable_without_revisiting(function, join_block_label, incoming.label)) {
+      return PreparedJoinTransferKind::LoopCarry;
+    }
+  }
+  return PreparedJoinTransferKind::EdgeStoreSlot;
+}
+
 bool terminator_uses_named_value(const bir::Terminator& terminator,
                                  const std::unordered_set<std::string>& names) {
   const auto matches = [&](const std::optional<bir::Value>& value) {
@@ -821,10 +906,12 @@ void lower_phi_nodes(bir::Function* function, std::vector<PreparedJoinTransfer>*
             .incomings = phi->incomings,
         });
         if (join_transfers != nullptr) {
+          const auto transfer_kind =
+              classify_phi_join_transfer_kind(*function, block.label, *phi);
           join_transfers->push_back(make_join_transfer(function->name,
                                                        block.label,
                                                        *phi,
-                                                       PreparedJoinTransferKind::EdgeStoreSlot,
+                                                       transfer_kind,
                                                        slot_name));
         }
         rewritten.push_back(bir::LoadLocalInst{
