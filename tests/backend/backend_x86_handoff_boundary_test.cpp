@@ -590,6 +590,21 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm
          minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
+std::string expected_minimal_param_eq_zero_branch_joined_immediates_then_xor_asm(
+    const char* function_name,
+    const char* false_label,
+    int true_selected_immediate,
+    int false_selected_immediate,
+    int joined_immediate) {
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + std::to_string(true_selected_immediate) +
+         "\n    xor " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + std::to_string(false_selected_immediate) +
+         "\n    xor " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n";
+}
+
 std::string expected_minimal_param_eq_zero_branch_joined_chained_add_or_sub_then_xor_asm(
     const char* function_name,
     const char* false_label,
@@ -1509,6 +1524,77 @@ bir::Module make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module() {
           bir::PhiIncoming{
               .label = "is_nonzero",
               .value = bir::Value::named(bir::TypeKind::I32, "nonzero.adjusted"),
+          },
+      },
+  });
+  join.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Xor,
+      .result = bir::Value::named(bir::TypeKind::I32, "joined"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  join.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "joined"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(is_zero));
+  function.blocks.push_back(std::move(is_nonzero));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_x86_param_eq_zero_branch_joined_immediates_then_xor_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "branch_join_immediate_then_xor";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .true_label = "is_zero",
+      .false_label = "is_nonzero",
+  };
+
+  bir::Block is_zero;
+  is_zero.label = "is_zero";
+  is_zero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block is_nonzero;
+  is_nonzero.label = "is_nonzero";
+  is_nonzero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "is_zero",
+              .value = bir::Value::immediate_i32(5),
+          },
+          bir::PhiIncoming{
+              .label = "is_nonzero",
+              .value = bir::Value::immediate_i32(1),
           },
       },
   });
@@ -3874,7 +3960,7 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
   auto* entry_block = find_block(function, "entry");
   auto* join_block = find_block(function, "join");
   if (entry_block == nullptr || join_block == nullptr || entry_block->insts.empty() ||
-      join_block->insts.size() < 3) {
+      join_block->insts.size() < 2) {
     return fail((std::string(failure_context) +
                  ": prepared joined branch fixture no longer has the expected entry/join shape")
                     .c_str());
@@ -4207,6 +4293,81 @@ int check_materialized_compare_join_branches_publish_prepared_return_contexts(
   }
   return require_prepared_param_base(
       prepared_join_branches->false_return_context, bir::BinaryOpcode::Sub, 1);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-join control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  if (entry_block == nullptr || function.params.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer has the expected entry block and param")
+                    .c_str());
+  }
+
+  const auto compare_join_context = prepare::find_prepared_param_zero_materialized_compare_join_context(
+      *control_flow, function, *entry_block, function.params.front(), true);
+  if (!compare_join_context.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer recognizes the materialized compare-join context")
+                    .c_str());
+  }
+
+  const auto prepared_join_branches =
+      prepare::find_prepared_materialized_compare_join_branches(
+          compare_join_context->compare_join_context);
+  if (!prepared_join_branches.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer publishes the compare-join branch contract")
+                    .c_str());
+  }
+
+  const auto require_prepared_immediate_base =
+      [&](const prepare::PreparedMaterializedCompareJoinReturnContext& return_context,
+          std::int64_t expected_immediate) -> int {
+    if (return_context.selected_value.base.kind !=
+            prepare::PreparedComputedBaseKind::ImmediateI32 ||
+        return_context.selected_value.base.immediate != expected_immediate) {
+      return fail((std::string(failure_context) +
+                   ": shared helper stopped classifying the selected-value base as an immediate")
+                      .c_str());
+    }
+    if (!return_context.selected_value.operations.empty()) {
+      return fail((std::string(failure_context) +
+                   ": shared helper stopped keeping direct immediate selected values operation-free")
+                      .c_str());
+    }
+    if (!return_context.trailing_binary.has_value() ||
+        return_context.trailing_binary->opcode != bir::BinaryOpcode::Xor ||
+        return_context.trailing_binary->immediate != 3) {
+      return fail((std::string(failure_context) +
+                   ": shared helper stopped publishing the trailing immediate-op contract")
+                      .c_str());
+    }
+    return 0;
+  };
+
+  if (const auto status = require_prepared_immediate_base(
+          prepared_join_branches->true_return_context, 5);
+      status != 0) {
+    return status;
+  }
+  return require_prepared_immediate_base(
+      prepared_join_branches->false_return_context, 1);
 }
 
 int check_minimal_compare_branch_consumes_prepared_control_flow(const bir::Module& module,
@@ -5072,6 +5233,34 @@ int main() {
                   "branch_join_adjust_then_xor", "carrier.nonzero", 5, 1, 0, 3),
               "branch_join_adjust_then_xor",
               "scalar-control-flow compare-against-zero joined branch lane with selected-value chain prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_route_outputs(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_immediates_then_xor_asm(
+                  "branch_join_immediate_then_xor", "is_nonzero", 5, 1, 3),
+              "join:\n  merge = bir.select eq i32 p.x, 0, i32 5, 1\n  joined = bir.xor i32 merge, 3\n  bir.ret i32 joined",
+              "scalar-control-flow compare-against-zero joined branch lane with immediate selected values");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_immediates_then_xor_asm(
+                  "branch_join_immediate_then_xor", "is_nonzero", 5, 1, 3),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with immediate selected values prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join immediate return context ownership");
       status != 0) {
     return status;
   }
