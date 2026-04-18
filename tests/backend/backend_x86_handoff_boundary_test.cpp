@@ -4569,7 +4569,8 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
                                                          bool use_global_selected_value_roots,
                                                          bool use_global_selected_value_chain,
                                                          bool use_fixed_offset_global_selected_value_roots,
-                                                         bool use_pointer_backed_global_selected_value_roots) {
+                                                         bool use_pointer_backed_global_selected_value_roots,
+                                                         bool add_unreachable_block) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -4921,6 +4922,12 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
       .result = bir::Value::named(bir::TypeKind::I32, "dead.result"),
       .kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot,
   });
+  if (add_unreachable_block) {
+    function.blocks.push_back(bir::Block{
+        .label = "contract.dead.unreachable",
+        .terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(99)},
+    });
+  }
 
   std::string mutated_expected_asm = expected_asm;
   const std::string original_branch_label =
@@ -4955,7 +4962,38 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
                                                     const char* function_name,
                                                     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false, false, false, false, false, false, false);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false);
+}
+
+int check_join_route_with_unreachable_block_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true);
 }
 
 int check_join_route_edge_store_slot_consumes_prepared_control_flow(
@@ -4964,7 +5002,18 @@ int check_join_route_edge_store_slot_consumes_prepared_control_flow(
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, false, false, false, false, false, false);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false);
 }
 
 int check_join_route_selected_value_chain_consumes_prepared_control_flow(
@@ -4973,7 +5022,18 @@ int check_join_route_selected_value_chain_consumes_prepared_control_flow(
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, true, false, false, false, false, false);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false);
 }
 
 int check_join_route_immediate_selected_value_chain_consumes_prepared_control_flow(
@@ -4982,7 +5042,18 @@ int check_join_route_immediate_selected_value_chain_consumes_prepared_control_fl
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, true, true, false, false, false, false);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false);
 }
 
 int check_join_route_global_selected_values_consumes_prepared_control_flow(
@@ -4991,7 +5062,18 @@ int check_join_route_global_selected_values_consumes_prepared_control_flow(
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false, false, false, true, false, false, false);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false);
 }
 
 int check_join_route_edge_store_slot_global_selected_values_consumes_prepared_control_flow(
@@ -5000,7 +5082,18 @@ int check_join_route_edge_store_slot_global_selected_values_consumes_prepared_co
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, false, false, true, false, false, false);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false);
 }
 
 int check_join_route_global_selected_value_chain_consumes_prepared_control_flow(
@@ -5009,7 +5102,18 @@ int check_join_route_global_selected_value_chain_consumes_prepared_control_flow(
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false, false, false, true, true, false, false);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false);
 }
 
 int check_join_route_edge_store_slot_global_selected_value_chain_consumes_prepared_control_flow(
@@ -5018,7 +5122,18 @@ int check_join_route_edge_store_slot_global_selected_value_chain_consumes_prepar
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, false, false, true, true, false, false);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false);
 }
 
 int check_join_route_fixed_offset_global_selected_values_consumes_prepared_control_flow(
@@ -5027,7 +5142,18 @@ int check_join_route_fixed_offset_global_selected_values_consumes_prepared_contr
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false, false, false, true, false, true, false);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false);
 }
 
 int check_join_route_edge_store_slot_fixed_offset_global_selected_values_consumes_prepared_control_flow(
@@ -5036,7 +5162,18 @@ int check_join_route_edge_store_slot_fixed_offset_global_selected_values_consume
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, false, false, true, false, true, false);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false);
 }
 
 int check_join_route_fixed_offset_global_selected_value_chain_consumes_prepared_control_flow(
@@ -5045,7 +5182,18 @@ int check_join_route_fixed_offset_global_selected_value_chain_consumes_prepared_
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false, false, false, true, true, true, false);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false);
 }
 
 int check_join_route_edge_store_slot_fixed_offset_global_selected_value_chain_consumes_prepared_control_flow(
@@ -5054,7 +5202,18 @@ int check_join_route_edge_store_slot_fixed_offset_global_selected_value_chain_co
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, false, false, true, true, true, false);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false);
 }
 
 int check_join_route_pointer_backed_global_selected_values_consumes_prepared_control_flow(
@@ -5063,7 +5222,18 @@ int check_join_route_pointer_backed_global_selected_values_consumes_prepared_con
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false, false, false, true, false, false, true);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false);
 }
 
 int check_join_route_edge_store_slot_pointer_backed_global_selected_values_consumes_prepared_control_flow(
@@ -5072,7 +5242,18 @@ int check_join_route_edge_store_slot_pointer_backed_global_selected_values_consu
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, false, false, true, false, false, true);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false);
 }
 
 int check_join_route_pointer_backed_global_selected_value_chain_consumes_prepared_control_flow(
@@ -5081,7 +5262,18 @@ int check_join_route_pointer_backed_global_selected_value_chain_consumes_prepare
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false, false, false, true, true, false, true);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false);
 }
 
 int check_join_route_edge_store_slot_pointer_backed_global_selected_value_chain_consumes_prepared_control_flow(
@@ -5090,7 +5282,18 @@ int check_join_route_edge_store_slot_pointer_backed_global_selected_value_chain_
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, false, false, true, true, false, true);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false);
 }
 
 int check_join_route_offset_pointer_backed_global_selected_values_consumes_prepared_control_flow(
@@ -5099,7 +5302,18 @@ int check_join_route_offset_pointer_backed_global_selected_values_consumes_prepa
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false, false, false, true, false, true, true);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false);
 }
 
 int check_join_route_edge_store_slot_offset_pointer_backed_global_selected_values_consumes_prepared_control_flow(
@@ -5108,7 +5322,18 @@ int check_join_route_edge_store_slot_offset_pointer_backed_global_selected_value
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, false, false, true, false, true, true);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false);
 }
 
 int check_join_route_offset_pointer_backed_global_selected_value_chain_consumes_prepared_control_flow(
@@ -5117,7 +5342,18 @@ int check_join_route_offset_pointer_backed_global_selected_value_chain_consumes_
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false, false, false, true, true, true, true);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false);
 }
 
 int check_join_route_edge_store_slot_offset_pointer_backed_global_selected_value_chain_consumes_prepared_control_flow(
@@ -5126,7 +5362,18 @@ int check_join_route_edge_store_slot_offset_pointer_backed_global_selected_value
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, false, false, true, true, true, true);
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_return_contexts(
@@ -7540,6 +7787,16 @@ int main() {
                   "branch_join_adjust_then_xor", "is_nonzero", 5, 1, 3),
               "branch_join_adjust_then_xor",
               "scalar-control-flow compare-against-zero joined branch lane with trailing join xor prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_with_unreachable_block_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm(
+                  "branch_join_adjust_then_xor", "is_nonzero", 5, 1, 3),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane ignores unrelated block count when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }

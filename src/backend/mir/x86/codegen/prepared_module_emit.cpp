@@ -4063,8 +4063,7 @@ std::string emit_prepared_module(
   };
   const auto render_materialized_compare_join_if_supported =
       [&]() -> std::optional<std::string> {
-    if (function.blocks.size() != 4 || function.params.size() != 1 ||
-        prepared_arch != c4c::TargetArch::X86_64 ||
+    if (function.params.size() != 1 || prepared_arch != c4c::TargetArch::X86_64 ||
         entry.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
       return std::nullopt;
     }

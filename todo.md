@@ -9,26 +9,23 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/prealloc/prealloc.hpp`,
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp`, and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` by adding a direct shared
-helper that goes from the param-zero materialized compare-join packet inputs to
-the resolved render contract, switching the x86 compare-join emitter to consume
-that helper instead of composing the param-zero branch lookup and resolved
-contract lookup locally, and extending the handoff-boundary test suite to prove
-the new direct helper preserves the authoritative compare-join branch plan,
-resolved globals, resolved arm ownership, and return-arm binary-plan context.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp`,
+`tests/backend/backend_x86_handoff_boundary_test.cpp`, and `todo.md` by
+removing the x86 materialized compare-join `function.blocks.size() == 4`
+topology gate so the consumer can rely on the prepared branch/join contract
+instead of total block count, and by extending the handoff-boundary test suite
+with an extra unreachable-block fixture that proves the compare-join route
+still emits the same canonical asm when unrelated CFG shape changes do not
+change the authoritative prepared control-flow facts.
 
 ## Suggested Next
 
 The next accepted packet should stay in Step 3 and remove one more small
-x86-local compare/join consumption seam only if it still reflects shared
-semantic ownership rather than x86 spelling, most likely by pushing one more
-materialized compare-join consumption decision out of
-`prepared_module_emit.cpp` and into a shared prepared helper so the x86
-consumer keeps treating param-zero compare-join lane data as authoritative.
-Keep the work focused on one helper-sized seam, not emitter cleanup or broader
-backend route changes.
+x86-local topology gate only where the prepared contract is already
+authoritative, most likely by auditing the remaining compare-against-zero
+branch helpers in `prepared_module_emit.cpp` for fixed block-count or carrier
+shape checks that can be replaced by prepared branch/join lookups without
+widening into generic route acceptance or Step 4 file organization.
 
 ## Watchouts
 
@@ -37,29 +34,28 @@ backend route changes.
   route changes.
 - Do not solve remaining compare-join gaps with x86-side CFG scans or
   testcase-shaped matcher growth.
-- The shared compare-join render contract now has both the existing
-  branch-packet-to-resolved-contract helper and the new direct param-zero
-  resolved-contract helper. Keep follow-on work focused on moving remaining
-  compare/join composition decisions into shared helpers instead of rebuilding
-  lane semantics, label ownership, or global ownership in x86.
+- Keep follow-on work focused on removing emitter-local topology assumptions,
+  not on widening the accepted route. Prepared facts should replace raw CFG
+  shape checks only when the existing shared helper already proves the same
+  ownership contract.
 - The x86 short-circuit and compare-join consumers should continue treating
-  returned prepared lane ownership, continuation labels, and compare-join
-  branch labels as authoritative; do not reintroduce raw selected-value
-  plumbing, source-label equality checks, local branch-packet composition, or
-  local join bundle reconstruction in the emitter.
+  prepared lane ownership, continuation labels, and compare-join branch labels
+  as authoritative; do not reintroduce source-label equality checks, local
+  branch-packet composition, local join bundle reconstruction, or new whole-
+  function matcher growth in the emitter.
 - `test_before.log` remains the narrow baseline for
   `^backend_x86_handoff_boundary$`, and this packet refreshes `test_after.log`
-  with the same focused proof command after moving the param-zero compare-join
-  resolved render-contract lookup into the shared helper path.
+  with the same focused proof command after proving the compare-join consumer
+  ignores unrelated extra block count when prepared control-flow data remains
+  authoritative.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The focused proof refreshes `test_after.log` with the
-`backend_x86_handoff_boundary` subset for the new shared direct param-zero
-compare-join resolved render-contract helper, the x86 consumer that now uses
-that authoritative helper instead of composing the lookup locally, and the
-existing prepared branch/join ownership families that still prove the same
-handoff contracts. The delegated proof passed and `test_after.log` is the
-preserved proof log.
+`backend_x86_handoff_boundary` subset for the materialized compare-join block-
+count gate removal, the new unreachable-block prepared-fixture coverage, and
+the existing prepared branch/join ownership families that continue proving the
+same handoff contracts. The proof passed and `test_after.log` is the preserved
+proof log.
