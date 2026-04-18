@@ -1535,9 +1535,14 @@ std::string emit_prepared_module(
       ShortCircuitTarget on_compare_true;
       ShortCircuitTarget on_compare_false;
     };
+    struct ClassifiedShortCircuitIncoming {
+      std::size_t transfer_index = 0;
+      bool short_circuit_value = false;
+    };
     struct ShortCircuitJoinContext {
       const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
       const c4c::backend::bir::Block* join_block = nullptr;
+      ClassifiedShortCircuitIncoming classified_incoming;
       GuardJoinContinuation continuation_plan;
     };
     struct ShortCircuitRenderContext {
@@ -1551,10 +1556,6 @@ std::string emit_prepared_module(
     struct RenderedShortCircuitLanes {
       std::string rendered_true;
       RenderedShortCircuitFalseLane rendered_false_lane;
-    };
-    struct ClassifiedShortCircuitIncoming {
-      std::size_t transfer_index = 0;
-      bool short_circuit_value = false;
     };
     struct ShortCircuitEntryRoutingContext {
       ClassifiedShortCircuitIncoming classified_incoming;
@@ -1707,6 +1708,11 @@ std::string emit_prepared_module(
         [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
             const auto& find_branch_condition_fn)
         -> std::optional<ShortCircuitJoinContext> {
+      const auto classified_incoming = classify_short_circuit_join_incoming(join_transfer);
+      if (!classified_incoming.has_value()) {
+        return std::nullopt;
+      }
+
       const auto* join_block = find_block(join_transfer.join_block_label);
       if (join_block == nullptr) {
         return std::nullopt;
@@ -1726,6 +1732,7 @@ std::string emit_prepared_module(
       return ShortCircuitJoinContext{
           .join_transfer = &join_transfer,
           .join_block = join_block,
+          .classified_incoming = *classified_incoming,
           .continuation_plan = *continuation_plan,
       };
     };
@@ -1780,24 +1787,18 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
 
-      const auto classified_incoming =
-          classify_short_circuit_join_incoming(*join_context.join_transfer);
-      if (!classified_incoming.has_value()) {
-        return std::nullopt;
-      }
-
       const bool short_circuit_on_compare_true =
-          classified_incoming->transfer_index ==
+          join_context.classified_incoming.transfer_index ==
           *join_context.join_transfer->source_true_transfer_index;
       const bool short_circuit_on_compare_false =
-          classified_incoming->transfer_index ==
+          join_context.classified_incoming.transfer_index ==
           *join_context.join_transfer->source_false_transfer_index;
       if (short_circuit_on_compare_true == short_circuit_on_compare_false) {
         return std::nullopt;
       }
 
       return ShortCircuitEntryRoutingContext{
-          .classified_incoming = *classified_incoming,
+          .classified_incoming = join_context.classified_incoming,
           .true_block = direct_targets->true_block,
           .false_block = direct_targets->false_block,
           .rhs_entry = short_circuit_on_compare_true ? direct_targets->false_block

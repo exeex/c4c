@@ -9,19 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting
-`build_short_circuit_join_context_from_transfer()` and routing
-`find_short_circuit_join_context()` through it. The join-context path now keeps
-prepared join-transfer discovery in `find_short_circuit_join_context()` while
-the new helper owns join-block lookup, prepared join-branch lookup, and
-compare-join continuation-plan assembly.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving
+`classify_short_circuit_join_incoming()` into
+`build_short_circuit_join_context_from_transfer()` and storing the validated
+lane classification on `ShortCircuitJoinContext`. The short-circuit entry
+routing path now consumes join-input ownership from the helper-owned join
+context instead of rediscovering it from the transfer list.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect whether the short-circuit join lane
-classification can move beside `build_short_circuit_join_context_from_transfer()`
-so `build_short_circuit_entry_routing_context()` stops rediscovering join-input
-ownership from the transfer list after join context has already been validated.
+The next small Step 3 packet is to inspect whether
+`ShortCircuitEntryRoutingContext` still needs to carry a copied
+`classified_incoming` field, or whether `build_short_circuit_plan()` can
+consume the join-context-owned classification directly so the helper contract
+stops duplicating that ownership.
 
 ## Watchouts
 
@@ -36,6 +37,10 @@ ownership from the transfer list after join context has already been validated.
   join-branch lookup, and continuation-plan assembly in
   `build_short_circuit_join_context_from_transfer()` instead of re-growing
   those checks beside join discovery.
+- `build_short_circuit_join_context_from_transfer()` now also owns short-
+  circuit lane classification; keep join-input ownership validation there
+  instead of re-growing `classify_short_circuit_join_incoming()` calls in entry
+  routing or render paths.
 - `build_compare_join_continuation()` remains the Step 3 gate for the join-
   result zero-compare contract; keep `Eq`/`Ne` mapping and jump-target choice
   data-driven there instead of pushing them back into renderer assembly.
@@ -58,5 +63,5 @@ ownership from the transfer list after join context has already been validated.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 join-context helper
-extraction packet; proof output is in `test_after.log`.
+The build and narrow proof passed for this Step 3 join-lane classification
+ownership packet; proof output is in `test_after.log`.
