@@ -10,25 +10,34 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` by routing the minimal
-compare-against-zero branch helper through
-`c4c::backend::prepare::find_prepared_branch_condition()` and adding a
-matching ownership check that mutates the raw entry compare while requiring
-the emitted x86 to stay anchored to prepared branch metadata.
+`tests/backend/backend_x86_handoff_boundary_test.cpp` by teaching
+`render_materialized_compare_join_if_supported()` to select its authoritative
+joined-branch transfer through
+`c4c::backend::prepare::find_select_materialization_join_transfer()` instead
+of rejecting any prepared control-flow function that carries unrelated extra
+branch or join records, and by extending the joined-branch ownership test to
+inject such unrelated prepared records while requiring the emitted x86 to stay
+anchored to the real prepared join contract.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect whether any remaining x86
-consumer-side helper in `prepared_module_emit.cpp` still depends on raw BIR
-control-flow semantics instead of the prepared contract, or else shift from
-lookup cleanup into broader validation and a possible plan-owner closeout
-check.
+The next small Step 3 packet is to inspect
+`render_loop_join_countdown_if_supported()` for the same kind of
+consumer-side dependence on global control-flow shape or singleton-record
+assumptions, and replace any remaining count-based gating with prepared
+lookups if the current shared contract already carries the needed ownership
+facts.
 
 ## Watchouts
 
 - Do not activate umbrella idea 57 or idea 59 while cleaning this helper
   surface.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth.
+- `render_materialized_compare_join_if_supported()` now accepts unrelated
+  prepared control-flow records as long as the authoritative select-join
+  transfer is still uniquely discoverable from the prepared contract; future
+  cleanup should keep using prepared lookups rather than reintroducing
+  `branch_conditions.size()==1` or `join_transfers.size()==1` gates.
 - `build_compare_join_continuation()` remains the Step 3 gate for the join-
   result zero-compare contract; keep `Eq`/`Ne` mapping and jump-target choice
   data-driven there instead of pushing them back into renderer assembly.
@@ -66,5 +75,5 @@ check.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 minimal compare-branch
-prepared-control-flow ownership packet; proof output is in `test_after.log`.
+The build and narrow proof passed for this Step 3 joined-branch prepared-
+control-flow lookup packet; proof output is in `test_after.log`.

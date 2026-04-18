@@ -3778,6 +3778,20 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
   join_select->predicate = bir::BinaryOpcode::Ne;
   join_select->lhs = bir::Value::immediate_i32(4);
   join_select->rhs = bir::Value::immediate_i32(1);
+  mutable_control_flow->branch_conditions.push_back(prepare::PreparedBranchCondition{
+      .function_name = function_name,
+      .block_label = "dead.cond",
+      .kind = prepare::PreparedBranchConditionKind::MaterializedBool,
+      .condition_value = bir::Value::named(bir::TypeKind::I32, "dead.cond"),
+      .true_label = "dead.true",
+      .false_label = "dead.false",
+  });
+  mutable_control_flow->join_transfers.push_back(prepare::PreparedJoinTransfer{
+      .function_name = function_name,
+      .join_block_label = "dead.join",
+      .result = bir::Value::named(bir::TypeKind::I32, "dead.result"),
+      .kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot,
+  });
 
   std::string mutated_expected_asm = expected_asm;
   const std::string original_branch_label =
