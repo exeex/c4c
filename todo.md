@@ -7,30 +7,30 @@ Source Plan: plan.md
 ## Just Finished
 
 Plan Step 2: extracted the coordinator-side
-`local_pointer_array_bases.find(...)` GEP branch from
+`local_array_slots.find(gep->ptr.str())` GEP branch from
 `src/backend/bir/lir_to_bir_memory.cpp` into
 `src/backend/bir/lir_to_bir_memory_local_slots.cpp` as
-`try_lower_local_pointer_array_base_gep`, so the coordinator now only
-dispatches that local-slot-owned family while the helper owns the array-base
-lookup plus the in-range, one-past-end, negative-offset, and dynamic-index
-local-slot result handling.
+`try_lower_local_array_slot_gep`, so the coordinator now only dispatches that
+local-slot-owned array-slot family while the helper owns the fixed-index and
+dynamic-index local pointer-array result handling.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by extracting the remaining coordinator-side
-local-slot-owned GEP helpers adjacent to this seam, starting with the
-`local_array_slots.find(...)` family if the ownership split still expects one
-more local-slot bucket before moving on.
+Continue `plan.md` Step 2 by extracting the next adjacent local-slot-owned GEP
+wrapper that still interprets dotted local slot names and
+`local_array_slots.find(base_name)` in the coordinator, but keep shared
+aggregate-addressing logic outside this packet.
 
 ## Watchouts
 
 - This plan is refactor-only; do not claim x86 backend capability progress from
   it.
 - Keep `lower_scalar_or_local_memory_inst` in the main coordinator TU.
-- `try_lower_local_slot_pointer_gep` and
+- `try_lower_local_slot_pointer_gep`,
+  `try_lower_local_array_slot_gep`, and
   `try_lower_local_pointer_array_base_gep` now own their respective local-slot
-  map lookups; the next packet should continue moving one honest ownership
-  bucket at a time instead of re-centralizing that dispatch in the coordinator.
+  map lookups; the next packet should keep moving one honest ownership bucket
+  at a time instead of re-centralizing that dispatch in the coordinator.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:
   0`; treat the canonical log pair as unchanged-behavior evidence, not as a

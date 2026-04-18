@@ -790,6 +790,61 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_slot_pointer_gep(
   return true;
 }
 
+std::optional<bool> BirFunctionLowerer::try_lower_local_array_slot_gep(
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const LocalArraySlotMap& local_array_slots,
+    LocalPointerSlots* local_pointer_slots,
+    LocalPointerArrayBaseMap* local_pointer_array_bases,
+    DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays) {
+  const auto array_it = local_array_slots.find(std::string(gep.ptr.str()));
+  if (array_it == local_array_slots.end()) {
+    return std::nullopt;
+  }
+
+  if (gep.indices.size() != 2) {
+    return false;
+  }
+
+  const auto base_index = parse_typed_operand(gep.indices[0]);
+  const auto elem_index = parse_typed_operand(gep.indices[1]);
+  if (!base_index.has_value() || !elem_index.has_value()) {
+    return false;
+  }
+
+  const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+  const auto elem_imm = resolve_index_operand(elem_index->operand, value_aliases);
+  if (!base_imm.has_value() || *base_imm != 0) {
+    return false;
+  }
+
+  const std::string result_name(gep.result.str());
+  if (elem_imm.has_value()) {
+    if (*elem_imm < 0 ||
+        static_cast<std::size_t>(*elem_imm) >= array_it->second.element_slots.size()) {
+      return false;
+    }
+    (*local_pointer_slots)[result_name] =
+        array_it->second.element_slots[static_cast<std::size_t>(*elem_imm)];
+    (*local_pointer_array_bases)[result_name] = LocalPointerArrayBase{
+        .element_slots = array_it->second.element_slots,
+        .base_index = static_cast<std::size_t>(*elem_imm),
+    };
+    return true;
+  }
+
+  const auto elem_value = lower_typed_index_value(*elem_index, value_aliases);
+  if (!elem_value.has_value() || array_it->second.element_type != bir::TypeKind::Ptr) {
+    return false;
+  }
+
+  (*dynamic_local_pointer_arrays)[result_name] = DynamicLocalPointerArrayAccess{
+      .element_slots = array_it->second.element_slots,
+      .index = *elem_value,
+  };
+  return true;
+}
+
 std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
     const c4c::codegen::lir::LirGepOp& gep,
     const ValueMap& value_aliases,

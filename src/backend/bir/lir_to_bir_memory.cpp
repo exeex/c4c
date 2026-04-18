@@ -523,41 +523,20 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return true;
     }
 
-    if (const auto array_it = local_array_slots.find(gep->ptr.str()); array_it != local_array_slots.end()) {
-      if (gep->indices.size() != 2) {
+    if (const auto handled = try_lower_local_array_slot_gep(*gep,
+                                                            value_aliases,
+                                                            local_array_slots,
+                                                            &local_pointer_slots,
+                                                            &local_pointer_array_bases,
+                                                            &dynamic_local_pointer_arrays);
+        handled.has_value()) {
+      if (!*handled) {
         return fail_gep();
       }
-      const auto base_index = parse_typed_operand(gep->indices[0]);
-      const auto elem_index = parse_typed_operand(gep->indices[1]);
-      if (!base_index.has_value() || !elem_index.has_value()) {
-        return fail_gep();
-      }
-      const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
-      const auto elem_imm = resolve_index_operand(elem_index->operand, value_aliases);
-      if (!base_imm.has_value() || *base_imm != 0) {
-        return fail_gep();
-      }
-      if (elem_imm.has_value()) {
-        if (*elem_imm < 0 ||
-            static_cast<std::size_t>(*elem_imm) >= array_it->second.element_slots.size()) {
-          return fail_gep();
-        }
-        resolved_slot = array_it->second.element_slots[static_cast<std::size_t>(*elem_imm)];
-        local_pointer_array_bases[gep->result.str()] = LocalPointerArrayBase{
-            .element_slots = array_it->second.element_slots,
-            .base_index = static_cast<std::size_t>(*elem_imm),
-        };
-      } else {
-        const auto elem_value = lower_typed_index_value(*elem_index, value_aliases);
-        if (!elem_value.has_value() || array_it->second.element_type != bir::TypeKind::Ptr) {
-          return fail_gep();
-        }
-        dynamic_local_pointer_arrays[gep->result.str()] = DynamicLocalPointerArrayAccess{
-            .element_slots = array_it->second.element_slots,
-            .index = *elem_value,
-        };
+      if (local_pointer_slots.find(gep->result.str()) == local_pointer_slots.end()) {
         return true;
       }
+      resolved_slot = local_pointer_slots[gep->result.str()];
     } else if (const auto handled = try_lower_local_pointer_array_base_gep(*gep,
                                                                            value_aliases,
                                                                            local_slot_types,

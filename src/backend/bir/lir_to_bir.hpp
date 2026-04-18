@@ -663,6 +663,13 @@ class BirFunctionLowerer {
       const TypeDeclMap& type_decls,
       const LocalSlotTypes& local_slot_types,
       LocalSlotPointerValues* local_slot_pointer_values);
+  static std::optional<bool> try_lower_local_array_slot_gep(
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const LocalArraySlotMap& local_array_slots,
+      LocalPointerSlots* local_pointer_slots,
+      LocalPointerArrayBaseMap* local_pointer_array_bases,
+      DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays);
   static std::optional<bool> try_lower_local_pointer_array_base_gep(
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
