@@ -4009,25 +4009,37 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto* compare = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.front());
-    if (compare == nullptr || compare->opcode != c4c::backend::bir::BinaryOpcode::Eq ||
-        compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
-        compare->result.type != c4c::backend::bir::TypeKind::I32 ||
+    const auto* function_control_flow = find_control_flow_function();
+    const auto* branch_condition =
+        function_control_flow == nullptr
+            ? nullptr
+            : c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
+                                                                    entry.label);
+    if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
+        !branch_condition->compare_type.has_value() || !branch_condition->lhs.has_value() ||
+        !branch_condition->rhs.has_value() ||
+        *branch_condition->predicate != c4c::backend::bir::BinaryOpcode::Eq ||
+        *branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
+        branch_condition->condition_value.kind != c4c::backend::bir::Value::Kind::Named ||
         entry.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named ||
-        entry.terminator.condition.name != compare->result.name) {
+        branch_condition->condition_value.name != entry.terminator.condition.name ||
+        branch_condition->true_label != entry.terminator.true_label ||
+        branch_condition->false_label != entry.terminator.false_label) {
       return std::nullopt;
     }
 
     const bool lhs_is_param_rhs_is_zero =
-        compare->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
-        compare->lhs.name == param.name &&
-        compare->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-        compare->rhs.type == c4c::backend::bir::TypeKind::I32 && compare->rhs.immediate == 0;
+        branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
+        branch_condition->lhs->name == param.name &&
+        branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+        branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32 &&
+        branch_condition->rhs->immediate == 0;
     const bool rhs_is_param_lhs_is_zero =
-        compare->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
-        compare->rhs.name == param.name &&
-        compare->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-        compare->lhs.type == c4c::backend::bir::TypeKind::I32 && compare->lhs.immediate == 0;
+        branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Named &&
+        branch_condition->rhs->name == param.name &&
+        branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+        branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32 &&
+        branch_condition->lhs->immediate == 0;
     if (!lhs_is_param_rhs_is_zero && !rhs_is_param_lhs_is_zero) {
       return std::nullopt;
     }

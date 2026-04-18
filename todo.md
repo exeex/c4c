@@ -9,19 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by collapsing the last
-two emitter-local prepared-branch consumers onto
-`c4c::backend::prepare::find_prepared_branch_condition()`. The loop-join
-countdown and materialized-compare join fast paths now query prepared branch
-semantics through the shared control-flow lookup instead of relying on local
-`branch_conditions.front()` or an emitter-local scan.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` and
+`tests/backend/backend_x86_handoff_boundary_test.cpp` by routing the minimal
+compare-against-zero branch helper through
+`c4c::backend::prepare::find_prepared_branch_condition()` and adding a
+matching ownership check that mutates the raw entry compare while requiring
+the emitted x86 to stay anchored to prepared branch metadata.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect the remaining Step 3 x86
-consumer-side helper surface in `prepared_module_emit.cpp` and decide whether
-another lookup-only cleanup remains, or whether Step 3 should shift from local
-helper simplification toward broader validation or a plan-owner closeout check.
+The next small Step 3 packet is to inspect whether any remaining x86
+consumer-side helper in `prepared_module_emit.cpp` still depends on raw BIR
+control-flow semantics instead of the prepared contract, or else shift from
+lookup cleanup into broader validation and a possible plan-owner closeout
+check.
 
 ## Watchouts
 
@@ -47,6 +48,9 @@ helper simplification toward broader validation or a plan-owner closeout check.
 - Keep Step 3 lookup cleanup aligned with the shared prepared-control-flow
   helpers in `prealloc.hpp`; prefer those lookups over re-growing local
   `branch_conditions` walks in x86.
+- `render_minimal_compare_branch_if_supported()` now depends on prepared
+  branch metadata as well; keep future minimal-branch fixes aligned with the
+  shared lookup surface instead of re-growing entry-compare inspection.
 - `render_loop_join_countdown_if_supported()` and
   `render_materialized_compare_join_if_supported()` now depend on the shared
   prepared-branch lookup surface; if either fast path needs more branch facts,
@@ -62,5 +66,5 @@ helper simplification toward broader validation or a plan-owner closeout check.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 remaining prepared-branch
-consumer cleanup packet; proof output is in `test_after.log`.
+The build and narrow proof passed for this Step 3 minimal compare-branch
+prepared-control-flow ownership packet; proof output is in `test_after.log`.

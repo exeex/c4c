@@ -3807,6 +3807,51 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
   return 0;
 }
 
+int check_minimal_compare_branch_consumes_prepared_control_flow(const bir::Module& module,
+                                                                const std::string& expected_asm,
+                                                                const char* function_name,
+                                                                const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      !control_flow->join_transfers.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the minimal compare branch control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  if (entry_block == nullptr || entry_block->insts.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared minimal compare branch fixture no longer has the expected entry shape")
+                    .c_str());
+  }
+
+  auto* entry_compare = std::get_if<bir::BinaryInst>(&entry_block->insts.front());
+  if (entry_compare == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared minimal compare branch fixture no longer exposes the bounded compare carrier")
+                    .c_str());
+  }
+
+  entry_compare->opcode = bir::BinaryOpcode::Ne;
+  entry_compare->lhs = bir::Value::immediate_i32(9);
+  entry_compare->rhs = bir::Value::immediate_i32(3);
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative prepared branch metadata")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_short_circuit_route_consumes_prepared_control_flow(const bir::Module& module,
                                                              const char* function_name,
                                                              const char* failure_context) {
@@ -4188,6 +4233,15 @@ int main() {
                                                                         11),
                               "bir.func @branch_on_zero(i32 p.x) -> i32 {",
                               "scalar-control-flow compare-against-zero branch lane");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_module(),
+              expected_minimal_param_eq_zero_branch_asm("branch_on_zero", "is_nonzero", 7, 11),
+              "branch_on_zero",
+              "scalar-control-flow compare-against-zero branch lane prepared-control-flow ownership");
       status != 0) {
     return status;
   }
