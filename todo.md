@@ -8,21 +8,19 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 2/3 control-flow contract packet in
-`src/backend/prealloc/legalize.cpp` and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` by teaching shared
-prepare to publish `source_branch_block_label`,
-`source_true/source_false_transfer_index`, and incoming labels for the
-ordinary phi-lowered compare-join base case, then tightening the joined-branch
-ownership test so it now fails if x86 falls back to predecessor-label matching
-instead of consuming the prepared true/false transfer mapping.
+Completed a Step 3 Consume Prepared Control-Flow packet in
+`tests/backend/backend_x86_handoff_boundary_test.cpp` by extending
+`check_join_route_consumes_prepared_control_flow` to the trailing join-`xor`
+family, so the compare-join route is now proven to keep following prepared
+true/false transfer ownership after one trailing xor use of the joined value
+instead of only at the base join and trailing-`add` cases.
 
 ## Suggested Next
 
-The next small Step 3 packet is broadening the same ownership assertion to one
-trailing-join arithmetic family such as xor or and, so the prepared
-true/false transfer mapping is proven beyond the base join after this contract
-publication slice.
+The next small Step 3 packet is broadening the same compare-join ownership
+proof to one more trailing-join arithmetic family such as `and`, so prepared
+true/false lane mapping is proven across more than the current base join,
+trailing-`add`, and trailing-`xor` follow-on cases.
 
 ## Watchouts
 
@@ -35,6 +33,9 @@ publication slice.
   ownership for the base phi-lowered lane, but x86 still keeps a label-based
   fallback for routes that do not yet expose those indices; remove that
   fallback only when the remaining families are covered by the same contract.
+- The trailing-`xor` ownership proof reuses the same helper and mutation path
+  as the base and trailing-`add` cases; keep future families on that
+  generalized route instead of cloning testcase-shaped ownership logic.
 - Treat any future fix here as capability repair, not expectation weakening:
   the joined branch route is covered by `backend_x86_handoff_boundary`.
 
