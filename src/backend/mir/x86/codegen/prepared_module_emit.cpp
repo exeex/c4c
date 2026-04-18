@@ -1525,6 +1525,61 @@ std::string emit_prepared_module(
         &join_transfer.edge_transfers[false_index],
     };
   };
+  struct AuthoritativeJoinBranchSources {
+    const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
+    const c4c::backend::prepare::PreparedEdgeValueTransfer* false_transfer = nullptr;
+    const c4c::backend::bir::Block* true_predecessor = nullptr;
+    const c4c::backend::bir::Block* false_predecessor = nullptr;
+  };
+  const auto find_authoritative_join_branch_sources =
+      [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
+          std::string_view true_block_label,
+          std::string_view false_block_label)
+      -> std::optional<AuthoritativeJoinBranchSources> {
+    const auto authoritative_transfers =
+        find_authoritative_join_edge_transfers(join_transfer);
+    if (!authoritative_transfers.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto* true_transfer = authoritative_transfers->first;
+    const auto* false_transfer = authoritative_transfers->second;
+    if (true_transfer == nullptr || false_transfer == nullptr ||
+        true_transfer->successor_label != join_transfer.join_block_label ||
+        false_transfer->successor_label != join_transfer.join_block_label) {
+      return std::nullopt;
+    }
+    if (join_transfer.source_true_incoming_label.has_value() &&
+        true_transfer->predecessor_label != *join_transfer.source_true_incoming_label) {
+      return std::nullopt;
+    }
+    if (join_transfer.source_false_incoming_label.has_value() &&
+        false_transfer->predecessor_label != *join_transfer.source_false_incoming_label) {
+      return std::nullopt;
+    }
+
+    const auto* true_predecessor = find_block(true_block_label);
+    const auto* false_predecessor = find_block(false_block_label);
+    if (true_predecessor == nullptr || false_predecessor == nullptr ||
+        true_predecessor == &entry || false_predecessor == &entry ||
+        true_predecessor == false_predecessor || !true_predecessor->insts.empty() ||
+        !false_predecessor->insts.empty()) {
+      return std::nullopt;
+    }
+    if (true_predecessor->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
+        false_predecessor->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
+        true_predecessor->terminator.target_label != join_transfer.join_block_label ||
+        false_predecessor->terminator.target_label != join_transfer.join_block_label) {
+      return std::nullopt;
+    }
+
+    return AuthoritativeJoinBranchSources{
+        .true_transfer = true_transfer,
+        .false_transfer = false_transfer,
+        .true_predecessor = true_predecessor,
+        .false_predecessor = false_predecessor,
+    };
+  };
   const auto render_local_slot_guard_chain_if_supported =
       [&]() -> std::optional<std::string> {
     if (!function.params.empty() || function.blocks.empty() ||
@@ -4234,40 +4289,16 @@ std::string emit_prepared_module(
       named_binaries.emplace(binary->result.name, binary);
     }
 
-    const auto authoritative_transfers =
-        find_authoritative_join_edge_transfers(*prepared_join_transfer);
-    if (!authoritative_transfers.has_value()) {
+    const auto join_sources = find_authoritative_join_branch_sources(
+        *prepared_join_transfer, branch_condition->true_label, branch_condition->false_label);
+    if (!join_sources.has_value() || join_sources->true_predecessor == join_block ||
+        join_sources->false_predecessor == join_block) {
       return std::nullopt;
     }
-    const auto* true_transfer = authoritative_transfers->first;
-    const auto* false_transfer = authoritative_transfers->second;
-    if (true_transfer == nullptr || false_transfer == nullptr ||
-        true_transfer->successor_label != prepared_join_transfer->join_block_label ||
-        false_transfer->successor_label != prepared_join_transfer->join_block_label) {
-      return std::nullopt;
-    }
-    if (prepared_join_transfer->source_true_incoming_label.has_value() &&
-        true_transfer->predecessor_label != *prepared_join_transfer->source_true_incoming_label) {
-      return std::nullopt;
-    }
-    if (prepared_join_transfer->source_false_incoming_label.has_value() &&
-        false_transfer->predecessor_label != *prepared_join_transfer->source_false_incoming_label) {
-      return std::nullopt;
-    }
-
-    const auto* true_join_predecessor = find_block(branch_condition->true_label);
-    const auto* false_join_predecessor = find_block(branch_condition->false_label);
-    if (true_join_predecessor == nullptr || false_join_predecessor == nullptr ||
-        true_join_predecessor == &entry || false_join_predecessor == &entry ||
-        true_join_predecessor == false_join_predecessor || true_join_predecessor == join_block ||
-        false_join_predecessor == join_block || !true_join_predecessor->insts.empty() ||
-        !false_join_predecessor->insts.empty() ||
-        true_join_predecessor->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
-        false_join_predecessor->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
-        true_join_predecessor->terminator.target_label != prepared_join_transfer->join_block_label ||
-        false_join_predecessor->terminator.target_label != prepared_join_transfer->join_block_label) {
-      return std::nullopt;
-    }
+    const auto* true_transfer = join_sources->true_transfer;
+    const auto* false_transfer = join_sources->false_transfer;
+    const auto* true_join_predecessor = join_sources->true_predecessor;
+    const auto* false_join_predecessor = join_sources->false_predecessor;
 
     const auto render_join_return =
         [&](const c4c::backend::bir::Value& selected_value) -> std::optional<std::string> {

@@ -9,19 +9,18 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting a shared
-`find_authoritative_join_edge_transfers()` helper for the authoritative
-prepared `source_true_transfer_index` / `source_false_transfer_index` lookup
-and reusing it in both the short-circuit join consumer and
-`render_materialized_compare_join_if_supported()` instead of revalidating those
-indices in each path separately.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by adding a shared
+`find_authoritative_join_branch_sources()` helper that centralizes the
+authoritative select-join successor-label, incoming-label, and predecessor
+block validation used by `render_materialized_compare_join_if_supported()`
+without collapsing prepared ownership labels into carrier block labels.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect the remaining select-materialization
-consumer guards around successor/predecessor-label checks and decide whether a
-second helper can collapse that validation without changing the current
-prepared join contract or widening beyond x86 consumer cleanup.
+The next small Step 3 packet is to inspect whether the short-circuit join path
+can reuse the same authoritative join-source helper more directly, or whether
+that path intentionally needs a separate consumer shape because its continuation
+logic depends on carrier labels that differ from prepared incoming ownership.
 
 ## Watchouts
 
@@ -29,10 +28,10 @@ prepared join contract or widening beyond x86 consumer cleanup.
   surface.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth or new
   emitter-local CFG scans.
-- `find_authoritative_join_edge_transfers()` only centralizes the prepared
-  true/false ownership index validation; the materialized compare join path
-  still owns the successor-label and optional incoming-label checks that keep
-  x86 aligned to the prepared contract.
+- The green retry here depended on preserving the distinction between prepared
+  `source_true_incoming_label` / `source_false_incoming_label` ownership and
+  the carrier block labels used by branch continuations; the short-circuit
+  ownership test mutates those labels independently on purpose.
 - The short-circuit/select-join route still requires exactly one authoritative
   prepared source lane to carry a bool immediate; do not widen this into
   arbitrary edge scans or named-lane heuristics when touching adjacent helpers.
@@ -50,5 +49,5 @@ prepared join contract or widening beyond x86 consumer cleanup.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 authoritative join-transfer
+The build and narrow proof passed for this Step 3 authoritative join-source
 helper packet, and the canonical executor proof log is `test_after.log`.
