@@ -1527,12 +1527,13 @@ std::string emit_prepared_module(
       const c4c::backend::bir::Block* true_block = nullptr;
       const c4c::backend::bir::Block* false_block = nullptr;
     };
+    struct ShortCircuitTarget {
+      const c4c::backend::bir::Block* block = nullptr;
+      std::optional<GuardJoinContinuation> continuation;
+    };
     struct ShortCircuitPlan {
-      const c4c::backend::bir::Block* on_compare_true = nullptr;
-      bool on_compare_true_uses_continuation = false;
-      const c4c::backend::bir::Block* on_compare_false = nullptr;
-      bool on_compare_false_uses_continuation = false;
-      GuardJoinContinuation continuation;
+      ShortCircuitTarget on_compare_true;
+      ShortCircuitTarget on_compare_false;
     };
     struct MaterializedI32Compare {
       std::string_view i1_name;
@@ -2345,30 +2346,29 @@ std::string emit_prepared_module(
             }
 
             ShortCircuitPlan plan;
-            plan.continuation = continuation_plan;
             auto assign_short_circuit = [&](bool compare_truth, bool bool_value) {
               const auto* target =
                   bool_value ? continuation_plan.true_block : continuation_plan.false_block;
               if (compare_truth) {
-                plan.on_compare_true = target;
-                plan.on_compare_true_uses_continuation = false;
+                plan.on_compare_true.block = target;
+                plan.on_compare_true.continuation.reset();
               } else {
-                plan.on_compare_false = target;
-                plan.on_compare_false_uses_continuation = false;
+                plan.on_compare_false.block = target;
+                plan.on_compare_false.continuation.reset();
               }
             };
             auto assign_rhs = [&](bool compare_truth) {
               const auto transfer_index =
                   compare_truth ? *join_transfer->source_true_transfer_index
                                 : *join_transfer->source_false_transfer_index;
-              plan.continuation.incoming_label =
+              continuation_plan.incoming_label =
                   join_transfer->edge_transfers[transfer_index].predecessor_label;
               if (compare_truth) {
-                plan.on_compare_true = rhs_entry;
-                plan.on_compare_true_uses_continuation = true;
+                plan.on_compare_true.block = rhs_entry;
+                plan.on_compare_true.continuation = continuation_plan;
               } else {
-                plan.on_compare_false = rhs_entry;
-                plan.on_compare_false_uses_continuation = true;
+                plan.on_compare_false.block = rhs_entry;
+                plan.on_compare_false.continuation = continuation_plan;
               }
             };
 
@@ -2379,65 +2379,59 @@ std::string emit_prepared_module(
               assign_rhs(true);
               assign_short_circuit(false, short_circuit_value);
             }
-            if (plan.on_compare_true == nullptr || plan.on_compare_false == nullptr) {
+            if (plan.on_compare_true.block == nullptr || plan.on_compare_false.block == nullptr) {
               return std::nullopt;
             }
             return plan;
           };
           if (const auto short_circuit_plan = detect_short_circuit_plan_from_control_flow();
               short_circuit_plan.has_value()) {
-            if (short_circuit_plan->on_compare_true_uses_continuation &&
-                short_circuit_plan->on_compare_false ==
-                    short_circuit_plan->continuation.false_block) {
+            if (short_circuit_plan->on_compare_true.continuation.has_value() &&
+                short_circuit_plan->on_compare_false.block ==
+                    short_circuit_plan->on_compare_true.continuation->false_block) {
               const auto rendered_rhs = render_block(
-                  *short_circuit_plan->on_compare_true,
-                  std::optional<GuardJoinContinuation>(short_circuit_plan->continuation));
+                  *short_circuit_plan->on_compare_true.block,
+                  short_circuit_plan->on_compare_true.continuation);
               if (!rendered_rhs.has_value()) {
                 return std::nullopt;
               }
               const std::string false_label =
                   ".L" + function.name + "_" +
-                  std::string(short_circuit_plan->on_compare_false->label);
+                  std::string(short_circuit_plan->on_compare_false.block->label);
               return body + false_branch_compare->first + "    " + false_branch_compare->second + " " +
                      false_label + "\n" + *rendered_rhs;
             }
-            if (short_circuit_plan->on_compare_false_uses_continuation &&
-                short_circuit_plan->on_compare_true ==
-                    short_circuit_plan->continuation.true_block) {
+            if (short_circuit_plan->on_compare_false.continuation.has_value() &&
+                short_circuit_plan->on_compare_true.block ==
+                    short_circuit_plan->on_compare_false.continuation->true_block) {
               const auto rendered_true =
-                  render_block(*short_circuit_plan->on_compare_true, std::nullopt);
+                  render_block(*short_circuit_plan->on_compare_true.block, std::nullopt);
               if (!rendered_true.has_value()) {
                 return std::nullopt;
               }
               const auto rendered_rhs = render_block(
-                  *short_circuit_plan->on_compare_false,
-                  std::optional<GuardJoinContinuation>(short_circuit_plan->continuation));
+                  *short_circuit_plan->on_compare_false.block,
+                  short_circuit_plan->on_compare_false.continuation);
               if (!rendered_rhs.has_value()) {
                 return std::nullopt;
               }
               const std::string rhs_label =
                   ".L" + function.name + "_" +
-                  std::string(short_circuit_plan->on_compare_false->label);
+                  std::string(short_circuit_plan->on_compare_false.block->label);
               return body + false_branch_compare->first + "    " + false_branch_compare->second + " " +
                      rhs_label + "\n" + *rendered_true + rhs_label + ":\n" + *rendered_rhs;
             }
             const auto rendered_true =
-                render_block(*short_circuit_plan->on_compare_true,
-                             short_circuit_plan->on_compare_true_uses_continuation
-                                 ? std::optional<GuardJoinContinuation>(
-                                       short_circuit_plan->continuation)
-                                 : std::nullopt);
+                render_block(*short_circuit_plan->on_compare_true.block,
+                             short_circuit_plan->on_compare_true.continuation);
             const auto rendered_false =
-                render_block(*short_circuit_plan->on_compare_false,
-                             short_circuit_plan->on_compare_false_uses_continuation
-                                 ? std::optional<GuardJoinContinuation>(
-                                       short_circuit_plan->continuation)
-                                 : std::nullopt);
+                render_block(*short_circuit_plan->on_compare_false.block,
+                             short_circuit_plan->on_compare_false.continuation);
             if (!rendered_true.has_value() || !rendered_false.has_value()) {
               return std::nullopt;
             }
             const std::string false_label =
-                ".L" + function.name + "_" + std::string(short_circuit_plan->on_compare_false->label);
+                ".L" + function.name + "_" + std::string(short_circuit_plan->on_compare_false.block->label);
             return body + false_branch_compare->first + "    " + false_branch_compare->second + " " +
                    false_label + "\n" + *rendered_true + false_label + ":\n" +
                    *rendered_false;
