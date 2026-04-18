@@ -624,4 +624,111 @@ BirFunctionLowerer::resolve_local_dynamic_aggregate_array_access(
   };
 }
 
+std::optional<bir::Value> BirFunctionLowerer::load_dynamic_local_aggregate_array_value(
+    std::string_view result_name,
+    bir::TypeKind value_type,
+    const DynamicLocalAggregateArrayAccess& access,
+    const TypeDeclMap& type_decls,
+    const LocalSlotTypes& local_slot_types,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (access.element_count == 0) {
+    return std::nullopt;
+  }
+
+  const auto element_layout = compute_aggregate_type_layout(access.element_type_text, type_decls);
+  if (element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
+      element_layout.scalar_type != value_type) {
+    return std::nullopt;
+  }
+
+  std::vector<bir::Value> element_values;
+  element_values.reserve(access.element_count);
+  for (std::size_t element_index = 0; element_index < access.element_count; ++element_index) {
+    const auto leaf_offset = access.byte_offset + element_index * access.element_stride_bytes;
+    const auto leaf_slot_it = access.leaf_slots.find(leaf_offset);
+    if (leaf_slot_it == access.leaf_slots.end()) {
+      return std::nullopt;
+    }
+
+    const auto slot_it = local_slot_types.find(leaf_slot_it->second);
+    if (slot_it == local_slot_types.end() || slot_it->second != value_type) {
+      return std::nullopt;
+    }
+
+    const std::string element_name = std::string(result_name) + ".elt" + std::to_string(element_index);
+    lowered_insts->push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(value_type, element_name),
+        .slot_name = leaf_slot_it->second,
+    });
+    element_values.push_back(bir::Value::named(value_type, element_name));
+  }
+
+  return synthesize_value_array_selects(result_name, element_values, access.index, lowered_insts);
+}
+
+bool BirFunctionLowerer::append_dynamic_local_aggregate_store(
+    std::string_view scratch_prefix,
+    bir::TypeKind value_type,
+    const bir::Value& value,
+    const DynamicLocalAggregateArrayAccess& access,
+    const TypeDeclMap& type_decls,
+    const LocalSlotTypes& local_slot_types,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (access.element_count == 0) {
+    return false;
+  }
+
+  const auto element_layout = compute_aggregate_type_layout(access.element_type_text, type_decls);
+  if (element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
+      element_layout.scalar_type != value_type) {
+    return false;
+  }
+
+  for (std::size_t element_index = 0; element_index < access.element_count; ++element_index) {
+    const auto leaf_offset = access.byte_offset + element_index * access.element_stride_bytes;
+    const auto leaf_slot_it = access.leaf_slots.find(leaf_offset);
+    if (leaf_slot_it == access.leaf_slots.end()) {
+      return false;
+    }
+
+    const auto slot_it = local_slot_types.find(leaf_slot_it->second);
+    if (slot_it == local_slot_types.end() || slot_it->second != value_type) {
+      return false;
+    }
+
+    const std::string element_name =
+        std::string(scratch_prefix) + ".elt" + std::to_string(element_index);
+    lowered_insts->push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(value_type, element_name),
+        .slot_name = leaf_slot_it->second,
+    });
+
+    bir::Value stored_value = value;
+    if (access.element_count > 1) {
+      const auto compare_rhs = make_index_immediate(access.index.type, element_index);
+      if (!compare_rhs.has_value()) {
+        return false;
+      }
+      const std::string select_name =
+          std::string(scratch_prefix) + ".store" + std::to_string(element_index);
+      lowered_insts->push_back(bir::SelectInst{
+          .predicate = bir::BinaryOpcode::Eq,
+          .result = bir::Value::named(value_type, select_name),
+          .compare_type = access.index.type,
+          .lhs = access.index,
+          .rhs = *compare_rhs,
+          .true_value = value,
+          .false_value = bir::Value::named(value_type, element_name),
+      });
+      stored_value = bir::Value::named(value_type, select_name);
+    }
+
+    lowered_insts->push_back(bir::StoreLocalInst{
+        .slot_name = leaf_slot_it->second,
+        .value = stored_value,
+    });
+  }
+  return true;
+}
+
 }  // namespace c4c::backend
