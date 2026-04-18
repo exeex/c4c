@@ -1703,19 +1703,20 @@ std::string emit_prepared_module(
         [&](const c4c::backend::prepare::PreparedBranchCondition* branch_condition,
             const c4c::backend::bir::Block& source_block)
         -> std::optional<DirectBranchTargets> {
-      if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
-          !branch_condition->compare_type.has_value() ||
-          !branch_condition->lhs.has_value() || !branch_condition->rhs.has_value() ||
-          branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
-          branch_condition->condition_value.kind !=
-              c4c::backend::bir::Value::Kind::Named ||
-          branch_condition->condition_value.name != source_block.terminator.condition.name) {
+      if (branch_condition == nullptr) {
+        return std::nullopt;
+      }
+
+      const auto prepared_targets =
+          c4c::backend::prepare::find_prepared_compare_branch_target_labels(
+              *branch_condition, source_block);
+      if (!prepared_targets.has_value()) {
         return std::nullopt;
       }
 
       return resolve_direct_branch_targets(source_block,
-                                           branch_condition->true_label,
-                                           branch_condition->false_label);
+                                           prepared_targets->true_label,
+                                           prepared_targets->false_label);
     };
     const auto build_short_circuit_plan =
         [&](const ShortCircuitJoinContext& join_context,
