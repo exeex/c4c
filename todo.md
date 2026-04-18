@@ -8,25 +8,25 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by broadening the
-minimal compare-against-zero branch and joined-branch consumers from prepared
-`eq i32 param, 0` only to prepared `eq/ne i32 param, 0` control-flow facts.
-The x86 handoff path now derives false-branch polarity from prepared branch
-metadata instead of hard-coding the equality-only lane, and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` now proves actual
-prepared `BinaryOpcode::Ne` ownership for both the plain branch and
-branch-owned join cases.
+Completed a Step 3 Consume Prepared Control-Flow packet across
+`src/backend/prealloc/prealloc.hpp` and
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving the
+authoritative branch-owned join-transfer classification into a shared prepared
+helper and switching the x86 materialized-compare and short-circuit join
+consumers to use that shared lookup instead of reclassifying branch-owned join
+transfers locally. The shared helper now validates the supported
+`SelectMaterialization` and `PreparedJoinTransferKind::EdgeStoreSlot` contract
+once, then hands x86 the authoritative join transfer plus its true/false edge
+transfers as prepared data.
 
 ## Suggested Next
 
-Do not spend another packet on proof-only expansion of already-green `ne`
-trailing-join cases. The next accepted packet must either remove one remaining
-Step 3 emitter-local semantic-recovery seam in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` with a real prepared
-branch/join consumer change, or hand lifecycle back for an explicit Step 4
-transition if inspection shows the remaining gap is file organization rather
-than consumer capability.
+The next accepted packet should remove one more Step 3 emitter-local
+branch-owned join seam only if it meaningfully changes prepared-data
+consumption, not just file organization. If inspection shows the remaining
+work is mostly x86 helper placement or extraction around
+`prepared_module_emit.cpp`, hand lifecycle back for an explicit Step 4
+transition instead of stretching Step 3.
 
 ## Watchouts
 
@@ -41,18 +41,18 @@ than consumer capability.
   emitter-local CFG scans.
 - Keep deriving branch polarity from prepared branch metadata rather than from
   equality-only assumptions in the emitter.
-- The materialized-compare and short-circuit join helpers already share one
-  prepared-carrier validation seam, so follow-on work should extend that
-  seam instead of reintroducing per-helper carrier parsing or destination-name
-  assumptions.
+- The shared helper in `prealloc.hpp` now owns authoritative branch-owned join
+  transfer validation for the supported Step 3 contract, so follow-on work
+  should extend that shared prepared surface rather than reintroducing x86-side
+  transfer-index or storage-name checks.
 - A reverted proof-only packet tried to add nonzero trailing-join `add`
   coverage without any paired consumer change; treat more test-only `ne`
   trailing-op expansion as route drift unless the next slice also lands real
   Step 3 code.
-- The joined-branch ownership helper still proves both
+- The joined-branch ownership helper still covers both
   `SelectMaterialization` and `PreparedJoinTransferKind::EdgeStoreSlot`
-  carriers; keep further work in this family focused on prepared carrier
-  validation rather than broader route expansion.
+  carriers; keep further work in this family focused on prepared consumer
+  seams rather than broader route expansion.
 - If another consumer path needs extra branch or join facts, strengthen the
   shared prepared-control-flow contract in `prealloc.hpp` rather than growing
   emitter-local scans or CFG-shape recovery.
@@ -69,4 +69,5 @@ Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 This packet passed with the same focused `backend_x86_handoff_boundary` proof
 command, and `test_after.log` remains the fresh canonical narrow log for the
-prepared eq/ne branch-owned consumer surface.
+shared authoritative branch-owned join helper plus the x86 consumers that now
+use it.

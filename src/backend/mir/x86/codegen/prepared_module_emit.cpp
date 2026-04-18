@@ -1502,100 +1502,6 @@ std::string emit_prepared_module(
     asm_text += "    ret\n";
     return asm_text;
   };
-  const auto find_authoritative_join_edge_transfers =
-      [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer)
-      -> std::optional<std::pair<
-          const c4c::backend::prepare::PreparedEdgeValueTransfer*,
-          const c4c::backend::prepare::PreparedEdgeValueTransfer*>> {
-    if (!join_transfer.source_true_transfer_index.has_value() ||
-        !join_transfer.source_false_transfer_index.has_value()) {
-      return std::nullopt;
-    }
-
-    const auto true_index = *join_transfer.source_true_transfer_index;
-    const auto false_index = *join_transfer.source_false_transfer_index;
-    if (true_index >= join_transfer.edge_transfers.size() ||
-        false_index >= join_transfer.edge_transfers.size() ||
-        true_index == false_index) {
-      return std::nullopt;
-    }
-
-    return std::pair{
-        &join_transfer.edge_transfers[true_index],
-        &join_transfer.edge_transfers[false_index],
-    };
-  };
-  struct AuthoritativeJoinTransfers {
-    const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
-    const c4c::backend::prepare::PreparedEdgeValueTransfer* false_transfer = nullptr;
-  };
-  const auto classify_authoritative_join_transfers =
-      [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer)
-      -> std::optional<AuthoritativeJoinTransfers> {
-    const auto authoritative_transfers = find_authoritative_join_edge_transfers(join_transfer);
-    if (!authoritative_transfers.has_value()) {
-      return std::nullopt;
-    }
-
-    const auto* true_transfer = authoritative_transfers->first;
-    const auto* false_transfer = authoritative_transfers->second;
-    if (true_transfer == nullptr || false_transfer == nullptr ||
-        true_transfer->successor_label != join_transfer.join_block_label ||
-        false_transfer->successor_label != join_transfer.join_block_label) {
-      return std::nullopt;
-    }
-
-    return AuthoritativeJoinTransfers{
-        .true_transfer = true_transfer,
-        .false_transfer = false_transfer,
-    };
-  };
-  struct AuthoritativeBranchJoinTransfer {
-    const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
-    const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
-    const c4c::backend::prepare::PreparedEdgeValueTransfer* false_transfer = nullptr;
-  };
-  const auto build_authoritative_branch_join_transfer =
-      [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer)
-      -> std::optional<AuthoritativeBranchJoinTransfer> {
-    if ((join_transfer.kind !=
-             c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization &&
-         join_transfer.kind != c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot) ||
-        join_transfer.result.type != c4c::backend::bir::TypeKind::I32) {
-      return std::nullopt;
-    }
-
-    const auto authoritative_transfers = classify_authoritative_join_transfers(join_transfer);
-    if (!authoritative_transfers.has_value()) {
-      return std::nullopt;
-    }
-    if (join_transfer.kind == c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot) {
-      if (!join_transfer.storage_name.has_value() ||
-          !authoritative_transfers->true_transfer->storage_name.has_value() ||
-          !authoritative_transfers->false_transfer->storage_name.has_value() ||
-          *authoritative_transfers->true_transfer->storage_name != *join_transfer.storage_name ||
-          *authoritative_transfers->false_transfer->storage_name != *join_transfer.storage_name) {
-        return std::nullopt;
-      }
-    }
-
-    return AuthoritativeBranchJoinTransfer{
-        .join_transfer = &join_transfer,
-        .true_transfer = authoritative_transfers->true_transfer,
-        .false_transfer = authoritative_transfers->false_transfer,
-    };
-  };
-  const auto find_authoritative_branch_owned_join_transfer =
-      [&](const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
-          std::string_view source_block_label)
-      -> std::optional<AuthoritativeBranchJoinTransfer> {
-    const auto* join_transfer =
-        c4c::backend::prepare::find_branch_owned_join_transfer(control_flow, source_block_label);
-    if (join_transfer == nullptr) {
-      return std::nullopt;
-    }
-    return build_authoritative_branch_join_transfer(*join_transfer);
-  };
   struct AuthoritativeJoinTransferSources {
     const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
     const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
@@ -1639,7 +1545,8 @@ std::string emit_prepared_module(
     std::string false_return;
   };
   const auto find_authoritative_join_transfer_sources =
-      [&](const AuthoritativeBranchJoinTransfer& authoritative_join_transfer)
+      [&](const c4c::backend::prepare::PreparedAuthoritativeBranchJoinTransfer&
+              authoritative_join_transfer)
       -> std::optional<AuthoritativeJoinTransferSources> {
     const auto* join_transfer = authoritative_join_transfer.join_transfer;
     const auto* true_transfer = authoritative_join_transfer.true_transfer;
@@ -1655,7 +1562,8 @@ std::string emit_prepared_module(
     };
   };
   const auto find_authoritative_join_branch_sources =
-      [&](const AuthoritativeBranchJoinTransfer& authoritative_join_transfer,
+      [&](const c4c::backend::prepare::PreparedAuthoritativeBranchJoinTransfer&
+              authoritative_join_transfer,
           std::string_view true_block_label,
           std::string_view false_block_label)
       -> std::optional<AuthoritativeJoinBranchSources> {
@@ -1744,7 +1652,8 @@ std::string emit_prepared_module(
     return std::nullopt;
   };
   const auto find_materialized_compare_join_context =
-      [&](const AuthoritativeBranchJoinTransfer& authoritative_join_transfer,
+      [&](const c4c::backend::prepare::PreparedAuthoritativeBranchJoinTransfer&
+              authoritative_join_transfer,
           std::string_view true_block_label,
           std::string_view false_block_label)
       -> std::optional<MaterializedCompareJoinContext> {
@@ -2023,7 +1932,8 @@ std::string emit_prepared_module(
       };
     };
     const auto find_authoritative_short_circuit_join_sources =
-        [&](const AuthoritativeBranchJoinTransfer& authoritative_join_transfer)
+        [&](const c4c::backend::prepare::PreparedAuthoritativeBranchJoinTransfer&
+                authoritative_join_transfer)
         -> std::optional<AuthoritativeShortCircuitJoinSources> {
       if (authoritative_join_transfer.join_transfer == nullptr ||
           authoritative_join_transfer.join_transfer->edge_transfers.size() != 2) {
@@ -2117,7 +2027,8 @@ std::string emit_prepared_module(
             std::string_view source_block_label)
         -> std::optional<ShortCircuitJoinContext> {
       const auto authoritative_join_transfer =
-          find_authoritative_branch_owned_join_transfer(control_flow, source_block_label);
+          c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
+              control_flow, source_block_label);
       if (!authoritative_join_transfer.has_value()) {
         return std::nullopt;
       }
@@ -4561,7 +4472,8 @@ std::string emit_prepared_module(
     const auto* branch_condition = prepared_branch->branch_condition;
 
     const auto authoritative_join_transfer =
-        find_authoritative_branch_owned_join_transfer(*function_control_flow, entry.label);
+        c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
+            *function_control_flow, entry.label);
     if (!authoritative_join_transfer.has_value()) {
       return std::nullopt;
     }

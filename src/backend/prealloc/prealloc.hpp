@@ -407,6 +407,12 @@ struct PreparedControlFlowFunction {
   std::vector<PreparedJoinTransfer> join_transfers;
 };
 
+struct PreparedAuthoritativeBranchJoinTransfer {
+  const PreparedJoinTransfer* join_transfer = nullptr;
+  const PreparedEdgeValueTransfer* true_transfer = nullptr;
+  const PreparedEdgeValueTransfer* false_transfer = nullptr;
+};
+
 // Shared consumers must take branch semantics from `branch_conditions` and former
 // phi/join obligations from `join_transfers` instead of reconstructing them from CFG shape.
 struct PreparedControlFlow {
@@ -493,6 +499,58 @@ struct PreparedControlFlow {
                                          PreparedJoinTransferKind::SelectMaterialization,
                                          true_predecessor_label,
                                          false_predecessor_label);
+}
+
+[[nodiscard]] inline std::optional<PreparedAuthoritativeBranchJoinTransfer>
+find_authoritative_branch_owned_join_transfer(
+    const PreparedControlFlowFunction& function_cf,
+    std::string_view source_branch_block_label,
+    std::optional<PreparedJoinTransferKind> required_kind = std::nullopt,
+    std::optional<std::string_view> true_predecessor_label = std::nullopt,
+    std::optional<std::string_view> false_predecessor_label = std::nullopt) {
+  const auto* join_transfer = find_branch_owned_join_transfer(function_cf,
+                                                              source_branch_block_label,
+                                                              required_kind,
+                                                              true_predecessor_label,
+                                                              false_predecessor_label);
+  if (join_transfer == nullptr ||
+      (join_transfer->kind != PreparedJoinTransferKind::SelectMaterialization &&
+       join_transfer->kind != PreparedJoinTransferKind::EdgeStoreSlot) ||
+      join_transfer->result.type != bir::TypeKind::I32 ||
+      !join_transfer->source_true_transfer_index.has_value() ||
+      !join_transfer->source_false_transfer_index.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto true_index = *join_transfer->source_true_transfer_index;
+  const auto false_index = *join_transfer->source_false_transfer_index;
+  if (true_index >= join_transfer->edge_transfers.size() ||
+      false_index >= join_transfer->edge_transfers.size() || true_index == false_index) {
+    return std::nullopt;
+  }
+
+  const auto* true_transfer = &join_transfer->edge_transfers[true_index];
+  const auto* false_transfer = &join_transfer->edge_transfers[false_index];
+  if (true_transfer->successor_label != join_transfer->join_block_label ||
+      false_transfer->successor_label != join_transfer->join_block_label) {
+    return std::nullopt;
+  }
+
+  if (join_transfer->kind == PreparedJoinTransferKind::EdgeStoreSlot) {
+    if (!join_transfer->storage_name.has_value() ||
+        !true_transfer->storage_name.has_value() ||
+        !false_transfer->storage_name.has_value() ||
+        *true_transfer->storage_name != *join_transfer->storage_name ||
+        *false_transfer->storage_name != *join_transfer->storage_name) {
+      return std::nullopt;
+    }
+  }
+
+  return PreparedAuthoritativeBranchJoinTransfer{
+      .join_transfer = join_transfer,
+      .true_transfer = true_transfer,
+      .false_transfer = false_transfer,
+  };
 }
 
 [[nodiscard]] inline const std::vector<PreparedEdgeValueTransfer>* incoming_transfers_for_join(
