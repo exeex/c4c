@@ -10,17 +10,17 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting the
-remaining short-circuit detection plus render handshake out of the conditional
-branch fast path. The branch emitter now delegates optional short-circuit
-rendering to `try_render_short_circuit_plan()` instead of sequencing plan
-discovery and rendered-lane assembly inline.
+prepared select-join validation plus compare-join continuation lookup into
+`find_short_circuit_join_context()`. `try_render_short_circuit_plan()` now
+consumes one join-context helper instead of rechecking the prepared join
+contract and rebuilding continuation data inline.
 
 ## Suggested Next
 
-The next small Step 3 packet is to shrink `try_render_short_circuit_plan()`
-around join-context discovery by isolating the select-join validation and
-continuation lookup into one helper so future Step 3 work can adjust the
-prepared join contract without re-expanding conditional-branch rendering.
+The next small Step 3 packet is to trim `try_render_short_circuit_plan()`
+around entry/routing discovery by pulling the entry-block validation and RHS
+routing choice into one helper so future Step 3 cleanup can keep the planner
+as a straight-line prepared-data consumer.
 
 ## Watchouts
 
@@ -33,6 +33,9 @@ prepared join contract without re-expanding conditional-branch rendering.
 - `build_compare_join_continuation()` remains the Step 3 gate for the join-
   result zero-compare contract; keep `Eq`/`Ne` mapping and jump-target choice
   data-driven there instead of pushing them back into renderer assembly.
+- `find_short_circuit_join_context()` now owns the prepared select-join shape
+  checks plus continuation lookup; future contract edits should land there
+  instead of re-growing those checks inside `try_render_short_circuit_plan()`.
 - `try_render_short_circuit_plan()` now owns the short-circuit detect-plus-
   render handshake; keep future cleanup inside that helper instead of
   re-growing plan discovery in the cond-branch emitter.
@@ -55,5 +58,5 @@ prepared join contract without re-expanding conditional-branch rendering.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 rendered-lane collection
-cleanup packet; `test_after.log` remains the canonical proof log path.
+The build and narrow proof passed for this Step 3 join-context extraction
+packet; `test_after.log` remains the canonical proof log path.
