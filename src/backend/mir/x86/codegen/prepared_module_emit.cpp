@@ -4330,6 +4330,42 @@ std::string emit_prepared_module(
     }
     return *value_render + "    ret\n";
   };
+  const auto render_materialized_compare_join_return_if_supported =
+      [&](const MaterializedCompareJoinContext& compare_join_context,
+          const c4c::backend::bir::Value& selected_value,
+          const c4c::backend::bir::Param& param) -> std::optional<std::string> {
+    const auto* join_block = compare_join_context.join_block;
+    if (join_block == nullptr || compare_join_context.carrier_index > join_block->insts.size()) {
+      return std::nullopt;
+    }
+
+    std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*> named_binaries;
+    for (std::size_t inst_index = 0; inst_index < compare_join_context.carrier_index;
+         ++inst_index) {
+      const auto* binary =
+          std::get_if<c4c::backend::bir::BinaryInst>(&join_block->insts[inst_index]);
+      if (binary == nullptr) {
+        return std::nullopt;
+      }
+      named_binaries.emplace(binary->result.name, binary);
+    }
+
+    const auto value_render =
+        render_param_derived_value_if_supported(selected_value, named_binaries, param);
+    if (!value_render.has_value()) {
+      return std::nullopt;
+    }
+    if (compare_join_context.trailing_binary == nullptr) {
+      return *value_render + "    ret\n";
+    }
+
+    const auto trailing_render = apply_supported_immediate_binary(
+        *compare_join_context.trailing_binary, compare_join_context.joined_value_name);
+    if (!trailing_render.has_value()) {
+      return std::nullopt;
+    }
+    return *value_render + *trailing_render + "    ret\n";
+  };
   const auto render_minimal_compare_branch_if_supported =
       [&]() -> std::optional<std::string> {
     if (function.blocks.size() != 3 || function.params.size() != 1 ||
@@ -4448,43 +4484,14 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto* join_block = compare_join_context->join_block;
-    const auto* trailing_binary = compare_join_context->trailing_binary;
-    std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*> named_binaries;
-    for (std::size_t inst_index = 0; inst_index < compare_join_context->carrier_index;
-         ++inst_index) {
-      const auto* binary =
-          std::get_if<c4c::backend::bir::BinaryInst>(&join_block->insts[inst_index]);
-      if (binary == nullptr) {
-        return std::nullopt;
-      }
-      named_binaries.emplace(binary->result.name, binary);
-    }
-
     const auto* true_transfer = compare_join_context->true_transfer;
     const auto* false_transfer = compare_join_context->false_transfer;
     const auto* true_join_predecessor = compare_join_context->true_predecessor;
     const auto* false_join_predecessor = compare_join_context->false_predecessor;
-
-    const auto render_join_return =
-        [&](const c4c::backend::bir::Value& selected_value) -> std::optional<std::string> {
-      const auto value_render =
-          render_param_derived_value_if_supported(selected_value, named_binaries, param);
-      if (!value_render.has_value()) {
-        return std::nullopt;
-      }
-      if (trailing_binary == nullptr) {
-        return *value_render + "    ret\n";
-      }
-      const auto trailing_render =
-          apply_supported_immediate_binary(*trailing_binary, compare_join_context->joined_value_name);
-      if (!trailing_render.has_value()) {
-        return std::nullopt;
-      }
-      return *value_render + *trailing_render + "    ret\n";
-    };
-    const auto true_return = render_join_return(true_transfer->incoming_value);
-    const auto false_return = render_join_return(false_transfer->incoming_value);
+    const auto true_return = render_materialized_compare_join_return_if_supported(
+        *compare_join_context, true_transfer->incoming_value, param);
+    const auto false_return = render_materialized_compare_join_return_if_supported(
+        *compare_join_context, false_transfer->incoming_value, param);
     if (!true_return.has_value() || !false_return.has_value()) {
       return std::nullopt;
     }

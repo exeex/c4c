@@ -10,18 +10,18 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by lifting the
-materialized compare-join carrier validation behind a dedicated helper that is
-keyed by the authoritative prepared branch-owned join transfer and prepared
-join result. The compare-join consumer now gets a validated prepared-facts
-context for the join block, carrier slot, trailing binary, and authoritative
-incoming lanes instead of open-coding that carrier lookup inline.
+materialized compare-join return rendering behind a dedicated helper that is
+keyed by the prepared join context. The compare-join consumer now reuses one
+prepared-context helper for pre-carrier `named_binaries` collection and
+optional trailing-immediate application instead of open-coding that return
+rendering inline.
 
 ## Suggested Next
 
 The next small Step 3 packet is to see whether the remaining compare-join
-return rendering can share a tighter prepared-join helper for the
-`named_binaries`/trailing-immediate path without merging it with the
-short-circuit route's distinct topology rules.
+entry-side predicate checks can move behind a prepared-branch/join helper so
+`render_materialized_compare_join_if_supported()` narrows further without
+merging it with the short-circuit route's distinct topology rules.
 
 ## Watchouts
 
@@ -84,6 +84,11 @@ short-circuit route's distinct topology rules.
   instruction names or join-block scans. If another route needs more carrier
   facts, extend the helper around the authoritative prepared transfer contract
   instead of reintroducing inline carrier rediscovery.
+- `render_materialized_compare_join_return_if_supported()` now owns the
+  compare-join path's pre-carrier `named_binaries` walk and optional
+  trailing-immediate replay. Adjacent work should keep that helper scoped to
+  prepared join-context return rendering rather than turning it into a generic
+  emitter utility.
 - Keep the short-circuit path's `edge_transfers.size() == 2` requirement local
   to that route: the joined materialized-compare consumer still depends on
   authoritative select-join metadata without requiring the transfer list to
@@ -96,6 +101,6 @@ short-circuit route's distinct topology rules.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This dedicated compare-join prepared-context packet passed with the focused
+This dedicated compare-join return-helper packet passed with the focused
 handoff-boundary proof command, and `test_after.log` remains the fresh
 canonical proof log for supervisor review.
