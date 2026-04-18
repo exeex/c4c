@@ -1051,10 +1051,29 @@ find_authoritative_join_branch_sources(
       !false_predecessor->insts.empty()) {
     return std::nullopt;
   }
-  if (true_predecessor->terminator.kind != bir::TerminatorKind::Branch ||
-      false_predecessor->terminator.kind != bir::TerminatorKind::Branch ||
-      true_predecessor->terminator.target_label != join_transfer->join_block_label ||
-      false_predecessor->terminator.target_label != join_transfer->join_block_label) {
+
+  const auto branches_to_join_with_optional_empty_passthrough =
+      [&](const bir::Block& predecessor) -> bool {
+    if (predecessor.terminator.kind != bir::TerminatorKind::Branch) {
+      return false;
+    }
+    if (predecessor.terminator.target_label == join_transfer->join_block_label) {
+      return true;
+    }
+
+    const auto* passthrough =
+        find_block_in_function(function, predecessor.terminator.target_label);
+    if (passthrough == nullptr || passthrough == &entry_block || passthrough == &predecessor ||
+        !passthrough->insts.empty() ||
+        passthrough->terminator.kind != bir::TerminatorKind::Branch ||
+        passthrough->terminator.target_label != join_transfer->join_block_label) {
+      return false;
+    }
+    return true;
+  };
+
+  if (!branches_to_join_with_optional_empty_passthrough(*true_predecessor) ||
+      !branches_to_join_with_optional_empty_passthrough(*false_predecessor)) {
     return std::nullopt;
   }
 

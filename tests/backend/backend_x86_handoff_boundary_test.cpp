@@ -4570,7 +4570,9 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
                                                          bool use_global_selected_value_chain,
                                                          bool use_fixed_offset_global_selected_value_roots,
                                                          bool use_pointer_backed_global_selected_value_roots,
-                                                         bool add_unreachable_block) {
+                                                         bool add_unreachable_block,
+                                                         bool add_false_lane_passthrough_block =
+                                                             false) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -4922,6 +4924,13 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
       .result = bir::Value::named(bir::TypeKind::I32, "dead.result"),
       .kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot,
   });
+  if (add_false_lane_passthrough_block) {
+    false_carrier->terminator = bir::BranchTerminator{.target_label = "contract.false.bridge"};
+    function.blocks.push_back(bir::Block{
+        .label = "contract.false.bridge",
+        .terminator = bir::BranchTerminator{.target_label = join_block->label},
+    });
+  }
   if (add_unreachable_block) {
     function.blocks.push_back(bir::Block{
         .label = "contract.dead.unreachable",
@@ -5014,6 +5023,27 @@ int check_join_route_edge_store_slot_consumes_prepared_control_flow(
       false,
       false,
       false);
+}
+
+int check_join_route_with_false_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true);
 }
 
 int check_join_route_selected_value_chain_consumes_prepared_control_flow(
@@ -7871,6 +7901,16 @@ int main() {
                   "branch_join_adjust_then_xor", "is_nonzero", 5, 1, 3),
               "branch_join_adjust_then_xor",
               "scalar-control-flow compare-against-zero joined branch lane ignores unrelated block count when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm(
+                  "branch_join_adjust_then_xor", "is_nonzero", 5, 1, 3),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }
