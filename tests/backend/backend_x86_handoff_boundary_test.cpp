@@ -710,6 +710,75 @@ std::string expected_minimal_param_eq_zero_branch_joined_pointer_backed_global_c
          std::string(false_global_name) + ":\n    .long 1\n";
 }
 
+std::string expected_minimal_param_eq_zero_branch_joined_offset_pointer_backed_globals_then_xor_asm(
+    const char* function_name,
+    const char* false_label,
+    const char* true_root_name,
+    const char* true_global_name,
+    int true_global_offset,
+    const char* false_root_name,
+    const char* false_global_name,
+    int false_global_offset,
+    int joined_immediate) {
+  return expected_branch_prefix(function_name, false_label) + "    mov rax, QWORD PTR [rip + " +
+         std::string(true_root_name) + "]\n    mov " + minimal_i32_return_register() +
+         ", DWORD PTR [rip + " + std::string(true_global_name) + " + " +
+         std::to_string(true_global_offset) + "]\n    xor " + minimal_i32_return_register() +
+         ", " + std::to_string(joined_immediate) + "\n    ret\n.L" + function_name + "_" +
+         false_label + ":\n    mov rax, QWORD PTR [rip + " + std::string(false_root_name) +
+         "]\n    mov " + minimal_i32_return_register() + ", DWORD PTR [rip + " +
+         std::string(false_global_name) + " + " + std::to_string(false_global_offset) +
+         "]\n    xor " + minimal_i32_return_register() + ", " +
+         std::to_string(joined_immediate) + "\n    ret\n.data\n.globl " +
+         std::string(true_root_name) + "\n.type " + std::string(true_root_name) +
+         ", @object\n.p2align 2\n" + std::string(true_root_name) + ":\n    .quad " +
+         std::string(true_global_name) + "\n.data\n.globl " + std::string(true_global_name) +
+         "\n.type " + std::string(true_global_name) + ", @object\n.p2align 2\n" +
+         std::string(true_global_name) + ":\n    .long 0\n    .long 5\n.data\n.globl " +
+         std::string(false_root_name) + "\n.type " + std::string(false_root_name) +
+         ", @object\n.p2align 2\n" + std::string(false_root_name) + ":\n    .quad " +
+         std::string(false_global_name) + "\n.data\n.globl " + std::string(false_global_name) +
+         "\n.type " + std::string(false_global_name) + ", @object\n.p2align 2\n" +
+         std::string(false_global_name) + ":\n    .long 0\n    .long 1\n";
+}
+
+std::string expected_minimal_param_eq_zero_branch_joined_offset_pointer_backed_global_chains_then_xor_asm(
+    const char* function_name,
+    const char* false_label,
+    const char* true_root_name,
+    const char* true_global_name,
+    int true_global_offset,
+    int true_chain_immediate,
+    const char* false_root_name,
+    const char* false_global_name,
+    int false_global_offset,
+    int false_chain_immediate,
+    int joined_immediate) {
+  return expected_branch_prefix(function_name, false_label) + "    mov rax, QWORD PTR [rip + " +
+         std::string(true_root_name) + "]\n    mov " + minimal_i32_return_register() +
+         ", DWORD PTR [rip + " + std::string(true_global_name) + " + " +
+         std::to_string(true_global_offset) + "]\n    add " + minimal_i32_return_register() +
+         ", " + std::to_string(true_chain_immediate) + "\n    xor " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov rax, QWORD PTR [rip + " +
+         std::string(false_root_name) + "]\n    mov " + minimal_i32_return_register() +
+         ", DWORD PTR [rip + " + std::string(false_global_name) + " + " +
+         std::to_string(false_global_offset) + "]\n    sub " + minimal_i32_return_register() +
+         ", " + std::to_string(false_chain_immediate) + "\n    xor " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.data\n.globl " + std::string(true_root_name) + "\n.type " +
+         std::string(true_root_name) + ", @object\n.p2align 2\n" +
+         std::string(true_root_name) + ":\n    .quad " + std::string(true_global_name) +
+         "\n.data\n.globl " + std::string(true_global_name) + "\n.type " +
+         std::string(true_global_name) + ", @object\n.p2align 2\n" +
+         std::string(true_global_name) + ":\n    .long 0\n    .long 5\n.data\n.globl " +
+         std::string(false_root_name) + "\n.type " + std::string(false_root_name) +
+         ", @object\n.p2align 2\n" + std::string(false_root_name) + ":\n    .quad " +
+         std::string(false_global_name) + "\n.data\n.globl " + std::string(false_global_name) +
+         "\n.type " + std::string(false_global_name) + ", @object\n.p2align 2\n" +
+         std::string(false_global_name) + ":\n    .long 0\n    .long 1\n";
+}
+
 std::string expected_minimal_param_eq_zero_branch_joined_offset_globals_then_xor_asm(
     const char* function_name,
     const char* false_label,
@@ -2005,6 +2074,105 @@ bir::Module make_x86_param_eq_zero_branch_joined_offset_globals_then_xor_module(
 
   bir::Function function;
   function.name = "branch_join_offset_global_then_xor";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .true_label = "is_zero",
+      .false_label = "is_nonzero",
+  };
+
+  bir::Block is_zero;
+  is_zero.label = "is_zero";
+  is_zero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block is_nonzero;
+  is_nonzero.label = "is_nonzero";
+  is_nonzero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "is_zero",
+              .value = bir::Value::immediate_i32(5),
+          },
+          bir::PhiIncoming{
+              .label = "is_nonzero",
+              .value = bir::Value::immediate_i32(1),
+          },
+      },
+  });
+  join.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Xor,
+      .result = bir::Value::named(bir::TypeKind::I32, "joined"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  join.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "joined"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(is_zero));
+  function.blocks.push_back(std::move(is_nonzero));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_x86_param_eq_zero_branch_joined_offset_pointer_backed_globals_then_xor_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.globals.push_back(bir::Global{
+      .name = "selected_zero_root",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer_symbol_name = std::string("selected_zero_pair"),
+  });
+  module.globals.push_back(bir::Global{
+      .name = "selected_zero_pair",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .initializer_elements = {bir::Value::immediate_i32(0), bir::Value::immediate_i32(5)},
+  });
+  module.globals.push_back(bir::Global{
+      .name = "selected_nonzero_root",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer_symbol_name = std::string("selected_nonzero_pair"),
+  });
+  module.globals.push_back(bir::Global{
+      .name = "selected_nonzero_pair",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .initializer_elements = {bir::Value::immediate_i32(0), bir::Value::immediate_i32(1)},
+  });
+
+  bir::Function function;
+  function.name = "branch_join_offset_pointer_backed_global_then_xor";
   function.return_type = bir::TypeKind::I32;
   function.params.push_back(bir::Param{
       .type = bir::TypeKind::I32,
@@ -4653,13 +4821,13 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
     }
   } else if (use_global_selected_value_roots) {
     const char* true_global_name =
-        use_pointer_backed_global_selected_value_roots ? "selected_zero_backing"
-        : use_fixed_offset_global_selected_value_roots ? "selected_zero_pair"
-                                                       : "selected_zero";
+        use_fixed_offset_global_selected_value_roots ? "selected_zero_pair"
+        : use_pointer_backed_global_selected_value_roots ? "selected_zero_backing"
+                                                         : "selected_zero";
     const char* false_global_name =
-        use_pointer_backed_global_selected_value_roots ? "selected_nonzero_backing"
-        : use_fixed_offset_global_selected_value_roots ? "selected_nonzero_pair"
-                                                       : "selected_nonzero";
+        use_fixed_offset_global_selected_value_roots ? "selected_nonzero_pair"
+        : use_pointer_backed_global_selected_value_roots ? "selected_nonzero_backing"
+                                                         : "selected_nonzero";
     const std::size_t global_byte_offset =
         use_fixed_offset_global_selected_value_roots ? 4 : 0;
     const auto true_global_root =
@@ -4923,6 +5091,42 @@ int check_join_route_edge_store_slot_pointer_backed_global_selected_value_chain_
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
       module, expected_asm, function_name, failure_context, true, false, false, true, true, false, true);
+}
+
+int check_join_route_offset_pointer_backed_global_selected_values_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, false, false, false, true, false, true, true);
+}
+
+int check_join_route_edge_store_slot_offset_pointer_backed_global_selected_values_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, true, false, false, true, false, true, true);
+}
+
+int check_join_route_offset_pointer_backed_global_selected_value_chain_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, false, false, false, true, true, true, true);
+}
+
+int check_join_route_edge_store_slot_offset_pointer_backed_global_selected_value_chain_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, true, false, false, true, true, true, true);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_return_contexts(
@@ -5363,13 +5567,13 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
   }
 
   const char* true_global_name =
-      use_pointer_backed_global_roots ? "selected_zero_backing"
-      : use_fixed_offset_global_roots ? "selected_zero_pair"
-                                      : "selected_zero";
+      use_fixed_offset_global_roots ? "selected_zero_pair"
+      : use_pointer_backed_global_roots ? "selected_zero_backing"
+                                        : "selected_zero";
   const char* false_global_name =
-      use_pointer_backed_global_roots ? "selected_nonzero_backing"
-      : use_fixed_offset_global_roots ? "selected_nonzero_pair"
-                                      : "selected_nonzero";
+      use_fixed_offset_global_roots ? "selected_nonzero_pair"
+      : use_pointer_backed_global_roots ? "selected_nonzero_backing"
+                                        : "selected_nonzero";
   const std::size_t global_byte_offset = use_fixed_offset_global_roots ? 4 : 0;
 
   const auto true_global_root =
@@ -5630,6 +5834,38 @@ int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_po
     const char* failure_context) {
   return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
       module, function_name, failure_context, true, true, false, true);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_offset_pointer_backed_global_return_contexts(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, false, false, true, true);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_offset_pointer_backed_global_return_contexts(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, true, false, true, true);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_offset_pointer_backed_global_chain_return_contexts(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, false, true, true, true);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_offset_pointer_backed_global_chain_return_contexts(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, true, true, true, true);
 }
 
 int check_minimal_compare_branch_consumes_prepared_control_flow(const bir::Module& module,
@@ -6851,6 +7087,114 @@ int main() {
               make_x86_param_eq_zero_branch_joined_offset_globals_then_xor_module(),
               "branch_join_offset_global_then_xor",
               "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot fixed-offset same-module global selected-value chain return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_offset_pointer_backed_global_selected_values_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_offset_pointer_backed_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_offset_pointer_backed_globals_then_xor_asm(
+                  "branch_join_offset_pointer_backed_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero_root",
+                  "selected_zero_pair",
+                  4,
+                  "selected_nonzero_root",
+                  "selected_nonzero_pair",
+                  4,
+                  3),
+              "branch_join_offset_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with fixed-offset pointer-backed same-module global selected values prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_offset_pointer_backed_global_selected_values_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_offset_pointer_backed_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_offset_pointer_backed_globals_then_xor_asm(
+                  "branch_join_offset_pointer_backed_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero_root",
+                  "selected_zero_pair",
+                  4,
+                  "selected_nonzero_root",
+                  "selected_nonzero_pair",
+                  4,
+                  3),
+              "branch_join_offset_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with fixed-offset pointer-backed same-module global selected values EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_offset_pointer_backed_global_return_contexts(
+              make_x86_param_eq_zero_branch_joined_offset_pointer_backed_globals_then_xor_module(),
+              "branch_join_offset_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join fixed-offset pointer-backed same-module global return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_edge_store_slot_offset_pointer_backed_global_return_contexts(
+              make_x86_param_eq_zero_branch_joined_offset_pointer_backed_globals_then_xor_module(),
+              "branch_join_offset_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot fixed-offset pointer-backed same-module global return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_offset_pointer_backed_global_selected_value_chain_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_offset_pointer_backed_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_offset_pointer_backed_global_chains_then_xor_asm(
+                  "branch_join_offset_pointer_backed_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero_root",
+                  "selected_zero_pair",
+                  4,
+                  4,
+                  "selected_nonzero_root",
+                  "selected_nonzero_pair",
+                  4,
+                  1,
+                  3),
+              "branch_join_offset_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with fixed-offset pointer-backed same-module global selected-value chain prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_offset_pointer_backed_global_selected_value_chain_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_offset_pointer_backed_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_offset_pointer_backed_global_chains_then_xor_asm(
+                  "branch_join_offset_pointer_backed_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero_root",
+                  "selected_zero_pair",
+                  4,
+                  4,
+                  "selected_nonzero_root",
+                  "selected_nonzero_pair",
+                  4,
+                  1,
+                  3),
+              "branch_join_offset_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with fixed-offset pointer-backed same-module global selected-value chain EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_offset_pointer_backed_global_chain_return_contexts(
+              make_x86_param_eq_zero_branch_joined_offset_pointer_backed_globals_then_xor_module(),
+              "branch_join_offset_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join fixed-offset pointer-backed same-module global selected-value chain return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_edge_store_slot_offset_pointer_backed_global_chain_return_contexts(
+              make_x86_param_eq_zero_branch_joined_offset_pointer_backed_globals_then_xor_module(),
+              "branch_join_offset_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot fixed-offset pointer-backed same-module global selected-value chain return context ownership");
       status != 0) {
     return status;
   }
