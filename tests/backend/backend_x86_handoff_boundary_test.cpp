@@ -3711,6 +3711,53 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
                  ": prepared joined branch fixture no longer exposes the bounded compare/select carrier")
                     .c_str());
   }
+  auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+  if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1 ||
+      mutable_control_flow->branch_conditions.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared joined branch fixture lost its mutable control-flow contract")
+                    .c_str());
+  }
+  auto& branch_condition = mutable_control_flow->branch_conditions.front();
+  auto& join_transfer = mutable_control_flow->join_transfers.front();
+  if (join_transfer.edge_transfers.size() != 2) {
+    return fail((std::string(failure_context) +
+                 ": prepared joined branch contract no longer exposes the expected two-lane join transfer")
+                    .c_str());
+  }
+  join_transfer.source_true_transfer_index = 0;
+  join_transfer.source_false_transfer_index = 1;
+
+  const std::string renamed_true_label = "carrier.zero";
+  const std::string renamed_false_label = "carrier.nonzero";
+  const std::string original_false_label = entry_block->terminator.false_label;
+  auto* true_carrier = find_block(function, entry_block->terminator.true_label.c_str());
+  auto* false_carrier = find_block(function, entry_block->terminator.false_label.c_str());
+  if (true_carrier == nullptr || false_carrier == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared joined branch fixture no longer exposes both carrier blocks")
+                    .c_str());
+  }
+  true_carrier->label = renamed_true_label;
+  false_carrier->label = renamed_false_label;
+  entry_block->terminator.true_label = renamed_true_label;
+  entry_block->terminator.false_label = renamed_false_label;
+  branch_condition.true_label = renamed_true_label;
+  branch_condition.false_label = renamed_false_label;
+
+  join_transfer.edge_transfers[*join_transfer.source_true_transfer_index].predecessor_label =
+      renamed_true_label;
+  join_transfer.edge_transfers[*join_transfer.source_false_transfer_index].predecessor_label =
+      renamed_false_label;
+  join_transfer.source_true_incoming_label = "contract.true_lane";
+  join_transfer.source_false_incoming_label = "contract.false_lane";
+  for (auto& incoming : join_transfer.incomings) {
+    if (incoming.label == renamed_true_label) {
+      incoming.label = *join_transfer.source_true_incoming_label;
+    } else if (incoming.label == renamed_false_label) {
+      incoming.label = *join_transfer.source_false_incoming_label;
+    }
+  }
 
   entry_compare->opcode = bir::BinaryOpcode::Ne;
   entry_compare->lhs = bir::Value::immediate_i32(9);
@@ -3719,8 +3766,26 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
   join_select->lhs = bir::Value::immediate_i32(4);
   join_select->rhs = bir::Value::immediate_i32(1);
 
+  std::string mutated_expected_asm = expected_asm;
+  const std::string original_branch_label =
+      std::string(".L") + function_name + "_" + original_false_label;
+  const std::string renamed_branch_label =
+      std::string(".L") + function_name + "_" + renamed_false_label;
+  if (const auto label_pos = mutated_expected_asm.find(original_branch_label);
+      label_pos != std::string::npos) {
+    mutated_expected_asm.replace(label_pos, original_branch_label.size(), renamed_branch_label);
+    if (const auto second_label_pos =
+            mutated_expected_asm.find(original_branch_label, label_pos + renamed_branch_label.size());
+        second_label_pos != std::string::npos) {
+      mutated_expected_asm.replace(
+          second_label_pos,
+          original_branch_label.size(),
+          renamed_branch_label);
+    }
+  }
+
   const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
-  if (prepared_asm != expected_asm) {
+  if (prepared_asm != mutated_expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative prepared control-flow contract")
                     .c_str());

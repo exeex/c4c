@@ -3818,39 +3818,19 @@ std::string emit_prepared_module(
       return nullptr;
     };
 
-    const auto resolve_join_incoming_label =
-        [&](std::string_view branch_target_label,
-            const std::optional<std::string>& prepared_incoming_label,
-            std::string_view join_label) -> std::optional<std::string_view> {
-      const auto* join_predecessor =
-          find_empty_branch_join_predecessor(branch_target_label, join_label);
-      if (join_predecessor == nullptr) {
-        return std::nullopt;
-      }
-      if (prepared_incoming_label.has_value() &&
-          *prepared_incoming_label != join_predecessor->label) {
-        return std::nullopt;
-      }
-      return join_predecessor->label;
-    };
-
     const auto join_block_label = std::string_view(prepared_join_transfer.join_block_label);
-    const auto true_incoming_label = resolve_join_incoming_label(
-        branch_condition->true_label,
-        prepared_join_transfer.source_true_incoming_label,
-        join_block_label);
-    const auto false_incoming_label = resolve_join_incoming_label(
-        branch_condition->false_label,
-        prepared_join_transfer.source_false_incoming_label,
-        join_block_label);
-    if (!true_incoming_label.has_value() || !false_incoming_label.has_value() ||
-        *true_incoming_label == *false_incoming_label) {
+    const auto* true_join_predecessor =
+        find_empty_branch_join_predecessor(branch_condition->true_label, join_block_label);
+    const auto* false_join_predecessor =
+        find_empty_branch_join_predecessor(branch_condition->false_label, join_block_label);
+    if (true_join_predecessor == nullptr || false_join_predecessor == nullptr ||
+        true_join_predecessor == false_join_predecessor) {
       return std::nullopt;
     }
 
     const auto* join_block = find_block(prepared_join_transfer.join_block_label);
     if (join_block == nullptr || join_block == &entry ||
-        join_block->label == *true_incoming_label || join_block->label == *false_incoming_label ||
+        join_block == true_join_predecessor || join_block == false_join_predecessor ||
         join_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
         !join_block->terminator.value.has_value() || join_block->insts.empty()) {
       return std::nullopt;
@@ -3926,18 +3906,36 @@ std::string emit_prepared_module(
       named_binaries.emplace(binary->result.name, binary);
     }
 
-    const auto find_incoming_value =
-        [&](std::string_view label) -> const c4c::backend::bir::Value* {
-      for (const auto& incoming : *join_edges) {
-        if (incoming.predecessor_label == label) {
-          return &incoming.incoming_value;
+    const auto find_transfer_by_predecessor =
+        [&](std::string_view predecessor_label)
+        -> const c4c::backend::prepare::PreparedEdgeValueTransfer* {
+      for (const auto& edge_transfer : *join_edges) {
+        if (edge_transfer.predecessor_label == predecessor_label) {
+          return &edge_transfer;
         }
       }
       return nullptr;
     };
-    const auto* true_value = find_incoming_value(*true_incoming_label);
-    const auto* false_value = find_incoming_value(*false_incoming_label);
-    if (true_value == nullptr || false_value == nullptr) {
+
+    const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
+    const c4c::backend::prepare::PreparedEdgeValueTransfer* false_transfer = nullptr;
+    if (prepared_join_transfer.source_true_transfer_index.has_value() &&
+        prepared_join_transfer.source_false_transfer_index.has_value()) {
+      if (*prepared_join_transfer.source_true_transfer_index >= join_edges->size() ||
+          *prepared_join_transfer.source_false_transfer_index >= join_edges->size() ||
+          *prepared_join_transfer.source_true_transfer_index ==
+              *prepared_join_transfer.source_false_transfer_index) {
+        return std::nullopt;
+      }
+      true_transfer = &(*join_edges)[*prepared_join_transfer.source_true_transfer_index];
+      false_transfer = &(*join_edges)[*prepared_join_transfer.source_false_transfer_index];
+    } else {
+      true_transfer = find_transfer_by_predecessor(true_join_predecessor->label);
+      false_transfer = find_transfer_by_predecessor(false_join_predecessor->label);
+    }
+    if (true_transfer == nullptr || false_transfer == nullptr ||
+        true_transfer->successor_label != prepared_join_transfer.join_block_label ||
+        false_transfer->successor_label != prepared_join_transfer.join_block_label) {
       return std::nullopt;
     }
 
@@ -3958,13 +3956,13 @@ std::string emit_prepared_module(
       }
       return *value_render + *trailing_render + "    ret\n";
     };
-    const auto true_return = render_join_return(*true_value);
-    const auto false_return = render_join_return(*false_value);
+    const auto true_return = render_join_return(true_transfer->incoming_value);
+    const auto false_return = render_join_return(false_transfer->incoming_value);
     if (!true_return.has_value() || !false_return.has_value()) {
       return std::nullopt;
     }
 
-    const std::string false_label = ".L" + function.name + "_" + std::string(*false_incoming_label);
+    const std::string false_label = ".L" + function.name + "_" + false_join_predecessor->label;
     return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    jne " +
            false_label + "\n" + *true_return +
            false_label + ":\n" + *false_return;
