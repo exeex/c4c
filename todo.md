@@ -8,18 +8,19 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Tightened Step 3's prepared select-materialization join lookup in
-`src/backend/prealloc/prealloc.hpp` so x86 can only match joins whose
-`source_branch_block_label` is present and exactly matches the querying
-prepared branch. Unlabeled select-materialization metadata no longer acts as
-an implicit fallback path.
+Repaired Step 3's ordinary joined compare-against-zero branch consumer in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` so it accepts the
+authoritative prepared join-transfer contract for phi-backed joins instead of
+requiring a select-materialization-specific carrier. The x86 lane now keys off
+prepared edge transfers and the prepared join result name, which restores the
+joined branch route without reopening CFG-shape fallback.
 
 ## Suggested Next
 
-Step 3 still looks like it wants supervisor-chosen broader proof before being
-treated as a milestone. If more code work is needed after that, the next small
-packet is probably deleting or isolating the remaining raw select/phi fallback
-reconstruction so prepared-route consumers stay fully lookup-driven.
+Step 3 still has a remaining raw short-circuit select/phi reconstruction lane
+in `prepared_module_emit.cpp`. The next small packet is isolating or deleting
+that no-control-flow fallback so prepared-route consumers stay lookup-driven
+across both ordinary joins and short-circuit continuation.
 
 ## Watchouts
 
@@ -39,6 +40,10 @@ reconstruction so prepared-route consumers stay fully lookup-driven.
 - Contract-backed guard-chain continuation now trusts the prepared join
   predecessor label; if a future packet loosens that back into arbitrary empty
   branch-chain traversal, treat it as route drift.
+- Ordinary joined compare-against-zero branches may lower through phi-backed
+  prepared joins as well as select-materialization joins; x86 consumers in
+  that lane must use prepared join transfers as the authority, not demand a
+  select carrier.
 - The guarded short-circuit raw select/phi reconstruction still exists only as
   a no-control-flow fallback path; keep any future edits to that lane isolated
   from prepared-route consumers.

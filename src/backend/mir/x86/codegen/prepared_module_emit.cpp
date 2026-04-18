@@ -4070,16 +4070,30 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto* join_transfer = c4c::backend::prepare::find_select_materialization_join_transfer(
-        *function_control_flow,
-        branch_condition->block_label,
-        branch_condition->true_label,
-        branch_condition->false_label);
+    const auto* join_transfer = [&]() -> const c4c::backend::prepare::PreparedJoinTransfer* {
+      const c4c::backend::prepare::PreparedJoinTransfer* match = nullptr;
+      for (const auto& candidate : function_control_flow->join_transfers) {
+        if (candidate.result.type != c4c::backend::bir::TypeKind::I32 ||
+            candidate.edge_transfers.size() != 2) {
+          continue;
+        }
+        bool saw_true = false;
+        bool saw_false = false;
+        for (const auto& edge_transfer : candidate.edge_transfers) {
+          saw_true = saw_true || edge_transfer.predecessor_label == branch_condition->true_label;
+          saw_false = saw_false || edge_transfer.predecessor_label == branch_condition->false_label;
+        }
+        if (!saw_true || !saw_false) {
+          continue;
+        }
+        if (match != nullptr) {
+          return nullptr;
+        }
+        match = &candidate;
+      }
+      return match;
+    }();
     if (join_transfer == nullptr) {
-      return std::nullopt;
-    }
-    if (join_transfer->result.type != c4c::backend::bir::TypeKind::I32 ||
-        join_transfer->edge_transfers.size() != 2) {
       return std::nullopt;
     }
     const auto* join_edges = incoming_transfers_for_join(
@@ -4120,12 +4134,29 @@ std::string emit_prepared_module(
       select_index = join_block->insts.size() - 2;
     }
 
-    const auto* select =
-        std::get_if<c4c::backend::bir::SelectInst>(&join_block->insts[select_index]);
-    if (select == nullptr || select->result.type != c4c::backend::bir::TypeKind::I32 ||
-        select->result.name != join_transfer->result.name ||
+    std::string_view joined_value_name;
+    if (const auto* select =
+            std::get_if<c4c::backend::bir::SelectInst>(&join_block->insts[select_index]);
+        select != nullptr) {
+      if (select->result.type != c4c::backend::bir::TypeKind::I32 ||
+          select->result.name != join_transfer->result.name) {
+        return std::nullopt;
+      }
+      joined_value_name = select->result.name;
+    } else if (const auto* load_local =
+                   std::get_if<c4c::backend::bir::LoadLocalInst>(&join_block->insts[select_index]);
+               load_local != nullptr) {
+      if (load_local->result.type != c4c::backend::bir::TypeKind::I32 ||
+          load_local->result.name != join_transfer->result.name) {
+        return std::nullopt;
+      }
+      joined_value_name = load_local->result.name;
+    } else {
+      return std::nullopt;
+    }
+    if (
         join_block->terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
-        (trailing_binary == nullptr && join_block->terminator.value->name != join_transfer->result.name)) {
+        (trailing_binary == nullptr && join_block->terminator.value->name != joined_value_name)) {
       return std::nullopt;
     }
 
@@ -4165,7 +4196,7 @@ std::string emit_prepared_module(
         return *value_render + "    ret\n";
       }
       const auto trailing_render =
-          apply_supported_immediate_binary(*trailing_binary, select->result.name);
+          apply_supported_immediate_binary(*trailing_binary, joined_value_name);
       if (!trailing_render.has_value()) {
         return std::nullopt;
       }
