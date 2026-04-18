@@ -1662,6 +1662,16 @@ std::string emit_prepared_module(
           .continuation = continuation,
       };
     };
+    const auto render_short_circuit_target =
+        [&](const auto& render_block_fn,
+            const ShortCircuitTarget& target,
+            bool omit_continuation) -> std::optional<std::string> {
+      if (target.block == nullptr) {
+        return std::nullopt;
+      }
+      return render_block_fn(*target.block,
+                             omit_continuation ? std::nullopt : target.continuation);
+    };
 
     const auto render_function_return =
         [&](std::int32_t returned_imm) -> std::string {
@@ -2515,31 +2525,23 @@ std::string emit_prepared_module(
               };
             };
 
-            const auto render_short_circuit_target =
-                [&](const ShortCircuitTarget& target, bool omit_continuation)
-                -> std::optional<std::string> {
-              if (target.block == nullptr) {
-                return std::nullopt;
-              }
-              return render_block(
-                  *target.block, omit_continuation ? std::nullopt : target.continuation);
-            };
-
             const auto render_context = build_render_context(short_circuit_plan);
             if (!render_context.has_value()) {
               return std::nullopt;
             }
 
             const auto rendered_true = render_short_circuit_target(
-                short_circuit_plan.on_compare_true, render_context->omit_true_continuation);
+                render_block,
+                short_circuit_plan.on_compare_true,
+                render_context->omit_true_continuation);
             if (!rendered_true.has_value()) {
               return std::nullopt;
             }
 
             std::optional<std::string> rendered_false;
             if (!render_context->omit_false_lane) {
-              rendered_false =
-                  render_short_circuit_target(short_circuit_plan.on_compare_false, false);
+              rendered_false = render_short_circuit_target(
+                  render_block, short_circuit_plan.on_compare_false, false);
               if (!rendered_false.has_value()) {
                 return std::nullopt;
               }
