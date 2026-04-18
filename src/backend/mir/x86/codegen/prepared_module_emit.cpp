@@ -4044,16 +4044,9 @@ std::string emit_prepared_module(
     if (!prepared_compare_join_branches.has_value()) {
       return std::nullopt;
     }
-    const auto prepared_render_contract =
-        c4c::backend::prepare::find_prepared_materialized_compare_join_render_contract(
-            *prepared_compare_join_branches);
-    if (!prepared_render_contract.has_value()) {
-      return std::nullopt;
-    }
-
     const auto resolved_render_contract =
-        c4c::backend::prepare::resolve_prepared_materialized_compare_join_render_contract(
-            module.module, *prepared_render_contract);
+        c4c::backend::prepare::find_prepared_resolved_materialized_compare_join_render_contract(
+            module.module, *prepared_compare_join_branches);
     if (!resolved_render_contract.has_value()) {
       return std::nullopt;
     }

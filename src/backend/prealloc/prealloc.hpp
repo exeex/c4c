@@ -735,6 +735,11 @@ resolve_prepared_materialized_compare_join_render_contract(
     const bir::Module& module,
     const PreparedMaterializedCompareJoinRenderContract& render_contract);
 
+[[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
+find_prepared_resolved_materialized_compare_join_render_contract(
+    const bir::Module& module,
+    const PreparedParamZeroMaterializedCompareJoinBranches& prepared_compare_join_branches);
+
 [[nodiscard]] inline std::optional<PreparedParamZeroBranchCondition>
 find_prepared_param_zero_branch_condition(const PreparedControlFlowFunction& function_cf,
                                           const bir::Block& source_block,
@@ -1754,6 +1759,18 @@ resolve_prepared_materialized_compare_join_render_contract(
       .false_return_shape = render_contract.false_return_shape,
       .same_module_globals = std::move(*same_module_globals),
   };
+}
+
+[[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
+find_prepared_resolved_materialized_compare_join_render_contract(
+    const bir::Module& module,
+    const PreparedParamZeroMaterializedCompareJoinBranches& prepared_compare_join_branches) {
+  const auto render_contract =
+      find_prepared_materialized_compare_join_render_contract(prepared_compare_join_branches);
+  if (!render_contract.has_value()) {
+    return std::nullopt;
+  }
+  return resolve_prepared_materialized_compare_join_render_contract(module, *render_contract);
 }
 
 [[nodiscard]] inline const std::vector<PreparedEdgeValueTransfer>* incoming_transfers_for_join(

@@ -5386,6 +5386,14 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
                  ": shared helper stopped resolving the compare-join render contract")
                     .c_str());
   }
+  const auto directly_resolved_render_contract =
+      prepare::find_prepared_resolved_materialized_compare_join_render_contract(
+          prepared.module, *prepared_compare_join_branches);
+  if (!directly_resolved_render_contract.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped publishing the direct resolved compare-join contract")
+                    .c_str());
+  }
   if (resolved_render_contract->branch_plan.target_labels.true_label !=
           render_contract->branch_plan.target_labels.true_label ||
       resolved_render_contract->branch_plan.target_labels.false_label !=
@@ -5404,6 +5412,28 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
         (*resolved_same_module_globals)[index]) {
       return fail((std::string(failure_context) +
                    ": shared helper stopped preserving resolved compare-join globals")
+                      .c_str());
+    }
+  }
+  if (directly_resolved_render_contract->branch_plan.target_labels.true_label !=
+          resolved_render_contract->branch_plan.target_labels.true_label ||
+      directly_resolved_render_contract->branch_plan.target_labels.false_label !=
+          resolved_render_contract->branch_plan.target_labels.false_label ||
+      std::string(directly_resolved_render_contract->branch_plan.false_branch_opcode) !=
+          resolved_render_contract->branch_plan.false_branch_opcode ||
+      directly_resolved_render_contract->same_module_globals.size() !=
+          resolved_render_contract->same_module_globals.size()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped preserving the direct resolved compare-join contract")
+                    .c_str());
+  }
+  for (std::size_t index = 0;
+       index < directly_resolved_render_contract->same_module_globals.size();
+       ++index) {
+    if (directly_resolved_render_contract->same_module_globals[index] !=
+        resolved_render_contract->same_module_globals[index]) {
+      return fail((std::string(failure_context) +
+                   ": shared helper stopped preserving direct resolved compare-join globals")
                       .c_str());
     }
   }
