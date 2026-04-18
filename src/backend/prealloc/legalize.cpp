@@ -1083,6 +1083,8 @@ void collect_select_materialized_join_transfers(
                   },
               },
           .source_branch_block_label = branch_condition.block_label,
+          .source_true_transfer_index = 0,
+          .source_false_transfer_index = 1,
           .source_true_incoming_label = *true_incoming_label,
           .source_false_incoming_label = *false_incoming_label,
       });

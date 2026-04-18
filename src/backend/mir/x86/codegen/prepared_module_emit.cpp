@@ -2275,11 +2275,17 @@ std::string emit_prepared_module(
               if (candidate.kind !=
                       c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
                   candidate.result.type != c4c::backend::bir::TypeKind::I32 ||
-                  candidate.incomings.size() != 2 ||
+                  candidate.edge_transfers.size() != 2 ||
                   !candidate.source_branch_block_label.has_value() ||
-                  !candidate.source_true_incoming_label.has_value() ||
-                  !candidate.source_false_incoming_label.has_value() ||
+                  !candidate.source_true_transfer_index.has_value() ||
+                  !candidate.source_false_transfer_index.has_value() ||
                   *candidate.source_branch_block_label != block.label) {
+                continue;
+              }
+              if (*candidate.source_true_transfer_index >= candidate.edge_transfers.size() ||
+                  *candidate.source_false_transfer_index >= candidate.edge_transfers.size() ||
+                  *candidate.source_true_transfer_index ==
+                      *candidate.source_false_transfer_index) {
                 continue;
               }
               if (join_transfer != nullptr) {
@@ -2321,20 +2327,20 @@ std::string emit_prepared_module(
             }
 
             const auto classify_join_incoming =
-                [](const c4c::backend::bir::PhiIncoming& incoming)
+                [](const c4c::backend::prepare::PreparedEdgeValueTransfer& incoming)
                 -> std::variant<std::monostate, bool, std::string_view> {
-              if (incoming.value.kind == c4c::backend::bir::Value::Kind::Immediate &&
-                  incoming.value.type == c4c::backend::bir::TypeKind::I32 &&
-                  (incoming.value.immediate == 0 || incoming.value.immediate == 1)) {
-                return incoming.value.immediate != 0;
+              if (incoming.incoming_value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+                  incoming.incoming_value.type == c4c::backend::bir::TypeKind::I32 &&
+                  (incoming.incoming_value.immediate == 0 || incoming.incoming_value.immediate == 1)) {
+                return incoming.incoming_value.immediate != 0;
               }
-              if (incoming.value.kind == c4c::backend::bir::Value::Kind::Named) {
-                return incoming.value.name;
+              if (incoming.incoming_value.kind == c4c::backend::bir::Value::Kind::Named) {
+                return incoming.incoming_value.name;
               }
               return std::monostate{};
             };
-            const auto incoming0_kind = classify_join_incoming(join_transfer->incomings[0]);
-            const auto incoming1_kind = classify_join_incoming(join_transfer->incomings[1]);
+            const auto incoming0_kind = classify_join_incoming(join_transfer->edge_transfers[0]);
+            const auto incoming1_kind = classify_join_incoming(join_transfer->edge_transfers[1]);
             const bool incoming0_is_bool = std::holds_alternative<bool>(incoming0_kind);
             const bool incoming1_is_bool = std::holds_alternative<bool>(incoming1_kind);
             const bool incoming0_is_named = std::holds_alternative<std::string_view>(incoming0_kind);
@@ -2344,14 +2350,13 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
-            const auto& short_circuit_incoming =
-                incoming0_is_bool ? join_transfer->incomings[0] : join_transfer->incomings[1];
+            const std::size_t short_circuit_index = incoming0_is_bool ? 0 : 1;
             const bool short_circuit_value =
                 incoming0_is_bool ? std::get<bool>(incoming0_kind) : std::get<bool>(incoming1_kind);
             const bool short_circuit_on_compare_true =
-                short_circuit_incoming.label == *join_transfer->source_true_incoming_label;
+                short_circuit_index == *join_transfer->source_true_transfer_index;
             const bool short_circuit_on_compare_false =
-                short_circuit_incoming.label == *join_transfer->source_false_incoming_label;
+                short_circuit_index == *join_transfer->source_false_transfer_index;
             if (short_circuit_on_compare_true == short_circuit_on_compare_false) {
               return std::nullopt;
             }
