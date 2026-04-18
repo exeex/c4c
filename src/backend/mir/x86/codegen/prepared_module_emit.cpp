@@ -1524,6 +1524,7 @@ std::string emit_prepared_module(
         };
     struct GuardJoinContinuation {
       std::string_view join_label;
+      std::string_view incoming_label;
       const c4c::backend::bir::Block* true_block = nullptr;
       const c4c::backend::bir::Block* false_block = nullptr;
       const c4c::backend::bir::BinaryInst* hoisted_compare = nullptr;
@@ -1542,22 +1543,6 @@ std::string emit_prepared_module(
       c4c::backend::bir::BinaryOpcode opcode = c4c::backend::bir::BinaryOpcode::Eq;
       std::string compare_setup;
     };
-    const auto continuation_target_reaches_join =
-        [&](std::string_view start_label, std::string_view join_label) {
-          std::unordered_set<std::string_view> visited;
-          const auto* current = find_block(start_label);
-          while (current != nullptr && visited.insert(current->label).second) {
-            if (current->label == join_label) {
-              return true;
-            }
-            if (!current->insts.empty() ||
-                current->terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
-              return false;
-            }
-            current = find_block(current->terminator.target_label);
-          }
-          return false;
-        };
     const auto* function_control_flow = find_control_flow_function();
 
     const auto render_function_return =
@@ -2148,8 +2133,8 @@ std::string emit_prepared_module(
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
             if (continuation.has_value()) {
               const bool reaches_continuation_join =
-                  continuation_target_reaches_join(block.terminator.target_label,
-                                                   continuation->join_label);
+                  block.label == continuation->incoming_label ||
+                  block.terminator.target_label == continuation->incoming_label;
               if (reaches_continuation_join) {
                 const c4c::backend::bir::BinaryInst* compare = nullptr;
                 if (compare_index + 1 == block.insts.size()) {
@@ -2356,6 +2341,7 @@ std::string emit_prepared_module(
 
             GuardJoinContinuation continuation_plan{
                 .join_label = join_block->label,
+                .incoming_label = {},
                 .true_block = nullptr,
                 .false_block = nullptr,
                 .hoisted_compare = nullptr,
@@ -2385,6 +2371,11 @@ std::string emit_prepared_module(
               }
             };
             auto assign_rhs = [&](bool compare_truth) {
+              const auto transfer_index =
+                  compare_truth ? *join_transfer->source_true_transfer_index
+                                : *join_transfer->source_false_transfer_index;
+              plan.continuation.incoming_label =
+                  join_transfer->edge_transfers[transfer_index].predecessor_label;
               if (compare_truth) {
                 plan.on_compare_true = rhs_entry;
                 plan.on_compare_true_uses_continuation = true;
