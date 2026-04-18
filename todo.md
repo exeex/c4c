@@ -9,18 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by replacing
-`ShortCircuitPlan`'s paired `on_compare_*_uses_continuation` booleans with
-per-lane targets that carry an optional `GuardJoinContinuation` payload. The
-short-circuit consumer now expresses continuation ownership directly on the
-selected compare arm instead of through mirrored true/false toggles.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by collapsing the
+duplicated short-circuit branch-render cases into a single helper over
+`ShortCircuitTarget`. The x86 consumer now decides whether a compare arm
+renders its opposite lane from one shared path instead of maintaining separate
+special-case render branches.
 
 ## Suggested Next
 
-The next small Step 3 packet is to collapse the duplicated short-circuit render
-branches in `src/backend/mir/x86/codegen/prepared_module_emit.cpp` into a
-single helper that consumes the new per-lane target shape directly while
-preserving the prepared predecessor selected by the join-transfer edge.
+The next small Step 3 packet is to simplify
+`detect_short_circuit_plan_from_control_flow()` in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` so the prepared
+join-transfer indices map into `ShortCircuitTarget` construction through one
+direct helper instead of separate `assign_short_circuit` and `assign_rhs`
+closures.
 
 ## Watchouts
 
@@ -35,6 +37,10 @@ preserving the prepared predecessor selected by the join-transfer edge.
   the rhs branch block's own compare; continuation ownership now lives on the
   selected `ShortCircuitTarget`, and prepared predecessor ownership, not
   speculative CFG rescue, is the active Step 3 contract.
+- Keep the new shared short-circuit render helper neutral about CFG shape: it
+  may notice when one compare arm already renders the opposite lane, but it
+  must continue to rely on prepared predecessor ownership carried by the
+  selected continuation payload rather than on emitter-local topology guesses.
 - Do not treat `source_true_incoming_label` or `source_false_incoming_label` as
   the x86 continuation ownership contract here; the prepared-control-flow tests
   intentionally rewrite those aliases while the authoritative predecessor still
@@ -50,5 +56,5 @@ preserving the prepared predecessor selected by the join-transfer edge.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The build and narrow proof both passed; `test_after.log` is the canonical proof
-log and was sufficient for this Step 3 short-circuit-target cleanup packet
-after continuation ownership moved from paired booleans onto the selected lane.
+log and was sufficient for this Step 3 short-circuit-render cleanup packet
+after the duplicated branch assembly paths were folded into one helper.

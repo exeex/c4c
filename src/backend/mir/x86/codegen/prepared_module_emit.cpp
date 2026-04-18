@@ -2384,57 +2384,59 @@ std::string emit_prepared_module(
             }
             return plan;
           };
-          if (const auto short_circuit_plan = detect_short_circuit_plan_from_control_flow();
-              short_circuit_plan.has_value()) {
-            if (short_circuit_plan->on_compare_true.continuation.has_value() &&
-                short_circuit_plan->on_compare_false.block ==
-                    short_circuit_plan->on_compare_true.continuation->false_block) {
-              const auto rendered_rhs = render_block(
-                  *short_circuit_plan->on_compare_true.block,
-                  short_circuit_plan->on_compare_true.continuation);
-              if (!rendered_rhs.has_value()) {
-                return std::nullopt;
-              }
-              const std::string false_label =
-                  ".L" + function.name + "_" +
-                  std::string(short_circuit_plan->on_compare_false.block->label);
-              return body + false_branch_compare->first + "    " + false_branch_compare->second + " " +
-                     false_label + "\n" + *rendered_rhs;
-            }
-            if (short_circuit_plan->on_compare_false.continuation.has_value() &&
-                short_circuit_plan->on_compare_true.block ==
-                    short_circuit_plan->on_compare_false.continuation->true_block) {
-              const auto rendered_true =
-                  render_block(*short_circuit_plan->on_compare_true.block, std::nullopt);
-              if (!rendered_true.has_value()) {
-                return std::nullopt;
-              }
-              const auto rendered_rhs = render_block(
-                  *short_circuit_plan->on_compare_false.block,
-                  short_circuit_plan->on_compare_false.continuation);
-              if (!rendered_rhs.has_value()) {
-                return std::nullopt;
-              }
-              const std::string rhs_label =
-                  ".L" + function.name + "_" +
-                  std::string(short_circuit_plan->on_compare_false.block->label);
-              return body + false_branch_compare->first + "    " + false_branch_compare->second + " " +
-                     rhs_label + "\n" + *rendered_true + rhs_label + ":\n" + *rendered_rhs;
-            }
-            const auto rendered_true =
-                render_block(*short_circuit_plan->on_compare_true.block,
-                             short_circuit_plan->on_compare_true.continuation);
-            const auto rendered_false =
-                render_block(*short_circuit_plan->on_compare_false.block,
-                             short_circuit_plan->on_compare_false.continuation);
-            if (!rendered_true.has_value() || !rendered_false.has_value()) {
+          const auto render_short_circuit_plan =
+              [&](const ShortCircuitPlan& short_circuit_plan) -> std::optional<std::string> {
+            const bool true_target_renders_false_lane =
+                short_circuit_plan.on_compare_true.continuation.has_value() &&
+                short_circuit_plan.on_compare_false.block ==
+                    short_circuit_plan.on_compare_true.continuation->false_block;
+            const bool false_target_renders_true_lane =
+                short_circuit_plan.on_compare_false.continuation.has_value() &&
+                short_circuit_plan.on_compare_true.block ==
+                    short_circuit_plan.on_compare_false.continuation->true_block;
+            if (true_target_renders_false_lane && false_target_renders_true_lane) {
               return std::nullopt;
             }
+
+            const auto render_short_circuit_target =
+                [&](const ShortCircuitTarget& target, bool omit_continuation)
+                -> std::optional<std::string> {
+              if (target.block == nullptr) {
+                return std::nullopt;
+              }
+              return render_block(
+                  *target.block, omit_continuation ? std::nullopt : target.continuation);
+            };
+
+            const auto rendered_true = render_short_circuit_target(
+                short_circuit_plan.on_compare_true, false_target_renders_true_lane);
+            if (!rendered_true.has_value()) {
+              return std::nullopt;
+            }
+
+            std::optional<std::string> rendered_false;
+            if (!true_target_renders_false_lane) {
+              rendered_false =
+                  render_short_circuit_target(short_circuit_plan.on_compare_false, false);
+              if (!rendered_false.has_value()) {
+                return std::nullopt;
+              }
+            }
+
             const std::string false_label =
-                ".L" + function.name + "_" + std::string(short_circuit_plan->on_compare_false.block->label);
-            return body + false_branch_compare->first + "    " + false_branch_compare->second + " " +
-                   false_label + "\n" + *rendered_true + false_label + ":\n" +
-                   *rendered_false;
+                ".L" + function.name + "_" +
+                std::string(short_circuit_plan.on_compare_false.block->label);
+            std::string rendered =
+                body + false_branch_compare->first + "    " + false_branch_compare->second + " " +
+                false_label + "\n" + *rendered_true;
+            if (!true_target_renders_false_lane) {
+              rendered += false_label + ":\n" + *rendered_false;
+            }
+            return rendered;
+          };
+          if (const auto short_circuit_plan = detect_short_circuit_plan_from_control_flow();
+              short_circuit_plan.has_value()) {
+            return render_short_circuit_plan(*short_circuit_plan);
           }
 
           const auto* true_block = find_block(block.terminator.true_label);
