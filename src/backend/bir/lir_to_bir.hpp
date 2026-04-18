@@ -907,6 +907,17 @@ class BirFunctionLowerer {
       GlobalPointerMap* global_pointer_slots,
       GlobalObjectPointerMap* global_object_pointer_slots,
       std::vector<bir::Inst>* lowered_insts);
+  static std::optional<bool> try_lower_global_provenance_store(
+      const c4c::codegen::lir::LirStoreOp& store,
+      bir::TypeKind value_type,
+      const bir::Value& value,
+      const GlobalTypes& global_types,
+      const FunctionSymbolSet& function_symbols,
+      const GlobalPointerMap& global_pointer_slots,
+      const GlobalObjectPointerMap& global_object_pointer_slots,
+      GlobalAddressSlots* global_address_slots,
+      AddressedGlobalPointerSlots* addressed_global_pointer_slots,
+      std::vector<bir::Inst>* lowered_insts);
   std::optional<bool> try_lower_addressed_pointer_store(
       std::string_view ptr_name,
       bir::TypeKind value_type,

@@ -387,6 +387,74 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
   return true;
 }
 
+std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
+    const c4c::codegen::lir::LirStoreOp& store,
+    bir::TypeKind value_type,
+    const bir::Value& value,
+    const GlobalTypes& global_types,
+    const FunctionSymbolSet& function_symbols,
+    const GlobalPointerMap& global_pointer_slots,
+    const GlobalObjectPointerMap& global_object_pointer_slots,
+    GlobalAddressSlots* global_address_slots,
+    AddressedGlobalPointerSlots* addressed_global_pointer_slots,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (store.ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
+    const std::string global_name = store.ptr.str().substr(1);
+    const auto global_it = global_types.find(global_name);
+    if (global_it == global_types.end() || !global_it->second.supports_direct_value ||
+        global_it->second.value_type != value_type) {
+      return false;
+    }
+    if (value_type == bir::TypeKind::Ptr) {
+      (*global_address_slots)[global_name] =
+          resolve_pointer_store_address(store.val, global_pointer_slots, global_types, function_symbols);
+    }
+    lowered_insts->push_back(bir::StoreGlobalInst{
+        .global_name = global_name,
+        .value = value,
+    });
+    return true;
+  }
+
+  if (value_type == bir::TypeKind::Ptr) {
+    const auto global_object_it = global_object_pointer_slots.find(store.ptr.str());
+    if (global_object_it != global_object_pointer_slots.end()) {
+      const auto global_it = global_types.find(global_object_it->second.global_name);
+      if (global_it == global_types.end() || !global_it->second.supports_direct_value ||
+          global_it->second.value_type != value_type) {
+        return false;
+      }
+      (*global_address_slots)[global_object_it->second.global_name] =
+          resolve_pointer_store_address(store.val, global_pointer_slots, global_types, function_symbols);
+      lowered_insts->push_back(bir::StoreGlobalInst{
+          .global_name = global_object_it->second.global_name,
+          .value = value,
+          .byte_offset = global_object_it->second.byte_offset,
+      });
+      return true;
+    }
+  }
+
+  const auto global_ptr_it = global_pointer_slots.find(store.ptr.str());
+  if (global_ptr_it == global_pointer_slots.end()) {
+    return std::nullopt;
+  }
+
+  if (global_ptr_it->second.value_type != value_type) {
+    return false;
+  }
+  if (value_type == bir::TypeKind::Ptr) {
+    (*addressed_global_pointer_slots)[make_global_pointer_slot_key(global_ptr_it->second)] =
+        resolve_pointer_store_address(store.val, global_pointer_slots, global_types, function_symbols);
+  }
+  lowered_insts->push_back(bir::StoreGlobalInst{
+      .global_name = global_ptr_it->second.global_name,
+      .value = value,
+      .byte_offset = global_ptr_it->second.byte_offset,
+  });
+  return true;
+}
+
 std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_store(
     std::string_view ptr_name,
     bir::TypeKind value_type,

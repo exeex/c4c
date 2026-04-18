@@ -6,32 +6,30 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2 / Step 3: moved the scalar `pointer_value_addresses` load/store
-bookkeeping out of `src/backend/bir/lir_to_bir_memory.cpp` and into the new
-provenance-owned helpers `try_lower_addressed_pointer_store` and
-`try_lower_addressed_pointer_load` in
-`src/backend/bir/lir_to_bir_memory_provenance.cpp`, so the coordinator now
-dispatches that addressed-pointer branch through the provenance owner without
-changing lowering behavior.
+Plan Step 2 / Step 3: moved the coordinator's remaining global/global-pointer
+store bookkeeping out of `src/backend/bir/lir_to_bir_memory.cpp` and into the
+new provenance-owned helper `try_lower_global_provenance_store` in
+`src/backend/bir/lir_to_bir_memory_provenance.cpp`, so direct global stores,
+global-object pointer stores, and addressed global-pointer stores now dispatch
+through the provenance owner without changing lowering behavior.
 
 ## Suggested Next
 
 Continue `plan.md` Step 4 by re-reading the remaining coordinator-side
-global-pointer/global-object store bookkeeping and deciding whether the next
-honest extraction is another provenance-owned scalar/global-address branch,
-rather than stretching the local-slot bucket or revisiting already-extracted
-value-materialization helpers.
+pointer-array select and dynamic global pointer load dispatch around the load
+fallback path, and decide whether the next honest extraction is another
+provenance-owned pointer-value branch or a distinct value-materialization seam.
 
 ## Watchouts
 
 - This plan is refactor-only; do not claim x86 backend capability progress from
   it.
 - Keep `lower_scalar_or_local_memory_inst` in the main coordinator TU.
-- `try_lower_global_provenance_load` and the new addressed-pointer scalar
-  helpers now live under `src/backend/bir/lir_to_bir_memory_provenance.cpp`;
-  follow-on packets should keep global/pointer alias recovery and addressed
-  access rules in the provenance owner instead of moving them back into the
-  coordinator.
+- `try_lower_global_provenance_load`, `try_lower_global_provenance_store`, and
+  the addressed-pointer scalar helpers now live under
+  `src/backend/bir/lir_to_bir_memory_provenance.cpp`; follow-on packets should
+  keep global/pointer alias recovery and addressed access rules in the
+  provenance owner instead of moving them back into the coordinator.
 - `try_lower_local_slot_load` and `try_lower_local_slot_store` still own the
   local-slot-specific load/store dispatch and bookkeeping wrappers; do not use
   provenance extraction as a reason to pull local-slot alias or address updates
@@ -51,7 +49,10 @@ value-materialization helpers.
 
 ## Proof
 
-Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir|backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir|c_testsuite_x86_backend_src_00205_c)$' | tee test_after.log`.
+Ran `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R
+'^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir|backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir|c_testsuite_x86_backend_src_00205_c)$'
+| tee test_after.log`.
 The build passed, and the narrow backend proof again produced the same `4/5`
 functional result as the prior baseline: the four backend
 notes/handoff/dynamic-member-array tests passed, and the pre-existing failure

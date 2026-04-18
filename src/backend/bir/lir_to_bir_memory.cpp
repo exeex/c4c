@@ -1029,61 +1029,18 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return true;
     }
 
-    if (store->ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
-      const std::string global_name = store->ptr.str().substr(1);
-      const auto global_it = global_types.find(global_name);
-      if (global_it == global_types.end() || !global_it->second.supports_direct_value ||
-          global_it->second.value_type != *value_type) {
-        return fail_store();
-      }
-      if (*value_type == bir::TypeKind::Ptr) {
-        global_address_slots[global_name] =
-            resolve_pointer_store_address(
-                store->val, global_pointer_slots, global_types, function_symbols);
-      }
-      lowered_insts->push_back(bir::StoreGlobalInst{
-          .global_name = global_name,
-          .value = *value,
-      });
-      return true;
-    }
-
-    if (*value_type == bir::TypeKind::Ptr) {
-      if (const auto global_object_it = global_object_pointer_slots.find(store->ptr.str());
-          global_object_it != global_object_pointer_slots.end()) {
-        const auto global_it = global_types.find(global_object_it->second.global_name);
-        if (global_it == global_types.end() || !global_it->second.supports_direct_value ||
-            global_it->second.value_type != *value_type) {
-          return fail_store();
-        }
-        global_address_slots[global_object_it->second.global_name] =
-            resolve_pointer_store_address(
-                store->val, global_pointer_slots, global_types, function_symbols);
-        lowered_insts->push_back(bir::StoreGlobalInst{
-            .global_name = global_object_it->second.global_name,
-            .value = *value,
-            .byte_offset = global_object_it->second.byte_offset,
-        });
-        return true;
-      }
-    }
-
-    if (const auto global_ptr_it = global_pointer_slots.find(store->ptr.str());
-        global_ptr_it != global_pointer_slots.end()) {
-      if (global_ptr_it->second.value_type != *value_type) {
-        return fail_store();
-      }
-      if (*value_type == bir::TypeKind::Ptr) {
-        addressed_global_pointer_slots[make_global_pointer_slot_key(global_ptr_it->second)] =
-            resolve_pointer_store_address(
-                store->val, global_pointer_slots, global_types, function_symbols);
-      }
-      lowered_insts->push_back(bir::StoreGlobalInst{
-          .global_name = global_ptr_it->second.global_name,
-          .value = *value,
-          .byte_offset = global_ptr_it->second.byte_offset,
-      });
-      return true;
+    if (const auto global_store = try_lower_global_provenance_store(*store,
+                                                                    *value_type,
+                                                                    *value,
+                                                                    global_types,
+                                                                    function_symbols,
+                                                                    global_pointer_slots,
+                                                                    global_object_pointer_slots,
+                                                                    &global_address_slots,
+                                                                    &addressed_global_pointer_slots,
+                                                                    lowered_insts);
+        global_store.has_value()) {
+      return *global_store ? true : fail_store();
     }
 
     const auto local_slot_store = try_lower_local_slot_store(store->ptr.str(),
