@@ -1790,13 +1790,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return fail_load();
     }
 
-    if (*value_type == bir::TypeKind::I64) {
-      if (const auto addr_it = local_address_slots.find(ptr_it->second);
-          addr_it != local_address_slots.end()) {
-        global_address_ints[load->result.str()] = addr_it->second;
-        return true;
-      }
-    } else if (*value_type == bir::TypeKind::Ptr) {
+    if (*value_type == bir::TypeKind::Ptr) {
       if (!try_lower_tracked_local_pointer_slot_load(load->result.str(),
                                                      ptr_it->second,
                                                      local_aggregate_field_slots,
@@ -1821,10 +1815,14 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return true;
     }
 
-    lowered_insts->push_back(bir::LoadLocalInst{
-        .result = bir::Value::named(*value_type, load->result.str()),
-        .slot_name = ptr_it->second,
-    });
+    if (!try_lower_nonpointer_local_slot_load(load->result.str(),
+                                              ptr_it->second,
+                                              *value_type,
+                                              local_address_slots,
+                                              &global_address_ints,
+                                              lowered_insts)) {
+      return fail_load();
+    }
     return true;
   }
 

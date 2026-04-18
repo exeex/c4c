@@ -1884,6 +1884,30 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_load(
   return true;
 }
 
+bool BirFunctionLowerer::try_lower_nonpointer_local_slot_load(
+    std::string_view result_name,
+    std::string_view slot_name,
+    bir::TypeKind value_type,
+    const LocalAddressSlots& local_address_slots,
+    GlobalAddressIntMap* global_address_ints,
+    std::vector<bir::Inst>* lowered_insts) {
+  const auto result = std::string(result_name);
+  const auto slot = std::string(slot_name);
+
+  if (value_type == bir::TypeKind::I64) {
+    if (const auto addr_it = local_address_slots.find(slot); addr_it != local_address_slots.end()) {
+      (*global_address_ints)[result] = addr_it->second;
+      return true;
+    }
+  }
+
+  lowered_insts->push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(value_type, result),
+      .slot_name = slot,
+  });
+  return true;
+}
+
 bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
     std::string_view result_name,
     std::string_view slot_name,
