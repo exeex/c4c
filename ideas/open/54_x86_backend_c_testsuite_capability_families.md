@@ -57,6 +57,35 @@ This new idea starts from the current repo shape:
 - progress must be explained by real backend capability growth, not by adding
   testcase-shaped recognition
 
+## Route Reset Note
+
+As of 2026-04-18, the previously activated local-memory runbook has been
+retracted without closing this source idea.
+
+Reason:
+
+- the original proving cluster stopped being coherent after recent local-memory
+  capability movement
+- reviewer analysis says
+  `src/backend/bir/lir_to_bir_memory.cpp` now needs an ownership-based split
+  before more honest local-memory family work keeps widening one monolithic TU
+- reviewer analysis also says
+  `src/backend/mir/x86/codegen/x86_codegen.hpp` should be de-headerized, but as
+  a separate initiative rather than hidden inside the local-memory packet
+
+Durable route consequence:
+
+- this idea remains the umbrella source idea for x86 backend capability-family
+  convergence
+- the old local-memory runbook is no longer the active execution route
+- prerequisite refactors are now tracked as separate open ideas before a new
+  capability-family runbook is activated here
+
+Explicitly out of scope for this idea reset:
+
+- AArch64 cleanup or emitter restructuring; that backend is expected to be
+  rewritten separately
+
 ## Goal
 
 Convert the current x86 backend c-testsuite failure surface into capability
@@ -110,38 +139,20 @@ Some cases still hit bounded support notes around:
 - linear integer-array globals
 - aggregate-backed globals with honest byte-address semantics
 
-## Bounded First Slice
+## Next Activation Constraint
 
-Start with the local-memory semantic family.
+Do not reactivate this umbrella idea directly from the earlier local-memory
+runbook.
 
-Reason:
+Before the next capability-family activation:
 
-- it is one of the dominant shared blockers in the current fail surface
-- it is semantic capability work, not testcase-shaped repair
-- it can unlock multiple external C cases without pretending the emitter is
-  ready for full general control flow
-
-### First-Slice Goal
-
-Make semantic `lir_to_bir` and the prepared x86 handoff accept one bounded
-straight-line local-memory lane covering stack-object creation, addressed local
-loads/stores, and simple constant-offset addressing.
-
-### First-Slice In-Scope Shapes
-
-- one function
-- straight-line or otherwise already-supported control flow
-- local scalar or small aggregate/object storage
-- constant-offset address formation
-- load/store through that address path
-
-### First-Slice Out Of Scope
-
-- expectation weakening
-- multi-block control-flow expansion as the primary target
-- variadic/runtime-heavy routes
-- testcase-by-testcase bespoke emit helpers
-- broader global/data work unless required by the chosen local-memory slice
+- land or consciously defer the ownership split of
+  `src/backend/bir/lir_to_bir_memory.cpp`
+- decide separately whether the x86 prepared-module renderer split is also a
+  prerequisite for the next family packet, or should remain a parallel open
+  idea
+- re-baseline the x86 failure surface after that lifecycle decision instead of
+  assuming the old local-memory proving cluster is still the right first slice
 
 ## Primary Targets
 
