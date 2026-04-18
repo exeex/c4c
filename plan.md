@@ -13,8 +13,8 @@ before the x86 capability-family route widens again.
 ## Goal
 
 Land a behavior-preserving de-headerization of the prepared-module renderer,
-with `emit.cpp` owning the main orchestration flow and the header reduced to
-declarations, shared types, and contract helpers only.
+with compiled `.cpp` ownership holding the main orchestration flow and the
+header reduced to declarations, shared types, and contract helpers only.
 
 ## Core Rule
 
@@ -27,6 +27,7 @@ expectation changes, or testcase-lane claims into these packets.
 - [review/x86_codegen_header_split_review.md](/workspaces/c4c/review/x86_codegen_header_split_review.md)
 - [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
 - [src/backend/mir/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/emit.cpp)
+- [src/backend/mir/x86/codegen/prepared_module_emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/prepared_module_emit.cpp)
 - [src/backend/mir/x86/codegen/memory.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/memory.cpp)
 - [src/backend/mir/x86/codegen/calls.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/calls.cpp)
 - [src/backend/mir/x86/codegen/comparison.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/comparison.cpp)
@@ -36,6 +37,7 @@ expectation changes, or testcase-lane claims into these packets.
 
 - [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
 - [src/backend/mir/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/emit.cpp)
+- [src/backend/mir/x86/codegen/prepared_module_emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/prepared_module_emit.cpp)
 - existing x86 codegen owners under `src/backend/mir/x86/codegen/*.cpp`
 - [tests/backend/backend_x86_handoff_boundary_test.cpp](/workspaces/c4c/tests/backend/backend_x86_handoff_boundary_test.cpp)
 - [tests/backend/backend_lir_to_bir_notes_test.cpp](/workspaces/c4c/tests/backend/backend_lir_to_bir_notes_test.cpp)
@@ -54,8 +56,11 @@ expectation changes, or testcase-lane claims into these packets.
 
 - `x86_codegen.hpp` should keep shared declarations, shared types, and public
   contract helpers used across sibling x86 translation units.
-- `emit.cpp` should own the main `emit_prepared_module(...)` orchestration
-  flow.
+- compiled `.cpp` ownership should own the main
+  `emit_prepared_module(...)` orchestration flow.
+- `emit.cpp` remains the public entry surface, while
+  `prepared_module_emit.cpp` is an acceptable focused owner when pulling more
+  of the translated x86 codegen tree into the build would widen the packet.
 - Existing `.cpp` owners such as `memory.cpp`, `calls.cpp`, `comparison.cpp`,
   and `globals.cpp` should absorb extracted implementation when ownership is
   already clear.
@@ -68,6 +73,8 @@ expectation changes, or testcase-lane claims into these packets.
 
 - Preserve the current public API shape while moving implementation.
 - Prefer semantic owner files over temporary staging files.
+- Accept a focused support owner such as `prepared_module_emit.cpp` when an
+  existing owner is not yet a coherent compiled surface.
 - Keep the first packet centered on de-headerization, not deep sub-splitting.
 - Validate every packet as `build -> narrow x86 handoff proof`, and broaden
   only if the moved implementation reaches beyond the handoff surface.
@@ -103,14 +110,16 @@ changing behavior.
 Primary targets:
 - [src/backend/mir/x86/codegen/x86_codegen.hpp](/workspaces/c4c/src/backend/mir/x86/codegen/x86_codegen.hpp)
 - [src/backend/mir/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/emit.cpp)
+- [src/backend/mir/x86/codegen/prepared_module_emit.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/prepared_module_emit.cpp)
 - any existing sibling x86 codegen owner that naturally absorbs part of the
   move
 
 Actions:
 - move the `emit_prepared_module(...)` implementation out of the header
 - keep public declarations and shared types coherent in `x86_codegen.hpp`
-- place moved implementation under `emit.cpp` and existing semantic owners
-  where read-through already justifies them
+- place moved implementation under compiled `.cpp` ownership, using
+  `prepared_module_emit.cpp` and existing semantic owners where read-through
+  already justifies them
 - keep the packet free of capability-family behavior claims
 
 Completion check:
@@ -133,8 +142,9 @@ Completion check:
 
 ## Step 4. Check Remaining Ownership Pressure
 
-Goal: Decide whether the renderer still has one obvious follow-on split or
-whether the next lifecycle return should go back to the x86 umbrella idea.
+Goal: Decide whether the renderer still has one obvious follow-on split from
+`prepared_module_emit.cpp` into existing semantic owners or whether the next
+lifecycle return should go back to the x86 umbrella idea.
 
 Actions:
 - compare the remaining header and `.cpp` ownership mix against idea `56`

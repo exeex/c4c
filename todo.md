@@ -8,14 +8,15 @@ Source Plan: plan.md
 - Plan Step: Step 2 / Step 3 - moved `emit_prepared_module(...)` out of
   `src/backend/mir/x86/codegen/x86_codegen.hpp` into
   `src/backend/mir/x86/codegen/prepared_module_emit.cpp`, kept the header at
-  declaration-only for the prepared-module entrypoint, and added the new owner
-  file to `c4c_backend`.
+  declaration-only for the prepared-module entrypoint, and added the focused
+  owner file to `c4c_backend`.
 
 ## Suggested Next
 - Plan Step: Step 4 - compare `prepared_module_emit.cpp`, `emit.cpp`, and the
   reduced header to decide whether the next honest packet is a further
   ownership split into existing x86 codegen `.cpp` owners or a lifecycle
-  close/deactivate decision because the header is back in a contract role.
+  close/deactivate decision because the header is back in a contract role and
+  the compiled-owner contract is now satisfied.
 
 ## Watchouts
 - `emit.cpp` was not a coherent compiled owner for this packet because pulling

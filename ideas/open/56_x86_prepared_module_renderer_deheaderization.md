@@ -40,8 +40,10 @@ implementation into `.cpp` translation units without changing behavior.
   translation units
 - `src/backend/mir/x86/codegen/x86_codegen.hpp` should keep only shared
   contract, shared types, and public declarations
-- `src/backend/mir/x86/codegen/emit.cpp` should own the main
-  `emit_prepared_module(...)` orchestration flow
+- the main `emit_prepared_module(...)` orchestration flow should live in
+  compiled `.cpp` ownership, ideally under existing x86 codegen owners and, if
+  those owners are not yet coherent build surfaces, under a focused support
+  file such as `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
 - the first implementation packet may both remove implementation from the
   header and redistribute ownership into existing
   `src/backend/mir/x86/codegen/*.cpp` files
@@ -59,8 +61,9 @@ The first implementation should:
 
 - keep the public API shape unchanged
 - keep behavior and current lane selection unchanged
-- move the main `emit_prepared_module(...)` orchestration flow into
-  `src/backend/mir/x86/codegen/emit.cpp`
+- move the main `emit_prepared_module(...)` orchestration flow into compiled
+  `.cpp` ownership, preferring existing x86 codegen owners when they are
+  coherent build surfaces
 - directly redistribute semantic ownership into existing
   `src/backend/mir/x86/codegen/*.cpp` units where those owners are already
   natural
@@ -86,12 +89,14 @@ Favor these semantic seams when moving implementation out of the header:
 These seams should normally map into existing
 `src/backend/mir/x86/codegen/*.cpp` files such as `emit.cpp`, `memory.cpp`,
 `calls.cpp`, `comparison.cpp`, and `globals.cpp`, with new helper `.cpp` files
-added only if the existing ownership boundaries cannot absorb the code cleanly.
+such as `prepared_module_emit.cpp` added only if the existing ownership
+boundaries cannot absorb the code cleanly.
 
 ## Primary Targets
 
 - `src/backend/mir/x86/codegen/x86_codegen.hpp`
 - `src/backend/mir/x86/codegen/emit.cpp`
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
 - existing `src/backend/mir/x86/codegen/*.cpp` files that naturally own the
   extracted renderer pieces
 - small new support `.cpp` files under `src/backend/mir/x86/codegen/` only if
@@ -102,7 +107,9 @@ added only if the existing ownership boundaries cannot absorb the code cleanly.
 - [ ] `x86_codegen.hpp` stops owning the full prepared-module renderer body
 - [ ] `x86_codegen.hpp` is reduced to shared contract, shared types, and public
       declarations
-- [ ] `emit.cpp` owns the main `emit_prepared_module(...)` orchestration flow
+- [ ] a compiled `.cpp` owner, currently
+      `prepared_module_emit.cpp`, owns the main
+      `emit_prepared_module(...)` orchestration flow
 - [ ] the first packet preserves behavior and public API shape while allowing
       direct redistribution into existing x86 codegen `.cpp` files
 - [ ] narrow x86 handoff proof passes after the move
