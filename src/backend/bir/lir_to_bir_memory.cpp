@@ -360,7 +360,6 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     }
 
     std::string resolved_slot;
-    std::optional<LocalPointerArrayBase> resolved_array_base;
     if (gep->ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
       const std::string global_name = gep->ptr.str().substr(1);
       const auto global_it = global_types.find(global_name);
@@ -873,109 +872,27 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           }
         }
       }
-      if (ptr_it == local_pointer_slots.end() || gep->indices.size() != 1) {
+      const auto handled_local_pointer_slot_base_gep = try_lower_local_pointer_slot_base_gep(
+          *gep,
+          value_aliases,
+          type_decls,
+          local_slot_types,
+          local_array_slots,
+          local_aggregate_slots,
+          &local_pointer_slots,
+          &local_pointer_array_bases,
+          &dynamic_local_pointer_arrays,
+          &dynamic_local_aggregate_arrays);
+      if (!handled_local_pointer_slot_base_gep.has_value() || !*handled_local_pointer_slot_base_gep) {
         return fail_gep();
       }
-      const auto slot_it = local_slot_types.find(ptr_it->second);
-      if (slot_it == local_slot_types.end()) {
-        return fail_gep();
-      }
-
-      const auto parsed_index = parse_typed_operand(gep->indices.front());
-      if (!parsed_index.has_value()) {
-        return fail_gep();
-      }
-      const auto index_imm = resolve_index_operand(parsed_index->operand, value_aliases);
-
-      const auto dot = ptr_it->second.rfind('.');
-      if (dot == std::string::npos) {
-        if (!index_imm.has_value() || *index_imm != 0) {
-          return fail_gep();
-        }
-        resolved_slot = ptr_it->second;
-      } else {
-        const auto base_name = ptr_it->second.substr(0, dot);
-        const auto base_array_it = local_array_slots.find(base_name);
-        const auto base_offset = parse_i64(std::string_view(ptr_it->second).substr(dot + 1));
-        if (!base_offset.has_value()) {
-          return fail_gep();
-        }
-        if (base_array_it != local_array_slots.end()) {
-          if (index_imm.has_value()) {
-            const auto final_index = *base_offset + *index_imm;
-            if (final_index < 0 ||
-                static_cast<std::size_t>(final_index) >= base_array_it->second.element_slots.size()) {
-              return fail_gep();
-            }
-            resolved_slot =
-                base_array_it->second.element_slots[static_cast<std::size_t>(final_index)];
-            resolved_array_base = LocalPointerArrayBase{
-                .element_slots = base_array_it->second.element_slots,
-                .base_index = static_cast<std::size_t>(final_index),
-            };
-          } else {
-            const auto parsed_index = parse_typed_operand(gep->indices.front());
-            if (!parsed_index.has_value()) {
-              return fail_gep();
-            }
-            const auto index_value = lower_typed_index_value(*parsed_index, value_aliases);
-            if (!index_value.has_value() || *base_offset != 0 ||
-                base_array_it->second.element_type != bir::TypeKind::Ptr) {
-              return fail_gep();
-            }
-            dynamic_local_pointer_arrays[gep->result.str()] = DynamicLocalPointerArrayAccess{
-                .element_slots = base_array_it->second.element_slots,
-                .index = *index_value,
-            };
-            return true;
-          }
-        } else if (const auto base_aggregate_it = local_aggregate_slots.find(base_name);
-                   base_aggregate_it != local_aggregate_slots.end()) {
-          const auto slot_size = type_size_bytes(slot_it->second);
-          if (slot_size == 0) {
-            return fail_gep();
-          }
-          if (!index_imm.has_value()) {
-            const auto index_value = lower_typed_index_value(*parsed_index, value_aliases);
-            if (!index_value.has_value() || *base_offset < 0) {
-              return fail_gep();
-            }
-
-            const auto dynamic_access = build_dynamic_local_aggregate_array_access(
-                slot_it->second,
-                static_cast<std::size_t>(*base_offset),
-                base_aggregate_it->second,
-                *index_value,
-                type_decls);
-            if (!dynamic_access.has_value()) {
-              return fail_gep();
-            }
-
-            dynamic_local_aggregate_arrays[gep->result.str()] = std::move(*dynamic_access);
-            return true;
-          }
-          const auto final_byte_offset =
-              *base_offset + *index_imm * static_cast<std::int64_t>(slot_size);
-          if (final_byte_offset < 0) {
-            return fail_gep();
-          }
-          const auto leaf_it =
-              base_aggregate_it->second.leaf_slots.find(static_cast<std::size_t>(final_byte_offset));
-          if (leaf_it == base_aggregate_it->second.leaf_slots.end()) {
-            return fail_gep();
-          }
-          resolved_slot = leaf_it->second;
-        } else {
-          return fail_gep();
-        }
-      }
+      return true;
     }
 
-    if (resolved_array_base.has_value()) {
-      local_pointer_array_bases[gep->result.str()] = std::move(*resolved_array_base);
+    if (!resolved_slot.empty()) {
+      local_pointer_slots[gep->result.str()] = std::move(resolved_slot);
+      return true;
     }
-    local_pointer_slots[gep->result.str()] = std::move(resolved_slot);
-    return true;
   }
 
   if (const auto* store = std::get_if<c4c::codegen::lir::LirStoreOp>(&inst)) {

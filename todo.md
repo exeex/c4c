@@ -6,20 +6,20 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2: extracted the coordinator-side
-`local_array_slots.find(gep->ptr.str())` GEP branch from
-`src/backend/bir/lir_to_bir_memory.cpp` into
+Plan Step 2: extracted the remaining coordinator-side local-pointer-slot GEP
+fallback branch from `src/backend/bir/lir_to_bir_memory.cpp` into
 `src/backend/bir/lir_to_bir_memory_local_slots.cpp` as
-`try_lower_local_array_slot_gep`, so the coordinator now only dispatches that
-local-slot-owned array-slot family while the helper owns the fixed-index and
-dynamic-index local pointer-array result handling.
+`try_lower_local_pointer_slot_base_gep`, so the local-slot owner now handles
+dotted slot-name interpretation, `local_array_slots.find(base_name)`, and
+`local_aggregate_slots.find(base_name)` while the coordinator only dispatches
+that seam.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by extracting the next adjacent local-slot-owned GEP
-wrapper that still interprets dotted local slot names and
-`local_array_slots.find(base_name)` in the coordinator, but keep shared
-aggregate-addressing logic outside this packet.
+Continue `plan.md` Step 2 by re-reading the remaining local-slot and
+value-materialization helpers in `src/backend/bir/lir_to_bir_memory.cpp` and
+choose the next semantically coherent extraction bucket, keeping shared
+addressing/provenance helpers outside that packet.
 
 ## Watchouts
 
@@ -28,9 +28,10 @@ aggregate-addressing logic outside this packet.
 - Keep `lower_scalar_or_local_memory_inst` in the main coordinator TU.
 - `try_lower_local_slot_pointer_gep`,
   `try_lower_local_array_slot_gep`, and
-  `try_lower_local_pointer_array_base_gep` now own their respective local-slot
-  map lookups; the next packet should keep moving one honest ownership bucket
-  at a time instead of re-centralizing that dispatch in the coordinator.
+  `try_lower_local_pointer_array_base_gep` now sit alongside the new
+  `try_lower_local_pointer_slot_base_gep`; the next packet should keep moving
+  one honest ownership bucket at a time instead of re-centralizing that
+  dispatch in the coordinator.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:
   0`; treat the canonical log pair as unchanged-behavior evidence, not as a

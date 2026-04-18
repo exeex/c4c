@@ -679,6 +679,17 @@ class BirFunctionLowerer {
       DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
       DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
       LocalSlotPointerValues* local_slot_pointer_values);
+  static std::optional<bool> try_lower_local_pointer_slot_base_gep(
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const LocalSlotTypes& local_slot_types,
+      const LocalArraySlotMap& local_array_slots,
+      const LocalAggregateSlotMap& local_aggregate_slots,
+      LocalPointerSlots* local_pointer_slots,
+      LocalPointerArrayBaseMap* local_pointer_array_bases,
+      DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
+      DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays);
   static std::optional<bir::Value> load_dynamic_local_aggregate_array_value(
       std::string_view result_name,
       bir::TypeKind value_type,
