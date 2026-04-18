@@ -605,6 +605,32 @@ std::string expected_minimal_param_eq_zero_branch_joined_immediates_then_xor_asm
          "\n    ret\n";
 }
 
+std::string expected_minimal_param_eq_zero_branch_joined_immediate_chains_then_xor_asm(
+    const char* function_name,
+    const char* false_label,
+    int true_base_immediate,
+    int true_chain_immediate,
+    int false_base_immediate,
+    int false_chain_immediate,
+    int selected_chain_immediate,
+    int joined_immediate) {
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + std::to_string(true_base_immediate) +
+         "\n    add " + minimal_i32_return_register() + ", " +
+         std::to_string(true_chain_immediate) + "\n    xor " +
+         minimal_i32_return_register() + ", " +
+         std::to_string(selected_chain_immediate) + "\n    xor " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + std::to_string(false_base_immediate) +
+         "\n    sub " + minimal_i32_return_register() + ", " +
+         std::to_string(false_chain_immediate) + "\n    xor " +
+         minimal_i32_return_register() + ", " +
+         std::to_string(selected_chain_immediate) + "\n    xor " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n";
+}
+
 std::string expected_minimal_param_eq_zero_branch_joined_chained_add_or_sub_then_xor_asm(
     const char* function_name,
     const char* false_label,
@@ -3943,7 +3969,8 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
                                                          const char* function_name,
                                                          const char* failure_context,
                                                          bool use_edge_store_slot_carrier,
-                                                         bool use_selected_value_chain) {
+                                                         bool use_selected_value_chain,
+                                                         bool use_immediate_selected_value_chain) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -4103,41 +4130,87 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
         bir::Value::named(bir::TypeKind::I32, "contract.false.selected.root");
     const auto false_chain_selected =
         bir::Value::named(bir::TypeKind::I32, "contract.false.selected.chain");
-    join_block->insts.insert(join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
-                             bir::BinaryInst{
-                                 .opcode = bir::BinaryOpcode::Add,
-                                 .result = true_chain_root,
-                                 .operand_type = bir::TypeKind::I32,
-                                 .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
-                                 .rhs = bir::Value::immediate_i32(5),
-                             });
-    ++join_select_index;
-    join_block->insts.insert(join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
-                             bir::BinaryInst{
-                                 .opcode = bir::BinaryOpcode::Xor,
-                                 .result = true_chain_selected,
-                                 .operand_type = bir::TypeKind::I32,
-                                 .lhs = true_chain_root,
-                                 .rhs = bir::Value::immediate_i32(0),
-                             });
-    ++join_select_index;
-    join_block->insts.insert(join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
-                             bir::BinaryInst{
-                                 .opcode = bir::BinaryOpcode::Sub,
-                                 .result = false_chain_root,
-                                 .operand_type = bir::TypeKind::I32,
-                                 .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
-                                 .rhs = bir::Value::immediate_i32(1),
-                             });
-    ++join_select_index;
-    join_block->insts.insert(join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
-                             bir::BinaryInst{
-                                 .opcode = bir::BinaryOpcode::Xor,
-                                 .result = false_chain_selected,
-                                 .operand_type = bir::TypeKind::I32,
-                                 .lhs = false_chain_root,
-                                 .rhs = bir::Value::immediate_i32(0),
-                             });
+    if (use_immediate_selected_value_chain) {
+      join_block->insts.insert(
+          join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+          bir::BinaryInst{
+              .opcode = bir::BinaryOpcode::Add,
+              .result = true_chain_root,
+              .operand_type = bir::TypeKind::I32,
+              .lhs = bir::Value::immediate_i32(5),
+              .rhs = bir::Value::immediate_i32(4),
+          });
+      ++join_select_index;
+      join_block->insts.insert(
+          join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+          bir::BinaryInst{
+              .opcode = bir::BinaryOpcode::Xor,
+              .result = true_chain_selected,
+              .operand_type = bir::TypeKind::I32,
+              .lhs = true_chain_root,
+              .rhs = bir::Value::immediate_i32(0),
+          });
+      ++join_select_index;
+      join_block->insts.insert(
+          join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+          bir::BinaryInst{
+              .opcode = bir::BinaryOpcode::Sub,
+              .result = false_chain_root,
+              .operand_type = bir::TypeKind::I32,
+              .lhs = bir::Value::immediate_i32(7),
+              .rhs = bir::Value::immediate_i32(6),
+          });
+      ++join_select_index;
+      join_block->insts.insert(
+          join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+          bir::BinaryInst{
+              .opcode = bir::BinaryOpcode::Xor,
+              .result = false_chain_selected,
+              .operand_type = bir::TypeKind::I32,
+              .lhs = false_chain_root,
+              .rhs = bir::Value::immediate_i32(0),
+          });
+    } else {
+      join_block->insts.insert(
+          join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+          bir::BinaryInst{
+              .opcode = bir::BinaryOpcode::Add,
+              .result = true_chain_root,
+              .operand_type = bir::TypeKind::I32,
+              .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+              .rhs = bir::Value::immediate_i32(5),
+          });
+      ++join_select_index;
+      join_block->insts.insert(
+          join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+          bir::BinaryInst{
+              .opcode = bir::BinaryOpcode::Xor,
+              .result = true_chain_selected,
+              .operand_type = bir::TypeKind::I32,
+              .lhs = true_chain_root,
+              .rhs = bir::Value::immediate_i32(0),
+          });
+      ++join_select_index;
+      join_block->insts.insert(
+          join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+          bir::BinaryInst{
+              .opcode = bir::BinaryOpcode::Sub,
+              .result = false_chain_root,
+              .operand_type = bir::TypeKind::I32,
+              .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+              .rhs = bir::Value::immediate_i32(1),
+          });
+      ++join_select_index;
+      join_block->insts.insert(
+          join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+          bir::BinaryInst{
+              .opcode = bir::BinaryOpcode::Xor,
+              .result = false_chain_selected,
+              .operand_type = bir::TypeKind::I32,
+              .lhs = false_chain_root,
+              .rhs = bir::Value::immediate_i32(0),
+          });
+    }
     join_transfer.edge_transfers[true_transfer_index].incoming_value = true_chain_selected;
     join_transfer.edge_transfers[false_transfer_index].incoming_value = false_chain_selected;
     for (auto& incoming : join_transfer.incomings) {
@@ -4197,7 +4270,7 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
                                                     const char* function_name,
                                                     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false, false);
+      module, expected_asm, function_name, failure_context, false, false, false);
 }
 
 int check_join_route_edge_store_slot_consumes_prepared_control_flow(
@@ -4206,7 +4279,7 @@ int check_join_route_edge_store_slot_consumes_prepared_control_flow(
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, false);
+      module, expected_asm, function_name, failure_context, true, false, false);
 }
 
 int check_join_route_selected_value_chain_consumes_prepared_control_flow(
@@ -4215,7 +4288,16 @@ int check_join_route_selected_value_chain_consumes_prepared_control_flow(
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, true);
+      module, expected_asm, function_name, failure_context, true, true, false);
+}
+
+int check_join_route_immediate_selected_value_chain_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, true, true, true);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_return_contexts(
@@ -4299,7 +4381,8 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
     const bir::Module& module,
     const char* function_name,
     const char* failure_context,
-    bool use_edge_store_slot_carrier) {
+    bool use_edge_store_slot_carrier,
+    bool use_selected_value_chain) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -4321,44 +4404,44 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
                     .c_str());
   }
 
+  auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+  if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture lost its mutable join-transfer contract")
+                    .c_str());
+  }
+
+  auto& join_transfer = mutable_control_flow->join_transfers.front();
+  if (join_transfer.edge_transfers.size() < 2 || !join_transfer.source_true_transfer_index.has_value() ||
+      !join_transfer.source_false_transfer_index.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer exposes authoritative true/false join ownership")
+                    .c_str());
+  }
+
+  std::size_t join_select_index = join_block->insts.size() - 1;
+  auto* join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
+  if (join_select == nullptr && join_block->insts.size() >= 2) {
+    join_select_index = join_block->insts.size() - 2;
+    join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
+  }
+  if (join_select == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer exposes the expected select carrier")
+                    .c_str());
+  }
+
+  const auto true_transfer_index = *join_transfer.source_true_transfer_index;
+  const auto false_transfer_index = *join_transfer.source_false_transfer_index;
+  if (true_transfer_index >= join_transfer.edge_transfers.size() ||
+      false_transfer_index >= join_transfer.edge_transfers.size() ||
+      true_transfer_index == false_transfer_index) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture published invalid true/false join ownership indices")
+                    .c_str());
+  }
+
   if (use_edge_store_slot_carrier) {
-    auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
-    if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1) {
-      return fail((std::string(failure_context) +
-                   ": prepared compare-join fixture lost its mutable join-transfer contract")
-                      .c_str());
-    }
-
-    auto& join_transfer = mutable_control_flow->join_transfers.front();
-    if (join_transfer.edge_transfers.size() < 2 || !join_transfer.source_true_transfer_index.has_value() ||
-        !join_transfer.source_false_transfer_index.has_value()) {
-      return fail((std::string(failure_context) +
-                   ": prepared compare-join fixture no longer exposes authoritative true/false join ownership")
-                      .c_str());
-    }
-
-    std::size_t join_select_index = join_block->insts.size() - 1;
-    auto* join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
-    if (join_select == nullptr && join_block->insts.size() >= 2) {
-      join_select_index = join_block->insts.size() - 2;
-      join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
-    }
-    if (join_select == nullptr) {
-      return fail((std::string(failure_context) +
-                   ": prepared compare-join fixture no longer exposes the expected select carrier")
-                      .c_str());
-    }
-
-    const auto true_transfer_index = *join_transfer.source_true_transfer_index;
-    const auto false_transfer_index = *join_transfer.source_false_transfer_index;
-    if (true_transfer_index >= join_transfer.edge_transfers.size() ||
-        false_transfer_index >= join_transfer.edge_transfers.size() ||
-        true_transfer_index == false_transfer_index) {
-      return fail((std::string(failure_context) +
-                   ": prepared compare-join fixture published invalid true/false join ownership indices")
-                      .c_str());
-    }
-
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
     join_transfer.storage_name = "%contract.immediate.join.slot";
     join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
@@ -4392,6 +4475,66 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
     }
   }
 
+  if (use_selected_value_chain) {
+    const auto true_chain_root =
+        bir::Value::named(bir::TypeKind::I32, "contract.true.immediate.root");
+    const auto true_chain_selected =
+        bir::Value::named(bir::TypeKind::I32, "contract.true.immediate.chain");
+    const auto false_chain_root =
+        bir::Value::named(bir::TypeKind::I32, "contract.false.immediate.root");
+    const auto false_chain_selected =
+        bir::Value::named(bir::TypeKind::I32, "contract.false.immediate.chain");
+    join_block->insts.insert(
+        join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+        bir::BinaryInst{
+            .opcode = bir::BinaryOpcode::Add,
+            .result = true_chain_root,
+            .operand_type = bir::TypeKind::I32,
+            .lhs = bir::Value::immediate_i32(5),
+            .rhs = bir::Value::immediate_i32(4),
+        });
+    ++join_select_index;
+    join_block->insts.insert(
+        join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+        bir::BinaryInst{
+            .opcode = bir::BinaryOpcode::Xor,
+            .result = true_chain_selected,
+            .operand_type = bir::TypeKind::I32,
+            .lhs = true_chain_root,
+            .rhs = bir::Value::immediate_i32(0),
+        });
+    ++join_select_index;
+    join_block->insts.insert(
+        join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+        bir::BinaryInst{
+            .opcode = bir::BinaryOpcode::Sub,
+            .result = false_chain_root,
+            .operand_type = bir::TypeKind::I32,
+            .lhs = bir::Value::immediate_i32(7),
+            .rhs = bir::Value::immediate_i32(6),
+        });
+    ++join_select_index;
+    join_block->insts.insert(
+        join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+        bir::BinaryInst{
+            .opcode = bir::BinaryOpcode::Xor,
+            .result = false_chain_selected,
+            .operand_type = bir::TypeKind::I32,
+            .lhs = false_chain_root,
+            .rhs = bir::Value::immediate_i32(0),
+        });
+    join_transfer.edge_transfers[true_transfer_index].incoming_value = true_chain_selected;
+    join_transfer.edge_transfers[false_transfer_index].incoming_value = false_chain_selected;
+    for (auto& incoming : join_transfer.incomings) {
+      if (incoming.label == join_transfer.edge_transfers[true_transfer_index].predecessor_label) {
+        incoming.value = true_chain_selected;
+      } else if (incoming.label ==
+                 join_transfer.edge_transfers[false_transfer_index].predecessor_label) {
+        incoming.value = false_chain_selected;
+      }
+    }
+  }
+
   const auto compare_join_context = prepare::find_prepared_param_zero_materialized_compare_join_context(
       *control_flow, function, *entry_block, function.params.front(), true);
   if (!compare_join_context.has_value()) {
@@ -4411,7 +4554,9 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
 
   const auto require_prepared_immediate_base =
       [&](const prepare::PreparedMaterializedCompareJoinReturnContext& return_context,
-          std::int64_t expected_immediate) -> int {
+          std::int64_t expected_immediate,
+          bir::BinaryOpcode expected_opcode,
+          std::int64_t expected_operation_immediate) -> int {
     if (return_context.selected_value.base.kind !=
             prepare::PreparedComputedBaseKind::ImmediateI32 ||
         return_context.selected_value.base.immediate != expected_immediate) {
@@ -4419,7 +4564,18 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
                    ": shared helper stopped classifying the selected-value base as an immediate")
                       .c_str());
     }
-    if (!return_context.selected_value.operations.empty()) {
+    if (use_selected_value_chain) {
+      if (return_context.selected_value.operations.size() != 2 ||
+          return_context.selected_value.operations.front().opcode != expected_opcode ||
+          return_context.selected_value.operations.front().immediate !=
+              expected_operation_immediate ||
+          return_context.selected_value.operations.back().opcode != bir::BinaryOpcode::Xor ||
+          return_context.selected_value.operations.back().immediate != 0) {
+        return fail((std::string(failure_context) +
+                     ": shared helper stopped publishing the immediate-base selected-value chain")
+                        .c_str());
+      }
+    } else if (!return_context.selected_value.operations.empty()) {
       return fail((std::string(failure_context) +
                    ": shared helper stopped keeping direct immediate selected values operation-free")
                       .c_str());
@@ -4435,12 +4591,18 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
   };
 
   if (const auto status = require_prepared_immediate_base(
-          prepared_join_branches->true_return_context, 5);
+          prepared_join_branches->true_return_context,
+          5,
+          bir::BinaryOpcode::Add,
+          4);
       status != 0) {
     return status;
   }
   return require_prepared_immediate_base(
-      prepared_join_branches->false_return_context, 1);
+      prepared_join_branches->false_return_context,
+      use_selected_value_chain ? 7 : 1,
+      bir::BinaryOpcode::Sub,
+      6);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts(
@@ -4448,7 +4610,7 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
     const char* function_name,
     const char* failure_context) {
   return check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts_impl(
-      module, function_name, failure_context, false);
+      module, function_name, failure_context, false, false);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_immediate_return_contexts(
@@ -4456,7 +4618,23 @@ int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_im
     const char* function_name,
     const char* failure_context) {
   return check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts_impl(
-      module, function_name, failure_context, true);
+      module, function_name, failure_context, true, false);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_immediate_chain_return_contexts(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts_impl(
+      module, function_name, failure_context, false, true);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_immediate_chain_return_contexts(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts_impl(
+      module, function_name, failure_context, true, true);
 }
 
 int check_minimal_compare_branch_consumes_prepared_control_flow(const bir::Module& module,
@@ -5368,6 +5546,32 @@ int main() {
               make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
               "branch_join_immediate_then_xor",
               "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot immediate return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_immediate_selected_value_chain_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_immediate_chains_then_xor_asm(
+                  "branch_join_immediate_then_xor", "carrier.nonzero", 5, 4, 7, 6, 0, 3),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with immediate selected-value chain EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_immediate_chain_return_contexts(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join immediate selected-value chain return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_edge_store_slot_immediate_chain_return_contexts(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot immediate selected-value chain return context ownership");
       status != 0) {
     return status;
   }

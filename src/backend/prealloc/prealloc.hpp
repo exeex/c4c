@@ -933,6 +933,44 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
   return std::nullopt;
 }
 
+[[nodiscard]] inline std::optional<PreparedComputedValue> classify_immediate_root_binary(
+    const bir::BinaryInst& binary) {
+  if (binary.operand_type != bir::TypeKind::I32 || binary.result.type != bir::TypeKind::I32 ||
+      binary.lhs.kind != bir::Value::Kind::Immediate ||
+      binary.rhs.kind != bir::Value::Kind::Immediate ||
+      binary.lhs.type != bir::TypeKind::I32 || binary.rhs.type != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  std::optional<PreparedSupportedImmediateBinary> operation;
+  switch (binary.opcode) {
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+      operation = PreparedSupportedImmediateBinary{
+          .opcode = binary.opcode,
+          .immediate = binary.rhs.immediate,
+      };
+      break;
+    default:
+      return std::nullopt;
+  }
+
+  return PreparedComputedValue{
+      .base = PreparedComputedBase{
+          .kind = PreparedComputedBaseKind::ImmediateI32,
+          .immediate = binary.lhs.immediate,
+      },
+      .operations = {*operation},
+  };
+}
+
 [[nodiscard]] inline std::optional<PreparedComputedValue> classify_computed_value(
     const bir::Value& value,
     const bir::Function& function,
@@ -980,6 +1018,12 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
 
   recursion_stack->push_back(value.name);
   auto pop_active_name = [&]() { recursion_stack->pop_back(); };
+
+  if (const auto immediate_root = classify_immediate_root_binary(*binary);
+      immediate_root.has_value()) {
+    pop_active_name();
+    return immediate_root;
+  }
 
   const auto try_extend =
       [&](const bir::Value& source_value,
