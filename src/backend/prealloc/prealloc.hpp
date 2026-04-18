@@ -459,7 +459,7 @@ struct PreparedControlFlow {
     if (transfer.kind != PreparedJoinTransferKind::SelectMaterialization) {
       continue;
     }
-    if (transfer.source_branch_block_label.has_value() &&
+    if (!transfer.source_branch_block_label.has_value() ||
         *transfer.source_branch_block_label != source_branch_block_label) {
       continue;
     }

@@ -8,20 +8,18 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed Step 3 packet work in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by tightening the
-contract-backed guard-chain continuation path so prepared short-circuit joins
-now accept only the prepared join predecessor named in control-flow metadata,
-instead of following an arbitrary empty branch chain when control-flow data
-exists.
+Tightened Step 3's prepared select-materialization join lookup in
+`src/backend/prealloc/prealloc.hpp` so x86 can only match joins whose
+`source_branch_block_label` is present and exactly matches the querying
+prepared branch. Unlabeled select-materialization metadata no longer acts as
+an implicit fallback path.
 
 ## Suggested Next
 
-Step 3 likely needs supervisor-chosen broader proof next before treating the
-shared-control-flow/x86 route as a milestone; after that, the smallest
-remaining code packet is probably tightening
-`find_select_materialization_join_transfer(...)` so source-branch labels stay
-authoritative instead of optional debt.
+Step 3 still looks like it wants supervisor-chosen broader proof before being
+treated as a milestone. If more code work is needed after that, the next small
+packet is probably deleting or isolating the remaining raw select/phi fallback
+reconstruction so prepared-route consumers stay fully lookup-driven.
 
 ## Watchouts
 
@@ -31,6 +29,9 @@ authoritative instead of optional debt.
 - Shared lowering still publishes both `incomings` and `edge_transfers`; keep
   migrating consumers before considering any producer-side compatibility
   cleanup.
+- Select-materialization consumers should now treat missing
+  `source_branch_block_label` as malformed prepared metadata, not as a reason
+  to match by surrounding CFG shape.
 - `PreparedJoinTransfer::source_true_transfer_index` and
   `source_false_transfer_index` are now the authoritative truth-to-edge mapping
   for select-materialization joins; future producers in that family must
@@ -46,4 +47,4 @@ authoritative instead of optional debt.
 
 Ran `cmake --build --preset default` and
 `ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$'`.
-Proof passed and was recorded in `test_after.log`.
+Both passed; the narrow proof was recorded in `test_after.log`.
