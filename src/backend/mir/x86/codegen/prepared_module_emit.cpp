@@ -1535,6 +1535,11 @@ std::string emit_prepared_module(
       ShortCircuitTarget on_compare_true;
       ShortCircuitTarget on_compare_false;
     };
+    struct CompareDrivenBranchRenderPlan {
+      ShortCircuitPlan branch_plan;
+      std::string compare_setup;
+      std::string false_branch_opcode;
+    };
     struct ClassifiedShortCircuitIncoming {
       std::size_t transfer_index = 0;
       bool short_circuit_value = false;
@@ -1563,7 +1568,8 @@ std::string emit_prepared_module(
     };
     struct ShortCircuitEntryCompareContext {
       const c4c::backend::prepare::PreparedBranchCondition* branch_condition = nullptr;
-      std::pair<std::string, std::string> false_branch_compare;
+      std::string compare_setup;
+      std::string false_branch_opcode;
     };
     struct MaterializedI32Compare {
       std::string_view i1_name;
@@ -1978,22 +1984,21 @@ std::string emit_prepared_module(
     const auto render_compare_driven_branch_plan =
         [&](const auto& render_block_fn,
             std::string_view rendered_body,
-            const std::pair<std::string, std::string>& false_branch_compare,
-            const ShortCircuitPlan& plan) -> std::optional<std::string> {
-      const auto render_context = build_short_circuit_render_context(plan);
+            const CompareDrivenBranchRenderPlan& render_plan) -> std::optional<std::string> {
+      const auto render_context = build_short_circuit_render_context(render_plan.branch_plan);
       if (!render_context.has_value()) {
         return std::nullopt;
       }
 
       const auto rendered_lanes =
-          render_short_circuit_lanes(render_block_fn, plan, *render_context);
+          render_short_circuit_lanes(render_block_fn, render_plan.branch_plan, *render_context);
       if (!rendered_lanes.has_value()) {
         return std::nullopt;
       }
 
       return assemble_short_circuit_rendered_plan(rendered_body,
-                                                  false_branch_compare.first,
-                                                  false_branch_compare.second,
+                                                  render_plan.compare_setup,
+                                                  render_plan.false_branch_opcode,
                                                   rendered_lanes->rendered_true,
                                                   rendered_lanes->rendered_false_lane);
     };
@@ -2602,7 +2607,18 @@ std::string emit_prepared_module(
             }
             return ShortCircuitEntryCompareContext{
                 .branch_condition = branch_condition,
-                .false_branch_compare = *false_branch_compare,
+                .compare_setup = std::move(false_branch_compare->first),
+                .false_branch_opcode = std::move(false_branch_compare->second),
+            };
+          };
+          const auto build_compare_driven_render_plan =
+              [&](ShortCircuitPlan branch_plan,
+                  const ShortCircuitEntryCompareContext& compare_context)
+              -> CompareDrivenBranchRenderPlan {
+            return CompareDrivenBranchRenderPlan{
+                .branch_plan = std::move(branch_plan),
+                .compare_setup = compare_context.compare_setup,
+                .false_branch_opcode = compare_context.false_branch_opcode,
             };
           };
           const auto find_branch_condition =
@@ -2663,10 +2679,12 @@ std::string emit_prepared_module(
                 if (!compare_join_plan.has_value()) {
                   return std::nullopt;
                 }
+                const auto compare_join_render_plan =
+                    build_compare_driven_render_plan(*compare_join_plan,
+                                                     *entry_compare_context);
                 return render_compare_driven_branch_plan(render_block,
                                                          body,
-                                                         entry_compare_context->false_branch_compare,
-                                                         *compare_join_plan);
+                                                         compare_join_render_plan);
               }
             }
             if (compare_index != block.insts.size()) {
@@ -2728,10 +2746,12 @@ std::string emit_prepared_module(
             if (!short_circuit_plan.has_value()) {
               return std::nullopt;
             }
+            const auto short_circuit_render_plan =
+                build_compare_driven_render_plan(*short_circuit_plan,
+                                                 *entry_compare_context);
             return render_compare_driven_branch_plan(render_block,
                                                      body,
-                                                     entry_compare_context->false_branch_compare,
-                                                     *short_circuit_plan);
+                                                     short_circuit_render_plan);
           };
           if (const auto rendered_short_circuit = try_render_short_circuit_plan();
               rendered_short_circuit.has_value()) {
@@ -2742,10 +2762,12 @@ std::string emit_prepared_module(
           if (!plain_cond_branch_plan.has_value()) {
             return std::nullopt;
           }
+          const auto plain_cond_render_plan =
+              build_compare_driven_render_plan(*plain_cond_branch_plan,
+                                               *entry_compare_context);
           return render_compare_driven_branch_plan(render_block,
                                                    body,
-                                                   entry_compare_context->false_branch_compare,
-                                                   *plain_cond_branch_plan);
+                                                   plain_cond_render_plan);
         };
 
     auto asm_text = asm_prefix;

@@ -9,20 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by routing
-compare-join continuation rendering through helper-owned direct-branch-plan
-assembly. `build_compare_join_branch_plan()` now reuses the same
-`build_direct_branch_plan()` contract that short-circuit entry and plain
-conditional compare-driven fallback already consume, so the continuation lane
-no longer keeps separate local true/false target plumbing beside the helper
-path.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by introducing a
+helper-owned compare-driven render plan that carries both branch-lane targets
+and compare setup/opcode data. The compare-join continuation path, short-
+circuit path, and plain conditional fallback now all hand
+`render_compare_driven_branch_plan()` the same `CompareDrivenBranchRenderPlan`
+contract instead of keeping branch-plan and false-branch compare plumbing
+separate at each render site.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect whether the remaining compare-
-driven branch assembly can collapse more local label/string construction into
-the helper-owned render-plan path, so the x86 emitter keeps shrinking toward
-lookup-driven control-flow rendering instead of inline lane assembly.
+The next small Step 3 packet is to collapse compare-driven plan construction
+further so entry routing can ask one helper for the final render plan instead
+of locally pairing `build_*_branch_plan()` results with
+`build_short_circuit_entry_compare_context()` at each call site.
 
 ## Watchouts
 
@@ -56,10 +56,10 @@ lookup-driven control-flow rendering instead of inline lane assembly.
   handoff into `render_compare_driven_branch_plan()`; keep future continuation
   target plumbing there instead of re-growing `build_direct_branch_plan()`
   calls beside render sites.
-- `render_compare_driven_branch_plan()` still owns compare-driven lane
-  rendering once a plan exists; future cleanup should keep collapsing inline
-  compare-and-branch assembly toward that helper instead of re-growing local
-  false-label strings.
+- `CompareDrivenBranchRenderPlan` now owns the compare setup/opcode plus
+  branch-lane targets that feed `render_compare_driven_branch_plan()`; future
+  cleanup should extend that contract instead of re-splitting compare plumbing
+  from branch-plan selection at the render sites.
 - `classify_short_circuit_join_incoming()` still assumes the prepared select
   join carries exactly one bool-like immediate lane and one named RHS lane; if
   that invariant changes, repair the shared contract instead of extending
@@ -71,5 +71,5 @@ lookup-driven control-flow rendering instead of inline lane assembly.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 compare-join direct-branch
-plan cleanup packet; proof output is in `test_after.log`.
+The build and narrow proof passed for this Step 3 compare-driven render-plan
+cleanup packet; proof output is in `test_after.log`.
