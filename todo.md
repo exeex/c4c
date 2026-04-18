@@ -8,20 +8,19 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed Step 3 consumer tightening in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` by making
-`render_materialized_compare_join_if_supported` prefer prepared true/false
-transfer indices when they are published and by extending the compare-join
-handoff-boundary proof to rename carrier labels while scrambling prepared
-incoming labels away from wrapper-shape names.
+Completed the next Step 3 ownership packet in
+`tests/backend/backend_x86_handoff_boundary_test.cpp` by extending
+`check_join_route_consumes_prepared_control_flow` coverage to the trailing
+join-`add` arithmetic variant, so the compare-join lane is now proven to keep
+following prepared true/false transfer ownership even when the join result is
+consumed by one more immediate arithmetic step before return.
 
 ## Suggested Next
 
 The next small Step 3 packet is broadening the same compare-join ownership
-mutation to one trailing-join-arithmetic variant so the prepared true/false
-lane mapping is proven beyond the base add/sub join case without widening into
-idea 59 instruction-selection work.
+proof to one additional trailing-join arithmetic family such as xor or and, so
+the prepared true/false lane mapping is no longer only proven for the base
+join and the trailing-`add` follow-on case.
 
 ## Watchouts
 
@@ -42,4 +41,4 @@ idea 59 instruction-selection work.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The build and narrow proof both passed; `test_after.log` is the canonical proof
-log and was sufficient for this emitter-and-handoff-test Step 3 packet.
+log and was sufficient for this handoff-boundary Step 3 ownership packet.
