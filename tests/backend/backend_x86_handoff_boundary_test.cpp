@@ -624,6 +624,31 @@ std::string expected_minimal_param_eq_zero_branch_joined_globals_then_xor_asm(
          ", @object\n.p2align 2\n" + std::string(false_global_name) + ":\n    .long 1\n";
 }
 
+std::string expected_minimal_param_eq_zero_branch_joined_global_chains_then_xor_asm(
+    const char* function_name,
+    const char* false_label,
+    const char* true_global_name,
+    int true_chain_immediate,
+    const char* false_global_name,
+    int false_chain_immediate,
+    int joined_immediate) {
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", DWORD PTR [rip + " + std::string(true_global_name) +
+         "]\n    add " + minimal_i32_return_register() + ", " +
+         std::to_string(true_chain_immediate) + "\n    xor " + minimal_i32_return_register() +
+         ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", DWORD PTR [rip + " +
+         std::string(false_global_name) + "]\n    sub " + minimal_i32_return_register() + ", " +
+         std::to_string(false_chain_immediate) + "\n    xor " + minimal_i32_return_register() +
+         ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.data\n.globl " + std::string(true_global_name) + "\n.type " +
+         std::string(true_global_name) + ", @object\n.p2align 2\n" +
+         std::string(true_global_name) + ":\n    .long 5\n.data\n.globl " +
+         std::string(false_global_name) + "\n.type " + std::string(false_global_name) +
+         ", @object\n.p2align 2\n" + std::string(false_global_name) + ":\n    .long 1\n";
+}
+
 std::string expected_minimal_param_eq_zero_branch_joined_immediate_chains_then_xor_asm(
     const char* function_name,
     const char* false_label,
@@ -4075,7 +4100,8 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
                                                          bool use_edge_store_slot_carrier,
                                                          bool use_selected_value_chain,
                                                          bool use_immediate_selected_value_chain,
-                                                         bool use_global_selected_value_roots) {
+                                                         bool use_global_selected_value_roots,
+                                                         bool use_global_selected_value_chain) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -4345,13 +4371,42 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
             .global_name = "selected_nonzero",
             .align_bytes = 4,
         });
-    join_transfer.edge_transfers[true_transfer_index].incoming_value = true_global_root;
-    join_transfer.edge_transfers[false_transfer_index].incoming_value = false_global_root;
+    if (use_global_selected_value_chain) {
+      const auto true_global_selected =
+          bir::Value::named(bir::TypeKind::I32, "contract.true.global.chain");
+      const auto false_global_selected =
+          bir::Value::named(bir::TypeKind::I32, "contract.false.global.chain");
+      ++join_select_index;
+      join_block->insts.insert(
+          join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+          bir::BinaryInst{
+              .opcode = bir::BinaryOpcode::Add,
+              .result = true_global_selected,
+              .operand_type = bir::TypeKind::I32,
+              .lhs = true_global_root,
+              .rhs = bir::Value::immediate_i32(4),
+          });
+      ++join_select_index;
+      join_block->insts.insert(
+          join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+          bir::BinaryInst{
+              .opcode = bir::BinaryOpcode::Sub,
+              .result = false_global_selected,
+              .operand_type = bir::TypeKind::I32,
+              .lhs = false_global_root,
+              .rhs = bir::Value::immediate_i32(1),
+          });
+      join_transfer.edge_transfers[true_transfer_index].incoming_value = true_global_selected;
+      join_transfer.edge_transfers[false_transfer_index].incoming_value = false_global_selected;
+    } else {
+      join_transfer.edge_transfers[true_transfer_index].incoming_value = true_global_root;
+      join_transfer.edge_transfers[false_transfer_index].incoming_value = false_global_root;
+    }
     for (auto& incoming : join_transfer.incomings) {
       if (incoming.label == *join_transfer.source_true_incoming_label) {
-        incoming.value = true_global_root;
+        incoming.value = join_transfer.edge_transfers[true_transfer_index].incoming_value;
       } else if (incoming.label == *join_transfer.source_false_incoming_label) {
-        incoming.value = false_global_root;
+        incoming.value = join_transfer.edge_transfers[false_transfer_index].incoming_value;
       }
     }
   }
@@ -4404,7 +4459,7 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
                                                     const char* function_name,
                                                     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false, false, false, false);
+      module, expected_asm, function_name, failure_context, false, false, false, false, false);
 }
 
 int check_join_route_edge_store_slot_consumes_prepared_control_flow(
@@ -4413,7 +4468,7 @@ int check_join_route_edge_store_slot_consumes_prepared_control_flow(
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, false, false, false);
+      module, expected_asm, function_name, failure_context, true, false, false, false, false);
 }
 
 int check_join_route_selected_value_chain_consumes_prepared_control_flow(
@@ -4422,7 +4477,7 @@ int check_join_route_selected_value_chain_consumes_prepared_control_flow(
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, true, false, false);
+      module, expected_asm, function_name, failure_context, true, true, false, false, false);
 }
 
 int check_join_route_immediate_selected_value_chain_consumes_prepared_control_flow(
@@ -4431,7 +4486,7 @@ int check_join_route_immediate_selected_value_chain_consumes_prepared_control_fl
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, true, true, false);
+      module, expected_asm, function_name, failure_context, true, true, true, false, false);
 }
 
 int check_join_route_global_selected_values_consumes_prepared_control_flow(
@@ -4440,7 +4495,7 @@ int check_join_route_global_selected_values_consumes_prepared_control_flow(
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false, false, false, true);
+      module, expected_asm, function_name, failure_context, false, false, false, true, false);
 }
 
 int check_join_route_edge_store_slot_global_selected_values_consumes_prepared_control_flow(
@@ -4449,7 +4504,25 @@ int check_join_route_edge_store_slot_global_selected_values_consumes_prepared_co
     const char* function_name,
     const char* failure_context) {
   return check_join_route_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true, false, false, true);
+      module, expected_asm, function_name, failure_context, true, false, false, true, false);
+}
+
+int check_join_route_global_selected_value_chain_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, false, false, false, true, true);
+}
+
+int check_join_route_edge_store_slot_global_selected_value_chain_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module, expected_asm, function_name, failure_context, true, false, false, true, true);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_return_contexts(
@@ -4793,7 +4866,8 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
     const bir::Module& module,
     const char* function_name,
     const char* failure_context,
-    bool use_edge_store_slot_carrier) {
+    bool use_edge_store_slot_carrier,
+    bool use_selected_value_chain) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -4905,14 +4979,43 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
           .global_name = "selected_nonzero",
           .align_bytes = 4,
       });
-  join_transfer.edge_transfers[true_transfer_index].incoming_value = true_global_root;
-  join_transfer.edge_transfers[false_transfer_index].incoming_value = false_global_root;
+  if (use_selected_value_chain) {
+    const auto true_global_selected =
+        bir::Value::named(bir::TypeKind::I32, "contract.true.global.chain");
+    const auto false_global_selected =
+        bir::Value::named(bir::TypeKind::I32, "contract.false.global.chain");
+    ++join_select_index;
+    join_block->insts.insert(
+        join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+        bir::BinaryInst{
+            .opcode = bir::BinaryOpcode::Add,
+            .result = true_global_selected,
+            .operand_type = bir::TypeKind::I32,
+            .lhs = true_global_root,
+            .rhs = bir::Value::immediate_i32(4),
+        });
+    ++join_select_index;
+    join_block->insts.insert(
+        join_block->insts.begin() + static_cast<std::ptrdiff_t>(join_select_index),
+        bir::BinaryInst{
+            .opcode = bir::BinaryOpcode::Sub,
+            .result = false_global_selected,
+            .operand_type = bir::TypeKind::I32,
+            .lhs = false_global_root,
+            .rhs = bir::Value::immediate_i32(1),
+        });
+    join_transfer.edge_transfers[true_transfer_index].incoming_value = true_global_selected;
+    join_transfer.edge_transfers[false_transfer_index].incoming_value = false_global_selected;
+  } else {
+    join_transfer.edge_transfers[true_transfer_index].incoming_value = true_global_root;
+    join_transfer.edge_transfers[false_transfer_index].incoming_value = false_global_root;
+  }
   for (auto& incoming : join_transfer.incomings) {
     if (incoming.label == join_transfer.edge_transfers[true_transfer_index].predecessor_label) {
-      incoming.value = true_global_root;
+      incoming.value = join_transfer.edge_transfers[true_transfer_index].incoming_value;
     } else if (incoming.label ==
                join_transfer.edge_transfers[false_transfer_index].predecessor_label) {
-      incoming.value = false_global_root;
+      incoming.value = join_transfer.edge_transfers[false_transfer_index].incoming_value;
     }
   }
 
@@ -4944,7 +5047,29 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
                    ": shared helper stopped classifying the selected-value base as a same-module global load")
                       .c_str());
     }
-    if (!return_context.selected_value.operations.empty()) {
+    if (use_selected_value_chain) {
+      if (return_context.selected_value.base.global_name == "selected_zero") {
+        if (return_context.selected_value.operations.size() != 1 ||
+            return_context.selected_value.operations.front().opcode != bir::BinaryOpcode::Add ||
+            return_context.selected_value.operations.front().immediate != 4) {
+          return fail((std::string(failure_context) +
+                       ": shared helper stopped publishing the true global-root selected-value chain")
+                          .c_str());
+        }
+      } else if (return_context.selected_value.base.global_name == "selected_nonzero") {
+        if (return_context.selected_value.operations.size() != 1 ||
+            return_context.selected_value.operations.front().opcode != bir::BinaryOpcode::Sub ||
+            return_context.selected_value.operations.front().immediate != 1) {
+          return fail((std::string(failure_context) +
+                       ": shared helper stopped publishing the false global-root selected-value chain")
+                          .c_str());
+        }
+      } else {
+        return fail((std::string(failure_context) +
+                     ": shared helper stopped publishing the global-root selected-value chain")
+                        .c_str());
+      }
+    } else if (!return_context.selected_value.operations.empty()) {
       return fail((std::string(failure_context) +
                    ": shared helper stopped keeping direct global selected values operation-free")
                       .c_str());
@@ -4973,7 +5098,7 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
     const char* function_name,
     const char* failure_context) {
   return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
-      module, function_name, failure_context, false);
+      module, function_name, failure_context, false, false);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_global_return_contexts(
@@ -4981,7 +5106,23 @@ int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_gl
     const char* function_name,
     const char* failure_context) {
   return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
-      module, function_name, failure_context, true);
+      module, function_name, failure_context, true, false);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_global_chain_return_contexts(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, false, true);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_global_chain_return_contexts(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, true, true);
 }
 
 int check_minimal_compare_branch_consumes_prepared_control_flow(const bir::Module& module,
@@ -5955,6 +6096,54 @@ int main() {
               make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
               "branch_join_global_then_xor",
               "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot same-module global return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_global_selected_value_chain_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_global_chains_then_xor_asm(
+                  "branch_join_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero",
+                  4,
+                  "selected_nonzero",
+                  1,
+                  3),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with same-module global selected-value chain prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_global_selected_value_chain_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_global_chains_then_xor_asm(
+                  "branch_join_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero",
+                  4,
+                  "selected_nonzero",
+                  1,
+                  3),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with same-module global selected-value chain EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_global_chain_return_contexts(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join same-module global selected-value chain return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_edge_store_slot_global_chain_return_contexts(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot same-module global selected-value chain return context ownership");
       status != 0) {
     return status;
   }
