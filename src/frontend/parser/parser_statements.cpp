@@ -602,8 +602,7 @@ Node* Parser::parse_stmt() {
             auto parse_asm_operand = [&]() -> AsmOperand {
                 AsmOperand op{};
                 if (check(TokenKind::StrLit)) {
-                    op.constraint = token_spelling(cur());
-                    consume();
+                    op.constraint = consume_adjacent_string_literal();
                 }
                 if (match(TokenKind::LParen)) {
                     op.expr = parse_expr();
@@ -649,9 +648,7 @@ Node* Parser::parse_stmt() {
 
             Node* asm_template = nullptr;
             if (check(TokenKind::StrLit)) {
-                asm_template = make_str_lit(
-                    arena_.strdup(std::string(token_spelling(cur()))), cur().line);
-                consume();
+                asm_template = make_str_lit(consume_adjacent_string_literal(), cur().line);
             } else if (!check(TokenKind::Colon) && !check(TokenKind::RParen)) {
                 asm_template = parse_expr();
             }
@@ -665,11 +662,8 @@ Node* Parser::parse_stmt() {
                     if (match(TokenKind::Colon)) {
                         while (!at_end() && !check(TokenKind::RParen)) {
                             if (check(TokenKind::StrLit)) {
-                                clobbers.push_back(
-                                    make_str_lit(
-                                        arena_.strdup(std::string(token_spelling(cur()))),
-                                        cur().line));
-                                consume();
+                                clobbers.push_back(make_str_lit(
+                                    consume_adjacent_string_literal(), cur().line));
                             }
                             else if (check(TokenKind::LParen)) skip_paren_group();
                             else consume();

@@ -1016,21 +1016,7 @@ Node* Parser::parse_primary() {
 
     // String literal (possibly multiple adjacent)
     if (check(TokenKind::StrLit)) {
-        std::string combined = std::string(token_spelling(cur()));
-        consume();
-        while (check(TokenKind::StrLit)) {
-            // Adjacent string concatenation: trim closing quote of first,
-            // trim opening quote of second, join
-            if (!combined.empty() && combined.back() == '"') combined.pop_back();
-            const std::string next = std::string(token_spelling(cur()));
-            if (!next.empty() && next.front() == '"') {
-                combined += next.substr(1);
-            } else {
-                combined += next;
-            }
-            consume();
-        }
-        return make_str_lit(arena_.strdup(combined), ln);
+        return make_str_lit(consume_adjacent_string_literal(), ln);
     }
 
     // Char literal

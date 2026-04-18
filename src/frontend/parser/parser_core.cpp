@@ -1882,6 +1882,24 @@ Node* Parser::make_str_lit(const char* raw, int line) {
     return n;
 }
 
+const char* Parser::consume_adjacent_string_literal() {
+    if (!check(TokenKind::StrLit)) return nullptr;
+
+    std::string combined = std::string(token_spelling(cur()));
+    consume();
+    while (check(TokenKind::StrLit)) {
+        if (!combined.empty() && combined.back() == '"') combined.pop_back();
+        const std::string next = std::string(token_spelling(cur()));
+        if (!next.empty() && next.front() == '"') {
+            combined += next.substr(1);
+        } else {
+            combined += next;
+        }
+        consume();
+    }
+    return arena_.strdup(combined);
+}
+
 Node* Parser::make_var(const char* name, int line) {
     Node* n = make_node(NK_VAR, line);
     n->name = name;

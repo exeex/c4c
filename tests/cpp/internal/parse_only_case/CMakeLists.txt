@@ -119,6 +119,15 @@ set_tests_properties(cpp_parse_top_level_asm_recovery_preserves_following_decl_d
 )
 
 add_test(
+  NAME cpp_parse_gnu_asm_adjacent_string_template_dump
+  COMMAND c4cll --parse-only "/workspaces/c4c/tests/cpp/internal/parse_only_case/gnu_asm_adjacent_string_template_parse.cpp"
+)
+set_tests_properties(cpp_parse_gnu_asm_adjacent_string_template_dump PROPERTIES
+  LABELS "internal;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Asm\\(volatile\\)"
+)
+
+add_test(
   NAME cpp_parse_top_level_using_namespace_recovery_preserves_following_decl_dump
   COMMAND c4cll --parse-only "/workspaces/c4c/tests/cpp/internal/parse_only_case/top_level_using_namespace_recovery_preserves_following_decl_parse.cpp"
 )
