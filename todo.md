@@ -10,23 +10,21 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `tests/backend/backend_x86_handoff_boundary_test.cpp` and `todo.md` by
-auditing the shared materialized compare-join helper for the remaining
-false-lane passthrough plus `PreparedJoinTransferKind::EdgeStoreSlot` path,
-confirming the prepared contract already covered that topology without further
-shared-helper changes, and extending the handoff-boundary suite with a
-combined EdgeStoreSlot plus false-lane passthrough fixture that proves the
-same canonical asm still emits when prepared branch/join ownership stays
-authoritative across that extra empty block.
+extending the compare-join handoff-boundary fixture to the symmetric
+true-lane passthrough topology, keeping the same prepared branch/join
+ownership contract and proving both the plain select-materialization carrier
+and the `PreparedJoinTransferKind::EdgeStoreSlot` carrier still emit the same
+canonical asm when one extra empty authoritative true-lane bridge sits
+between the source branch lane and the join.
 
 ## Suggested Next
 
-The next accepted packet should stay in Step 3 and remove one more small
-compare-join topology gate only where the prepared contract is already
-authoritative, most likely by auditing the same shared helper/test family for
-the corresponding true-lane passthrough case or one adjacent prepared-contract
-consumer that still rejects a single empty authoritative bridge without
-widening into generic CFG walking, instruction-selection work, or Step 4 file
-organization.
+The next accepted packet should stay in Step 3 and keep shrinking residual
+compare-join topology sensitivity only where prepared ownership is already
+authoritative, most likely by covering one adjacent selected-value-chain or
+global-root join variant with the same single empty authoritative bridge
+topology before widening into broader CFG shapes, instruction-selection work,
+or Step 4 file organization.
 
 ## Watchouts
 
@@ -45,16 +43,17 @@ organization.
 - `test_before.log` remains the narrow baseline for
   `^backend_x86_handoff_boundary$`, and this packet refreshes `test_after.log`
   with the same focused proof command after proving the compare-join
-  EdgeStoreSlot path also ignores one extra empty false-lane passthrough block
-  when prepared control-flow ownership is authoritative.
+  select-materialization and EdgeStoreSlot consumers also ignore one extra
+  empty true-lane passthrough block when prepared control-flow ownership is
+  authoritative.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The focused proof refreshes `test_after.log` with the
-`backend_x86_handoff_boundary` subset for the audited compare-join
-EdgeStoreSlot passthrough contract, the new combined false-lane passthrough
-coverage, and the existing prepared branch/join ownership families that
-continue proving the same handoff contracts. The proof passed and
+`backend_x86_handoff_boundary` subset for the new symmetric compare-join
+true-lane passthrough coverage, the paired EdgeStoreSlot carrier coverage,
+and the existing prepared branch/join ownership families that continue
+proving the same handoff contracts. The proof passed and
 `test_after.log` is the preserved proof log.

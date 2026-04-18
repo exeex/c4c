@@ -4571,6 +4571,7 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
                                                          bool use_fixed_offset_global_selected_value_roots,
                                                          bool use_pointer_backed_global_selected_value_roots,
                                                          bool add_unreachable_block,
+                                                         bool add_true_lane_passthrough_block = false,
                                                          bool add_false_lane_passthrough_block =
                                                              false) {
   c4c::TargetProfile target_profile;
@@ -4924,6 +4925,13 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
       .result = bir::Value::named(bir::TypeKind::I32, "dead.result"),
       .kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot,
   });
+  if (add_true_lane_passthrough_block) {
+    true_carrier->terminator = bir::BranchTerminator{.target_label = "contract.true.bridge"};
+    function.blocks.push_back(bir::Block{
+        .label = "contract.true.bridge",
+        .terminator = bir::BranchTerminator{.target_label = join_block->label},
+    });
+  }
   if (add_false_lane_passthrough_block) {
     false_carrier->terminator = bir::BranchTerminator{.target_label = "contract.false.bridge"};
     function.blocks.push_back(bir::Block{
@@ -4982,6 +4990,7 @@ int check_join_route_consumes_prepared_control_flow(const bir::Module& module,
       false,
       false,
       false,
+      false,
       false);
 }
 
@@ -4995,6 +5004,7 @@ int check_join_route_with_unreachable_block_consumes_prepared_control_flow(
       expected_asm,
       function_name,
       failure_context,
+      false,
       false,
       false,
       false,
@@ -5022,6 +5032,29 @@ int check_join_route_edge_store_slot_consumes_prepared_control_flow(
       false,
       false,
       false,
+      false,
+      false);
+}
+
+int check_join_route_with_true_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
       false);
 }
 
@@ -5043,7 +5076,30 @@ int check_join_route_with_false_lane_passthrough_consumes_prepared_control_flow(
       false,
       false,
       false,
+      false,
       true);
+}
+
+int check_join_route_edge_store_slot_with_true_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false);
 }
 
 int check_join_route_edge_store_slot_with_false_lane_passthrough_consumes_prepared_control_flow(
@@ -5057,6 +5113,7 @@ int check_join_route_edge_store_slot_with_false_lane_passthrough_consumes_prepar
       function_name,
       failure_context,
       true,
+      false,
       false,
       false,
       false,
@@ -7926,6 +7983,16 @@ int main() {
     return status;
   }
   if (const auto status =
+          check_join_route_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm(
+                  "branch_join_adjust_then_xor", "is_nonzero", 5, 1, 3),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_join_route_with_false_lane_passthrough_consumes_prepared_control_flow(
               make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
               expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm(
@@ -7958,6 +8025,16 @@ int main() {
                   "branch_join_adjust_then_xor", "is_nonzero", 5, 1, 3),
               "branch_join_adjust_then_xor",
               "scalar-control-flow compare-against-zero joined branch lane with trailing join xor EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm(
+                  "branch_join_adjust_then_xor", "is_nonzero", 5, 1, 3),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join xor EdgeStoreSlot ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }
