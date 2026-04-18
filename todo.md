@@ -8,25 +8,23 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 3 Consume Prepared Control-Flow packet across
-`src/backend/prealloc/prealloc.hpp` and
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving the
-authoritative branch-owned join-transfer classification into a shared prepared
-helper and switching the x86 materialized-compare and short-circuit join
-consumers to use that shared lookup instead of reclassifying branch-owned join
-transfers locally. The shared helper now validates the supported
-`SelectMaterialization` and `PreparedJoinTransferKind::EdgeStoreSlot` contract
-once, then hands x86 the authoritative join transfer plus its true/false edge
-transfers as prepared data.
+Completed a Step 3 Consume Prepared Control-Flow packet in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by tightening the
+local-slot short-circuit join consumer so that the short-circuit entry render
+path now requires prepared branch-condition data instead of falling back to
+the trailing entry compare when building the compare/branch setup for that
+authoritative branch-owned join route. The plain non-join conditional path
+still keeps its existing fallback behavior, but the short-circuit join lane
+now consumes the shared prepared branch contract directly.
 
 ## Suggested Next
 
-The next accepted packet should remove one more Step 3 emitter-local
-branch-owned join seam only if it meaningfully changes prepared-data
-consumption, not just file organization. If inspection shows the remaining
-work is mostly x86 helper placement or extraction around
-`prepared_module_emit.cpp`, hand lifecycle back for an explicit Step 4
-transition instead of stretching Step 3.
+The next accepted packet should remove one more Step 3 consumer seam in the
+same family by moving the compare-join continuation branch setup onto
+prepared branch-condition data as well, not just the short-circuit entry
+setup. If the remaining work in this area is mostly helper extraction or file
+placement inside `prepared_module_emit.cpp`, hand lifecycle back for an
+explicit Step 4 transition instead of stretching Step 3.
 
 ## Watchouts
 
@@ -41,10 +39,14 @@ transition instead of stretching Step 3.
   emitter-local CFG scans.
 - Keep deriving branch polarity from prepared branch metadata rather than from
   equality-only assumptions in the emitter.
-- The shared helper in `prealloc.hpp` now owns authoritative branch-owned join
-  transfer validation for the supported Step 3 contract, so follow-on work
-  should extend that shared prepared surface rather than reintroducing x86-side
-  transfer-index or storage-name checks.
+- The shared helper in `prealloc.hpp` still owns authoritative branch-owned
+  join transfer validation for the supported Step 3 contract, so follow-on
+  work should keep extending prepared consumer lookups rather than
+  reintroducing x86-side transfer-index or storage-name checks.
+- The short-circuit ownership tests intentionally rewrite carrier labels and
+  entry compares to prove x86 trusts prepared metadata over emitter-local
+  carrier naming; do not add source-label equality checks that undercut that
+  contract.
 - A reverted proof-only packet tried to add nonzero trailing-join `add`
   coverage without any paired consumer change; treat more test-only `ne`
   trailing-op expansion as route drift unless the next slice also lands real
@@ -53,9 +55,6 @@ transition instead of stretching Step 3.
   `SelectMaterialization` and `PreparedJoinTransferKind::EdgeStoreSlot`
   carriers; keep further work in this family focused on prepared consumer
   seams rather than broader route expansion.
-- If another consumer path needs extra branch or join facts, strengthen the
-  shared prepared-control-flow contract in `prealloc.hpp` rather than growing
-  emitter-local scans or CFG-shape recovery.
 - `test_before.log` remains the narrow baseline for
   `^backend_x86_handoff_boundary$`, and this packet refreshed `test_after.log`
   with the same focused proof command for supervisor review.
@@ -69,5 +68,5 @@ Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 This packet passed with the same focused `backend_x86_handoff_boundary` proof
 command, and `test_after.log` remains the fresh canonical narrow log for the
-shared authoritative branch-owned join helper plus the x86 consumers that now
-use it.
+short-circuit entry consumer path that now requires prepared branch metadata
+for the authoritative branch-owned join route.

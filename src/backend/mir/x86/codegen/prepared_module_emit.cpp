@@ -2804,13 +2804,17 @@ std::string emit_prepared_module(
           const auto build_short_circuit_entry_compare_context =
               [&](const auto& find_branch_condition_fn,
                   const c4c::backend::bir::Block& source_block,
-                  const c4c::backend::bir::BinaryInst& compare)
+                  const c4c::backend::bir::BinaryInst& compare,
+                  bool require_prepared_branch_condition)
               -> std::optional<ShortCircuitEntryCompareContext> {
             const auto* branch_condition = find_branch_condition_fn(source_block.label);
             auto false_branch_compare =
                 branch_condition != nullptr
                     ? render_false_branch_compare_from_condition(*branch_condition)
                     : std::optional<std::pair<std::string, std::string>>{};
+            if (!false_branch_compare.has_value() && require_prepared_branch_condition) {
+              return std::nullopt;
+            }
             if (!false_branch_compare.has_value()) {
               false_branch_compare = render_false_branch_compare(compare);
             }
@@ -2850,7 +2854,8 @@ std::string emit_prepared_module(
             const auto compare_context =
                 build_short_circuit_entry_compare_context(find_branch_condition,
                                                           source_block,
-                                                          compare);
+                                                          compare,
+                                                          false);
             if (!compare_context.has_value()) {
               return std::nullopt;
             }
@@ -2884,27 +2889,36 @@ std::string emit_prepared_module(
                   const c4c::backend::bir::BinaryInst& compare,
                   const ShortCircuitJoinContext& join_context)
               -> std::optional<CompareDrivenBranchRenderPlan> {
-            auto direct_entry_render_plan = build_compare_driven_direct_entry_render_plan(
-                source_block,
-                compare,
-                [&](const ShortCircuitEntryCompareContext& compare_context)
-                    -> std::optional<DirectBranchTargets> {
-                  return build_short_circuit_entry_direct_branch_targets(
-                      compare_context.branch_condition, source_block);
-                });
-            if (!direct_entry_render_plan.has_value()) {
+            const auto compare_context =
+                build_short_circuit_entry_compare_context(find_branch_condition,
+                                                          source_block,
+                                                          compare,
+                                                          true);
+            if (!compare_context.has_value()) {
+              return std::nullopt;
+            }
+
+            const auto direct_targets = build_short_circuit_entry_direct_branch_targets(
+                compare_context->branch_condition, source_block);
+            if (!direct_targets.has_value()) {
+              return std::nullopt;
+            }
+
+            const auto direct_branch_plan =
+                build_direct_branch_plan_from_targets(source_block, *direct_targets);
+            if (!direct_branch_plan.has_value()) {
               return std::nullopt;
             }
 
             const auto short_circuit_branch_plan =
                 build_short_circuit_plan(join_context,
-                                         direct_entry_render_plan->branch_plan);
+                                         *direct_branch_plan);
             if (!short_circuit_branch_plan.has_value()) {
               return std::nullopt;
             }
 
-            direct_entry_render_plan->branch_plan = *short_circuit_branch_plan;
-            return direct_entry_render_plan;
+            return build_compare_driven_render_plan(*short_circuit_branch_plan,
+                                                    *compare_context);
           };
           const auto build_plain_cond_entry_render_plan =
               [&](const c4c::backend::bir::Block& source_block,
