@@ -1625,6 +1625,8 @@ std::string emit_prepared_module(
     struct ShortCircuitJoinContext {
       const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
       const c4c::backend::bir::Block* join_block = nullptr;
+      const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
+      const c4c::backend::prepare::PreparedEdgeValueTransfer* false_transfer = nullptr;
       ClassifiedShortCircuitIncoming classified_incoming;
       GuardJoinContinuation continuation_plan;
     };
@@ -1759,14 +1761,9 @@ std::string emit_prepared_module(
       return continuation;
     };
     const auto classify_short_circuit_join_incoming =
-        [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer)
+        [&](const c4c::backend::prepare::PreparedEdgeValueTransfer& true_transfer,
+            const c4c::backend::prepare::PreparedEdgeValueTransfer& false_transfer)
         -> std::optional<ClassifiedShortCircuitIncoming> {
-      const auto authoritative_transfers =
-          find_authoritative_join_edge_transfers(join_transfer);
-      if (!authoritative_transfers.has_value()) {
-        return std::nullopt;
-      }
-
       const auto classify_join_incoming =
           [](const c4c::backend::prepare::PreparedEdgeValueTransfer& incoming)
           -> std::optional<bool> {
@@ -1779,9 +1776,9 @@ std::string emit_prepared_module(
       };
 
       const auto true_lane_short_circuit_value =
-          classify_join_incoming(*authoritative_transfers->first);
+          classify_join_incoming(true_transfer);
       const auto false_lane_short_circuit_value =
-          classify_join_incoming(*authoritative_transfers->second);
+          classify_join_incoming(false_transfer);
       if (true_lane_short_circuit_value.has_value() ==
           false_lane_short_circuit_value.has_value()) {
         return std::nullopt;
@@ -1794,16 +1791,12 @@ std::string emit_prepared_module(
       };
     };
     const auto build_short_circuit_target_from_transfer =
-        [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
-            std::size_t transfer_index,
+        [&](const c4c::backend::prepare::PreparedEdgeValueTransfer& transfer,
             bool is_short_circuit_lane,
             bool short_circuit_value,
             const c4c::backend::bir::Block& rhs_entry,
             const GuardJoinContinuation& continuation_plan)
         -> std::optional<ShortCircuitTarget> {
-      if (transfer_index >= join_transfer.edge_transfers.size()) {
-        return std::nullopt;
-      }
       if (is_short_circuit_lane) {
         const auto* target =
             short_circuit_value ? continuation_plan.true_block
@@ -1815,7 +1808,7 @@ std::string emit_prepared_module(
       }
 
       GuardJoinContinuation continuation = continuation_plan;
-      continuation.incoming_label = join_transfer.edge_transfers[transfer_index].predecessor_label;
+      continuation.incoming_label = transfer.predecessor_label;
       return ShortCircuitTarget{
           .block = &rhs_entry,
           .continuation = continuation,
@@ -1825,7 +1818,20 @@ std::string emit_prepared_module(
         [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer,
             const auto& find_branch_condition_fn)
         -> std::optional<ShortCircuitJoinContext> {
-      const auto classified_incoming = classify_short_circuit_join_incoming(join_transfer);
+      const auto authoritative_transfers =
+          find_authoritative_join_edge_transfers(join_transfer);
+      if (!authoritative_transfers.has_value()) {
+        return std::nullopt;
+      }
+
+      const auto* true_transfer = authoritative_transfers->first;
+      const auto* false_transfer = authoritative_transfers->second;
+      if (true_transfer == nullptr || false_transfer == nullptr) {
+        return std::nullopt;
+      }
+
+      const auto classified_incoming =
+          classify_short_circuit_join_incoming(*true_transfer, *false_transfer);
       if (!classified_incoming.has_value()) {
         return std::nullopt;
       }
@@ -1849,6 +1855,8 @@ std::string emit_prepared_module(
       return ShortCircuitJoinContext{
           .join_transfer = &join_transfer,
           .join_block = join_block,
+          .true_transfer = true_transfer,
+          .false_transfer = false_transfer,
           .classified_incoming = *classified_incoming,
           .continuation_plan = *continuation_plan,
       };
@@ -1895,6 +1903,11 @@ std::string emit_prepared_module(
         [&](const ShortCircuitJoinContext& join_context,
             const ShortCircuitPlan& direct_branch_plan)
         -> std::optional<ShortCircuitPlan> {
+      if (join_context.true_transfer == nullptr ||
+          join_context.false_transfer == nullptr) {
+        return std::nullopt;
+      }
+
       const bool short_circuit_on_compare_true =
           join_context.classified_incoming.short_circuit_on_compare_true;
       const bool short_circuit_on_compare_false = !short_circuit_on_compare_true;
@@ -1908,16 +1921,14 @@ std::string emit_prepared_module(
 
       const auto on_compare_true =
           build_short_circuit_target_from_transfer(
-              *join_context.join_transfer,
-              *join_context.join_transfer->source_true_transfer_index,
+              *join_context.true_transfer,
               short_circuit_on_compare_true,
               join_context.classified_incoming.short_circuit_value,
               *rhs_entry,
               join_context.continuation_plan);
       const auto on_compare_false =
           build_short_circuit_target_from_transfer(
-              *join_context.join_transfer,
-              *join_context.join_transfer->source_false_transfer_index,
+              *join_context.false_transfer,
               short_circuit_on_compare_false,
               join_context.classified_incoming.short_circuit_value,
               *rhs_entry,
