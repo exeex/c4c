@@ -4050,28 +4050,16 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
-    for (const auto& candidate : function_control_flow->join_transfers) {
-      if (candidate.kind != c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
-          candidate.result.type != c4c::backend::bir::TypeKind::I32 ||
-          candidate.edge_transfers.size() != 2) {
-        continue;
-      }
-      bool saw_true = false;
-      bool saw_false = false;
-      for (const auto& incoming : candidate.edge_transfers) {
-        saw_true = saw_true || incoming.predecessor_label == branch_condition->true_label;
-        saw_false = saw_false || incoming.predecessor_label == branch_condition->false_label;
-      }
-      if (!saw_true || !saw_false) {
-        continue;
-      }
-      if (join_transfer != nullptr) {
-        return std::nullopt;
-      }
-      join_transfer = &candidate;
-    }
+    const auto* join_transfer = c4c::backend::prepare::find_select_materialization_join_transfer(
+        *function_control_flow,
+        branch_condition->block_label,
+        branch_condition->true_label,
+        branch_condition->false_label);
     if (join_transfer == nullptr) {
+      return std::nullopt;
+    }
+    if (join_transfer->result.type != c4c::backend::bir::TypeKind::I32 ||
+        join_transfer->edge_transfers.size() != 2) {
       return std::nullopt;
     }
     const auto* join_edges = incoming_transfers_for_join(

@@ -449,6 +449,37 @@ struct PreparedControlFlow {
   return nullptr;
 }
 
+[[nodiscard]] inline const PreparedJoinTransfer* find_select_materialization_join_transfer(
+    const PreparedControlFlowFunction& function_cf,
+    std::string_view source_branch_block_label,
+    std::string_view true_predecessor_label,
+    std::string_view false_predecessor_label) {
+  const PreparedJoinTransfer* match = nullptr;
+  for (const auto& transfer : function_cf.join_transfers) {
+    if (transfer.kind != PreparedJoinTransferKind::SelectMaterialization) {
+      continue;
+    }
+    if (transfer.source_branch_block_label.has_value() &&
+        *transfer.source_branch_block_label != source_branch_block_label) {
+      continue;
+    }
+    bool saw_true = false;
+    bool saw_false = false;
+    for (const auto& edge_transfer : transfer.edge_transfers) {
+      saw_true = saw_true || edge_transfer.predecessor_label == true_predecessor_label;
+      saw_false = saw_false || edge_transfer.predecessor_label == false_predecessor_label;
+    }
+    if (!saw_true || !saw_false) {
+      continue;
+    }
+    if (match != nullptr) {
+      return nullptr;
+    }
+    match = &transfer;
+  }
+  return match;
+}
+
 [[nodiscard]] inline const std::vector<PreparedEdgeValueTransfer>* incoming_transfers_for_join(
     const PreparedControlFlowFunction& function_cf,
     std::string_view join_block_label,

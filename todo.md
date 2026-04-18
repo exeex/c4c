@@ -9,19 +9,17 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed Step 3 packet work in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp`,
-`src/backend/prealloc/prealloc.hpp`, and
-`src/backend/prealloc/legalize.cpp` by adding explicit select-materialization
-truth-to-edge indices to the prepared control-flow contract and moving the
-remaining guarded short-circuit x86 consumer off legacy
-`PreparedJoinTransfer::incomings`.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` and
+`src/backend/prealloc/prealloc.hpp` by adding a prepared
+select-materialization lookup helper and moving the materialized-compare join
+x86 consumer off ad hoc `join_transfers` scanning onto that lookup contract.
 
 ## Suggested Next
 
 Continue Step 3 with a bounded audit packet that finds any remaining x86
-prepared-control-flow consumers still scanning `join_transfers` ad hoc instead
-of using the strengthened lookup contract, then migrate the next smallest lane
-without starting producer-side `incomings` cleanup yet.
+prepared-control-flow consumers still selecting joins inline, then migrate the
+next smallest lane onto lookup helpers without starting producer-side
+`incomings` cleanup yet.
 
 ## Watchouts
 
@@ -35,6 +33,9 @@ without starting producer-side `incomings` cleanup yet.
   `source_false_transfer_index` are now the authoritative truth-to-edge mapping
   for select-materialization joins; future producers in that family must
   populate them consistently with `edge_transfers`.
+- The guarded short-circuit lane still performs its own select-materialization
+  transfer scan; if that lane is touched next, prefer reusing the new helper
+  instead of growing another local matcher.
 
 ## Proof
 
