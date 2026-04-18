@@ -3762,6 +3762,7 @@ std::string emit_prepared_module(
         function_control_flow->join_transfers.size() != 1) {
       return std::nullopt;
     }
+    const auto& prepared_join_transfer = function_control_flow->join_transfers.front();
 
     const c4c::backend::prepare::PreparedBranchCondition* branch_condition = nullptr;
     for (const auto& candidate : function_control_flow->branch_conditions) {
@@ -3799,19 +3800,58 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto* true_block = find_block(branch_condition->true_label);
-    const auto* false_block = find_block(branch_condition->false_label);
-    if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
-        false_block == &entry || true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
-        false_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
-        !true_block->insts.empty() || !false_block->insts.empty() ||
-        true_block->terminator.target_label != false_block->terminator.target_label) {
+    const auto find_empty_branch_join_predecessor =
+        [&](std::string_view start_label,
+            std::string_view join_label) -> const c4c::backend::bir::Block* {
+      std::unordered_set<std::string_view> visited;
+      const auto* current = find_block(start_label);
+      while (current != nullptr && visited.insert(current->label).second) {
+        if (current == &entry || !current->insts.empty() ||
+            current->terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
+          return nullptr;
+        }
+        if (current->terminator.target_label == join_label) {
+          return current;
+        }
+        current = find_block(current->terminator.target_label);
+      }
+      return nullptr;
+    };
+
+    const auto resolve_join_incoming_label =
+        [&](std::string_view branch_target_label,
+            const std::optional<std::string>& prepared_incoming_label,
+            std::string_view join_label) -> std::optional<std::string_view> {
+      const auto* join_predecessor =
+          find_empty_branch_join_predecessor(branch_target_label, join_label);
+      if (join_predecessor == nullptr) {
+        return std::nullopt;
+      }
+      if (prepared_incoming_label.has_value() &&
+          *prepared_incoming_label != join_predecessor->label) {
+        return std::nullopt;
+      }
+      return join_predecessor->label;
+    };
+
+    const auto join_block_label = std::string_view(prepared_join_transfer.join_block_label);
+    const auto true_incoming_label = resolve_join_incoming_label(
+        branch_condition->true_label,
+        prepared_join_transfer.source_true_incoming_label,
+        join_block_label);
+    const auto false_incoming_label = resolve_join_incoming_label(
+        branch_condition->false_label,
+        prepared_join_transfer.source_false_incoming_label,
+        join_block_label);
+    if (!true_incoming_label.has_value() || !false_incoming_label.has_value() ||
+        *true_incoming_label == *false_incoming_label) {
       return std::nullopt;
     }
 
-    const auto* join_block = find_block(true_block->terminator.target_label);
-    if (join_block == nullptr || join_block == &entry || join_block == true_block ||
-        join_block == false_block || join_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+    const auto* join_block = find_block(prepared_join_transfer.join_block_label);
+    if (join_block == nullptr || join_block == &entry ||
+        join_block->label == *true_incoming_label || join_block->label == *false_incoming_label ||
+        join_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
         !join_block->terminator.value.has_value() || join_block->insts.empty()) {
       return std::nullopt;
     }
@@ -3854,29 +3894,24 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto* join_transfer = c4c::backend::prepare::find_prepared_join_transfer(
-        *function_control_flow, join_block->label, joined_value_name);
-    if (join_transfer == nullptr ||
-        join_transfer->kind != c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
-        join_transfer->result.type != c4c::backend::bir::TypeKind::I32 ||
-        join_transfer->edge_transfers.size() != 2) {
+    if (prepared_join_transfer.join_block_label != join_block->label ||
+        prepared_join_transfer.kind !=
+            c4c::backend::prepare::PreparedJoinTransferKind::SelectMaterialization ||
+        prepared_join_transfer.result.type != c4c::backend::bir::TypeKind::I32 ||
+        prepared_join_transfer.result.kind != c4c::backend::bir::Value::Kind::Named ||
+        prepared_join_transfer.result.name != joined_value_name ||
+        prepared_join_transfer.edge_transfers.size() != 2) {
       return std::nullopt;
     }
-    if (join_transfer->source_branch_block_label.has_value() &&
-        *join_transfer->source_branch_block_label != entry.label) {
-      return std::nullopt;
-    }
-    if (join_transfer->source_true_incoming_label.has_value() &&
-        *join_transfer->source_true_incoming_label != branch_condition->true_label) {
-      return std::nullopt;
-    }
-    if (join_transfer->source_false_incoming_label.has_value() &&
-        *join_transfer->source_false_incoming_label != branch_condition->false_label) {
+    if (prepared_join_transfer.source_branch_block_label.has_value() &&
+        *prepared_join_transfer.source_branch_block_label != entry.label) {
       return std::nullopt;
     }
 
     const auto* join_edges = incoming_transfers_for_join(
-        *function_control_flow, join_transfer->join_block_label, join_transfer->result.name);
+        *function_control_flow,
+        prepared_join_transfer.join_block_label,
+        prepared_join_transfer.result.name);
     if (join_edges == nullptr || join_edges->size() != 2) {
       return std::nullopt;
     }
@@ -3900,8 +3935,8 @@ std::string emit_prepared_module(
       }
       return nullptr;
     };
-    const auto* true_value = find_incoming_value(branch_condition->true_label);
-    const auto* false_value = find_incoming_value(branch_condition->false_label);
+    const auto* true_value = find_incoming_value(*true_incoming_label);
+    const auto* false_value = find_incoming_value(*false_incoming_label);
     if (true_value == nullptr || false_value == nullptr) {
       return std::nullopt;
     }
@@ -3929,7 +3964,7 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const std::string false_label = ".L" + function.name + "_" + false_block->label;
+    const std::string false_label = ".L" + function.name + "_" + std::string(*false_incoming_label);
     return asm_prefix + "    test " + *param_register + ", " + *param_register + "\n    jne " +
            false_label + "\n" + *true_return +
            false_label + ":\n" + *false_return;
