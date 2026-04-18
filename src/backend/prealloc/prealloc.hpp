@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -455,6 +456,13 @@ struct PreparedMaterializedCompareJoinBranches {
   bir::Value true_selected_value;
   bir::Value false_selected_value;
   std::string_view false_predecessor_label;
+};
+
+struct PreparedMaterializedCompareJoinReturnContext {
+  bir::Value selected_value;
+  const bir::BinaryInst* trailing_binary = nullptr;
+  std::string_view carrier_result_name;
+  std::unordered_map<std::string_view, const bir::BinaryInst*> named_binaries;
 };
 
 // Shared consumers must take branch semantics from `branch_conditions` and former
@@ -937,6 +945,32 @@ find_prepared_materialized_compare_join_branches(
       .true_selected_value = compare_join_context.true_transfer->incoming_value,
       .false_selected_value = compare_join_context.false_transfer->incoming_value,
       .false_predecessor_label = compare_join_context.false_predecessor->label,
+  };
+}
+
+[[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinReturnContext>
+find_prepared_materialized_compare_join_return_context(
+    const PreparedMaterializedCompareJoinContext& compare_join_context,
+    const bir::Value& selected_value) {
+  const auto* join_block = compare_join_context.join_block;
+  if (join_block == nullptr || compare_join_context.carrier_index > join_block->insts.size()) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string_view, const bir::BinaryInst*> named_binaries;
+  for (std::size_t inst_index = 0; inst_index < compare_join_context.carrier_index; ++inst_index) {
+    const auto* binary = std::get_if<bir::BinaryInst>(&join_block->insts[inst_index]);
+    if (binary == nullptr) {
+      return std::nullopt;
+    }
+    named_binaries.emplace(binary->result.name, binary);
+  }
+
+  return PreparedMaterializedCompareJoinReturnContext{
+      .selected_value = selected_value,
+      .trailing_binary = compare_join_context.trailing_binary,
+      .carrier_result_name = compare_join_context.carrier_result_name,
+      .named_binaries = std::move(named_binaries),
   };
 }
 

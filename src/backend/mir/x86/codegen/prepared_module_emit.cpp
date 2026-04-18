@@ -4006,33 +4006,24 @@ std::string emit_prepared_module(
               compare_join_context,
           const c4c::backend::bir::Value& selected_value,
           const c4c::backend::bir::Param& param) -> std::optional<std::string> {
-    const auto* join_block = compare_join_context.join_block;
-    if (join_block == nullptr || compare_join_context.carrier_index > join_block->insts.size()) {
+    const auto prepared_return_context =
+        c4c::backend::prepare::find_prepared_materialized_compare_join_return_context(
+            compare_join_context, selected_value);
+    if (!prepared_return_context.has_value()) {
       return std::nullopt;
     }
 
-    std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*> named_binaries;
-    for (std::size_t inst_index = 0; inst_index < compare_join_context.carrier_index;
-         ++inst_index) {
-      const auto* binary =
-          std::get_if<c4c::backend::bir::BinaryInst>(&join_block->insts[inst_index]);
-      if (binary == nullptr) {
-        return std::nullopt;
-      }
-      named_binaries.emplace(binary->result.name, binary);
-    }
-
-    const auto value_render =
-        render_param_derived_value_if_supported(selected_value, named_binaries, param);
+    const auto value_render = render_param_derived_value_if_supported(
+        prepared_return_context->selected_value, prepared_return_context->named_binaries, param);
     if (!value_render.has_value()) {
       return std::nullopt;
     }
-    if (compare_join_context.trailing_binary == nullptr) {
+    if (prepared_return_context->trailing_binary == nullptr) {
       return *value_render + "    ret\n";
     }
 
     const auto trailing_render = apply_supported_immediate_binary(
-        *compare_join_context.trailing_binary, compare_join_context.carrier_result_name);
+        *prepared_return_context->trailing_binary, prepared_return_context->carrier_result_name);
     if (!trailing_render.has_value()) {
       return std::nullopt;
     }
