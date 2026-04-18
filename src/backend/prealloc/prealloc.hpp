@@ -656,6 +656,10 @@ struct PreparedMaterializedCompareJoinReturnArm {
       PreparedMaterializedCompareJoinReturnShape::ImmediateI32;
 };
 
+struct PreparedMaterializedCompareJoinReturnBinaryPlan {
+  std::optional<PreparedSupportedImmediateBinary> trailing_binary;
+};
+
 struct PreparedMaterializedCompareJoinRenderContract {
   PreparedMaterializedCompareJoinBranchPlan branch_plan;
   PreparedMaterializedCompareJoinReturnArm true_return;
@@ -736,6 +740,36 @@ build_prepared_materialized_compare_join_return_arm(
       .context = return_context,
       .shape = classify_prepared_materialized_compare_join_return_shape(return_context),
   };
+}
+
+[[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinReturnBinaryPlan>
+find_prepared_materialized_compare_join_return_binary_plan(
+    const PreparedMaterializedCompareJoinReturnArm& return_arm) {
+  switch (return_arm.shape) {
+    case PreparedMaterializedCompareJoinReturnShape::ImmediateI32:
+    case PreparedMaterializedCompareJoinReturnShape::ParamValue:
+    case PreparedMaterializedCompareJoinReturnShape::GlobalI32Load:
+    case PreparedMaterializedCompareJoinReturnShape::PointerBackedGlobalI32Load:
+      if (return_arm.context.trailing_binary.has_value()) {
+        return std::nullopt;
+      }
+      return PreparedMaterializedCompareJoinReturnBinaryPlan{
+          .trailing_binary = std::nullopt,
+      };
+    case PreparedMaterializedCompareJoinReturnShape::ImmediateI32WithTrailingImmediateBinary:
+    case PreparedMaterializedCompareJoinReturnShape::ParamValueWithTrailingImmediateBinary:
+    case PreparedMaterializedCompareJoinReturnShape::GlobalI32LoadWithTrailingImmediateBinary:
+    case PreparedMaterializedCompareJoinReturnShape::
+        PointerBackedGlobalI32LoadWithTrailingImmediateBinary:
+      if (!return_arm.context.trailing_binary.has_value()) {
+        return std::nullopt;
+      }
+      return PreparedMaterializedCompareJoinReturnBinaryPlan{
+          .trailing_binary = return_arm.context.trailing_binary,
+      };
+  }
+
+  std::abort();
 }
 
 [[nodiscard]] inline std::vector<std::string_view>

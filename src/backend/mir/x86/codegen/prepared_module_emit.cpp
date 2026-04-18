@@ -3995,36 +3995,21 @@ std::string emit_prepared_module(
     if (!value_render.has_value()) {
       return std::nullopt;
     }
-    switch (prepared_return_arm.arm.shape) {
-      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::ImmediateI32:
-      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::ParamValue:
-      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::GlobalI32Load:
-      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
-          PointerBackedGlobalI32Load:
-        if (prepared_return_arm.arm.context.trailing_binary.has_value()) {
-          return std::nullopt;
-        }
-        return *value_render + "    ret\n";
-      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
-          ImmediateI32WithTrailingImmediateBinary:
-      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
-          ParamValueWithTrailingImmediateBinary:
-      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
-          GlobalI32LoadWithTrailingImmediateBinary:
-      case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
-          PointerBackedGlobalI32LoadWithTrailingImmediateBinary: {
-        if (!prepared_return_arm.arm.context.trailing_binary.has_value()) {
-          return std::nullopt;
-        }
-        const auto trailing_render =
-            render_supported_immediate_binary(*prepared_return_arm.arm.context.trailing_binary);
-        if (!trailing_render.has_value()) {
-          return std::nullopt;
-        }
-        return *value_render + *trailing_render + "    ret\n";
-      }
+    const auto binary_plan =
+        c4c::backend::prepare::find_prepared_materialized_compare_join_return_binary_plan(
+            prepared_return_arm.arm);
+    if (!binary_plan.has_value()) {
+      return std::nullopt;
     }
-    return std::nullopt;
+    if (!binary_plan->trailing_binary.has_value()) {
+      return *value_render + "    ret\n";
+    }
+    const auto trailing_render =
+        render_supported_immediate_binary(*binary_plan->trailing_binary);
+    if (!trailing_render.has_value()) {
+      return std::nullopt;
+    }
+    return *value_render + *trailing_render + "    ret\n";
   };
   const auto render_minimal_compare_branch_if_supported =
       [&]() -> std::optional<std::string> {

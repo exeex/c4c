@@ -5447,6 +5447,45 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
                  ": shared helper stopped packaging compare-join return-lane shapes")
                     .c_str());
   }
+  const auto require_binary_plan =
+      [&](const prepare::PreparedMaterializedCompareJoinReturnArm& return_arm,
+          const prepare::PreparedMaterializedCompareJoinReturnContext& expected_return_context) -> int {
+        const auto binary_plan =
+            prepare::find_prepared_materialized_compare_join_return_binary_plan(return_arm);
+        if (!binary_plan.has_value()) {
+          return fail((std::string(failure_context) +
+                       ": shared helper stopped packaging the compare-join return-arm binary plan")
+                          .c_str());
+        }
+        const bool trailing_binary_matches =
+            binary_plan->trailing_binary.has_value() ==
+                expected_return_context.trailing_binary.has_value() &&
+            (!binary_plan->trailing_binary.has_value() ||
+             (binary_plan->trailing_binary->opcode ==
+                  expected_return_context.trailing_binary->opcode &&
+              binary_plan->trailing_binary->immediate ==
+                  expected_return_context.trailing_binary->immediate));
+        if (!trailing_binary_matches) {
+          return fail((std::string(failure_context) +
+                       ": shared helper stopped publishing authoritative compare-join trailing immediate ownership")
+                          .c_str());
+        }
+        return 0;
+      };
+  if (const auto status =
+          require_binary_plan(render_contract->true_return,
+                              prepared_compare_join_branches->prepared_join_branches
+                                  .true_return_context);
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          require_binary_plan(render_contract->false_return,
+                              prepared_compare_join_branches->prepared_join_branches
+                                  .false_return_context);
+      status != 0) {
+    return status;
+  }
 
   const auto require_return_context =
       [&](const prepare::PreparedMaterializedCompareJoinReturnContext& return_context,
