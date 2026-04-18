@@ -24,10 +24,12 @@ using c4c::codegen::lir::LirOperand;
 using c4c::codegen::lir::LirRet;
 using c4c::codegen::lir::LirAllocaOp;
 using c4c::codegen::lir::LirAbsOp;
+using c4c::codegen::lir::LirBr;
 using c4c::codegen::lir::LirStackSaveOp;
 using c4c::codegen::lir::LirStoreOp;
 using c4c::codegen::lir::LirPhiOp;
 using c4c::codegen::lir::LirSelectOp;
+using c4c::codegen::lir::LirSwitch;
 using c4c::codegen::lir::LirVaArgOp;
 
 int fail(const char* message) {
@@ -399,22 +401,47 @@ LirModule make_bad_scalar_control_flow_module() {
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 
   LirFunction function;
-  function.name = "bad_scalar_control_flow";
-  function.signature_text = "define i32 @bad_scalar_control_flow()";
+  function.name = "bad_switch_label_scalar_control_flow";
+  function.signature_text = "define i32 @bad_switch_label_scalar_control_flow()";
 
   LirBlock entry;
   entry.label = "entry";
-  entry.insts.push_back(LirPhiOp{
-      .result = LirOperand("@not_ssa"),
+  entry.terminator = LirSwitch{
+      .selector_name = "0",
+      .selector_type = "i32",
+      .default_label = "case_default",
+      .cases = {{1, "case_one"}},
+  };
+
+  LirBlock case_one;
+  case_one.label = "case_one";
+  case_one.terminator = LirRet{
+      .value_str = "i32 1",
       .type_str = "i32",
-      .incoming = {{"0", "entry"}},
+  };
+
+  LirBlock case_default;
+  case_default.label = "case_default";
+  case_default.terminator = LirBr{
+      .target_label = "join",
+  };
+
+  LirBlock join;
+  join.label = "join";
+  join.insts.push_back(LirPhiOp{
+      .result = LirOperand("%merged"),
+      .type_str = "i32",
+      .incoming = {{"0", "case_default"}},
   });
-  entry.terminator = LirRet{
-      .value_str = "i32 0",
+  join.terminator = LirRet{
+      .value_str = "%merged",
       .type_str = "i32",
   };
 
   function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(case_one));
+  function.blocks.push_back(std::move(case_default));
+  function.blocks.push_back(std::move(join));
   module.functions.push_back(std::move(function));
   return module;
 }
@@ -759,13 +786,13 @@ int main() {
   }
 
   if (const int scalar_control_flow_status = expect_failure_notes(
-          "bad_scalar_control_flow",
+          "bad_switch_label_scalar_control_flow",
           make_bad_scalar_control_flow_module(),
           kModuleSummary,
           "failed in scalar-control-flow semantic family",
-          "latest function failure: semantic lir_to_bir function 'bad_scalar_control_flow' failed in scalar-control-flow semantic family",
+          "latest function failure: semantic lir_to_bir function 'bad_switch_label_scalar_control_flow' failed in scalar-control-flow semantic family",
           "missing module capability-bucket summary note",
-          "missing scalar-control-flow umbrella function note",
+          "missing switch/label scalar-control-flow umbrella function note",
           "missing module note carrying the scalar-control-flow umbrella failure");
       scalar_control_flow_status != 0) {
     return scalar_control_flow_status;

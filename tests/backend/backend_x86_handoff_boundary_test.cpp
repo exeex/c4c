@@ -3774,6 +3774,9 @@ int main() {
     return status;
   }
 
+  // The first scalar-control-flow capability lane is still the bounded
+  // compare-against-zero branch family. The current c-testsuite cluster
+  // (00051, 00158, 00193, 00213, 00215) stays outside this handoff lane.
   if (const auto status =
           check_route_outputs(make_x86_param_eq_zero_branch_module(),
                               expected_minimal_param_eq_zero_branch_asm("branch_on_zero",
@@ -3781,7 +3784,7 @@ int main() {
                                                                         7,
                                                                         11),
                               "bir.func @branch_on_zero(i32 p.x) -> i32 {",
-                              "minimal i32 parameter compare-against-zero branch route");
+                              "scalar-control-flow compare-against-zero branch lane");
       status != 0) {
     return status;
   }
@@ -3792,7 +3795,7 @@ int main() {
               expected_minimal_param_eq_zero_branch_param_or_immediate_asm(
                   "branch_zero_or_passthrough", "is_nonzero", 5),
               "bir.func @branch_zero_or_passthrough(i32 p.x) -> i32 {",
-              "minimal i32 parameter compare-against-zero branch route with parameter leaf return");
+              "scalar-control-flow compare-against-zero branch lane with parameter leaf return");
       status != 0) {
     return status;
   }
@@ -3803,7 +3806,7 @@ int main() {
               expected_minimal_param_eq_zero_branch_joined_add_or_sub_asm(
                   "branch_join_adjust", "is_nonzero", 5, 1),
               "join:\n  zero.adjusted = bir.add i32 p.x, 5\n  nonzero.adjusted = bir.sub i32 p.x, 1\n  merge = bir.select eq i32 p.x, 0, i32 zero.adjusted, nonzero.adjusted\n  bir.ret i32 merge",
-              "minimal i32 parameter compare-against-zero joined branch route");
+              "scalar-control-flow compare-against-zero joined branch lane");
       status != 0) {
     return status;
   }
@@ -3814,7 +3817,7 @@ int main() {
               expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_add_asm(
                   "branch_join_adjust_then_add", "is_nonzero", 5, 1, 2),
               "join:\n  zero.adjusted = bir.add i32 p.x, 5\n  nonzero.adjusted = bir.sub i32 p.x, 1\n  merge = bir.select eq i32 p.x, 0, i32 zero.adjusted, nonzero.adjusted\n  joined = bir.add i32 merge, 2\n  bir.ret i32 joined",
-              "minimal i32 parameter compare-against-zero joined branch route with trailing join arithmetic");
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join arithmetic");
       status != 0) {
     return status;
   }
@@ -3825,7 +3828,7 @@ int main() {
               expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm(
                   "branch_join_adjust_then_xor", "is_nonzero", 5, 1, 3),
               "join:\n  zero.adjusted = bir.add i32 p.x, 5\n  nonzero.adjusted = bir.sub i32 p.x, 1\n  merge = bir.select eq i32 p.x, 0, i32 zero.adjusted, nonzero.adjusted\n  joined = bir.xor i32 merge, 3\n  bir.ret i32 joined",
-              "minimal i32 parameter compare-against-zero joined branch route with trailing join xor");
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join xor");
       status != 0) {
     return status;
   }
@@ -3836,7 +3839,7 @@ int main() {
               expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_and_asm(
                   "branch_join_adjust_then_and", "is_nonzero", 5, 1, 15),
               "join:\n  zero.adjusted = bir.add i32 p.x, 5\n  nonzero.adjusted = bir.sub i32 p.x, 1\n  merge = bir.select eq i32 p.x, 0, i32 zero.adjusted, nonzero.adjusted\n  joined = bir.and i32 merge, 15\n  bir.ret i32 joined",
-              "minimal i32 parameter compare-against-zero joined branch route with trailing join and");
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join and");
       status != 0) {
     return status;
   }
@@ -3847,7 +3850,7 @@ int main() {
               expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_or_asm(
                   "branch_join_adjust_then_or", "is_nonzero", 5, 1, 12),
               "join:\n  zero.adjusted = bir.add i32 p.x, 5\n  nonzero.adjusted = bir.sub i32 p.x, 1\n  merge = bir.select eq i32 p.x, 0, i32 zero.adjusted, nonzero.adjusted\n  joined = bir.or i32 merge, 12\n  bir.ret i32 joined",
-              "minimal i32 parameter compare-against-zero joined branch route with trailing join or");
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join or");
       status != 0) {
     return status;
   }
@@ -3858,7 +3861,7 @@ int main() {
               expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_mul_asm(
                   "branch_join_adjust_then_mul", "is_nonzero", 5, 1, 3),
               "join:\n  zero.adjusted = bir.add i32 p.x, 5\n  nonzero.adjusted = bir.sub i32 p.x, 1\n  merge = bir.select eq i32 p.x, 0, i32 zero.adjusted, nonzero.adjusted\n  joined = bir.mul i32 merge, 3\n  bir.ret i32 joined",
-              "minimal i32 parameter compare-against-zero joined branch route with trailing join mul");
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join mul");
       status != 0) {
     return status;
   }
@@ -3869,7 +3872,7 @@ int main() {
               expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_shl_asm(
                   "branch_join_adjust_then_shl", "is_nonzero", 5, 1, 2),
               "join:\n  zero.adjusted = bir.add i32 p.x, 5\n  nonzero.adjusted = bir.sub i32 p.x, 1\n  merge = bir.select eq i32 p.x, 0, i32 zero.adjusted, nonzero.adjusted\n  joined = bir.shl i32 merge, 2\n  bir.ret i32 joined",
-              "minimal i32 parameter compare-against-zero joined branch route with trailing join shl");
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join shl");
       status != 0) {
     return status;
   }
@@ -3880,7 +3883,7 @@ int main() {
               expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_lshr_asm(
                   "branch_join_adjust_then_lshr", "is_nonzero", 5, 1, 2),
               "join:\n  zero.adjusted = bir.add i32 p.x, 5\n  nonzero.adjusted = bir.sub i32 p.x, 1\n  merge = bir.select eq i32 p.x, 0, i32 zero.adjusted, nonzero.adjusted\n  joined = bir.lshr i32 merge, 2\n  bir.ret i32 joined",
-              "minimal i32 parameter compare-against-zero joined branch route with trailing join lshr");
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join lshr");
       status != 0) {
     return status;
   }
@@ -3891,7 +3894,7 @@ int main() {
               expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_ashr_asm(
                   "branch_join_adjust_then_ashr", "is_nonzero", 5, 1, 2),
               "join:\n  zero.adjusted = bir.add i32 p.x, 5\n  nonzero.adjusted = bir.sub i32 p.x, 1\n  merge = bir.select eq i32 p.x, 0, i32 zero.adjusted, nonzero.adjusted\n  joined = bir.ashr i32 merge, 2\n  bir.ret i32 joined",
-              "minimal i32 parameter compare-against-zero joined branch route with trailing join ashr");
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join ashr");
       status != 0) {
     return status;
   }
