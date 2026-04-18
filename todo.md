@@ -6,35 +6,39 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2: extracted the `local_pointer_slots` load-path local reload
+Plan Step 2: extracted the remaining tracked `local_pointer_slots` pointer-load
 bookkeeping from `src/backend/bir/lir_to_bir_memory.cpp` into
 `src/backend/bir/lir_to_bir_memory_local_slots.cpp` as
-`record_loaded_local_pointer_slot_state`, so the local-slot owner now rebuilds
-`local_slot_pointer_values`, array-backed `local_aggregate_slots`, and
-`local_pointer_array_bases` for reloaded local-slot pointers while
-`lower_scalar_or_local_memory_inst` keeps only the surrounding admission and
-provenance dispatch.
+`try_lower_tracked_local_pointer_slot_load`, so the local-slot owner now
+handles the reload-state rebuild plus the paired
+`local_address_slots` / `global_pointer_slots` / `pointer_value_addresses`
+updates and fallback `LoadLocalInst` emission for direct local-slot pointer
+loads while `lower_scalar_or_local_memory_inst` keeps only the surrounding
+admission checks and call-site dispatch.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by re-reading the remaining `local_pointer_slots`
-load-path pointer provenance updates in
-`src/backend/bir/lir_to_bir_memory.cpp`, and choose whether the
-`local_address_slots` / `global_pointer_slots` / `pointer_value_addresses`
-bookkeeping is the next coherent `lir_to_bir_memory_local_slots.cpp` seam
-without pulling shared global-address reasoning or non-local ownership out of
-the coordinator.
+Continue `plan.md` Step 2 by re-reading the remaining
+`tracks_pointer_value_slot` fast path in
+`src/backend/bir/lir_to_bir_memory.cpp`, and decide whether the
+`local_pointer_value_aliases` plus optional `local_address_slots` handoff for
+pointer-valued local aggregate or array-element loads is the next coherent
+`lir_to_bir_memory_local_slots.cpp` seam without pulling shared non-local
+provenance helpers or broader load-family admission logic out of the
+coordinator.
 
 ## Watchouts
 
 - This plan is refactor-only; do not claim x86 backend capability progress from
   it.
 - Keep `lower_scalar_or_local_memory_inst` in the main coordinator TU.
-- `record_loaded_local_pointer_slot_state` now owns the local-slot reload
-  bookkeeping for `local_slot_pointer_values`, `local_aggregate_slots`, and
-  `local_pointer_array_bases`; the next packet should preserve that ownership
-  split instead of re-embedding local reload state construction in the
-  coordinator.
+- `try_lower_tracked_local_pointer_slot_load` now owns the direct tracked
+  local-slot pointer-load bookkeeping, including
+  `record_loaded_local_pointer_slot_state`, the paired
+  `local_address_slots` / `global_pointer_slots` / `pointer_value_addresses`
+  updates, and the fallback direct-slot `LoadLocalInst`; the next packet
+  should preserve that ownership split instead of re-embedding local pointer
+  reload state construction in the coordinator.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:
   0`; treat the canonical log pair as unchanged-behavior evidence, not as a
@@ -51,5 +55,5 @@ The build passed, and the narrow backend proof reproduced the same `4/5`
 result recorded in `test_before.log`: the four backend notes/handoff/dynamic
 member-array tests passed, and the pre-existing failure
 `c_testsuite_x86_backend_src_00205_c` remained unchanged with the same
-backend-emitter limitation. `test_after.log` remains the canonical proof log
-for this packet.
+backend-emitter limitation. `diff -u test_before.log test_after.log` was
+empty, so `test_after.log` remains the canonical proof log for this packet.

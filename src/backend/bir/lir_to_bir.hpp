@@ -733,6 +733,23 @@ class BirFunctionLowerer {
       LocalSlotPointerValues* local_slot_pointer_values,
       GlobalPointerMap* global_pointer_slots,
       std::vector<bir::Inst>* lowered_insts);
+  bool try_lower_tracked_local_pointer_slot_load(
+      std::string_view result_name,
+      std::string_view slot_name,
+      const TypeDeclMap& type_decls,
+      const LocalIndirectPointerSlotSet& local_indirect_pointer_slots,
+      const LocalAddressSlots& local_address_slots,
+      const LocalSlotAddressSlots& local_slot_address_slots,
+      const PointerAddressMap& local_pointer_slot_addresses,
+      const GlobalTypes& global_types,
+      const FunctionSymbolSet& function_symbols,
+      ValueMap* value_aliases,
+      LocalSlotPointerValues* local_slot_pointer_values,
+      LocalAggregateSlotMap* local_aggregate_slots,
+      LocalPointerArrayBaseMap* local_pointer_array_bases,
+      GlobalPointerMap* global_pointer_slots,
+      PointerAddressMap* pointer_value_addresses,
+      std::vector<bir::Inst>* lowered_insts);
   static void record_loaded_local_pointer_slot_state(
       std::string_view result_name,
       std::string_view slot_name,

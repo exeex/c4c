@@ -1884,6 +1884,66 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_load(
   return true;
 }
 
+bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
+    std::string_view result_name,
+    std::string_view slot_name,
+    const TypeDeclMap& type_decls,
+    const LocalIndirectPointerSlotSet& local_indirect_pointer_slots,
+    const LocalAddressSlots& local_address_slots,
+    const LocalSlotAddressSlots& local_slot_address_slots,
+    const PointerAddressMap& local_pointer_slot_addresses,
+    const GlobalTypes& global_types,
+    const FunctionSymbolSet& function_symbols,
+    ValueMap* value_aliases,
+    LocalSlotPointerValues* local_slot_pointer_values,
+    LocalAggregateSlotMap* local_aggregate_slots,
+    LocalPointerArrayBaseMap* local_pointer_array_bases,
+    GlobalPointerMap* global_pointer_slots,
+    PointerAddressMap* pointer_value_addresses,
+    std::vector<bir::Inst>* lowered_insts) {
+  const auto result = std::string(result_name);
+  const auto slot = std::string(slot_name);
+
+  record_loaded_local_pointer_slot_state(result,
+                                         slot,
+                                         local_slot_address_slots,
+                                         type_decls,
+                                         local_slot_pointer_values,
+                                         local_aggregate_slots,
+                                         local_pointer_array_bases);
+  if (const auto addr_it = local_address_slots.find(slot); addr_it != local_address_slots.end()) {
+    const bool preserve_loaded_pointer_provenance =
+        local_indirect_pointer_slots.find(slot) != local_indirect_pointer_slots.end();
+    if (!preserve_loaded_pointer_provenance) {
+      if (addr_it->second.byte_offset == 0 &&
+          is_known_function_symbol(addr_it->second.global_name, function_symbols)) {
+        (*value_aliases)[result] =
+            bir::Value::named(bir::TypeKind::Ptr, "@" + addr_it->second.global_name);
+        (*global_pointer_slots)[result] = addr_it->second;
+        return true;
+      }
+      if (const auto honest_base = resolve_honest_pointer_base(addr_it->second, global_types);
+          honest_base.has_value() && honest_base->byte_offset == 0) {
+        (*value_aliases)[result] =
+            bir::Value::named(bir::TypeKind::Ptr, "@" + honest_base->global_name);
+        (*global_pointer_slots)[result] = *honest_base;
+        return true;
+      }
+    }
+    (*global_pointer_slots)[result] = addr_it->second;
+  }
+  if (const auto pointer_slot_it = local_pointer_slot_addresses.find(slot);
+      pointer_slot_it != local_pointer_slot_addresses.end()) {
+    (*pointer_value_addresses)[result] = pointer_slot_it->second;
+  }
+
+  lowered_insts->push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, result),
+      .slot_name = slot,
+  });
+  return true;
+}
+
 void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
     std::string_view result_name,
     std::string_view slot_name,

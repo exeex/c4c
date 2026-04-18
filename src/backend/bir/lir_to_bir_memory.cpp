@@ -1812,39 +1812,25 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         return true;
       }
     } else if (*value_type == bir::TypeKind::Ptr) {
-      record_loaded_local_pointer_slot_state(load->result.str(),
-                                             ptr_it->second,
-                                             local_slot_address_slots,
-                                             type_decls,
-                                             &local_slot_pointer_values,
-                                             &local_aggregate_slots,
-                                             &local_pointer_array_bases);
-      if (const auto addr_it = local_address_slots.find(ptr_it->second);
-          addr_it != local_address_slots.end()) {
-        const bool preserve_loaded_pointer_provenance =
-            local_indirect_pointer_slots.find(ptr_it->second) != local_indirect_pointer_slots.end();
-        if (!preserve_loaded_pointer_provenance) {
-          if (addr_it->second.byte_offset == 0 &&
-              is_known_function_symbol(addr_it->second.global_name, function_symbols)) {
-            value_aliases[load->result.str()] =
-                bir::Value::named(bir::TypeKind::Ptr, "@" + addr_it->second.global_name);
-            global_pointer_slots[load->result.str()] = addr_it->second;
-            return true;
-          }
-          if (const auto honest_base = resolve_honest_pointer_base(addr_it->second, global_types);
-              honest_base.has_value() && honest_base->byte_offset == 0) {
-            value_aliases[load->result.str()] =
-                bir::Value::named(bir::TypeKind::Ptr, "@" + honest_base->global_name);
-            global_pointer_slots[load->result.str()] = *honest_base;
-            return true;
-          }
-        }
-        global_pointer_slots[load->result.str()] = addr_it->second;
+      if (!try_lower_tracked_local_pointer_slot_load(load->result.str(),
+                                                     ptr_it->second,
+                                                     type_decls,
+                                                     local_indirect_pointer_slots,
+                                                     local_address_slots,
+                                                     local_slot_address_slots,
+                                                     local_pointer_slot_addresses,
+                                                     global_types,
+                                                     function_symbols,
+                                                     &value_aliases,
+                                                     &local_slot_pointer_values,
+                                                     &local_aggregate_slots,
+                                                     &local_pointer_array_bases,
+                                                     &global_pointer_slots,
+                                                     &pointer_value_addresses,
+                                                     lowered_insts)) {
+        return fail_load();
       }
-      if (const auto pointer_slot_it = local_pointer_slot_addresses.find(ptr_it->second);
-          pointer_slot_it != local_pointer_slot_addresses.end()) {
-        pointer_value_addresses[load->result.str()] = pointer_slot_it->second;
-      }
+      return true;
     }
 
     lowered_insts->push_back(bir::LoadLocalInst{
