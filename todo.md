@@ -9,18 +9,18 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting the
-remaining compare-true/compare-false target construction into
-`build_short_circuit_plan()`. The detector now reads as entry lookup, join
-lookup, target routing, continuation lookup, and final plan assembly instead
-of building the target pair inline.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting short-
+circuit render-lane omission choice into `build_render_context()`. The
+renderer now reads as render-context lookup, per-target rendering, and final
+label stitching instead of re-deriving rendered true/false lane ownership
+inline.
 
 ## Suggested Next
 
-The next small Step 3 packet is to trim `render_short_circuit_plan()` by
-extracting its rendered-true/rendered-false lane selection into one helper so
-the renderer focuses on compare emission and label stitching instead of inline
-continuation omission rules.
+The next small Step 3 packet is to move `render_short_circuit_target()` out of
+`render_short_circuit_plan()` so the renderer becomes a pure control-flow
+assembly step that delegates per-block continuation omission/rendering to one
+reusable helper.
 
 ## Watchouts
 
@@ -34,6 +34,10 @@ continuation omission rules.
   zero-compare contract; future cleanup here should keep `Eq`/`Ne` mapping and
   jump-target choice data-driven rather than pushing them back into the main
   matcher body.
+- `build_render_context()` now owns the rendered true/false lane omission
+  choice; if short-circuit continuation ownership changes, update that helper
+  instead of re-growing inline lane-selection checks in
+  `render_short_circuit_plan()`.
 - `find_short_circuit_entry_blocks()` now owns the entry-condition and
   true/false successor validation for this path; if the prepared branch
   contract changes, update that helper instead of re-expanding the guard chain
@@ -63,5 +67,5 @@ continuation omission rules.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 short-circuit plan assembly
+The build and narrow proof passed for this Step 3 short-circuit render-lane
 cleanup packet; `test_after.log` remains the canonical proof log path.

@@ -1535,6 +1535,10 @@ std::string emit_prepared_module(
       ShortCircuitTarget on_compare_true;
       ShortCircuitTarget on_compare_false;
     };
+    struct ShortCircuitRenderContext {
+      bool omit_true_continuation = false;
+      bool omit_false_lane = false;
+    };
     struct ClassifiedShortCircuitIncoming {
       std::size_t transfer_index = 0;
       bool short_circuit_value = false;
@@ -2492,17 +2496,24 @@ std::string emit_prepared_module(
           };
           const auto render_short_circuit_plan =
               [&](const ShortCircuitPlan& short_circuit_plan) -> std::optional<std::string> {
-            const bool true_target_renders_false_lane =
-                short_circuit_plan.on_compare_true.continuation.has_value() &&
-                short_circuit_plan.on_compare_false.block ==
-                    short_circuit_plan.on_compare_true.continuation->false_block;
-            const bool false_target_renders_true_lane =
-                short_circuit_plan.on_compare_false.continuation.has_value() &&
-                short_circuit_plan.on_compare_true.block ==
-                    short_circuit_plan.on_compare_false.continuation->true_block;
-            if (true_target_renders_false_lane && false_target_renders_true_lane) {
-              return std::nullopt;
-            }
+            const auto build_render_context =
+                [&](const ShortCircuitPlan& plan) -> std::optional<ShortCircuitRenderContext> {
+              const bool true_target_renders_false_lane =
+                  plan.on_compare_true.continuation.has_value() &&
+                  plan.on_compare_false.block ==
+                      plan.on_compare_true.continuation->false_block;
+              const bool false_target_renders_true_lane =
+                  plan.on_compare_false.continuation.has_value() &&
+                  plan.on_compare_true.block ==
+                      plan.on_compare_false.continuation->true_block;
+              if (true_target_renders_false_lane && false_target_renders_true_lane) {
+                return std::nullopt;
+              }
+              return ShortCircuitRenderContext{
+                  .omit_true_continuation = false_target_renders_true_lane,
+                  .omit_false_lane = true_target_renders_false_lane,
+              };
+            };
 
             const auto render_short_circuit_target =
                 [&](const ShortCircuitTarget& target, bool omit_continuation)
@@ -2514,14 +2525,19 @@ std::string emit_prepared_module(
                   *target.block, omit_continuation ? std::nullopt : target.continuation);
             };
 
+            const auto render_context = build_render_context(short_circuit_plan);
+            if (!render_context.has_value()) {
+              return std::nullopt;
+            }
+
             const auto rendered_true = render_short_circuit_target(
-                short_circuit_plan.on_compare_true, false_target_renders_true_lane);
+                short_circuit_plan.on_compare_true, render_context->omit_true_continuation);
             if (!rendered_true.has_value()) {
               return std::nullopt;
             }
 
             std::optional<std::string> rendered_false;
-            if (!true_target_renders_false_lane) {
+            if (!render_context->omit_false_lane) {
               rendered_false =
                   render_short_circuit_target(short_circuit_plan.on_compare_false, false);
               if (!rendered_false.has_value()) {
@@ -2535,7 +2551,7 @@ std::string emit_prepared_module(
             std::string rendered =
                 body + false_branch_compare->first + "    " + false_branch_compare->second + " " +
                 false_label + "\n" + *rendered_true;
-            if (!true_target_renders_false_lane) {
+            if (!render_context->omit_false_lane) {
               rendered += false_label + ":\n" + *rendered_false;
             }
             return rendered;
