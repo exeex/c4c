@@ -9,22 +9,18 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by hoisting
-short-circuit entry-routing validation into
-`build_short_circuit_entry_routing_context()`. `try_render_short_circuit_plan()`
-now stays a straight-line orchestration helper that performs prepared join
-lookup, prepared entry-routing lookup, plan assembly, render-context assembly,
-lane rendering, and final render assembly without re-growing entry-routing
-contract checks inline.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by moving
+`find_short_circuit_join_context()` into the short-circuit helper cluster beside
+the other plan-building helpers. `try_render_short_circuit_plan()` now treats
+prepared join-context discovery as helper-owned contract validation instead of
+re-growing that lookup inline in the cond-branch emitter.
 
 ## Suggested Next
 
-The next small Step 3 packet is to decide whether
-`find_short_circuit_join_context()` should join the shared helper cluster beside
-`build_short_circuit_entry_routing_context()` and `build_short_circuit_plan()`
-so the cond-branch emitter keeps all short-circuit contract validation out of
-`try_render_short_circuit_plan()` without widening into non-short-circuit x86
-cleanup.
+The next small Step 3 packet is to decide whether false-branch compare
+selection should join the same short-circuit helper cluster so
+`try_render_short_circuit_plan()` only orchestrates helper calls and final
+render assembly without re-growing compare-shape fallback logic inline.
 
 ## Watchouts
 
@@ -70,6 +66,5 @@ cleanup.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof passed for this Step 3 short-circuit entry-routing
-helper extraction packet; `test_before.log` and `test_after.log` match for the
-canonical proof command.
+The build and narrow proof passed for this Step 3 short-circuit join-context
+helper extraction packet; proof output is in `test_after.log`.

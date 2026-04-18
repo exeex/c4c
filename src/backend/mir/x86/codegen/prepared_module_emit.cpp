@@ -1681,6 +1681,55 @@ std::string emit_prepared_module(
           .continuation = continuation,
       };
     };
+    const auto find_short_circuit_join_context =
+        [&](const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+            const auto& find_branch_condition_fn,
+            std::string_view source_block_label)
+        -> std::optional<ShortCircuitJoinContext> {
+      const auto* join_transfer =
+          c4c::backend::prepare::find_select_materialization_join_transfer(
+              control_flow,
+              source_block_label);
+      if (join_transfer == nullptr) {
+        return std::nullopt;
+      }
+      if (join_transfer->result.type != c4c::backend::bir::TypeKind::I32 ||
+          join_transfer->edge_transfers.size() != 2 ||
+          !join_transfer->source_true_transfer_index.has_value() ||
+          !join_transfer->source_false_transfer_index.has_value()) {
+        return std::nullopt;
+      }
+      if (*join_transfer->source_true_transfer_index >=
+              join_transfer->edge_transfers.size() ||
+          *join_transfer->source_false_transfer_index >=
+              join_transfer->edge_transfers.size() ||
+          *join_transfer->source_true_transfer_index ==
+              *join_transfer->source_false_transfer_index) {
+        return std::nullopt;
+      }
+
+      const auto* join_block = find_block(join_transfer->join_block_label);
+      if (join_block == nullptr) {
+        return std::nullopt;
+      }
+
+      const auto* join_branch_condition = find_branch_condition_fn(join_block->label);
+      if (join_branch_condition == nullptr) {
+        return std::nullopt;
+      }
+
+      const auto continuation_plan = build_compare_join_continuation(
+          *join_transfer, *join_block, *join_branch_condition);
+      if (!continuation_plan.has_value()) {
+        return std::nullopt;
+      }
+
+      return ShortCircuitJoinContext{
+          .join_transfer = join_transfer,
+          .join_block = join_block,
+          .continuation_plan = *continuation_plan,
+      };
+    };
     const auto build_short_circuit_entry_routing_context =
         [&](const c4c::backend::prepare::PreparedBranchCondition* branch_condition,
             const c4c::backend::bir::Block& source_block,
@@ -2506,53 +2555,6 @@ std::string emit_prepared_module(
             }
             return nullptr;
           };
-          const auto find_short_circuit_join_context =
-              [&](std::string_view source_block_label)
-              -> std::optional<ShortCircuitJoinContext> {
-            const auto* join_transfer =
-                c4c::backend::prepare::find_select_materialization_join_transfer(
-                    *function_control_flow,
-                    source_block_label);
-            if (join_transfer == nullptr) {
-              return std::nullopt;
-            }
-            if (join_transfer->result.type != c4c::backend::bir::TypeKind::I32 ||
-                join_transfer->edge_transfers.size() != 2 ||
-                !join_transfer->source_true_transfer_index.has_value() ||
-                !join_transfer->source_false_transfer_index.has_value()) {
-              return std::nullopt;
-            }
-            if (*join_transfer->source_true_transfer_index >=
-                    join_transfer->edge_transfers.size() ||
-                *join_transfer->source_false_transfer_index >=
-                    join_transfer->edge_transfers.size() ||
-                *join_transfer->source_true_transfer_index ==
-                    *join_transfer->source_false_transfer_index) {
-              return std::nullopt;
-            }
-
-            const auto* join_block = find_block(join_transfer->join_block_label);
-            if (join_block == nullptr) {
-              return std::nullopt;
-            }
-
-            const auto* join_branch_condition = find_branch_condition(join_block->label);
-            if (join_branch_condition == nullptr) {
-              return std::nullopt;
-            }
-
-            const auto continuation_plan = build_compare_join_continuation(
-                *join_transfer, *join_block, *join_branch_condition);
-            if (!continuation_plan.has_value()) {
-              return std::nullopt;
-            }
-
-            return ShortCircuitJoinContext{
-                .join_transfer = join_transfer,
-                .join_block = join_block,
-                .continuation_plan = *continuation_plan,
-            };
-          };
           const auto entry_branch_condition = find_branch_condition(block.label);
           auto false_branch_compare =
               entry_branch_condition != nullptr
@@ -2567,7 +2569,13 @@ std::string emit_prepared_module(
 
           const auto try_render_short_circuit_plan =
               [&]() -> std::optional<std::string> {
-            const auto join_context = find_short_circuit_join_context(block.label);
+            if (function_control_flow == nullptr) {
+              return std::nullopt;
+            }
+
+            const auto join_context = find_short_circuit_join_context(*function_control_flow,
+                                                                      find_branch_condition,
+                                                                      block.label);
             if (!join_context.has_value()) {
               return std::nullopt;
             }
