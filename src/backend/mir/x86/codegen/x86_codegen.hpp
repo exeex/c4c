@@ -1042,12 +1042,23 @@ inline std::string emit_prepared_module(
         "x86 backend emitter requires an x86 target for the canonical prepared-module handoff");
   }
 
-  if (module.module.functions.size() != 1) {
+  const c4c::backend::bir::Function* function_ptr = nullptr;
+  for (const auto& candidate : module.module.functions) {
+    if (candidate.is_declaration) {
+      continue;
+    }
+    if (function_ptr != nullptr) {
+      throw std::invalid_argument(
+          "x86 backend emitter only supports a single-function prepared module through the canonical prepared-module handoff");
+    }
+    function_ptr = &candidate;
+  }
+  if (function_ptr == nullptr) {
     throw std::invalid_argument(
         "x86 backend emitter only supports a single-function prepared module through the canonical prepared-module handoff");
   }
 
-  const auto& function = module.module.functions.front();
+  const auto& function = *function_ptr;
   if (function.is_declaration || function.params.size() > 1 ||
       function.return_type != c4c::backend::bir::TypeKind::I32 || function.blocks.empty()) {
     throw std::invalid_argument(
@@ -1186,6 +1197,63 @@ inline std::string emit_prepared_module(
       return "_" + std::string(logical_name);
     }
     return std::string(logical_name);
+  };
+  const auto render_private_data_label = [&](std::string_view pool_name) -> std::string {
+    std::string label(pool_name);
+    if (!label.empty() && label.front() == '@') {
+      label.erase(label.begin());
+    }
+    while (!label.empty() && label.front() == '.') {
+      label.erase(label.begin());
+    }
+    if (resolved_target_triple.find("apple-darwin") != std::string::npos) {
+      return "L" + label;
+    }
+    return ".L." + label;
+  };
+  const auto escape_asm_bytes = [](std::string_view raw_bytes) -> std::string {
+    std::string escaped;
+    escaped.reserve(raw_bytes.size());
+    for (const unsigned char ch : raw_bytes) {
+      switch (ch) {
+        case '\\':
+          escaped += "\\\\";
+          break;
+        case '"':
+          escaped += "\\\"";
+          break;
+        case '\n':
+          escaped += "\\n";
+          break;
+        case '\t':
+          escaped += "\\t";
+          break;
+        case '\r':
+          escaped += "\\r";
+          break;
+        case '\0':
+          break;
+        default:
+          escaped.push_back(static_cast<char>(ch));
+          break;
+      }
+    }
+    return escaped;
+  };
+  const auto find_string_constant =
+      [&](std::string_view name) -> const c4c::backend::bir::StringConstant* {
+    for (const auto& string_constant : module.module.string_constants) {
+      if (string_constant.name == name) {
+        return &string_constant;
+      }
+    }
+    return nullptr;
+  };
+  const auto emit_string_constant_data =
+      [&](const c4c::backend::bir::StringConstant& string_constant) -> std::string {
+    const auto label = render_private_data_label("@" + string_constant.name);
+    return ".section .rodata\n" + label + ":\n    .asciz \"" +
+           escape_asm_bytes(string_constant.bytes) + "\"\n";
   };
   const auto emit_defined_global_prelude =
       [&](std::string_view symbol_name, std::size_t align_bytes, bool is_zero_init) -> std::string {
@@ -3070,6 +3138,183 @@ inline std::string emit_prepared_module(
   if (returned.type != c4c::backend::bir::TypeKind::I32) {
     throw std::invalid_argument(
         "x86 backend emitter only supports i32 return values through the canonical prepared-module handoff");
+  }
+  const auto try_render_minimal_direct_extern_call_sequence = [&]() -> std::optional<std::string> {
+    if (prepared_arch != c4c::TargetArch::X86_64 || !function.params.empty() ||
+        !function.local_slots.empty() || function.blocks.size() != 1 ||
+        entry.label != "entry" || entry.insts.empty() ||
+        entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        !entry.terminator.value.has_value()) {
+      return std::nullopt;
+    }
+
+    static constexpr const char* kArgRegs64[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+    static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
+    std::unordered_map<std::string_view, std::int64_t> i32_constants;
+    std::unordered_set<std::string_view> emitted_string_names;
+    std::vector<const c4c::backend::bir::StringConstant*> used_string_constants;
+    std::unordered_set<std::string_view> used_same_module_globals;
+    std::string body = "    sub rsp, 8\n";
+    bool saw_call = false;
+
+    const auto resolve_i32_constant =
+        [&](const c4c::backend::bir::Value& value) -> std::optional<std::int64_t> {
+          if (value.type != c4c::backend::bir::TypeKind::I32) {
+            return std::nullopt;
+          }
+          if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+            return static_cast<std::int32_t>(value.immediate);
+          }
+          if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+            return std::nullopt;
+          }
+          const auto constant_it = i32_constants.find(value.name);
+          if (constant_it == i32_constants.end()) {
+            return std::nullopt;
+          }
+          return constant_it->second;
+        };
+    const auto fold_binary_immediate =
+        [&](const c4c::backend::bir::BinaryInst& binary) -> std::optional<std::int64_t> {
+          const auto lhs = resolve_i32_constant(binary.lhs);
+          const auto rhs = resolve_i32_constant(binary.rhs);
+          if (!lhs.has_value() || !rhs.has_value()) {
+            return std::nullopt;
+          }
+          switch (binary.opcode) {
+            case c4c::backend::bir::BinaryOpcode::Add:
+              return static_cast<std::int32_t>(*lhs + *rhs);
+            case c4c::backend::bir::BinaryOpcode::Sub:
+              return static_cast<std::int32_t>(*lhs - *rhs);
+            case c4c::backend::bir::BinaryOpcode::Mul:
+              return static_cast<std::int32_t>(*lhs * *rhs);
+            case c4c::backend::bir::BinaryOpcode::And:
+              return static_cast<std::int32_t>(*lhs & *rhs);
+            case c4c::backend::bir::BinaryOpcode::Or:
+              return static_cast<std::int32_t>(*lhs | *rhs);
+            case c4c::backend::bir::BinaryOpcode::Xor:
+              return static_cast<std::int32_t>(*lhs ^ *rhs);
+            case c4c::backend::bir::BinaryOpcode::Shl:
+              return static_cast<std::int32_t>(
+                  static_cast<std::uint32_t>(*lhs) << static_cast<std::uint32_t>(*rhs));
+            case c4c::backend::bir::BinaryOpcode::LShr:
+              return static_cast<std::int32_t>(
+                  static_cast<std::uint32_t>(*lhs) >> static_cast<std::uint32_t>(*rhs));
+            case c4c::backend::bir::BinaryOpcode::AShr:
+              return static_cast<std::int32_t>(*lhs >> *rhs);
+            default:
+              return std::nullopt;
+          }
+        };
+
+    for (const auto& inst : entry.insts) {
+      if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
+        if (binary->result.kind != c4c::backend::bir::Value::Kind::Named ||
+            binary->result.type != c4c::backend::bir::TypeKind::I32 ||
+            binary->operand_type != c4c::backend::bir::TypeKind::I32) {
+          return std::nullopt;
+        }
+        const auto folded = fold_binary_immediate(*binary);
+        if (!folded.has_value()) {
+          return std::nullopt;
+        }
+        i32_constants.emplace(binary->result.name, *folded);
+        continue;
+      }
+
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call == nullptr || call->is_indirect || call->callee.empty() || call->callee_value.has_value() ||
+          call->args.size() != call->arg_types.size() || call->args.size() > 6) {
+        return std::nullopt;
+      }
+      saw_call = true;
+
+      for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
+        const auto& arg = call->args[arg_index];
+        if (call->arg_types[arg_index] == c4c::backend::bir::TypeKind::Ptr) {
+          if (arg.kind != c4c::backend::bir::Value::Kind::Named || arg.name.empty() ||
+              arg.name.front() != '@') {
+            return std::nullopt;
+          }
+          const std::string_view symbol_name(arg.name.data() + 1, arg.name.size() - 1);
+          if (const auto* string_constant = find_string_constant(symbol_name);
+              string_constant != nullptr) {
+            if (emitted_string_names.insert(symbol_name).second) {
+              used_string_constants.push_back(string_constant);
+            }
+            body += "    lea ";
+            body += kArgRegs64[arg_index];
+            body += ", [rip + ";
+            body += render_private_data_label(arg.name);
+            body += "]\n";
+            continue;
+          }
+          const auto* global = find_same_module_global(symbol_name);
+          if (global == nullptr) {
+            return std::nullopt;
+          }
+          used_same_module_globals.insert(global->name);
+          body += "    lea ";
+          body += kArgRegs64[arg_index];
+          body += ", [rip + ";
+          body += render_asm_symbol_name(global->name);
+          body += "]\n";
+          continue;
+        }
+
+        if (call->arg_types[arg_index] != c4c::backend::bir::TypeKind::I32) {
+          return std::nullopt;
+        }
+        const auto arg_value = resolve_i32_constant(arg);
+        if (!arg_value.has_value()) {
+          return std::nullopt;
+        }
+        body += "    mov ";
+        body += kArgRegs32[arg_index];
+        body += ", ";
+        body += std::to_string(static_cast<std::int32_t>(*arg_value));
+        body += "\n";
+      }
+
+      body += "    xor eax, eax\n";
+      body += "    call ";
+      body += render_asm_symbol_name(call->callee);
+      body += "\n";
+    }
+
+    if (!saw_call) {
+      return std::nullopt;
+    }
+
+    const auto returned_value = resolve_i32_constant(*entry.terminator.value);
+    if (!returned_value.has_value()) {
+      return std::nullopt;
+    }
+    body += "    mov ";
+    body += *return_register;
+    body += ", ";
+    body += std::to_string(static_cast<std::int32_t>(*returned_value));
+    body += "\n    add rsp, 8\n    ret\n";
+
+    std::string rendered_data;
+    for (const auto* string_constant : used_string_constants) {
+      rendered_data += emit_string_constant_data(*string_constant);
+    }
+    for (const auto& global : module.module.globals) {
+      if (used_same_module_globals.find(global.name) == used_same_module_globals.end()) {
+        continue;
+      }
+      const auto rendered_global_data = emit_same_module_global_data(global);
+      if (!rendered_global_data.has_value()) {
+        return std::nullopt;
+      }
+      rendered_data += *rendered_global_data;
+    }
+    return asm_prefix + body + rendered_data;
+  };
+  if (const auto rendered_direct_calls = try_render_minimal_direct_extern_call_sequence();
+      rendered_direct_calls.has_value()) {
+    return *rendered_direct_calls;
   }
   if (const auto rendered_local_slot = try_render_minimal_local_slot_return();
       rendered_local_slot.has_value()) {
