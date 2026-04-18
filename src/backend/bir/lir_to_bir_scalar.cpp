@@ -224,6 +224,15 @@ std::optional<bir::Value> BirFunctionLowerer::lower_value(
     }
   }
 
+  if (expected_type == bir::TypeKind::Ptr && operand == "null") {
+    return bir::Value{
+        .kind = bir::Value::Kind::Immediate,
+        .type = bir::TypeKind::Ptr,
+        .immediate = 0,
+        .immediate_bits = 0,
+    };
+  }
+
   const auto try_parse_fp_bits = [&](bir::TypeKind float_type) -> std::optional<bir::Value> {
     const auto text = operand.str();
     if (text.size() < 3 || text[0] != '0' || (text[1] != 'x' && text[1] != 'X')) {

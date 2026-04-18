@@ -493,6 +493,7 @@ class BirFunctionLowerer {
                                               std::string_view temp_prefix,
                                               std::vector<bir::Inst>* lowered_insts) const;
   bool materialize_aggregate_param_aliases(std::vector<bir::Inst>* lowered_insts);
+  void seed_pointer_param_addresses();
 
   // CFG and phi helpers.
   BlockLookup make_block_lookup() const;
@@ -690,6 +691,7 @@ class BirFunctionLowerer {
   LocalPointerValueAliasMap local_pointer_value_aliases_;
   LocalIndirectPointerSlotSet local_indirect_pointer_slots_;
   PointerAddressMap pointer_value_addresses_;
+  PointerAddressMap local_pointer_slot_addresses_;
   LocalAddressSlots local_address_slots_;
   LocalSlotAddressSlots local_slot_address_slots_;
   LocalSlotPointerValues local_slot_pointer_values_;

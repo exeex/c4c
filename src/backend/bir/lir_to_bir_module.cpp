@@ -359,6 +359,20 @@ bool BirFunctionLowerer::lower_alloca_insts() {
   return true;
 }
 
+void BirFunctionLowerer::seed_pointer_param_addresses() {
+  for (const auto& param : lowered_function_.params) {
+    if (param.type != bir::TypeKind::Ptr || param.is_sret || param.is_byval ||
+        param.name.empty()) {
+      continue;
+    }
+    pointer_value_addresses_[param.name] = PointerAddress{
+        .base_value = bir::Value::named(bir::TypeKind::Ptr, param.name),
+        .value_type = bir::TypeKind::Void,
+        .byte_offset = 0,
+    };
+  }
+}
+
 bool BirFunctionLowerer::lower_block_phi_insts(const c4c::codegen::lir::LirBlock& block,
                                                bir::Block* lowered_block) {
   const auto phi_it = phi_plans_.find(block.label);
@@ -541,6 +555,7 @@ std::optional<bir::Function> BirFunctionLowerer::lower() {
   }
   phi_plans_ = std::move(*phi_plans);
   aggregate_params_ = collect_aggregate_params();
+  seed_pointer_param_addresses();
 
   if (!materialize_aggregate_param_aliases(&hoisted_alloca_scratch_)) {
     note_function_lowering_family_failure("local-memory semantic family");

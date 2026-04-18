@@ -1523,6 +1523,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   auto& local_pointer_value_aliases = local_pointer_value_aliases_;
   auto& local_indirect_pointer_slots = local_indirect_pointer_slots_;
   auto& pointer_value_addresses = pointer_value_addresses_;
+  auto& local_pointer_slot_addresses = local_pointer_slot_addresses_;
   auto& local_address_slots = local_address_slots_;
   auto& local_slot_address_slots = local_slot_address_slots_;
   auto& local_slot_pointer_values = local_slot_pointer_values_;
@@ -1591,6 +1592,9 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     }
     if (address.value_type != bir::TypeKind::Void) {
       return false;
+    }
+    if (address.byte_offset == 0 && (address.type_text.empty() || address.type_text == "ptr")) {
+      return true;
     }
     const auto access_size = type_size_bytes(access_type);
     if (access_size == 0) {
@@ -2357,7 +2361,8 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
                                             ? addressed_ptr_it->second.byte_offset
                                             : 0;
           const auto resolved_target = resolve_relative_gep_target(
-              addressed_ptr_it != pointer_value_addresses.end()
+              addressed_ptr_it != pointer_value_addresses.end() &&
+                      !addressed_ptr_it->second.type_text.empty()
                   ? addressed_ptr_it->second.type_text
                   : std::string(c4c::codegen::lir::trim_lir_arg_text(gep->element_type.str())),
               base_byte_offset,
@@ -2918,6 +2923,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     }
 
     if (*value_type == bir::TypeKind::I64) {
+      local_pointer_slot_addresses.erase(ptr_it->second);
       local_indirect_pointer_slots.erase(ptr_it->second);
       if (store->val.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
         const auto global_addr_it = global_address_ints.find(store->val.str());
@@ -2930,6 +2936,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       local_slot_address_slots.erase(ptr_it->second);
       local_address_slots.erase(ptr_it->second);
     } else if (*value_type == bir::TypeKind::Ptr) {
+      bool stored_pointer_value_address = false;
       bool stored_local_slot_address = false;
       if (store->val.kind() == c4c::codegen::lir::LirOperandKind::Global) {
         const std::string global_name = store->val.str().substr(1);
@@ -2938,6 +2945,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           if (!is_known_function_symbol(global_name, function_symbols)) {
             return fail_store();
           }
+          local_pointer_slot_addresses.erase(ptr_it->second);
           local_slot_address_slots.erase(ptr_it->second);
           local_address_slots[ptr_it->second] = GlobalAddress{
               .global_name = global_name,
@@ -2954,6 +2962,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         } else if (!global_it->second.supports_linear_addressing) {
           return fail_store();
         } else {
+          local_pointer_slot_addresses.erase(ptr_it->second);
           local_slot_address_slots.erase(ptr_it->second);
           local_address_slots[ptr_it->second] = GlobalAddress{
               .global_name = global_name,
@@ -2969,6 +2978,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       if (store->val.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
         const auto local_slot_ptr_val_it = local_slot_pointer_values.find(store->val.str());
         if (local_slot_ptr_val_it != local_slot_pointer_values.end()) {
+          local_pointer_slot_addresses.erase(ptr_it->second);
           auto stored_address = local_slot_ptr_val_it->second;
           if (stored_address.array_element_slots.empty()) {
             if (const auto array_base_it = local_pointer_array_bases.find(store->val.str());
@@ -2989,6 +2999,14 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           local_indirect_pointer_slots.erase(ptr_it->second);
           stored_local_slot_address = true;
         }
+        if (const auto pointer_value_it = pointer_value_addresses.find(store->val.str());
+            pointer_value_it != pointer_value_addresses.end()) {
+          local_pointer_slot_addresses[ptr_it->second] = pointer_value_it->second;
+          local_slot_address_slots.erase(ptr_it->second);
+          local_address_slots.erase(ptr_it->second);
+          local_indirect_pointer_slots.erase(ptr_it->second);
+          stored_pointer_value_address = true;
+        }
         const auto local_ptr_it = local_pointer_slots.find(store->val.str());
         if (local_ptr_it != local_pointer_slots.end() &&
             local_slot_ptr_val_it == local_slot_pointer_values.end()) {
@@ -2996,6 +3014,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           if (source_slot_it == local_slot_types.end()) {
             return fail_store();
           }
+          local_pointer_slot_addresses.erase(ptr_it->second);
           LocalSlotAddress stored_address{
               .slot_name = local_ptr_it->second,
               .value_type = source_slot_it->second,
@@ -3027,6 +3046,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           if (leaf_it == local_aggregate_it->second.leaf_slots.end()) {
             return fail_store();
           }
+          local_pointer_slot_addresses.erase(ptr_it->second);
           const auto target_layout = compute_aggregate_type_layout(
               local_aggregate_it->second.type_text, type_decls);
           auto stored_address = LocalSlotAddress{
@@ -3050,13 +3070,15 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         }
         const auto global_ptr_it = global_pointer_slots.find(store->val.str());
         if (global_ptr_it != global_pointer_slots.end()) {
+          local_pointer_slot_addresses.erase(ptr_it->second);
           local_slot_address_slots.erase(ptr_it->second);
           local_address_slots[ptr_it->second] = global_ptr_it->second;
           local_indirect_pointer_slots.insert(ptr_it->second);
           return true;
         }
       }
-      if (!stored_local_slot_address) {
+      if (!stored_local_slot_address && !stored_pointer_value_address) {
+        local_pointer_slot_addresses.erase(ptr_it->second);
         local_slot_address_slots.erase(ptr_it->second);
         local_address_slots.erase(ptr_it->second);
         local_indirect_pointer_slots.erase(ptr_it->second);
@@ -3550,6 +3572,10 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           }
         }
         global_pointer_slots[load->result.str()] = addr_it->second;
+      }
+      if (const auto pointer_slot_it = local_pointer_slot_addresses.find(ptr_it->second);
+          pointer_slot_it != local_pointer_slot_addresses.end()) {
+        pointer_value_addresses[load->result.str()] = pointer_slot_it->second;
       }
     }
 
