@@ -3211,14 +3211,7 @@ std::string emit_prepared_module(
     }
 
     for (const auto& block : function.blocks) {
-      if (used_blocks.find(&block) != used_blocks.end()) {
-        continue;
-      }
-      if (!block.insts.empty() || block.terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
-        return std::nullopt;
-      }
-      const auto* resolved = find_block(block.terminator.target_label);
-      if (resolved == nullptr || used_blocks.find(resolved) == used_blocks.end()) {
+      if (used_blocks.find(&block) == used_blocks.end()) {
         return std::nullopt;
       }
     }

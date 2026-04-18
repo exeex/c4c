@@ -8,30 +8,30 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed Step 3 cleanup in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by removing the
-local-slot countdown helper's empty-branch-chain fallback and requiring
-direct block labels for its return, guard, continuation, and backedge targets
-instead of recovering that lane through indirect CFG traversal.
+Completed Step 3 consumer tightening in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by making the local
+`i32` countdown-loop helper reject leftover empty-branch trampolines and
+require its matched init/cond/body/guard/return blocks to account for the
+whole function directly instead of accepting CFG-only continuation wrappers.
 
 ## Suggested Next
 
-The next small Step 3 packet is checking the remaining guard/countdown helpers
-in `prepared_module_emit.cpp` for any other indirect CFG-only continuation
-acceptance and either tightening them to direct/prepared labels or rejecting
-them outright.
+The next small Step 3 packet is checking the remaining guard/join helpers in
+`prepared_module_emit.cpp` for any other acceptance of branch trampolines or
+indirect continuation/join recovery and either tightening them to direct
+prepared labels or rejecting those shapes outright.
 
 ## Watchouts
 
 - Do not activate umbrella idea 57 as executable work.
 - Do not pull in idea 59 instruction-selection scope.
 - Do not solve coverage gaps with x86 testcase-shaped matcher growth.
-- The local-slot countdown helper now fails closed on empty branch chains;
-  do not reintroduce topology walking there to preserve a fallback route.
+- The local `i32` countdown-loop helper now fails closed on extra branch-only
+  wrappers; do not reintroduce leftover-block acceptance there as a fallback.
 - The loop-join countdown lane already consumes prepared loop-carry metadata;
   keep that prepared contract as the authority for loop meaning rather than
   broadening the local-slot fallback.
-- If another guard/countdown helper still needs indirect continuation recovery,
+- If another guard/join helper still needs indirect continuation recovery,
   treat that as a consumer-contract gap to tighten or reject, not as a reason
   to grow more raw CFG matching.
 
