@@ -153,6 +153,64 @@ std::optional<bir::Value> BirFunctionLowerer::synthesize_pointer_array_selects(
   return synthesize_value_array_selects(result_name, element_values, index_value, lowered_insts);
 }
 
+std::optional<bir::Value> BirFunctionLowerer::load_dynamic_global_scalar_array_value(
+    std::string_view result_name,
+    bir::TypeKind value_type,
+    const DynamicGlobalScalarArrayAccess& access,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (access.element_type != value_type || access.outer_element_count == 0 ||
+      access.element_count == 0) {
+    return std::nullopt;
+  }
+
+  const auto slot_size = type_size_bytes(value_type);
+  if (slot_size == 0) {
+    return std::nullopt;
+  }
+
+  std::vector<bir::Value> outer_values;
+  outer_values.reserve(access.outer_element_count);
+  for (std::size_t outer_index = 0; outer_index < access.outer_element_count; ++outer_index) {
+    std::vector<bir::Value> element_values;
+    element_values.reserve(access.element_count);
+    for (std::size_t element_index = 0; element_index < access.element_count; ++element_index) {
+      const std::string element_name =
+          std::string(result_name) + ".outer" + std::to_string(outer_index) + ".elt" +
+          std::to_string(element_index);
+      lowered_insts->push_back(bir::LoadGlobalInst{
+          .result = bir::Value::named(value_type, element_name),
+          .global_name = access.global_name,
+          .byte_offset = access.byte_offset + outer_index * access.outer_element_stride_bytes +
+                         element_index * access.element_stride_bytes,
+          .align_bytes = slot_size,
+      });
+      element_values.push_back(bir::Value::named(value_type, element_name));
+    }
+
+    bir::Value outer_value;
+    if (element_values.size() == 1) {
+      outer_value = element_values.front();
+    } else {
+      const auto selected_inner = synthesize_value_array_selects(
+          std::string(result_name) + ".outer" + std::to_string(outer_index),
+          element_values,
+          access.index,
+          lowered_insts);
+      if (!selected_inner.has_value()) {
+        return std::nullopt;
+      }
+      outer_value = *selected_inner;
+    }
+    outer_values.push_back(std::move(outer_value));
+  }
+
+  if (outer_values.size() == 1) {
+    return outer_values.front();
+  }
+  return synthesize_value_array_selects(
+      result_name, outer_values, access.outer_index, lowered_insts);
+}
+
 std::optional<bir::Value> BirFunctionLowerer::load_dynamic_pointer_value_array_value(
     std::string_view result_name,
     bir::TypeKind value_type,

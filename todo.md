@@ -6,21 +6,20 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2: moved the dynamic pointer-value-array load/store lowering helpers
-out of `src/backend/bir/lir_to_bir_memory.cpp` and into
+Plan Step 2 / Step 3: moved the dynamic global scalar-array load
+materialization path out of `src/backend/bir/lir_to_bir_memory.cpp` and into
 `src/backend/bir/lir_to_bir_memory_value_materialization.cpp`, so the
-value-materialization owner now handles the scratch-slot addressed loads, the
-select-based per-element store rewrite, and the final array-value selection
-while the coordinator keeps only the pointer-array admission and fail-routing
-flow.
+value-materialization owner now handles the nested `LoadGlobalInst` emission
+and inner/outer select synthesis while the coordinator keeps only the
+dynamic-global-scalar admission and fail-routing flow.
 
 ## Suggested Next
 
 Continue `plan.md` Step 4 by re-reading the remaining coordinator-side helper
 mix in `src/backend/bir/lir_to_bir_memory.cpp` and decide whether the next
-honest extraction is now the remaining dynamic global-scalar array materializer
+honest extraction is now the dynamic global-scalar GEP bookkeeping/admission
 path or another shared non-coordinator seam, rather than forcing another thin
-packet around already-extracted local-slot or pointer-value helpers.
+packet around already-extracted value-materialization or local-slot helpers.
 
 ## Watchouts
 
@@ -35,6 +34,10 @@ packet around already-extracted local-slot or pointer-value helpers.
   `src/backend/bir/lir_to_bir_memory_value_materialization.cpp`; future packets
   should keep select-tree materialization and addressed scratch-slot plumbing in
   that owner instead of rebuilding it inline in the coordinator.
+- Dynamic global scalar-array load/select synthesis now also lives in
+  `src/backend/bir/lir_to_bir_memory_value_materialization.cpp`; future packets
+  should keep nested global element loads and inner/outer value-selection trees
+  in that owner instead of re-expanding them in `lir_to_bir_memory.cpp`.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:
   0`; treat the canonical log pair as unchanged-behavior evidence, not as a
@@ -57,4 +60,4 @@ functional result as the prior baseline: the four backend
 notes/handoff/dynamic-member-array tests passed, and the pre-existing failure
 `c_testsuite_x86_backend_src_00205_c` remained unchanged with the same
 backend-emitter limitation. `diff -u test_before.log test_after.log` changed
-only timing lines.
+only timing lines. Proof log path: `test_after.log`.

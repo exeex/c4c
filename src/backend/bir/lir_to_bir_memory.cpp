@@ -1376,74 +1376,16 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
 
     if (const auto global_scalar_it = dynamic_global_scalar_arrays.find(load->ptr.str());
         global_scalar_it != dynamic_global_scalar_arrays.end()) {
-      if (global_scalar_it->second.element_type != *value_type ||
-          global_scalar_it->second.outer_element_count == 0 ||
-          global_scalar_it->second.element_count == 0) {
+      const auto selected_value = load_dynamic_global_scalar_array_value(
+          load->result.str(), *value_type, global_scalar_it->second, lowered_insts);
+      if (!selected_value.has_value()) {
         return fail_load();
       }
-      const auto slot_size = type_size_bytes(*value_type);
-      if (slot_size == 0) {
-        return fail_load();
-      }
-
-      std::vector<bir::Value> outer_values;
-      outer_values.reserve(global_scalar_it->second.outer_element_count);
-      for (std::size_t outer_index = 0;
-           outer_index < global_scalar_it->second.outer_element_count;
-           ++outer_index) {
-        std::vector<bir::Value> element_values;
-        element_values.reserve(global_scalar_it->second.element_count);
-        for (std::size_t element_index = 0;
-             element_index < global_scalar_it->second.element_count;
-             ++element_index) {
-          const std::string element_name =
-              load->result.str() + ".outer" + std::to_string(outer_index) + ".elt" +
-              std::to_string(element_index);
-          lowered_insts->push_back(bir::LoadGlobalInst{
-              .result = bir::Value::named(*value_type, element_name),
-              .global_name = global_scalar_it->second.global_name,
-              .byte_offset =
-                  global_scalar_it->second.byte_offset +
-                  outer_index * global_scalar_it->second.outer_element_stride_bytes +
-                  element_index * global_scalar_it->second.element_stride_bytes,
-              .align_bytes = slot_size,
-          });
-          element_values.push_back(bir::Value::named(*value_type, element_name));
-        }
-
-        bir::Value outer_value;
-        if (element_values.size() == 1) {
-          outer_value = element_values.front();
-        } else {
-          const auto selected_inner = synthesize_value_array_selects(
-              load->result.str() + ".outer" + std::to_string(outer_index),
-              element_values,
-              global_scalar_it->second.index,
-              lowered_insts);
-          if (!selected_inner.has_value()) {
-            return fail_load();
-          }
-          outer_value = *selected_inner;
-        }
-        outer_values.push_back(std::move(outer_value));
-      }
-
-      bir::Value selected_value;
-      if (outer_values.size() == 1) {
-        selected_value = outer_values.front();
-      } else {
-        const auto selected_outer = synthesize_value_array_selects(
-            load->result.str(), outer_values, global_scalar_it->second.outer_index, lowered_insts);
-        if (!selected_outer.has_value()) {
-          return fail_load();
-        }
-        selected_value = *selected_outer;
-      }
-      if (selected_value.kind == bir::Value::Kind::Named &&
-          selected_value.name == load->result.str()) {
+      if (selected_value->kind == bir::Value::Kind::Named &&
+          selected_value->name == load->result.str()) {
         return true;
       }
-      value_aliases[load->result.str()] = selected_value;
+      value_aliases[load->result.str()] = *selected_value;
       return true;
     }
 

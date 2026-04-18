@@ -836,6 +836,11 @@ class BirFunctionLowerer {
       const TypeDeclMap& type_decls,
       const LocalSlotTypes& local_slot_types,
       std::vector<bir::Inst>* lowered_insts);
+  static std::optional<bir::Value> load_dynamic_global_scalar_array_value(
+      std::string_view result_name,
+      bir::TypeKind value_type,
+      const DynamicGlobalScalarArrayAccess& access,
+      std::vector<bir::Inst>* lowered_insts);
   std::optional<bir::Value> load_dynamic_pointer_value_array_value(
       std::string_view result_name,
       bir::TypeKind value_type,
