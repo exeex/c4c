@@ -528,6 +528,9 @@ class BirFunctionLowerer {
                                           const LocalArraySlotMap& local_array_slots);
   static std::optional<std::pair<std::size_t, bir::TypeKind>> parse_local_array_type(
       std::string_view text);
+  static bool can_reinterpret_byte_storage_view(std::string_view storage_type_text,
+                                                std::string_view target_type_text,
+                                                const TypeDeclMap& type_decls);
   static std::optional<bir::Value> lower_zero_initializer_value(bir::TypeKind type);
   static std::optional<bir::Value> lower_repeated_byte_initializer_value(
       bir::TypeKind type,

@@ -6,33 +6,39 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2: extracted the local-slot helper family from
-`src/backend/bir/lir_to_bir_memory.cpp` into the new semantic owner
+Plan Step 2: extracted the local aggregate resolver family from
+`src/backend/bir/lir_to_bir_memory_addressing.cpp` into
 `src/backend/bir/lir_to_bir_memory_local_slots.cpp`, moving
-`collect_local_scalar_array_slots`, `is_local_array_element_slot`, and
-`parse_local_array_type` out of the coordinator TU while keeping
-`lower_scalar_or_local_memory_inst` in place and wiring the new file into the
-backend notes test build.
+`resolve_local_aggregate_gep_slot`,
+`resolve_local_aggregate_pointer_array_slots`,
+`resolve_local_aggregate_dynamic_pointer_array_access`,
+`resolve_local_aggregate_gep_target`, and
+`resolve_local_dynamic_aggregate_array_access` under the dedicated local-slots
+owner while keeping `lower_scalar_or_local_memory_inst` in the main
+coordinator TU; `can_reinterpret_byte_storage_view` now lives as a shared
+class helper so the remaining addressing helpers can still use it.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 with the remaining local-slot/local-aggregate
-mechanics seam: decide whether the dynamic local aggregate and pointer-array
-access resolvers belong in `lir_to_bir_memory_local_slots.cpp` or stay partly
-in addressing, then extract one coherent resolver cluster without pulling
-opcode coordination out of `lower_scalar_or_local_memory_inst`.
+Continue `plan.md` Step 2 by re-reading the remaining
+`dynamic_local_aggregate_arrays` load/store handling in
+`src/backend/bir/lir_to_bir_memory.cpp` and choose whether any residual
+local-slot or local-aggregate mechanics still belong outside the coordinator,
+without pulling opcode admission flow out of
+`lower_scalar_or_local_memory_inst`.
 
 ## Watchouts
 
 - This plan is refactor-only; do not claim x86 backend capability progress from
   it.
 - Keep `lower_scalar_or_local_memory_inst` in the main coordinator TU.
-- `src/backend/CMakeLists.txt` picked up the new TU through its backend source
-  glob, but `tests/backend/CMakeLists.txt` still needs explicit source wiring
-  for each extracted owner.
-- The next packet still needs an ownership call on whether local dynamic
-  aggregate and pointer-array resolvers belong in the dedicated local-slots TU
-  or partially in addressing.
+- `can_reinterpret_byte_storage_view` and
+  `find_repeated_aggregate_extent_at_offset` are now the shared layout helpers
+  left behind in addressing; avoid bouncing them into local-slots unless a
+  later packet proves they are no longer shared.
+- The next packet should be chosen by remaining coordinator-owned mechanics,
+  not by line counts or by emptying `lir_to_bir_memory_addressing.cpp` for its
+  own sake.
 - Treat renderer de-headerization as separate idea `56`.
 
 ## Proof
