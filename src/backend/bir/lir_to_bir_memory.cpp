@@ -1195,201 +1195,34 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return true;
     }
 
-    const auto ptr_it = local_pointer_slots.find(store->ptr.str());
-    if (ptr_it == local_pointer_slots.end()) {
+    const auto local_slot_store = try_lower_local_slot_store(store->ptr.str(),
+                                                             store->val,
+                                                             *value_type,
+                                                             *value,
+                                                             value_aliases,
+                                                             type_decls,
+                                                             global_types,
+                                                             function_symbols,
+                                                             local_pointer_slots,
+                                                             local_slot_types,
+                                                             local_aggregate_field_slots,
+                                                             local_array_slots,
+                                                             local_aggregate_slots,
+                                                             local_pointer_array_bases,
+                                                             local_slot_pointer_values,
+                                                             pointer_value_addresses,
+                                                             global_pointer_slots,
+                                                             global_address_ints,
+                                                             &local_pointer_value_aliases,
+                                                             &local_indirect_pointer_slots,
+                                                             &local_pointer_slot_addresses,
+                                                             &local_slot_address_slots,
+                                                             &local_address_slots,
+                                                             lowered_insts);
+    if (local_slot_store == LocalSlotStoreResult::NotHandled) {
       return fail_store();
     }
-
-    const auto slot_it = local_slot_types.find(ptr_it->second);
-    if (slot_it == local_slot_types.end() || slot_it->second != *value_type) {
-      return fail_store();
-    }
-
-    const bool tracks_pointer_value_slot =
-        local_aggregate_field_slots.find(ptr_it->second) != local_aggregate_field_slots.end() ||
-        is_local_array_element_slot(ptr_it->second, local_array_slots);
-    if (tracks_pointer_value_slot) {
-      if (*value_type == bir::TypeKind::Ptr) {
-        const auto pointer_alias = resolve_local_aggregate_pointer_value_alias(
-            store->val, value_aliases, local_aggregate_slots, function_symbols);
-        if (pointer_alias.has_value()) {
-          local_pointer_value_aliases[ptr_it->second] = *pointer_alias;
-        } else {
-          local_pointer_value_aliases.erase(ptr_it->second);
-        }
-      } else {
-        local_pointer_value_aliases.erase(ptr_it->second);
-      }
-    }
-
-    if (*value_type == bir::TypeKind::I64) {
-      local_pointer_slot_addresses.erase(ptr_it->second);
-      local_indirect_pointer_slots.erase(ptr_it->second);
-      if (store->val.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
-        const auto global_addr_it = global_address_ints.find(store->val.str());
-        if (global_addr_it != global_address_ints.end()) {
-          local_slot_address_slots.erase(ptr_it->second);
-          local_address_slots[ptr_it->second] = global_addr_it->second;
-          return true;
-        }
-      }
-      local_slot_address_slots.erase(ptr_it->second);
-      local_address_slots.erase(ptr_it->second);
-    } else if (*value_type == bir::TypeKind::Ptr) {
-      bool stored_pointer_value_address = false;
-      bool stored_local_slot_address = false;
-      if (store->val.kind() == c4c::codegen::lir::LirOperandKind::Global) {
-        const std::string global_name = store->val.str().substr(1);
-        const auto global_it = global_types.find(global_name);
-        if (global_it == global_types.end()) {
-          if (!is_known_function_symbol(global_name, function_symbols)) {
-            return fail_store();
-          }
-          local_pointer_slot_addresses.erase(ptr_it->second);
-          local_slot_address_slots.erase(ptr_it->second);
-          local_address_slots[ptr_it->second] = GlobalAddress{
-              .global_name = global_name,
-              .value_type = bir::TypeKind::Ptr,
-              .byte_offset = 0,
-          };
-          local_indirect_pointer_slots.erase(ptr_it->second);
-          if (!tracks_pointer_value_slot) {
-            return true;
-          }
-        }
-        if (global_it == global_types.end()) {
-          stored_local_slot_address = false;
-        } else if (!global_it->second.supports_linear_addressing) {
-          return fail_store();
-        } else {
-          local_pointer_slot_addresses.erase(ptr_it->second);
-          local_slot_address_slots.erase(ptr_it->second);
-          local_address_slots[ptr_it->second] = GlobalAddress{
-              .global_name = global_name,
-              .value_type = global_it->second.value_type,
-              .byte_offset = 0,
-          };
-          local_indirect_pointer_slots.erase(ptr_it->second);
-          if (!tracks_pointer_value_slot) {
-            return true;
-          }
-        }
-      }
-      if (store->val.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
-        const auto local_slot_ptr_val_it = local_slot_pointer_values.find(store->val.str());
-        if (local_slot_ptr_val_it != local_slot_pointer_values.end()) {
-          local_pointer_slot_addresses.erase(ptr_it->second);
-          auto stored_address = local_slot_ptr_val_it->second;
-          if (stored_address.array_element_slots.empty()) {
-            if (const auto array_base_it = local_pointer_array_bases.find(store->val.str());
-                array_base_it != local_pointer_array_bases.end()) {
-              stored_address.array_element_slots = array_base_it->second.element_slots;
-              stored_address.array_base_index = array_base_it->second.base_index;
-            } else if (const auto local_aggregate_it = local_aggregate_slots.find(store->val.str());
-                       local_aggregate_it != local_aggregate_slots.end()) {
-              if (const auto array_slots = collect_local_scalar_array_slots(
-                      local_aggregate_it->second.type_text, type_decls, local_aggregate_it->second);
-                  array_slots.has_value()) {
-                stored_address.array_element_slots = *array_slots;
-              }
-            }
-          }
-          local_slot_address_slots[ptr_it->second] = std::move(stored_address);
-          local_address_slots.erase(ptr_it->second);
-          local_indirect_pointer_slots.erase(ptr_it->second);
-          stored_local_slot_address = true;
-        }
-        if (const auto pointer_value_it = pointer_value_addresses.find(store->val.str());
-            pointer_value_it != pointer_value_addresses.end()) {
-          local_pointer_slot_addresses[ptr_it->second] = pointer_value_it->second;
-          local_slot_address_slots.erase(ptr_it->second);
-          local_address_slots.erase(ptr_it->second);
-          local_indirect_pointer_slots.erase(ptr_it->second);
-          stored_pointer_value_address = true;
-        }
-        const auto local_ptr_it = local_pointer_slots.find(store->val.str());
-        if (local_ptr_it != local_pointer_slots.end() &&
-            local_slot_ptr_val_it == local_slot_pointer_values.end()) {
-          const auto source_slot_it = local_slot_types.find(local_ptr_it->second);
-          if (source_slot_it == local_slot_types.end()) {
-            return fail_store();
-          }
-          local_pointer_slot_addresses.erase(ptr_it->second);
-          LocalSlotAddress stored_address{
-              .slot_name = local_ptr_it->second,
-              .value_type = source_slot_it->second,
-              .byte_offset = 0,
-              .storage_type_text = render_type(source_slot_it->second),
-              .type_text = render_type(source_slot_it->second),
-          };
-          if (const auto array_base_it = local_pointer_array_bases.find(store->val.str());
-              array_base_it != local_pointer_array_bases.end()) {
-            const auto slot_size = type_size_bytes(source_slot_it->second);
-            if (slot_size == 0 || array_base_it->second.element_slots.empty() ||
-                array_base_it->second.base_index >= array_base_it->second.element_slots.size()) {
-              return fail_store();
-            }
-            stored_address.slot_name = array_base_it->second.element_slots.front();
-            stored_address.byte_offset = array_base_it->second.base_index * slot_size;
-            stored_address.array_element_slots = array_base_it->second.element_slots;
-            stored_address.array_base_index = array_base_it->second.base_index;
-          }
-          local_slot_address_slots[ptr_it->second] = std::move(stored_address);
-          local_address_slots.erase(ptr_it->second);
-          local_indirect_pointer_slots.erase(ptr_it->second);
-          stored_local_slot_address = true;
-        } else if (const auto local_aggregate_it = local_aggregate_slots.find(store->val.str());
-                   local_aggregate_it != local_aggregate_slots.end() &&
-                   local_slot_ptr_val_it == local_slot_pointer_values.end()) {
-          const auto leaf_it =
-              local_aggregate_it->second.leaf_slots.find(local_aggregate_it->second.base_byte_offset);
-          if (leaf_it == local_aggregate_it->second.leaf_slots.end()) {
-            return fail_store();
-          }
-          local_pointer_slot_addresses.erase(ptr_it->second);
-          const auto target_layout = compute_aggregate_type_layout(
-              local_aggregate_it->second.type_text, type_decls);
-          auto stored_address = LocalSlotAddress{
-              .slot_name = leaf_it->second,
-              .value_type = target_layout.kind == AggregateTypeLayout::Kind::Scalar
-                                ? target_layout.scalar_type
-                                : bir::TypeKind::Void,
-              .byte_offset = 0,
-              .storage_type_text = local_aggregate_it->second.storage_type_text,
-              .type_text = local_aggregate_it->second.type_text,
-          };
-          if (const auto array_slots = collect_local_scalar_array_slots(
-                  local_aggregate_it->second.type_text, type_decls, local_aggregate_it->second);
-              array_slots.has_value()) {
-            stored_address.array_element_slots = *array_slots;
-          }
-          local_slot_address_slots[ptr_it->second] = std::move(stored_address);
-          local_address_slots.erase(ptr_it->second);
-          local_indirect_pointer_slots.erase(ptr_it->second);
-          stored_local_slot_address = true;
-        }
-        const auto global_ptr_it = global_pointer_slots.find(store->val.str());
-        if (global_ptr_it != global_pointer_slots.end()) {
-          local_pointer_slot_addresses.erase(ptr_it->second);
-          local_slot_address_slots.erase(ptr_it->second);
-          local_address_slots[ptr_it->second] = global_ptr_it->second;
-          local_indirect_pointer_slots.insert(ptr_it->second);
-          return true;
-        }
-      }
-      if (!stored_local_slot_address && !stored_pointer_value_address) {
-        local_pointer_slot_addresses.erase(ptr_it->second);
-        local_slot_address_slots.erase(ptr_it->second);
-        local_address_slots.erase(ptr_it->second);
-        local_indirect_pointer_slots.erase(ptr_it->second);
-      }
-    }
-
-    lowered_insts->push_back(bir::StoreLocalInst{
-        .slot_name = ptr_it->second,
-        .value = *value,
-    });
-    return true;
+    return local_slot_store == LocalSlotStoreResult::Lowered ? true : fail_store();
   }
 
   if (const auto* load = std::get_if<c4c::codegen::lir::LirLoadOp>(&inst)) {

@@ -423,6 +423,12 @@ class BirFunctionLowerer {
     Failed,
   };
 
+  enum class LocalSlotStoreResult {
+    NotHandled,
+    Lowered,
+    Failed,
+  };
+
  private:
   // Scalar lowering helpers.
   static std::optional<AggregateTypeLayout> lower_byval_aggregate_layout(
@@ -738,6 +744,31 @@ class BirFunctionLowerer {
       ValueMap* value_aliases,
       LocalSlotPointerValues* local_slot_pointer_values,
       GlobalPointerMap* global_pointer_slots,
+      std::vector<bir::Inst>* lowered_insts);
+  LocalSlotStoreResult try_lower_local_slot_store(
+      std::string_view ptr_name,
+      const c4c::codegen::lir::LirOperand& stored_operand,
+      bir::TypeKind value_type,
+      const bir::Value& value,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const GlobalTypes& global_types,
+      const FunctionSymbolSet& function_symbols,
+      const LocalPointerSlots& local_pointer_slots,
+      const LocalSlotTypes& local_slot_types,
+      const LocalAggregateFieldSet& local_aggregate_field_slots,
+      const LocalArraySlotMap& local_array_slots,
+      const LocalAggregateSlotMap& local_aggregate_slots,
+      const LocalPointerArrayBaseMap& local_pointer_array_bases,
+      const LocalSlotPointerValues& local_slot_pointer_values,
+      const PointerAddressMap& pointer_value_addresses,
+      const GlobalPointerMap& global_pointer_slots,
+      const GlobalAddressIntMap& global_address_ints,
+      LocalPointerValueAliasMap* local_pointer_value_aliases,
+      LocalIndirectPointerSlotSet* local_indirect_pointer_slots,
+      PointerAddressMap* local_pointer_slot_addresses,
+      LocalSlotAddressSlots* local_slot_address_slots,
+      LocalAddressSlots* local_address_slots,
       std::vector<bir::Inst>* lowered_insts);
   LocalSlotLoadResult try_lower_local_slot_load(
       std::string_view result_name,
