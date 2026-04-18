@@ -9,22 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by splitting the
-remaining short-circuit plan assembly in
-`detect_short_circuit_plan_from_control_flow()` into prepared-data-oriented
-helpers. Join incoming classification now flows through
-`classify_short_circuit_join_incoming()`, and compare-true/compare-false
-target construction now flows through
-`build_short_circuit_target_from_transfer()` using prepared transfer indices
-and predecessor labels as the ownership contract.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting the
+remaining `detect_short_circuit_plan_from_control_flow()` entry-condition
+validation into `find_short_circuit_entry_blocks()`. The short-circuit
+detector now reads as entry prepared-condition validation, join-transfer
+lookup, continuation lookup, and prepared target selection instead of one
+front-loaded guard chain.
 
 ## Suggested Next
 
 The next small Step 3 packet is to trim the remaining
-`detect_short_circuit_plan_from_control_flow()` entry-condition validation into
-one helper so the body reads as prepared branch lookup, join-transfer lookup,
-continuation lookup, and final render selection instead of one long guard
-chain.
+`detect_short_circuit_plan_from_control_flow()` join-transfer and join-branch
+validation into one helper so the body reads as entry lookup, join lookup,
+continuation lookup, and final target assembly without another long guard
+sequence.
 
 ## Watchouts
 
@@ -38,6 +36,10 @@ chain.
   zero-compare contract; future cleanup here should keep `Eq`/`Ne` mapping and
   jump-target choice data-driven rather than pushing them back into the main
   matcher body.
+- `find_short_circuit_entry_blocks()` now owns the entry-condition and
+  true/false successor validation for this path; if the prepared branch
+  contract changes, update that helper instead of re-expanding the guard chain
+  in `detect_short_circuit_plan_from_control_flow()`.
 - `classify_short_circuit_join_incoming()` assumes the prepared select join
   still carries exactly one bool-like immediate lane and one named RHS lane;
   if that invariant changes, fix the shared contract rather than re-growing
@@ -52,6 +54,5 @@ chain.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The build and narrow proof are the delegated proof for this Step 3
-short-circuit-target construction cleanup packet; `test_after.log` remains the
-canonical proof log path.
+The build and narrow proof passed for this Step 3 short-circuit detector
+cleanup packet; `test_after.log` remains the canonical proof log path.

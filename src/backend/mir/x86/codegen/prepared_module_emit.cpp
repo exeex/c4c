@@ -2331,8 +2331,12 @@ std::string emit_prepared_module(
             return std::nullopt;
           }
 
-          const auto detect_short_circuit_plan_from_control_flow =
-              [&]() -> std::optional<ShortCircuitPlan> {
+          struct ShortCircuitEntryBlocks {
+            const c4c::backend::bir::Block* true_block;
+            const c4c::backend::bir::Block* false_block;
+          };
+          const auto find_short_circuit_entry_blocks =
+              [&]() -> std::optional<ShortCircuitEntryBlocks> {
             if (entry_branch_condition == nullptr || function_control_flow == nullptr ||
                 !entry_branch_condition->predicate.has_value() ||
                 !entry_branch_condition->compare_type.has_value() ||
@@ -2349,6 +2353,18 @@ std::string emit_prepared_module(
             const auto* false_block = find_block(entry_branch_condition->false_label);
             if (true_block == nullptr || false_block == nullptr || true_block == &block ||
                 false_block == &block) {
+              return std::nullopt;
+            }
+
+            return ShortCircuitEntryBlocks{
+                .true_block = true_block,
+                .false_block = false_block,
+            };
+          };
+          const auto detect_short_circuit_plan_from_control_flow =
+              [&]() -> std::optional<ShortCircuitPlan> {
+            const auto entry_blocks = find_short_circuit_entry_blocks();
+            if (!entry_blocks.has_value()) {
               return std::nullopt;
             }
 
@@ -2395,7 +2411,8 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
-            const auto* rhs_entry = short_circuit_on_compare_true ? false_block : true_block;
+            const auto* rhs_entry =
+                short_circuit_on_compare_true ? entry_blocks->false_block : entry_blocks->true_block;
             const auto continuation_plan = build_compare_join_continuation(
                 *join_transfer, *join_block, *join_branch_condition);
             if (!continuation_plan.has_value()) {
