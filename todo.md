@@ -6,39 +6,47 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2: extracted the residual dynamic-local-aggregate load/store helper
-family from `src/backend/bir/lir_to_bir_memory.cpp` into
-`src/backend/bir/lir_to_bir_memory_local_slots.cpp`, adding dedicated
-`load_dynamic_local_aggregate_array_value` and
-`append_dynamic_local_aggregate_store` helpers so the main coordinator still
-decides opcode flow while local-slot mechanics own the element-slot
-materialization.
+Plan Step 2: extracted the remaining coordinator-owned
+`DynamicLocalAggregateArrayAccess` constructor from
+`src/backend/bir/lir_to_bir_memory.cpp` into
+`src/backend/bir/lir_to_bir_memory_local_slots.cpp` as
+`build_dynamic_local_aggregate_array_access`, so the coordinator still chooses
+the GEP route while local-slot mechanics now own the repeated-extent and
+leaf-slot packaging for dynamic local aggregate array access.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by re-reading the remaining coordinator-owned
-construction sites for `dynamic_local_aggregate_arrays` in
-`src/backend/bir/lir_to_bir_memory.cpp` and decide whether the next honest
-local-slots packet is the array-access construction path itself, without
-pulling opcode admission flow out of `lower_scalar_or_local_memory_inst`.
+Continue `plan.md` Step 2 by extracting the remaining
+`dynamic_local_aggregate_arrays.find(gep->ptr.str())` projection block in
+`src/backend/bir/lir_to_bir_memory.cpp` into a local-slots helper, so the
+coordinator stops assembling per-element slot vectors for dynamic local
+aggregate GEP projections inline.
 
 ## Watchouts
 
 - This plan is refactor-only; do not claim x86 backend capability progress from
   it.
 - Keep `lower_scalar_or_local_memory_inst` in the main coordinator TU.
-- `can_reinterpret_byte_storage_view` and
-  `find_repeated_aggregate_extent_at_offset` are now the shared layout helpers
-  left behind in addressing; avoid bouncing them into local-slots unless a
-  later packet proves they are no longer shared.
-- The next packet should be chosen by remaining coordinator-owned mechanics,
-  not by line counts or by emptying `lir_to_bir_memory.cpp` for its own sake.
+- `build_dynamic_local_aggregate_array_access` now centralizes the repeated
+  extent lookup for scalar-slot-backed dynamic local aggregate arrays; keep
+  future packets focused on the remaining local-slot mechanics instead of
+  pulling shared addressing helpers across ownership buckets.
+- The regression guard script currently exits non-zero on this subset because
+  pass count stayed flat at `4/5` even though it reported `new failing tests:
+  0`; treat the canonical log pair as unchanged-behavior evidence, not as a
+  newly introduced regression.
+- The next packet should still be chosen by remaining coordinator-owned local
+  mechanics, not by line counts or by emptying `lir_to_bir_memory.cpp` for its
+  own sake.
 - Treat renderer de-headerization as separate idea `56`.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_x86_handoff_boundary|backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir|backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir|c_testsuite_x86_backend_src_00205_c)$' | tee test_after.log`.
 The build passed, and the narrow backend proof reproduced the pre-existing
-single failure `c_testsuite_x86_backend_src_00205_c` with no new subset
-regression versus `test_before.log`; the only log deltas were test ordering and
-timing noise, and `test_after.log` is the canonical proof log for this packet.
+single failure `c_testsuite_x86_backend_src_00205_c` with no new failing tests
+versus `test_before.log`. The canonical regression check
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+reported `delta : passed=0 failed=0` and `new failing tests: 0`, but still
+returned failure because it currently requires the passed count to increase
+strictly. `test_after.log` remains the canonical proof log for this packet.

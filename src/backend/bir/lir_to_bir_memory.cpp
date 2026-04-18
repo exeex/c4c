@@ -1177,23 +1177,17 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
               return fail_gep();
             }
 
-            const auto extent = find_repeated_aggregate_extent_at_offset(
-                base_aggregate_it->second.storage_type_text,
+            const auto dynamic_access = build_dynamic_local_aggregate_array_access(
+                slot_it->second,
                 static_cast<std::size_t>(*base_offset),
-                render_type(slot_it->second),
+                base_aggregate_it->second,
+                *index_value,
                 type_decls);
-            if (!extent.has_value()) {
+            if (!dynamic_access.has_value()) {
               return fail_gep();
             }
 
-            dynamic_local_aggregate_arrays[gep->result.str()] = DynamicLocalAggregateArrayAccess{
-                .element_type_text = render_type(slot_it->second),
-                .byte_offset = static_cast<std::size_t>(*base_offset),
-                .element_count = extent->element_count,
-                .element_stride_bytes = extent->element_stride_bytes,
-                .leaf_slots = base_aggregate_it->second.leaf_slots,
-                .index = *index_value,
-            };
+            dynamic_local_aggregate_arrays[gep->result.str()] = std::move(*dynamic_access);
             return true;
           }
           const auto final_byte_offset =

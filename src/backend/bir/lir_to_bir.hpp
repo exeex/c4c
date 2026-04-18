@@ -638,6 +638,13 @@ class BirFunctionLowerer {
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls,
       const LocalAggregateSlots& aggregate_slots);
+  static std::optional<DynamicLocalAggregateArrayAccess>
+  build_dynamic_local_aggregate_array_access(
+      bir::TypeKind element_type,
+      std::size_t byte_offset,
+      const LocalAggregateSlots& aggregate_slots,
+      const bir::Value& index,
+      const TypeDeclMap& type_decls);
   static std::optional<bir::Value> load_dynamic_local_aggregate_array_value(
       std::string_view result_name,
       bir::TypeKind value_type,

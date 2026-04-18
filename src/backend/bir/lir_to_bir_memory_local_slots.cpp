@@ -624,6 +624,34 @@ BirFunctionLowerer::resolve_local_dynamic_aggregate_array_access(
   };
 }
 
+std::optional<DynamicLocalAggregateArrayAccess>
+BirFunctionLowerer::build_dynamic_local_aggregate_array_access(
+    bir::TypeKind element_type,
+    std::size_t byte_offset,
+    const LocalAggregateSlots& aggregate_slots,
+    const bir::Value& index,
+    const TypeDeclMap& type_decls) {
+  if (element_type == bir::TypeKind::Void) {
+    return std::nullopt;
+  }
+
+  const auto element_type_text = render_type(element_type);
+  const auto extent = find_repeated_aggregate_extent_at_offset(
+      aggregate_slots.storage_type_text, byte_offset, element_type_text, type_decls);
+  if (!extent.has_value()) {
+    return std::nullopt;
+  }
+
+  return DynamicLocalAggregateArrayAccess{
+      .element_type_text = std::move(element_type_text),
+      .byte_offset = byte_offset,
+      .element_count = extent->element_count,
+      .element_stride_bytes = extent->element_stride_bytes,
+      .leaf_slots = aggregate_slots.leaf_slots,
+      .index = index,
+  };
+}
+
 std::optional<bir::Value> BirFunctionLowerer::load_dynamic_local_aggregate_array_value(
     std::string_view result_name,
     bir::TypeKind value_type,
