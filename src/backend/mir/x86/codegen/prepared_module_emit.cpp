@@ -2340,6 +2340,10 @@ std::string emit_prepared_module(
             const c4c::backend::bir::Block* join_block;
             const c4c::backend::prepare::PreparedBranchCondition* join_branch_condition;
           };
+          struct ShortCircuitRoutingContext {
+            ClassifiedShortCircuitIncoming classified_incoming;
+            const c4c::backend::bir::Block* rhs_entry;
+          };
           const auto find_short_circuit_entry_blocks =
               [&]() -> std::optional<ShortCircuitEntryBlocks> {
             if (entry_branch_condition == nullptr || function_control_flow == nullptr ||
@@ -2404,6 +2408,32 @@ std::string emit_prepared_module(
                 .join_branch_condition = join_branch_condition,
             };
           };
+          const auto find_short_circuit_routing_context =
+              [&](const ShortCircuitEntryBlocks& entry_blocks,
+                  const ShortCircuitJoinContext& join_context)
+              -> std::optional<ShortCircuitRoutingContext> {
+            const auto classified_incoming =
+                classify_short_circuit_join_incoming(*join_context.join_transfer);
+            if (!classified_incoming.has_value()) {
+              return std::nullopt;
+            }
+
+            const bool short_circuit_on_compare_true =
+                classified_incoming->transfer_index ==
+                *join_context.join_transfer->source_true_transfer_index;
+            const bool short_circuit_on_compare_false =
+                classified_incoming->transfer_index ==
+                *join_context.join_transfer->source_false_transfer_index;
+            if (short_circuit_on_compare_true == short_circuit_on_compare_false) {
+              return std::nullopt;
+            }
+
+            return ShortCircuitRoutingContext{
+                .classified_incoming = *classified_incoming,
+                .rhs_entry = short_circuit_on_compare_true ? entry_blocks.false_block
+                                                           : entry_blocks.true_block,
+            };
+          };
           const auto detect_short_circuit_plan_from_control_flow =
               [&]() -> std::optional<ShortCircuitPlan> {
             const auto entry_blocks = find_short_circuit_entry_blocks();
@@ -2416,23 +2446,11 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
-            const auto classified_incoming =
-                classify_short_circuit_join_incoming(*join_context->join_transfer);
-            if (!classified_incoming.has_value()) {
+            const auto routing_context =
+                find_short_circuit_routing_context(*entry_blocks, *join_context);
+            if (!routing_context.has_value()) {
               return std::nullopt;
             }
-            const bool short_circuit_on_compare_true =
-                classified_incoming->transfer_index ==
-                *join_context->join_transfer->source_true_transfer_index;
-            const bool short_circuit_on_compare_false =
-                classified_incoming->transfer_index ==
-                *join_context->join_transfer->source_false_transfer_index;
-            if (short_circuit_on_compare_true == short_circuit_on_compare_false) {
-              return std::nullopt;
-            }
-
-            const auto* rhs_entry =
-                short_circuit_on_compare_true ? entry_blocks->false_block : entry_blocks->true_block;
             const auto continuation_plan = build_compare_join_continuation(
                 *join_context->join_transfer, *join_context->join_block,
                 *join_context->join_branch_condition);
@@ -2444,15 +2462,15 @@ std::string emit_prepared_module(
             const auto on_compare_true =
                 build_short_circuit_target_from_transfer(*join_context->join_transfer,
                                                         *join_context->join_transfer->source_true_transfer_index,
-                                                        *classified_incoming,
-                                                        *rhs_entry,
+                                                        routing_context->classified_incoming,
+                                                        *routing_context->rhs_entry,
                                                         *continuation_plan);
             const auto on_compare_false =
                 build_short_circuit_target_from_transfer(
                     *join_context->join_transfer,
                     *join_context->join_transfer->source_false_transfer_index,
-                    *classified_incoming,
-                    *rhs_entry,
+                    routing_context->classified_incoming,
+                    *routing_context->rhs_entry,
                     *continuation_plan);
             if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
               return std::nullopt;
