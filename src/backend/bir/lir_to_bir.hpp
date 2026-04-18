@@ -907,6 +907,20 @@ class BirFunctionLowerer {
       GlobalPointerMap* global_pointer_slots,
       GlobalObjectPointerMap* global_object_pointer_slots,
       std::vector<bir::Inst>* lowered_insts);
+  std::optional<bool> try_lower_addressed_pointer_store(
+      std::string_view ptr_name,
+      bir::TypeKind value_type,
+      const bir::Value& value,
+      const TypeDeclMap& type_decls,
+      const PointerAddressMap& pointer_value_addresses,
+      std::vector<bir::Inst>* lowered_insts);
+  std::optional<bool> try_lower_addressed_pointer_load(
+      std::string_view result_name,
+      std::string_view ptr_name,
+      bir::TypeKind value_type,
+      const TypeDeclMap& type_decls,
+      const PointerAddressMap& pointer_value_addresses,
+      std::vector<bir::Inst>* lowered_insts);
   bool ensure_local_scratch_slot(std::string_view slot_name,
                                  bir::TypeKind type,
                                  std::size_t align_bytes);

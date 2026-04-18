@@ -6,44 +6,39 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Plan Step 2 / Step 3: moved the direct-global, global-object, and
-tracked-global-pointer load bookkeeping out of
-`src/backend/bir/lir_to_bir_memory.cpp` and into the new provenance-owned
-helper `try_lower_global_provenance_load` in
-`src/backend/bir/lir_to_bir_memory_provenance.cpp`, so the coordinator load
-path now dispatches those global/provenance branches through the extracted
-owner without changing lowering behavior.
+Plan Step 2 / Step 3: moved the scalar `pointer_value_addresses` load/store
+bookkeeping out of `src/backend/bir/lir_to_bir_memory.cpp` and into the new
+provenance-owned helpers `try_lower_addressed_pointer_store` and
+`try_lower_addressed_pointer_load` in
+`src/backend/bir/lir_to_bir_memory_provenance.cpp`, so the coordinator now
+dispatches that addressed-pointer branch through the provenance owner without
+changing lowering behavior.
 
 ## Suggested Next
 
-Continue `plan.md` Step 4 by re-reading the remaining coordinator-side load
-helpers and deciding whether the next honest extraction is the
-pointer-addressed scalar scratch-slot load path or another still-shared
-non-coordinator seam, rather than stretching the provenance bucket into local
-slot mechanics or re-touching already-extracted value materialization.
+Continue `plan.md` Step 4 by re-reading the remaining coordinator-side
+global-pointer/global-object store bookkeeping and deciding whether the next
+honest extraction is another provenance-owned scalar/global-address branch,
+rather than stretching the local-slot bucket or revisiting already-extracted
+value-materialization helpers.
 
 ## Watchouts
 
 - This plan is refactor-only; do not claim x86 backend capability progress from
   it.
 - Keep `lower_scalar_or_local_memory_inst` in the main coordinator TU.
-- `try_lower_local_slot_load` and `try_lower_local_slot_store` now own the
-  local-slot-specific load/store dispatch and bookkeeping wrappers; future
-  packets should keep those wrappers in the local-slot owner instead of
-  re-embedding local-slot alias or address updates in the coordinator.
-- Dynamic pointer-value-array load/store synthesis now lives in
-  `src/backend/bir/lir_to_bir_memory_value_materialization.cpp`; future packets
-  should keep select-tree materialization and addressed scratch-slot plumbing in
-  that owner instead of rebuilding it inline in the coordinator.
-- Dynamic global scalar-array load/select synthesis now also lives in
-  `src/backend/bir/lir_to_bir_memory_value_materialization.cpp`; future packets
-  should keep nested global element loads and inner/outer value-selection trees
-  in that owner instead of re-expanding them in `lir_to_bir_memory.cpp`.
-- Direct-global, global-object, and tracked-global-pointer load bookkeeping now
-  lives in `try_lower_global_provenance_load` under
-  `src/backend/bir/lir_to_bir_memory_provenance.cpp`; follow-on packets should
-  keep global pointer alias recovery and addressed-global access rules in the
-  provenance owner instead of moving them back into the coordinator.
+- `try_lower_global_provenance_load` and the new addressed-pointer scalar
+  helpers now live under `src/backend/bir/lir_to_bir_memory_provenance.cpp`;
+  follow-on packets should keep global/pointer alias recovery and addressed
+  access rules in the provenance owner instead of moving them back into the
+  coordinator.
+- `try_lower_local_slot_load` and `try_lower_local_slot_store` still own the
+  local-slot-specific load/store dispatch and bookkeeping wrappers; do not use
+  provenance extraction as a reason to pull local-slot alias or address updates
+  back out of that owner.
+- Dynamic pointer/global value-selection helpers already live in
+  `src/backend/bir/lir_to_bir_memory_value_materialization.cpp`; leave select
+  synthesis there instead of recreating it inline in the coordinator.
 - The regression guard script currently exits non-zero on this subset because
   pass count stayed flat at `4/5` even though it reported `new failing tests:
   0`; treat the canonical log pair as unchanged-behavior evidence, not as a
@@ -51,11 +46,7 @@ slot mechanics or re-touching already-extracted value materialization.
 - The latest accepted proof again changed only timing lines; the functional
   result remained the same `4/5` subset with the pre-existing
   `c_testsuite_x86_backend_src_00205_c` backend-emitter limitation, and the
-  accepted baseline has been rolled forward into `test_before.log`.
-- Do not stretch the local-slot bucket to absorb shared addressing,
-  global-address admission, dynamic pointer-array selection, or broad failure
-  routing just to keep this route going; if the remaining seam is no longer
-  honestly local-slot-owned, switch the next packet to the stronger owner.
+  accepted baseline has not changed functionally.
 - Treat renderer de-headerization as separate idea `56`.
 
 ## Proof

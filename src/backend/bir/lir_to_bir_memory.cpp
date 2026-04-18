@@ -982,46 +982,10 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return fail_store();
     }
 
-    const auto append_addressed_store =
-        [&](std::string_view scratch_prefix, const bir::MemoryAddress& address) -> bool {
-      const auto slot_size = type_size_bytes(*value_type);
-      if (slot_size == 0) {
-        return fail_store();
-      }
-      const std::string scratch_slot = std::string(scratch_prefix) + ".addr";
-      if (!ensure_local_scratch_slot(scratch_slot, *value_type, slot_size)) {
-        return fail_store();
-      }
-      lowered_insts->push_back(bir::StoreLocalInst{
-          .slot_name = scratch_slot,
-          .value = *value,
-          .address = address,
-      });
-      return true;
-    };
-
-    if (const auto addressed_ptr_it = pointer_value_addresses.find(store->ptr.str());
-        addressed_ptr_it != pointer_value_addresses.end()) {
-      if (!can_address_scalar_subobject(static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
-                                        addressed_ptr_it->second.value_type,
-                                        addressed_ptr_it->second.type_text,
-                                        *value_type,
-                                        type_decls,
-                                        true)) {
-        return fail_store();
-      }
-      if (!append_addressed_store(
-              store->ptr.str(),
-              bir::MemoryAddress{
-                  .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
-                  .base_value = addressed_ptr_it->second.base_value,
-                  .byte_offset = static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
-                  .size_bytes = type_size_bytes(*value_type),
-                  .align_bytes = type_size_bytes(*value_type),
-              })) {
-        return fail_store();
-      }
-      return true;
+    if (const auto addressed_store = try_lower_addressed_pointer_store(
+            store->ptr.str(), *value_type, *value, type_decls, pointer_value_addresses, lowered_insts);
+        addressed_store.has_value()) {
+      return *addressed_store ? true : fail_store();
     }
 
     if (const auto local_slot_ptr_it = local_slot_pointer_values.find(store->ptr.str());
@@ -1185,37 +1149,10 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       return *global_load ? true : fail_load();
     }
 
-    if (const auto addressed_ptr_it = pointer_value_addresses.find(load->ptr.str());
-        addressed_ptr_it != pointer_value_addresses.end()) {
-      if (!can_address_scalar_subobject(static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
-                                        addressed_ptr_it->second.value_type,
-                                        addressed_ptr_it->second.type_text,
-                                        *value_type,
-                                        type_decls,
-                                        true)) {
-        return fail_load();
-      }
-      const auto slot_size = type_size_bytes(*value_type);
-      if (slot_size == 0) {
-        return fail_load();
-      }
-      const std::string scratch_slot = load->result.str() + ".addr";
-      if (!ensure_local_scratch_slot(scratch_slot, *value_type, slot_size)) {
-        return fail_load();
-      }
-      lowered_insts->push_back(bir::LoadLocalInst{
-          .result = bir::Value::named(*value_type, load->result.str()),
-          .slot_name = std::move(scratch_slot),
-          .address =
-              bir::MemoryAddress{
-                  .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
-                  .base_value = addressed_ptr_it->second.base_value,
-                  .byte_offset = static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
-                  .size_bytes = slot_size,
-                  .align_bytes = slot_size,
-              },
-      });
-      return true;
+    if (const auto addressed_load = try_lower_addressed_pointer_load(
+            load->result.str(), load->ptr.str(), *value_type, type_decls, pointer_value_addresses, lowered_insts);
+        addressed_load.has_value()) {
+      return *addressed_load ? true : fail_load();
     }
 
     if (const auto local_slot_ptr_it = local_slot_pointer_values.find(load->ptr.str());
