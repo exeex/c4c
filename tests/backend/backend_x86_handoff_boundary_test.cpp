@@ -6074,8 +6074,70 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
       status != 0) {
     return status;
   }
-  return require_prepared_global_base(
-      prepared_join_branches->false_return_context, false_global_name, global_byte_offset);
+  if (const auto status = require_prepared_global_base(
+          prepared_join_branches->false_return_context, false_global_name, global_byte_offset);
+      status != 0) {
+    return status;
+  }
+
+  const auto prepared_compare_join_packet =
+      prepare::find_prepared_param_zero_materialized_compare_join_branches(
+          *mutable_control_flow, function, *entry_block, function.params.front(), true);
+  if (!prepared_compare_join_packet.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer publishes the compare-join packet for resolved arm ownership")
+                    .c_str());
+  }
+  const auto resolved_render_contract =
+      prepare::find_prepared_resolved_materialized_compare_join_render_contract(
+          prepared.module, *prepared_compare_join_packet);
+  if (!resolved_render_contract.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer resolves compare-join arm globals through the render contract")
+                    .c_str());
+  }
+
+  const auto require_resolved_return_arm =
+      [&](const prepare::PreparedResolvedMaterializedCompareJoinReturnArm& return_arm,
+          const char* expected_global_name,
+          std::size_t expected_global_byte_offset) -> int {
+        if (return_arm.arm.context.selected_value.base.global_name != expected_global_name ||
+            return_arm.arm.context.selected_value.base.global_byte_offset !=
+                expected_global_byte_offset ||
+            return_arm.global == nullptr ||
+            return_arm.global->name != expected_global_name) {
+          return fail((std::string(failure_context) +
+                       ": shared helper stopped packaging resolved compare-join arm globals")
+                          .c_str());
+        }
+        if (use_pointer_backed_global_roots) {
+          const char* expected_root_name =
+              expected_global_name == true_global_name ? "selected_zero_root"
+                                                       : "selected_nonzero_root";
+          if (return_arm.arm.context.selected_value.base.pointer_root_global_name !=
+                  expected_root_name ||
+              return_arm.pointer_root_global == nullptr ||
+              return_arm.pointer_root_global->name != expected_root_name ||
+              return_arm.pointer_root_global->type != bir::TypeKind::Ptr) {
+            return fail((std::string(failure_context) +
+                         ": shared helper stopped packaging resolved pointer-backed compare-join arm globals")
+                            .c_str());
+          }
+        } else if (return_arm.pointer_root_global != nullptr) {
+          return fail((std::string(failure_context) +
+                       ": shared helper published an unexpected pointer-root global for a direct compare-join arm")
+                          .c_str());
+        }
+        return 0;
+      };
+
+  if (const auto status = require_resolved_return_arm(
+          resolved_render_contract->true_return, true_global_name, global_byte_offset);
+      status != 0) {
+    return status;
+  }
+  return require_resolved_return_arm(
+      resolved_render_contract->false_return, false_global_name, global_byte_offset);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_global_return_contexts(

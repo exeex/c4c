@@ -11,25 +11,25 @@ Source Plan: plan.md
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/prealloc/prealloc.hpp`,
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp`, and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` by adding a shared
-prepared compare-join return-arm helper that packages each arm's return
-context together with its classified return shape, switching the x86
-compare-join consumer to render each true/false arm from that paired prepared
-contract instead of locally pairing context and shape, and extending the
-handoff-boundary test suite to prove the render contract now preserves the
-packaged true/false return-arm ownership for this materialized compare-join
-family.
+`tests/backend/backend_x86_handoff_boundary_test.cpp` by extending the shared
+resolved compare-join render contract so each packaged true/false return arm
+now carries its authoritative resolved same-module-global ownership, switching
+the x86 compare-join consumer to render those global-backed arms from the
+resolved prepared contract instead of re-looking globals up by name in the
+emitter, and extending the handoff-boundary test suite to prove that resolved
+arm ownership survives both ordinary and `PreparedJoinTransferKind::EdgeStoreSlot`
+compare-join carrier variants.
 
 ## Suggested Next
 
 The next accepted packet should stay in Step 3 and remove one more small
 x86-local compare/join consumption seam only if it still reflects shared
-semantic ownership rather than x86 spelling, most likely by extending the same
-prepared compare-join helper family to cover another still-duplicated consumer
-decision such as resolved same-module-global usage or the remaining
-EdgeStoreSlot-aligned arm contract path. Keep the work in shared consumer
-helpers and focused proof, not emitter cleanup or broader backend route
-changes.
+semantic ownership rather than x86 spelling, most likely by pushing one more
+materialized compare-join return-arm decision or helper lookup out of
+`prepared_module_emit.cpp` and into the shared prepared contract where the x86
+consumer can keep treating packaged branch/join facts as authoritative. Keep
+the work in shared consumer helpers and focused proof, not emitter cleanup or
+broader backend route changes.
 
 ## Watchouts
 
@@ -38,12 +38,12 @@ changes.
   route changes.
 - Do not solve remaining compare-join gaps with x86-side CFG scans or
   testcase-shaped matcher growth.
-- The shared compare-join render contract now has a direct resolved-helper path
-  from prepared compare-join branches to authoritative branch labels,
-  false-branch opcode, packaged true/false return arms, and same-module-global
-  ownership. Keep follow-on work focused on moving the remaining compare/join
-  composition decisions into shared helpers instead of rebuilding lane
-  semantics or global ownership in x86.
+- The shared compare-join render contract now carries authoritative branch
+  labels, false-branch opcode, packaged true/false return arms, whole-contract
+  same-module-global ownership, and per-arm resolved same-module-global
+  references for the global-backed return lanes. Keep follow-on work focused
+  on moving the remaining compare/join composition decisions into shared
+  helpers instead of rebuilding lane semantics or global ownership in x86.
 - The x86 short-circuit and compare-join consumers should continue treating
   returned prepared lane ownership, continuation labels, and compare-join
   branch labels as authoritative; do not reintroduce raw selected-value
@@ -59,8 +59,8 @@ changes.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The focused proof refreshes `test_after.log` with the
-`backend_x86_handoff_boundary` subset for the new shared compare-join
-return-arm helper, the x86 consumer that now renders each compare-join arm
-from the packaged prepared contract instead of locally pairing context and
-shape, and the existing prepared branch/join ownership families that still
-prove the same handoff contracts.
+`backend_x86_handoff_boundary` subset for the new shared resolved compare-join
+arm contract, the x86 consumer that now renders global-backed compare-join
+arms from the resolved prepared contract instead of local global-name lookup,
+and the existing prepared branch/join ownership families that still prove the
+same handoff contracts.

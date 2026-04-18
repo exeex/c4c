@@ -663,10 +663,16 @@ struct PreparedMaterializedCompareJoinRenderContract {
   std::vector<std::string_view> same_module_global_names;
 };
 
+struct PreparedResolvedMaterializedCompareJoinReturnArm {
+  PreparedMaterializedCompareJoinReturnArm arm;
+  const bir::Global* global = nullptr;
+  const bir::Global* pointer_root_global = nullptr;
+};
+
 struct PreparedResolvedMaterializedCompareJoinRenderContract {
   PreparedMaterializedCompareJoinBranchPlan branch_plan;
-  PreparedMaterializedCompareJoinReturnArm true_return;
-  PreparedMaterializedCompareJoinReturnArm false_return;
+  PreparedResolvedMaterializedCompareJoinReturnArm true_return;
+  PreparedResolvedMaterializedCompareJoinReturnArm false_return;
   std::vector<const bir::Global*> same_module_globals;
 };
 
@@ -740,6 +746,11 @@ collect_prepared_materialized_compare_join_same_module_globals(
 resolve_prepared_materialized_compare_join_same_module_globals(
     const bir::Module& module,
     const PreparedMaterializedCompareJoinRenderContract& render_contract);
+
+[[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinReturnArm>
+resolve_prepared_materialized_compare_join_return_arm(
+    const bir::Module& module,
+    const PreparedMaterializedCompareJoinReturnArm& return_arm);
 
 [[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
 resolve_prepared_materialized_compare_join_render_contract(
@@ -1726,26 +1737,77 @@ collect_prepared_materialized_compare_join_same_module_globals(
 resolve_prepared_materialized_compare_join_same_module_globals(
     const bir::Module& module,
     const PreparedMaterializedCompareJoinRenderContract& render_contract) {
-  std::vector<const bir::Global*> globals;
-  globals.reserve(render_contract.same_module_global_names.size());
-  for (const auto global_name : render_contract.same_module_global_names) {
-    const bir::Global* resolved_global = nullptr;
+  const auto find_same_module_global =
+      [&](std::string_view global_name) -> const bir::Global* {
     for (const auto& global : module.globals) {
       if (global.name != global_name) {
         continue;
       }
       if (global.is_extern || global.is_thread_local) {
-        return std::nullopt;
+        return nullptr;
       }
-      resolved_global = &global;
-      break;
+      return &global;
     }
+    return nullptr;
+  };
+
+  std::vector<const bir::Global*> globals;
+  globals.reserve(render_contract.same_module_global_names.size());
+  for (const auto global_name : render_contract.same_module_global_names) {
+    const auto* resolved_global = find_same_module_global(global_name);
     if (resolved_global == nullptr) {
       return std::nullopt;
     }
     globals.push_back(resolved_global);
   }
   return globals;
+}
+
+[[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinReturnArm>
+resolve_prepared_materialized_compare_join_return_arm(
+    const bir::Module& module,
+    const PreparedMaterializedCompareJoinReturnArm& return_arm) {
+  const auto find_same_module_global =
+      [&](std::string_view global_name) -> const bir::Global* {
+    for (const auto& global : module.globals) {
+      if (global.name != global_name) {
+        continue;
+      }
+      if (global.is_extern || global.is_thread_local) {
+        return nullptr;
+      }
+      return &global;
+    }
+    return nullptr;
+  };
+
+  PreparedResolvedMaterializedCompareJoinReturnArm resolved_return{
+      .arm = return_arm,
+  };
+  const auto& selected_value = return_arm.context.selected_value;
+  switch (selected_value.base.kind) {
+    case PreparedComputedBaseKind::ImmediateI32:
+    case PreparedComputedBaseKind::ParamValue:
+      break;
+    case PreparedComputedBaseKind::GlobalI32Load:
+      resolved_return.global = find_same_module_global(selected_value.base.global_name);
+      if (resolved_return.global == nullptr) {
+        return std::nullopt;
+      }
+      break;
+    case PreparedComputedBaseKind::PointerBackedGlobalI32Load:
+      resolved_return.pointer_root_global =
+          find_same_module_global(selected_value.base.pointer_root_global_name);
+      resolved_return.global = find_same_module_global(selected_value.base.global_name);
+      if (resolved_return.pointer_root_global == nullptr ||
+          resolved_return.pointer_root_global->type != bir::TypeKind::Ptr ||
+          resolved_return.global == nullptr) {
+        return std::nullopt;
+      }
+      break;
+  }
+
+  return resolved_return;
 }
 
 [[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
@@ -1757,11 +1819,18 @@ resolve_prepared_materialized_compare_join_render_contract(
   if (!same_module_globals.has_value()) {
     return std::nullopt;
   }
+  const auto true_return =
+      resolve_prepared_materialized_compare_join_return_arm(module, render_contract.true_return);
+  const auto false_return =
+      resolve_prepared_materialized_compare_join_return_arm(module, render_contract.false_return);
+  if (!true_return.has_value() || !false_return.has_value()) {
+    return std::nullopt;
+  }
 
   return PreparedResolvedMaterializedCompareJoinRenderContract{
       .branch_plan = render_contract.branch_plan,
-      .true_return = render_contract.true_return,
-      .false_return = render_contract.false_return,
+      .true_return = std::move(*true_return),
+      .false_return = std::move(*false_return),
       .same_module_globals = std::move(*same_module_globals),
   };
 }
