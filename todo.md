@@ -10,18 +10,18 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` by extracting a shared
-authoritative-transfer classifier for select-materialization joins, so both the
-materialized-compare consumer and the short-circuit select-join consumer reuse
-the same prepared true/false transfer validation without forcing the
-short-circuit path through predecessor-block matching.
+authoritative select-materialization join lookup for the materialized-compare
+and short-circuit consumers, while keeping the short-circuit-only exact-two-lane
+guard local so the joined-branch route does not lose broader authoritative
+select-join coverage.
 
 ## Suggested Next
 
-The next small Step 3 packet is to inspect the remaining select-materialization
-consumer entry guards around `render_materialized_compare_join_if_supported()`
-and the short-circuit entry-plan builder, and remove any still-duplicated
-prepared-branch/select-join shape checks that can be shared without widening
-the accepted CFG families.
+The next small Step 3 packet is to inspect whether
+`find_authoritative_join_branch_sources()` can consume the already-validated
+authoritative select-join context from the materialized-compare path, so x86
+stops reclassifying the same prepared transfers while preserving the existing
+topology and incoming-label checks.
 
 ## Watchouts
 
@@ -47,6 +47,10 @@ the accepted CFG families.
 - `test_before.log` remains the narrow baseline for
   `^backend_x86_handoff_boundary$`, and this packet refreshed `test_after.log`
   with the same focused proof command for supervisor review.
+- Keep the short-circuit path's `edge_transfers.size() == 2` requirement local
+  to that route: the joined materialized-compare consumer still depends on
+  authoritative select-join metadata without requiring the transfer list to
+  collapse to exactly two total edges.
 - Treat any future fix here as capability repair, not expectation weakening:
   the joined-branch and loop-countdown routes are covered by
   `backend_x86_handoff_boundary`.
@@ -55,6 +59,6 @@ the accepted CFG families.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-This Step 3 shared authoritative-transfer classification packet uses the same
+This Step 3 shared authoritative select-join lookup packet uses the same
 focused proof command, and `test_after.log` is the canonical proof log path
 for the result.
