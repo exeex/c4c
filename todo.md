@@ -17,11 +17,10 @@ tests remain green.
 
 ## Suggested Next
 
-Keep `00210` explicit as the next adjacent boundary and re-baseline whether
-the next honest packet is the multi-defined-function prepared-module lane or a
-different nearby prepared-module family. Do not fold that broader route into
-this completed single-defined-function direct extern-call slice after the
-fact.
+Execute the new `plan.md` Step 1 checkpoint: re-baseline `00210` against the
+remaining nearby prepared-module neighbors and name one truthful next family
+before delegating more implementation. Do not fold that broader route into the
+completed single-defined-function direct extern-call slice after the fact.
 
 ## Watchouts
 
