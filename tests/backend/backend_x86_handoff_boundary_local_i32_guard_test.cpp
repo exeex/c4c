@@ -134,6 +134,23 @@ std::string expected_minimal_local_i32_immediate_guard_asm(const char* function_
          "    ret\n";
 }
 
+std::string expected_minimal_local_i32_immediate_guard_asm_with_frame_size(const char* function_name,
+                                                                           int immediate,
+                                                                           int frame_size) {
+  return asm_header(function_name) + "    sub rsp, " + std::to_string(frame_size) + "\n"
+         "    mov DWORD PTR [rsp], " + std::to_string(immediate) + "\n"
+         "    mov eax, DWORD PTR [rsp]\n"
+         "    cmp eax, " + std::to_string(immediate) + "\n"
+         "    je .L" + function_name + "_block_2\n"
+         "    mov eax, 1\n"
+         "    add rsp, " + std::to_string(frame_size) + "\n"
+         "    ret\n"
+         ".L" + function_name + "_block_2:\n"
+         "    mov eax, 0\n"
+         "    add rsp, " + std::to_string(frame_size) + "\n"
+         "    ret\n";
+}
+
 bir::Module make_x86_local_i32_immediate_guard_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -388,6 +405,47 @@ int check_local_i32_guard_helper_publishes_prepared_compare_contract(const bir::
   return 0;
 }
 
+int check_local_i32_guard_route_consumes_prepared_frame_contract(const bir::Module& module,
+                                                                 const std::string& expected_asm,
+                                                                 const char* function_name,
+                                                                 const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  if (function_addressing == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes prepared frame facts for the local guard function")
+                    .c_str());
+  }
+
+  auto mutated = prepared;
+  prepare::PreparedAddressingFunction* mutable_addressing = nullptr;
+  for (auto& candidate : mutated.addressing.functions) {
+    if (candidate.function_name == function_name) {
+      mutable_addressing = &candidate;
+      break;
+    }
+  }
+  if (mutable_addressing == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": mutated prepared local guard fixture lost its prepared frame facts")
+                    .c_str());
+  }
+  mutable_addressing->frame_size_bytes = 24;
+  mutable_addressing->frame_alignment_bytes = 8;
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(mutated);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative prepared frame facts for local guard stack adjustment")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_local_i32_guard_tests() {
@@ -413,6 +471,15 @@ int run_backend_x86_handoff_boundary_local_i32_guard_tests() {
               make_x86_local_i32_immediate_guard_module(),
               "main",
               "minimal local-slot compare-against-immediate guard prepared branch-contract ownership rejects drifted prepared labels instead of falling back to the local guard matcher");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_local_i32_guard_route_consumes_prepared_frame_contract(
+              make_x86_local_i32_immediate_guard_module(),
+              expected_minimal_local_i32_immediate_guard_asm_with_frame_size("main", 123, 32),
+              "main",
+              "minimal local-slot compare-against-immediate guard prepared frame-contract ownership");
       status != 0) {
     return status;
   }

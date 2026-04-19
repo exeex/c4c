@@ -18,6 +18,7 @@ std::size_t align_up(std::size_t value, std::size_t align) {
 
 std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
     const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     c4c::TargetArch prepared_arch) {
   if (prepared_arch != c4c::TargetArch::X86_64) {
     return std::nullopt;
@@ -49,6 +50,14 @@ std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_la
     next_offset += slot_size;
     max_align = std::max(max_align, slot_align);
   }
+  if (function_addressing != nullptr) {
+    const auto required_frame_alignment =
+        std::max<std::size_t>(16, function_addressing->frame_alignment_bytes);
+    layout.frame_alignment = required_frame_alignment;
+    layout.frame_size = align_up(function_addressing->frame_size_bytes, required_frame_alignment);
+    return layout;
+  }
+  layout.frame_alignment = max_align;
   layout.frame_size = align_up(next_offset, max_align);
   return layout;
 }
@@ -105,6 +114,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     const c4c::backend::bir::Module& module,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
@@ -122,7 +132,8 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
   if (!function.params.empty() || function.blocks.empty() || prepared_arch != c4c::TargetArch::X86_64) {
     return std::nullopt;
   }
-  const auto layout = build_prepared_module_local_slot_layout(function, prepared_arch);
+  const auto layout =
+      build_prepared_module_local_slot_layout(function, function_addressing, prepared_arch);
   if (!layout.has_value()) {
     return std::nullopt;
   }
@@ -704,6 +715,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
 std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
@@ -714,7 +726,8 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     return std::nullopt;
   }
 
-  const auto layout = build_prepared_module_local_slot_layout(function, prepared_arch);
+  const auto layout =
+      build_prepared_module_local_slot_layout(function, function_addressing, prepared_arch);
   if (!layout.has_value()) {
     return std::nullopt;
   }
@@ -1016,6 +1029,7 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
 std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
@@ -1026,7 +1040,8 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
       entry.insts.size() != 9) {
     return std::nullopt;
   }
-  const auto layout = build_prepared_module_local_slot_layout(function, prepared_arch);
+  const auto layout =
+      build_prepared_module_local_slot_layout(function, function_addressing, prepared_arch);
   if (!layout.has_value()) {
     return std::nullopt;
   }
@@ -1225,6 +1240,7 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
 std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix) {
   if (!function.params.empty() || function.blocks.size() != 1 ||
@@ -1233,7 +1249,8 @@ std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported
       !entry.terminator.value.has_value() || entry.insts.size() != 10) {
     return std::nullopt;
   }
-  const auto layout = build_prepared_module_local_slot_layout(function, prepared_arch);
+  const auto layout =
+      build_prepared_module_local_slot_layout(function, function_addressing, prepared_arch);
   if (!layout.has_value()) {
     return std::nullopt;
   }
@@ -1900,6 +1917,7 @@ std::optional<std::string> render_prepared_minimal_immediate_or_param_return_if_
 
 std::optional<std::string> render_prepared_minimal_local_slot_return_if_supported(
     const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix) {
   if (function.params.empty() == false || function.blocks.size() != 1 ||
@@ -1908,7 +1926,8 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
       function.blocks.front().insts.empty()) {
     return std::nullopt;
   }
-  const auto layout = build_prepared_module_local_slot_layout(function, prepared_arch);
+  const auto layout =
+      build_prepared_module_local_slot_layout(function, function_addressing, prepared_arch);
   if (!layout.has_value()) {
     return std::nullopt;
   }
@@ -2255,6 +2274,7 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
     const c4c::backend::bir::Module& module,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
     std::string_view return_register,
@@ -2288,13 +2308,14 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
     return *rendered_constant_folded;
   }
   if (const auto rendered_local_slot =
-          render_prepared_minimal_local_slot_return_if_supported(function, prepared_arch, asm_prefix);
+          render_prepared_minimal_local_slot_return_if_supported(
+              function, function_addressing, prepared_arch, asm_prefix);
       rendered_local_slot.has_value()) {
     return *rendered_local_slot;
   }
   if (const auto rendered_local_i16_i64_return =
           render_prepared_local_i16_i64_sub_return_if_supported(
-              function, entry, prepared_arch, asm_prefix);
+              function, entry, function_addressing, prepared_arch, asm_prefix);
       rendered_local_i16_i64_return.has_value()) {
     return *rendered_local_i16_i64_return;
   }
@@ -2345,8 +2366,8 @@ render_prepared_bounded_multi_defined_call_lane_module_if_supported(
       return std::nullopt;
     }
 
-    const auto candidate_layout =
-        build_prepared_module_local_slot_layout(*candidate, prepared_arch);
+    const auto candidate_layout = build_prepared_module_local_slot_layout(
+        *candidate, nullptr, prepared_arch);
     if (!candidate_layout.has_value()) {
       return std::nullopt;
     }

@@ -290,6 +290,7 @@ struct StackSlot {
 struct PreparedModuleLocalSlotLayout {
   std::unordered_map<std::string_view, std::size_t> offsets;
   std::size_t frame_size = 0;
+  std::size_t frame_alignment = 0;
 };
 
 struct PreparedBoundedMultiDefinedCallLaneRender {
@@ -320,7 +321,14 @@ struct PreparedModuleMultiDefinedDispatchState {
 
 std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
     const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     c4c::TargetArch prepared_arch);
+
+inline std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
+    const c4c::backend::bir::Function& function,
+    c4c::TargetArch prepared_arch) {
+  return build_prepared_module_local_slot_layout(function, nullptr, prepared_arch);
+}
 
 std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
                                                  std::string_view size_name);
@@ -364,6 +372,7 @@ std::optional<std::string> render_prepared_minimal_immediate_or_param_return_if_
 
 std::optional<std::string> render_prepared_minimal_local_slot_return_if_supported(
     const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix);
 
@@ -371,6 +380,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     const c4c::backend::bir::Module& module,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
@@ -389,6 +399,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
 std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
@@ -397,6 +408,7 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
 std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
@@ -405,6 +417,7 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
 std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix);
 
@@ -439,6 +452,7 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
     const c4c::backend::bir::Module& module,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
     std::string_view return_register,

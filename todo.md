@@ -3,26 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/61_stack_frame_and_addressing_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Produce Frame And Addressing Facts In Shared Prepare
-Plan Review Counter: 3 / 10
+Current Step ID: 3.1
+Current Step Title: Frame Layout Consumer Migration
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed the next Step 2 packet by teaching shared prepare to publish
-per-instruction pointer-indirect addressing during stack layout:
-`src/backend/prealloc/stack_layout.cpp` now records `PreparedMemoryAccess`
-entries for `LoadLocalInst`, `StoreLocalInst`, `LoadGlobalInst`, and
-`StoreGlobalInst` lanes that carry pointer-value addresses, and
-`tests/backend/backend_prepare_stack_layout_test.cpp` proves those records
-alongside the earlier direct frame-slot and symbol-backed producer coverage.
+Completed the first Step 3.1 packet by threading prepared frame facts through
+the x86 prepared-module entry points and using them for covered prologue and
+epilogue stack adjustment:
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp`,
+`src/backend/mir/x86/codegen/x86_codegen.hpp`, and
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` now feed prepared
+frame size and alignment facts into the covered local-slot renderers, while
+`tests/backend/backend_x86_handoff_boundary_local_i32_guard_test.cpp` proves
+that stack adjustment follows authoritative prepared frame facts instead of
+falling back to local frame-size recomputation.
 
 ## Suggested Next
 
-Begin Step 3.1 by teaching the prepared x86 frame-layout consumer to use the
-published prepared frame size and alignment facts for prologue/epilogue
-emission instead of recomputing frame layout locally.
+Continue with Step 3.2 by teaching the x86 prepared local-slot consumer to use
+prepared addressing lookups for direct frame-slot and symbol-backed memory
+operands, so covered loads and stores stop recovering slot or symbol operands
+locally.
 
 ## Watchouts
 
@@ -30,17 +34,18 @@ emission instead of recomputing frame layout locally.
   activate blocked idea 59 through the runbook text.
 - Treat value-home and move-bundle ownership as idea 60 scope, not something
   to absorb into this plan.
-- Shared prepare now publishes frame metrics plus direct frame-slot,
-  symbol-backed, and pointer-indirect access records for the covered load/store
-  lanes.
-- X86 still consumes private frame/address reconstruction until later Step 3
-  packets land.
+- Shared prepare now publishes the frame and addressing facts Step 3 needs, and
+  covered x86 stack adjustment consumes prepared frame size/alignment, but
+  direct frame-slot and symbol-backed memory operand rendering is still local.
+- Keep Step 3.2 focused on direct frame-slot, global-symbol, and
+  string-constant access consumption. Pointer-indirect memory operands belong
+  to the later Step 3.3 cleanup packet.
 - Prefer prepared frame/address data over x86-local slot-name, suffix, or
-  offset reconstruction.
+  offset reconstruction whenever the Step 3 packet is covering that lane.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
---output-on-failure -R '^backend_prepare_stack_layout$' | tee test_after.log`
-for this Step 2 pointer-indirect packet; the focused stack-layout subset
-passed and `test_after.log` is the canonical proof log for the packet.
+--output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
+for this Step 3.1 frame-layout packet; the focused x86 handoff subset passed
+and `test_after.log` is the canonical proof log for the packet.
