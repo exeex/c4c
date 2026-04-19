@@ -8,20 +8,20 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 3 Consume Prepared Control-Flow In X86 packet by moving the
-recursive compare-join entry target decision behind a shared helper:
+Completed a Step 3 Consume Prepared Control-Flow In X86 packet by publishing a
+direct shared compare-join entry target resolver:
 `src/backend/prealloc/prealloc.hpp` now owns the
 authoritative-compare-join-targets-first, continuation-label-fallback-second
-decision for compare-join entry rendering, and
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` now consumes that shared
-helper instead of open-coding the target seeding locally.
+decision behind `resolve_prepared_compare_join_entry_target_labels()`, and
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` now consumes that helper
+instead of carrying the fallback branch locally.
 
 ## Suggested Next
 
-Stay in Step 3 and close another compare-join contract gap in shared helpers,
-such as publishing a more direct non-short-circuit materialized-compare/join
-entry branch packet so x86 can consume prepared entry-target decisions without
-carrying continuation-label fallback knowledge at the call site.
+Stay in Step 3 and close the next compare-join contract gap by publishing a
+shared non-short-circuit materialized-compare/join entry branch-plan helper, so
+x86 can consume prepared branch-target labels for this entry path without
+assembling that plan shape locally.
 
 ## Watchouts
 
@@ -31,10 +31,10 @@ carrying continuation-label fallback knowledge at the call site.
 - This packet intentionally moved decision ownership, not feature coverage: do
   not justify new compare-join passthrough shapes or emitter-local matcher
   growth from it.
-- The bounded continuation-label fallback still exists for nested shapes that
-  are not yet fully published through shared compare-join entry helpers;
-  follow-on work should close that gap in shared helpers rather than teaching
-  x86 more local topology knowledge.
+- The bounded continuation-label fallback is now hidden behind the shared
+  resolver, but x86 still assembles the direct entry branch plan from raw
+  labels; the next packet should publish more of that prepared plan shape
+  without teaching x86 new local topology knowledge.
 - The broader `^backend_` checkpoint still has the same four known failures in
   variadic and dynamic-member-array semantic lowering outside this packet's
   owned files.
