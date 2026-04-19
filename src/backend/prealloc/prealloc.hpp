@@ -549,20 +549,38 @@ enum class PrepareRoute {
 }
 
 enum class PreparedJoinTransferKind {
-  SelectMaterialization,
-  EdgeStoreSlot,
+  PhiEdge,
+  SelectMaterialization = PhiEdge,
+  EdgeStoreSlot = PhiEdge,
   LoopCarry,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_join_transfer_kind_name(
     PreparedJoinTransferKind kind) {
   switch (kind) {
-    case PreparedJoinTransferKind::SelectMaterialization:
-      return "select_materialization";
-    case PreparedJoinTransferKind::EdgeStoreSlot:
-      return "edge_store_slot";
+    case PreparedJoinTransferKind::PhiEdge:
+      return "phi_edge";
     case PreparedJoinTransferKind::LoopCarry:
       return "loop_carry";
+  }
+  return "unknown";
+}
+
+enum class PreparedJoinTransferCarrierKind {
+  None,
+  SelectMaterialization,
+  EdgeStoreSlot,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_join_transfer_carrier_kind_name(
+    PreparedJoinTransferCarrierKind kind) {
+  switch (kind) {
+    case PreparedJoinTransferCarrierKind::None:
+      return "none";
+    case PreparedJoinTransferCarrierKind::SelectMaterialization:
+      return "select_materialization";
+    case PreparedJoinTransferCarrierKind::EdgeStoreSlot:
+      return "edge_store_slot";
   }
   return "unknown";
 }
@@ -617,7 +635,8 @@ struct PreparedJoinTransfer {
   FunctionNameId function_name = kInvalidFunctionName;
   BlockLabelId join_block_label = kInvalidBlockLabel;
   bir::Value result;
-  PreparedJoinTransferKind kind = PreparedJoinTransferKind::SelectMaterialization;
+  PreparedJoinTransferKind kind = PreparedJoinTransferKind::PhiEdge;
+  PreparedJoinTransferCarrierKind carrier_kind = PreparedJoinTransferCarrierKind::None;
   std::optional<SlotNameId> storage_name;
   std::vector<bir::PhiIncoming> incomings;
   std::vector<PreparedEdgeValueTransfer> edge_transfers;
@@ -627,6 +646,21 @@ struct PreparedJoinTransfer {
   std::optional<BlockLabelId> source_true_incoming_label;
   std::optional<BlockLabelId> source_false_incoming_label;
 };
+
+[[nodiscard]] constexpr PreparedJoinTransferCarrierKind effective_prepared_join_transfer_carrier_kind(
+    const PreparedJoinTransfer& transfer) {
+  if (transfer.storage_name.has_value()) {
+    return PreparedJoinTransferCarrierKind::EdgeStoreSlot;
+  }
+  if (transfer.carrier_kind != PreparedJoinTransferCarrierKind::None) {
+    return transfer.carrier_kind;
+  }
+  if (transfer.source_true_transfer_index.has_value() &&
+      transfer.source_false_transfer_index.has_value()) {
+    return PreparedJoinTransferCarrierKind::SelectMaterialization;
+  }
+  return PreparedJoinTransferCarrierKind::None;
+}
 
 struct PreparedControlFlowFunction {
   FunctionNameId function_name = kInvalidFunctionName;
@@ -1465,12 +1499,37 @@ find_prepared_param_zero_branch_return_context(const PreparedNameTables& names,
     BlockLabelId source_branch_block_label,
     std::optional<BlockLabelId> true_predecessor_label = std::nullopt,
     std::optional<BlockLabelId> false_predecessor_label = std::nullopt) {
-  return find_branch_owned_join_transfer(names,
-                                         function_cf,
-                                         source_branch_block_label,
-                                         PreparedJoinTransferKind::SelectMaterialization,
-                                         true_predecessor_label,
-                                         false_predecessor_label);
+  static_cast<void>(names);
+  if (source_branch_block_label == kInvalidBlockLabel) {
+    return nullptr;
+  }
+
+  const PreparedJoinTransfer* match = nullptr;
+  for (const auto& transfer : function_cf.join_transfers) {
+    if (!transfer.source_branch_block_label.has_value() ||
+        *transfer.source_branch_block_label != source_branch_block_label ||
+        transfer.kind != PreparedJoinTransferKind::PhiEdge ||
+        effective_prepared_join_transfer_carrier_kind(transfer) !=
+            PreparedJoinTransferCarrierKind::SelectMaterialization) {
+      continue;
+    }
+    if (true_predecessor_label.has_value() && false_predecessor_label.has_value()) {
+      bool saw_true = false;
+      bool saw_false = false;
+      for (const auto& edge_transfer : transfer.edge_transfers) {
+        saw_true = saw_true || edge_transfer.predecessor_label == *true_predecessor_label;
+        saw_false = saw_false || edge_transfer.predecessor_label == *false_predecessor_label;
+      }
+      if (!saw_true || !saw_false) {
+        continue;
+      }
+    }
+    if (match != nullptr) {
+      return nullptr;
+    }
+    match = &transfer;
+  }
+  return match;
 }
 
 [[nodiscard]] inline std::optional<PreparedAuthoritativeBranchJoinTransfer>
@@ -1488,8 +1547,7 @@ find_authoritative_branch_owned_join_transfer(
                                                               true_predecessor_label,
                                                               false_predecessor_label);
   if (join_transfer == nullptr ||
-      (join_transfer->kind != PreparedJoinTransferKind::SelectMaterialization &&
-       join_transfer->kind != PreparedJoinTransferKind::EdgeStoreSlot) ||
+      join_transfer->kind != PreparedJoinTransferKind::PhiEdge ||
       join_transfer->result.type != bir::TypeKind::I32 ||
       !join_transfer->source_true_transfer_index.has_value() ||
       !join_transfer->source_false_transfer_index.has_value()) {
@@ -1510,7 +1568,8 @@ find_authoritative_branch_owned_join_transfer(
     return std::nullopt;
   }
 
-  if (join_transfer->kind == PreparedJoinTransferKind::EdgeStoreSlot) {
+  if (effective_prepared_join_transfer_carrier_kind(*join_transfer) ==
+      PreparedJoinTransferCarrierKind::EdgeStoreSlot) {
     if (!join_transfer->storage_name.has_value() ||
         !true_transfer->storage_name.has_value() ||
         !false_transfer->storage_name.has_value() ||
@@ -1723,7 +1782,8 @@ find_authoritative_short_circuit_join_sources(
   if (const auto* select = std::get_if<bir::SelectInst>(&join_carrier); select != nullptr) {
     const ValueNameId result_name_id =
         const_cast<ValueNameTable&>(names.value_names).intern(select->result.name);
-    if (join_transfer.kind != PreparedJoinTransferKind::SelectMaterialization ||
+    if (effective_prepared_join_transfer_carrier_kind(join_transfer) !=
+            PreparedJoinTransferCarrierKind::SelectMaterialization ||
         select->result.kind != bir::Value::Kind::Named ||
         select->result.type != bir::TypeKind::I32 || result_name_id == kInvalidValueName) {
       return std::nullopt;
@@ -1739,7 +1799,8 @@ find_authoritative_short_circuit_join_sources(
       load_local != nullptr) {
     const ValueNameId result_name_id =
         const_cast<ValueNameTable&>(names.value_names).intern(load_local->result.name);
-    if (join_transfer.kind != PreparedJoinTransferKind::EdgeStoreSlot ||
+    if (effective_prepared_join_transfer_carrier_kind(join_transfer) !=
+            PreparedJoinTransferCarrierKind::EdgeStoreSlot ||
         !join_transfer.storage_name.has_value() ||
         load_local->slot_name != prepared_slot_name(names, *join_transfer.storage_name) ||
         load_local->result.kind != bir::Value::Kind::Named ||

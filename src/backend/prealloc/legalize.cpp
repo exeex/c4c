@@ -307,7 +307,7 @@ PreparedJoinTransferKind classify_phi_join_transfer_kind(const bir::Function& fu
       return PreparedJoinTransferKind::LoopCarry;
     }
   }
-  return PreparedJoinTransferKind::EdgeStoreSlot;
+  return PreparedJoinTransferKind::PhiEdge;
 }
 
 bool terminator_uses_named_value(const bir::Terminator& terminator,
@@ -512,6 +512,8 @@ PreparedJoinTransfer make_join_transfer(PreparedNameTables& names,
                                         BlockLabelId join_block_label,
                                         const bir::PhiInst& phi,
                                         PreparedJoinTransferKind kind,
+                                        PreparedJoinTransferCarrierKind carrier_kind =
+                                            PreparedJoinTransferCarrierKind::None,
                                         std::optional<SlotNameId> storage_name = std::nullopt) {
   std::vector<PreparedEdgeValueTransfer> edge_transfers;
   edge_transfers.reserve(phi.incomings.size());
@@ -529,6 +531,7 @@ PreparedJoinTransfer make_join_transfer(PreparedNameTables& names,
       .join_block_label = join_block_label,
       .result = phi.result,
       .kind = kind,
+      .carrier_kind = carrier_kind,
       .storage_name = std::move(storage_name),
       .incomings = phi.incomings,
       .edge_transfers = std::move(edge_transfers),
@@ -812,7 +815,8 @@ bool try_materialize_root_phi_block(bir::Function* function,
           function_name_id,
           block_label_id,
           *phi,
-          PreparedJoinTransferKind::SelectMaterialization));
+          PreparedJoinTransferKind::PhiEdge,
+          PreparedJoinTransferCarrierKind::SelectMaterialization));
     }
   }
 
@@ -925,6 +929,7 @@ void lower_phi_nodes(bir::Function* function,
               names.block_labels.intern(block.label),
               *phi,
               transfer_kind,
+              PreparedJoinTransferCarrierKind::EdgeStoreSlot,
               names.slot_names.intern(slot_name)));
         }
         rewritten.push_back(bir::LoadLocalInst{
@@ -1259,7 +1264,8 @@ void collect_select_materialized_join_transfers(
           .function_name = names.function_names.intern(function.name),
           .join_block_label = names.block_labels.intern(block.label),
           .result = select->result,
-          .kind = PreparedJoinTransferKind::SelectMaterialization,
+          .kind = PreparedJoinTransferKind::PhiEdge,
+          .carrier_kind = PreparedJoinTransferCarrierKind::SelectMaterialization,
           .storage_name = std::nullopt,
           .incomings =
               {
