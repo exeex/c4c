@@ -236,7 +236,8 @@ const c4c::backend::bir::Block* resolve_authoritative_prepared_branch_target(
   const auto* prepared_block =
       c4c::backend::prepare::find_prepared_control_flow_block(*function_control_flow, block_label_id);
   if (prepared_block == nullptr) {
-    return nullptr;
+    throw std::invalid_argument(
+        "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
   }
   if (prepared_block->terminator_kind != c4c::backend::bir::TerminatorKind::Branch ||
       prepared_block->branch_target_label == c4c::kInvalidBlockLabel) {

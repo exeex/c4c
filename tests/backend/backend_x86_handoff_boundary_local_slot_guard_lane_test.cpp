@@ -3,6 +3,7 @@
 #include "src/backend/mir/x86/codegen/x86_codegen.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -102,6 +103,21 @@ std::string expected_minimal_local_i8_address_guard_asm(const char* function_nam
          "    add rsp, 16\n"
          "    ret\n"
          ".L" + function_name + "_block_4:\n"
+         "    mov eax, 0\n"
+         "    add rsp, 16\n"
+         "    ret\n";
+}
+
+std::string expected_minimal_local_i32_branch_passthrough_asm(const char* function_name) {
+  return asm_header(function_name) + "    sub rsp, 16\n"
+         "    mov DWORD PTR [rsp], 5\n"
+         "    mov eax, DWORD PTR [rsp]\n"
+         "    cmp eax, 5\n"
+         "    je .L" + std::string(function_name) + "_block_2\n"
+         "    mov eax, 1\n"
+         "    add rsp, 16\n"
+         "    ret\n"
+         ".L" + std::string(function_name) + "_block_2:\n"
          "    mov eax, 0\n"
          "    add rsp, 16\n"
          "    ret\n";
@@ -261,6 +277,64 @@ bir::Module make_x86_local_i32_sub_guard_module() {
   block_2.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
 
   function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_x86_local_i32_branch_passthrough_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.branch.0",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_address_taken = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.branch.0",
+      .value = bir::Value::immediate_i32(5),
+  });
+  entry.terminator = bir::BranchTerminator{.target_label = "guard"};
+
+  bir::Block guard;
+  guard.label = "guard";
+  guard.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t0"),
+      .slot_name = "%lv.branch.0",
+  });
+  guard.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t0"),
+      .rhs = bir::Value::immediate_i32(5),
+  });
+  guard.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "%t1"),
+      .true_label = "block_1",
+      .false_label = "block_2",
+  };
+
+  bir::Block block_1;
+  block_1.label = "block_1";
+  block_1.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+
+  bir::Block block_2;
+  block_2.label = "block_2";
+  block_2.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(guard));
   function.blocks.push_back(std::move(block_1));
   function.blocks.push_back(std::move(block_2));
   module.functions.push_back(std::move(function));
@@ -456,6 +530,58 @@ int check_guard_lane_requires_authoritative_prepared_branch_record(const bir::Mo
   return 0;
 }
 
+int check_branch_lane_requires_authoritative_prepared_block_record(const bir::Module& module,
+                                                                   const char* function_name,
+                                                                   const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->blocks.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the local-slot passthrough control-flow contract")
+                    .c_str());
+  }
+
+  const auto entry_label_id = prepare::resolve_prepared_block_label_id(prepared.names, "entry");
+  if (!entry_label_id.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared local-slot passthrough fixture no longer interns the entry block label")
+                    .c_str());
+  }
+
+  const auto original_size = control_flow->blocks.size();
+  control_flow->blocks.erase(
+      std::remove_if(control_flow->blocks.begin(),
+                     control_flow->blocks.end(),
+                     [&](const prepare::PreparedControlFlowBlock& block) {
+                       return block.block_label == *entry_label_id;
+                     }),
+      control_flow->blocks.end());
+  if (control_flow->blocks.size() != original_size - 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared local-slot passthrough fixture no longer exposes the entry branch carrier control-flow block")
+                    .c_str());
+  }
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly reopened the raw local-slot branch carrier after the prepared control-flow block was removed")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the missing local-slot branch control-flow block with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_local_slot_guard_lane_tests() {
@@ -483,6 +609,22 @@ int run_backend_x86_handoff_boundary_local_slot_guard_lane_tests() {
                               expected_minimal_local_i32_sub_guard_asm("main"),
                               "%t6 = bir.sub i32 %t3, %t5",
                               "minimal local-slot sub guard route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_route_outputs(make_x86_local_i32_branch_passthrough_module(),
+                              expected_minimal_local_i32_branch_passthrough_asm("main"),
+                              "bir.store_local %lv.branch.0, i32 5",
+                              "minimal local-slot single-successor passthrough route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_branch_lane_requires_authoritative_prepared_block_record(
+              make_x86_local_i32_branch_passthrough_module(),
+              "main",
+              "minimal local-slot single-successor passthrough route rejects reopening the raw branch carrier when prepared control-flow ownership is authoritative");
       status != 0) {
     return status;
   }

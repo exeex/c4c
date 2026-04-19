@@ -5,25 +5,27 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 2.3
 Current Step Title: Finish Contract-Strict CFG Handoff Surfaces
-Plan Review Counter: 3 / 10
+Plan Review Counter: 4 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another `plan.md` Step 2.3 slice for idea 62. The countdown entry
-route in `src/backend/mir/x86/codegen/prepared_countdown_render.cpp` is now
-strictly prepared-only, and the local countdown successor resolver no longer
-keeps a raw `terminator.target_label` escape hatch behind a missing prepared
-context branch. This keeps the countdown handoff surface aligned with the
-authoritative prepared CFG contract instead of preserving dead non-authoritative
-slack inside a prepared-module-only route.
+Completed another `plan.md` Step 2.3 slice for idea 62. The generic
+local-slot single-successor branch helper in
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` now treats a
+missing prepared control-flow block as a hard canonical handoff failure
+instead of reopening raw `terminator.target_label` recovery, and
+`tests/backend/backend_x86_handoff_boundary_local_slot_guard_lane_test.cpp`
+now proves that the local-slot passthrough carrier rejects a removed prepared
+CFG block record after prepare has already published authoritative control-flow
+metadata.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2.3 by checking whether any other contract-strict x86
-handoff helpers still expose raw single-successor recovery after prepared CFG
-metadata is already available. If countdown was the last such route, move the
-next packet toward Step 3 consumer migration rather than reopening this helper.
+Check whether any other `plan.md` Step 2.3 x86 handoff helpers still keep raw
+single-successor recovery when a prepared CFG block record is missing. If the
+local-slot and countdown carriers were the last contract-strict cases, move
+the next packet toward Step 3 consumer migration instead of extending Step 2.3.
 
 ## Watchouts
 
@@ -43,17 +45,18 @@ next packet toward Step 3 consumer migration rather than reopening this helper.
 - The generic local-slot short-circuit renderer now prefers authoritative
   prepared passthrough branch targets over drifted raw local labels, but keep
   the remaining branch-carrier consumers equally strict about not reopening
-  raw successor recovery once shared prepare publishes a control-flow block.
-- `prepared_countdown_render.cpp` now treats countdown entry routing as a
-  prepared-only contract surface, so future cleanup in this file should target
-  broader consumer migration rather than reintroducing raw no-context
-  fallbacks.
+  raw successor recovery when a prepared CFG block record goes missing.
+- `prepared_local_slot_render.cpp` now rejects a removed passthrough carrier
+  block record, so follow-up cleanup should target the remaining strict
+  consumer surfaces rather than softening this contract back into raw branch
+  fallback.
 
 ## Proof
 
 Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
-`backend_x86_handoff_boundary` proof passed after adding continuation-body
-branch-target drift coverage for the two-segment local countdown fallback.
-`test_after.log` is the proof artifact for this packet.
+`backend_x86_handoff_boundary` proof passed after adding local-slot
+single-successor passthrough coverage that removes the prepared CFG carrier
+record and verifies the x86 prepared-module handoff now rejects reopening the
+raw branch fallback. `test_after.log` is the proof artifact for this packet.
