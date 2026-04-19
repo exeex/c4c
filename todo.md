@@ -9,17 +9,18 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3.4 Loop-Carry And Residual Consumer Cleanup packet by
-tightening the remaining transparent entry-carrier prefix acceptance in
-`render_loop_join_countdown_if_supported()` around a unique linear prepared
-init-handoff path, so loop countdown support no longer relies on a broad
-single-empty-carrier allowance and now rejects a non-authoritative transparent
-prefix even when the carrier block stays empty and branch-only.
+blocking `render_local_i32_countdown_loop_if_supported()` from accepting a
+countdown route once authoritative prepared loop-carry metadata exists, and by
+adding a regression that drifts only the prepared branch-condition record to
+prove x86 now rejects that route instead of falling back to local countdown
+topology matching.
 
 ## Suggested Next
 
-Stay in Step 3.4 and inspect the remaining loop-countdown and residual-consumer
-helpers for any other raw CFG-prefix checks that should consume the same
-prepared init-handoff authority instead of local carrier shape.
+Stay in Step 3.4 and inspect the remaining residual consumer helpers around
+the local guard/countdown fallbacks for any other cases where prepared branch
+or join metadata can drift out of contract but an older local matcher still
+accepts the function shape.
 
 ## Watchouts
 
@@ -27,10 +28,10 @@ prepared init-handoff authority instead of local carrier shape.
   into Step 3.2 compare-join reproving, generic Step 3.3 carrier hunting,
   Step 4 file organization, idea 57, idea 59, idea 60, idea 61, or the
   unrelated `^backend_` semantic-lowering failures.
-- The countdown helper now accepts transparent entry prefixes only when the
-  path from `entry` to the prepared init predecessor stays unique, linear, and
-  instruction-free ahead of the authoritative handoff carrier; do not regrow
-  one-off empty-block allowances that skip predecessor uniqueness.
+- The local countdown fallback must stay unavailable once a function carries
+  authoritative `PreparedJoinTransferKind::LoopCarry` ownership; do not reopen
+  that bypass by letting local slot/topology matching outrank prepared loop
+  metadata drift.
 - Keep proving that x86 consumes prepared loop-carry ownership and init values
   through prepared metadata even when legalized entry/preheader/body stores or
   carrier topology drift after prepare, rather than re-reading those values
@@ -45,7 +46,7 @@ prepared init-handoff authority instead of local carrier shape.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The focused Step 3.4 handoff proof passed after replacing the raw transparent
-entry-carrier allowance with a unique-prefix validator and adding a regression
-that rejects a non-authoritative transparent entry prefix, leaving
-`test_after.log` at the repo root.
+The focused Step 3.4 handoff proof passed after rejecting loop-countdown routes
+whose prepared branch metadata drifts out of contract instead of falling
+through to the local countdown fallback, leaving `test_after.log` at the repo
+root.

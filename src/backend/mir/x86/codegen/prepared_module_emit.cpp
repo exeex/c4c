@@ -3265,6 +3265,7 @@ std::string emit_prepared_module(
         prepared_arch != c4c::TargetArch::X86_64) {
       return std::nullopt;
     }
+    const auto* function_control_flow = find_control_flow_function();
 
     const auto layout = build_local_slot_layout();
     if (!layout.has_value()) {
@@ -3522,6 +3523,15 @@ std::string emit_prepared_module(
       }
     } else if (first_segment->return_block == nullptr) {
       return std::nullopt;
+    }
+
+    if (function_control_flow != nullptr) {
+      for (const auto& join_transfer : function_control_flow->join_transfers) {
+        if (join_transfer.kind == c4c::backend::prepare::PreparedJoinTransferKind::LoopCarry) {
+          throw std::invalid_argument(
+              "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+        }
+      }
     }
 
     const auto slot_it = layout->offsets.find(first_segment->init_store->slot_name);
