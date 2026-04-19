@@ -3178,6 +3178,21 @@ std::string emit_prepared_module(
              init_store->slot_name == *join_transfer->storage_name &&
              init_store->byte_offset == 0 && !init_store->address.has_value();
     };
+    const auto find_unique_transparent_branch_predecessor =
+        [&](std::string_view target_label) -> const c4c::backend::bir::Block* {
+      const c4c::backend::bir::Block* predecessor = nullptr;
+      for (const auto& candidate : function.blocks) {
+        if (candidate.terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
+            candidate.terminator.target_label != target_label) {
+          continue;
+        }
+        if (predecessor != nullptr) {
+          return nullptr;
+        }
+        predecessor = &candidate;
+      }
+      return predecessor;
+    };
     const bool entry_reaches_loop_through_supported_handoff_prefix = [&]() -> bool {
       if (init_block == nullptr) {
         return false;
@@ -3193,20 +3208,23 @@ std::string emit_prepared_module(
         return false;
       }
 
-      if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
+      const auto* predecessor = find_unique_transparent_branch_predecessor(init_block->label);
+      if (predecessor == nullptr || predecessor == init_block) {
         return false;
       }
-      if (entry.terminator.target_label == init_block->label) {
-        return true;
+      std::size_t transparent_prefix_depth = 0;
+      while (predecessor != &entry) {
+        if (predecessor == loop_block || predecessor == body_block || predecessor == exit_block ||
+            predecessor == init_block || !predecessor->insts.empty()) {
+          return false;
+        }
+        predecessor = find_unique_transparent_branch_predecessor(predecessor->label);
+        if (predecessor == nullptr || ++transparent_prefix_depth > function.blocks.size()) {
+          return false;
+        }
       }
-
-      const auto* carrier_block = find_block(entry.terminator.target_label);
-      return carrier_block != nullptr && carrier_block != &entry &&
-             carrier_block != loop_block && carrier_block != body_block &&
-             carrier_block != exit_block && carrier_block != init_block &&
-             carrier_block->insts.empty() &&
-             carrier_block->terminator.kind == c4c::backend::bir::TerminatorKind::Branch &&
-             carrier_block->terminator.target_label == init_block->label;
+      return predecessor->insts.empty() &&
+             predecessor->terminator.kind == c4c::backend::bir::TerminatorKind::Branch;
     }();
     if (init_incoming == nullptr || body_incoming == nullptr || init_block == nullptr ||
         !entry_reaches_loop_through_supported_handoff_prefix ||

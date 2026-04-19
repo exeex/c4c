@@ -9927,6 +9927,57 @@ int check_loop_countdown_route_requires_supported_entry_handoff_carrier(
   return 0;
 }
 
+int check_loop_countdown_route_requires_authoritative_transparent_entry_prefix(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown control-flow contract")
+                    .c_str());
+  }
+  if (control_flow->join_transfers.front().kind != prepare::PreparedJoinTransferKind::LoopCarry) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer classifies the loop countdown join as explicit loop-carry traffic")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* carrier_block = find_block(function, "carrier");
+  if (carrier_block == nullptr || find_block(function, "preheader") == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer exposes the transparent entry carrier prefix")
+                    .c_str());
+  }
+
+  bir::Block intruder;
+  intruder.label = "intruder";
+  intruder.terminator = bir::BranchTerminator{.target_label = carrier_block->label};
+  function.blocks.push_back(std::move(intruder));
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a non-authoritative transparent entry prefix")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the non-authoritative transparent entry prefix with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -12256,6 +12307,14 @@ int main() {
               expected_minimal_loop_countdown_join_asm("main"),
               "main",
               "minimal loop-carried join countdown prepared-control-flow ownership keeps the init handoff value authoritative through a transparent entry-carrier chain");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_requires_authoritative_transparent_entry_prefix(
+              make_x86_loop_countdown_join_with_preheader_chain_module(),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership rejects a transparent entry-carrier prefix once it stops being the unique authoritative init path");
       status != 0) {
     return status;
   }
