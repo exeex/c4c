@@ -5,25 +5,25 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 3.3
 Current Step Title: Close Remaining Consumer Families And Shared Helper Gaps
-Plan Review Counter: 4 / 10
+Plan Review Counter: 5 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3.3 slice for idea 62. The
 `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
-same-module global selected-value chain compare-join helper coverage now
-proves the prepared return-context helpers ignore true-lane and false-lane
-passthrough topology drift, for both the direct and `EdgeStoreSlot`
-lanes.
+fixed-offset same-module global selected-value chain compare-join route now
+proves authoritative prepared ownership survives true-lane and false-lane
+passthrough topology drift, for both the direct and `EdgeStoreSlot` lanes.
 
 ## Suggested Next
 
-Move to the next bounded `plan.md` Step 3.3 consumer family or shared helper
-surface that still lacks explicit prepared-contract drift or loss proof,
-preferably outside the same-module global selected-value chain compare-join
-return-context helpers now that their direct and `EdgeStoreSlot`
-passthrough lanes both have explicit coverage.
+Move to the next bounded `plan.md` Step 3.3 compare-join consumer family or
+shared helper surface that still lacks explicit passthrough drift proof,
+preferably the fixed-offset pointer-backed same-module global
+selected-value-chain compare-join route now that the fixed-offset
+same-module global chain route covers direct and `EdgeStoreSlot`
+true/false lane drift.
 
 ## Watchouts
 
@@ -64,6 +64,10 @@ passthrough lanes both have explicit coverage.
   also ignore true-lane and false-lane passthrough topology drift for both
   direct and `EdgeStoreSlot` lanes, so future Step 3.3 packets should move to
   a different compare-join family instead of restating that helper surface.
+- The fixed-offset same-module global selected-value-chain compare-join route
+  now also ignores true-lane and false-lane passthrough topology drift for
+  both direct and `EdgeStoreSlot` lanes, so future Step 3.3 packets should
+  move to a different compare-join family instead of restating that route.
 - The same-module global selected-value chain compare-join return-context
   helpers now also ignore true-lane and false-lane passthrough topology drift
   for both direct and `EdgeStoreSlot` lanes, so future Step 3.3 packets
@@ -92,7 +96,7 @@ Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
 `backend_x86_handoff_boundary` proof passed after extending the
-same-module global selected-value chain compare-join helper coverage so the
-shared return-context helpers ignore true-lane and false-lane passthrough
-topology drift for both direct and `EdgeStoreSlot` lanes. `test_after.log`
-is the proof artifact for this packet.
+fixed-offset same-module global selected-value chain compare-join route
+coverage so the shared prepared handoff ignores true-lane and false-lane
+passthrough topology drift for both direct and `EdgeStoreSlot` lanes.
+`test_after.log` is the proof artifact for this packet.
