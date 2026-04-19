@@ -8,23 +8,19 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 3 Consume Prepared Control-Flow packet in
-`tests/backend/backend_x86_handoff_boundary_test.cpp` and `todo.md` by
-extending the prepared compare-join return-context ownership checks for the
-fixed-offset pointer-backed same-module global selected-value chain family so
-both the plain prepared helper path and the paired
-`PreparedJoinTransferKind::EdgeStoreSlot` carrier keep publishing the same
-return-context contract when one extra empty authoritative bridge sits on
-either the true lane or the false lane before the join.
+Completed a Step 5 Validate The Route packet in `todo.md` by replacing the
+single-test `^backend_x86_handoff_boundary$` acceptance note with a broader
+`^backend_` checkpoint, preserving `test_after.log`, and recording that the
+broader backend bucket currently reproduces the same four known route failures
+while `backend_x86_handoff_boundary` still passes inside that broader scope.
 
 ## Suggested Next
 
-Before any more Step 3 compare-join passthrough-family execution, treat the
-accumulated shared-helper and x86-consumer churn as needing broader proof than
-`^backend_x86_handoff_boundary$`. After that broader proof checkpoint, the next
-accepted Step 3 packet should move to a materially different prepared
-control-flow consumer seam instead of another adjacent one-extra-bridge
-selected-value variant.
+Do not queue another adjacent Step 3 compare-join passthrough-family packet
+yet. The next accepted packet should either remove one of the four current
+`^backend_` failures so the broader checkpoint can become monotonic, or move
+to a materially different prepared control-flow consumer seam only after the
+supervisor explicitly accepts the current broader-proof state.
 
 ## Watchouts
 
@@ -51,27 +47,35 @@ selected-value variant.
   debt, not as a license to keep cloning more same-shape variants. Follow-on
   work should either prove the broader route or strengthen prepared ownership
   more generally.
+- The broader `^backend_` checkpoint is stable but not acceptance-green: the
+  bucket still fails in
+  `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
+  `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
+  `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,
+  and
+  `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`.
+  Those failures sit outside this packet's owned files.
+- `test_before.log` and `test_after.log` are byte-identical for `^backend_`,
+  so the broader bucket did not regress, but the monotonic regression checker
+  still returns failure because pass count stayed flat instead of increasing.
 - When a test helper appends passthrough blocks to `function.blocks`, reacquire
   any cached block pointers before calling prepared-helper classifiers; this
   packet needed that harness-only fix to keep the proof scoped to the intended
   ownership contract.
-- `test_before.log` remains the last narrow baseline for
-  `^backend_x86_handoff_boundary$`, but the review concluded that this is no
-  longer sufficient acceptance evidence for the current Step 3 blast radius.
-  The next supervisor-routed proof must broaden beyond that single named
-  subset before more same-family execution is accepted.
+- The review's broader-proof requirement is now satisfied in scope, but not in
+  acceptance quality: future Step 3 same-family work should not treat this as
+  a green milestone until the supervisor decides how to handle the stable
+  broader-bucket failures.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
---output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The focused proof refreshes `test_after.log` with the
-`backend_x86_handoff_boundary` subset for the new fixed-offset pointer-backed
-same-module global selected-value chain true-lane and false-lane
-return-context passthrough ownership coverage, the paired EdgeStoreSlot
-carrier coverage, and the existing prepared branch/join ownership families
-that continue proving the same handoff contracts. The proof passed.
-
-Route review note: this narrow proof is no longer sufficient for continued
-acceptance of the current Step 3 route. No broader replacement proof has been
-run yet in this repair.
+--output-on-failure -R '^backend_' | tee test_after.log`.
+This broader backend checkpoint preserves `test_after.log` for the full
+`^backend_` bucket and reproduces the same four failing route cases already
+present in `test_before.log`; `backend_x86_handoff_boundary` still passes
+within that broader subset. A follow-on monotonic comparison with
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+--before test_before.log --after test_after.log` reported zero new failing
+tests and zero resolved failing tests, but still returned failure because the
+pass count did not strictly increase.
