@@ -201,14 +201,9 @@ bool is_supported_guard_compare_opcode(c4c::backend::bir::BinaryOpcode opcode) {
 }
 
 const c4c::backend::prepare::PreparedBranchCondition* find_prepared_branch_condition_if_supported(
-    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
-    std::string_view block_label) {
-  if (function_control_flow == nullptr) {
-    return nullptr;
-  }
-  const c4c::BlockLabelId block_label_id = prepared_names.block_labels.find(block_label);
-  if (block_label_id == c4c::kInvalidBlockLabel) {
+    c4c::BlockLabelId block_label_id) {
+  if (function_control_flow == nullptr || block_label_id == c4c::kInvalidBlockLabel) {
     return nullptr;
   }
   return c4c::backend::prepare::find_prepared_branch_condition(
@@ -219,18 +214,14 @@ const c4c::backend::prepare::PreparedBranchCondition*
 find_prepared_i32_immediate_branch_condition_if_supported(
     const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
-    std::string_view block_label,
-    const std::optional<std::string_view>& current_i32_name) {
-  if (function_control_flow == nullptr || !current_i32_name.has_value()) {
-    return nullptr;
-  }
-  const c4c::BlockLabelId block_label_id = prepared_names.block_labels.find(block_label);
-  const c4c::ValueNameId value_name_id = prepared_names.value_names.find(*current_i32_name);
-  if (block_label_id == c4c::kInvalidBlockLabel || value_name_id == c4c::kInvalidValueName) {
+    c4c::BlockLabelId block_label_id,
+    std::optional<c4c::ValueNameId> current_i32_name_id) {
+  if (function_control_flow == nullptr || block_label_id == c4c::kInvalidBlockLabel ||
+      !current_i32_name_id.has_value() || *current_i32_name_id == c4c::kInvalidValueName) {
     return nullptr;
   }
   return c4c::backend::prepare::find_prepared_i32_immediate_branch_condition(
-      prepared_names, *function_control_flow, block_label_id, value_name_id);
+      prepared_names, *function_control_flow, block_label_id, *current_i32_name_id);
 }
 
 const c4c::backend::bir::BinaryInst* find_trailing_guard_compare_if_supported(
@@ -391,9 +382,11 @@ std::optional<CompareDrivenBranchRenderPlan> build_compare_driven_entry_render_p
     const std::optional<std::string_view>& current_i32_name,
     const std::function<std::optional<ShortCircuitPlan>(
         const ShortCircuitEntryCompareContext&)>& branch_plan_builder) {
+  const c4c::BlockLabelId source_block_label_id =
+      c4c::backend::prepare::resolve_prepared_block_label_id(prepared_names, source_block.label)
+          .value_or(c4c::kInvalidBlockLabel);
   const auto* branch_condition =
-      find_prepared_branch_condition_if_supported(
-          prepared_names, function_control_flow, source_block.label);
+      find_prepared_branch_condition_if_supported(function_control_flow, source_block_label_id);
   auto compare_context =
       branch_condition != nullptr
           ? render_prepared_guard_false_branch_compare_from_condition(
@@ -431,9 +424,11 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_compare_driven_entry
     const std::optional<std::string_view>& current_i32_name,
     const std::function<std::optional<ShortCircuitPlan>(
         const ShortCircuitEntryCompareContext&)>& branch_plan_builder) {
+  const c4c::BlockLabelId source_block_label_id =
+      c4c::backend::prepare::resolve_prepared_block_label_id(prepared_names, source_block.label)
+          .value_or(c4c::kInvalidBlockLabel);
   const auto* branch_condition =
-      find_prepared_branch_condition_if_supported(
-          prepared_names, function_control_flow, source_block.label);
+      find_prepared_branch_condition_if_supported(function_control_flow, source_block_label_id);
   if (branch_condition == nullptr) {
     return std::nullopt;
   }
@@ -516,6 +511,9 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
     std::string_view param_register_name,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Value&)>&
         render_return) {
+  const c4c::BlockLabelId entry_label_id =
+      c4c::backend::prepare::resolve_prepared_block_label_id(prepared_names, entry.label)
+          .value_or(c4c::kInvalidBlockLabel);
   const auto prepared_branch_context =
       c4c::backend::prepare::find_prepared_param_zero_branch_return_context(
           prepared_names, function_control_flow, function, entry, param, true);
@@ -525,7 +523,7 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
   if (c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
           prepared_names,
           function_control_flow,
-          prepared_names.block_labels.find(entry.label))
+          entry_label_id)
           .has_value()) {
     throw std::invalid_argument(
         "x86 backend emitter requires the authoritative prepared compare-join handoff through the canonical prepared-module handoff");
@@ -605,6 +603,9 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
         const c4c::backend::bir::Param&)>& render_return,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
         emit_same_module_global_data) {
+  const c4c::BlockLabelId entry_label_id =
+      c4c::backend::prepare::resolve_prepared_block_label_id(module.names, entry.label)
+          .value_or(c4c::kInvalidBlockLabel);
   const auto resolved_render_contract =
       c4c::backend::prepare::find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
           const_cast<c4c::backend::prepare::PreparedNameTables&>(module.names),
@@ -614,11 +615,11 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
           entry,
           param,
           false);
-    if (!resolved_render_contract.has_value()) {
-      if (c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
+  if (!resolved_render_contract.has_value()) {
+    if (c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
             module.names,
             function_control_flow,
-            module.names.block_labels.find(entry.label))
+            entry_label_id)
             .has_value()) {
       throw std::invalid_argument(
           "x86 backend emitter requires the authoritative prepared compare-join handoff through the canonical prepared-module handoff");
@@ -757,9 +758,11 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_
         const c4c::backend::prepare::PreparedShortCircuitBranchPlan&)>&
         build_short_circuit_plan) {
   (void)function;
+  const c4c::BlockLabelId source_block_label_id =
+      c4c::backend::prepare::resolve_prepared_block_label_id(prepared_names, source_block.label)
+          .value_or(c4c::kInvalidBlockLabel);
   const auto* branch_condition =
-      find_prepared_branch_condition_if_supported(
-          prepared_names, function_control_flow, source_block.label);
+      find_prepared_branch_condition_if_supported(function_control_flow, source_block_label_id);
   if (branch_condition == nullptr) {
     return std::nullopt;
   }
@@ -821,8 +824,16 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_ren
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
     const std::optional<std::string_view>& current_i32_name,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block) {
+  const c4c::BlockLabelId source_block_label_id =
+      c4c::backend::prepare::resolve_prepared_block_label_id(prepared_names, source_block.label)
+          .value_or(c4c::kInvalidBlockLabel);
+  const std::optional<c4c::ValueNameId> current_i32_name_id =
+      current_i32_name.has_value()
+          ? c4c::backend::prepare::resolve_prepared_value_name_id(prepared_names,
+                                                                  *current_i32_name)
+          : std::nullopt;
   const auto* branch_condition = find_prepared_i32_immediate_branch_condition_if_supported(
-      prepared_names, function_control_flow, source_block.label, current_i32_name);
+      prepared_names, function_control_flow, source_block_label_id, current_i32_name_id);
   if (branch_condition != nullptr) {
     const auto compare_context = build_prepared_guard_compare_context(
         *branch_condition, current_materialized_compare, current_i32_name);
@@ -895,9 +906,11 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_compare_join_entry_r
   if (!prepared_branch_plan.has_value()) {
     return std::nullopt;
   }
+  const c4c::BlockLabelId source_block_label_id =
+      c4c::backend::prepare::resolve_prepared_block_label_id(prepared_names, source_block.label)
+          .value_or(c4c::kInvalidBlockLabel);
   const auto* prepared_branch_condition =
-      find_prepared_branch_condition_if_supported(
-          prepared_names, function_control_flow, source_block.label);
+      find_prepared_branch_condition_if_supported(function_control_flow, source_block_label_id);
 
   if (const auto prepared_render_plan = build_prepared_compare_driven_entry_render_plan(
           prepared_names,

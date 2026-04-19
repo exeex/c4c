@@ -761,6 +761,10 @@ struct PreparedBranchTargetLabels {
     const PreparedNameTables& names,
     std::string_view block_label);
 
+[[nodiscard]] inline std::optional<FunctionNameId> resolve_prepared_function_name_id(
+    const PreparedNameTables& names,
+    std::string_view function_name);
+
 [[nodiscard]] inline std::optional<ValueNameId> resolve_prepared_value_name_id(
     const PreparedNameTables& names,
     std::string_view value_name);
@@ -1312,6 +1316,16 @@ find_prepared_param_zero_branch_return_context(const PreparedNameTables& names,
     return std::nullopt;
   }
   return block_label_id;
+}
+
+[[nodiscard]] inline std::optional<FunctionNameId> resolve_prepared_function_name_id(
+    const PreparedNameTables& names,
+    std::string_view function_name) {
+  const FunctionNameId function_name_id = names.function_names.find(function_name);
+  if (function_name_id == kInvalidFunctionName) {
+    return std::nullopt;
+  }
+  return function_name_id;
 }
 
 [[nodiscard]] inline std::optional<ValueNameId> resolve_prepared_value_name_id(

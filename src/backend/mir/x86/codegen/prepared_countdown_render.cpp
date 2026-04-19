@@ -71,13 +71,14 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
 
     const auto* candidate_branch_condition =
         [&]() -> const c4c::backend::prepare::PreparedBranchCondition* {
-          const c4c::BlockLabelId candidate_loop_block_label_id =
-              prepared_names.block_labels.find(candidate_loop_block->label);
-          if (candidate_loop_block_label_id == c4c::kInvalidBlockLabel) {
+          const auto candidate_loop_block_label_id =
+              c4c::backend::prepare::resolve_prepared_block_label_id(prepared_names,
+                                                                     candidate_loop_block->label);
+          if (!candidate_loop_block_label_id.has_value()) {
             return nullptr;
           }
           return c4c::backend::prepare::find_prepared_branch_condition(
-              function_control_flow, candidate_loop_block_label_id);
+              function_control_flow, *candidate_loop_block_label_id);
         }();
     if (candidate_branch_condition == nullptr || !candidate_branch_condition->predicate.has_value() ||
         !candidate_branch_condition->compare_type.has_value() ||
@@ -109,16 +110,17 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
       continue;
     }
 
-    const c4c::ValueNameId carried_counter_id =
-        prepared_names.value_names.find(candidate_join_transfer.result.name);
-    if (carried_counter_id == c4c::kInvalidValueName) {
+    const auto carried_counter_id =
+        c4c::backend::prepare::resolve_prepared_value_name_id(prepared_names,
+                                                              candidate_join_transfer.result.name);
+    if (!carried_counter_id.has_value()) {
       continue;
     }
     const auto* candidate_join_edges = c4c::backend::prepare::incoming_transfers_for_join(
         prepared_names,
         function_control_flow,
         candidate_join_transfer.join_block_label,
-        carried_counter_id);
+        *carried_counter_id);
     if (candidate_join_edges == nullptr || candidate_join_edges->size() != 2) {
       continue;
     }
@@ -611,13 +613,14 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
           if (block != nullptr &&
               prepared_names != nullptr &&
               [&]() -> const c4c::backend::prepare::PreparedBranchCondition* {
-                const c4c::BlockLabelId block_label_id =
-                    prepared_names->block_labels.find(block->label);
-                if (block_label_id == c4c::kInvalidBlockLabel) {
+                const auto block_label_id =
+                    c4c::backend::prepare::resolve_prepared_block_label_id(*prepared_names,
+                                                                           block->label);
+                if (!block_label_id.has_value()) {
                   return nullptr;
                 }
                 return c4c::backend::prepare::find_prepared_branch_condition(
-                    *function_control_flow, block_label_id);
+                    *function_control_flow, *block_label_id);
               }() != nullptr) {
         throw std::invalid_argument(
             "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");

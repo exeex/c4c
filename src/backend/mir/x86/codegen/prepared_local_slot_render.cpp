@@ -30,7 +30,9 @@ std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_la
   std::size_t max_align = 16;
   const c4c::FunctionNameId function_name_id =
       prepared_names == nullptr ? c4c::kInvalidFunctionName
-                                : prepared_names->function_names.find(function.name);
+                                : c4c::backend::prepare::resolve_prepared_function_name_id(
+                                      *prepared_names, function.name)
+                                      .value_or(c4c::kInvalidFunctionName);
   for (const auto& slot : function.local_slots) {
     if (slot.type != c4c::backend::bir::TypeKind::I8 &&
         slot.type != c4c::backend::bir::TypeKind::I16 &&
@@ -286,7 +288,9 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     }
     const c4c::BlockLabelId block_label_id =
         prepared_names == nullptr ? c4c::kInvalidBlockLabel
-                                  : prepared_names->block_labels.find(block.label);
+                                  : c4c::backend::prepare::resolve_prepared_block_label_id(
+                                        *prepared_names, block.label)
+                                        .value_or(c4c::kInvalidBlockLabel);
 
     auto rendered_load_or_store =
         [&](const c4c::backend::bir::Inst& inst,
@@ -810,14 +814,15 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       if (function_control_flow == nullptr || prepared_names == nullptr) {
         return std::nullopt;
       }
-      const c4c::BlockLabelId block_label_id = prepared_names->block_labels.find(block.label);
-      if (block_label_id == c4c::kInvalidBlockLabel) {
+      const auto block_label_id =
+          c4c::backend::prepare::resolve_prepared_block_label_id(*prepared_names, block.label);
+      if (!block_label_id.has_value()) {
         return std::nullopt;
       }
 
       const auto join_context =
           c4c::backend::x86::find_prepared_short_circuit_join_context_if_supported(
-              *prepared_names, *function_control_flow, function, block_label_id);
+              *prepared_names, *function_control_flow, function, *block_label_id);
       if (!join_context.has_value()) {
         return std::nullopt;
       }
@@ -888,7 +893,9 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
   auto asm_text = std::string(asm_prefix);
   const c4c::BlockLabelId entry_label_id =
       prepared_names == nullptr ? c4c::kInvalidBlockLabel
-                                : prepared_names->block_labels.find(entry.label);
+                                : c4c::backend::prepare::resolve_prepared_block_label_id(
+                                      *prepared_names, entry.label)
+                                      .value_or(c4c::kInvalidBlockLabel);
   if (layout->frame_size != 0) {
     asm_text += "    sub rsp, " + std::to_string(layout->frame_size) + "\n";
   }
@@ -1021,7 +1028,9 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
   }
   const c4c::BlockLabelId entry_label_id =
       prepared_names == nullptr ? c4c::kInvalidBlockLabel
-                                : prepared_names->block_labels.find(entry.label);
+                                : c4c::backend::prepare::resolve_prepared_block_label_id(
+                                      *prepared_names, entry.label)
+                                      .value_or(c4c::kInvalidBlockLabel);
 
   for (std::size_t index = 0; index + 1 < entry.insts.size(); ++index) {
     const auto& inst = entry.insts[index];
@@ -1130,12 +1139,13 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     const auto* matched_prepared_compared_value =
         static_cast<const c4c::backend::bir::Value*>(nullptr);
     for (const auto& [value_name, _] : named_i32_exprs) {
-      const c4c::ValueNameId value_name_id = prepared_names->value_names.find(value_name);
-      if (value_name_id == c4c::kInvalidValueName) {
+      const auto value_name_id =
+          c4c::backend::prepare::resolve_prepared_value_name_id(*prepared_names, value_name);
+      if (!value_name_id.has_value()) {
         continue;
       }
       const auto* candidate = c4c::backend::prepare::find_prepared_i32_immediate_branch_condition(
-          *prepared_names, *function_control_flow, entry_label_id, value_name_id);
+          *prepared_names, *function_control_flow, entry_label_id, *value_name_id);
       if (candidate == nullptr) {
         continue;
       }
@@ -1368,7 +1378,9 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
 
   const c4c::BlockLabelId entry_label_id =
       prepared_names == nullptr ? c4c::kInvalidBlockLabel
-                                : prepared_names->block_labels.find(entry.label);
+                                : c4c::backend::prepare::resolve_prepared_block_label_id(
+                                      *prepared_names, entry.label)
+                                      .value_or(c4c::kInvalidBlockLabel);
   std::optional<std::string> short_memory;
   if (const auto* prepared_access =
           find_prepared_function_memory_access(function_addressing, entry_label_id, 0);
@@ -1591,7 +1603,9 @@ std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported
 
   const c4c::BlockLabelId entry_label_id =
       prepared_names == nullptr ? c4c::kInvalidBlockLabel
-                                : prepared_names->block_labels.find(entry.label);
+                                : c4c::backend::prepare::resolve_prepared_block_label_id(
+                                      *prepared_names, entry.label)
+                                      .value_or(c4c::kInvalidBlockLabel);
   const auto* prepared_store_short =
       find_prepared_frame_memory_access(function_addressing, entry_label_id, 0);
   const auto* prepared_store_long =
@@ -2239,7 +2253,9 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
   auto asm_text = std::string(asm_prefix);
   const c4c::BlockLabelId entry_label_id =
       prepared_names == nullptr ? c4c::kInvalidBlockLabel
-                                : prepared_names->block_labels.find(entry.label);
+                                : c4c::backend::prepare::resolve_prepared_block_label_id(
+                                      *prepared_names, entry.label)
+                                      .value_or(c4c::kInvalidBlockLabel);
   if (layout->frame_size != 0) {
     asm_text += "    sub rsp, " + std::to_string(layout->frame_size) + "\n";
   }

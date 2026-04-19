@@ -38,7 +38,8 @@ std::string emit_prepared_module(
 
   const auto& function = *function_ptr;
   const c4c::FunctionNameId function_name_id =
-      module.names.function_names.find(function.name);
+      c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function.name)
+          .value_or(c4c::kInvalidFunctionName);
   const auto asm_prefix = ".intel_syntax noprefix\n.text\n.globl " + function.name +
                           "\n.type " + function.name + ", @function\n" + function.name + ":\n";
   const auto narrow_abi_register = [](std::string_view wide_register) -> std::optional<std::string> {
