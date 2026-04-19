@@ -1,12 +1,68 @@
-# Prealloc CFG Generalization And Authoritative Control-Flow Facts
-
-Status: Open
+Status: Closed
 Created: 2026-04-19
 Last-Updated: 2026-04-19
+Closed: 2026-04-19
+Disposition: Completed; shared prepare now owns authoritative typed CFG facts and the main x86 consumer families covered by this route read that contract instead of re-deriving control-flow meaning from local CFG shape.
 Depends-On:
 - idea 64 shared text identity and semantic name table refactor
 Blocks:
 - idea 63 complete phi legalization and parallel-copy resolution
+
+# Why This Was Closed
+
+Idea 62 was about making prepared control-flow facts authoritative, typed, and
+consumer-facing so downstream x86 lowering stopped relying on bootstrap CFG
+shape recovery. That route is now complete on its stated scope: prepared
+functions publish predecessor, successor, branch-condition, and join ownership
+facts on semantic ids, and the covered x86 handoff helpers now consume that
+shared contract across the branch-target, joined-branch, materialized-select,
+and trailing helper families named in the runbook.
+
+## What Landed Before Closure
+
+- shared prepare publishes typed per-block CFG and branch-condition facts
+- join ownership is derived from shared CFG analysis instead of ambiguity-
+  sensitive post-hoc recovery
+- contract-strict countdown and guard handoff surfaces no longer reopen raw
+  branch-label fallback when prepared metadata exists
+- x86 branch-target, joined-branch, materialized-select, compare-join, and
+  trailing helper consumers gained focused proof that prepared control-flow
+  facts remain authoritative under label and topology drift
+- the route preserved the typed `FunctionNameId` and `BlockLabelId` identity
+  boundary from idea 64 instead of widening back to raw string-keyed public
+  contracts
+
+## Validation At Closure
+
+Closure used a backend-scoped regression guard:
+
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_'`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result:
+
+- regression guard passed
+- before and after both reported `68` passed / `4` failed / `72` total
+- the same four pre-existing backend route failures remained:
+  - `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`
+
+## Follow-On Context
+
+- `ideas/open/57_x86_backend_c_testsuite_capability_families.md` remains the
+  umbrella route for residual broader x86/backend capability debt, including
+  the four pre-existing backend failures above
+- `ideas/open/59_generic_scalar_instruction_selection_for_x86.md`,
+  `ideas/open/60_prepared_value_location_consumption.md`,
+  `ideas/open/61_stack_frame_and_addressing_consumption.md`, and
+  `ideas/open/63_complete_phi_legalization_and_parallel_copy_resolution.md`
+  remain separate follow-on ideas and should not be silently folded back into
+  this closed CFG-contract route
+
+# Prealloc CFG Generalization And Authoritative Control-Flow Facts
 
 ## Intent
 
