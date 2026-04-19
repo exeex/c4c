@@ -1289,6 +1289,16 @@ find_prepared_param_zero_branch_return_context(const PreparedNameTables& names,
       names, function_cf, join_block_label_id, destination_value_name);
 }
 
+[[nodiscard]] inline std::optional<BlockLabelId> resolve_prepared_block_label_id(
+    const PreparedNameTables& names,
+    std::string_view block_label) {
+  const BlockLabelId block_label_id = names.block_labels.find(block_label);
+  if (block_label_id == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  return block_label_id;
+}
+
 [[nodiscard]] inline const PreparedJoinTransfer* find_branch_owned_join_transfer(
     const PreparedNameTables& names,
     const PreparedControlFlowFunction& function_cf,
@@ -1335,30 +1345,30 @@ find_prepared_param_zero_branch_return_context(const PreparedNameTables& names,
     std::optional<PreparedJoinTransferKind> required_kind = std::nullopt,
     std::optional<std::string_view> true_predecessor_label = std::nullopt,
     std::optional<std::string_view> false_predecessor_label = std::nullopt) {
-  const BlockLabelId source_branch_block_label_id =
-      names.block_labels.find(source_branch_block_label);
-  if (source_branch_block_label_id == kInvalidBlockLabel) {
+  const auto source_branch_block_label_id =
+      resolve_prepared_block_label_id(names, source_branch_block_label);
+  if (!source_branch_block_label_id.has_value()) {
     return nullptr;
   }
 
   std::optional<BlockLabelId> true_predecessor_label_id;
   if (true_predecessor_label.has_value()) {
-    true_predecessor_label_id = names.block_labels.find(*true_predecessor_label);
-    if (*true_predecessor_label_id == kInvalidBlockLabel) {
+    true_predecessor_label_id = resolve_prepared_block_label_id(names, *true_predecessor_label);
+    if (!true_predecessor_label_id.has_value()) {
       return nullptr;
     }
   }
   std::optional<BlockLabelId> false_predecessor_label_id;
   if (false_predecessor_label.has_value()) {
-    false_predecessor_label_id = names.block_labels.find(*false_predecessor_label);
-    if (*false_predecessor_label_id == kInvalidBlockLabel) {
+    false_predecessor_label_id = resolve_prepared_block_label_id(names, *false_predecessor_label);
+    if (!false_predecessor_label_id.has_value()) {
       return nullptr;
     }
   }
 
   return find_branch_owned_join_transfer(names,
                                          function_cf,
-                                         source_branch_block_label_id,
+                                         *source_branch_block_label_id,
                                          required_kind,
                                          true_predecessor_label_id,
                                          false_predecessor_label_id);
@@ -1384,19 +1394,33 @@ find_prepared_param_zero_branch_return_context(const PreparedNameTables& names,
     std::string_view source_branch_block_label,
     std::optional<std::string_view> true_predecessor_label = std::nullopt,
     std::optional<std::string_view> false_predecessor_label = std::nullopt) {
+  const auto source_branch_block_label_id =
+      resolve_prepared_block_label_id(names, source_branch_block_label);
+  if (!source_branch_block_label_id.has_value()) {
+    return nullptr;
+  }
+
+  std::optional<BlockLabelId> true_predecessor_label_id;
+  if (true_predecessor_label.has_value()) {
+    true_predecessor_label_id = resolve_prepared_block_label_id(names, *true_predecessor_label);
+    if (!true_predecessor_label_id.has_value()) {
+      return nullptr;
+    }
+  }
+
+  std::optional<BlockLabelId> false_predecessor_label_id;
+  if (false_predecessor_label.has_value()) {
+    false_predecessor_label_id = resolve_prepared_block_label_id(names, *false_predecessor_label);
+    if (!false_predecessor_label_id.has_value()) {
+      return nullptr;
+    }
+  }
+
   return find_select_materialization_join_transfer(names,
                                                    function_cf,
-                                                   names.block_labels.find(source_branch_block_label),
-                                                   true_predecessor_label.has_value()
-                                                       ? std::optional<BlockLabelId>(
-                                                             names.block_labels.find(
-                                                                 *true_predecessor_label))
-                                                       : std::nullopt,
-                                                   false_predecessor_label.has_value()
-                                                       ? std::optional<BlockLabelId>(
-                                                             names.block_labels.find(
-                                                                 *false_predecessor_label))
-                                                       : std::nullopt);
+                                                   *source_branch_block_label_id,
+                                                   true_predecessor_label_id,
+                                                   false_predecessor_label_id);
 }
 
 [[nodiscard]] inline std::optional<PreparedAuthoritativeBranchJoinTransfer>
@@ -1461,30 +1485,30 @@ find_authoritative_branch_owned_join_transfer(
     std::optional<PreparedJoinTransferKind> required_kind = std::nullopt,
     std::optional<std::string_view> true_predecessor_label = std::nullopt,
     std::optional<std::string_view> false_predecessor_label = std::nullopt) {
-  const BlockLabelId source_branch_block_label_id =
-      names.block_labels.find(source_branch_block_label);
-  if (source_branch_block_label_id == kInvalidBlockLabel) {
+  const auto source_branch_block_label_id =
+      resolve_prepared_block_label_id(names, source_branch_block_label);
+  if (!source_branch_block_label_id.has_value()) {
     return std::nullopt;
   }
 
   std::optional<BlockLabelId> true_predecessor_label_id;
   if (true_predecessor_label.has_value()) {
-    true_predecessor_label_id = names.block_labels.find(*true_predecessor_label);
-    if (*true_predecessor_label_id == kInvalidBlockLabel) {
+    true_predecessor_label_id = resolve_prepared_block_label_id(names, *true_predecessor_label);
+    if (!true_predecessor_label_id.has_value()) {
       return std::nullopt;
     }
   }
   std::optional<BlockLabelId> false_predecessor_label_id;
   if (false_predecessor_label.has_value()) {
-    false_predecessor_label_id = names.block_labels.find(*false_predecessor_label);
-    if (*false_predecessor_label_id == kInvalidBlockLabel) {
+    false_predecessor_label_id = resolve_prepared_block_label_id(names, *false_predecessor_label);
+    if (!false_predecessor_label_id.has_value()) {
       return std::nullopt;
     }
   }
 
   return find_authoritative_branch_owned_join_transfer(names,
                                                        function_cf,
-                                                       source_branch_block_label_id,
+                                                       *source_branch_block_label_id,
                                                        required_kind,
                                                        true_predecessor_label_id,
                                                        false_predecessor_label_id);
