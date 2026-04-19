@@ -161,6 +161,7 @@ set_tests_properties(backend_prepare_stack_layout PROPERTIES
 add_executable(backend_x86_handoff_boundary_test
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_test.cpp"
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_compare_branch_test.cpp"
+    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_joined_branch_test.cpp"
 )
 target_include_directories(backend_x86_handoff_boundary_test PRIVATE
     "${PROJECT_SOURCE_DIR}"
