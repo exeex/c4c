@@ -8,38 +8,36 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 3 Consume Prepared Control-Flow In X86 packet by removing the
-x86 compare-join continuation path's dependence on copied continuation labels
-alone: `src/backend/prealloc/prealloc.hpp` now exposes a direct prepared
-compare-join continuation-target lookup by source block, and
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` now prefers that shared
-helper when rendering compare-join entry branches while preserving the existing
-prepared continuation labels as a bounded fallback for valid nested shapes.
+Completed a Step 3 Consume Prepared Control-Flow In X86 packet by moving the
+recursive compare-join entry target decision behind a shared helper:
+`src/backend/prealloc/prealloc.hpp` now owns the
+authoritative-compare-join-targets-first, continuation-label-fallback-second
+decision for compare-join entry rendering, and
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` now consumes that shared
+helper instead of open-coding the target seeding locally.
 
 ## Suggested Next
 
-Stay in Step 3 but move to another prepared control-flow consumer seam with an
-observable end-to-end gain, such as tightening a non-short-circuit
-materialized-compare/join render-contract consumer path to use more of the
-shared prepared packet directly instead of keeping x86-side fallback-only
-knowledge about nested continuation topology.
+Stay in Step 3 and close another compare-join contract gap in shared helpers,
+such as publishing a more direct non-short-circuit materialized-compare/join
+entry branch packet so x86 can consume prepared entry-target decisions without
+carrying continuation-label fallback knowledge at the call site.
 
 ## Watchouts
 
 - Keep this route in Step 3 consumer work; do not widen into Step 4 file
- organization, idea 57, idea 59, idea 60, idea 61, or the unrelated
- `^backend_` semantic-lowering failures.
-- This packet was intentionally a consumer-side contract cleanup, not a new
- capability family: it should not be used to justify more compare-join
- passthrough coverage or emitter-local matcher growth.
-- The new source-block compare-join continuation helper is authoritative when
- available, but the x86 consumer still needs the existing prepared
- continuation-label fallback for valid nested shapes that are not yet published
- through that direct lookup. Follow-on packets should close that contract gap
- in shared helpers rather than dropping back to CFG rediscovery.
+  organization, idea 57, idea 59, idea 60, idea 61, or the unrelated
+  `^backend_` semantic-lowering failures.
+- This packet intentionally moved decision ownership, not feature coverage: do
+  not justify new compare-join passthrough shapes or emitter-local matcher
+  growth from it.
+- The bounded continuation-label fallback still exists for nested shapes that
+  are not yet fully published through shared compare-join entry helpers;
+  follow-on work should close that gap in shared helpers rather than teaching
+  x86 more local topology knowledge.
 - The broader `^backend_` checkpoint still has the same four known failures in
- variadic and dynamic-member-array semantic lowering outside this packet's
- owned files.
+  variadic and dynamic-member-array semantic lowering outside this packet's
+  owned files.
 
 ## Proof
 

@@ -2508,19 +2508,12 @@ std::string emit_prepared_module(
                   const c4c::backend::prepare::PreparedShortCircuitContinuationLabels&
                       continuation_plan)
               -> std::optional<CompareDrivenBranchRenderPlan> {
-            auto continuation_targets =
-                c4c::backend::prepare::PreparedCompareJoinContinuationTargets{
-                    .true_label = continuation_plan.true_label,
-                    .false_label = continuation_plan.false_label,
-                };
-            if (function_control_flow != nullptr) {
-              if (const auto prepared_targets =
-                      c4c::backend::prepare::find_prepared_compare_join_continuation_targets(
-                          *function_control_flow, function, source_block.label);
-                  prepared_targets.has_value()) {
-                continuation_targets = *prepared_targets;
-              }
-            }
+            const auto continuation_targets =
+                function_control_flow != nullptr
+                    ? c4c::backend::prepare::find_prepared_compare_join_entry_target_labels(
+                          *function_control_flow, function, source_block.label, continuation_plan)
+                    : c4c::backend::prepare::prepared_compare_join_entry_target_labels(
+                          continuation_plan);
 
             return build_compare_driven_direct_entry_render_plan(
                 source_block,
