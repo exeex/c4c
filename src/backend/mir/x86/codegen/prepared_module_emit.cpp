@@ -422,28 +422,6 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
     static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
-    const auto is_supported_guard_compare_opcode =
-        [](c4c::backend::bir::BinaryOpcode opcode) {
-          return opcode == c4c::backend::bir::BinaryOpcode::Eq ||
-                 opcode == c4c::backend::bir::BinaryOpcode::Ne ||
-                 opcode == c4c::backend::bir::BinaryOpcode::Sgt ||
-                 opcode == c4c::backend::bir::BinaryOpcode::Sge ||
-                 opcode == c4c::backend::bir::BinaryOpcode::Slt ||
-                 opcode == c4c::backend::bir::BinaryOpcode::Sle;
-        };
-    struct ShortCircuitTarget {
-      const c4c::backend::bir::Block* block = nullptr;
-      std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels> continuation;
-    };
-    struct ShortCircuitPlan {
-      ShortCircuitTarget on_compare_true;
-      ShortCircuitTarget on_compare_false;
-    };
-    struct CompareDrivenBranchRenderPlan {
-      ShortCircuitPlan branch_plan;
-      std::string compare_setup;
-      std::string false_branch_opcode;
-    };
     struct ShortCircuitRenderContext {
       bool omit_true_continuation = false;
       bool omit_false_lane = false;
@@ -456,54 +434,7 @@ std::string emit_prepared_module(
       std::string rendered_true;
       RenderedShortCircuitFalseLane rendered_false_lane;
     };
-    struct DirectBranchTargets {
-      const c4c::backend::bir::Block* true_block = nullptr;
-      const c4c::backend::bir::Block* false_block = nullptr;
-    };
     const auto* function_control_flow = find_control_flow_function();
-    const auto resolve_direct_branch_targets =
-        [&](const c4c::backend::bir::Block& source_block,
-            std::string_view true_label,
-            std::string_view false_label) -> std::optional<DirectBranchTargets> {
-      DirectBranchTargets targets{
-          .true_block = find_block(true_label),
-          .false_block = find_block(false_label),
-      };
-      if (targets.true_block == nullptr || targets.false_block == nullptr) {
-        return std::nullopt;
-      }
-      return targets;
-    };
-    const auto build_direct_branch_plan_from_targets =
-        [&](const c4c::backend::bir::Block& source_block,
-            const DirectBranchTargets& direct_targets) -> std::optional<ShortCircuitPlan> {
-      if (direct_targets.true_block == nullptr || direct_targets.false_block == nullptr ||
-          direct_targets.true_block == &source_block ||
-          direct_targets.false_block == &source_block) {
-        return std::nullopt;
-      }
-
-      return ShortCircuitPlan{
-          .on_compare_true =
-              ShortCircuitTarget{
-                  .block = direct_targets.true_block,
-                  .continuation = std::nullopt,
-              },
-          .on_compare_false =
-              ShortCircuitTarget{
-                  .block = direct_targets.false_block,
-                  .continuation = std::nullopt,
-              },
-      };
-    };
-    const auto build_plain_cond_direct_branch_targets =
-        [&](const c4c::backend::bir::Block& source_block,
-            const c4c::backend::prepare::PreparedBranchCondition& branch_condition)
-        -> std::optional<DirectBranchTargets> {
-      return resolve_direct_branch_targets(source_block,
-                                           branch_condition.true_label,
-                                           branch_condition.false_label);
-    };
     const auto build_direct_branch_targets_from_continuation =
         [&](const c4c::backend::prepare::PreparedShortCircuitContinuationLabels&
                 continuation_plan)
@@ -1116,288 +1047,6 @@ std::string emit_prepared_module(
             current_ptr_name = std::nullopt;
           }
 
-          const auto find_trailing_guard_compare =
-              [&](const c4c::backend::bir::Block& source_block,
-                  std::size_t current_compare_index,
-                  std::optional<std::string_view> expected_condition_name)
-              -> const c4c::backend::bir::BinaryInst* {
-            if (current_compare_index + 1 != source_block.insts.size()) {
-              return nullptr;
-            }
-
-            const auto* compare =
-                std::get_if<c4c::backend::bir::BinaryInst>(&source_block.insts.back());
-            if (compare == nullptr || !is_supported_guard_compare_opcode(compare->opcode) ||
-                compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
-                (compare->result.type != c4c::backend::bir::TypeKind::I1 &&
-                 compare->result.type != c4c::backend::bir::TypeKind::I32)) {
-              return nullptr;
-            }
-            if (expected_condition_name.has_value() &&
-                compare->result.name != *expected_condition_name) {
-              return nullptr;
-            }
-            return compare;
-          };
-          const auto build_short_circuit_entry_compare_context =
-              [&](const auto& find_branch_condition_fn,
-                  const c4c::backend::bir::Block& source_block,
-                  const c4c::backend::bir::BinaryInst& compare,
-                  bool require_prepared_branch_condition)
-              -> std::optional<ShortCircuitEntryCompareContext> {
-            const auto* branch_condition = find_branch_condition_fn(source_block.label);
-            auto false_branch_compare =
-                branch_condition != nullptr
-                    ? render_prepared_guard_false_branch_compare_from_condition(
-                          *branch_condition, current_materialized_compare, current_i32_name)
-                    : std::optional<std::pair<std::string, std::string>>{};
-            if (!false_branch_compare.has_value() && require_prepared_branch_condition) {
-              return std::nullopt;
-            }
-            if (!false_branch_compare.has_value()) {
-              false_branch_compare = render_prepared_guard_false_branch_compare(
-                  compare, current_materialized_compare, current_i32_name);
-            }
-            if (!false_branch_compare.has_value()) {
-              return std::nullopt;
-            }
-            return ShortCircuitEntryCompareContext{
-                .branch_condition = branch_condition,
-                .compare_setup = std::move(false_branch_compare->first),
-                .false_branch_opcode = std::move(false_branch_compare->second),
-            };
-          };
-          const auto build_compare_driven_render_plan =
-              [&](ShortCircuitPlan branch_plan,
-                  const ShortCircuitEntryCompareContext& compare_context)
-              -> CompareDrivenBranchRenderPlan {
-            return CompareDrivenBranchRenderPlan{
-                .branch_plan = std::move(branch_plan),
-                .compare_setup = compare_context.compare_setup,
-                .false_branch_opcode = compare_context.false_branch_opcode,
-            };
-          };
-          const auto find_branch_condition =
-              [&](std::string_view block_label)
-              -> const c4c::backend::prepare::PreparedBranchCondition* {
-            if (function_control_flow == nullptr) {
-              return nullptr;
-            }
-            return c4c::backend::prepare::find_prepared_branch_condition(
-                *function_control_flow, block_label);
-          };
-          const auto find_prepared_i32_immediate_branch_condition =
-              [&](std::string_view block_label)
-              -> const c4c::backend::prepare::PreparedBranchCondition* {
-            if (function_control_flow == nullptr || !current_i32_name.has_value()) {
-              return nullptr;
-            }
-            return c4c::backend::prepare::find_prepared_i32_immediate_branch_condition(
-                *function_control_flow, block_label, *current_i32_name);
-          };
-          const auto build_compare_driven_entry_render_plan =
-              [&](const c4c::backend::bir::Block& source_block,
-                  const c4c::backend::bir::BinaryInst& compare,
-                  bool require_prepared_branch_condition,
-                  const auto& branch_plan_builder)
-              -> std::optional<CompareDrivenBranchRenderPlan> {
-            const auto compare_context =
-                build_short_circuit_entry_compare_context(find_branch_condition,
-                                                          source_block,
-                                                          compare,
-                                                          require_prepared_branch_condition);
-            if (!compare_context.has_value()) {
-              return std::nullopt;
-            }
-
-            const auto branch_plan = branch_plan_builder(*compare_context);
-            if (!branch_plan.has_value()) {
-              return std::nullopt;
-            }
-
-            return build_compare_driven_render_plan(*branch_plan, *compare_context);
-          };
-          const auto build_prepared_compare_driven_entry_render_plan =
-              [&](const c4c::backend::bir::Block& source_block,
-                  const auto& branch_plan_builder)
-              -> std::optional<CompareDrivenBranchRenderPlan> {
-            const auto* branch_condition = find_branch_condition(source_block.label);
-            if (branch_condition == nullptr) {
-              return std::nullopt;
-            }
-
-            const auto compare_context = build_prepared_guard_compare_context(
-                *branch_condition, current_materialized_compare, current_i32_name);
-            if (!compare_context.has_value()) {
-              return std::nullopt;
-            }
-
-            const auto branch_plan = branch_plan_builder(*compare_context);
-            if (!branch_plan.has_value()) {
-              return std::nullopt;
-            }
-
-            return build_compare_driven_render_plan(*branch_plan, *compare_context);
-          };
-          const auto build_compare_driven_direct_entry_render_plan =
-              [&](const c4c::backend::bir::Block& source_block,
-                  const c4c::backend::bir::BinaryInst& compare,
-                  bool require_prepared_branch_condition,
-                  const auto& direct_target_builder)
-              -> std::optional<CompareDrivenBranchRenderPlan> {
-            return build_compare_driven_entry_render_plan(
-                source_block,
-                compare,
-                require_prepared_branch_condition,
-                [&](const ShortCircuitEntryCompareContext& compare_context)
-                    -> std::optional<ShortCircuitPlan> {
-                  const auto direct_targets = direct_target_builder(compare_context);
-                  if (!direct_targets.has_value()) {
-                    return std::nullopt;
-                  }
-                  return build_direct_branch_plan_from_targets(source_block, *direct_targets);
-                });
-          };
-          const auto build_short_circuit_entry_render_plan =
-              [&](const c4c::backend::bir::Block& source_block,
-                  const c4c::backend::prepare::PreparedShortCircuitJoinContext& join_context)
-              -> std::optional<CompareDrivenBranchRenderPlan> {
-            const auto* branch_condition = find_branch_condition(source_block.label);
-            if (branch_condition == nullptr) {
-              return std::nullopt;
-            }
-
-            auto compare_context = build_prepared_guard_compare_context(
-                *branch_condition, current_materialized_compare, current_i32_name);
-            if (!compare_context.has_value()) {
-              const std::optional<std::string_view> authoritative_condition_name =
-                  branch_condition->condition_value.kind == c4c::backend::bir::Value::Kind::Named
-                      ? std::optional<std::string_view>(branch_condition->condition_value.name)
-                      : std::nullopt;
-              const auto* compare = find_trailing_guard_compare(
-                  source_block, compare_index, authoritative_condition_name);
-              if (compare == nullptr) {
-                return std::nullopt;
-              }
-              compare_context = build_short_circuit_entry_compare_context(find_branch_condition,
-                                                                         source_block,
-                                                                         *compare,
-                                                                         true);
-            }
-            if (!compare_context.has_value()) {
-              return std::nullopt;
-            }
-
-            const auto prepared_target_labels =
-                c4c::backend::prepare::find_prepared_compare_branch_target_labels(
-                    *branch_condition, source_block);
-            if (!prepared_target_labels.has_value()) {
-              return std::nullopt;
-            }
-
-            const auto prepared_short_circuit_plan =
-                c4c::backend::prepare::find_prepared_short_circuit_branch_plan(
-                    join_context, *prepared_target_labels);
-            if (!prepared_short_circuit_plan.has_value()) {
-              return std::nullopt;
-            }
-
-            const auto short_circuit_branch_plan =
-                build_short_circuit_plan(*prepared_short_circuit_plan);
-            if (!short_circuit_branch_plan.has_value()) {
-              return std::nullopt;
-            }
-
-            return build_compare_driven_render_plan(*short_circuit_branch_plan,
-                                                    *compare_context);
-          };
-          const auto build_plain_cond_entry_render_plan =
-              [&](const c4c::backend::bir::Block& source_block,
-                  const c4c::backend::bir::BinaryInst& compare)
-              -> std::optional<CompareDrivenBranchRenderPlan> {
-            const auto* branch_condition =
-                find_prepared_i32_immediate_branch_condition(source_block.label);
-            if (branch_condition != nullptr) {
-              const auto compare_context = build_prepared_guard_compare_context(
-                  *branch_condition, current_materialized_compare, current_i32_name);
-              if (!compare_context.has_value()) {
-                throw std::invalid_argument(
-                    "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
-              }
-
-              const auto direct_targets =
-                  build_plain_cond_direct_branch_targets(source_block, *branch_condition);
-              if (!direct_targets.has_value()) {
-                throw std::invalid_argument(
-                    "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
-              }
-
-              const auto branch_plan =
-                  build_direct_branch_plan_from_targets(source_block, *direct_targets);
-              if (!branch_plan.has_value()) {
-                throw std::invalid_argument(
-                    "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
-              }
-
-              return build_compare_driven_render_plan(*branch_plan, *compare_context);
-            }
-
-            return build_compare_driven_direct_entry_render_plan(
-                source_block,
-                compare,
-                true,
-                [&](const ShortCircuitEntryCompareContext& compare_context)
-                    -> std::optional<DirectBranchTargets> {
-                  if (compare_context.branch_condition == nullptr) {
-                    return std::nullopt;
-                  }
-                  return build_plain_cond_direct_branch_targets(
-                      source_block, *compare_context.branch_condition);
-                });
-          };
-          const auto build_compare_join_entry_render_plan =
-              [&](const c4c::backend::bir::Block& source_block,
-                  const c4c::backend::prepare::PreparedShortCircuitContinuationLabels&
-                      continuation_plan)
-              -> std::optional<CompareDrivenBranchRenderPlan> {
-            const auto prepared_branch_plan =
-                c4c::backend::prepare::find_prepared_compare_join_entry_branch_plan(
-                    function_control_flow, function, source_block, continuation_plan);
-            if (!prepared_branch_plan.has_value()) {
-              return std::nullopt;
-            }
-            const auto* prepared_branch_condition = find_branch_condition(source_block.label);
-
-            if (const auto prepared_render_plan =
-                    build_prepared_compare_driven_entry_render_plan(
-                        source_block,
-                        [&](const ShortCircuitEntryCompareContext&)
-                            -> std::optional<ShortCircuitPlan> {
-                          return build_short_circuit_plan(*prepared_branch_plan);
-                        });
-                prepared_render_plan.has_value()) {
-              return prepared_render_plan;
-            }
-            if (prepared_branch_condition != nullptr) {
-              return std::nullopt;
-            }
-
-            const auto* compare =
-                find_trailing_guard_compare(source_block, compare_index, std::nullopt);
-            if (compare == nullptr) {
-              return std::nullopt;
-            }
-
-            return build_compare_driven_entry_render_plan(
-                source_block,
-                *compare,
-                false,
-                [&](const ShortCircuitEntryCompareContext&)
-                    -> std::optional<ShortCircuitPlan> {
-                  return build_short_circuit_plan(*prepared_branch_plan);
-                });
-          };
-
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Return) {
             if (compare_index != block.insts.size() || !block.terminator.value.has_value()) {
               return std::nullopt;
@@ -1422,7 +1071,15 @@ std::string emit_prepared_module(
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
             if (continuation.has_value()) {
               const auto compare_join_render_plan =
-                  build_compare_join_entry_render_plan(block, *continuation);
+                  c4c::backend::x86::build_prepared_compare_join_entry_render_plan(
+                      function_control_flow,
+                      function,
+                      block,
+                      *continuation,
+                      compare_index,
+                      current_materialized_compare,
+                      current_i32_name,
+                      build_short_circuit_plan);
               if (compare_join_render_plan.has_value()) {
                 return render_compare_driven_branch_plan(render_block,
                                                          body,
@@ -1461,7 +1118,15 @@ std::string emit_prepared_module(
             }
 
             const auto short_circuit_render_plan =
-                build_short_circuit_entry_render_plan(block, *join_context);
+                c4c::backend::x86::build_prepared_short_circuit_entry_render_plan(
+                    function_control_flow,
+                    function,
+                    block,
+                    *join_context,
+                    compare_index,
+                    current_materialized_compare,
+                    current_i32_name,
+                    build_short_circuit_plan);
             if (!short_circuit_render_plan.has_value()) {
               return std::nullopt;
             }
@@ -1481,23 +1146,14 @@ std::string emit_prepared_module(
                 "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
           }
 
-          if (block.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named) {
-            return std::nullopt;
-          }
-          std::optional<std::string_view> authoritative_condition_name = block.terminator.condition.name;
-          if (const auto* branch_condition = find_branch_condition(block.label);
-              branch_condition != nullptr &&
-              branch_condition->condition_value.kind == c4c::backend::bir::Value::Kind::Named) {
-            authoritative_condition_name = branch_condition->condition_value.name;
-          }
-          const auto* compare =
-              find_trailing_guard_compare(block, compare_index, authoritative_condition_name);
-          if (compare == nullptr) {
-            return std::nullopt;
-          }
-
           const auto plain_cond_render_plan =
-              build_plain_cond_entry_render_plan(block, *compare);
+              c4c::backend::x86::build_prepared_plain_cond_entry_render_plan(
+                  function_control_flow,
+                  block,
+                  compare_index,
+                  current_materialized_compare,
+                  current_i32_name,
+                  find_block);
           if (!plain_cond_render_plan.has_value()) {
             return std::nullopt;
           }

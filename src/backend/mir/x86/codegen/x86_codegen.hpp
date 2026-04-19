@@ -4,6 +4,7 @@
 
 #include "../assembler/mod.hpp"
 #include "../../../bir/lir_to_bir.hpp"
+#include "../../../prealloc/prealloc.hpp"
 #include "../../../prealloc/target_register_profile.hpp"
 
 #include <array>
@@ -170,6 +171,27 @@ struct ShortCircuitEntryCompareContext {
   const c4c::backend::prepare::PreparedBranchCondition* branch_condition = nullptr;
   std::string compare_setup;
   std::string false_branch_opcode;
+};
+
+struct ShortCircuitTarget {
+  const c4c::backend::bir::Block* block = nullptr;
+  std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels> continuation;
+};
+
+struct ShortCircuitPlan {
+  ShortCircuitTarget on_compare_true;
+  ShortCircuitTarget on_compare_false;
+};
+
+struct CompareDrivenBranchRenderPlan {
+  ShortCircuitPlan branch_plan;
+  std::string compare_setup;
+  std::string false_branch_opcode;
+};
+
+struct DirectBranchTargets {
+  const c4c::backend::bir::Block* true_block = nullptr;
+  const c4c::backend::bir::Block* false_block = nullptr;
 };
 
 // Active intrinsic inventory carried by the translated x86 intrinsics owner.
@@ -632,6 +654,38 @@ std::optional<ShortCircuitEntryCompareContext> build_prepared_guard_compare_cont
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
     const std::optional<std::string_view>& current_i32_name);
+
+std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_render_plan(
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& source_block,
+    const c4c::backend::prepare::PreparedShortCircuitJoinContext& join_context,
+    std::size_t compare_index,
+    const std::optional<MaterializedI32Compare>& current_materialized_compare,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::function<std::optional<ShortCircuitPlan>(
+        const c4c::backend::prepare::PreparedShortCircuitBranchPlan&)>&
+        build_short_circuit_plan);
+
+std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_render_plan(
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::bir::Block& source_block,
+    std::size_t compare_index,
+    const std::optional<MaterializedI32Compare>& current_materialized_compare,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
+
+std::optional<CompareDrivenBranchRenderPlan> build_prepared_compare_join_entry_render_plan(
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& source_block,
+    const c4c::backend::prepare::PreparedShortCircuitContinuationLabels& continuation_plan,
+    std::size_t compare_index,
+    const std::optional<MaterializedI32Compare>& current_materialized_compare,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::function<std::optional<ShortCircuitPlan>(
+        const c4c::backend::prepare::PreparedShortCircuitBranchPlan&)>&
+        build_short_circuit_plan);
 
 std::optional<std::string> render_prepared_supported_immediate_binary(
     std::string_view return_register,
