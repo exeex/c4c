@@ -9175,6 +9175,68 @@ int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract(
   return 0;
 }
 
+int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract_with_zero_lhs(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown control-flow contract")
+                    .c_str());
+  }
+  if (control_flow->join_transfers.front().kind != prepare::PreparedJoinTransferKind::LoopCarry) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer classifies the loop countdown join as explicit loop-carry traffic")
+                    .c_str());
+  }
+
+  auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+  auto& function = prepared.module.functions.front();
+  auto* loop_block = find_block(function, "loop");
+  auto* loop_compare =
+      loop_block == nullptr || loop_block->insts.empty()
+          ? nullptr
+          : std::get_if<bir::BinaryInst>(&loop_block->insts.back());
+  if (mutable_control_flow == nullptr || mutable_control_flow->branch_conditions.size() != 1 ||
+      mutable_control_flow->join_transfers.size() != 1 || loop_block == nullptr ||
+      loop_compare == nullptr ||
+      loop_block->terminator.kind != bir::TerminatorKind::CondBranch) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture lost its mutable loop-countdown control-flow contract")
+                    .c_str());
+  }
+
+  auto& branch_condition = mutable_control_flow->branch_conditions.front();
+  branch_condition.predicate = bir::BinaryOpcode::Eq;
+  branch_condition.lhs = bir::Value::immediate_i32(0);
+  branch_condition.rhs = bir::Value::named(bir::TypeKind::I32, "counter");
+  branch_condition.true_label = "exit";
+  branch_condition.false_label = "body";
+
+  loop_block->terminator.true_label = branch_condition.true_label;
+  loop_block->terminator.false_label = branch_condition.false_label;
+
+  loop_compare->opcode = bir::BinaryOpcode::Eq;
+  loop_compare->lhs = bir::Value::immediate_i32(7);
+  loop_compare->rhs = bir::Value::immediate_i32(7);
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative eq-zero loop branch contract when zero is the prepared lhs")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_route_rejection(const bir::Module& module,
                           std::string_view expected_message_fragment,
                           const char* failure_context) {
@@ -10999,6 +11061,15 @@ int main() {
               expected_minimal_loop_countdown_join_asm("main"),
               "main",
               "minimal loop-carried join countdown prepared-control-flow ownership respects the alternate eq-zero branch contract");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract_with_zero_lhs(
+              make_x86_loop_countdown_join_module(),
+              expected_minimal_loop_countdown_join_asm("main"),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership respects the mirrored alternate eq-zero branch contract");
       status != 0) {
     return status;
   }
