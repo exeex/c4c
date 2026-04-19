@@ -9051,6 +9051,36 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
       status != 0) {
     return status;
   }
+  if (const auto status =
+          check_join_route_edge_store_slot_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_mul_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_mul_asm(
+                  "branch_join_adjust_then_mul", "carrier.nonzero", 5, 1, 3),
+              "branch_join_adjust_then_mul",
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join mul EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_mul_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_mul_asm(
+                  "branch_join_adjust_then_mul", "carrier.nonzero", 5, 1, 3),
+              "branch_join_adjust_then_mul",
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join mul EdgeStoreSlot ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_mul_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_mul_asm(
+                  "branch_join_adjust_then_mul", "carrier.nonzero", 5, 1, 3),
+              "branch_join_adjust_then_mul",
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join mul EdgeStoreSlot ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
 
   if (const auto status =
           check_route_outputs(
