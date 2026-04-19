@@ -309,21 +309,24 @@ int check_short_circuit_or_control_flow_contract(const prepare::PreparedBirModul
   if (control_flow == nullptr) {
     return fail("expected legalize to publish prepared control-flow metadata for the short-circuit lane");
   }
-  if (control_flow->branch_conditions.size() != 2 || control_flow->join_transfers.size() != 1) {
-    return fail("expected the short-circuit lane to publish two branch-condition records and one join-transfer");
+  if (control_flow->branch_conditions.size() != 3 || control_flow->join_transfers.size() != 1) {
+    return fail("expected the short-circuit lane to publish three branch-condition records and one join-transfer");
   }
 
   const prepare::PreparedBranchCondition* entry_condition = nullptr;
+  const prepare::PreparedBranchCondition* rhs_condition = nullptr;
   const prepare::PreparedBranchCondition* join_condition = nullptr;
   for (const auto& condition : control_flow->branch_conditions) {
     if (condition.block_label == "entry") {
       entry_condition = &condition;
+    } else if (condition.block_label == "logic.rhs.7") {
+      rhs_condition = &condition;
     } else if (condition.block_label == "logic.end.10") {
       join_condition = &condition;
     }
   }
-  if (entry_condition == nullptr || join_condition == nullptr) {
-    return fail("expected the short-circuit lane to publish entry and join branch-condition metadata");
+  if (entry_condition == nullptr || rhs_condition == nullptr || join_condition == nullptr) {
+    return fail("expected the short-circuit lane to publish entry, rhs, and join branch-condition metadata");
   }
 
   if (!entry_condition->predicate.has_value() || !entry_condition->compare_type.has_value() ||
@@ -335,6 +338,16 @@ int check_short_circuit_or_control_flow_contract(const prepare::PreparedBirModul
       entry_condition->false_label != "logic.rhs.7" ||
       !is_named_i32(entry_condition->condition_value, "%t4")) {
     return fail("expected the short-circuit entry metadata to preserve the authoritative guard compare");
+  }
+
+  if (!rhs_condition->predicate.has_value() || !rhs_condition->compare_type.has_value() ||
+      !rhs_condition->lhs.has_value() || !rhs_condition->rhs.has_value() ||
+      *rhs_condition->predicate != bir::BinaryOpcode::Ne ||
+      *rhs_condition->compare_type != bir::TypeKind::I32 ||
+      !is_named_i32(*rhs_condition->lhs, "%t12") || !is_immediate_i32(*rhs_condition->rhs, 3) ||
+      rhs_condition->true_label != "block_1" || rhs_condition->false_label != "block_2" ||
+      !is_named_i32(rhs_condition->condition_value, "%t13")) {
+    return fail("expected the short-circuit rhs metadata to preserve the authoritative continuation compare");
   }
 
   if (!join_condition->predicate.has_value() || !join_condition->compare_type.has_value() ||
