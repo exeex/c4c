@@ -136,27 +136,6 @@ void absorb_value_metadata(DenseValueInfo& info,
   info.requires_home_slot = info.requires_home_slot || requires_home_slot;
 }
 
-[[nodiscard]] std::optional<ValueNameId> lookup_named_value_id(const PreparedNameTables& names,
-                                                               const bir::Value& value) {
-  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
-    return std::nullopt;
-  }
-  const ValueNameId value_name_id = names.value_names.find(value.name);
-  if (value_name_id == kInvalidValueName) {
-    return std::nullopt;
-  }
-  return value_name_id;
-}
-
-[[nodiscard]] std::optional<BlockLabelId> lookup_block_label_id(const PreparedNameTables& names,
-                                                                std::string_view label) {
-  const BlockLabelId block_label_id = names.block_labels.find(label);
-  if (block_label_id == kInvalidBlockLabel) {
-    return std::nullopt;
-  }
-  return block_label_id;
-}
-
 [[nodiscard]] std::unordered_map<ValueNameId, std::vector<const PreparedStackObject*>>
 build_stack_object_lookup(FunctionNameId function_name,
                           const PreparedStackLayout& stack_layout) {
@@ -171,6 +150,14 @@ build_stack_object_lookup(FunctionNameId function_name,
     lookup[*object.value_name].push_back(&object);
   }
   return lookup;
+}
+
+[[nodiscard]] std::optional<ValueNameId> resolve_named_value_id(const PreparedNameTables& names,
+                                                                const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return std::nullopt;
+  }
+  return resolve_prepared_value_name_id(names, value.name);
 }
 
 [[nodiscard]] std::optional<const PreparedStackObject*> find_unique_stack_object(
@@ -384,7 +371,7 @@ void append_named_value_match(const PreparedNameTables& names,
                               const bir::Value& value,
                               const DenseValueSet& dense_values,
                               std::vector<std::size_t>& matches) {
-  const auto value_name_id = lookup_named_value_id(names, value);
+  const auto value_name_id = resolve_named_value_id(names, value);
   if (!value_name_id.has_value()) {
     return;
   }
@@ -508,13 +495,23 @@ void record_point_activity(const std::vector<std::size_t>& uses,
   }
 }
 
-[[nodiscard]] std::unordered_map<BlockLabelId, std::size_t> build_block_index_map(
+[[nodiscard]] std::vector<BlockLabelId> build_function_block_label_ids(
     PreparedNameTables& names,
     const bir::Function& function) {
+  std::vector<BlockLabelId> block_label_ids;
+  block_label_ids.reserve(function.blocks.size());
+  for (const auto& block : function.blocks) {
+    block_label_ids.push_back(names.block_labels.intern(block.label));
+  }
+  return block_label_ids;
+}
+
+[[nodiscard]] std::unordered_map<BlockLabelId, std::size_t> build_block_index_map(
+    const std::vector<BlockLabelId>& block_label_ids) {
   std::unordered_map<BlockLabelId, std::size_t> indices;
-  indices.reserve(function.blocks.size());
-  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
-    const BlockLabelId block_label_id = names.block_labels.intern(function.blocks[block_index].label);
+  indices.reserve(block_label_ids.size());
+  for (std::size_t block_index = 0; block_index < block_label_ids.size(); ++block_index) {
+    const BlockLabelId block_label_id = block_label_ids[block_index];
     if (block_label_id != kInvalidBlockLabel) {
       indices.emplace(block_label_id, block_index);
     }
@@ -530,7 +527,7 @@ void record_point_activity(const std::vector<std::size_t>& uses,
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& terminator = function.blocks[block_index].terminator;
     auto append_successor = [&](std::string_view label) {
-      const auto block_label_id = lookup_block_label_id(names, label);
+      const auto block_label_id = resolve_prepared_block_label_id(names, label);
       if (!block_label_id.has_value()) {
         return;
       }
@@ -575,8 +572,8 @@ void record_point_activity(const std::vector<std::size_t>& uses,
         continue;
       }
       for (const auto& incoming : phi->incomings) {
-        const auto predecessor_label_id = lookup_block_label_id(names, incoming.label);
-        const auto value_name_id = lookup_named_value_id(names, incoming.value);
+        const auto predecessor_label_id = resolve_prepared_block_label_id(names, incoming.label);
+        const auto value_name_id = resolve_named_value_id(names, incoming.value);
         if (!predecessor_label_id.has_value() || !value_name_id.has_value()) {
           continue;
         }
@@ -776,8 +773,7 @@ void record_point_activity(const std::vector<std::size_t>& uses,
 }
 
 [[nodiscard]] std::vector<PreparedLivenessBlock> build_prepared_blocks(
-    PreparedNameTables& names,
-    const bir::Function& function,
+    const std::vector<BlockLabelId>& block_label_ids,
     const std::vector<BlockProgramPoints>& block_points,
     const std::vector<std::vector<std::size_t>>& successors,
     const std::vector<std::vector<std::size_t>>& predecessors,
@@ -785,10 +781,10 @@ void record_point_activity(const std::vector<std::size_t>& uses,
     const std::vector<BitSet>& live_out,
     const std::vector<PreparedValueId>& dense_value_ids) {
   std::vector<PreparedLivenessBlock> blocks;
-  blocks.reserve(function.blocks.size());
-  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+  blocks.reserve(block_label_ids.size());
+  for (std::size_t block_index = 0; block_index < block_label_ids.size(); ++block_index) {
     blocks.push_back(PreparedLivenessBlock{
-        .block_name = names.block_labels.intern(function.blocks[block_index].label),
+        .block_name = block_label_ids[block_index],
         .block_index = block_index,
         .start_point = block_points[block_index].start_point,
         .end_point = block_points[block_index].end_point,
@@ -869,7 +865,8 @@ void BirPreAlloc::run_liveness() {
 
     const DenseValueSet dense_values =
         build_dense_value_set(prepared_.names, function, prepared_.stack_layout);
-    const auto block_indices = build_block_index_map(prepared_.names, function);
+    const auto block_label_ids = build_function_block_label_ids(prepared_.names, function);
+    const auto block_indices = build_block_index_map(block_label_ids);
     const auto successors = build_successors(prepared_.names, function, block_indices);
     const auto predecessors = build_predecessors(successors);
     const auto phi_predecessor_uses =
@@ -900,8 +897,7 @@ void BirPreAlloc::run_liveness() {
         .call_points = std::move(points.call_points),
         .block_loop_depth = compute_loop_depth(successors),
         .blocks = build_prepared_blocks(
-            prepared_.names,
-            function,
+            block_label_ids,
             points.blocks,
             successors,
             predecessors,
