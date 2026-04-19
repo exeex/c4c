@@ -7045,6 +7045,90 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
       status != 0) {
     return status;
   }
+  if (const auto status =
+          check_materialized_compare_join_render_contract_publishes_prepared_globals_and_labels(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
+              "branch_join_adjust_then_add",
+              "scalar-control-flow compare-against-zero prepared compare-join trailing-arithmetic render-contract ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
+              "branch_join_adjust_then_add",
+              "scalar-control-flow compare-against-zero prepared compare-join trailing-arithmetic branch-plan ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branch_plan_helper_ignores_non_compare_entry_carrier(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
+              "branch_join_adjust_then_add",
+              "scalar-control-flow compare-against-zero prepared compare-join trailing-arithmetic branch-plan ownership ignores non-compare entry carrier state when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_route_ignores_non_compare_entry_carrier(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_add_asm(
+                  "branch_join_adjust_then_add", "is_nonzero", 5, 1, 2),
+              "branch_join_adjust_then_add",
+              "scalar-control-flow compare-against-zero trailing-arithmetic compare-join route ignores non-compare entry carrier state when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_route_requires_authoritative_prepared_branch_condition(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
+              "branch_join_adjust_then_add",
+              "scalar-control-flow compare-against-zero trailing-arithmetic compare-join route rejects a drifted authoritative prepared branch contract instead of falling back past the compare-join handoff");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_route_requires_authoritative_prepared_branch_record(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
+              "branch_join_adjust_then_add",
+              "scalar-control-flow compare-against-zero trailing-arithmetic compare-join route rejects reopening raw recovery when the authoritative prepared branch record is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_branch_plan_helper_publishes_prepared_labels(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
+              "branch_join_adjust_then_add",
+              "scalar-control-flow compare-against-zero prepared compare-join trailing-arithmetic EdgeStoreSlot branch-plan ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_route_ignores_non_compare_entry_carrier(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_add_asm(
+                  "branch_join_adjust_then_add", "is_nonzero", 5, 1, 2),
+              "branch_join_adjust_then_add",
+              "scalar-control-flow compare-against-zero trailing-arithmetic compare-join EdgeStoreSlot route ignores non-compare entry carrier state when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_route_requires_authoritative_prepared_branch_condition(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
+              "branch_join_adjust_then_add",
+              "scalar-control-flow compare-against-zero trailing-arithmetic compare-join EdgeStoreSlot route rejects a drifted authoritative prepared branch contract instead of falling back past the compare-join handoff");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_route_requires_authoritative_prepared_branch_record(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
+              "branch_join_adjust_then_add",
+              "scalar-control-flow compare-against-zero trailing-arithmetic compare-join EdgeStoreSlot route rejects reopening raw recovery when the authoritative prepared branch record is missing");
+      status != 0) {
+    return status;
+  }
 
   if (const auto status =
           check_route_outputs(

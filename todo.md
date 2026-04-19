@@ -5,28 +5,27 @@ Source Idea Path: ideas/open/63_complete_phi_legalization_and_parallel_copy_reso
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Keep Downstream Phi Consumers Contract-Strict
-Plan Review Counter: 7 / 10
+Plan Review Counter: 8 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed a Step 3.2 (`Keep Downstream Phi Consumers Contract-Strict`) slice by
-tightening the joined-branch compare-join
-`branch_join_offset_global_then_xor` handoff-boundary proof so the fixed-
-offset same-module global non-chain route now exercises true-lane and false-
-lane passthrough topology against the same authoritative prepared-control-flow
-contract for both the default `PhiEdge` carrier and a forced `EdgeStoreSlot`
-carrier. The compare-join helper coverage now matches the passthrough parity
-already carried by the corresponding selected-value-chain family and by the
-prepared return-context proofs for the same fixed-offset global route.
+tightening the joined-branch compare-join `branch_join_adjust_then_add`
+handoff-boundary proof so the trailing-arithmetic family now exercises the
+authoritative render-contract, branch-plan, non-compare-entry rejection, and
+prepared-branch condition/record checks for both the default carrier and a
+forced `EdgeStoreSlot` carrier. This kept the packet bounded to one trailing
+join family and proved the downstream compare-join consumer stays contract-
+strict without widening into emitter changes.
 
 ## Suggested Next
 
-Continue Step 3.2 by applying the same carrier-agnostic proof tightening to one
-more bounded joined-branch compare-join family that still lacks full
-passthrough parity between the default carrier and forced `EdgeStoreSlot`
-coverage, preferably the plain pointer-backed same-module global non-chain
-compare-join helpers before widening beyond `backend_x86_handoff_boundary`.
+Continue Step 3.2 by applying the same trailing compare-join contract-strict
+coverage to one more bounded immediate-op family that still only proves
+passthrough ownership and render-contract behavior, preferably
+`branch_join_adjust_then_or` before widening beyond
+`backend_x86_handoff_boundary`.
 
 ## Watchouts
 
@@ -34,9 +33,9 @@ compare-join helpers before widening beyond `backend_x86_handoff_boundary`.
 - Keep typed semantic ids as the public identity boundary.
 - Do not silently fold branch/join ownership work from idea 62 back into this
   route.
-- This packet only tightened fixed-offset same-module global compare-join proof
-  coverage; it did not change the x86 emitter or the authoritative prepared
-  compare-join contract itself.
+- This packet only tightened trailing-arithmetic compare-join proof coverage;
+  it did not change the x86 emitter or the authoritative prepared compare-join
+  contract itself.
 - The joined-branch handoff-boundary fixtures still publish many explicit
   `EdgeStoreSlot` join carriers, so keep the next slice narrowly focused on one
   consumer path that is already carrier-agnostic in implementation.
@@ -44,13 +43,18 @@ compare-join helpers before widening beyond `backend_x86_handoff_boundary`.
   compatibility surface for other prepared consumers and manual fixtures, so
   additional downstream cleanups should stay narrowly focused on consumers that
   no longer need slot-shaped join ownership.
+- `check_materialized_compare_join_branches_publish_prepared_return_contexts(...)`
+  is xor-specific today because it requires a trailing `xor 3` contract, so do
+  not reuse it for non-xor trailing immediate-op families without first
+  generalizing that helper or introducing a family-appropriate variant.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_x86_handoff_boundary$' > test_after.log 2>&1`
 ran for this Step 3.2 packet and preserved the canonical proof log in
 `test_after.log`; `backend_x86_handoff_boundary` passed with the joined-branch
-`branch_join_offset_global_then_xor` fixed-offset same-module global
-compare-join family now proving both passthrough topologies for the default
-`PhiEdge` carrier and a forced `EdgeStoreSlot` carrier against the same
-authoritative prepared-control-flow contract.
+`branch_join_adjust_then_add` trailing-arithmetic compare-join family now
+proving authoritative render-contract, branch-plan, non-compare-entry, and
+prepared-branch condition/record ownership for the default carrier and a forced
+`EdgeStoreSlot` carrier against the same authoritative prepared-control-flow
+contract.
