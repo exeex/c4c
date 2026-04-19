@@ -149,6 +149,12 @@ int count_move_resolution_reason_prefix_to_value(
   return count;
 }
 
+bool move_resolution_reason_has_prefix(const prepare::PreparedMoveResolution& move,
+                                       std::string_view reason_prefix) {
+  const std::string_view move_reason = move.reason;
+  return move_reason.substr(0, reason_prefix.size()) == reason_prefix;
+}
+
 prepare::PreparedBirModule prepare_phi_module() {
   bir::Module module;
 
@@ -414,6 +420,90 @@ prepare::PreparedBirModule prepare_phi_join_move_module_with_regalloc() {
   function.blocks.push_back(std::move(left));
   function.blocks.push_back(std::move(right));
   function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
+prepare::PreparedBirModule prepare_phi_loop_cycle_move_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "phi_loop_cycle_move_resolution";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::BranchTerminator{.target_label = "loop"};
+
+  bir::Block loop;
+  loop.label = "loop";
+  loop.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "a"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "entry",
+              .value = bir::Value::immediate_i32(1),
+          },
+          bir::PhiIncoming{
+              .label = "body",
+              .value = bir::Value::named(bir::TypeKind::I32, "b"),
+          },
+      },
+  });
+  loop.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "b"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "entry",
+              .value = bir::Value::immediate_i32(2),
+          },
+          bir::PhiIncoming{
+              .label = "body",
+              .value = bir::Value::named(bir::TypeKind::I32, "a"),
+          },
+      },
+  });
+  loop.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I1, "cmp0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "a"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  loop.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cmp0"),
+      .true_label = "body",
+      .false_label = "exit",
+  };
+
+  bir::Block body;
+  body.label = "body";
+  body.terminator = bir::BranchTerminator{.target_label = "loop"};
+
+  bir::Block exit;
+  exit.label = "exit";
+  exit.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "a"),
+  };
+
+  function.blocks = {
+      std::move(entry),
+      std::move(loop),
+      std::move(body),
+      std::move(exit),
+  };
   module.functions.push_back(std::move(function));
 
   prepare::PreparedBirModule prepared;
@@ -1634,6 +1724,51 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
   return 0;
 }
 
+int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepared) {
+  const auto* function = find_regalloc_function(prepared, "phi_loop_cycle_move_resolution");
+  if (function == nullptr) {
+    return fail("expected regalloc output for phi_loop_cycle_move_resolution");
+  }
+  const auto* control_flow =
+      prepare::find_prepared_control_flow_function(prepared.control_flow, function->function_name);
+  if (control_flow == nullptr) {
+    return fail("expected phi_loop_cycle_move_resolution to publish prepared control-flow data");
+  }
+  const auto* body_bundle =
+      prepare::find_prepared_parallel_copy_bundle(prepared.names, *control_flow, "body", "loop");
+  if (body_bundle == nullptr || !body_bundle->has_cycle || body_bundle->moves.size() != 2 ||
+      body_bundle->steps.size() != 3) {
+    return fail("expected the loop backedge to publish an authoritative cycle-breaking bundle");
+  }
+
+  const auto* a = find_regalloc_value(prepared, *function, "a");
+  const auto* b = find_regalloc_value(prepared, *function, "b");
+  if (a == nullptr || b == nullptr) {
+    return fail("expected loop phi values to appear in regalloc output");
+  }
+  if (function->move_resolution.empty()) {
+    return fail("expected loop phi cycle resolution to publish move-resolution bookkeeping");
+  }
+
+  const auto* b_to_a = find_move_resolution(*function, b->value_id, a->value_id);
+  if (b_to_a == nullptr || !move_resolution_reason_has_prefix(*b_to_a, "phi_loop_carry_")) {
+    return fail("expected the direct backedge move to use authoritative loop-carry move resolution");
+  }
+
+  const auto* a_to_b = find_move_resolution(*function, a->value_id, b->value_id);
+  if (a_to_b == nullptr ||
+      !move_resolution_reason_has_prefix(*a_to_b, "phi_loop_carry_cycle_temp_")) {
+    return fail("expected the cycle-broken backedge move to record the authoritative cycle-temp source");
+  }
+
+  if (count_move_resolution_reason_prefix_to_value(*function, a->value_id, "consumer_") != 0 ||
+      count_move_resolution_reason_prefix_to_value(*function, b->value_id, "consumer_") != 0) {
+    return fail("expected loop phi cycle values to avoid generic consumer move reconstruction");
+  }
+
+  return 0;
+}
+
 int check_call_crossing_regalloc_spillover(const prepare::PreparedBirModule& prepared) {
   const auto* function = find_regalloc_function(prepared, "call_crossing_spillover");
   if (function == nullptr) {
@@ -2369,6 +2504,11 @@ int main() {
 
   const auto phi_join_move_prepared = prepare_phi_join_move_module_with_regalloc();
   if (const int rc = check_phi_join_move_resolution(phi_join_move_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto phi_loop_cycle_move_prepared = prepare_phi_loop_cycle_move_module_with_regalloc();
+  if (const int rc = check_phi_loop_cycle_move_resolution(phi_loop_cycle_move_prepared); rc != 0) {
     return rc;
   }
 

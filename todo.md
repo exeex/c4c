@@ -5,25 +5,26 @@ Source Idea Path: ideas/open/63_complete_phi_legalization_and_parallel_copy_reso
 Source Plan Path: plan.md
 Current Step ID: 3.1
 Current Step Title: Move Regalloc And Edge-Move Consumers To Prepared Transfers
-Plan Review Counter: 1 / 10
+Plan Review Counter: 2 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed the next Step 3.1 (`Move Regalloc And Edge-Move Consumers To
-Prepared Transfers`) slice by threading prepared control-flow metadata into
-`src/backend/prealloc/regalloc.cpp::append_consumer_move_resolution(...)` and
-fencing authoritative `SelectMaterialization` join results out of generic
-consumer move reconstruction. Regalloc now leaves prepared phi join results to
-`append_phi_move_resolution(...)`, and `backend_prepare_liveness` asserts that
-the prepared join destination no longer accumulates `consumer_*` move records.
+Completed another Step 3.1 (`Move Regalloc And Edge-Move Consumers To
+Prepared Transfers`) slice by adding a loop-cycle regalloc proof to
+`tests/backend/backend_prepare_liveness_test.cpp`. The new
+`phi_loop_cycle_move_resolution` fixture asserts that regalloc consumes the
+authoritative backedge `parallel_copy_bundles` contract for cyclic loop-carry
+phis, including the published `*_cycle_temp_*` move reason, and does not fall
+back to generic `consumer_*` reconstruction for the phi destinations.
 
 ## Suggested Next
 
-Continue Step 3.1 with a focused loop-carry or cycle-backed regalloc proof so
-the shared `parallel_copy_bundles` ordering, including cycle-temp steps, is
-proven to remain the authoritative move-resolution source beyond the
-select-materialized join case.
+Continue Step 3.1 with a narrow follow-up on whether any immediate
+prepare-to-regalloc or adjacent edge-move consumer still needs a first-class
+`SaveDestinationToTemp` record in `PreparedMoveResolution`, rather than only
+the current `phi_loop_carry_cycle_temp_*` reason marker, before widening into
+broader Step 3.2 downstream-consumer work.
 
 ## Watchouts
 
@@ -42,18 +43,19 @@ select-materialized join case.
   authoritative prepared join results instead of weakening generic consumer
   bookkeeping.
 - `PreparedMoveResolution` still cannot encode explicit
-  `SaveDestinationToTemp` steps, so cyclic bundles currently surface their
+  `SaveDestinationToTemp` steps, so cyclic bundles still surface their
   move-membership and `*_cycle_temp_*` move reasons without a first-class temp
-  record.
+  record; this packet only proved that regalloc consumes that published
+  contract consistently.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
 ran for this Step 3.1 packet and preserved the canonical proof log in
-`test_after.log`; `backend_prepare_liveness` and `backend_prepare_phi_materialize`
-stayed green with the new join-fencing assertion, and the subset returned to
-the same four baseline failures already present in `test_before.log`. The
-remaining baseline reds are
+`test_after.log`; `backend_prepare_liveness` stayed green with the new
+loop-cycle assertion, `backend_prepare_phi_materialize` remained green, and
+the subset returned to the same four baseline failures already present in
+`test_before.log`. The remaining baseline reds are
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
 `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,
