@@ -44,6 +44,19 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
       prepared.control_flow, function_name_id);
 }
 
+const prepare::PreparedParallelCopyBundle* find_parallel_copy_bundle(
+    const prepare::PreparedBirModule& prepared,
+    const char* function_name,
+    const char* predecessor_label,
+    const char* successor_label) {
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    return nullptr;
+  }
+  return prepare::find_prepared_parallel_copy_bundle(
+      prepared.names, *control_flow, predecessor_label, successor_label);
+}
+
 const bir::Block* find_block(const bir::Function& function, const char* label) {
   for (const auto& block : function.blocks) {
     if (block.label == label) {
@@ -454,6 +467,60 @@ int check_loop_countdown_control_flow_contract(const prepare::PreparedBirModule&
   return 0;
 }
 
+int check_parallel_copy_cycle_contract(const prepare::PreparedBirModule& prepared,
+                                       const char* function_name) {
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    return fail("expected legalize to publish prepared control-flow metadata for the parallel-copy loop lane");
+  }
+  if (control_flow->join_transfers.size() != 2) {
+    return fail("expected the parallel-copy loop lane to publish one join-transfer per phi result");
+  }
+  if (control_flow->parallel_copy_bundles.size() != 2) {
+    return fail("expected the parallel-copy loop lane to publish one bundle per predecessor edge");
+  }
+
+  const auto* entry_bundle = find_parallel_copy_bundle(prepared, function_name, "entry", "loop");
+  const auto* body_bundle = find_parallel_copy_bundle(prepared, function_name, "body", "loop");
+  if (entry_bundle == nullptr || body_bundle == nullptr) {
+    return fail("expected the parallel-copy loop lane to publish entry/body bundle ownership");
+  }
+  if (entry_bundle->has_cycle || entry_bundle->moves.size() != 2 ||
+      entry_bundle->steps.size() != 2) {
+    return fail("expected the entry-to-loop bundle to stay acyclic while preserving both phi moves");
+  }
+  if (entry_bundle->steps[0].kind != prepare::PreparedParallelCopyStepKind::Move ||
+      entry_bundle->steps[1].kind != prepare::PreparedParallelCopyStepKind::Move ||
+      entry_bundle->steps[0].uses_cycle_temp_source ||
+      entry_bundle->steps[1].uses_cycle_temp_source) {
+    return fail("expected the entry-to-loop bundle to publish direct move-only resolution");
+  }
+
+  if (!body_bundle->has_cycle || body_bundle->moves.size() != 2 ||
+      body_bundle->steps.size() != 3) {
+    return fail("expected the backedge bundle to publish a cycle-breaking resolution plan");
+  }
+  if (body_bundle->steps[0].kind !=
+          prepare::PreparedParallelCopyStepKind::SaveDestinationToTemp ||
+      body_bundle->steps[1].kind != prepare::PreparedParallelCopyStepKind::Move ||
+      body_bundle->steps[2].kind != prepare::PreparedParallelCopyStepKind::Move) {
+    return fail("expected the backedge bundle to begin with an explicit save-to-temp step");
+  }
+  if (body_bundle->steps[0].move_index != 0 || body_bundle->steps[1].move_index != 0 ||
+      body_bundle->steps[1].uses_cycle_temp_source || body_bundle->steps[2].move_index != 1 ||
+      !body_bundle->steps[2].uses_cycle_temp_source) {
+    return fail("expected the backedge bundle to rotate the cycle through the published temporary source");
+  }
+  if (!is_named_i32(body_bundle->moves[0].source_value, "b") ||
+      !is_named_i32(body_bundle->moves[0].destination_value, "a") ||
+      !is_named_i32(body_bundle->moves[1].source_value, "a") ||
+      !is_named_i32(body_bundle->moves[1].destination_value, "b")) {
+    return fail("expected the backedge bundle to preserve the phi swap sources and destinations");
+  }
+
+  return 0;
+}
+
 prepare::PreparedBirModule legalize_call_abi_module() {
   bir::Module module;
   module.globals.push_back(bir::Global{
@@ -825,6 +892,89 @@ prepare::PreparedBirModule legalize_loop_countdown_module() {
   exit.label = "exit";
   exit.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "counter"),
+  };
+
+  function.blocks = {
+      std::move(entry),
+      std::move(loop),
+      std::move(body),
+      std::move(exit),
+  };
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  return std::move(planner.prepared());
+}
+
+prepare::PreparedBirModule legalize_parallel_copy_cycle_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "parallel_copy_prepare_contract";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::BranchTerminator{.target_label = "loop"};
+
+  bir::Block loop;
+  loop.label = "loop";
+  loop.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "a"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "entry",
+              .value = bir::Value::immediate_i32(1),
+          },
+          bir::PhiIncoming{
+              .label = "body",
+              .value = bir::Value::named(bir::TypeKind::I32, "b"),
+          },
+      },
+  });
+  loop.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "b"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "entry",
+              .value = bir::Value::immediate_i32(2),
+          },
+          bir::PhiIncoming{
+              .label = "body",
+              .value = bir::Value::named(bir::TypeKind::I32, "a"),
+          },
+      },
+  });
+  loop.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I1, "cmp0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "a"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  loop.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cmp0"),
+      .true_label = "body",
+      .false_label = "exit",
+  };
+
+  bir::Block body;
+  body.label = "body";
+  body.terminator = bir::BranchTerminator{.target_label = "loop"};
+
+  bir::Block exit;
+  exit.label = "exit";
+  exit.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "a"),
   };
 
   function.blocks = {
@@ -1840,7 +1990,21 @@ int main() {
   }
   if (const int status =
           check_loop_countdown_control_flow_contract(prepared_loop_countdown,
-                                                     "loop_countdown_prepare_contract");
+                                                    "loop_countdown_prepare_contract");
+      status != 0) {
+    return status;
+  }
+
+  const auto prepared_parallel_copy_cycle = legalize_parallel_copy_cycle_module();
+  if (const int status = check_prepare_phi_invariant(prepared_parallel_copy_cycle); status != 0) {
+    return status;
+  }
+  if (const int status = check_prepare_i1_invariant(prepared_parallel_copy_cycle); status != 0) {
+    return status;
+  }
+  if (const int status =
+          check_parallel_copy_cycle_contract(prepared_parallel_copy_cycle,
+                                             "parallel_copy_prepare_contract");
       status != 0) {
     return status;
   }

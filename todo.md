@@ -3,27 +3,27 @@
 Status: Active
 Source Idea Path: ideas/open/63_complete_phi_legalization_and_parallel_copy_resolution.md
 Source Plan Path: plan.md
-Current Step ID: 2.1
-Current Step Title: Publish Typed Phi Edge-Transfer Facts
+Current Step ID: 2.2
+Current Step Title: Make Parallel-Copy Resolution Authoritative
 Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2.1 (`Publish Typed Phi Edge-Transfer Facts`) by splitting the
-prepared phi handoff into semantic join-transfer kind plus carrier detail:
-`PreparedJoinTransferKind` now models semantic `PhiEdge` versus `LoopCarry`,
-`PreparedJoinTransferCarrierKind` records select-versus-slot carrier detail,
-and `legalize.cpp` now publishes those fields for both select-materialized and
-slot-backed phi routes without making carrier choice the main consumer
-contract.
+Completed Step 2.2 (`Make Parallel-Copy Resolution Authoritative`) by adding
+prepared `parallel_copy_bundles` with explicit per-edge move membership,
+ordered resolution steps, and cycle-breaking `SaveDestinationToTemp` markers.
+`legalize.cpp` now derives those bundles from authoritative join transfers for
+both select-materialized and slot-backed phi carriers, and
+`backend_prepare_phi_materialize` now proves both a direct multi-move edge and
+a true loop-backedge swap cycle against the published metadata contract.
 
 ## Suggested Next
 
-Start Step 2.2 by making parallel-copy resolution authoritative on top of the
-new semantic phi-edge contract: represent move ordering and cycle-breaking
-explicitly in shared prepare instead of relying on slot-backed fallback or
-carrier-specific incidental order.
+Start Step 3.1 by moving regalloc and immediate edge-move consumers off raw
+`bir::PhiInst` reconstruction and onto the new prepared
+`parallel_copy_bundles` plus join-transfer contract, beginning with
+`append_phi_move_resolution` in `src/backend/prealloc/regalloc.cpp`.
 
 ## Watchouts
 
@@ -34,22 +34,20 @@ carrier-specific incidental order.
 - `prealloc.hpp` still carries transitional enum aliases plus
   `effective_prepared_join_transfer_carrier_kind(...)` so older manual
   prepared-control-flow fixtures that only rewrite `storage_name` or `kind`
-  keep working while Step 2.2 and Step 3.1 migrate to the new surface.
-- `PreparedEdgeValueTransfer` still only records per-edge source/destination
-  facts plus optional slot storage, so Step 2.2 still needs an authoritative
-  ordering/cycle model for multi-move joins.
+  keep working while Step 3.1 migrates consumers to the new surface.
+- The new cycle planner keys off authoritative published `bir::Value` names,
+  not incidental vector order or later name-table interning.
 - `regalloc.cpp` still reconstructs phi moves from surviving `bir::PhiInst` in
-  `append_phi_move_resolution`, so the current consumer handoff is not yet the
+  `append_phi_move_resolution`, so the current consumer handoff still lags the
   prepared control-flow contract.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
-ran for the Step 2.1 packet and preserved the canonical proof log in
-`test_after.log`; the subset returned to the same four baseline failures from
-`test_before.log` after fixing an intermediate `backend_x86_handoff_boundary`
-regression caused by legacy prepared-contract fixtures that rewrote carrier
-state without the new `carrier_kind` field. The remaining baseline reds are
+ran for the Step 2.2 packet and preserved the canonical proof log in
+`test_after.log`; `backend_prepare_phi_materialize` stayed green and the subset
+returned to the same four baseline failures already present in
+`test_before.log`. The remaining baseline reds are
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
 `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,

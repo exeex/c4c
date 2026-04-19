@@ -609,6 +609,45 @@ struct PreparedEdgeValueTransfer {
   std::optional<SlotNameId> storage_name;
 };
 
+enum class PreparedParallelCopyStepKind {
+  SaveDestinationToTemp,
+  Move,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_parallel_copy_step_kind_name(
+    PreparedParallelCopyStepKind kind) {
+  switch (kind) {
+    case PreparedParallelCopyStepKind::SaveDestinationToTemp:
+      return "save_destination_to_temp";
+    case PreparedParallelCopyStepKind::Move:
+      return "move";
+  }
+  return "unknown";
+}
+
+struct PreparedParallelCopyMove {
+  std::size_t join_transfer_index = 0;
+  std::size_t edge_transfer_index = 0;
+  bir::Value source_value;
+  bir::Value destination_value;
+  PreparedJoinTransferCarrierKind carrier_kind = PreparedJoinTransferCarrierKind::None;
+  std::optional<SlotNameId> storage_name;
+};
+
+struct PreparedParallelCopyStep {
+  PreparedParallelCopyStepKind kind = PreparedParallelCopyStepKind::Move;
+  std::size_t move_index = 0;
+  bool uses_cycle_temp_source = false;
+};
+
+struct PreparedParallelCopyBundle {
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  std::vector<PreparedParallelCopyMove> moves;
+  std::vector<PreparedParallelCopyStep> steps;
+  bool has_cycle = false;
+};
+
 struct PreparedBranchCondition {
   FunctionNameId function_name = kInvalidFunctionName;
   BlockLabelId block_label = kInvalidBlockLabel;
@@ -667,6 +706,7 @@ struct PreparedControlFlowFunction {
   std::vector<PreparedControlFlowBlock> blocks;
   std::vector<PreparedBranchCondition> branch_conditions;
   std::vector<PreparedJoinTransfer> join_transfers;
+  std::vector<PreparedParallelCopyBundle> parallel_copy_bundles;
 };
 
 struct PreparedAuthoritativeBranchJoinTransfer {
@@ -2938,6 +2978,32 @@ find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
     return nullptr;
   }
   return &transfer->edge_transfers;
+}
+
+[[nodiscard]] inline const PreparedParallelCopyBundle* find_prepared_parallel_copy_bundle(
+    const PreparedControlFlowFunction& function_cf,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label) {
+  for (const auto& bundle : function_cf.parallel_copy_bundles) {
+    if (bundle.predecessor_label == predecessor_label &&
+        bundle.successor_label == successor_label) {
+      return &bundle;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedParallelCopyBundle* find_prepared_parallel_copy_bundle(
+    const PreparedNameTables& names,
+    const PreparedControlFlowFunction& function_cf,
+    std::string_view predecessor_label,
+    std::string_view successor_label) {
+  const BlockLabelId predecessor_id = names.block_labels.find(predecessor_label);
+  const BlockLabelId successor_id = names.block_labels.find(successor_label);
+  if (predecessor_id == kInvalidBlockLabel || successor_id == kInvalidBlockLabel) {
+    return nullptr;
+  }
+  return find_prepared_parallel_copy_bundle(function_cf, predecessor_id, successor_id);
 }
 
 enum class PreparedBirInvariant {

@@ -1,5 +1,6 @@
 #include "prealloc.hpp"
 
+#include <algorithm>
 #include <string_view>
 #include <type_traits>
 #include <unordered_map>
@@ -1052,6 +1053,177 @@ std::optional<std::size_t> find_join_transfer_edge_index_by_predecessor(
   return std::nullopt;
 }
 
+std::optional<std::string_view> prepared_named_value_name(const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return std::nullopt;
+  }
+  return value.name;
+}
+
+PreparedParallelCopyBundle make_parallel_copy_bundle(
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label,
+    std::vector<PreparedParallelCopyMove> moves) {
+  struct MoveState {
+    std::optional<std::string_view> source_name;
+    std::optional<std::string_view> destination_name;
+    bool uses_cycle_temp_source = false;
+    bool emitted = false;
+  };
+
+  PreparedParallelCopyBundle bundle{
+      .predecessor_label = predecessor_label,
+      .successor_label = successor_label,
+      .moves = std::move(moves),
+  };
+  std::vector<MoveState> states;
+  states.reserve(bundle.moves.size());
+  for (const auto& move : bundle.moves) {
+    auto source_name = prepared_named_value_name(move.source_value);
+    auto destination_name = prepared_named_value_name(move.destination_value);
+    if (source_name.has_value() && destination_name.has_value() &&
+        *source_name == *destination_name) {
+      source_name.reset();
+    }
+    states.push_back(MoveState{
+        .source_name = source_name,
+        .destination_name = destination_name,
+    });
+  }
+
+  std::size_t remaining_moves = states.size();
+  while (remaining_moves > 0) {
+    std::unordered_set<std::string_view> pending_sources;
+    pending_sources.reserve(remaining_moves);
+    for (const auto& state : states) {
+      if (!state.emitted && state.source_name.has_value()) {
+        pending_sources.insert(*state.source_name);
+      }
+    }
+
+    bool progressed = false;
+    for (std::size_t move_index = 0; move_index < states.size(); ++move_index) {
+      auto& state = states[move_index];
+      if (state.emitted) {
+        continue;
+      }
+      if (state.destination_name.has_value() &&
+          pending_sources.find(*state.destination_name) != pending_sources.end()) {
+        continue;
+      }
+      bundle.steps.push_back(PreparedParallelCopyStep{
+          .kind = PreparedParallelCopyStepKind::Move,
+          .move_index = move_index,
+          .uses_cycle_temp_source = state.uses_cycle_temp_source,
+      });
+      state.emitted = true;
+      --remaining_moves;
+      progressed = true;
+    }
+    if (progressed) {
+      continue;
+    }
+
+    const auto cycle_it = std::find_if(states.begin(), states.end(), [](const MoveState& state) {
+      return !state.emitted;
+    });
+    if (cycle_it == states.end()) {
+      break;
+    }
+    const std::size_t cycle_move_index = static_cast<std::size_t>(cycle_it - states.begin());
+    if (!states[cycle_move_index].destination_name.has_value()) {
+      bundle.steps.push_back(PreparedParallelCopyStep{
+          .kind = PreparedParallelCopyStepKind::Move,
+          .move_index = cycle_move_index,
+          .uses_cycle_temp_source = states[cycle_move_index].uses_cycle_temp_source,
+      });
+      states[cycle_move_index].emitted = true;
+      --remaining_moves;
+      continue;
+    }
+
+    bundle.has_cycle = true;
+    bundle.steps.push_back(PreparedParallelCopyStep{
+        .kind = PreparedParallelCopyStepKind::SaveDestinationToTemp,
+        .move_index = cycle_move_index,
+    });
+    const std::string_view broken_destination = *states[cycle_move_index].destination_name;
+    for (auto& state : states) {
+      if (!state.emitted && state.source_name.has_value() &&
+          *state.source_name == broken_destination) {
+        state.source_name.reset();
+        state.uses_cycle_temp_source = true;
+      }
+    }
+  }
+
+  return bundle;
+}
+
+void build_parallel_copy_bundles(const PreparedNameTables& names,
+                                 PreparedControlFlowFunction* function_control_flow) {
+  if (function_control_flow == nullptr) {
+    return;
+  }
+
+  struct EdgeKey {
+    BlockLabelId predecessor_label = kInvalidBlockLabel;
+    BlockLabelId successor_label = kInvalidBlockLabel;
+
+    bool operator==(const EdgeKey& other) const {
+      return predecessor_label == other.predecessor_label &&
+             successor_label == other.successor_label;
+    }
+  };
+
+  struct EdgeKeyHash {
+    std::size_t operator()(const EdgeKey& key) const {
+      return (static_cast<std::size_t>(key.predecessor_label) << 1u) ^
+             static_cast<std::size_t>(key.successor_label);
+    }
+  };
+
+  std::unordered_map<EdgeKey, std::vector<PreparedParallelCopyMove>, EdgeKeyHash> moves_by_edge;
+  for (std::size_t join_transfer_index = 0;
+       join_transfer_index < function_control_flow->join_transfers.size();
+       ++join_transfer_index) {
+    const auto& join_transfer = function_control_flow->join_transfers[join_transfer_index];
+    const auto carrier_kind = effective_prepared_join_transfer_carrier_kind(join_transfer);
+    for (std::size_t edge_transfer_index = 0;
+         edge_transfer_index < join_transfer.edge_transfers.size();
+         ++edge_transfer_index) {
+      const auto& edge_transfer = join_transfer.edge_transfers[edge_transfer_index];
+      moves_by_edge[EdgeKey{
+          .predecessor_label = edge_transfer.predecessor_label,
+          .successor_label = edge_transfer.successor_label,
+      }]
+          .push_back(PreparedParallelCopyMove{
+              .join_transfer_index = join_transfer_index,
+              .edge_transfer_index = edge_transfer_index,
+              .source_value = edge_transfer.incoming_value,
+              .destination_value = edge_transfer.destination_value,
+              .carrier_kind = carrier_kind,
+              .storage_name = edge_transfer.storage_name,
+          });
+    }
+  }
+
+  function_control_flow->parallel_copy_bundles.clear();
+  function_control_flow->parallel_copy_bundles.reserve(moves_by_edge.size());
+  for (auto& [edge, moves] : moves_by_edge) {
+    function_control_flow->parallel_copy_bundles.push_back(
+        make_parallel_copy_bundle(edge.predecessor_label, edge.successor_label, std::move(moves)));
+  }
+  std::sort(function_control_flow->parallel_copy_bundles.begin(),
+            function_control_flow->parallel_copy_bundles.end(),
+            [](const PreparedParallelCopyBundle& lhs, const PreparedParallelCopyBundle& rhs) {
+              if (lhs.successor_label != rhs.successor_label) {
+                return lhs.successor_label < rhs.successor_label;
+              }
+              return lhs.predecessor_label < rhs.predecessor_label;
+            });
+}
+
 void annotate_branch_owned_join_transfers(
     PreparedNameTables& names,
     const bir::Function& function,
@@ -1464,12 +1636,14 @@ void legalize_module(const c4c::TargetProfile& target_profile,
         function,
         function_control_flow.branch_conditions,
         &function_control_flow.join_transfers);
+    build_parallel_copy_bundles(names, &function_control_flow);
     publish_short_circuit_continuation_branch_conditions(
         names, function, &function_control_flow);
 
     if (control_flow != nullptr &&
         (!function_control_flow.branch_conditions.empty() ||
-         !function_control_flow.join_transfers.empty())) {
+         !function_control_flow.join_transfers.empty() ||
+         !function_control_flow.parallel_copy_bundles.empty())) {
       control_flow->functions.push_back(std::move(function_control_flow));
     }
   }
@@ -1493,7 +1667,7 @@ void BirPreAlloc::run_legalize() {
           "bootstrap BIR legalize removed phi nodes and promoted i1 values plus function "
           "signature/storage bookkeeping, memory-address/load-store bookkeeping, call ABI "
           "metadata, call return type text to i32 for x86/i686/aarch64/riscv64, and explicit "
-          "prepared branch-condition/join-transfer control-flow records",
+          "prepared branch-condition/join-transfer/parallel-copy control-flow records",
   });
 }
 
