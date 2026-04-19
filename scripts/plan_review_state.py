@@ -193,6 +193,14 @@ def cmd_increment(args) -> int:
     return 0
 
 
+def cmd_set_limit(args) -> int:
+    state = ensure_state(args.todo, args.state)
+    state["review_limit"] = args.review_limit
+    save_state(args.state, state)
+    sync_todo(args.todo, state)
+    return 0
+
+
 def cmd_prepare_commit(args) -> int:
     if not args.todo.exists():
         return 0
@@ -204,10 +212,6 @@ def cmd_prepare_commit(args) -> int:
 
     next_step_id = todo["current_step_id"]
     next_step_title = todo["current_step_title"]
-    review_limit = todo["review_limit"]
-
-    if state["review_limit"] != review_limit:
-        state["review_limit"] = review_limit
 
     if has_plan_change:
         state["current_step_id"] = next_step_id
@@ -252,6 +256,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     increment = subparsers.add_parser("increment")
     increment.set_defaults(func=cmd_increment)
+
+    set_limit = subparsers.add_parser("set-limit")
+    set_limit.add_argument("--review-limit", type=int, required=True)
+    set_limit.set_defaults(func=cmd_set_limit)
 
     prepare = subparsers.add_parser("prepare-commit")
     prepare.set_defaults(func=cmd_prepare_commit)

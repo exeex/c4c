@@ -118,7 +118,8 @@ the active runbook step.
 review limit for that same step. Canonical machine state may live in a local
 ignored file maintained by repo scripts, but `todo.md` must mirror it. Lifecycle
 work that creates, repairs, or rewrites the active step should reset the
-counter to `0 / <review-limit>`.
+counter to `0 / <review-limit>`. The review limit itself should be taken from
+local script-managed state rather than hard-coded in skill text.
 
 ### `ideas/open/*.md` and `ideas/closed/*.md`
 

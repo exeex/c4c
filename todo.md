@@ -5,7 +5,7 @@ Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 3.4
 Current Step Title: Loop-Carry And Residual Consumer Cleanup
-Plan Review Counter: 3 / 3
+Plan Review Counter: 4 / 10
 # Current Packet
 
 ## Just Finished

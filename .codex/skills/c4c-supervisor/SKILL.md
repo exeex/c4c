@@ -204,6 +204,8 @@ Oversized-step trigger:
   have landed on that same step since `plan.md` was last reviewed for it
 - keep canonical machine state in the local ignored
   `.plan_review_state.json` file via `scripts/plan_review_state.py`
+- treat the review limit shown in `todo.md` as a mirror of that local state,
+  not as a value configured in skill text
 - let the repo hook update the counter during commit preparation rather than
   hand-editing it in specialist packets
 - reset the counter when the active step changes or when `plan-owner` rewrites

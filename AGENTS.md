@@ -23,6 +23,7 @@ This repo uses a single-plan lifecycle.
   `Current Step ID:`, `Current Step Title:`, and
   `Plan Review Counter: <counter> / <review_limit>` fields near the top so
   route-friction decisions do not depend on commit-history guesswork alone.
+  The review limit is controlled by local hook-backed state, not by skill text.
 - Treat `plan.md` exhaustion as separate from source-idea completion. A runbook
   can be blocked, retired, or replaced without the linked idea being complete.
 - If execution discovers a separate initiative, write it into `ideas/open/` and switch lifecycle state instead of silently expanding the current plan.
