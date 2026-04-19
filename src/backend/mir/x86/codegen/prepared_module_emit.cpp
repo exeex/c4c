@@ -3597,17 +3597,18 @@ std::string emit_prepared_module(
 
     if (function_control_flow != nullptr) {
       const auto require_no_authoritative_prepared_branch_contract =
-          [&](const CountdownSegment& segment) {
-            if (c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
-                                                                      segment.cond_block->label) !=
-                nullptr) {
+          [&](const c4c::backend::bir::Block* block) {
+            if (block != nullptr &&
+                c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
+                                                                      block->label) != nullptr) {
               throw std::invalid_argument(
                   "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
             }
           };
-      require_no_authoritative_prepared_branch_contract(*first_segment);
+      require_no_authoritative_prepared_branch_contract(first_segment->cond_block);
+      require_no_authoritative_prepared_branch_contract(first_segment->guard_block);
       if (second_segment.has_value()) {
-        require_no_authoritative_prepared_branch_contract(*second_segment);
+        require_no_authoritative_prepared_branch_contract(second_segment->cond_block);
       }
       for (const auto& join_transfer : function_control_flow->join_transfers) {
         if (join_transfer.kind == c4c::backend::prepare::PreparedJoinTransferKind::LoopCarry) {

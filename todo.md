@@ -5,23 +5,23 @@ Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 3.4
 Current Step Title: Loop-Carry And Residual Consumer Cleanup
-Plan Review Counter: 6 / 10
+Plan Review Counter: 7 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed a Step 3.4 Loop-Carry And Residual Consumer Cleanup packet by
-hardening the residual local countdown fallback so any matched countdown block
-with authoritative prepared loop-branch ownership now rejects transfer drift
-instead of reopening raw CFG countdown recovery, and by adding a focused
-handoff regression for that contract.
+hardening the residual two-segment local countdown fallback so it also rejects
+authoritative prepared guard-branch ownership on the mixed
+guard/continuation split instead of reopening raw countdown topology, and by
+adding a focused handoff regression for that contract.
 
 ## Suggested Next
 
 Stay in Step 3.4 and inspect the remaining residual local countdown fallback
 for any adjacent post-prepare drift that can still bypass the canonical
-prepared-module handoff through unmatched countdown sub-blocks or mixed
-guard/continuation ownership.
+prepared-module handoff through unmatched countdown sub-blocks beyond the
+guard-owned continuation split now covered here.
 
 ## Watchouts
 
@@ -68,6 +68,10 @@ guard/continuation ownership.
   countdown block still has authoritative prepared branch ownership even if the
   loop transfer drifts away from `PreparedJoinTransferKind::LoopCarry`; do not
   let later helper cleanup rely on the raw countdown matcher in that state.
+- The optional guard block inside the residual two-segment local countdown
+  fallback must now also reject once authoritative prepared branch ownership
+  exists for that guard/continuation split; do not let later cleanup reopen
+  the raw guard matcher behind that contract.
 - The broader `^backend_` checkpoint currently reproduces five known failures:
   `backend_prepare_phi_materialize`, `variadic_double_bytes`,
   `variadic_pair_second`, `local_direct_dynamic_member_array_store`, and

@@ -3400,6 +3400,161 @@ bir::Module make_x86_loop_countdown_join_with_preheader_chain_module() {
   return module;
 }
 
+bir::Module make_x86_local_i32_countdown_guard_continuation_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.counter",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_address_taken = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.counter",
+      .value = bir::Value::immediate_i32(3),
+  });
+  entry.terminator = bir::BranchTerminator{.target_label = "loop0"};
+
+  bir::Block loop0;
+  loop0.label = "loop0";
+  loop0.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loop0.counter"),
+      .slot_name = "%lv.counter",
+  });
+  loop0.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "loop0.cmp"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "loop0.counter"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  loop0.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "loop0.cmp"),
+      .true_label = "body0",
+      .false_label = "guard",
+  };
+
+  bir::Block body0;
+  body0.label = "body0";
+  body0.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "body0.counter"),
+      .slot_name = "%lv.counter",
+  });
+  body0.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "body0.next"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "body0.counter"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  body0.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.counter",
+      .value = bir::Value::named(bir::TypeKind::I32, "body0.next"),
+  });
+  body0.terminator = bir::BranchTerminator{.target_label = "loop0"};
+
+  bir::Block guard;
+  guard.label = "guard";
+  guard.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "guard.counter"),
+      .slot_name = "%lv.counter",
+  });
+  guard.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "guard.cmp"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "guard.counter"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  guard.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "guard.cmp"),
+      .true_label = "guard_true",
+      .false_label = "cont",
+  };
+
+  bir::Block guard_true;
+  guard_true.label = "guard_true";
+  guard_true.terminator = bir::ReturnTerminator{
+      .value = bir::Value::immediate_i32(1),
+  };
+
+  bir::Block cont;
+  cont.label = "cont";
+  cont.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.counter",
+      .value = bir::Value::immediate_i32(2),
+  });
+  cont.terminator = bir::BranchTerminator{.target_label = "loop1"};
+
+  bir::Block loop1;
+  loop1.label = "loop1";
+  loop1.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
+      .slot_name = "%lv.counter",
+  });
+  loop1.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "loop1.cmp"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  loop1.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "loop1.cmp"),
+      .true_label = "body1",
+      .false_label = "exit",
+  };
+
+  bir::Block body1;
+  body1.label = "body1";
+  body1.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "body1.counter"),
+      .slot_name = "%lv.counter",
+  });
+  body1.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "body1.next"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "body1.counter"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  body1.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.counter",
+      .value = bir::Value::named(bir::TypeKind::I32, "body1.next"),
+  });
+  body1.terminator = bir::BranchTerminator{.target_label = "loop1"};
+
+  bir::Block exit;
+  exit.label = "exit";
+  exit.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "exit.counter"),
+      .slot_name = "%lv.counter",
+  });
+  exit.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "exit.counter"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(loop0));
+  function.blocks.push_back(std::move(body0));
+  function.blocks.push_back(std::move(guard));
+  function.blocks.push_back(std::move(guard_true));
+  function.blocks.push_back(std::move(cont));
+  function.blocks.push_back(std::move(loop1));
+  function.blocks.push_back(std::move(body1));
+  function.blocks.push_back(std::move(exit));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_x86_local_i16_increment_guard_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -10814,6 +10969,64 @@ int check_loop_countdown_route_rejects_transfer_drift_when_authoritative_branch_
   return 0;
 }
 
+int check_local_countdown_guard_route_requires_authoritative_guard_branch_condition(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    prepared.control_flow.functions.push_back(
+        prepare::PreparedControlFlowFunction{.function_name = function_name});
+    control_flow = &prepared.control_flow.functions.back();
+  }
+  control_flow->branch_conditions.clear();
+  control_flow->join_transfers.clear();
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string(failure_context) +
+                 ": local countdown fallback fixture no longer renders before authoritative guard ownership is injected: " +
+                 ex.what())
+                    .c_str());
+  }
+
+  control_flow->branch_conditions.push_back(prepare::PreparedBranchCondition{
+      .function_name = function_name,
+      .block_label = "guard",
+      .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+      .condition_value = bir::Value::named(bir::TypeKind::I32, "drifted.guard.condition"),
+      .predicate = bir::BinaryOpcode::Ne,
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "guard.counter"),
+      .rhs = bir::Value::immediate_i32(0),
+      .can_fuse_with_branch = true,
+      .true_label = "drifted.guard.true",
+      .false_label = "cont",
+  });
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a local countdown guard fallback while authoritative guard ownership remained active")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the authoritative guard-owned countdown fallback with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -13247,6 +13460,14 @@ int main() {
               make_x86_loop_countdown_join_module(),
               "main",
               "minimal loop-carried join countdown prepared-control-flow ownership rejects drifted loop-transfer metadata instead of reopening the local countdown fallback");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_local_countdown_guard_route_requires_authoritative_guard_branch_condition(
+              make_x86_local_i32_countdown_guard_continuation_module(),
+              "main",
+              "two-segment local countdown fallback rejects mixed guard ownership once prepared branch metadata becomes authoritative");
       status != 0) {
     return status;
   }
