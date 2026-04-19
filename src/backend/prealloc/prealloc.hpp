@@ -757,6 +757,14 @@ struct PreparedBranchTargetLabels {
   BlockLabelId false_label = kInvalidBlockLabel;
 };
 
+[[nodiscard]] inline std::optional<BlockLabelId> resolve_prepared_block_label_id(
+    const PreparedNameTables& names,
+    std::string_view block_label);
+
+[[nodiscard]] inline std::optional<ValueNameId> resolve_prepared_value_name_id(
+    const PreparedNameTables& names,
+    std::string_view value_name);
+
 [[nodiscard]] constexpr PreparedBranchTargetLabels prepared_branch_target_labels(
     const PreparedShortCircuitContinuationLabels& continuation_labels) {
   return PreparedBranchTargetLabels{
@@ -834,13 +842,13 @@ find_prepared_i32_immediate_branch_condition(const PreparedNameTables& names,
                                              const PreparedControlFlowFunction& function_cf,
                                              std::string_view block_label,
                                              std::string_view value_name) {
-  const BlockLabelId block_label_id = names.block_labels.find(block_label);
-  const ValueNameId value_name_id = names.value_names.find(value_name);
-  if (block_label_id == kInvalidBlockLabel || value_name_id == kInvalidValueName) {
+  const auto block_label_id = resolve_prepared_block_label_id(names, block_label);
+  const auto value_name_id = resolve_prepared_value_name_id(names, value_name);
+  if (!block_label_id.has_value() || !value_name_id.has_value()) {
     return nullptr;
   }
   return find_prepared_i32_immediate_branch_condition(
-      names, function_cf, block_label_id, value_name_id);
+      names, function_cf, *block_label_id, *value_name_id);
 }
 
 [[nodiscard]] inline std::optional<PreparedBranchTargetLabels>
@@ -863,24 +871,37 @@ find_prepared_compare_branch_target_labels(const PreparedNameTables& names,
 
 [[nodiscard]] inline std::optional<PreparedBranchTargetLabels>
 find_prepared_compare_branch_target_labels(const PreparedNameTables& names,
+                                           const PreparedControlFlowFunction& function_cf,
+                                           BlockLabelId source_block_label_id,
+                                           const bir::Block& source_block) {
+  if (source_block_label_id == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
+  const auto* branch_condition =
+      find_prepared_branch_condition(function_cf, source_block_label_id);
+  if (branch_condition == nullptr) {
+    return std::nullopt;
+  }
+
+  return find_prepared_compare_branch_target_labels(names, *branch_condition, source_block);
+}
+
+[[nodiscard]] inline std::optional<PreparedBranchTargetLabels>
+find_prepared_compare_branch_target_labels(const PreparedNameTables& names,
                                            const PreparedControlFlowFunction* function_cf,
                                            const bir::Block& source_block) {
   if (function_cf == nullptr) {
     return std::nullopt;
   }
 
-  const BlockLabelId source_block_label_id = names.block_labels.find(source_block.label);
-  if (source_block_label_id == kInvalidBlockLabel) {
+  const auto source_block_label_id =
+      resolve_prepared_block_label_id(names, source_block.label);
+  if (!source_block_label_id.has_value()) {
     return std::nullopt;
   }
-
-  const auto* branch_condition =
-      find_prepared_branch_condition(*function_cf, source_block_label_id);
-  if (branch_condition == nullptr) {
-    return std::nullopt;
-  }
-
-  return find_prepared_compare_branch_target_labels(names, *branch_condition, source_block);
+  return find_prepared_compare_branch_target_labels(
+      names, *function_cf, *source_block_label_id, source_block);
 }
 
 [[nodiscard]] inline std::optional<PreparedShortCircuitTargetLabels>
@@ -1105,14 +1126,6 @@ find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
     const bir::Block& source_block,
     const bir::Param& param,
     bool require_label_match);
-
-[[nodiscard]] inline std::optional<BlockLabelId> resolve_prepared_block_label_id(
-    const PreparedNameTables& names,
-    std::string_view block_label);
-
-[[nodiscard]] inline std::optional<ValueNameId> resolve_prepared_value_name_id(
-    const PreparedNameTables& names,
-    std::string_view value_name);
 
 [[nodiscard]] inline std::optional<PreparedParamZeroBranchCondition>
 find_prepared_param_zero_branch_condition(const PreparedNameTables& names,
