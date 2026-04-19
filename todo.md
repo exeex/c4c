@@ -5,26 +5,28 @@ Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 4
 Current Step Title: Organize prepared_module_emit.cpp For Prepared Control-Flow Consumption
-Plan Review Counter: 8 / 10
+Plan Review Counter: 9 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another Step 4 organization packet by extracting the bounded
-multi-defined call lane's remaining `CallInst` plus local `i32`
-load/store-orchestration helper out of
+multi-defined call lane's remaining module-wrapper aggregation out of
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` and onto the active
-prepared x86 codegen surface in `src/backend/mir/x86/codegen/x86_codegen.hpp`,
-so the emitter now delegates that bounded instruction render flow through one
+prepared x86 codegen surface in
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` plus
+`src/backend/mir/x86/codegen/x86_codegen.hpp`, so the emitter now delegates
+the bounded candidate iteration and string/global usage collection through one
 shared helper without reopening Step 3 consumer semantics.
 
 ## Suggested Next
 
 Continue Step 4 with another bounded extraction inside the same
 multi-defined-call lane, targeting the remaining entry-lane wrapper work in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` such as candidate/data
-aggregation around the new helper result, but keep that work on file
-organization rather than semantic lowering changes.
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` such as the residual
+global-data emission seam around the new helper result or another adjacent
+orchestration-only helper, but keep that work on file organization rather
+than semantic lowering changes.
 
 ## Watchouts
 
@@ -56,5 +58,5 @@ organization rather than semantic lowering changes.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 for this Step 4 packet after extracting the bounded multi-defined call-lane
-instruction orchestration into the active prepared helper surface;
+module-wrapper aggregation into the active prepared helper surface;
 `test_after.log` is the canonical proof log.

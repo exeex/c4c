@@ -101,4 +101,82 @@ std::optional<std::string> render_prepared_local_slot_memory_operand_if_supporte
   return render_prepared_stack_memory_operand(slot_it->second + stack_byte_bias, size_name);
 }
 
+std::optional<PreparedBoundedMultiDefinedCallLaneModuleRender>
+render_prepared_bounded_multi_defined_call_lane_module_if_supported(
+    const std::vector<const c4c::backend::bir::Function*>& defined_functions,
+    c4c::TargetArch prepared_arch,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        render_trivial_defined_function,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        minimal_function_return_register,
+    const std::function<std::string(const c4c::backend::bir::Function&)>&
+        minimal_function_asm_prefix,
+    const std::function<bool(std::string_view)>& has_string_constant,
+    const std::function<bool(std::string_view)>& has_same_module_global,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name) {
+  if (defined_functions.size() <= 1 || prepared_arch != c4c::TargetArch::X86_64) {
+    return std::nullopt;
+  }
+
+  PreparedBoundedMultiDefinedCallLaneModuleRender rendered;
+  std::unordered_set<std::string> emitted_string_names;
+  std::unordered_set<std::string> emitted_same_module_global_names;
+  bool saw_bounded_entry = false;
+
+  for (const auto* candidate : defined_functions) {
+    if (const auto rendered_trivial = render_trivial_defined_function(*candidate);
+        rendered_trivial.has_value()) {
+      rendered.rendered_functions += *rendered_trivial;
+      continue;
+    }
+
+    if (saw_bounded_entry || candidate->return_type != c4c::backend::bir::TypeKind::I32 ||
+        !candidate->params.empty() || candidate->blocks.size() != 1 ||
+        candidate->blocks.front().label != "entry" ||
+        candidate->blocks.front().terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        !candidate->blocks.front().terminator.value.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto candidate_return_register = minimal_function_return_register(*candidate);
+    if (!candidate_return_register.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto candidate_layout =
+        build_prepared_module_local_slot_layout(*candidate, prepared_arch);
+    if (!candidate_layout.has_value()) {
+      return std::nullopt;
+    }
+    const auto rendered_candidate =
+        render_prepared_bounded_multi_defined_call_lane_body_if_supported(
+            *candidate, defined_functions, *candidate_layout, *candidate_return_register,
+            has_string_constant, has_same_module_global, render_private_data_label,
+            render_asm_symbol_name);
+    if (!rendered_candidate.has_value()) {
+      return std::nullopt;
+    }
+    for (const auto& string_name : rendered_candidate->used_string_names) {
+      if (emitted_string_names.insert(string_name).second) {
+        rendered.used_string_names.push_back(string_name);
+      }
+    }
+    for (const auto& global_name : rendered_candidate->used_same_module_global_names) {
+      if (emitted_same_module_global_names.insert(global_name).second) {
+        rendered.used_same_module_global_names.push_back(global_name);
+      }
+    }
+    rendered.rendered_functions +=
+        minimal_function_asm_prefix(*candidate) + rendered_candidate->body;
+    saw_bounded_entry = true;
+  }
+
+  if (!saw_bounded_entry) {
+    return std::nullopt;
+  }
+
+  return rendered;
+}
+
 }  // namespace c4c::backend::x86

@@ -262,6 +262,12 @@ struct PreparedBoundedMultiDefinedCallLaneRender {
   std::vector<std::string> used_same_module_global_names;
 };
 
+struct PreparedBoundedMultiDefinedCallLaneModuleRender {
+  std::string rendered_functions;
+  std::vector<std::string> used_string_names;
+  std::vector<std::string> used_same_module_global_names;
+};
+
 std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
     const c4c::backend::bir::Function& function,
     c4c::TargetArch prepared_arch);
@@ -451,6 +457,21 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
                    "\n    add rsp, " + std::to_string(local_layout.frame_size + 8) + "\n    ret\n";
   return rendered;
 }
+
+std::optional<PreparedBoundedMultiDefinedCallLaneModuleRender>
+render_prepared_bounded_multi_defined_call_lane_module_if_supported(
+    const std::vector<const c4c::backend::bir::Function*>& defined_functions,
+    c4c::TargetArch prepared_arch,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        render_trivial_defined_function,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        minimal_function_return_register,
+    const std::function<std::string(const c4c::backend::bir::Function&)>&
+        minimal_function_asm_prefix,
+    const std::function<bool(std::string_view)>& has_string_constant,
+    const std::function<bool(std::string_view)>& has_same_module_global,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name);
 
 std::optional<std::string> render_prepared_param_zero_branch_function(
     std::string_view asm_prefix,

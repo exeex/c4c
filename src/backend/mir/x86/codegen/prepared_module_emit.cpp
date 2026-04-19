@@ -655,83 +655,29 @@ std::string emit_prepared_module(
   };
   const auto render_bounded_multi_defined_call_lane_if_supported =
       [&]() -> std::optional<std::string> {
-    if (defined_functions.size() <= 1 || prepared_arch != c4c::TargetArch::X86_64) {
-      return std::nullopt;
-    }
-
-    std::unordered_set<std::string_view> emitted_string_names;
-    std::vector<const c4c::backend::bir::StringConstant*> used_string_constants;
-    std::unordered_set<std::string_view> used_same_module_globals;
-    std::string rendered_functions;
-    bool saw_bounded_entry = false;
-
-    for (const auto* candidate : defined_functions) {
-      if (const auto rendered_trivial = render_trivial_defined_function_if_supported(*candidate);
-          rendered_trivial.has_value()) {
-        rendered_functions += *rendered_trivial;
-        continue;
-      }
-
-      if (saw_bounded_entry || candidate->return_type != c4c::backend::bir::TypeKind::I32 ||
-          !candidate->params.empty() || candidate->blocks.size() != 1 ||
-          candidate->blocks.front().label != "entry" ||
-          candidate->blocks.front().terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-          !candidate->blocks.front().terminator.value.has_value()) {
-        return std::nullopt;
-      }
-
-      const auto candidate_return_register = minimal_function_return_register(*candidate);
-      if (!candidate_return_register.has_value()) {
-        return std::nullopt;
-      }
-
-      const auto candidate_layout =
-          build_prepared_module_local_slot_layout(*candidate, prepared_arch);
-      if (!candidate_layout.has_value()) {
-        return std::nullopt;
-      }
-      const auto rendered_candidate =
-          render_prepared_bounded_multi_defined_call_lane_body_if_supported(
-              *candidate, defined_functions, *candidate_layout, *candidate_return_register,
-              [&](std::string_view symbol_name) {
-                return find_string_constant(symbol_name) != nullptr;
-              },
-              [&](std::string_view symbol_name) {
-                return find_same_module_global(symbol_name) != nullptr;
-              },
-              [&](std::string_view symbol_name) {
-                const std::string prefixed_name = "@" + std::string(symbol_name);
-                return render_private_data_label(prefixed_name);
-              },
-              [&](std::string_view symbol_name) {
-                return render_asm_symbol_name(symbol_name);
-              });
-      if (!rendered_candidate.has_value()) {
-        return std::nullopt;
-      }
-      for (const auto& string_name : rendered_candidate->used_string_names) {
-        if (!emitted_string_names.insert(string_name).second) {
-          continue;
-        }
-        const auto* string_constant = find_string_constant(string_name);
-        if (string_constant == nullptr) {
-          return std::nullopt;
-        }
-        used_string_constants.push_back(string_constant);
-      }
-      for (const auto& global_name : rendered_candidate->used_same_module_global_names) {
-        used_same_module_globals.insert(global_name);
-      }
-      rendered_functions += minimal_function_asm_prefix(*candidate) + rendered_candidate->body;
-      saw_bounded_entry = true;
-    }
-
-    if (!saw_bounded_entry) {
+    const auto rendered_module = render_prepared_bounded_multi_defined_call_lane_module_if_supported(
+        defined_functions, prepared_arch, render_trivial_defined_function_if_supported,
+        minimal_function_return_register, minimal_function_asm_prefix,
+        [&](std::string_view symbol_name) { return find_string_constant(symbol_name) != nullptr; },
+        [&](std::string_view symbol_name) { return find_same_module_global(symbol_name) != nullptr; },
+        [&](std::string_view symbol_name) {
+          const std::string prefixed_name = "@" + std::string(symbol_name);
+          return render_private_data_label(prefixed_name);
+        },
+        [&](std::string_view symbol_name) { return render_asm_symbol_name(symbol_name); });
+    if (!rendered_module.has_value()) {
       return std::nullopt;
     }
 
     std::string rendered_data;
-    for (const auto* string_constant : used_string_constants) {
+    std::unordered_set<std::string_view> used_same_module_globals(
+        rendered_module->used_same_module_global_names.begin(),
+        rendered_module->used_same_module_global_names.end());
+    for (const auto& string_name : rendered_module->used_string_names) {
+      const auto* string_constant = find_string_constant(string_name);
+      if (string_constant == nullptr) {
+        return std::nullopt;
+      }
       rendered_data += emit_string_constant_data(*string_constant);
     }
     for (const auto& global : module.module.globals) {
@@ -746,7 +692,7 @@ std::string emit_prepared_module(
       }
       rendered_data += *rendered_global_data;
     }
-    return rendered_functions + rendered_data;
+    return rendered_module->rendered_functions + rendered_data;
   };
   if (const auto rendered_multi_defined = render_bounded_multi_defined_call_lane_if_supported();
       rendered_multi_defined.has_value()) {
