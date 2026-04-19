@@ -5,26 +5,25 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Migrate Consumers To The Authoritative Prepared Facts
-Plan Review Counter: 5 / 10
+Plan Review Counter: 6 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3 slice for idea 62. The
-`tests/backend/backend_x86_handoff_boundary_i32_guard_chain_test.cpp` handoff
-coverage now extends the pointer-backed same-module global guard-chain family
-so it proves both that the x86 consumer keeps following authoritative prepared
-addressing over drifted raw global carriers and that it rejects reopening raw
-global fallback when the prepared addressing contract is removed from the
-canonical guard-chain handoff.
+`tests/backend/backend_x86_handoff_boundary_short_circuit_test.cpp` handoff
+coverage now extends the short-circuit `EdgeStoreSlot` lane so it proves both
+that the x86 consumer keeps following the authoritative prepared rhs
+passthrough target over raw branch drift and that the shared short-circuit
+branch-plan helper still publishes the canonical prepared labels after the join
+carrier is rewritten to `PreparedJoinTransferKind::EdgeStoreSlot`.
 
 ## Suggested Next
 
-Stay on the next bounded `plan.md` Step 3 short-circuit or remaining helper-
-backed guard-family handoff packet that still lacks explicit contract proof for
-missing or drifted prepared metadata, most likely another consumer lane where
-prepared addressing or continuation ownership is authoritative but not yet
-proven against raw-carrier drift and prepared-data loss.
+Move to the next bounded `plan.md` Step 3 consumer family that still lacks an
+explicit prepared-contract drift or loss proof, preferably outside the
+short-circuit passthrough/helper lane that now has both select-carrier and
+`EdgeStoreSlot` coverage.
 
 ## Watchouts
 
@@ -53,17 +52,19 @@ proven against raw-carrier drift and prepared-data loss.
   convert that family to short-circuit-style label rejection, because the
   current migration proof already relies on authoritative prepared ownership
   winning over raw carrier labels there.
-- The pointer-backed same-module global guard-chain lane now has explicit proof
-  for prepared-address consumption and prepared-address-loss rejection, so the
-  next packet should move to a different consumer family instead of restating
-  that addressing contract.
+- The short-circuit passthrough/helper lane now has explicit proof for both the
+  select-carrier and `EdgeStoreSlot` forms, so the next packet should move to a
+  different consumer family instead of restating the same continuation-target
+  or branch-plan shape.
 
 ## Proof
 
 Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
-`backend_x86_handoff_boundary` proof passed after extending pointer-backed
-same-module global guard-chain coverage so the route proves authoritative
-prepared-address consumption and rejects raw global fallback after prepared
-address loss. `test_after.log` is the proof artifact for this packet.
+`backend_x86_handoff_boundary` proof passed after extending short-circuit
+`EdgeStoreSlot` coverage so the route proves authoritative rhs passthrough
+target ownership over raw branch drift and preserves the helper-published
+prepared branch-plan labels after the join carrier switches to
+`PreparedJoinTransferKind::EdgeStoreSlot`. `test_after.log` is the proof
+artifact for this packet.
