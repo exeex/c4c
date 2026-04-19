@@ -867,6 +867,11 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_ren
   const auto* branch_condition =
       immediate_branch_condition != nullptr ? immediate_branch_condition
                                             : authoritative_branch_condition;
+  if (function_control_flow != nullptr && source_block_label_id != c4c::kInvalidBlockLabel &&
+      branch_condition == nullptr) {
+    throw std::invalid_argument(
+        "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
+  }
   if (branch_condition != nullptr) {
     const auto compare_context = build_prepared_guard_compare_context(
         *branch_condition, current_materialized_compare, current_i32_name);

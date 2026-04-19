@@ -45,6 +45,17 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
   return nullptr;
 }
 
+prepare::PreparedControlFlowFunction* find_control_flow_function(prepare::PreparedBirModule& prepared,
+                                                                 const char* function_name) {
+  for (auto& function : prepared.control_flow.functions) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) ==
+        function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
 bir::Block* find_block(bir::Function& function, const char* label) {
   for (auto& block : function.blocks) {
     if (block.label == label) {
@@ -441,6 +452,75 @@ int check_minimal_compare_branch_with_unreachable_block_consumes_prepared_contro
       module, expected_asm, function_name, failure_context, true);
 }
 
+int check_minimal_compare_branch_requires_authoritative_prepared_branch_labels(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      !control_flow->join_transfers.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the minimal compare branch control-flow contract")
+                    .c_str());
+  }
+
+  control_flow->branch_conditions.front().false_label =
+      prepared.names.block_labels.intern("drifted.compare.false");
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted drifted prepared compare-branch labels")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected drifted prepared compare-branch labels with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
+int check_minimal_compare_branch_requires_authoritative_prepared_branch_record(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      !control_flow->join_transfers.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the minimal compare branch control-flow contract")
+                    .c_str());
+  }
+
+  control_flow->branch_conditions.clear();
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly reopened raw compare-branch recovery after the prepared branch record was removed")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the missing prepared compare-branch record with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_compare_branch_tests() {
@@ -463,6 +543,22 @@ int run_backend_x86_handoff_boundary_compare_branch_tests() {
               expected_minimal_param_eq_zero_branch_asm("branch_on_zero", "is_nonzero", 7, 11),
               "branch_on_zero",
               "scalar-control-flow compare-against-zero branch lane prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_requires_authoritative_prepared_branch_labels(
+              make_x86_param_eq_zero_branch_module(),
+              "branch_on_zero",
+              "scalar-control-flow compare-against-zero branch lane rejects drifted authoritative prepared branch labels instead of falling back to raw branch recovery");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_requires_authoritative_prepared_branch_record(
+              make_x86_param_eq_zero_branch_module(),
+              "branch_on_zero",
+              "scalar-control-flow compare-against-zero branch lane rejects reopening raw branch recovery when the authoritative prepared branch record is missing");
       status != 0) {
     return status;
   }
