@@ -423,75 +423,6 @@ std::string emit_prepared_module(
     }
     static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
     const auto* function_control_flow = find_control_flow_function();
-    const auto build_direct_branch_targets_from_continuation =
-        [&](const c4c::backend::prepare::PreparedShortCircuitContinuationLabels&
-                continuation_plan)
-        -> std::optional<DirectBranchTargets> {
-      const auto continuation_targets =
-          c4c::backend::prepare::prepared_branch_target_labels(continuation_plan);
-      DirectBranchTargets targets{
-          .true_block = find_block(continuation_targets.true_label),
-          .false_block = find_block(continuation_targets.false_label),
-      };
-      if (targets.true_block == nullptr || targets.false_block == nullptr) {
-        return std::nullopt;
-      }
-      return targets;
-    };
-    const auto build_short_circuit_target_from_transfer =
-        [&](const c4c::backend::prepare::PreparedShortCircuitTargetLabels& prepared_target)
-        -> std::optional<ShortCircuitTarget> {
-      const auto* block = find_block(prepared_target.block_label);
-      if (block == nullptr) {
-        return std::nullopt;
-      }
-
-      std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels> continuation;
-      if (prepared_target.continuation.has_value()) {
-        continuation = *prepared_target.continuation;
-      }
-
-      return ShortCircuitTarget{
-          .block = block,
-          .continuation = std::move(continuation),
-      };
-    };
-    const auto find_short_circuit_join_context =
-        [&](const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
-            std::string_view source_block_label)
-        -> std::optional<c4c::backend::prepare::PreparedShortCircuitJoinContext> {
-      const auto prepared_join_context =
-          c4c::backend::prepare::find_prepared_short_circuit_join_context(
-              control_flow, function, source_block_label);
-      if (!prepared_join_context.has_value() || prepared_join_context->join_transfer == nullptr ||
-          prepared_join_context->true_transfer == nullptr ||
-          prepared_join_context->false_transfer == nullptr ||
-          prepared_join_context->join_block == nullptr) {
-        return std::nullopt;
-      }
-      return prepared_join_context;
-    };
-    const auto build_short_circuit_plan =
-        [&](const c4c::backend::prepare::PreparedShortCircuitBranchPlan& prepared_plan)
-        -> std::optional<ShortCircuitPlan> {
-      const auto on_compare_true =
-          build_short_circuit_target_from_transfer(prepared_plan.on_compare_true);
-      const auto on_compare_false =
-          build_short_circuit_target_from_transfer(prepared_plan.on_compare_false);
-      if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
-        return std::nullopt;
-      }
-
-      ShortCircuitPlan plan{
-          .on_compare_true = *on_compare_true,
-          .on_compare_false = *on_compare_false,
-      };
-      if (plan.on_compare_true.block == nullptr ||
-          plan.on_compare_false.block == nullptr) {
-        return std::nullopt;
-      }
-      return plan;
-    };
     const auto render_function_return =
         [&](std::int32_t returned_imm) -> std::string {
       std::string rendered = "    mov eax, " + std::to_string(returned_imm) + "\n";
@@ -958,7 +889,11 @@ std::string emit_prepared_module(
                       compare_index,
                       current_materialized_compare,
                       current_i32_name,
-                      build_short_circuit_plan);
+                      [&](const c4c::backend::prepare::PreparedShortCircuitBranchPlan&
+                              prepared_plan) -> std::optional<ShortCircuitPlan> {
+                        return c4c::backend::x86::build_prepared_short_circuit_plan(
+                            prepared_plan, find_block);
+                      });
               if (compare_join_render_plan.has_value()) {
                 return c4c::backend::x86::render_compare_driven_branch_plan(
                     function.name,
@@ -1001,8 +936,9 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
-            const auto join_context =
-                find_short_circuit_join_context(*function_control_flow, block.label);
+            const auto join_context = c4c::backend::x86::
+                find_prepared_short_circuit_join_context_if_supported(
+                    *function_control_flow, function, block.label);
             if (!join_context.has_value()) {
               return std::nullopt;
             }
@@ -1016,7 +952,11 @@ std::string emit_prepared_module(
                     compare_index,
                     current_materialized_compare,
                     current_i32_name,
-                    build_short_circuit_plan);
+                    [&](const c4c::backend::prepare::PreparedShortCircuitBranchPlan&
+                            prepared_plan) -> std::optional<ShortCircuitPlan> {
+                      return c4c::backend::x86::build_prepared_short_circuit_plan(
+                          prepared_plan, find_block);
+                    });
             if (!short_circuit_render_plan.has_value()) {
               return std::nullopt;
             }

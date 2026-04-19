@@ -655,6 +655,20 @@ std::optional<ShortCircuitEntryCompareContext> build_prepared_guard_compare_cont
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
     const std::optional<std::string_view>& current_i32_name);
 
+std::optional<c4c::backend::prepare::PreparedShortCircuitJoinContext>
+find_prepared_short_circuit_join_context_if_supported(
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    std::string_view source_block_label);
+
+std::optional<ShortCircuitTarget> build_prepared_short_circuit_target(
+    const c4c::backend::prepare::PreparedShortCircuitTargetLabels& prepared_target,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
+
+std::optional<ShortCircuitPlan> build_prepared_short_circuit_plan(
+    const c4c::backend::prepare::PreparedShortCircuitBranchPlan& prepared_plan,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
+
 std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_render_plan(
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,

@@ -288,6 +288,62 @@ std::optional<DirectBranchTargets> build_plain_cond_direct_branch_targets(
                                        branch_condition.false_label);
 }
 
+std::optional<c4c::backend::prepare::PreparedShortCircuitJoinContext>
+find_prepared_short_circuit_join_context_if_supported(
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    std::string_view source_block_label) {
+  const auto prepared_join_context = c4c::backend::prepare::
+      find_prepared_short_circuit_join_context(control_flow, function, source_block_label);
+  if (!prepared_join_context.has_value() || prepared_join_context->join_transfer == nullptr ||
+      prepared_join_context->true_transfer == nullptr ||
+      prepared_join_context->false_transfer == nullptr ||
+      prepared_join_context->join_block == nullptr) {
+    return std::nullopt;
+  }
+  return prepared_join_context;
+}
+
+std::optional<ShortCircuitTarget> build_prepared_short_circuit_target(
+    const c4c::backend::prepare::PreparedShortCircuitTargetLabels& prepared_target,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block) {
+  const auto* block = find_block(prepared_target.block_label);
+  if (block == nullptr) {
+    return std::nullopt;
+  }
+
+  std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels> continuation;
+  if (prepared_target.continuation.has_value()) {
+    continuation = *prepared_target.continuation;
+  }
+
+  return ShortCircuitTarget{
+      .block = block,
+      .continuation = std::move(continuation),
+  };
+}
+
+std::optional<ShortCircuitPlan> build_prepared_short_circuit_plan(
+    const c4c::backend::prepare::PreparedShortCircuitBranchPlan& prepared_plan,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block) {
+  const auto on_compare_true =
+      build_prepared_short_circuit_target(prepared_plan.on_compare_true, find_block);
+  const auto on_compare_false =
+      build_prepared_short_circuit_target(prepared_plan.on_compare_false, find_block);
+  if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
+    return std::nullopt;
+  }
+
+  ShortCircuitPlan plan{
+      .on_compare_true = *on_compare_true,
+      .on_compare_false = *on_compare_false,
+  };
+  if (plan.on_compare_true.block == nullptr || plan.on_compare_false.block == nullptr) {
+    return std::nullopt;
+  }
+  return plan;
+}
+
 CompareDrivenBranchRenderPlan build_compare_driven_render_plan(
     ShortCircuitPlan branch_plan,
     const ShortCircuitEntryCompareContext& compare_context) {
