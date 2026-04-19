@@ -860,8 +860,13 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_ren
           ? c4c::backend::prepare::resolve_prepared_value_name_id(prepared_names,
                                                                   *current_i32_name)
           : std::nullopt;
-  const auto* branch_condition = find_prepared_i32_immediate_branch_condition_if_supported(
+  const auto* authoritative_branch_condition =
+      find_prepared_branch_condition_if_supported(function_control_flow, source_block_label_id);
+  const auto* immediate_branch_condition = find_prepared_i32_immediate_branch_condition_if_supported(
       prepared_names, function_control_flow, source_block_label_id, current_i32_name_id);
+  const auto* branch_condition =
+      immediate_branch_condition != nullptr ? immediate_branch_condition
+                                            : authoritative_branch_condition;
   if (branch_condition != nullptr) {
     const auto compare_context = build_prepared_guard_compare_context(
         *branch_condition, current_materialized_compare, current_i32_name);

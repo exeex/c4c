@@ -675,6 +675,65 @@ int check_i32_guard_chain_route_requires_authoritative_prepared_branch_labels(
   return 0;
 }
 
+int check_i32_guard_chain_route_consumes_authoritative_prepared_compare_contract(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* branch_block_label,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 2 ||
+      !control_flow->join_transfers.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the guard-chain prepared branch contracts")
+                    .c_str());
+  }
+
+  auto* branch_condition = static_cast<prepare::PreparedBranchCondition*>(nullptr);
+  for (auto& candidate : control_flow->branch_conditions) {
+    if (prepare::prepared_block_label(prepared.names, candidate.block_label) ==
+        branch_block_label) {
+      branch_condition = &candidate;
+      break;
+    }
+  }
+  if (branch_condition == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared guard-chain fixture no longer exposes the expected authoritative branch contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* branch_block = find_block(function, branch_block_label);
+  if (branch_block == nullptr || branch_block->insts.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepared guard-chain fixture no longer exposes the expected raw compare carrier")
+                    .c_str());
+  }
+  auto* compare = std::get_if<bir::BinaryInst>(&branch_block->insts.back());
+  if (compare == nullptr || compare->operand_type != bir::TypeKind::I32) {
+    return fail((std::string(failure_context) +
+                 ": prepared guard-chain fixture no longer ends in the expected i32 compare")
+                    .c_str());
+  }
+
+  compare->lhs = bir::Value::immediate_i32(7);
+  compare->rhs = bir::Value::immediate_i32(3);
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following authoritative prepared compare ownership over drifted raw compare carriers")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_same_module_global_guard_chain_route_consumes_prepared_address_contract(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -922,6 +981,16 @@ int run_backend_x86_handoff_boundary_i32_guard_chain_tests() {
               "main",
               "block_2",
               "minimal non-global equality-against-immediate guard-chain route rejects drifted prepared branch labels instead of falling back to the raw guard-chain matcher");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_i32_guard_chain_route_consumes_authoritative_prepared_compare_contract(
+              make_x86_immediate_i32_guard_chain_module(),
+              expected_minimal_i32_immediate_guard_chain_asm("main"),
+              "main",
+              "block_2",
+              "minimal non-global equality-against-immediate guard-chain route consumes authoritative prepared compare ownership");
       status != 0) {
     return status;
   }
