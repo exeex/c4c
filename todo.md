@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
-Current Step ID: 3.4.3
-Current Step Title: Residual Non-Countdown Consumer Cleanup
+Current Step ID: 4
+Current Step Title: Organize prepared_module_emit.cpp For Prepared Control-Flow Consumption
 Plan Review Counter: 0 / 10
 # Current Packet
 
@@ -17,23 +17,24 @@ prepared compare contract from emitter-local branch fields.
 
 ## Suggested Next
 
-Review whether any honest Step 3.4.3 residual consumer packet remains beyond
-the now-covered local i32 guard seam; if not, treat Step 3.4 as exhausted
-instead of widening residual cleanup into variants that still need new shared
-prepared-contract publication.
+Treat Step 3.4 as exhausted and start Step 4 with one bounded
+responsibility-based extraction packet in `prepared_module_emit.cpp` rather
+than widening residual consumer cleanup into producer-side publication work.
 
 ## Watchouts
 
-- Keep this route in Step 3.4.3 residual non-countdown consumer cleanup; do
-  not widen into Step 3.2 compare-join reproving, Step 3.3 carrier hunting,
-  Step 3.4.1 countdown-fallback mining, Step 4 file organization, idea 57,
-  idea 59, idea 60, idea 61, or the unrelated `^backend_`
-  semantic-lowering failures.
+- Step 3.4 is exhausted for the current runbook. Do not reopen countdown
+  fallback cleanup, compare-join reproving, or more residual consumer packets
+  unless the plan itself is revised.
+- Keep the next packet in Step 4 file organization. Prefer extracting one
+  responsibility-based helper seam from `prepared_module_emit.cpp` into an
+  existing x86 codegen translation unit instead of renaming or relocating
+  matcher growth.
 - The shared prepared immediate-branch helper cleanly covers the immediate
   local guard ownership check that already exists in the boundary suite. The
   add-chain arithmetic variant is not yet published through that same shared
-  helper contract, so do not hide that producer-side gap inside more Step
-  3.4.3 consumer cleanup.
+  helper contract, so do not hide that producer-side gap inside Step 4
+  organization work.
 - The broader `^backend_` checkpoint currently reproduces five known failures:
   `backend_prepare_phi_materialize`, `variadic_double_bytes`,
   `variadic_pair_second`, `local_direct_dynamic_member_array_store`, and
