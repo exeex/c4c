@@ -215,18 +215,97 @@ Primary targets:
 
 Actions:
 
-- drive covered loop-carried handling from prepared transfer data
-- finish any residual Step 3 consumer cleanup needed after Step 3.1 through
-  Step 3.3 land
+- execute this step through the ordered substeps below rather than treating
+  loop-carry and residual cleanup as one undifferentiated packet stream
+- keep countdown-specific fallback cleanup isolated to its own substep and do
+  not reopen that family once it is exhausted
 - keep countdown-loop handling within prepared-control-flow consumption only;
   do not widen into value-home work, frame/addressing work, or Step 4
   extraction
 
 Completion check:
 
+- Step 3.4.1 through Step 3.4.3 are all complete
 - the remaining covered loop-carry and adjacent join-consumer paths consult
   prepared control-flow data instead of CFG-shape recovery, and Step 3 can be
   treated as exhausted without hiding unrelated follow-on work inside it
+
+### Step 3.4.1: Countdown Fallback Contract Exhaustion
+
+Goal: close the residual countdown-specific fallback family without letting
+authoritative prepared ownership fall back to raw CFG recovery.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `tests/backend/backend_x86_handoff_boundary_test.cpp`
+
+Actions:
+
+- reject residual local-countdown fallback paths once authoritative prepared
+  branch ownership exists on the matched countdown blocks
+- reject the same fallback family once authoritative prepared join ownership
+  references the matched countdown region, not only when
+  `PreparedJoinTransferKind::LoopCarry` appears
+- stop this substep when the countdown-specific fallback family is exhausted
+  rather than mining testcase-shaped countdown variants
+
+Completion check:
+
+- the countdown-specific fallback family no longer reopens raw CFG recovery
+  when authoritative prepared ownership exists, and further countdown-only
+  work would require widening scope
+
+### Step 3.4.2: Loop-Carry Consumer Lookup Finishing
+
+Goal: finish the remaining loop-carry consumer paths that should consult
+prepared transfer ownership directly.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- focused backend/x86 proof coverage that matches the changed route
+
+Actions:
+
+- inspect residual loop-carried transfer handling outside the exhausted
+  countdown-specific fallback family
+- replace any remaining loop-carry topology recovery with prepared
+  join-transfer or branch-condition lookups where the Step 3 contract already
+  carries the needed semantics
+- keep this substep on consumer-side prepared ownership; do not reopen
+  countdown-only matcher cleanup or widen into Step 3.3 carrier expansion
+
+Completion check:
+
+- the remaining covered loop-carry consumer paths outside the exhausted
+  countdown-specific fallback family use prepared transfer ownership directly
+  instead of countdown-shaped CFG recovery
+
+### Step 3.4.3: Residual Non-Countdown Consumer Cleanup
+
+Goal: close the remaining Step 3 residual consumer paths outside the
+countdown-specific fallback family once loop-carry lookups are stable.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- focused backend/x86 proof coverage that matches the changed route
+
+Actions:
+
+- inspect residual branch/join consumer helpers adjacent to Step 3.2 and
+  Step 3.3 routes that still rely on emitter-local recovery but are not part
+  of the exhausted countdown fallback family
+- prove any remaining fixes against adjacent route variants rather than one
+  named testcase shape
+- if no honest bounded packet remains, treat Step 3.4 as exhausted instead of
+  hiding unrelated follow-on work inside residual cleanup
+
+Completion check:
+
+- Step 3.4 can be declared exhausted without reopening the countdown-specific
+  fallback family or masking unrelated work as residual cleanup
 
 ## Step 4: Organize `prepared_module_emit.cpp` For Prepared Control-Flow Consumption
 
