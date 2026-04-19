@@ -3,14 +3,14 @@
 Status: Active
 Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_control_flow.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Build An Authoritative Shared Prepared CFG Model
-Plan Review Counter: 10 / 10
+Current Step ID: 2.3
+Current Step Title: Finish Contract-Strict CFG Handoff Surfaces
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another `plan.md` Step 2 slice for idea 62. The local countdown
+Completed another `plan.md` Step 2.3 slice for idea 62. The local countdown
 renderer in `src/backend/mir/x86/codegen/prepared_countdown_render.cpp` now
 prefers authoritative prepared single-successor targets for init carriers,
 countdown body backedges, and continuation-entry branch carriers before it
@@ -22,7 +22,7 @@ branch target is drifted away from the authoritative prepared successor.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by pushing the remaining countdown control-flow
+Continue `plan.md` Step 2.3 by pushing the remaining countdown control-flow
 consumers onto the same strict prepared CFG route, especially the
 `render_prepared_loop_join_countdown_if_supported` branch-carrier checks that
 still read raw single-successor labels in the loop-join matcher after shared

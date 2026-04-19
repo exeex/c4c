@@ -95,6 +95,11 @@ Completion check:
 Goal: make shared prepare own per-function CFG, branch-condition, and join
   facts as a stable consumer contract.
 
+### Step 2.1: Publish Typed Per-Block CFG Facts
+
+Goal: expose prepared predecessor, successor, and branch-condition facts on
+semantic ids instead of leaving those edges implicit in local CFG shape.
+
 Primary targets:
 
 - `src/backend/prealloc/legalize.cpp`
@@ -105,15 +110,66 @@ Actions:
 
 - add or reshape prepared structures so per-block predecessor, successor, and
   branch-condition facts are published on semantic ids
-- drive join ownership from authoritative graph analysis rather than ambiguous
-  post-hoc recovery
-- keep the public prepared surface focused on consumer-ready control-flow
-  facts, not on hidden bootstrap shape assumptions
+- keep the prepared surface consumer-oriented rather than leaking bootstrap CFG
+  assumptions
+- preserve `FunctionNameId` and `BlockLabelId` as the public identity boundary
 
 Completion check:
 
-- shared prepare can publish authoritative CFG and join facts for ordinary
-  branch ownership without requiring downstream shape reconstruction
+- prepared functions publish consumer-readable per-block CFG facts without
+  requiring downstream code to rediscover basic edge ownership from raw labels
+
+### Step 2.2: Make Join Ownership Authoritative
+
+Goal: drive prepared join ownership from graph analysis instead of ambiguous
+post-hoc recovery.
+
+Primary targets:
+
+- `src/backend/prealloc/legalize.cpp`
+- `src/backend/prealloc/prealloc.hpp`
+- any shared join-analysis helpers needed to keep ownership derivation coherent
+
+Actions:
+
+- derive join ownership from authoritative predecessor and successor analysis
+- remove ambiguity-sensitive fallback paths that leave join transfers only
+  partially owned
+- keep join facts aligned with the same typed prepared CFG contract published in
+  Step 2.1
+
+Completion check:
+
+- shared prepare can publish stable join ownership for ordinary branch flows
+  without relying on local ambiguity heuristics
+
+### Step 2.3: Finish Contract-Strict CFG Handoff Surfaces
+
+Goal: close the remaining contract-defining paths that still fall back to raw
+branch labels after shared prepare already owns the CFG edges they need.
+
+Primary targets:
+
+- shared prepared-control-flow handoff helpers in
+  `src/backend/mir/x86/codegen/`
+- countdown and guard-oriented consumers whose correctness still depends on raw
+  single-successor labels
+
+Actions:
+
+- replace the remaining raw single-successor branch-label reads in strict
+  countdown and guard handoff paths with the prepared control-flow contract
+- keep mismatched `PreparedBranchCondition` and
+  `PreparedControlFlowBlock` metadata as hard contract failures instead of
+  silently reopening local fallback recovery
+- keep this step limited to the consumer paths that define whether the shared
+  CFG contract is already authoritative, not to the broader migration work
+  reserved for Step 3
+
+Completion check:
+
+- the remaining contract-strict countdown and guard handoff paths no longer use
+  raw branch-label recovery once authoritative prepared control-flow data exists
 
 ## Step 3: Migrate Consumers To The Authoritative Prepared Facts
 
