@@ -252,17 +252,6 @@ struct PreparedAddressing {
   return nullptr;
 }
 
-[[nodiscard]] inline const PreparedAddressingFunction* find_prepared_addressing_function(
-    const PreparedNameTables& names,
-    const PreparedAddressing& addressing,
-    std::string_view function_name) {
-  const FunctionNameId function_name_id = names.function_names.find(function_name);
-  if (function_name_id == kInvalidFunctionName) {
-    return nullptr;
-  }
-  return find_prepared_addressing_function(addressing, function_name_id);
-}
-
 [[nodiscard]] inline const PreparedMemoryAccess* find_prepared_memory_access(
     const PreparedAddressingFunction& function_addressing,
     BlockLabelId block_label,
@@ -273,18 +262,6 @@ struct PreparedAddressing {
     }
   }
   return nullptr;
-}
-
-[[nodiscard]] inline const PreparedMemoryAccess* find_prepared_memory_access(
-    const PreparedNameTables& names,
-    const PreparedAddressingFunction& function_addressing,
-    std::string_view block_label,
-    std::size_t inst_index) {
-  const BlockLabelId block_label_id = names.block_labels.find(block_label);
-  if (block_label_id == kInvalidBlockLabel) {
-    return nullptr;
-  }
-  return find_prepared_memory_access(function_addressing, block_label_id, inst_index);
 }
 
 namespace stack_layout {
@@ -794,17 +771,6 @@ struct PreparedControlFlow {
   return nullptr;
 }
 
-[[nodiscard]] inline const PreparedControlFlowFunction* find_prepared_control_flow_function(
-    const PreparedNameTables& names,
-    const PreparedControlFlow& control_flow,
-    std::string_view function_name) {
-  const FunctionNameId function_name_id = names.function_names.find(function_name);
-  if (function_name_id == kInvalidFunctionName) {
-    return nullptr;
-  }
-  return find_prepared_control_flow_function(control_flow, function_name_id);
-}
-
 [[nodiscard]] inline const PreparedBranchCondition* find_prepared_branch_condition(
     const PreparedControlFlowFunction& function_cf,
     BlockLabelId block_label) {
@@ -816,24 +782,18 @@ struct PreparedControlFlow {
   return nullptr;
 }
 
-[[nodiscard]] inline const PreparedBranchCondition* find_prepared_branch_condition(
-    const PreparedNameTables& names,
-    const PreparedControlFlowFunction& function_cf,
-    std::string_view block_label) {
-  const BlockLabelId block_label_id = names.block_labels.find(block_label);
-  if (block_label_id == kInvalidBlockLabel) {
-    return nullptr;
-  }
-  return find_prepared_branch_condition(function_cf, block_label_id);
-}
-
 [[nodiscard]] inline const PreparedBranchCondition*
 find_prepared_i32_immediate_branch_condition(const PreparedNameTables& names,
                                              const PreparedControlFlowFunction& function_cf,
                                              std::string_view block_label,
                                              std::string_view value_name) {
+  const BlockLabelId block_label_id = names.block_labels.find(block_label);
+  if (block_label_id == kInvalidBlockLabel) {
+    return nullptr;
+  }
+
   const auto* branch_condition =
-      find_prepared_branch_condition(names, function_cf, block_label);
+      find_prepared_branch_condition(function_cf, block_label_id);
   if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
       !branch_condition->compare_type.has_value() || !branch_condition->lhs.has_value() ||
       !branch_condition->rhs.has_value() ||
@@ -884,8 +844,13 @@ find_prepared_compare_branch_target_labels(const PreparedNameTables& names,
     return std::nullopt;
   }
 
+  const BlockLabelId source_block_label_id = names.block_labels.find(source_block.label);
+  if (source_block_label_id == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
   const auto* branch_condition =
-      find_prepared_branch_condition(names, *function_cf, source_block.label);
+      find_prepared_branch_condition(*function_cf, source_block_label_id);
   if (branch_condition == nullptr) {
     return std::nullopt;
   }
@@ -1127,8 +1092,13 @@ find_prepared_param_zero_branch_condition(const PreparedNameTables& names,
     return std::nullopt;
   }
 
+  const BlockLabelId source_block_label_id = names.block_labels.find(source_block.label);
+  if (source_block_label_id == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
   const auto* branch_condition =
-      find_prepared_branch_condition(names, function_cf, source_block.label);
+      find_prepared_branch_condition(function_cf, source_block_label_id);
   if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
       !branch_condition->compare_type.has_value() || !branch_condition->lhs.has_value() ||
       !branch_condition->rhs.has_value() ||
@@ -1870,8 +1840,13 @@ find_prepared_short_circuit_continuation_targets(
     return std::nullopt;
   }
 
+  const BlockLabelId source_block_label_id = names.block_labels.find(source_block->label);
+  if (source_block_label_id == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
   const auto* source_branch_condition =
-      find_prepared_branch_condition(names, function_cf, source_block->label);
+      find_prepared_branch_condition(function_cf, source_block_label_id);
   if (source_branch_condition == nullptr) {
     return std::nullopt;
   }
@@ -1905,8 +1880,13 @@ find_prepared_short_circuit_continuation_targets(
     return std::nullopt;
   }
 
+  const BlockLabelId rhs_entry_block_label_id = names.block_labels.find(rhs_entry_block->label);
+  if (rhs_entry_block_label_id == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
   const auto* rhs_branch_condition =
-      find_prepared_branch_condition(names, function_cf, rhs_entry_block->label);
+      find_prepared_branch_condition(function_cf, rhs_entry_block_label_id);
   if (rhs_branch_condition == nullptr) {
     return std::nullopt;
   }
@@ -1951,8 +1931,13 @@ find_prepared_compare_join_continuation_targets(const PreparedNameTables& names,
     return std::nullopt;
   }
 
+  const BlockLabelId join_block_label_id = names.block_labels.find(join_block->label);
+  if (join_block_label_id == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
   const auto* join_branch_condition =
-      find_prepared_branch_condition(names, function_cf, join_block->label);
+      find_prepared_branch_condition(function_cf, join_block_label_id);
   if (join_branch_condition == nullptr) {
     return std::nullopt;
   }
@@ -2526,8 +2511,8 @@ struct PreparedBirModule {
 
 [[nodiscard]] inline const PreparedAddressingFunction* find_prepared_addressing(
     const PreparedBirModule& module,
-    std::string_view function_name) {
-  return find_prepared_addressing_function(module.names, module.addressing, function_name);
+    FunctionNameId function_name) {
+  return find_prepared_addressing_function(module.addressing, function_name);
 }
 
 class BirPreAlloc {

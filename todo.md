@@ -5,26 +5,27 @@ Source Idea Path: ideas/open/64_shared_text_identity_and_semantic_name_table_ref
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Migrate The First Prepared Identity Surfaces
-Plan Review Counter: 5 / 10
+Plan Review Counter: 6 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another `plan.md` Step 3 packet by splitting
-`PreparedStackObject` identity into typed semantic carriers instead of one raw
-`source_name` string: local-slot-backed objects now publish `SlotNameId`,
-byval/sret parameter-backed objects now publish `ValueNameId`, stack-layout
-and liveness helpers now consume those typed ids through `PreparedNameTables`,
-and the stack-layout backend tests now assert object identity through the
-semantic-name tables rather than by reading a raw public string field.
+Completed another `plan.md` Step 3 packet by moving the prepared
+addressing/control-flow lookup entry points that were already backed by typed
+storage off raw function/block spellings and onto semantic ids: the public
+lookup helpers in `prealloc.hpp` now enter through `FunctionNameId` and
+`BlockLabelId`, x86 prepared-module consumers translate BIR spellings to typed
+ids only at the boundary, and the backend tests now look up prepared
+addressing/branch metadata through those semantic ids instead of through
+string-keyed helper overloads.
 
 ## Suggested Next
 
-Continue `plan.md` Step 3 with the next prepared/public symbolic surface that
-still accepts raw spellings as part of its contract, likely the convenience
-lookup and classification helpers in `prealloc.hpp` that still take
-`std::string_view` names for blocks/values/slots instead of typed semantic ids
-now that stack-layout objects themselves no longer publish an untyped name.
+Continue `plan.md` Step 3 with the remaining prepared/public helper surfaces
+that still accept raw symbolic spellings inside `prealloc.hpp`, especially the
+branch/join classification helpers that still key by string block/value names
+because their underlying prepared records have not yet been fully lifted to
+typed semantic ids.
 
 ## Watchouts
 
@@ -52,8 +53,8 @@ now that stack-layout objects themselves no longer publish an untyped name.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_' > test_after.log 2>&1` and captured the
 build/test output in `test_after.log`. The build completed, the backend subset
-kept `backend_prepare_stack_layout`, `backend_prepare_liveness`, and the x86
-handoff boundary coverage green with semantic stack-object slot/value ids in
-place, and the run reproduced only the same four known failing tests already
-present in `test_before.log`, so this packet did not introduce a new subset
-regression.
+kept the prepared stack-layout/control-flow tests and x86 handoff boundary
+coverage green with semantic function/block-id lookups in place, and
+`test_after.log` matched `test_before.log` exactly, reproducing only the same
+four known failing tests already called out above, so this packet did not
+introduce a new subset regression.

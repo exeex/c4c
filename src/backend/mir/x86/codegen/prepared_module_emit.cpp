@@ -90,12 +90,22 @@ std::string emit_prepared_module(
   };
   const auto find_control_flow_function =
       [&]() -> const c4c::backend::prepare::PreparedControlFlowFunction* {
+    const c4c::FunctionNameId function_name_id =
+        module.names.function_names.find(function.name);
+    if (function_name_id == c4c::kInvalidFunctionName) {
+      return nullptr;
+    }
     return c4c::backend::prepare::find_prepared_control_flow_function(
-        module.names, module.control_flow, function.name);
+        module.control_flow, function_name_id);
   };
   const auto find_addressing_function =
       [&]() -> const c4c::backend::prepare::PreparedAddressingFunction* {
-    return c4c::backend::prepare::find_prepared_addressing(module, function.name);
+    const c4c::FunctionNameId function_name_id =
+        module.names.function_names.find(function.name);
+    if (function_name_id == c4c::kInvalidFunctionName) {
+      return nullptr;
+    }
+    return c4c::backend::prepare::find_prepared_addressing(module, function_name_id);
   };
   const auto resolved_target_triple =
       module.module.target_triple.empty() ? c4c::default_host_target_triple()

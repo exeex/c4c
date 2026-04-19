@@ -207,8 +207,12 @@ const c4c::backend::prepare::PreparedBranchCondition* find_prepared_branch_condi
   if (function_control_flow == nullptr) {
     return nullptr;
   }
+  const c4c::BlockLabelId block_label_id = prepared_names.block_labels.find(block_label);
+  if (block_label_id == c4c::kInvalidBlockLabel) {
+    return nullptr;
+  }
   return c4c::backend::prepare::find_prepared_branch_condition(
-      prepared_names, *function_control_flow, block_label);
+      *function_control_flow, block_label_id);
 }
 
 const c4c::backend::prepare::PreparedBranchCondition*

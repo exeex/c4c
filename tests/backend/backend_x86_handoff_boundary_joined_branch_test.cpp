@@ -75,6 +75,11 @@ c4c::BlockLabelId intern_block_label(prepare::PreparedBirModule& prepared,
   return prepared.names.block_labels.intern(label);
 }
 
+c4c::BlockLabelId find_block_label_id(const prepare::PreparedBirModule& prepared,
+                                      std::string_view label) {
+  return prepared.names.block_labels.find(label);
+}
+
 c4c::SlotNameId intern_slot_name(prepare::PreparedBirModule& prepared,
                                  std::string_view name) {
   return prepared.names.slot_names.intern(name);
@@ -3681,7 +3686,8 @@ int check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels
   }
 
   const auto* entry_branch_condition =
-      prepare::find_prepared_branch_condition(prepared.names, *control_flow, entry_block->label);
+      prepare::find_prepared_branch_condition(
+          *control_flow, find_block_label_id(prepared, entry_block->label));
   if (entry_branch_condition == nullptr) {
     return fail((std::string(failure_context) +
                  ": prepared compare-join fixture no longer exposes entry branch metadata")
@@ -3879,7 +3885,8 @@ int check_materialized_compare_join_route_ignores_non_compare_entry_carrier_impl
   }
 
   const auto* entry_branch_condition =
-      prepare::find_prepared_branch_condition(prepared.names, *control_flow, entry_block->label);
+      prepare::find_prepared_branch_condition(
+          *control_flow, find_block_label_id(prepared, entry_block->label));
   if (entry_branch_condition == nullptr || !entry_branch_condition->predicate.has_value() ||
       !entry_branch_condition->lhs.has_value() || !entry_branch_condition->rhs.has_value()) {
     return fail((std::string(failure_context) +
@@ -4280,7 +4287,8 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
   }
 
   const auto* entry_branch_condition =
-      prepare::find_prepared_branch_condition(prepared.names, *control_flow, entry_block->label);
+      prepare::find_prepared_branch_condition(
+          *control_flow, find_block_label_id(prepared, entry_block->label));
   if (entry_branch_condition == nullptr) {
     return fail((std::string(failure_context) +
                  ": prepared compare-join fixture no longer exposes entry branch metadata")

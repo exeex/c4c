@@ -31,6 +31,11 @@ int fail(const char* message) {
   return 1;
 }
 
+c4c::FunctionNameId find_function_name_id(const prepare::PreparedBirModule& prepared,
+                                          std::string_view function_name) {
+  return prepared.names.function_names.find(function_name);
+}
+
 const prepare::PreparedControlFlowFunction* find_control_flow_function(
     const prepare::PreparedBirModule& prepared,
     const char* function_name) {
@@ -308,7 +313,8 @@ int check_local_i32_return_route_requires_authoritative_prepared_frame_access_co
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
-  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, find_function_name_id(prepared, function_name));
   if (function_addressing == nullptr || function_addressing->accesses.size() < 2) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the local return prepared frame-slot accesses")
@@ -522,7 +528,8 @@ int check_local_i32_guard_route_consumes_prepared_frame_contract(const bir::Modu
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
-  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, find_function_name_id(prepared, function_name));
   if (function_addressing == nullptr) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes prepared frame facts for the local guard function")
@@ -564,7 +571,8 @@ int check_local_i32_guard_route_consumes_prepared_frame_access_contract(
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
-  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, find_function_name_id(prepared, function_name));
   if (function_addressing == nullptr || function_addressing->accesses.size() < 2) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the local guard prepared frame-slot accesses")

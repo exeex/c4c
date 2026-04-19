@@ -50,6 +50,11 @@ prepare::PreparedControlFlowFunction* find_control_flow_function(prepare::Prepar
   return nullptr;
 }
 
+c4c::FunctionNameId find_function_name_id(const prepare::PreparedBirModule& prepared,
+                                          std::string_view function_name) {
+  return prepared.names.function_names.find(function_name);
+}
+
 std::string asm_header(const char* function_name) {
   return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
          "\n.type " + function_name + ", @function\n" + function_name + ":\n";
@@ -679,7 +684,8 @@ int check_same_module_global_guard_chain_route_consumes_prepared_address_contrac
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
-  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, find_function_name_id(prepared, function_name));
   if (function_addressing == nullptr || function_addressing->accesses.size() < 2) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the same-module global prepared accesses")
@@ -724,7 +730,8 @@ int check_same_module_global_guard_chain_route_requires_authoritative_prepared_a
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
-  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, find_function_name_id(prepared, function_name));
   if (function_addressing == nullptr || function_addressing->accesses.size() < 2) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the same-module global prepared accesses")
@@ -792,7 +799,8 @@ int check_same_module_global_store_guard_chain_route_consumes_prepared_address_c
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
-  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, find_function_name_id(prepared, function_name));
   if (function_addressing == nullptr || function_addressing->accesses.size() < 2) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the same-module global store prepared accesses")
@@ -837,7 +845,8 @@ int check_same_module_global_store_guard_chain_route_requires_authoritative_prep
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
-  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, find_function_name_id(prepared, function_name));
   if (function_addressing == nullptr || function_addressing->accesses.size() < 2) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the same-module global store prepared accesses")

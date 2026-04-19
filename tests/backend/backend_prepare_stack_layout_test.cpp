@@ -53,6 +53,16 @@ const prepare::PreparedFrameSlot* find_frame_slot(const prepare::PreparedBirModu
   return nullptr;
 }
 
+c4c::FunctionNameId find_function_name_id(const prepare::PreparedBirModule& prepared,
+                                          std::string_view function_name) {
+  return prepared.names.function_names.find(function_name);
+}
+
+c4c::BlockLabelId find_block_label_id(const prepare::PreparedBirModule& prepared,
+                                      std::string_view block_label) {
+  return prepared.names.block_labels.find(block_label);
+}
+
 bir::Function make_stack_layout_analysis_object_collection_function() {
   bir::Function function;
   function.name = "stack_layout_analysis_object_collection_activation";
@@ -272,8 +282,10 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
 }
 
 int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirModule& prepared) {
-  const auto* function_addressing =
-      prepare::find_prepared_addressing(prepared, "stack_layout_copy_coalescing_activation");
+  const c4c::FunctionNameId function_name_id =
+      find_function_name_id(prepared, "stack_layout_copy_coalescing_activation");
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name_id);
+  const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
   if (function_addressing == nullptr) {
     return fail("expected stack layout to publish per-function prepared addressing frame facts");
   }
@@ -301,7 +313,7 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
   }
 
   const auto* store_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 2);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 2);
   if (store_access == nullptr) {
     return fail("expected prepared addressing to record the direct frame-slot store");
   }
@@ -319,7 +331,7 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
   }
 
   const auto* load_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 3);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 3);
   if (load_access == nullptr) {
     return fail("expected prepared addressing to record the direct frame-slot load");
   }
@@ -337,7 +349,7 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
   }
 
   const auto* global_store_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 4);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 4);
   if (global_store_access == nullptr) {
     return fail("expected prepared addressing to record the direct global-symbol store");
   }
@@ -355,7 +367,7 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
   }
 
   const auto* string_load_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 5);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 5);
   if (string_load_access == nullptr) {
     return fail("expected prepared addressing to record the direct string-constant load");
   }
@@ -372,11 +384,12 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
     return fail("expected prepared addressing to preserve the direct string-constant load facts");
   }
 
-  if (prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 0) != nullptr ||
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 1) != nullptr) {
+  if (prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 0) != nullptr ||
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 1) != nullptr) {
     return fail("expected coalesced scratch accesses to stay out of prepared frame-slot records");
   }
-  if (prepare::find_prepared_addressing(prepared, "missing_function") != nullptr) {
+  if (prepare::find_prepared_addressing(
+          prepared, find_function_name_id(prepared, "missing_function")) != nullptr) {
     return fail("expected prepared addressing frame-fact bootstrap to reject missing functions");
   }
   return 0;
@@ -3038,7 +3051,10 @@ int check_pointer_addressed_local_slot_activation(const prepare::PreparedBirModu
   }
 
   const auto* function_addressing =
-      prepare::find_prepared_addressing(prepared, "stack_layout_pointer_addressed_local_slot_activation");
+      prepare::find_prepared_addressing(
+          prepared,
+          find_function_name_id(prepared, "stack_layout_pointer_addressed_local_slot_activation"));
+  const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
   if (function_addressing == nullptr) {
     return fail("expected pointer-addressed locals to publish prepared addressing records");
   }
@@ -3047,7 +3063,7 @@ int check_pointer_addressed_local_slot_activation(const prepare::PreparedBirModu
   }
 
   const auto* pointer_store_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 1);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 1);
   if (pointer_store_access == nullptr) {
     return fail("expected prepared addressing to record the pointer-indirect local store");
   }
@@ -3099,7 +3115,8 @@ int check_global_pointer_addressed_local_slot_activation(
   }
 
   const auto* function_addressing = prepare::find_prepared_addressing(
-      prepared, "stack_layout_global_pointer_addressed_local_slot_activation");
+      prepared, find_function_name_id(prepared, "stack_layout_global_pointer_addressed_local_slot_activation"));
+  const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
   if (function_addressing == nullptr) {
     return fail("expected global pointer-addressed accesses to publish prepared addressing records");
   }
@@ -3108,7 +3125,7 @@ int check_global_pointer_addressed_local_slot_activation(
   }
 
   const auto* pointer_store_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 1);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 1);
   if (pointer_store_access == nullptr) {
     return fail("expected prepared addressing to record the pointer-indirect global store");
   }
@@ -3128,7 +3145,7 @@ int check_global_pointer_addressed_local_slot_activation(
   }
 
   const auto* pointer_load_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 2);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 2);
   if (pointer_load_access == nullptr) {
     return fail("expected prepared addressing to record the pointer-indirect global load");
   }
@@ -3359,7 +3376,9 @@ int check_prepared_addressing_contract_activation() {
           },
   });
 
-  const auto* function_addressing = prepare::find_prepared_addressing(prepared, "main");
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, find_function_name_id(prepared, "main"));
+  const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
   if (function_addressing == nullptr) {
     return fail("expected prepared addressing lookup to find the function contract");
   }
@@ -3369,7 +3388,7 @@ int check_prepared_addressing_contract_activation() {
   }
 
   const auto* frame_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 1);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 1);
   if (frame_access == nullptr) {
     return fail("expected prepared addressing to find the frame-slot access by block and instruction");
   }
@@ -3385,7 +3404,7 @@ int check_prepared_addressing_contract_activation() {
   }
 
   const auto* symbol_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 2);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 2);
   if (symbol_access == nullptr) {
     return fail("expected prepared addressing to find the symbol-backed access by block and instruction");
   }
@@ -3399,10 +3418,10 @@ int check_prepared_addressing_contract_activation() {
     return fail("expected prepared addressing to preserve symbol-backed access facts");
   }
 
-  if (prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 99) != nullptr) {
+  if (prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 99) != nullptr) {
     return fail("expected prepared addressing lookup to reject missing instruction records");
   }
-  if (prepare::find_prepared_addressing(prepared, "helper") != nullptr) {
+  if (prepare::find_prepared_addressing(prepared, find_function_name_id(prepared, "helper")) != nullptr) {
     return fail("expected prepared addressing lookup to reject missing function records");
   }
   if (prepare::prepared_address_base_kind_name(prepare::PreparedAddressBaseKind::PointerValue) !=

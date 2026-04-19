@@ -91,8 +91,12 @@ const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_function_memory
   if (function_addressing == nullptr || prepared_names == nullptr) {
     return nullptr;
   }
+  const c4c::BlockLabelId block_label_id = prepared_names->block_labels.find(block_label);
+  if (block_label_id == c4c::kInvalidBlockLabel) {
+    return nullptr;
+  }
   return c4c::backend::prepare::find_prepared_memory_access(
-      *prepared_names, *function_addressing, block_label, inst_index);
+      *function_addressing, block_label_id, inst_index);
 }
 
 const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_frame_memory_access(
@@ -1098,8 +1102,14 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
   const auto* prepared_branch_condition =
       function_control_flow == nullptr || prepared_names == nullptr
           ? nullptr
-          : c4c::backend::prepare::find_prepared_branch_condition(
-                *prepared_names, *function_control_flow, entry.label);
+          : [&]() -> const c4c::backend::prepare::PreparedBranchCondition* {
+              const c4c::BlockLabelId entry_label_id = prepared_names->block_labels.find(entry.label);
+              if (entry_label_id == c4c::kInvalidBlockLabel) {
+                return nullptr;
+              }
+              return c4c::backend::prepare::find_prepared_branch_condition(
+                  *function_control_flow, entry_label_id);
+            }();
   if (function_control_flow != nullptr && prepared_names != nullptr &&
       c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
           *prepared_names, *function_control_flow, entry.label)
@@ -1386,8 +1396,14 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
   const auto* prepared_branch_condition =
       function_control_flow == nullptr || prepared_names == nullptr
           ? nullptr
-          : c4c::backend::prepare::find_prepared_branch_condition(
-                *prepared_names, *function_control_flow, entry.label);
+          : [&]() -> const c4c::backend::prepare::PreparedBranchCondition* {
+              const c4c::BlockLabelId entry_label_id = prepared_names->block_labels.find(entry.label);
+              if (entry_label_id == c4c::kInvalidBlockLabel) {
+                return nullptr;
+              }
+              return c4c::backend::prepare::find_prepared_branch_condition(
+                  *function_control_flow, entry_label_id);
+            }();
   if (function_control_flow != nullptr && prepared_names != nullptr &&
       c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
           *prepared_names, *function_control_flow, entry.label)

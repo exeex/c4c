@@ -43,6 +43,16 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
   return nullptr;
 }
 
+c4c::FunctionNameId find_function_name_id(const prepare::PreparedBirModule& prepared,
+                                          std::string_view function_name) {
+  return prepared.names.function_names.find(function_name);
+}
+
+c4c::BlockLabelId find_block_label_id(const prepare::PreparedBirModule& prepared,
+                                      std::string_view block_label) {
+  return prepared.names.block_labels.find(block_label);
+}
+
 std::string asm_header(const char* function_name) {
   return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
          "\n.type " + function_name + ", @function\n" + function_name + ":\n";
@@ -336,24 +346,26 @@ int check_local_i16_i64_sub_return_route_consumes_prepared_frame_access_contract
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
-  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, find_function_name_id(prepared, function_name));
+  const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
   if (function_addressing == nullptr) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the i16/i64 subtract return prepared frame-slot accesses")
                     .c_str());
   }
   const auto* short_store_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 0);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 0);
   const auto* long_store_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 1);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 1);
   const auto* long_load_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 2);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 2);
   const auto* short_load_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 3);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 3);
   const auto* short_store_result_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 7);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 7);
   const auto* short_load_result_access =
-      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 8);
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 8);
   if (short_store_access == nullptr || long_store_access == nullptr || long_load_access == nullptr ||
       short_load_access == nullptr || short_store_result_access == nullptr ||
       short_load_result_access == nullptr) {

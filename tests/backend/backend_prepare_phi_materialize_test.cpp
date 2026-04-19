@@ -35,8 +35,13 @@ bool contains_invariant(const prepare::PreparedBirModule& module,
 const prepare::PreparedControlFlowFunction* find_control_flow_function(
     const prepare::PreparedBirModule& prepared,
     const char* function_name) {
+  const c4c::FunctionNameId function_name_id =
+      prepared.names.function_names.find(function_name);
+  if (function_name_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
   return prepare::find_prepared_control_flow_function(
-      prepared.names, prepared.control_flow, function_name);
+      prepared.control_flow, function_name_id);
 }
 
 const bir::Block* find_block(const bir::Function& function, const char* label) {

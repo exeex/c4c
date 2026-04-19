@@ -70,8 +70,15 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
     }
 
     const auto* candidate_branch_condition =
-        c4c::backend::prepare::find_prepared_branch_condition(
-            prepared_names, function_control_flow, candidate_loop_block->label);
+        [&]() -> const c4c::backend::prepare::PreparedBranchCondition* {
+          const c4c::BlockLabelId candidate_loop_block_label_id =
+              prepared_names.block_labels.find(candidate_loop_block->label);
+          if (candidate_loop_block_label_id == c4c::kInvalidBlockLabel) {
+            return nullptr;
+          }
+          return c4c::backend::prepare::find_prepared_branch_condition(
+              function_control_flow, candidate_loop_block_label_id);
+        }();
     if (candidate_branch_condition == nullptr || !candidate_branch_condition->predicate.has_value() ||
         !candidate_branch_condition->compare_type.has_value() ||
         !candidate_branch_condition->lhs.has_value() ||
@@ -599,8 +606,15 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
         [&](const c4c::backend::bir::Block* block) {
           if (block != nullptr &&
               prepared_names != nullptr &&
-              c4c::backend::prepare::find_prepared_branch_condition(
-                  *prepared_names, *function_control_flow, block->label) != nullptr) {
+              [&]() -> const c4c::backend::prepare::PreparedBranchCondition* {
+                const c4c::BlockLabelId block_label_id =
+                    prepared_names->block_labels.find(block->label);
+                if (block_label_id == c4c::kInvalidBlockLabel) {
+                  return nullptr;
+                }
+                return c4c::backend::prepare::find_prepared_branch_condition(
+                    *function_control_flow, block_label_id);
+              }() != nullptr) {
         throw std::invalid_argument(
             "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
       }
