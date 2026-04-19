@@ -4225,14 +4225,6 @@ std::string emit_prepared_module(
         render_asm_symbol_name,
         same_module_global_supports_scalar_load);
   };
-  const auto to_prepared_param_zero_compare_shape =
-      [&](c4c::backend::prepare::PreparedParamZeroBranchCondition::CompareShape compare_shape) {
-        switch (compare_shape) {
-          case c4c::backend::prepare::PreparedParamZeroBranchCondition::CompareShape::SelfTest:
-            return c4c::backend::x86::PreparedParamZeroCompareShape::SelfTest;
-        }
-        throw std::invalid_argument("unsupported prepared param-zero compare shape");
-      };
   const auto render_minimal_compare_branch_if_supported =
       [&]() -> std::optional<std::string> {
     if (function.params.size() != 1 || prepared_arch != c4c::TargetArch::X86_64 ||
@@ -4256,41 +4248,17 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto prepared_branch_context =
-        c4c::backend::prepare::find_prepared_param_zero_branch_return_context(
-            *function_control_flow, function, entry, param, true);
-    if (!prepared_branch_context.has_value()) {
-      return std::nullopt;
-    }
-    if (c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-            *function_control_flow, entry.label)
-            .has_value()) {
-      throw std::invalid_argument(
-          "x86 backend emitter requires the authoritative prepared compare-join handoff through the canonical prepared-module handoff");
-    }
-    const auto& prepared_branch = prepared_branch_context->prepared_branch;
-    const auto* true_block = prepared_branch_context->true_block;
-    const auto* false_block = prepared_branch_context->false_block;
-
-    const auto& true_value = *true_block->terminator.value;
-    const auto& false_value = *false_block->terminator.value;
     const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*> named_binaries;
-    const auto true_return =
-        render_param_derived_return_if_supported(true_value, named_binaries, param);
-    const auto false_return =
-        render_param_derived_return_if_supported(false_value, named_binaries, param);
-    if (!true_return.has_value() || !false_return.has_value()) {
-      return std::nullopt;
-    }
-    return c4c::backend::x86::render_prepared_param_zero_branch_function(
+    return c4c::backend::x86::find_and_render_prepared_param_zero_branch_return_context_if_supported(
+        *function_control_flow,
+        function,
+        entry,
+        param,
         asm_prefix,
-        function.name,
-        to_prepared_param_zero_compare_shape(prepared_branch.compare_shape),
-        prepared_branch.false_label,
-        prepared_branch.false_branch_opcode,
         *param_register,
-        *true_return,
-        *false_return);
+        [&](const c4c::backend::bir::Value& value) {
+          return render_param_derived_return_if_supported(value, named_binaries, param);
+        });
   };
   const auto render_materialized_compare_join_if_supported =
       [&]() -> std::optional<std::string> {
@@ -4314,52 +4282,17 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto resolved_render_contract =
-        c4c::backend::prepare::
-            find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
-                module.module, *function_control_flow, function, entry, param, false);
-    if (!resolved_render_contract.has_value()) {
-      if (c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-              *function_control_flow, entry.label)
-              .has_value()) {
-        throw std::invalid_argument(
-            "x86 backend emitter requires the authoritative prepared compare-join handoff through the canonical prepared-module handoff");
-      }
-      return std::nullopt;
-    }
-
-    const auto true_return = render_materialized_compare_join_return_if_supported(
-        resolved_render_contract->true_return,
-        param);
-    const auto false_return = render_materialized_compare_join_return_if_supported(
-        resolved_render_contract->false_return,
-        param);
-    if (!true_return.has_value() || !false_return.has_value()) {
-      return std::nullopt;
-    }
-
-    std::string rendered_same_module_globals;
-    for (const auto* global : resolved_render_contract->same_module_globals) {
-      if (global == nullptr) {
-        return std::nullopt;
-      }
-      const auto rendered_global_data = emit_same_module_global_data(*global);
-      if (!rendered_global_data.has_value()) {
-        return std::nullopt;
-      }
-      rendered_same_module_globals += *rendered_global_data;
-    }
-    return c4c::backend::x86::render_prepared_param_zero_branch_function(
-        asm_prefix,
-        function.name,
-        to_prepared_param_zero_compare_shape(
-            resolved_render_contract->branch_plan.compare_shape),
-        resolved_render_contract->branch_plan.target_labels.false_label,
-        resolved_render_contract->branch_plan.false_branch_opcode,
-        *param_register,
-        *true_return,
-        *false_return,
-        rendered_same_module_globals);
+    return c4c::backend::x86::
+        find_and_render_prepared_materialized_compare_join_function_if_supported(
+            module.module,
+            *function_control_flow,
+            function,
+            entry,
+            param,
+            asm_prefix,
+            *param_register,
+            render_materialized_compare_join_return_if_supported,
+            emit_same_module_global_data);
   };
   if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !entry.terminator.value.has_value()) {
