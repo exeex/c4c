@@ -134,6 +134,21 @@ const prepare::PreparedMoveResolution* find_move_resolution(
   return nullptr;
 }
 
+int count_move_resolution_reason_prefix_to_value(
+    const prepare::PreparedRegallocFunction& function,
+    prepare::PreparedValueId to_value_id,
+    std::string_view reason_prefix) {
+  int count = 0;
+  for (const auto& move : function.move_resolution) {
+    const std::string_view move_reason = move.reason;
+    if (move.to_value_id == to_value_id &&
+        move_reason.substr(0, reason_prefix.size()) == reason_prefix) {
+      ++count;
+    }
+  }
+  return count;
+}
+
 prepare::PreparedBirModule prepare_phi_module() {
   bir::Module module;
 
@@ -1611,6 +1626,9 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
       right_feed->assigned_register->register_name == phi->assigned_register->register_name &&
       find_move_resolution(*function, right_feed->value_id, phi->value_id) != nullptr) {
     return fail("expected matching register-backed phi incoming storage to skip redundant move resolution");
+  }
+  if (count_move_resolution_reason_prefix_to_value(*function, phi->value_id, "consumer_") != 0) {
+    return fail("expected prepared phi join results to avoid select-shaped consumer move reconstruction");
   }
 
   return 0;

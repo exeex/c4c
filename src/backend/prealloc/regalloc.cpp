@@ -534,7 +534,26 @@ void append_phi_move_resolution(const PreparedNameTables& names,
 
 void append_consumer_move_resolution(const PreparedNameTables& names,
                                      const bir::Function& function,
+                                     const PreparedControlFlowFunction* function_cf,
                                      PreparedRegallocFunction& regalloc_function) {
+  auto is_authoritative_select_materialized_join_result =
+      [&](const bir::Block& block, const bir::SelectInst& select) {
+        if (function_cf == nullptr || select.result.kind != bir::Value::Kind::Named) {
+          return false;
+        }
+
+        const auto block_label_id = resolve_prepared_block_label_id(names, block.label);
+        if (!block_label_id.has_value()) {
+          return false;
+        }
+
+        const auto* join_transfer =
+            find_prepared_join_transfer(names, *function_cf, *block_label_id, select.result.name);
+        return join_transfer != nullptr &&
+               effective_prepared_join_transfer_carrier_kind(*join_transfer) ==
+                   PreparedJoinTransferCarrierKind::SelectMaterialization;
+      };
+
   auto append_for_instruction = [&](const bir::Value& result,
                                     std::initializer_list<const bir::Value*> operands,
                                     std::size_t block_index,
@@ -578,6 +597,9 @@ void append_consumer_move_resolution(const PreparedNameTables& names,
                                      block_index,
                                      instruction_index);
             } else if constexpr (std::is_same_v<Inst, bir::SelectInst>) {
+              if (is_authoritative_select_materialized_join_result(block, inst)) {
+                return;
+              }
               append_for_instruction(inst.result,
                                      {&inst.lhs, &inst.rhs, &inst.true_value, &inst.false_value},
                                      block_index,
@@ -1079,8 +1101,10 @@ void BirPreAlloc::run_regalloc() {
               find_prepared_control_flow_function(prepared_.control_flow, regalloc_function.function_name);
           function_cf != nullptr) {
         append_phi_move_resolution(prepared_.names, *function, *function_cf, regalloc_function);
+        append_consumer_move_resolution(prepared_.names, *function, function_cf, regalloc_function);
+      } else {
+        append_consumer_move_resolution(prepared_.names, *function, nullptr, regalloc_function);
       }
-      append_consumer_move_resolution(prepared_.names, *function, regalloc_function);
       append_call_arg_move_resolution(
           prepared_.names, prepared_.target_profile, *function, regalloc_function);
       append_call_result_move_resolution(
