@@ -6790,6 +6790,46 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
     return status;
   }
   if (const auto status =
+          check_join_route_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_immediates_then_xor_asm(
+                  "branch_join_immediate_then_xor", "is_nonzero", 5, 1, 3),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with immediate selected values ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_immediates_then_xor_asm(
+                  "branch_join_immediate_then_xor", "is_nonzero", 5, 1, 3),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with immediate selected values EdgeStoreSlot ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_immediates_then_xor_asm(
+                  "branch_join_immediate_then_xor", "is_nonzero", 5, 1, 3),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with immediate selected values ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_immediates_then_xor_asm(
+                  "branch_join_immediate_then_xor", "is_nonzero", 5, 1, 3),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with immediate selected values EdgeStoreSlot ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts(
               make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
               "branch_join_immediate_then_xor",

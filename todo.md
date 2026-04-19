@@ -5,24 +5,23 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 3.3
 Current Step Title: Close Remaining Consumer Families And Shared Helper Gaps
-Plan Review Counter: 9 / 10
+Plan Review Counter: 10 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3.3 slice for idea 62. The
 `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
-immediate selected-value-chain joined-branch route-level handoff now proves
-authoritative prepared ownership for the direct lane and survives true-lane
-and false-lane passthrough topology drift for both the direct and
-`EdgeStoreSlot` lanes.
+plain immediate selected-values joined-branch route-level handoff now proves
+authoritative prepared ownership survives true-lane and false-lane
+passthrough topology drift for both the direct and `EdgeStoreSlot` lanes.
 
 ## Suggested Next
 
-Move to the next `plan.md` Step 3.3 residual materialized-select family that
-still lacks explicit route-level passthrough-drift proof, keeping the packet
-focused on one adjacent consumer surface instead of widening across the whole
-joined-branch matrix.
+Move to the next adjacent `plan.md` Step 3.3 residual materialized-select
+consumer family that still lacks explicit passthrough-drift proof, keeping
+the packet bounded to one surface rather than reopening already-covered
+selected-value routes.
 
 ## Watchouts
 
@@ -38,17 +37,18 @@ joined-branch matrix.
 - Keep Step 3 packets focused on consumer migration proof, not on reopening
   Step 2.3-style fallback cleanup that already landed for stricter handoff
   surfaces.
-- The immediate selected-value-chain family now has both route-level and
-  compare-join helper passthrough-drift proof, so the next packet should move
-  sideways to one adjacent residual family rather than restating this surface.
+- The plain immediate selected-values joined-branch route now has explicit
+  passthrough-drift proof, so the next packet should move sideways to one
+  adjacent residual materialized-select surface instead of restating this
+  family.
 
 ## Proof
 
 Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
-`backend_x86_handoff_boundary` proof passed after extending the immediate
-selected-value-chain joined-branch route-level coverage so the shared
-prepared handoff proves the direct lane and ignores true-lane and false-lane
-passthrough topology drift for both direct and `EdgeStoreSlot` lanes.
-`test_after.log` is the proof artifact for this packet.
+`backend_x86_handoff_boundary` proof passed after extending the plain
+immediate selected-values joined-branch route-level coverage so the shared
+prepared handoff ignores true-lane and false-lane passthrough topology drift
+for both direct and `EdgeStoreSlot` lanes. `test_after.log` is the proof
+artifact for this packet.
