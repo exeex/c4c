@@ -89,4 +89,16 @@ std::optional<std::string> render_prepared_local_address_operand_if_supported(
                                               size_name);
 }
 
+std::optional<std::string> render_prepared_local_slot_memory_operand_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view slot_name,
+    std::size_t stack_byte_bias,
+    std::string_view size_name) {
+  const auto slot_it = local_layout.offsets.find(slot_name);
+  if (slot_it == local_layout.offsets.end()) {
+    return std::nullopt;
+  }
+  return render_prepared_stack_memory_operand(slot_it->second + stack_byte_bias, size_name);
+}
+
 }  // namespace c4c::backend::x86

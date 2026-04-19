@@ -687,53 +687,12 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
 
-      struct CandidateLocalSlotLayout {
-        std::unordered_map<std::string_view, std::size_t> offsets;
-        std::size_t frame_size = 0;
-      };
-      const auto build_candidate_local_slot_layout = [&]() -> std::optional<CandidateLocalSlotLayout> {
-        CandidateLocalSlotLayout layout;
-        std::size_t next_offset = 0;
-        std::size_t max_align = 16;
-        for (const auto& slot : candidate->local_slots) {
-          if (slot.type != c4c::backend::bir::TypeKind::I8 &&
-              slot.type != c4c::backend::bir::TypeKind::I16 &&
-              slot.type != c4c::backend::bir::TypeKind::I32 &&
-              slot.type != c4c::backend::bir::TypeKind::I64 &&
-              slot.type != c4c::backend::bir::TypeKind::Ptr) {
-            return std::nullopt;
-          }
-          const auto slot_size = slot.size_bytes != 0
-                                     ? slot.size_bytes
-                                     : (slot.type == c4c::backend::bir::TypeKind::Ptr ? 8u
-                                        : slot.type == c4c::backend::bir::TypeKind::I64 ? 8u
-                                        : slot.type == c4c::backend::bir::TypeKind::I16 ? 2u
-                                        : slot.type == c4c::backend::bir::TypeKind::I32 ? 4u
-                                                                                        : 1u);
-          const auto slot_align = slot.align_bytes != 0 ? slot.align_bytes : slot_size;
-          if (slot_size == 0 || slot_size > 8 || slot_align > 16) {
-            return std::nullopt;
-          }
-          next_offset = align_up(next_offset, slot_align);
-          layout.offsets.emplace(slot.name, next_offset);
-          next_offset += slot_size;
-          max_align = std::max(max_align, slot_align);
-        }
-        layout.frame_size = align_up(next_offset, max_align);
-        return layout;
-      };
-      const auto candidate_layout = build_candidate_local_slot_layout();
+      const auto candidate_layout =
+          build_prepared_module_local_slot_layout(*candidate, prepared_arch);
       if (!candidate_layout.has_value()) {
         return std::nullopt;
       }
       const auto candidate_stack_adjust = candidate_layout->frame_size + 8;
-      const auto render_candidate_local_i32 = [&](std::string_view slot_name) -> std::optional<std::string> {
-        const auto slot_it = candidate_layout->offsets.find(slot_name);
-        if (slot_it == candidate_layout->offsets.end()) {
-          return std::nullopt;
-        }
-        return render_prepared_stack_memory_operand(slot_it->second + 8, "DWORD");
-      };
 
       std::string body = "    sub rsp, " + std::to_string(candidate_stack_adjust) + "\n";
       std::optional<std::string_view> current_i32_name;
@@ -840,7 +799,8 @@ std::string emit_prepared_module(
               store->value.type != c4c::backend::bir::TypeKind::I32) {
             return std::nullopt;
           }
-          const auto memory = render_candidate_local_i32(store->slot_name);
+          const auto memory = render_prepared_local_slot_memory_operand_if_supported(
+              *candidate_layout, store->slot_name, 8, "DWORD");
           if (!memory.has_value()) {
             return std::nullopt;
           }
@@ -864,7 +824,8 @@ std::string emit_prepared_module(
             load->result.type != c4c::backend::bir::TypeKind::I32) {
           return std::nullopt;
         }
-        const auto memory = render_candidate_local_i32(load->slot_name);
+        const auto memory = render_prepared_local_slot_memory_operand_if_supported(
+            *candidate_layout, load->slot_name, 8, "DWORD");
         if (!memory.has_value()) {
           return std::nullopt;
         }

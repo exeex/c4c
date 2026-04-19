@@ -268,6 +268,12 @@ std::optional<std::string> render_prepared_local_address_operand_if_supported(
     const std::optional<c4c::backend::bir::MemoryAddress>& address,
     std::string_view size_name);
 
+std::optional<std::string> render_prepared_local_slot_memory_operand_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view slot_name,
+    std::size_t stack_byte_bias,
+    std::string_view size_name);
+
 std::optional<std::string> render_prepared_param_zero_branch_function(
     std::string_view asm_prefix,
     std::string_view function_name,
