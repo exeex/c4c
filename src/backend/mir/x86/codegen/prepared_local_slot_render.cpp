@@ -506,4 +506,42 @@ render_prepared_bounded_multi_defined_call_lane_data_if_supported(
   return rendered_data;
 }
 
+std::optional<std::string> render_prepared_bounded_multi_defined_call_lane_if_supported(
+    const c4c::backend::bir::Module& module,
+    const std::vector<const c4c::backend::bir::Function*>& defined_functions,
+    c4c::TargetArch prepared_arch,
+    const std::unordered_set<std::string_view>& helper_global_names,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        render_trivial_defined_function,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        minimal_function_return_register,
+    const std::function<std::string(const c4c::backend::bir::Function&)>&
+        minimal_function_asm_prefix,
+    const std::function<bool(std::string_view)>& has_string_constant,
+    const std::function<bool(std::string_view)>& has_same_module_global,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
+    const std::function<const c4c::backend::bir::StringConstant*(std::string_view)>&
+        find_string_constant,
+    const std::function<std::string(const c4c::backend::bir::StringConstant&)>&
+        emit_string_constant_data,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
+        emit_same_module_global_data) {
+  const auto rendered_module = render_prepared_bounded_multi_defined_call_lane_module_if_supported(
+      defined_functions, prepared_arch, render_trivial_defined_function,
+      minimal_function_return_register, minimal_function_asm_prefix, has_string_constant,
+      has_same_module_global, render_private_data_label, render_asm_symbol_name);
+  if (!rendered_module.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto rendered_data = render_prepared_bounded_multi_defined_call_lane_data_if_supported(
+      *rendered_module, module, helper_global_names, find_string_constant, emit_string_constant_data,
+      emit_same_module_global_data);
+  if (!rendered_data.has_value()) {
+    return std::nullopt;
+  }
+  return rendered_module->rendered_functions + *rendered_data;
+}
+
 }  // namespace c4c::backend::x86

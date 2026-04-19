@@ -392,32 +392,19 @@ std::string emit_prepared_module(
       throw_multi_defined_contract();
     }
   };
-  const auto render_bounded_multi_defined_call_lane_if_supported =
-      [&]() -> std::optional<std::string> {
-    const auto rendered_module = render_prepared_bounded_multi_defined_call_lane_module_if_supported(
-        defined_functions, prepared_arch, render_trivial_defined_function_if_supported,
-        minimal_function_return_register, minimal_function_asm_prefix,
-        [&](std::string_view symbol_name) { return find_string_constant(symbol_name) != nullptr; },
-        [&](std::string_view symbol_name) { return find_same_module_global(symbol_name) != nullptr; },
-        [&](std::string_view symbol_name) {
-          const std::string prefixed_name = "@" + std::string(symbol_name);
-          return render_private_data_label(prefixed_name);
-        },
-        [&](std::string_view symbol_name) { return render_asm_symbol_name(symbol_name); });
-    if (!rendered_module.has_value()) {
-      return std::nullopt;
-    }
-
-    const auto rendered_data = render_prepared_bounded_multi_defined_call_lane_data_if_supported(
-        *rendered_module, module.module, bounded_same_module_helper_global_names,
-        [&](std::string_view symbol_name) { return find_string_constant(symbol_name); },
-        emit_string_constant_data, emit_same_module_global_data);
-    if (!rendered_data.has_value()) {
-      return std::nullopt;
-    }
-    return rendered_module->rendered_functions + *rendered_data;
-  };
-  if (const auto rendered_multi_defined = render_bounded_multi_defined_call_lane_if_supported();
+  if (const auto rendered_multi_defined = render_prepared_bounded_multi_defined_call_lane_if_supported(
+          module.module, defined_functions, prepared_arch, bounded_same_module_helper_global_names,
+          render_trivial_defined_function_if_supported, minimal_function_return_register,
+          minimal_function_asm_prefix,
+          [&](std::string_view symbol_name) { return find_string_constant(symbol_name) != nullptr; },
+          [&](std::string_view symbol_name) { return find_same_module_global(symbol_name) != nullptr; },
+          [&](std::string_view symbol_name) {
+            const std::string prefixed_name = "@" + std::string(symbol_name);
+            return render_private_data_label(prefixed_name);
+          },
+          [&](std::string_view symbol_name) { return render_asm_symbol_name(symbol_name); },
+          [&](std::string_view symbol_name) { return find_string_constant(symbol_name); },
+          emit_string_constant_data, emit_same_module_global_data);
       rendered_multi_defined.has_value()) {
     return *rendered_multi_defined;
   }
