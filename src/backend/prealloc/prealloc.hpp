@@ -686,10 +686,10 @@ enum class PreparedComputedBaseKind {
 struct PreparedComputedBase {
   PreparedComputedBaseKind kind = PreparedComputedBaseKind::ImmediateI32;
   std::int64_t immediate = 0;
-  std::string param_name;
-  std::string global_name;
+  ValueNameId param_name_id = kInvalidValueName;
+  LinkNameId global_name_id = kInvalidLinkName;
   std::size_t global_byte_offset = 0;
-  std::string pointer_root_global_name;
+  LinkNameId pointer_root_global_name_id = kInvalidLinkName;
 };
 
 struct PreparedComputedValue {
@@ -957,27 +957,29 @@ struct PreparedResolvedMaterializedCompareJoinRenderContract {
   std::vector<const bir::Global*> same_module_globals;
 };
 
-[[nodiscard]] inline std::vector<std::string_view>
-collect_prepared_computed_value_same_module_globals(
+[[nodiscard]] inline std::vector<std::string_view> collect_prepared_computed_value_same_module_globals(
+    const PreparedNameTables& names,
     const PreparedComputedValue& computed_value) {
-  std::vector<std::string_view> names;
+  std::vector<std::string_view> global_names;
   switch (computed_value.base.kind) {
     case PreparedComputedBaseKind::ImmediateI32:
     case PreparedComputedBaseKind::ParamValue:
       break;
     case PreparedComputedBaseKind::GlobalI32Load:
-      names.push_back(computed_value.base.global_name);
+      global_names.push_back(prepared_link_name(names, computed_value.base.global_name_id));
       break;
     case PreparedComputedBaseKind::PointerBackedGlobalI32Load:
-      names.push_back(computed_value.base.pointer_root_global_name);
-      names.push_back(computed_value.base.global_name);
+      global_names.push_back(
+          prepared_link_name(names, computed_value.base.pointer_root_global_name_id));
+      global_names.push_back(prepared_link_name(names, computed_value.base.global_name_id));
       break;
   }
-  return names;
+  return global_names;
 }
 
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinReturnContext>
 find_prepared_materialized_compare_join_return_context(
+    PreparedNameTables& names,
     const PreparedMaterializedCompareJoinContext& compare_join_context,
     const bir::Value& selected_value);
 
@@ -1051,32 +1053,36 @@ find_prepared_materialized_compare_join_return_binary_plan(
 
 [[nodiscard]] inline std::vector<std::string_view>
 collect_prepared_materialized_compare_join_same_module_globals(
+    const PreparedNameTables& names,
     const PreparedMaterializedCompareJoinBranches& prepared_join_branches);
 
 [[nodiscard]] inline std::optional<std::vector<const bir::Global*>>
 resolve_prepared_materialized_compare_join_same_module_globals(
+    const PreparedNameTables& names,
     const bir::Module& module,
     const PreparedMaterializedCompareJoinRenderContract& render_contract);
 
 [[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinReturnArm>
 resolve_prepared_materialized_compare_join_return_arm(
+    const PreparedNameTables& names,
     const bir::Module& module,
     const PreparedMaterializedCompareJoinReturnArm& return_arm);
 
 [[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
 resolve_prepared_materialized_compare_join_render_contract(
+    const PreparedNameTables& names,
     const bir::Module& module,
     const PreparedMaterializedCompareJoinRenderContract& render_contract);
 
 [[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
 find_prepared_resolved_materialized_compare_join_render_contract(
-    const PreparedNameTables& names,
+    PreparedNameTables& names,
     const bir::Module& module,
     const PreparedParamZeroMaterializedCompareJoinBranches& prepared_compare_join_branches);
 
 [[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
 find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
-    const PreparedNameTables& names,
+    PreparedNameTables& names,
     const bir::Module& module,
     const PreparedControlFlowFunction& function_cf,
     const bir::Function& function,
@@ -1570,6 +1576,7 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
 }
 
 [[nodiscard]] inline std::optional<PreparedComputedValue> classify_computed_value(
+    PreparedNameTables& names,
     const bir::Value& value,
     const bir::Function& function,
     const std::unordered_map<std::string_view, const bir::BinaryInst*>& named_binaries,
@@ -1602,7 +1609,7 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
         return PreparedComputedValue{
             .base = PreparedComputedBase{
                 .kind = PreparedComputedBaseKind::ParamValue,
-                .param_name = param.name,
+                .param_name_id = names.value_names.intern(param.name),
             },
         };
       }
@@ -1623,16 +1630,17 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
         return PreparedComputedValue{
             .base = PreparedComputedBase{
                 .kind = PreparedComputedBaseKind::PointerBackedGlobalI32Load,
-                .global_name = load_global->global_name,
+                .global_name_id = names.link_names.intern(load_global->global_name),
                 .global_byte_offset = load_global->byte_offset,
-                .pointer_root_global_name = load_global->address->base_name,
+                .pointer_root_global_name_id =
+                    names.link_names.intern(load_global->address->base_name),
             },
         };
       }
       return PreparedComputedValue{
           .base = PreparedComputedBase{
               .kind = PreparedComputedBaseKind::GlobalI32Load,
-              .global_name = load_global->global_name,
+              .global_name_id = names.link_names.intern(load_global->global_name),
               .global_byte_offset = load_global->byte_offset,
           },
       };
@@ -1663,7 +1671,7 @@ classify_supported_immediate_binary(const bir::BinaryInst& binary, std::string_v
     }
     auto computed_value =
         classify_computed_value(
-            source_value, function, named_binaries, named_global_loads, recursion_stack);
+            names, source_value, function, named_binaries, named_global_loads, recursion_stack);
     if (!computed_value.has_value()) {
       return std::nullopt;
     }
@@ -2088,6 +2096,7 @@ find_prepared_short_circuit_branch_plan(
 
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinBranches>
 find_prepared_materialized_compare_join_branches(
+    PreparedNameTables& names,
     const PreparedMaterializedCompareJoinContext& compare_join_context) {
   if (compare_join_context.join_transfer == nullptr || compare_join_context.true_transfer == nullptr ||
       compare_join_context.false_transfer == nullptr ||
@@ -2098,9 +2107,9 @@ find_prepared_materialized_compare_join_branches(
   }
 
   const auto true_return_context = find_prepared_materialized_compare_join_return_context(
-      compare_join_context, compare_join_context.true_transfer->incoming_value);
+      names, compare_join_context, compare_join_context.true_transfer->incoming_value);
   const auto false_return_context = find_prepared_materialized_compare_join_return_context(
-      compare_join_context, compare_join_context.false_transfer->incoming_value);
+      names, compare_join_context, compare_join_context.false_transfer->incoming_value);
   if (!true_return_context.has_value() || !false_return_context.has_value()) {
     return std::nullopt;
   }
@@ -2119,6 +2128,7 @@ find_prepared_materialized_compare_join_branches(
 
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinReturnContext>
 find_prepared_materialized_compare_join_return_context(
+    PreparedNameTables& names,
     const PreparedMaterializedCompareJoinContext& compare_join_context,
     const bir::Value& selected_value) {
   const auto* join_block = compare_join_context.join_block;
@@ -2145,7 +2155,7 @@ find_prepared_materialized_compare_join_return_context(
   }
 
   const auto computed_selected_value = classify_computed_value(
-      selected_value, *compare_join_context.function, named_binaries, named_global_loads);
+      names, selected_value, *compare_join_context.function, named_binaries, named_global_loads);
   if (!computed_selected_value.has_value()) {
     return std::nullopt;
   }
@@ -2204,7 +2214,7 @@ find_prepared_param_zero_materialized_compare_join_context(
 
 [[nodiscard]] inline std::optional<PreparedParamZeroMaterializedCompareJoinBranches>
 find_prepared_param_zero_materialized_compare_join_branches(
-    const PreparedNameTables& names,
+    PreparedNameTables& names,
     const PreparedControlFlowFunction& function_cf,
     const bir::Function& function,
     const bir::Block& source_block,
@@ -2218,7 +2228,7 @@ find_prepared_param_zero_materialized_compare_join_branches(
   }
 
   const auto prepared_join_branches = find_prepared_materialized_compare_join_branches(
-      prepared_compare_join_context->compare_join_context);
+      names, prepared_compare_join_context->compare_join_context);
   if (!prepared_join_branches.has_value()) {
     return std::nullopt;
   }
@@ -2257,7 +2267,7 @@ find_prepared_materialized_compare_join_branch_plan(
 
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinRenderContract>
 find_prepared_materialized_compare_join_render_contract(
-    const PreparedNameTables& names,
+    PreparedNameTables& names,
     const PreparedParamZeroMaterializedCompareJoinBranches& prepared_compare_join_branches) {
   const auto branch_plan =
       find_prepared_materialized_compare_join_branch_plan(names, prepared_compare_join_branches);
@@ -2273,31 +2283,35 @@ find_prepared_materialized_compare_join_render_contract(
           prepared_compare_join_branches.prepared_join_branches.false_return_context),
       .same_module_global_names =
           collect_prepared_materialized_compare_join_same_module_globals(
+              names,
               prepared_compare_join_branches.prepared_join_branches),
   };
 }
 
 [[nodiscard]] inline std::vector<std::string_view>
 collect_prepared_materialized_compare_join_same_module_globals(
+    const PreparedNameTables& names,
     const PreparedMaterializedCompareJoinBranches& prepared_join_branches) {
-  std::vector<std::string_view> names;
+  std::vector<std::string_view> global_names;
   std::unordered_set<std::string_view> seen_names;
   const auto append_names =
       [&](const PreparedMaterializedCompareJoinReturnContext& return_context) {
         for (const auto name :
-             collect_prepared_computed_value_same_module_globals(return_context.selected_value)) {
+             collect_prepared_computed_value_same_module_globals(names,
+                                                                return_context.selected_value)) {
           if (seen_names.insert(name).second) {
-            names.push_back(name);
+            global_names.push_back(name);
           }
         }
       };
   append_names(prepared_join_branches.true_return_context);
   append_names(prepared_join_branches.false_return_context);
-  return names;
+  return global_names;
 }
 
 [[nodiscard]] inline std::optional<std::vector<const bir::Global*>>
 resolve_prepared_materialized_compare_join_same_module_globals(
+    const PreparedNameTables& names,
     const bir::Module& module,
     const PreparedMaterializedCompareJoinRenderContract& render_contract) {
   const auto find_same_module_global =
@@ -2328,6 +2342,7 @@ resolve_prepared_materialized_compare_join_same_module_globals(
 
 [[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinReturnArm>
 resolve_prepared_materialized_compare_join_return_arm(
+    const PreparedNameTables& names,
     const bir::Module& module,
     const PreparedMaterializedCompareJoinReturnArm& return_arm) {
   const auto find_same_module_global =
@@ -2353,15 +2368,18 @@ resolve_prepared_materialized_compare_join_return_arm(
     case PreparedComputedBaseKind::ParamValue:
       break;
     case PreparedComputedBaseKind::GlobalI32Load:
-      resolved_return.global = find_same_module_global(selected_value.base.global_name);
+      resolved_return.global =
+          find_same_module_global(prepared_link_name(names, selected_value.base.global_name_id));
       if (resolved_return.global == nullptr) {
         return std::nullopt;
       }
       break;
     case PreparedComputedBaseKind::PointerBackedGlobalI32Load:
       resolved_return.pointer_root_global =
-          find_same_module_global(selected_value.base.pointer_root_global_name);
-      resolved_return.global = find_same_module_global(selected_value.base.global_name);
+          find_same_module_global(prepared_link_name(names,
+                                                     selected_value.base.pointer_root_global_name_id));
+      resolved_return.global =
+          find_same_module_global(prepared_link_name(names, selected_value.base.global_name_id));
       if (resolved_return.pointer_root_global == nullptr ||
           resolved_return.pointer_root_global->type != bir::TypeKind::Ptr ||
           resolved_return.global == nullptr) {
@@ -2375,17 +2393,18 @@ resolve_prepared_materialized_compare_join_return_arm(
 
 [[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
 resolve_prepared_materialized_compare_join_render_contract(
+    const PreparedNameTables& names,
     const bir::Module& module,
     const PreparedMaterializedCompareJoinRenderContract& render_contract) {
   const auto same_module_globals =
-      resolve_prepared_materialized_compare_join_same_module_globals(module, render_contract);
+      resolve_prepared_materialized_compare_join_same_module_globals(names, module, render_contract);
   if (!same_module_globals.has_value()) {
     return std::nullopt;
   }
   const auto true_return =
-      resolve_prepared_materialized_compare_join_return_arm(module, render_contract.true_return);
+      resolve_prepared_materialized_compare_join_return_arm(names, module, render_contract.true_return);
   const auto false_return =
-      resolve_prepared_materialized_compare_join_return_arm(module, render_contract.false_return);
+      resolve_prepared_materialized_compare_join_return_arm(names, module, render_contract.false_return);
   if (!true_return.has_value() || !false_return.has_value()) {
     return std::nullopt;
   }
@@ -2400,7 +2419,7 @@ resolve_prepared_materialized_compare_join_render_contract(
 
 [[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
 find_prepared_resolved_materialized_compare_join_render_contract(
-    const PreparedNameTables& names,
+    PreparedNameTables& names,
     const bir::Module& module,
     const PreparedParamZeroMaterializedCompareJoinBranches& prepared_compare_join_branches) {
   const auto render_contract =
@@ -2409,12 +2428,12 @@ find_prepared_resolved_materialized_compare_join_render_contract(
   if (!render_contract.has_value()) {
     return std::nullopt;
   }
-  return resolve_prepared_materialized_compare_join_render_contract(module, *render_contract);
+  return resolve_prepared_materialized_compare_join_render_contract(names, module, *render_contract);
 }
 
 [[nodiscard]] inline std::optional<PreparedResolvedMaterializedCompareJoinRenderContract>
 find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
-    const PreparedNameTables& names,
+    PreparedNameTables& names,
     const bir::Module& module,
     const PreparedControlFlowFunction& function_cf,
     const bir::Function& function,

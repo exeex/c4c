@@ -593,7 +593,13 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
         emit_same_module_global_data) {
   const auto resolved_render_contract =
       c4c::backend::prepare::find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
-          module.names, module.module, function_control_flow, function, entry, param, false);
+          const_cast<c4c::backend::prepare::PreparedNameTables&>(module.names),
+          module.module,
+          function_control_flow,
+          function,
+          entry,
+          param,
+          false);
   if (!resolved_render_contract.has_value()) {
     if (c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
             module.names, function_control_flow, entry.label)
@@ -1104,6 +1110,7 @@ std::optional<std::string> render_prepared_supported_immediate_binary(
 
 std::optional<std::string> render_prepared_materialized_compare_join_value_if_supported(
     std::string_view return_register,
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&
         prepared_return_arm,
     const c4c::backend::bir::Param& param,
@@ -1122,7 +1129,9 @@ std::optional<std::string> render_prepared_materialized_compare_join_value_if_su
                  "\n";
       break;
     case c4c::backend::prepare::PreparedComputedBaseKind::ParamValue: {
-      if (computed_value.base.param_name != param.name) {
+      if (c4c::backend::prepare::prepared_value_name(prepared_names,
+                                                     computed_value.base.param_name_id) !=
+          param.name) {
         return std::nullopt;
       }
       const auto param_register = minimal_param_register(param);
@@ -1183,6 +1192,7 @@ std::optional<std::string> render_prepared_materialized_compare_join_value_if_su
 
 std::optional<std::string> render_prepared_materialized_compare_join_return_if_supported(
     std::string_view return_register,
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&
         prepared_return_arm,
     const c4c::backend::bir::Param& param,
@@ -1194,6 +1204,7 @@ std::optional<std::string> render_prepared_materialized_compare_join_return_if_s
                              std::size_t)>& same_module_global_supports_scalar_load) {
   const auto value_render = render_prepared_materialized_compare_join_value_if_supported(
       return_register,
+      prepared_names,
       prepared_return_arm,
       param,
       minimal_param_register,

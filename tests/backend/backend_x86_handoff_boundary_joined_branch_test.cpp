@@ -3609,7 +3609,7 @@ int check_materialized_compare_join_branches_publish_prepared_return_contexts(
 
   const auto prepared_join_branches =
       prepare::find_prepared_materialized_compare_join_branches(
-          compare_join_context->compare_join_context);
+          prepared.names, compare_join_context->compare_join_context);
   if (!prepared_join_branches.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer publishes the compare-join branch contract")
@@ -3621,7 +3621,8 @@ int check_materialized_compare_join_branches_publish_prepared_return_contexts(
           bir::BinaryOpcode expected_opcode,
           std::int64_t expected_immediate) -> int {
     if (return_context.selected_value.base.kind != prepare::PreparedComputedBaseKind::ParamValue ||
-        return_context.selected_value.base.param_name != "p.x") {
+        return_context.selected_value.base.param_name_id !=
+            prepared.names.value_names.find("p.x")) {
       return fail((std::string(failure_context) +
                    ": shared helper stopped classifying the selected-value base as the function param")
                       .c_str());
@@ -4342,6 +4343,7 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
 
   const auto expected_same_module_global_names =
       prepare::collect_prepared_materialized_compare_join_same_module_globals(
+          prepared.names,
           prepared_compare_join_branches->prepared_join_branches);
   if (render_contract->same_module_global_names != expected_same_module_global_names) {
     return fail((std::string(failure_context) +
@@ -4350,7 +4352,7 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
   }
   const auto resolved_same_module_globals =
       prepare::resolve_prepared_materialized_compare_join_same_module_globals(
-          prepared.module, *render_contract);
+          prepared.names, prepared.module, *render_contract);
   if (!resolved_same_module_globals.has_value() ||
       resolved_same_module_globals->size() != expected_same_module_global_names.size()) {
     return fail((std::string(failure_context) +
@@ -4367,7 +4369,7 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
   }
   const auto resolved_render_contract =
       prepare::resolve_prepared_materialized_compare_join_render_contract(
-          prepared.module, *render_contract);
+          prepared.names, prepared.module, *render_contract);
   if (!resolved_render_contract.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper stopped resolving the compare-join render contract")
@@ -4550,11 +4552,12 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
               return true;
             }();
         if (return_context.selected_value.base.kind != expected_return_context.selected_value.base.kind ||
-            return_context.selected_value.base.global_name != expected_return_context.selected_value.base.global_name ||
+            return_context.selected_value.base.global_name_id !=
+                expected_return_context.selected_value.base.global_name_id ||
             return_context.selected_value.base.global_byte_offset !=
                 expected_return_context.selected_value.base.global_byte_offset ||
-            return_context.selected_value.base.pointer_root_global_name !=
-                expected_return_context.selected_value.base.pointer_root_global_name ||
+            return_context.selected_value.base.pointer_root_global_name_id !=
+                expected_return_context.selected_value.base.pointer_root_global_name_id ||
             !operations_match) {
           return fail((std::string(failure_context) +
                        ": shared helper stopped packaging compare-join selected-value return contexts")
@@ -4785,7 +4788,7 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
 
   const auto prepared_join_branches =
       prepare::find_prepared_materialized_compare_join_branches(
-          compare_join_context->compare_join_context);
+          prepared.names, compare_join_context->compare_join_context);
   if (!prepared_join_branches.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer publishes the compare-join branch contract")
@@ -5139,7 +5142,7 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
 
   const auto prepared_join_branches =
       prepare::find_prepared_materialized_compare_join_branches(
-          compare_join_context->compare_join_context);
+          prepared.names, compare_join_context->compare_join_context);
   if (!prepared_join_branches.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer publishes the compare-join branch contract")
@@ -5148,7 +5151,7 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
 
   const auto published_global_names =
       prepare::collect_prepared_materialized_compare_join_same_module_globals(
-          *prepared_join_branches);
+          prepared.names, *prepared_join_branches);
   const auto require_published_global_names =
       [&](std::initializer_list<std::string_view> expected_names) -> int {
         if (published_global_names.size() != expected_names.size()) {
@@ -5193,7 +5196,8 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
             ? prepare::PreparedComputedBaseKind::PointerBackedGlobalI32Load
             : prepare::PreparedComputedBaseKind::GlobalI32Load;
     if (return_context.selected_value.base.kind != expected_kind ||
-        return_context.selected_value.base.global_name != expected_global_name ||
+        return_context.selected_value.base.global_name_id !=
+            prepared.names.link_names.find(expected_global_name) ||
         return_context.selected_value.base.global_byte_offset != expected_global_byte_offset) {
       return fail((std::string(failure_context) +
                    ": shared helper stopped classifying the selected-value base as a same-module global load")
@@ -5202,14 +5206,16 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
     if (use_pointer_backed_global_roots) {
       const char* expected_root_name =
           expected_global_name == true_global_name ? "selected_zero_root" : "selected_nonzero_root";
-      if (return_context.selected_value.base.pointer_root_global_name != expected_root_name) {
+      if (return_context.selected_value.base.pointer_root_global_name_id !=
+          prepared.names.link_names.find(expected_root_name)) {
         return fail((std::string(failure_context) +
                      ": shared helper stopped publishing the pointer-backed same-module global root")
                         .c_str());
       }
     }
     if (use_selected_value_chain) {
-      if (return_context.selected_value.base.global_name == true_global_name) {
+      if (return_context.selected_value.base.global_name_id ==
+          prepared.names.link_names.find(true_global_name)) {
         if (return_context.selected_value.operations.size() != 1 ||
             return_context.selected_value.operations.front().opcode != bir::BinaryOpcode::Add ||
             return_context.selected_value.operations.front().immediate != 4) {
@@ -5217,7 +5223,8 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
                        ": shared helper stopped publishing the true global-root selected-value chain")
                           .c_str());
         }
-      } else if (return_context.selected_value.base.global_name == false_global_name) {
+      } else if (return_context.selected_value.base.global_name_id ==
+                 prepared.names.link_names.find(false_global_name)) {
         if (return_context.selected_value.operations.size() != 1 ||
             return_context.selected_value.operations.front().opcode != bir::BinaryOpcode::Sub ||
             return_context.selected_value.operations.front().immediate != 1) {
@@ -5277,7 +5284,8 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
       [&](const prepare::PreparedResolvedMaterializedCompareJoinReturnArm& return_arm,
           const char* expected_global_name,
           std::size_t expected_global_byte_offset) -> int {
-        if (return_arm.arm.context.selected_value.base.global_name != expected_global_name ||
+        if (return_arm.arm.context.selected_value.base.global_name_id !=
+                prepared.names.link_names.find(expected_global_name) ||
             return_arm.arm.context.selected_value.base.global_byte_offset !=
                 expected_global_byte_offset ||
             return_arm.global == nullptr ||
@@ -5290,8 +5298,8 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
           const char* expected_root_name =
               expected_global_name == true_global_name ? "selected_zero_root"
                                                        : "selected_nonzero_root";
-          if (return_arm.arm.context.selected_value.base.pointer_root_global_name !=
-                  expected_root_name ||
+          if (return_arm.arm.context.selected_value.base.pointer_root_global_name_id !=
+                  prepared.names.link_names.find(expected_root_name) ||
               return_arm.pointer_root_global == nullptr ||
               return_arm.pointer_root_global->name != expected_root_name ||
               return_arm.pointer_root_global->type != bir::TypeKind::Ptr) {

@@ -439,6 +439,7 @@ std::string emit_prepared_module(
           const c4c::backend::bir::Param& param) -> std::optional<std::string> {
     return c4c::backend::x86::render_prepared_materialized_compare_join_return_if_supported(
         *return_register,
+        module.names,
         prepared_return_arm,
         param,
         minimal_param_register,
