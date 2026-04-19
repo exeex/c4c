@@ -1707,6 +1707,9 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
   if (move == nullptr || move->reason != "phi_join_stack_to_stack") {
     return fail("expected the stack-backed left phi incoming to publish prepared phi-join move resolution");
   }
+  if (move->uses_cycle_temp_source) {
+    return fail("expected the acyclic phi join move resolution to read directly from the incoming value");
+  }
   if (move->destination_kind != prepare::PreparedMoveDestinationKind::Value ||
       move->destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
       move->destination_abi_index.has_value() || move->destination_register_name.has_value()) {
@@ -1754,11 +1757,17 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
   if (b_to_a == nullptr || !move_resolution_reason_has_prefix(*b_to_a, "phi_loop_carry_")) {
     return fail("expected the direct backedge move to use authoritative loop-carry move resolution");
   }
+  if (b_to_a->uses_cycle_temp_source) {
+    return fail("expected the first backedge move to read directly from the original incoming value");
+  }
 
   const auto* a_to_b = find_move_resolution(*function, a->value_id, b->value_id);
   if (a_to_b == nullptr ||
       !move_resolution_reason_has_prefix(*a_to_b, "phi_loop_carry_cycle_temp_")) {
     return fail("expected the cycle-broken backedge move to record the authoritative cycle-temp source");
+  }
+  if (!a_to_b->uses_cycle_temp_source) {
+    return fail("expected the cycle-broken backedge move to publish first-class cycle-temp sourcing");
   }
 
   if (count_move_resolution_reason_prefix_to_value(*function, a->value_id, "consumer_") != 0 ||

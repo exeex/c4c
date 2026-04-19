@@ -494,6 +494,7 @@ struct PreparedMoveResolution {
   std::optional<std::string> destination_register_name;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
+  bool uses_cycle_temp_source = false;
   std::string reason;
 };
 
