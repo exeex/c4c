@@ -384,6 +384,7 @@ std::string emit_prepared_module(
         module.module,
         function,
         entry,
+        &module.stack_layout,
         find_addressing_function(),
         find_control_flow_function(),
         prepared_arch,
@@ -402,6 +403,7 @@ std::string emit_prepared_module(
     return c4c::backend::x86::render_prepared_local_i32_arithmetic_guard_if_supported(
         function,
         entry,
+        &module.stack_layout,
         find_addressing_function(),
         find_control_flow_function(),
         prepared_arch,
@@ -413,6 +415,7 @@ std::string emit_prepared_module(
     return c4c::backend::x86::render_prepared_local_i16_arithmetic_guard_if_supported(
         function,
         entry,
+        &module.stack_layout,
         find_addressing_function(),
         find_control_flow_function(),
         prepared_arch,
@@ -496,7 +499,7 @@ std::string emit_prepared_module(
   }
   if (const auto rendered_single_block_return =
           c4c::backend::x86::render_prepared_single_block_return_dispatch_if_supported(
-              module.module, function, entry, find_addressing_function(), prepared_arch,
+              module.module, function, entry, &module.stack_layout, find_addressing_function(), prepared_arch,
               asm_prefix, *return_register,
               bounded_same_module_helper_global_names, find_string_constant, find_same_module_global,
               render_private_data_label, render_asm_symbol_name, emit_string_constant_data,

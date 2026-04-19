@@ -30,6 +30,15 @@ int fail(const char* message) {
   return 1;
 }
 
+bir::Block* find_block(bir::Function& function, const char* label) {
+  for (auto& block : function.blocks) {
+    if (block.label == label) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
 prepare::PreparedControlFlowFunction* find_control_flow_function(prepare::PreparedBirModule& prepared,
                                                                  const char* function_name) {
   for (auto& function : prepared.control_flow.functions) {
@@ -586,6 +595,52 @@ int check_i32_guard_chain_route_requires_authoritative_prepared_branch_labels(
   return 0;
 }
 
+int check_same_module_global_guard_chain_route_consumes_prepared_address_contract(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  if (function_addressing == nullptr || function_addressing->accesses.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the same-module global prepared accesses")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* block_2 = find_block(function, "block_2");
+  if (entry_block == nullptr || block_2 == nullptr || entry_block->insts.empty() ||
+      block_2->insts.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepared same-module global guard fixture no longer exposes the expected load carriers")
+                    .c_str());
+  }
+  auto* entry_load = std::get_if<bir::LoadGlobalInst>(&entry_block->insts.front());
+  auto* second_load = std::get_if<bir::LoadGlobalInst>(&block_2->insts.front());
+  if (entry_load == nullptr || second_load == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared same-module global guard fixture no longer exposes the expected direct global load carriers")
+                    .c_str());
+  }
+
+  entry_load->global_name = "drifted_same_module_global";
+  second_load->global_name = "drifted_same_module_global";
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following authoritative prepared same-module global accesses over drifted raw global carriers")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_i32_guard_chain_tests() {
@@ -621,6 +676,15 @@ int run_backend_x86_handoff_boundary_i32_guard_chain_tests() {
               "main",
               "block_2",
               "same-module defined-global equality-against-immediate guard route rejects drifted prepared branch labels instead of falling back to the raw guard-chain matcher");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_same_module_global_guard_chain_route_consumes_prepared_address_contract(
+              make_x86_same_module_global_i32_guard_chain_module(),
+              expected_minimal_same_module_global_i32_guard_chain_asm("main"),
+              "main",
+              "same-module defined-global equality-against-immediate guard route consumes authoritative prepared global accesses");
       status != 0) {
     return status;
   }
