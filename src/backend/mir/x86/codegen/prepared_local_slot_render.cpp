@@ -758,8 +758,12 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
 
     if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
       if (continuation.has_value()) {
+        if (prepared_names == nullptr) {
+          return std::nullopt;
+        }
         const auto compare_join_render_plan =
             c4c::backend::x86::build_prepared_compare_join_entry_render_plan(
+                *prepared_names,
                 function_control_flow,
                 function,
                 block,
@@ -798,19 +802,20 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
 
     const auto try_render_short_circuit_plan =
         [&]() -> std::optional<std::string> {
-      if (function_control_flow == nullptr) {
+      if (function_control_flow == nullptr || prepared_names == nullptr) {
         return std::nullopt;
       }
 
       const auto join_context =
           c4c::backend::x86::find_prepared_short_circuit_join_context_if_supported(
-              *function_control_flow, function, block.label);
+              *prepared_names, *function_control_flow, function, block.label);
       if (!join_context.has_value()) {
         return std::nullopt;
       }
 
       const auto short_circuit_render_plan =
           c4c::backend::x86::build_prepared_short_circuit_entry_render_plan(
+              *prepared_names,
               function_control_flow,
               function,
               block,
@@ -834,15 +839,20 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       return rendered_short_circuit;
     }
     if (function_control_flow != nullptr &&
+        prepared_names != nullptr &&
         c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-            *function_control_flow, block.label)
+            *prepared_names, *function_control_flow, block.label)
             .has_value()) {
       throw std::invalid_argument(
           "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
     }
 
+    if (prepared_names == nullptr) {
+      return std::nullopt;
+    }
     const auto plain_cond_render_plan =
         c4c::backend::x86::build_prepared_plain_cond_entry_render_plan(
+            *prepared_names,
             function_control_flow,
             block,
             compare_index,
@@ -1068,13 +1078,13 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
   }
 
   const auto* prepared_branch_condition =
-      function_control_flow == nullptr
+      function_control_flow == nullptr || prepared_names == nullptr
           ? nullptr
-          : c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
-                                                                  entry.label);
-  if (function_control_flow != nullptr &&
+          : c4c::backend::prepare::find_prepared_branch_condition(
+                *prepared_names, *function_control_flow, entry.label);
+  if (function_control_flow != nullptr && prepared_names != nullptr &&
       c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-          *function_control_flow, entry.label)
+          *prepared_names, *function_control_flow, entry.label)
           .has_value()) {
     throw std::invalid_argument(
         "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
@@ -1093,7 +1103,7 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
         static_cast<const c4c::backend::bir::Value*>(nullptr);
     for (const auto& [value_name, _] : named_i32_exprs) {
       const auto* candidate = c4c::backend::prepare::find_prepared_i32_immediate_branch_condition(
-          *function_control_flow, entry.label, value_name);
+          *prepared_names, *function_control_flow, entry.label, value_name);
       if (candidate == nullptr) {
         continue;
       }
@@ -1130,8 +1140,12 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     compare_immediate = lhs_is_value_rhs_is_imm ? prepared_immediate_branch->rhs->immediate
                                                 : prepared_immediate_branch->lhs->immediate;
     compare_opcode = *prepared_immediate_branch->predicate;
-    true_label = prepared_immediate_branch->true_label;
-    false_label = prepared_immediate_branch->false_label;
+    true_label = std::string(
+        c4c::backend::prepare::prepared_block_label(*prepared_names,
+                                                    prepared_immediate_branch->true_label));
+    false_label = std::string(
+        c4c::backend::prepare::prepared_block_label(*prepared_names,
+                                                    prepared_immediate_branch->false_label));
   } else {
     const auto* compare = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.back());
     if (compare == nullptr ||
@@ -1352,13 +1366,13 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
     return rendered;
   };
   const auto* prepared_branch_condition =
-      function_control_flow == nullptr
+      function_control_flow == nullptr || prepared_names == nullptr
           ? nullptr
-          : c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
-                                                                  entry.label);
-  if (function_control_flow != nullptr &&
+          : c4c::backend::prepare::find_prepared_branch_condition(
+                *prepared_names, *function_control_flow, entry.label);
+  if (function_control_flow != nullptr && prepared_names != nullptr &&
       c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-          *function_control_flow, entry.label)
+          *prepared_names, *function_control_flow, entry.label)
           .has_value()) {
     throw std::invalid_argument(
         "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
@@ -1396,8 +1410,12 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
     compare_immediate =
         lhs_is_value_rhs_is_imm ? prepared_branch_condition->rhs->immediate
                                 : prepared_branch_condition->lhs->immediate;
-    true_label = prepared_branch_condition->true_label;
-    false_label = prepared_branch_condition->false_label;
+    true_label = std::string(
+        c4c::backend::prepare::prepared_block_label(*prepared_names,
+                                                    prepared_branch_condition->true_label));
+    false_label = std::string(
+        c4c::backend::prepare::prepared_block_label(*prepared_names,
+                                                    prepared_branch_condition->false_label));
   }
   if (compare_opcode != c4c::backend::bir::BinaryOpcode::Eq &&
       compare_opcode != c4c::backend::bir::BinaryOpcode::Ne) {

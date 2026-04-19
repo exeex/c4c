@@ -35,12 +35,8 @@ bool contains_invariant(const prepare::PreparedBirModule& module,
 const prepare::PreparedControlFlowFunction* find_control_flow_function(
     const prepare::PreparedBirModule& prepared,
     const char* function_name) {
-  for (const auto& function : prepared.control_flow.functions) {
-    if (function.function_name == function_name) {
-      return &function;
-    }
-  }
-  return nullptr;
+  return prepare::find_prepared_control_flow_function(
+      prepared.names, prepared.control_flow, function_name);
 }
 
 const bir::Block* find_block(const bir::Function& function, const char* label) {
@@ -222,7 +218,8 @@ int check_prepared_control_flow_contract(const prepare::PreparedBirModule& prepa
   }
 
   const auto& entry_condition = control_flow->branch_conditions.front();
-  if (entry_condition.block_label != "entry" || !entry_condition.predicate.has_value() ||
+  if (prepare::prepared_block_label(prepared.names, entry_condition.block_label) != "entry" ||
+      !entry_condition.predicate.has_value() ||
       !entry_condition.compare_type.has_value() || !entry_condition.lhs.has_value() ||
       !entry_condition.rhs.has_value()) {
     return fail("expected entry branch-condition metadata to publish compare semantics");
@@ -230,7 +227,8 @@ int check_prepared_control_flow_contract(const prepare::PreparedBirModule& prepa
   if (*entry_condition.predicate != bir::BinaryOpcode::Eq ||
       *entry_condition.compare_type != bir::TypeKind::I32 ||
       !is_immediate_i32(*entry_condition.lhs, 0) || !is_immediate_i32(*entry_condition.rhs, 0) ||
-      entry_condition.true_label != "left" || entry_condition.false_label != "split") {
+      prepare::prepared_block_label(prepared.names, entry_condition.true_label) != "left" ||
+      prepare::prepared_block_label(prepared.names, entry_condition.false_label) != "split") {
     return fail("expected entry branch-condition metadata to match the legalized compare branch");
   }
   if (entry_condition.condition_value.kind != bir::Value::Kind::Named ||
@@ -240,7 +238,8 @@ int check_prepared_control_flow_contract(const prepare::PreparedBirModule& prepa
   }
 
   const auto& join_transfer = control_flow->join_transfers.front();
-  if (join_transfer.join_block_label != "join" || join_transfer.result.name != "merge") {
+  if (prepare::prepared_block_label(prepared.names, join_transfer.join_block_label) != "join" ||
+      join_transfer.result.name != "merge") {
     return fail("expected join-transfer metadata to name the legalized join result");
   }
   if (join_transfer.kind != expected_join_kind ||
@@ -275,21 +274,25 @@ int check_two_way_branch_join_control_flow_contract(const prepare::PreparedBirMo
   }
 
   const auto& branch_condition = control_flow->branch_conditions.front();
-  if (branch_condition.block_label != "entry" || !branch_condition.predicate.has_value() ||
+  if (prepare::prepared_block_label(prepared.names, branch_condition.block_label) != "entry" ||
+      !branch_condition.predicate.has_value() ||
       !branch_condition.compare_type.has_value() || !branch_condition.lhs.has_value() ||
       !branch_condition.rhs.has_value() ||
       *branch_condition.predicate != bir::BinaryOpcode::Eq ||
       *branch_condition.compare_type != bir::TypeKind::I32 ||
       !is_named_i32(*branch_condition.lhs, "p.x") ||
       !is_immediate_i32(*branch_condition.rhs, 0) ||
-      branch_condition.true_label != "is_zero" || branch_condition.false_label != "is_nonzero" ||
+      prepare::prepared_block_label(prepared.names, branch_condition.true_label) != "is_zero" ||
+      prepare::prepared_block_label(prepared.names, branch_condition.false_label) !=
+          "is_nonzero" ||
       !is_named_i32(branch_condition.condition_value, "cond0")) {
     return fail("expected joined branch metadata to preserve the compare-against-zero branch contract");
   }
 
   const auto& join_transfer = control_flow->join_transfers.front();
   if (join_transfer.kind != prepare::PreparedJoinTransferKind::SelectMaterialization ||
-      join_transfer.join_block_label != "join" || !is_named_i32(join_transfer.result, "merge") ||
+      prepare::prepared_block_label(prepared.names, join_transfer.join_block_label) != "join" ||
+      !is_named_i32(join_transfer.result, "merge") ||
       join_transfer.incomings.size() != 2 || join_transfer.storage_name.has_value()) {
     return fail("expected joined branch metadata to publish a select-materialized join contract");
   }
@@ -317,11 +320,13 @@ int check_short_circuit_or_control_flow_contract(const prepare::PreparedBirModul
   const prepare::PreparedBranchCondition* rhs_condition = nullptr;
   const prepare::PreparedBranchCondition* join_condition = nullptr;
   for (const auto& condition : control_flow->branch_conditions) {
-    if (condition.block_label == "entry") {
+    if (prepare::prepared_block_label(prepared.names, condition.block_label) == "entry") {
       entry_condition = &condition;
-    } else if (condition.block_label == "logic.rhs.7") {
+    } else if (prepare::prepared_block_label(prepared.names, condition.block_label) ==
+               "logic.rhs.7") {
       rhs_condition = &condition;
-    } else if (condition.block_label == "logic.end.10") {
+    } else if (prepare::prepared_block_label(prepared.names, condition.block_label) ==
+               "logic.end.10") {
       join_condition = &condition;
     }
   }
@@ -334,8 +339,10 @@ int check_short_circuit_or_control_flow_contract(const prepare::PreparedBirModul
       *entry_condition->predicate != bir::BinaryOpcode::Ne ||
       *entry_condition->compare_type != bir::TypeKind::I32 ||
       !is_named_i32(*entry_condition->lhs, "%t3") || !is_immediate_i32(*entry_condition->rhs, 3) ||
-      entry_condition->true_label != "logic.skip.8" ||
-      entry_condition->false_label != "logic.rhs.7" ||
+      prepare::prepared_block_label(prepared.names, entry_condition->true_label) !=
+          "logic.skip.8" ||
+      prepare::prepared_block_label(prepared.names, entry_condition->false_label) !=
+          "logic.rhs.7" ||
       !is_named_i32(entry_condition->condition_value, "%t4")) {
     return fail("expected the short-circuit entry metadata to preserve the authoritative guard compare");
   }
@@ -345,7 +352,8 @@ int check_short_circuit_or_control_flow_contract(const prepare::PreparedBirModul
       *rhs_condition->predicate != bir::BinaryOpcode::Ne ||
       *rhs_condition->compare_type != bir::TypeKind::I32 ||
       !is_named_i32(*rhs_condition->lhs, "%t12") || !is_immediate_i32(*rhs_condition->rhs, 3) ||
-      rhs_condition->true_label != "block_1" || rhs_condition->false_label != "block_2" ||
+      prepare::prepared_block_label(prepared.names, rhs_condition->true_label) != "block_1" ||
+      prepare::prepared_block_label(prepared.names, rhs_condition->false_label) != "block_2" ||
       !is_named_i32(rhs_condition->condition_value, "%t13")) {
     return fail("expected the short-circuit rhs metadata to preserve the authoritative continuation compare");
   }
@@ -355,23 +363,29 @@ int check_short_circuit_or_control_flow_contract(const prepare::PreparedBirModul
       *join_condition->predicate != bir::BinaryOpcode::Ne ||
       *join_condition->compare_type != bir::TypeKind::I32 ||
       !is_named_i32(*join_condition->lhs, "%t17") || !is_immediate_i32(*join_condition->rhs, 0) ||
-      join_condition->true_label != "block_1" || join_condition->false_label != "block_2" ||
+      prepare::prepared_block_label(prepared.names, join_condition->true_label) != "block_1" ||
+      prepare::prepared_block_label(prepared.names, join_condition->false_label) != "block_2" ||
       !is_named_i32(join_condition->condition_value, "%t18")) {
     return fail("expected the short-circuit join metadata to preserve the joined-boolean branch contract");
   }
 
   const auto& join_transfer = control_flow->join_transfers.front();
   if (join_transfer.kind != prepare::PreparedJoinTransferKind::SelectMaterialization ||
-      join_transfer.join_block_label != "logic.end.10" || !is_named_i32(join_transfer.result, "%t17") ||
+      prepare::prepared_block_label(prepared.names, join_transfer.join_block_label) !=
+          "logic.end.10" ||
+      !is_named_i32(join_transfer.result, "%t17") ||
       join_transfer.incomings.size() != 2 || join_transfer.storage_name.has_value() ||
       !join_transfer.source_branch_block_label.has_value() ||
       !join_transfer.source_true_incoming_label.has_value() ||
       !join_transfer.source_false_incoming_label.has_value()) {
     return fail("expected the short-circuit join metadata to publish a select-materialized join contract");
   }
-  if (*join_transfer.source_branch_block_label != "entry" ||
-      *join_transfer.source_true_incoming_label != "logic.skip.8" ||
-      *join_transfer.source_false_incoming_label != "logic.rhs.end.9") {
+  if (prepare::prepared_block_label(prepared.names, *join_transfer.source_branch_block_label) !=
+          "entry" ||
+      prepare::prepared_block_label(prepared.names, *join_transfer.source_true_incoming_label) !=
+          "logic.skip.8" ||
+      prepare::prepared_block_label(prepared.names, *join_transfer.source_false_incoming_label) !=
+          "logic.rhs.end.9") {
     return fail("expected the short-circuit join metadata to map compare truth to the authoritative join incomings");
   }
   bool saw_rhs_incoming = false;
@@ -402,14 +416,16 @@ int check_loop_countdown_control_flow_contract(const prepare::PreparedBirModule&
   }
 
   const auto& branch_condition = control_flow->branch_conditions.front();
-  if (branch_condition.block_label != "loop" || !branch_condition.predicate.has_value() ||
+  if (prepare::prepared_block_label(prepared.names, branch_condition.block_label) != "loop" ||
+      !branch_condition.predicate.has_value() ||
       !branch_condition.compare_type.has_value() || !branch_condition.lhs.has_value() ||
       !branch_condition.rhs.has_value() ||
       *branch_condition.predicate != bir::BinaryOpcode::Ne ||
       *branch_condition.compare_type != bir::TypeKind::I32 ||
       !is_named_i32(*branch_condition.lhs, "counter") ||
       !is_immediate_i32(*branch_condition.rhs, 0) ||
-      branch_condition.true_label != "body" || branch_condition.false_label != "exit" ||
+      prepare::prepared_block_label(prepared.names, branch_condition.true_label) != "body" ||
+      prepare::prepared_block_label(prepared.names, branch_condition.false_label) != "exit" ||
       !is_named_i32(branch_condition.condition_value, "cmp0")) {
     return fail("expected the loop branch metadata to preserve the countdown header compare");
   }
@@ -417,8 +433,9 @@ int check_loop_countdown_control_flow_contract(const prepare::PreparedBirModule&
   const auto& join_transfer = control_flow->join_transfers.front();
   if (join_transfer.kind != prepare::PreparedJoinTransferKind::LoopCarry ||
       prepare::prepared_join_transfer_kind_name(join_transfer.kind) != "loop_carry" ||
-      join_transfer.join_block_label != "loop" || !is_named_i32(join_transfer.result, "counter") ||
-      !join_transfer.storage_name.has_value() || *join_transfer.storage_name != "counter.phi" ||
+      prepare::prepared_block_label(prepared.names, join_transfer.join_block_label) != "loop" ||
+      !is_named_i32(join_transfer.result, "counter") || !join_transfer.storage_name.has_value() ||
+      prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name) != "counter.phi" ||
       join_transfer.incomings.size() != 2) {
     return fail("expected the loop join metadata to publish a loop-carry contract");
   }

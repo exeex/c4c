@@ -34,7 +34,8 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
     const prepare::PreparedBirModule& prepared,
     const char* function_name) {
   for (const auto& function : prepared.control_flow.functions) {
-    if (function.function_name == function_name) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) ==
+        function_name) {
       return &function;
     }
   }
@@ -44,7 +45,8 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
 prepare::PreparedControlFlowFunction* find_control_flow_function(prepare::PreparedBirModule& prepared,
                                                                  const char* function_name) {
   for (auto& function : prepared.control_flow.functions) {
-    if (function.function_name == function_name) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) ==
+        function_name) {
       return &function;
     }
   }
@@ -58,6 +60,21 @@ bir::Block* find_block(bir::Function& function, const char* label) {
     }
   }
   return nullptr;
+}
+
+std::string_view block_label(const prepare::PreparedBirModule& prepared,
+                             c4c::BlockLabelId label) {
+  return prepare::prepared_block_label(prepared.names, label);
+}
+
+c4c::BlockLabelId intern_block_label(prepare::PreparedBirModule& prepared,
+                                     std::string_view label) {
+  return prepared.names.block_labels.intern(label);
+}
+
+c4c::SlotNameId intern_slot_name(prepare::PreparedBirModule& prepared,
+                                 std::string_view name) {
+  return prepared.names.slot_names.intern(name);
 }
 
 std::string asm_header(const char* function_name) {
@@ -293,7 +310,9 @@ int check_local_i32_guard_route_rejects_authoritative_join_contract(
                  ": prepare no longer publishes the short-circuit join ownership needed for the fallback rejection")
                     .c_str());
   }
-  if (!prepare::find_authoritative_branch_owned_join_transfer(*control_flow, "entry").has_value()) {
+  if (!prepare::find_authoritative_branch_owned_join_transfer(
+           prepared.names, *control_flow, "entry")
+           .has_value()) {
     return fail((std::string(failure_context) +
                  ": prepared short-circuit fixture no longer exposes authoritative entry-owned join ownership")
                     .c_str());
@@ -301,7 +320,7 @@ int check_local_i32_guard_route_rejects_authoritative_join_contract(
 
   auto* entry_branch_condition = static_cast<prepare::PreparedBranchCondition*>(nullptr);
   for (auto& branch_condition : control_flow->branch_conditions) {
-    if (branch_condition.block_label == "entry") {
+    if (block_label(prepared, branch_condition.block_label) == "entry") {
       entry_branch_condition = &branch_condition;
       break;
     }
@@ -364,8 +383,8 @@ int check_local_i32_guard_route_rejects_authoritative_join_contract(
   entry_branch_condition->lhs = bir::Value::named(bir::TypeKind::I32, "loaded");
   entry_branch_condition->rhs = bir::Value::immediate_i32(123);
   entry_branch_condition->can_fuse_with_branch = true;
-  entry_branch_condition->true_label = "block_1";
-  entry_branch_condition->false_label = "block_2";
+  entry_branch_condition->true_label = intern_block_label(prepared, "block_1");
+  entry_branch_condition->false_label = intern_block_label(prepared, "block_2");
 
   try {
     (void)c4c::backend::x86::emit_prepared_module(prepared);
@@ -429,7 +448,7 @@ int check_short_circuit_route_ignores_rhs_compare_carrier_state_when_prepared_co
   }
 
   const auto* rhs_branch_condition =
-      prepare::find_prepared_branch_condition(*control_flow, rhs_block->label);
+      prepare::find_prepared_branch_condition(prepared.names, *control_flow, rhs_block->label);
   if (rhs_branch_condition == nullptr || !rhs_branch_condition->predicate.has_value() ||
       !rhs_branch_condition->lhs.has_value() || !rhs_branch_condition->rhs.has_value()) {
     return fail((std::string(failure_context) +
@@ -441,8 +460,8 @@ int check_short_circuit_route_ignores_rhs_compare_carrier_state_when_prepared_co
       rhs_branch_condition->lhs->name != "%t12" ||
       rhs_branch_condition->rhs->kind != bir::Value::Kind::Immediate ||
       rhs_branch_condition->rhs->immediate != 3 ||
-      rhs_branch_condition->true_label != "block_1" ||
-      rhs_branch_condition->false_label != "block_2") {
+      block_label(prepared, rhs_branch_condition->true_label) != "block_1" ||
+      block_label(prepared, rhs_branch_condition->false_label) != "block_2") {
     return fail((std::string(failure_context) +
                  ": shared helper stopped publishing the authoritative rhs continuation compare semantics")
                     .c_str());
@@ -515,7 +534,7 @@ int check_short_circuit_route_consumes_prepared_control_flow_impl(const bir::Mod
   auto& join_transfer = mutable_control_flow->join_transfers.front();
   auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
     for (auto& branch_condition : mutable_control_flow->branch_conditions) {
-      if (branch_condition.block_label == join_block->label) {
+      if (block_label(prepared, branch_condition.block_label) == join_block->label) {
         return &branch_condition;
       }
     }
@@ -546,21 +565,24 @@ int check_short_circuit_route_consumes_prepared_control_flow_impl(const bir::Mod
                     .c_str());
   }
 
-  const std::string original_true_incoming_label = *join_transfer.source_true_incoming_label;
-  const std::string original_false_incoming_label = *join_transfer.source_false_incoming_label;
-  join_transfer.source_true_incoming_label = "contract.short_circuit";
-  join_transfer.source_false_incoming_label = "contract.rhs";
+  const std::string original_true_incoming_label =
+      std::string(block_label(prepared, *join_transfer.source_true_incoming_label));
+  const std::string original_false_incoming_label =
+      std::string(block_label(prepared, *join_transfer.source_false_incoming_label));
+  join_transfer.source_true_incoming_label = intern_block_label(prepared, "contract.short_circuit");
+  join_transfer.source_false_incoming_label = intern_block_label(prepared, "contract.rhs");
   join_transfer.edge_transfers[false_transfer_index].incoming_value = bir::Value::immediate_i32(9);
   bool rewrote_short_circuit_label = false;
   bool rewrote_rhs_label = false;
   for (auto& incoming : join_transfer.incomings) {
     if (incoming.label == original_true_incoming_label) {
-      incoming.label = *join_transfer.source_true_incoming_label;
+      incoming.label = std::string(block_label(prepared, *join_transfer.source_true_incoming_label));
       rewrote_short_circuit_label = true;
       continue;
     }
     if (incoming.label == original_false_incoming_label) {
-      incoming.label = *join_transfer.source_false_incoming_label;
+      incoming.label =
+          std::string(block_label(prepared, *join_transfer.source_false_incoming_label));
       incoming.value = bir::Value::immediate_i32(9);
       rewrote_rhs_label = true;
     }
@@ -661,7 +683,7 @@ int check_short_circuit_context_publishes_prepared_continuation_labels_impl(
   auto& join_transfer = control_flow->join_transfers.front();
   auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
     for (auto& branch_condition : control_flow->branch_conditions) {
-      if (branch_condition.block_label == join_block->label) {
+      if (block_label(prepared, branch_condition.block_label) == join_block->label) {
         return &branch_condition;
       }
     }
@@ -688,27 +710,30 @@ int check_short_circuit_context_publishes_prepared_continuation_labels_impl(
                     .c_str());
   }
 
-  const std::string original_true_incoming_label = *join_transfer.source_true_incoming_label;
-  const std::string original_false_incoming_label = *join_transfer.source_false_incoming_label;
-  join_transfer.source_true_incoming_label = "contract.short_circuit";
-  join_transfer.source_false_incoming_label = "contract.rhs";
+  const std::string original_true_incoming_label =
+      std::string(block_label(prepared, *join_transfer.source_true_incoming_label));
+  const std::string original_false_incoming_label =
+      std::string(block_label(prepared, *join_transfer.source_false_incoming_label));
+  join_transfer.source_true_incoming_label = intern_block_label(prepared, "contract.short_circuit");
+  join_transfer.source_false_incoming_label = intern_block_label(prepared, "contract.rhs");
   join_transfer.edge_transfers[false_transfer_index].incoming_value = bir::Value::immediate_i32(9);
   for (auto& incoming : join_transfer.incomings) {
     if (incoming.label == original_true_incoming_label) {
-      incoming.label = *join_transfer.source_true_incoming_label;
+      incoming.label = std::string(block_label(prepared, *join_transfer.source_true_incoming_label));
     } else if (incoming.label == original_false_incoming_label) {
-      incoming.label = *join_transfer.source_false_incoming_label;
+      incoming.label =
+          std::string(block_label(prepared, *join_transfer.source_false_incoming_label));
       incoming.value = bir::Value::immediate_i32(9);
     }
   }
 
   if (use_edge_store_slot_carrier) {
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-    join_transfer.storage_name = "%contract.short_circuit.slot";
+    join_transfer.storage_name = intern_slot_name(prepared, "%contract.short_circuit.slot");
     join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
     join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
     function.local_slots.push_back(bir::LocalSlot{
-        .name = *join_transfer.storage_name,
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
         .type = bir::TypeKind::I32,
         .size_bytes = 4,
         .align_bytes = 4,
@@ -718,7 +743,8 @@ int check_short_circuit_context_publishes_prepared_continuation_labels_impl(
         bir::Value::named(bir::TypeKind::I32, "carrier.short_circuit.contract.join");
     join_block->insts.front() = bir::LoadLocalInst{
         .result = load_result,
-        .slot_name = *join_transfer.storage_name,
+        .slot_name =
+            std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
     };
     if (join_branch_condition->lhs->kind == bir::Value::Kind::Named &&
         join_branch_condition->lhs->name == join_transfer.result.name) {
@@ -751,12 +777,14 @@ int check_short_circuit_context_publishes_prepared_continuation_labels_impl(
 
   join_block->terminator.true_label = "carrier.join.true";
   join_block->terminator.false_label = "carrier.join.false";
-  join_branch_condition->true_label = join_block->terminator.true_label;
-  join_branch_condition->false_label = join_block->terminator.false_label;
+  join_branch_condition->true_label = intern_block_label(prepared, join_block->terminator.true_label);
+  join_branch_condition->false_label =
+      intern_block_label(prepared, join_block->terminator.false_label);
   join_branch_condition->predicate = bir::BinaryOpcode::Eq;
 
   const auto prepared_context =
-      prepare::find_prepared_short_circuit_join_context(*control_flow, function, "entry");
+      prepare::find_prepared_short_circuit_join_context(
+          prepared.names, *control_flow, function, "entry");
   if (!prepared_context.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the authoritative short-circuit join context")
@@ -780,7 +808,7 @@ int check_short_circuit_context_publishes_prepared_continuation_labels_impl(
 
   const auto prepared_compare_join_targets =
       prepare::find_prepared_compare_join_continuation_targets(
-          *control_flow, function, "entry");
+          prepared.names, *control_flow, function, "entry");
   if (!prepared_compare_join_targets.has_value() ||
       prepared_compare_join_targets->true_label != prepared_context->continuation_true_label ||
       prepared_compare_join_targets->false_label != prepared_context->continuation_false_label) {
@@ -837,7 +865,7 @@ int check_short_circuit_context_prefers_prepared_continuation_branch_condition_i
   auto& join_transfer = control_flow->join_transfers.front();
   auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
     for (auto& branch_condition : control_flow->branch_conditions) {
-      if (branch_condition.block_label == join_block->label) {
+      if (block_label(prepared, branch_condition.block_label) == join_block->label) {
         return &branch_condition;
       }
     }
@@ -845,7 +873,7 @@ int check_short_circuit_context_prefers_prepared_continuation_branch_condition_i
   }();
   auto* rhs_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
     for (auto& branch_condition : control_flow->branch_conditions) {
-      if (branch_condition.block_label == rhs_block->label) {
+      if (block_label(prepared, branch_condition.block_label) == rhs_block->label) {
         return &branch_condition;
       }
     }
@@ -858,8 +886,10 @@ int check_short_circuit_context_prefers_prepared_continuation_branch_condition_i
                     .c_str());
   }
 
-  const std::string expected_true_label = rhs_branch_condition->true_label;
-  const std::string expected_false_label = rhs_branch_condition->false_label;
+  const std::string expected_true_label =
+      std::string(block_label(prepared, rhs_branch_condition->true_label));
+  const std::string expected_false_label =
+      std::string(block_label(prepared, rhs_branch_condition->false_label));
 
   if (use_edge_store_slot_join) {
     if (join_transfer.edge_transfers.size() != 2 ||
@@ -879,11 +909,11 @@ int check_short_circuit_context_prefers_prepared_continuation_branch_condition_i
     }
 
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-    join_transfer.storage_name = "%contract.short_circuit.slot";
+    join_transfer.storage_name = intern_slot_name(prepared, "%contract.short_circuit.slot");
     join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
     join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
     function.local_slots.push_back(bir::LocalSlot{
-        .name = *join_transfer.storage_name,
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
         .type = bir::TypeKind::I32,
         .size_bytes = 4,
         .align_bytes = 4,
@@ -893,7 +923,8 @@ int check_short_circuit_context_prefers_prepared_continuation_branch_condition_i
         bir::Value::named(bir::TypeKind::I32, "carrier.short_circuit.contract.join");
     join_block->insts.front() = bir::LoadLocalInst{
         .result = load_result,
-        .slot_name = *join_transfer.storage_name,
+        .slot_name =
+            std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
     };
     if (join_branch_condition->lhs->kind == bir::Value::Kind::Named &&
         join_branch_condition->lhs->name == join_transfer.result.name) {
@@ -907,11 +938,13 @@ int check_short_circuit_context_prefers_prepared_continuation_branch_condition_i
 
   join_block->terminator.true_label = "carrier.join.misleading.true";
   join_block->terminator.false_label = "carrier.join.misleading.false";
-  join_branch_condition->true_label = join_block->terminator.true_label;
-  join_branch_condition->false_label = join_block->terminator.false_label;
+  join_branch_condition->true_label = intern_block_label(prepared, join_block->terminator.true_label);
+  join_branch_condition->false_label =
+      intern_block_label(prepared, join_block->terminator.false_label);
 
   const auto prepared_context =
-      prepare::find_prepared_short_circuit_join_context(*control_flow, function, "entry");
+      prepare::find_prepared_short_circuit_join_context(
+          prepared.names, *control_flow, function, "entry");
   if (!prepared_context.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the short-circuit continuation contract when join-branch labels drift")
@@ -926,7 +959,7 @@ int check_short_circuit_context_prefers_prepared_continuation_branch_condition_i
 
   const auto prepared_compare_join_targets =
       prepare::find_prepared_compare_join_continuation_targets(
-          *control_flow, function, "entry");
+          prepared.names, *control_flow, function, "entry");
   if (!prepared_compare_join_targets.has_value() ||
       prepared_compare_join_targets->true_label != expected_true_label ||
       prepared_compare_join_targets->false_label != expected_false_label) {
@@ -982,7 +1015,7 @@ int check_short_circuit_route_prefers_prepared_continuation_labels_when_join_bra
   auto& join_transfer = control_flow->join_transfers.front();
   auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
     for (auto& branch_condition : control_flow->branch_conditions) {
-      if (branch_condition.block_label == join_block->label) {
+      if (block_label(prepared, branch_condition.block_label) == join_block->label) {
         return &branch_condition;
       }
     }
@@ -1009,27 +1042,30 @@ int check_short_circuit_route_prefers_prepared_continuation_labels_when_join_bra
                     .c_str());
   }
 
-  const std::string original_true_incoming_label = *join_transfer.source_true_incoming_label;
-  const std::string original_false_incoming_label = *join_transfer.source_false_incoming_label;
-  join_transfer.source_true_incoming_label = "contract.short_circuit";
-  join_transfer.source_false_incoming_label = "contract.rhs";
+  const std::string original_true_incoming_label =
+      std::string(block_label(prepared, *join_transfer.source_true_incoming_label));
+  const std::string original_false_incoming_label =
+      std::string(block_label(prepared, *join_transfer.source_false_incoming_label));
+  join_transfer.source_true_incoming_label = intern_block_label(prepared, "contract.short_circuit");
+  join_transfer.source_false_incoming_label = intern_block_label(prepared, "contract.rhs");
   join_transfer.edge_transfers[false_transfer_index].incoming_value = bir::Value::immediate_i32(9);
   for (auto& incoming : join_transfer.incomings) {
     if (incoming.label == original_true_incoming_label) {
-      incoming.label = *join_transfer.source_true_incoming_label;
+      incoming.label = std::string(block_label(prepared, *join_transfer.source_true_incoming_label));
     } else if (incoming.label == original_false_incoming_label) {
-      incoming.label = *join_transfer.source_false_incoming_label;
+      incoming.label =
+          std::string(block_label(prepared, *join_transfer.source_false_incoming_label));
       incoming.value = bir::Value::immediate_i32(9);
     }
   }
 
   if (use_edge_store_slot_carrier) {
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-    join_transfer.storage_name = "%contract.short_circuit.slot";
+    join_transfer.storage_name = intern_slot_name(prepared, "%contract.short_circuit.slot");
     join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
     join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
     function.local_slots.push_back(bir::LocalSlot{
-        .name = *join_transfer.storage_name,
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
         .type = bir::TypeKind::I32,
         .size_bytes = 4,
         .align_bytes = 4,
@@ -1039,7 +1075,8 @@ int check_short_circuit_route_prefers_prepared_continuation_labels_when_join_bra
         bir::Value::named(bir::TypeKind::I32, "carrier.short_circuit.contract.join");
     join_block->insts.front() = bir::LoadLocalInst{
         .result = load_result,
-        .slot_name = *join_transfer.storage_name,
+        .slot_name =
+            std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
     };
     if (join_branch_condition->lhs->kind == bir::Value::Kind::Named &&
         join_branch_condition->lhs->name == join_transfer.result.name) {
@@ -1072,8 +1109,9 @@ int check_short_circuit_route_prefers_prepared_continuation_labels_when_join_bra
 
   join_block->terminator.true_label = "carrier.join.misleading.true";
   join_block->terminator.false_label = "carrier.join.misleading.false";
-  join_branch_condition->true_label = join_block->terminator.true_label;
-  join_branch_condition->false_label = join_block->terminator.false_label;
+  join_branch_condition->true_label = intern_block_label(prepared, join_block->terminator.true_label);
+  join_branch_condition->false_label =
+      intern_block_label(prepared, join_block->terminator.false_label);
   join_branch_condition->predicate = bir::BinaryOpcode::Eq;
 
   const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
@@ -1131,7 +1169,7 @@ int check_short_circuit_route_requires_authoritative_rhs_prepared_branch_conditi
   auto& join_transfer = control_flow->join_transfers.front();
   auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
     for (auto& branch_condition : control_flow->branch_conditions) {
-      if (branch_condition.block_label == join_block->label) {
+      if (block_label(prepared, branch_condition.block_label) == join_block->label) {
         return &branch_condition;
       }
     }
@@ -1139,7 +1177,7 @@ int check_short_circuit_route_requires_authoritative_rhs_prepared_branch_conditi
   }();
   auto* rhs_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
     for (auto& branch_condition : control_flow->branch_conditions) {
-      if (branch_condition.block_label == rhs_block->label) {
+      if (block_label(prepared, branch_condition.block_label) == rhs_block->label) {
         return &branch_condition;
       }
     }
@@ -1169,11 +1207,11 @@ int check_short_circuit_route_requires_authoritative_rhs_prepared_branch_conditi
     }
 
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-    join_transfer.storage_name = "%contract.short_circuit.slot";
+    join_transfer.storage_name = intern_slot_name(prepared, "%contract.short_circuit.slot");
     join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
     join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
     function.local_slots.push_back(bir::LocalSlot{
-        .name = *join_transfer.storage_name,
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
         .type = bir::TypeKind::I32,
         .size_bytes = 4,
         .align_bytes = 4,
@@ -1183,7 +1221,8 @@ int check_short_circuit_route_requires_authoritative_rhs_prepared_branch_conditi
         bir::Value::named(bir::TypeKind::I32, "carrier.short_circuit.contract.join");
     join_block->insts.front() = bir::LoadLocalInst{
         .result = load_result,
-        .slot_name = *join_transfer.storage_name,
+        .slot_name =
+            std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
     };
     if (join_branch_condition->lhs.has_value() &&
         join_branch_condition->lhs->kind == bir::Value::Kind::Named &&
@@ -1261,7 +1300,7 @@ int check_short_circuit_route_requires_authoritative_entry_prepared_branch_condi
   auto& join_transfer = control_flow->join_transfers.front();
   auto* entry_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
     for (auto& branch_condition : control_flow->branch_conditions) {
-      if (branch_condition.block_label == entry_block->label) {
+      if (block_label(prepared, branch_condition.block_label) == entry_block->label) {
         return &branch_condition;
       }
     }
@@ -1269,7 +1308,7 @@ int check_short_circuit_route_requires_authoritative_entry_prepared_branch_condi
   }();
   auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
     for (auto& branch_condition : control_flow->branch_conditions) {
-      if (branch_condition.block_label == join_block->label) {
+      if (block_label(prepared, branch_condition.block_label) == join_block->label) {
         return &branch_condition;
       }
     }
@@ -1295,27 +1334,30 @@ int check_short_circuit_route_requires_authoritative_entry_prepared_branch_condi
                     .c_str());
   }
 
-  const std::string original_true_incoming_label = *join_transfer.source_true_incoming_label;
-  const std::string original_false_incoming_label = *join_transfer.source_false_incoming_label;
-  join_transfer.source_true_incoming_label = "contract.short_circuit";
-  join_transfer.source_false_incoming_label = "contract.rhs";
+  const std::string original_true_incoming_label =
+      std::string(block_label(prepared, *join_transfer.source_true_incoming_label));
+  const std::string original_false_incoming_label =
+      std::string(block_label(prepared, *join_transfer.source_false_incoming_label));
+  join_transfer.source_true_incoming_label = intern_block_label(prepared, "contract.short_circuit");
+  join_transfer.source_false_incoming_label = intern_block_label(prepared, "contract.rhs");
   join_transfer.edge_transfers[false_transfer_index].incoming_value = bir::Value::immediate_i32(9);
   for (auto& incoming : join_transfer.incomings) {
     if (incoming.label == original_true_incoming_label) {
-      incoming.label = *join_transfer.source_true_incoming_label;
+      incoming.label = std::string(block_label(prepared, *join_transfer.source_true_incoming_label));
     } else if (incoming.label == original_false_incoming_label) {
-      incoming.label = *join_transfer.source_false_incoming_label;
+      incoming.label =
+          std::string(block_label(prepared, *join_transfer.source_false_incoming_label));
       incoming.value = bir::Value::immediate_i32(9);
     }
   }
 
   if (use_edge_store_slot_carrier) {
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-    join_transfer.storage_name = "%contract.short_circuit.slot";
+    join_transfer.storage_name = intern_slot_name(prepared, "%contract.short_circuit.slot");
     join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
     join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
     function.local_slots.push_back(bir::LocalSlot{
-        .name = *join_transfer.storage_name,
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
         .type = bir::TypeKind::I32,
         .size_bytes = 4,
         .align_bytes = 4,
@@ -1325,7 +1367,8 @@ int check_short_circuit_route_requires_authoritative_entry_prepared_branch_condi
         bir::Value::named(bir::TypeKind::I32, "carrier.short_circuit.contract.join");
     join_block->insts.front() = bir::LoadLocalInst{
         .result = load_result,
-        .slot_name = *join_transfer.storage_name,
+        .slot_name =
+            std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
     };
     if (join_branch_condition->lhs.has_value() &&
         join_branch_condition->lhs->kind == bir::Value::Kind::Named &&
@@ -1399,7 +1442,7 @@ int check_short_circuit_entry_branch_helper_publishes_prepared_target_labels(
 
   auto* entry_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
     for (auto& branch_condition : control_flow->branch_conditions) {
-      if (branch_condition.block_label == entry_block->label) {
+      if (block_label(prepared, branch_condition.block_label) == entry_block->label) {
         return &branch_condition;
       }
     }
@@ -1414,11 +1457,11 @@ int check_short_circuit_entry_branch_helper_publishes_prepared_target_labels(
   entry_block->terminator.true_label = "carrier.short_circuit";
   entry_block->terminator.false_label = "carrier.rhs";
   entry_block->terminator.condition = bir::Value::named(bir::TypeKind::I32, "carrier.entry.condition");
-  entry_branch_condition->true_label = "logic.rhs.9";
-  entry_branch_condition->false_label = "logic.end.10";
+  entry_branch_condition->true_label = intern_block_label(prepared, "logic.rhs.9");
+  entry_branch_condition->false_label = intern_block_label(prepared, "logic.end.10");
 
   const auto prepared_targets = prepare::find_prepared_compare_branch_target_labels(
-      *entry_branch_condition, *entry_block);
+      prepared.names, *entry_branch_condition, *entry_block);
   if (!prepared_targets.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the prepared short-circuit entry branch contract")
@@ -1461,7 +1504,7 @@ int check_short_circuit_branch_plan_helper_publishes_prepared_labels(
 
   auto* entry_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
     for (auto& branch_condition : control_flow->branch_conditions) {
-      if (branch_condition.block_label == entry_block->label) {
+      if (block_label(prepared, branch_condition.block_label) == entry_block->label) {
         return &branch_condition;
       }
     }
@@ -1469,7 +1512,7 @@ int check_short_circuit_branch_plan_helper_publishes_prepared_labels(
   }();
   auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
     for (auto& branch_condition : control_flow->branch_conditions) {
-      if (branch_condition.block_label == join_block->label) {
+      if (block_label(prepared, branch_condition.block_label) == join_block->label) {
         return &branch_condition;
       }
     }
@@ -1485,16 +1528,18 @@ int check_short_circuit_branch_plan_helper_publishes_prepared_labels(
   entry_block->terminator.true_label = "carrier.short_circuit";
   entry_block->terminator.false_label = "carrier.rhs";
   entry_block->terminator.condition = bir::Value::named(bir::TypeKind::I32, "carrier.entry.condition");
-  entry_branch_condition->true_label = "logic.rhs.9";
-  entry_branch_condition->false_label = "logic.end.10";
+  entry_branch_condition->true_label = intern_block_label(prepared, "logic.rhs.9");
+  entry_branch_condition->false_label = intern_block_label(prepared, "logic.end.10");
   join_block->terminator.true_label = "carrier.join.true";
   join_block->terminator.false_label = "carrier.join.false";
-  join_branch_condition->true_label = join_block->terminator.true_label;
-  join_branch_condition->false_label = join_block->terminator.false_label;
+  join_branch_condition->true_label = intern_block_label(prepared, join_block->terminator.true_label);
+  join_branch_condition->false_label =
+      intern_block_label(prepared, join_block->terminator.false_label);
   join_branch_condition->predicate = bir::BinaryOpcode::Eq;
 
   const auto prepared_join_context =
-      prepare::find_prepared_short_circuit_join_context(*control_flow, function, "entry");
+      prepare::find_prepared_short_circuit_join_context(
+          prepared.names, *control_flow, function, "entry");
   if (!prepared_join_context.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the short-circuit join context")
@@ -1502,7 +1547,7 @@ int check_short_circuit_branch_plan_helper_publishes_prepared_labels(
   }
 
   const auto prepared_entry_targets = prepare::find_prepared_compare_branch_target_labels(
-      *entry_branch_condition, *entry_block);
+      prepared.names, *entry_branch_condition, *entry_block);
   if (!prepared_entry_targets.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the short-circuit entry branch contract")
@@ -1510,7 +1555,7 @@ int check_short_circuit_branch_plan_helper_publishes_prepared_labels(
   }
 
   const auto prepared_branch_plan = prepare::find_prepared_short_circuit_branch_plan(
-      *prepared_join_context, *prepared_entry_targets);
+      prepared.names, *prepared_join_context, *prepared_entry_targets);
   if (!prepared_branch_plan.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer publishes the short-circuit branch plan")
@@ -1526,8 +1571,9 @@ int check_short_circuit_branch_plan_helper_publishes_prepared_labels(
       !prepared_branch_plan->on_compare_false.continuation.has_value() ||
       prepared_branch_plan->on_compare_false.block_label != "logic.end.10" ||
       prepared_branch_plan->on_compare_false.continuation->incoming_label !=
-          join_transfer.edge_transfers[*join_transfer.source_false_transfer_index]
-              .predecessor_label ||
+          block_label(prepared,
+                      join_transfer.edge_transfers[*join_transfer.source_false_transfer_index]
+                          .predecessor_label) ||
       prepared_branch_plan->on_compare_false.continuation->true_label !=
           "carrier.join.false" ||
       prepared_branch_plan->on_compare_false.continuation->false_label !=
@@ -1586,7 +1632,7 @@ int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
   auto& join_transfer = mutable_control_flow->join_transfers.front();
   auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
     for (auto& branch_condition : mutable_control_flow->branch_conditions) {
-      if (branch_condition.block_label == join_block->label) {
+      if (block_label(prepared, branch_condition.block_label) == join_block->label) {
         return &branch_condition;
       }
     }
@@ -1618,12 +1664,14 @@ int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
                     .c_str());
   }
 
-  const std::string original_true_incoming_label = *join_transfer.source_true_incoming_label;
-  const std::string original_false_incoming_label = *join_transfer.source_false_incoming_label;
-  join_transfer.source_true_incoming_label = "contract.short_circuit";
-  join_transfer.source_false_incoming_label = "contract.rhs";
+  const std::string original_true_incoming_label =
+      std::string(block_label(prepared, *join_transfer.source_true_incoming_label));
+  const std::string original_false_incoming_label =
+      std::string(block_label(prepared, *join_transfer.source_false_incoming_label));
+  join_transfer.source_true_incoming_label = intern_block_label(prepared, "contract.short_circuit");
+  join_transfer.source_false_incoming_label = intern_block_label(prepared, "contract.rhs");
   join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-  join_transfer.storage_name = "%contract.short_circuit.slot";
+  join_transfer.storage_name = intern_slot_name(prepared, "%contract.short_circuit.slot");
   join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
   join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
   join_transfer.edge_transfers[false_transfer_index].incoming_value = bir::Value::immediate_i32(9);
@@ -1631,12 +1679,13 @@ int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
   bool rewrote_rhs_label = false;
   for (auto& incoming : join_transfer.incomings) {
     if (incoming.label == original_true_incoming_label) {
-      incoming.label = *join_transfer.source_true_incoming_label;
+      incoming.label = std::string(block_label(prepared, *join_transfer.source_true_incoming_label));
       rewrote_short_circuit_label = true;
       continue;
     }
     if (incoming.label == original_false_incoming_label) {
-      incoming.label = *join_transfer.source_false_incoming_label;
+      incoming.label =
+          std::string(block_label(prepared, *join_transfer.source_false_incoming_label));
       incoming.value = bir::Value::immediate_i32(9);
       rewrote_rhs_label = true;
     }
@@ -1648,7 +1697,7 @@ int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
   }
 
   function.local_slots.push_back(bir::LocalSlot{
-      .name = *join_transfer.storage_name,
+      .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
       .type = bir::TypeKind::I32,
       .size_bytes = 4,
       .align_bytes = 4,
@@ -1657,7 +1706,8 @@ int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
   const auto load_result = bir::Value::named(bir::TypeKind::I32, "carrier.short_circuit.join");
   join_block->insts.front() = bir::LoadLocalInst{
       .result = load_result,
-      .slot_name = *join_transfer.storage_name,
+      .slot_name =
+          std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
   };
   if (join_compare->lhs.kind == bir::Value::Kind::Named &&
       join_compare->lhs.name == join_transfer.result.name) {

@@ -42,7 +42,8 @@ bir::Block* find_block(bir::Function& function, const char* label) {
 prepare::PreparedControlFlowFunction* find_control_flow_function(prepare::PreparedBirModule& prepared,
                                                                  const char* function_name) {
   for (auto& function : prepared.control_flow.functions) {
-    if (function.function_name == function_name) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) ==
+        function_name) {
       return &function;
     }
   }
@@ -638,7 +639,8 @@ int check_i32_guard_chain_route_requires_authoritative_prepared_branch_labels(
 
   auto* branch_condition = static_cast<prepare::PreparedBranchCondition*>(nullptr);
   for (auto& candidate : control_flow->branch_conditions) {
-    if (candidate.block_label == branch_block_label) {
+    if (prepare::prepared_block_label(prepared.names, candidate.block_label) ==
+        branch_block_label) {
       branch_condition = &candidate;
       break;
     }
@@ -649,7 +651,7 @@ int check_i32_guard_chain_route_requires_authoritative_prepared_branch_labels(
                     .c_str());
   }
 
-  branch_condition->false_label = "drifted.guard.chain.false";
+  branch_condition->false_label = prepared.names.block_labels.intern("drifted.guard.chain.false");
 
   try {
     (void)c4c::backend::x86::emit_prepared_module(prepared);

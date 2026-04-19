@@ -37,7 +37,8 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
     const prepare::PreparedBirModule& prepared,
     const char* function_name) {
   for (const auto& function : prepared.control_flow.functions) {
-    if (function.function_name == function_name) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) ==
+        function_name) {
       return &function;
     }
   }
@@ -47,7 +48,8 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
 prepare::PreparedControlFlowFunction* find_control_flow_function(prepare::PreparedBirModule& prepared,
                                                                  const char* function_name) {
   for (auto& function : prepared.control_flow.functions) {
-    if (function.function_name == function_name) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) ==
+        function_name) {
       return &function;
     }
   }
@@ -61,6 +63,21 @@ bir::Block* find_block(bir::Function& function, const char* label) {
     }
   }
   return nullptr;
+}
+
+std::string_view block_label(const prepare::PreparedBirModule& prepared,
+                             c4c::BlockLabelId label) {
+  return prepare::prepared_block_label(prepared.names, label);
+}
+
+c4c::BlockLabelId intern_block_label(prepare::PreparedBirModule& prepared,
+                                     std::string_view label) {
+  return prepared.names.block_labels.intern(label);
+}
+
+c4c::SlotNameId intern_slot_name(prepare::PreparedBirModule& prepared,
+                                 std::string_view name) {
+  return prepared.names.slot_names.intern(name);
 }
 
 bir::Module make_x86_param_passthrough_module() {
@@ -2014,13 +2031,13 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
   }
   true_carrier->label = renamed_true_label;
   false_carrier->label = renamed_false_label;
-  branch_condition.true_label = renamed_true_label;
-  branch_condition.false_label = renamed_false_label;
+  branch_condition.true_label = intern_block_label(prepared, renamed_true_label);
+  branch_condition.false_label = intern_block_label(prepared, renamed_false_label);
   entry_block->terminator.true_label = "carrier.raw.zero";
   entry_block->terminator.false_label = "carrier.raw.nonzero";
 
-  join_transfer.source_true_incoming_label = "contract.true_lane";
-  join_transfer.source_false_incoming_label = "contract.false_lane";
+  join_transfer.source_true_incoming_label = intern_block_label(prepared, "contract.true_lane");
+  join_transfer.source_false_incoming_label = intern_block_label(prepared, "contract.false_lane");
   join_transfer.edge_transfers[true_transfer_index].predecessor_label =
       *join_transfer.source_true_incoming_label;
   join_transfer.edge_transfers[false_transfer_index].predecessor_label =
@@ -2028,19 +2045,20 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
   join_transfer.incomings.push_back(
       bir::PhiIncoming{.label = "contract.extra_lane", .value = bir::Value::immediate_i32(77)});
   join_transfer.edge_transfers.push_back(prepare::PreparedEdgeValueTransfer{
-      .predecessor_label = "contract.extra_lane",
+      .predecessor_label = intern_block_label(prepared, "contract.extra_lane"),
       .successor_label = join_transfer.join_block_label,
       .incoming_value = bir::Value::immediate_i32(77),
       .destination_value = join_transfer.result,
       .storage_name = std::nullopt,
   });
   for (auto& incoming : join_transfer.incomings) {
-    if (incoming.label == *join_transfer.source_true_incoming_label ||
+    if (incoming.label == block_label(prepared, *join_transfer.source_true_incoming_label) ||
         incoming.label == renamed_true_label) {
-      incoming.label = *join_transfer.source_true_incoming_label;
-    } else if (incoming.label == *join_transfer.source_false_incoming_label ||
+      incoming.label = std::string(block_label(prepared, *join_transfer.source_true_incoming_label));
+    } else if (incoming.label == block_label(prepared, *join_transfer.source_false_incoming_label) ||
                incoming.label == renamed_false_label) {
-      incoming.label = *join_transfer.source_false_incoming_label;
+      incoming.label =
+          std::string(block_label(prepared, *join_transfer.source_false_incoming_label));
     }
   }
 
@@ -2052,11 +2070,11 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
       bir::Value::named(bir::TypeKind::I32, "carrier.join.contract.result");
   if (use_edge_store_slot_carrier) {
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-    join_transfer.storage_name = "%contract.join.slot";
+    join_transfer.storage_name = intern_slot_name(prepared, "%contract.join.slot");
     join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
     join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
     function.local_slots.push_back(bir::LocalSlot{
-        .name = *join_transfer.storage_name,
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
         .type = bir::TypeKind::I32,
         .size_bytes = 4,
         .align_bytes = 4,
@@ -2064,7 +2082,8 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
     });
     join_block->insts[join_select_index] = bir::LoadLocalInst{
         .result = renamed_carrier_result,
-        .slot_name = *join_transfer.storage_name,
+        .slot_name =
+            std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
     };
   } else {
     join_select->result = renamed_carrier_result;
@@ -2183,9 +2202,10 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
     join_transfer.edge_transfers[true_transfer_index].incoming_value = true_chain_selected;
     join_transfer.edge_transfers[false_transfer_index].incoming_value = false_chain_selected;
     for (auto& incoming : join_transfer.incomings) {
-      if (incoming.label == *join_transfer.source_true_incoming_label) {
+      if (incoming.label == block_label(prepared, *join_transfer.source_true_incoming_label)) {
         incoming.value = true_chain_selected;
-      } else if (incoming.label == *join_transfer.source_false_incoming_label) {
+      } else if (incoming.label ==
+                 block_label(prepared, *join_transfer.source_false_incoming_label)) {
         incoming.value = false_chain_selected;
       }
     }
@@ -2269,25 +2289,26 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
       join_transfer.edge_transfers[false_transfer_index].incoming_value = false_global_root;
     }
     for (auto& incoming : join_transfer.incomings) {
-      if (incoming.label == *join_transfer.source_true_incoming_label) {
+      if (incoming.label == block_label(prepared, *join_transfer.source_true_incoming_label)) {
         incoming.value = join_transfer.edge_transfers[true_transfer_index].incoming_value;
-      } else if (incoming.label == *join_transfer.source_false_incoming_label) {
+      } else if (incoming.label ==
+                 block_label(prepared, *join_transfer.source_false_incoming_label)) {
         incoming.value = join_transfer.edge_transfers[false_transfer_index].incoming_value;
       }
     }
   }
 
   mutable_control_flow->branch_conditions.push_back(prepare::PreparedBranchCondition{
-      .function_name = function_name,
-      .block_label = "dead.cond",
+      .function_name = prepared.names.function_names.intern(function_name),
+      .block_label = intern_block_label(prepared, "dead.cond"),
       .kind = prepare::PreparedBranchConditionKind::MaterializedBool,
       .condition_value = bir::Value::named(bir::TypeKind::I32, "dead.cond"),
-      .true_label = "dead.true",
-      .false_label = "dead.false",
+      .true_label = intern_block_label(prepared, "dead.true"),
+      .false_label = intern_block_label(prepared, "dead.false"),
   });
   mutable_control_flow->join_transfers.push_back(prepare::PreparedJoinTransfer{
-      .function_name = function_name,
-      .join_block_label = "dead.join",
+      .function_name = prepared.names.function_names.intern(function_name),
+      .join_block_label = intern_block_label(prepared, "dead.join"),
       .result = bir::Value::named(bir::TypeKind::I32, "dead.result"),
       .kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot,
   });
@@ -3579,7 +3600,7 @@ int check_materialized_compare_join_branches_publish_prepared_return_contexts(
   }
 
   const auto compare_join_context = prepare::find_prepared_param_zero_materialized_compare_join_context(
-      *control_flow, function, *entry_block, function.params.front(), true);
+      prepared.names, *control_flow, function, *entry_block, function.params.front(), true);
   if (!compare_join_context.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the materialized compare-join context")
@@ -3659,15 +3680,17 @@ int check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels
   }
 
   const auto* entry_branch_condition =
-      prepare::find_prepared_branch_condition(*control_flow, entry_block->label);
+      prepare::find_prepared_branch_condition(prepared.names, *control_flow, entry_block->label);
   if (entry_branch_condition == nullptr) {
     return fail((std::string(failure_context) +
                  ": prepared compare-join fixture no longer exposes entry branch metadata")
                     .c_str());
   }
 
-  const std::string expected_true_label = entry_branch_condition->true_label;
-  const std::string expected_false_label = entry_branch_condition->false_label;
+  const std::string expected_true_label =
+      std::string(block_label(prepared, entry_branch_condition->true_label));
+  const std::string expected_false_label =
+      std::string(block_label(prepared, entry_branch_condition->false_label));
   entry_block->terminator.true_label = "carrier.compare.true";
   entry_block->terminator.false_label = "carrier.compare.false";
   if (replace_entry_compare_with_non_compare) {
@@ -3725,11 +3748,12 @@ int check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels
 
   if (use_edge_store_slot_carrier) {
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-    join_transfer.storage_name = "%contract.branch.plan.join.slot";
+    join_transfer.storage_name =
+        intern_slot_name(prepared, "%contract.branch.plan.join.slot");
     join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
     join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
     function.local_slots.push_back(bir::LocalSlot{
-        .name = *join_transfer.storage_name,
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
         .type = bir::TypeKind::I32,
         .size_bytes = 4,
         .align_bytes = 4,
@@ -3741,7 +3765,8 @@ int check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels
         bir::Value::named(bir::TypeKind::I32, "carrier.join.branch.plan.edge.slot");
     join_block->insts[join_select_index] = bir::LoadLocalInst{
         .result = renamed_carrier_result,
-        .slot_name = *join_transfer.storage_name,
+        .slot_name =
+            std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
     };
     for (auto& inst : join_block->insts) {
       if (auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
@@ -3759,7 +3784,7 @@ int check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels
 
   const auto prepared_compare_join_branches =
       prepare::find_prepared_param_zero_materialized_compare_join_branches(
-          *control_flow, function, *entry_block, function.params.front(), false);
+          prepared.names, *control_flow, function, *entry_block, function.params.front(), false);
   if (!prepared_compare_join_branches.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the materialized compare-join branch packet")
@@ -3780,7 +3805,7 @@ int check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels
 
   const auto prepared_branch_plan =
       prepare::find_prepared_materialized_compare_join_branch_plan(
-          *prepared_compare_join_branches);
+          prepared.names, *prepared_compare_join_branches);
   if (!prepared_branch_plan.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer publishes the compare-join branch plan")
@@ -3853,7 +3878,7 @@ int check_materialized_compare_join_route_ignores_non_compare_entry_carrier_impl
   }
 
   const auto* entry_branch_condition =
-      prepare::find_prepared_branch_condition(*control_flow, entry_block->label);
+      prepare::find_prepared_branch_condition(prepared.names, *control_flow, entry_block->label);
   if (entry_branch_condition == nullptr || !entry_branch_condition->predicate.has_value() ||
       !entry_branch_condition->lhs.has_value() || !entry_branch_condition->rhs.has_value()) {
     return fail((std::string(failure_context) +
@@ -3915,11 +3940,11 @@ int check_materialized_compare_join_route_ignores_non_compare_entry_carrier_impl
     }
 
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-    join_transfer.storage_name = "%contract.route.join.slot";
+    join_transfer.storage_name = prepared.names.slot_names.intern("%contract.route.join.slot");
     join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
     join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
     function.local_slots.push_back(bir::LocalSlot{
-        .name = *join_transfer.storage_name,
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
         .type = bir::TypeKind::I32,
         .size_bytes = 4,
         .align_bytes = 4,
@@ -3928,7 +3953,8 @@ int check_materialized_compare_join_route_ignores_non_compare_entry_carrier_impl
 
     join_block->insts[join_select_index] = bir::LoadLocalInst{
         .result = bir::Value::named(bir::TypeKind::I32, "carrier.join.route.edge.slot"),
-        .slot_name = *join_transfer.storage_name,
+        .slot_name = std::string(prepare::prepared_slot_name(prepared.names,
+                                                             *join_transfer.storage_name)),
     };
     const auto rewritten_carrier_result =
         bir::Value::named(bir::TypeKind::I32, "carrier.join.route.edge.slot");
@@ -3948,7 +3974,13 @@ int check_materialized_compare_join_route_ignores_non_compare_entry_carrier_impl
 
   const auto resolved_render_contract =
       prepare::find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
-          prepared.module, *control_flow, function, *entry_block, function.params.front(), false);
+          prepared.names,
+          prepared.module,
+          *control_flow,
+          function,
+          *entry_block,
+          function.params.front(),
+          false);
   if (!resolved_render_contract.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper stopped resolving the prepared compare-join render contract when the entry compare carrier drifts")
@@ -4042,11 +4074,11 @@ int check_materialized_compare_join_route_requires_authoritative_prepared_branch
     }
 
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-    join_transfer.storage_name = "%contract.route.join.slot";
+    join_transfer.storage_name = intern_slot_name(prepared, "%contract.route.join.slot");
     join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
     join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
     function.local_slots.push_back(bir::LocalSlot{
-        .name = *join_transfer.storage_name,
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
         .type = bir::TypeKind::I32,
         .size_bytes = 4,
         .align_bytes = 4,
@@ -4058,7 +4090,8 @@ int check_materialized_compare_join_route_requires_authoritative_prepared_branch
         bir::Value::named(bir::TypeKind::I32, "carrier.join.route.edge.slot");
     join_block->insts[join_select_index] = bir::LoadLocalInst{
         .result = rewritten_carrier_result,
-        .slot_name = *join_transfer.storage_name,
+        .slot_name =
+            std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
     };
     for (auto& inst : join_block->insts) {
       if (auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
@@ -4171,11 +4204,11 @@ int check_minimal_compare_branch_route_rejects_authoritative_join_contract_impl(
     }
 
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-    join_transfer.storage_name = "%contract.route.join.slot";
+    join_transfer.storage_name = intern_slot_name(prepared, "%contract.route.join.slot");
     join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
     join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
     function.local_slots.push_back(bir::LocalSlot{
-        .name = *join_transfer.storage_name,
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
         .type = bir::TypeKind::I32,
         .size_bytes = 4,
         .align_bytes = 4,
@@ -4246,21 +4279,23 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
   }
 
   const auto* entry_branch_condition =
-      prepare::find_prepared_branch_condition(*control_flow, entry_block->label);
+      prepare::find_prepared_branch_condition(prepared.names, *control_flow, entry_block->label);
   if (entry_branch_condition == nullptr) {
     return fail((std::string(failure_context) +
                  ": prepared compare-join fixture no longer exposes entry branch metadata")
                     .c_str());
   }
 
-  const std::string expected_true_label = entry_branch_condition->true_label;
-  const std::string expected_false_label = entry_branch_condition->false_label;
+  const std::string expected_true_label =
+      std::string(block_label(prepared, entry_branch_condition->true_label));
+  const std::string expected_false_label =
+      std::string(block_label(prepared, entry_branch_condition->false_label));
   entry_block->terminator.true_label = "carrier.compare.true";
   entry_block->terminator.false_label = "carrier.compare.false";
 
   const auto prepared_compare_join_branches =
       prepare::find_prepared_param_zero_materialized_compare_join_branches(
-          *control_flow, function, *entry_block, function.params.front(), false);
+          prepared.names, *control_flow, function, *entry_block, function.params.front(), false);
   if (!prepared_compare_join_branches.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the materialized compare-join branch packet")
@@ -4269,7 +4304,7 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
 
   const auto render_contract =
       prepare::find_prepared_materialized_compare_join_render_contract(
-          *prepared_compare_join_branches);
+          prepared.names, *prepared_compare_join_branches);
   if (!render_contract.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer publishes the compare-join render contract")
@@ -4278,7 +4313,7 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
 
   const auto expected_branch_plan =
       prepare::find_prepared_materialized_compare_join_branch_plan(
-          *prepared_compare_join_branches);
+          prepared.names, *prepared_compare_join_branches);
   if (!expected_branch_plan.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer publishes the compare-join branch plan")
@@ -4340,7 +4375,7 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
   }
   const auto directly_resolved_render_contract =
       prepare::find_prepared_resolved_materialized_compare_join_render_contract(
-          prepared.module, *prepared_compare_join_branches);
+          prepared.names, prepared.module, *prepared_compare_join_branches);
   if (!directly_resolved_render_contract.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper stopped publishing the direct resolved compare-join contract")
@@ -4348,7 +4383,13 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
   }
   const auto direct_param_zero_resolved_render_contract =
       prepare::find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
-          prepared.module, *control_flow, function, *entry_block, function.params.front(), false);
+          prepared.names,
+          prepared.module,
+          *control_flow,
+          function,
+          *entry_block,
+          function.params.front(),
+          false);
   if (!direct_param_zero_resolved_render_contract.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper stopped publishing the direct param-zero resolved compare-join contract")
@@ -4639,11 +4680,11 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
 
   if (use_edge_store_slot_carrier) {
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-    join_transfer.storage_name = "%contract.immediate.join.slot";
+    join_transfer.storage_name = intern_slot_name(prepared, "%contract.immediate.join.slot");
     join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
     join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
     function.local_slots.push_back(bir::LocalSlot{
-        .name = *join_transfer.storage_name,
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
         .type = bir::TypeKind::I32,
         .size_bytes = 4,
         .align_bytes = 4,
@@ -4655,7 +4696,8 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
         bir::Value::named(bir::TypeKind::I32, "carrier.join.immediate.edge.slot");
     join_block->insts[join_select_index] = bir::LoadLocalInst{
         .result = renamed_carrier_result,
-        .slot_name = *join_transfer.storage_name,
+        .slot_name =
+            std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
     };
     for (auto& inst : join_block->insts) {
       if (auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
@@ -4722,17 +4764,19 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
     join_transfer.edge_transfers[true_transfer_index].incoming_value = true_chain_selected;
     join_transfer.edge_transfers[false_transfer_index].incoming_value = false_chain_selected;
     for (auto& incoming : join_transfer.incomings) {
-      if (incoming.label == join_transfer.edge_transfers[true_transfer_index].predecessor_label) {
+      if (incoming.label ==
+          block_label(prepared, join_transfer.edge_transfers[true_transfer_index].predecessor_label)) {
         incoming.value = true_chain_selected;
       } else if (incoming.label ==
-                 join_transfer.edge_transfers[false_transfer_index].predecessor_label) {
+                 block_label(prepared,
+                             join_transfer.edge_transfers[false_transfer_index].predecessor_label)) {
         incoming.value = false_chain_selected;
       }
     }
   }
 
   const auto compare_join_context = prepare::find_prepared_param_zero_materialized_compare_join_context(
-      *control_flow, function, *entry_block, function.params.front(), true);
+      prepared.names, *control_flow, function, *entry_block, function.params.front(), true);
   if (!compare_join_context.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the materialized compare-join context")
@@ -4919,9 +4963,17 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
   }
 
   auto* true_predecessor =
-      find_block(function, join_transfer.edge_transfers[true_transfer_index].predecessor_label.c_str());
+      find_block(function,
+                 std::string(block_label(
+                                 prepared,
+                                 join_transfer.edge_transfers[true_transfer_index].predecessor_label))
+                     .c_str());
   auto* false_predecessor =
-      find_block(function, join_transfer.edge_transfers[false_transfer_index].predecessor_label.c_str());
+      find_block(function,
+                 std::string(block_label(
+                                 prepared,
+                                 join_transfer.edge_transfers[false_transfer_index].predecessor_label))
+                     .c_str());
   if (true_predecessor == nullptr || false_predecessor == nullptr ||
       true_predecessor == join_block || false_predecessor == join_block) {
     return fail((std::string(failure_context) +
@@ -4931,11 +4983,11 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
 
   if (use_edge_store_slot_carrier) {
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-    join_transfer.storage_name = "%contract.global.join.slot";
+    join_transfer.storage_name = intern_slot_name(prepared, "%contract.global.join.slot");
     join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
     join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
     function.local_slots.push_back(bir::LocalSlot{
-        .name = *join_transfer.storage_name,
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
         .type = bir::TypeKind::I32,
         .size_bytes = 4,
         .align_bytes = 4,
@@ -4947,7 +4999,8 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
         bir::Value::named(bir::TypeKind::I32, "carrier.join.global.edge.slot");
     join_block->insts[join_select_index] = bir::LoadLocalInst{
         .result = renamed_carrier_result,
-        .slot_name = *join_transfer.storage_name,
+        .slot_name =
+            std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
     };
     for (auto& inst : join_block->insts) {
       if (auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
@@ -5042,10 +5095,12 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
     join_transfer.edge_transfers[false_transfer_index].incoming_value = false_global_root;
   }
   for (auto& incoming : join_transfer.incomings) {
-    if (incoming.label == join_transfer.edge_transfers[true_transfer_index].predecessor_label) {
+    if (incoming.label ==
+        block_label(prepared, join_transfer.edge_transfers[true_transfer_index].predecessor_label)) {
       incoming.value = join_transfer.edge_transfers[true_transfer_index].incoming_value;
     } else if (incoming.label ==
-               join_transfer.edge_transfers[false_transfer_index].predecessor_label) {
+               block_label(prepared,
+                           join_transfer.edge_transfers[false_transfer_index].predecessor_label)) {
       incoming.value = join_transfer.edge_transfers[false_transfer_index].incoming_value;
     }
   }
@@ -5075,7 +5130,7 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
   }
 
   const auto compare_join_context = prepare::find_prepared_param_zero_materialized_compare_join_context(
-      *control_flow, function, *entry_block, function.params.front(), true);
+      prepared.names, *control_flow, function, *entry_block, function.params.front(), true);
   if (!compare_join_context.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the materialized compare-join context")
@@ -5203,7 +5258,7 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
 
   const auto prepared_compare_join_packet =
       prepare::find_prepared_param_zero_materialized_compare_join_branches(
-          *mutable_control_flow, function, *entry_block, function.params.front(), true);
+          prepared.names, *mutable_control_flow, function, *entry_block, function.params.front(), true);
   if (!prepared_compare_join_packet.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer publishes the compare-join packet for resolved arm ownership")
@@ -5211,7 +5266,7 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
   }
   const auto resolved_render_contract =
       prepare::find_prepared_resolved_materialized_compare_join_render_contract(
-          prepared.module, *prepared_compare_join_packet);
+          prepared.names, prepared.module, *prepared_compare_join_packet);
   if (!resolved_render_contract.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer resolves compare-join arm globals through the render contract")

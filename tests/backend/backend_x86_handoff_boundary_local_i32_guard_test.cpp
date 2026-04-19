@@ -35,7 +35,8 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
     const prepare::PreparedBirModule& prepared,
     const char* function_name) {
   for (const auto& function : prepared.control_flow.functions) {
-    if (function.function_name == function_name) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) ==
+        function_name) {
       return &function;
     }
   }
@@ -45,7 +46,8 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
 prepare::PreparedControlFlowFunction* find_control_flow_function(prepare::PreparedBirModule& prepared,
                                                                  const char* function_name) {
   for (auto& function : prepared.control_flow.functions) {
-    if (function.function_name == function_name) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) ==
+        function_name) {
       return &function;
     }
   }
@@ -438,7 +440,7 @@ int check_local_i32_guard_route_requires_authoritative_prepared_branch_labels(
   }
 
   auto& branch_condition = control_flow->branch_conditions.front();
-  branch_condition.false_label = "drifted.guard.false";
+  branch_condition.false_label = prepared.names.block_labels.intern("drifted.guard.false");
 
   try {
     (void)c4c::backend::x86::emit_prepared_module(prepared);
@@ -491,7 +493,7 @@ int check_local_i32_guard_helper_publishes_prepared_compare_contract(const bir::
   entry_compare->rhs = bir::Value::immediate_i32(9);
 
   const auto* prepared_branch_condition = prepare::find_prepared_i32_immediate_branch_condition(
-      *control_flow, entry_block->label, "loaded");
+      prepared.names, *control_flow, entry_block->label, "loaded");
   if (prepared_branch_condition == nullptr) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the authoritative local guard compare contract")

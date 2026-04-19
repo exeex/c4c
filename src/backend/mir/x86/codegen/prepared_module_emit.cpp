@@ -90,12 +90,8 @@ std::string emit_prepared_module(
   };
   const auto find_control_flow_function =
       [&]() -> const c4c::backend::prepare::PreparedControlFlowFunction* {
-    for (const auto& control_flow_function : module.control_flow.functions) {
-      if (control_flow_function.function_name == function.name) {
-        return &control_flow_function;
-      }
-    }
-    return nullptr;
+    return c4c::backend::prepare::find_prepared_control_flow_function(
+        module.names, module.control_flow, function.name);
   };
   const auto find_addressing_function =
       [&]() -> const c4c::backend::prepare::PreparedAddressingFunction* {
@@ -455,7 +451,7 @@ std::string emit_prepared_module(
       !entry.terminator.value.has_value()) {
     if (const auto rendered_compare_driven_entry =
             c4c::backend::x86::render_prepared_compare_driven_entry_if_supported(
-        module.module,
+        module,
         find_control_flow_function(),
         function,
         entry,
@@ -477,7 +473,12 @@ std::string emit_prepared_module(
     }
     if (const auto rendered_countdown_entry =
             c4c::backend::x86::render_prepared_countdown_entry_routes_if_supported(
-                function, entry, find_control_flow_function(), prepared_arch, asm_prefix);
+                function,
+                entry,
+                &module.names,
+                find_control_flow_function(),
+                prepared_arch,
+                asm_prefix);
         rendered_countdown_entry.has_value()) {
       return *rendered_countdown_entry;
     }

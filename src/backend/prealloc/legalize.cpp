@@ -507,25 +507,26 @@ struct PhiMaterializeContext {
   std::size_t next_temp_index = 0;
 };
 
-PreparedJoinTransfer make_join_transfer(std::string_view function_name,
-                                        std::string_view join_block_label,
+PreparedJoinTransfer make_join_transfer(PreparedNameTables& names,
+                                        FunctionNameId function_name,
+                                        BlockLabelId join_block_label,
                                         const bir::PhiInst& phi,
                                         PreparedJoinTransferKind kind,
-                                        std::optional<std::string> storage_name = std::nullopt) {
+                                        std::optional<SlotNameId> storage_name = std::nullopt) {
   std::vector<PreparedEdgeValueTransfer> edge_transfers;
   edge_transfers.reserve(phi.incomings.size());
   for (const auto& incoming : phi.incomings) {
     edge_transfers.push_back(PreparedEdgeValueTransfer{
-        .predecessor_label = incoming.label,
-        .successor_label = std::string(join_block_label),
+        .predecessor_label = names.block_labels.intern(incoming.label),
+        .successor_label = join_block_label,
         .incoming_value = incoming.value,
         .destination_value = phi.result,
         .storage_name = storage_name,
     });
   }
   return PreparedJoinTransfer{
-      .function_name = std::string(function_name),
-      .join_block_label = std::string(join_block_label),
+      .function_name = function_name,
+      .join_block_label = join_block_label,
       .result = phi.result,
       .kind = kind,
       .storage_name = std::move(storage_name),
@@ -751,6 +752,7 @@ std::optional<bir::Value> materialize_value(const bir::Value& value, PhiMaterial
 }
 
 bool try_materialize_root_phi_block(bir::Function* function,
+                                    PreparedNameTables& names,
                                     const BlockAnalysis& analysis,
                                     bir::Block* block,
                                     std::vector<PreparedJoinTransfer>* join_transfers) {
@@ -803,8 +805,14 @@ bool try_materialize_root_phi_block(bir::Function* function,
       return false;
     }
     if (join_transfers != nullptr) {
+      const FunctionNameId function_name_id = names.function_names.intern(function->name);
+      const BlockLabelId block_label_id = names.block_labels.intern(block->label);
       block_join_transfers.push_back(make_join_transfer(
-          function->name, block->label, *phi, PreparedJoinTransferKind::SelectMaterialization));
+          names,
+          function_name_id,
+          block_label_id,
+          *phi,
+          PreparedJoinTransferKind::SelectMaterialization));
     }
   }
 
@@ -838,6 +846,7 @@ bool try_materialize_root_phi_block(bir::Function* function,
 }
 
 void materialize_reducible_phi_trees(bir::Function* function,
+                                     PreparedNameTables& names,
                                      std::vector<PreparedJoinTransfer>* join_transfers) {
   while (true) {
     const auto analysis = analyze_function(function);
@@ -848,19 +857,21 @@ void materialize_reducible_phi_trees(bir::Function* function,
       }
     }
     if (root_block == nullptr ||
-        !try_materialize_root_phi_block(function, analysis, root_block, join_transfers)) {
+        !try_materialize_root_phi_block(function, names, analysis, root_block, join_transfers)) {
       return;
     }
   }
 }
 
-void lower_phi_nodes(bir::Function* function, std::vector<PreparedJoinTransfer>* join_transfers) {
+void lower_phi_nodes(bir::Function* function,
+                     PreparedNameTables& names,
+                     std::vector<PreparedJoinTransfer>* join_transfers) {
   struct PhiLoweringPlan {
     std::string slot_name;
     std::vector<bir::PhiIncoming> incomings;
   };
 
-  materialize_reducible_phi_trees(function, join_transfers);
+  materialize_reducible_phi_trees(function, names, join_transfers);
 
   std::unordered_map<std::string, std::vector<PhiLoweringPlan>> phis_by_block;
   std::unordered_set<std::string> used_slot_names;
@@ -908,11 +919,13 @@ void lower_phi_nodes(bir::Function* function, std::vector<PreparedJoinTransfer>*
         if (join_transfers != nullptr) {
           const auto transfer_kind =
               classify_phi_join_transfer_kind(*function, block.label, *phi);
-          join_transfers->push_back(make_join_transfer(function->name,
-                                                       block.label,
-                                                       *phi,
-                                                       transfer_kind,
-                                                       slot_name));
+          join_transfers->push_back(make_join_transfer(
+              names,
+              names.function_names.intern(function->name),
+              names.block_labels.intern(block.label),
+              *phi,
+              transfer_kind,
+              names.slot_names.intern(slot_name)));
         }
         rewritten.push_back(bir::LoadLocalInst{
             .result = phi->result,
@@ -954,14 +967,15 @@ void lower_phi_nodes(bir::Function* function, std::vector<PreparedJoinTransfer>*
   }
 }
 
-PreparedBranchCondition make_branch_condition(const std::string& function_name,
+PreparedBranchCondition make_branch_condition(PreparedNameTables& names,
+                                              FunctionNameId function_name,
                                               const bir::Block& block) {
   PreparedBranchCondition condition{
       .function_name = function_name,
-      .block_label = block.label,
+      .block_label = names.block_labels.intern(block.label),
       .condition_value = block.terminator.condition,
-      .true_label = block.terminator.true_label,
-      .false_label = block.terminator.false_label,
+      .true_label = names.block_labels.intern(block.terminator.true_label),
+      .false_label = names.block_labels.intern(block.terminator.false_label),
   };
   if (const auto* compare = find_compare_for_condition(block, block.terminator.condition);
       compare != nullptr) {
@@ -1018,10 +1032,15 @@ std::optional<std::string> find_linear_join_predecessor(
 }
 
 std::optional<std::size_t> find_join_transfer_edge_index_by_predecessor(
+    const PreparedNameTables& names,
     const PreparedJoinTransfer& transfer,
     std::string_view predecessor_label) {
+  const BlockLabelId predecessor_label_id = names.block_labels.find(predecessor_label);
+  if (predecessor_label_id == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
   for (std::size_t index = 0; index < transfer.edge_transfers.size(); ++index) {
-    if (transfer.edge_transfers[index].predecessor_label == predecessor_label) {
+    if (transfer.edge_transfers[index].predecessor_label == predecessor_label_id) {
       return index;
     }
   }
@@ -1029,6 +1048,7 @@ std::optional<std::size_t> find_join_transfer_edge_index_by_predecessor(
 }
 
 void annotate_branch_owned_join_transfers(
+    PreparedNameTables& names,
     const bir::Function& function,
     const std::vector<PreparedBranchCondition>& branch_conditions,
     std::vector<PreparedJoinTransfer>* join_transfers) {
@@ -1048,29 +1068,33 @@ void annotate_branch_owned_join_transfers(
     }
 
     struct CandidateMapping {
-      std::string source_branch_block_label;
+      BlockLabelId source_branch_block_label = kInvalidBlockLabel;
       std::size_t true_transfer_index = 0;
       std::size_t false_transfer_index = 0;
-      std::string true_incoming_label;
-      std::string false_incoming_label;
+      BlockLabelId true_incoming_label = kInvalidBlockLabel;
+      BlockLabelId false_incoming_label = kInvalidBlockLabel;
     };
 
     std::optional<CandidateMapping> candidate;
     bool ambiguous = false;
     for (const auto& branch_condition : branch_conditions) {
       const auto true_incoming_label = find_linear_join_predecessor(
-          blocks_by_label, branch_condition.true_label, transfer.join_block_label);
+          blocks_by_label,
+          prepared_block_label(names, branch_condition.true_label),
+          prepared_block_label(names, transfer.join_block_label));
       const auto false_incoming_label = find_linear_join_predecessor(
-          blocks_by_label, branch_condition.false_label, transfer.join_block_label);
+          blocks_by_label,
+          prepared_block_label(names, branch_condition.false_label),
+          prepared_block_label(names, transfer.join_block_label));
       if (!true_incoming_label.has_value() || !false_incoming_label.has_value() ||
           *true_incoming_label == *false_incoming_label) {
         continue;
       }
 
       const auto true_transfer_index =
-          find_join_transfer_edge_index_by_predecessor(transfer, *true_incoming_label);
+          find_join_transfer_edge_index_by_predecessor(names, transfer, *true_incoming_label);
       const auto false_transfer_index =
-          find_join_transfer_edge_index_by_predecessor(transfer, *false_incoming_label);
+          find_join_transfer_edge_index_by_predecessor(names, transfer, *false_incoming_label);
       if (!true_transfer_index.has_value() || !false_transfer_index.has_value() ||
           *true_transfer_index == *false_transfer_index) {
         continue;
@@ -1085,8 +1109,8 @@ void annotate_branch_owned_join_transfers(
           .source_branch_block_label = branch_condition.block_label,
           .true_transfer_index = *true_transfer_index,
           .false_transfer_index = *false_transfer_index,
-          .true_incoming_label = *true_incoming_label,
-          .false_incoming_label = *false_incoming_label,
+          .true_incoming_label = names.block_labels.intern(*true_incoming_label),
+          .false_incoming_label = names.block_labels.intern(*false_incoming_label),
       };
     }
 
@@ -1101,6 +1125,7 @@ void annotate_branch_owned_join_transfers(
 }
 
 void publish_short_circuit_continuation_branch_conditions(
+    PreparedNameTables& names,
     const bir::Function& function,
     PreparedControlFlowFunction* function_control_flow) {
   if (function_control_flow == nullptr ||
@@ -1113,26 +1138,31 @@ void publish_short_circuit_continuation_branch_conditions(
       function_control_flow->branch_conditions.size();
   for (std::size_t index = 0; index < original_branch_condition_count; ++index) {
     const auto& entry_branch_condition = function_control_flow->branch_conditions[index];
-    const auto* entry_block = find_block(function, entry_branch_condition.block_label);
+    const auto* entry_block =
+        find_block(function, prepared_block_label(names, entry_branch_condition.block_label));
     if (entry_block == nullptr) {
       continue;
     }
 
-    const auto prepared_entry_targets =
-        find_prepared_compare_branch_target_labels(entry_branch_condition, *entry_block);
+      const auto prepared_entry_targets =
+        find_prepared_compare_branch_target_labels(names, entry_branch_condition, *entry_block);
     if (!prepared_entry_targets.has_value()) {
       continue;
     }
 
     const auto short_circuit_join_context =
         find_prepared_short_circuit_join_context(
-            *function_control_flow, function, entry_branch_condition.block_label);
+            names,
+            *function_control_flow,
+            function,
+            prepared_block_label(names, entry_branch_condition.block_label));
     if (!short_circuit_join_context.has_value()) {
       continue;
     }
 
     const auto prepared_branch_plan =
-        find_prepared_short_circuit_branch_plan(*short_circuit_join_context,
+        find_prepared_short_circuit_branch_plan(names,
+                                                *short_circuit_join_context,
                                                 *prepared_entry_targets);
     if (!prepared_branch_plan.has_value()) {
       continue;
@@ -1144,7 +1174,8 @@ void publish_short_circuit_continuation_branch_conditions(
         continue;
       }
 
-      if (find_prepared_branch_condition(*function_control_flow, target->block_label) != nullptr) {
+      if (find_prepared_branch_condition(names, *function_control_flow, target->block_label) !=
+          nullptr) {
         continue;
       }
 
@@ -1159,8 +1190,8 @@ void publish_short_circuit_continuation_branch_conditions(
       }
 
       function_control_flow->branch_conditions.push_back(PreparedBranchCondition{
-          .function_name = function.name,
-          .block_label = continuation_block->label,
+          .function_name = function_control_flow->function_name,
+          .block_label = names.block_labels.intern(continuation_block->label),
           .kind = PreparedBranchConditionKind::FusedCompare,
           .condition_value = continuation_compare->result,
           .predicate = continuation_compare->opcode,
@@ -1168,14 +1199,15 @@ void publish_short_circuit_continuation_branch_conditions(
           .lhs = continuation_compare->lhs,
           .rhs = continuation_compare->rhs,
           .can_fuse_with_branch = true,
-          .true_label = std::string(target->continuation->true_label),
-          .false_label = std::string(target->continuation->false_label),
+          .true_label = names.block_labels.intern(target->continuation->true_label),
+          .false_label = names.block_labels.intern(target->continuation->false_label),
       });
     }
   }
 }
 
 void collect_select_materialized_join_transfers(
+    PreparedNameTables& names,
     const bir::Function& function,
     const std::vector<PreparedBranchCondition>& branch_conditions,
     std::vector<PreparedJoinTransfer>* join_transfers) {
@@ -1190,7 +1222,7 @@ void collect_select_materialized_join_transfers(
 
   std::unordered_set<std::string_view> existing_join_blocks;
   for (const auto& transfer : *join_transfers) {
-    existing_join_blocks.insert(transfer.join_block_label);
+    existing_join_blocks.insert(prepared_block_label(names, transfer.join_block_label));
   }
 
   for (const auto& block : function.blocks) {
@@ -1213,16 +1245,18 @@ void collect_select_materialized_join_transfers(
       }
 
       const auto true_incoming_label =
-          find_linear_join_predecessor(blocks_by_label, branch_condition.true_label, block.label);
+          find_linear_join_predecessor(
+              blocks_by_label, prepared_block_label(names, branch_condition.true_label), block.label);
       const auto false_incoming_label =
-          find_linear_join_predecessor(blocks_by_label, branch_condition.false_label, block.label);
+          find_linear_join_predecessor(
+              blocks_by_label, prepared_block_label(names, branch_condition.false_label), block.label);
       if (!true_incoming_label.has_value() || !false_incoming_label.has_value()) {
         continue;
       }
 
       join_transfers->push_back(PreparedJoinTransfer{
-          .function_name = function.name,
-          .join_block_label = block.label,
+          .function_name = names.function_names.intern(function.name),
+          .join_block_label = names.block_labels.intern(block.label),
           .result = select->result,
           .kind = PreparedJoinTransferKind::SelectMaterialization,
           .storage_name = std::nullopt,
@@ -1240,15 +1274,15 @@ void collect_select_materialized_join_transfers(
           .edge_transfers =
               {
                   PreparedEdgeValueTransfer{
-                      .predecessor_label = *true_incoming_label,
-                      .successor_label = block.label,
+                      .predecessor_label = names.block_labels.intern(*true_incoming_label),
+                      .successor_label = names.block_labels.intern(block.label),
                       .incoming_value = select->true_value,
                       .destination_value = select->result,
                       .storage_name = std::nullopt,
                   },
                   PreparedEdgeValueTransfer{
-                      .predecessor_label = *false_incoming_label,
-                      .successor_label = block.label,
+                      .predecessor_label = names.block_labels.intern(*false_incoming_label),
+                      .successor_label = names.block_labels.intern(block.label),
                       .incoming_value = select->false_value,
                       .destination_value = select->result,
                       .storage_name = std::nullopt,
@@ -1257,10 +1291,10 @@ void collect_select_materialized_join_transfers(
           .source_branch_block_label = branch_condition.block_label,
           .source_true_transfer_index = 0,
           .source_false_transfer_index = 1,
-          .source_true_incoming_label = *true_incoming_label,
-          .source_false_incoming_label = *false_incoming_label,
+          .source_true_incoming_label = names.block_labels.intern(*true_incoming_label),
+          .source_false_incoming_label = names.block_labels.intern(*false_incoming_label),
       });
-      existing_join_blocks.insert(join_transfers->back().join_block_label);
+      existing_join_blocks.insert(prepared_block_label(names, join_transfers->back().join_block_label));
       break;
     }
   }
@@ -1268,6 +1302,7 @@ void collect_select_materialized_join_transfers(
 
 void legalize_module(const c4c::TargetProfile& target_profile,
                      bir::Module& module,
+                     PreparedNameTables& names,
                      PreparedControlFlow* control_flow) {
   for (auto& global : module.globals) {
     legalize_sized_type(target_profile, global.type, global.size_bytes, global.align_bytes);
@@ -1280,10 +1315,11 @@ void legalize_module(const c4c::TargetProfile& target_profile,
   }
 
   for (auto& function : module.functions) {
+    const FunctionNameId function_name_id = names.function_names.intern(function.name);
     PreparedControlFlowFunction function_control_flow{
-        .function_name = function.name,
+        .function_name = function_name_id,
     };
-    lower_phi_nodes(&function, &function_control_flow.join_transfers);
+    lower_phi_nodes(&function, names, &function_control_flow.join_transfers);
     legalize_sized_type(
         target_profile, function.return_type, function.return_size_bytes, function.return_align_bytes);
     if (!function.return_abi.has_value()) {
@@ -1395,16 +1431,22 @@ void legalize_module(const c4c::TargetProfile& target_profile,
       }
       legalize_value(target_profile, block.terminator.condition);
       if (block.terminator.kind == bir::TerminatorKind::CondBranch) {
-        function_control_flow.branch_conditions.push_back(make_branch_condition(function.name, block));
+        function_control_flow.branch_conditions.push_back(
+            make_branch_condition(names, function_name_id, block));
       }
     }
     collect_select_materialized_join_transfers(
+        names,
         function,
         function_control_flow.branch_conditions,
         &function_control_flow.join_transfers);
     annotate_branch_owned_join_transfers(
-        function, function_control_flow.branch_conditions, &function_control_flow.join_transfers);
-    publish_short_circuit_continuation_branch_conditions(function, &function_control_flow);
+        names,
+        function,
+        function_control_flow.branch_conditions,
+        &function_control_flow.join_transfers);
+    publish_short_circuit_continuation_branch_conditions(
+        names, function, &function_control_flow);
 
     if (control_flow != nullptr &&
         (!function_control_flow.branch_conditions.empty() ||
@@ -1419,7 +1461,8 @@ void legalize_module(const c4c::TargetProfile& target_profile,
 void BirPreAlloc::run_legalize() {
   prepared_.completed_phases.push_back("legalize");
   prepared_.control_flow.functions.clear();
-  legalize_module(prepared_.target_profile, prepared_.module, &prepared_.control_flow);
+  legalize_module(
+      prepared_.target_profile, prepared_.module, prepared_.names, &prepared_.control_flow);
   prepared_.invariants.push_back(PreparedBirInvariant::NoPhiNodes);
   if (should_promote_i1(prepared_.target_profile)) {
     prepared_.invariants.push_back(PreparedBirInvariant::NoTargetFacingI1);

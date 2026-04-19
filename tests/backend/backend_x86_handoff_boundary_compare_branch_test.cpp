@@ -37,7 +37,8 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
     const prepare::PreparedBirModule& prepared,
     const char* function_name) {
   for (const auto& function : prepared.control_flow.functions) {
-    if (function.function_name == function_name) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) ==
+        function_name) {
       return &function;
     }
   }

@@ -36,7 +36,8 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
     const prepare::PreparedBirModule& prepared,
     const char* function_name) {
   for (const auto& function : prepared.control_flow.functions) {
-    if (function.function_name == function_name) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) ==
+        function_name) {
       return &function;
     }
   }
@@ -46,7 +47,8 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
 prepare::PreparedControlFlowFunction* find_control_flow_function(prepare::PreparedBirModule& prepared,
                                                                  const char* function_name) {
   for (auto& function : prepared.control_flow.functions) {
-    if (function.function_name == function_name) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) ==
+        function_name) {
       return &function;
     }
   }
@@ -60,6 +62,26 @@ bir::Block* find_block(bir::Function& function, const char* label) {
     }
   }
   return nullptr;
+}
+
+std::string_view block_label(const prepare::PreparedBirModule& prepared,
+                             c4c::BlockLabelId label) {
+  return prepare::prepared_block_label(prepared.names, label);
+}
+
+c4c::BlockLabelId intern_block_label(prepare::PreparedBirModule& prepared,
+                                     std::string_view label) {
+  return prepared.names.block_labels.intern(label);
+}
+
+c4c::FunctionNameId intern_function_name(prepare::PreparedBirModule& prepared,
+                                         std::string_view name) {
+  return prepared.names.function_names.intern(name);
+}
+
+c4c::SlotNameId intern_slot_name(prepare::PreparedBirModule& prepared,
+                                 std::string_view name) {
+  return prepared.names.slot_names.intern(name);
 }
 
 std::string asm_header(const char* function_name) {
@@ -532,8 +554,8 @@ int check_loop_countdown_route_consumes_prepared_control_flow(const bir::Module&
   mutable_control_flow->branch_conditions.insert(
       mutable_control_flow->branch_conditions.begin(),
       prepare::PreparedBranchCondition{
-          .function_name = function_name,
-          .block_label = "carrier.loop",
+          .function_name = intern_function_name(prepared, function_name),
+          .block_label = intern_block_label(prepared, "carrier.loop"),
           .kind = prepare::PreparedBranchConditionKind::FusedCompare,
           .condition_value = bir::Value::named(bir::TypeKind::I32, "carrier.cond"),
           .predicate = bir::BinaryOpcode::Eq,
@@ -541,34 +563,34 @@ int check_loop_countdown_route_consumes_prepared_control_flow(const bir::Module&
           .lhs = bir::Value::named(bir::TypeKind::I32, "carrier.counter"),
           .rhs = bir::Value::immediate_i32(0),
           .can_fuse_with_branch = true,
-          .true_label = "carrier.body",
-          .false_label = "carrier.exit",
+          .true_label = intern_block_label(prepared, "carrier.body"),
+          .false_label = intern_block_label(prepared, "carrier.exit"),
       });
   mutable_control_flow->join_transfers.insert(
       mutable_control_flow->join_transfers.begin(),
       prepare::PreparedJoinTransfer{
-          .function_name = function_name,
-          .join_block_label = "carrier.loop",
+          .function_name = intern_function_name(prepared, function_name),
+          .join_block_label = intern_block_label(prepared, "carrier.loop"),
           .result = bir::Value::named(bir::TypeKind::I32, "carrier.counter"),
           .kind = prepare::PreparedJoinTransferKind::LoopCarry,
-          .storage_name = "%carrier.counter",
+          .storage_name = intern_slot_name(prepared, "%carrier.counter"),
           .edge_transfers =
               {
                   prepare::PreparedEdgeValueTransfer{
-                      .predecessor_label = "carrier.entry",
-                      .successor_label = "carrier.loop",
+                      .predecessor_label = intern_block_label(prepared, "carrier.entry"),
+                      .successor_label = intern_block_label(prepared, "carrier.loop"),
                       .incoming_value = bir::Value::immediate_i32(9),
                       .destination_value =
                           bir::Value::named(bir::TypeKind::I32, "carrier.counter"),
-                      .storage_name = "%carrier.counter",
+                      .storage_name = intern_slot_name(prepared, "%carrier.counter"),
                   },
                   prepare::PreparedEdgeValueTransfer{
-                      .predecessor_label = "carrier.body",
-                      .successor_label = "carrier.loop",
+                      .predecessor_label = intern_block_label(prepared, "carrier.body"),
+                      .successor_label = intern_block_label(prepared, "carrier.loop"),
                       .incoming_value = bir::Value::named(bir::TypeKind::I32, "carrier.next"),
                       .destination_value =
                           bir::Value::named(bir::TypeKind::I32, "carrier.counter"),
-                      .storage_name = "%carrier.counter",
+                      .storage_name = intern_slot_name(prepared, "%carrier.counter"),
                   },
               },
       });
@@ -640,8 +662,8 @@ int check_loop_countdown_route_consumes_prepared_control_flow_with_reversed_join
 
   auto& join_transfer = mutable_control_flow->join_transfers.front();
   if (join_transfer.edge_transfers.size() != 2 ||
-      join_transfer.edge_transfers.front().predecessor_label != "entry" ||
-      join_transfer.edge_transfers.back().predecessor_label != "body") {
+      block_label(prepared, join_transfer.edge_transfers.front().predecessor_label) != "entry" ||
+      block_label(prepared, join_transfer.edge_transfers.back().predecessor_label) != "body") {
     return fail((std::string(failure_context) +
                  ": prepared loop fixture no longer exposes the expected entry/body loop-carry edge ownership")
                     .c_str());
@@ -683,8 +705,9 @@ int check_loop_countdown_route_consumes_prepared_control_flow_with_preheader_blo
 
   const auto& join_transfer = control_flow->join_transfers.front();
   if (join_transfer.edge_transfers.size() != 2 ||
-      join_transfer.edge_transfers.front().predecessor_label != "preheader" ||
-      join_transfer.edge_transfers.back().predecessor_label != "body") {
+      block_label(prepared, join_transfer.edge_transfers.front().predecessor_label) !=
+          "preheader" ||
+      block_label(prepared, join_transfer.edge_transfers.back().predecessor_label) != "body") {
     return fail((std::string(failure_context) +
                  ": prepared loop fixture no longer exposes the preheader/body loop-carry ownership")
                     .c_str());
@@ -732,8 +755,9 @@ int check_loop_countdown_route_consumes_prepared_control_flow_with_preheader_cha
 
   const auto& join_transfer = control_flow->join_transfers.front();
   if (join_transfer.edge_transfers.size() != 2 ||
-      join_transfer.edge_transfers.front().predecessor_label != "preheader" ||
-      join_transfer.edge_transfers.back().predecessor_label != "body") {
+      block_label(prepared, join_transfer.edge_transfers.front().predecessor_label) !=
+          "preheader" ||
+      block_label(prepared, join_transfer.edge_transfers.back().predecessor_label) != "body") {
     return fail((std::string(failure_context) +
                  ": prepared loop fixture no longer exposes the preheader/body loop-carry ownership across the transparent entry carrier")
                     .c_str());
@@ -781,8 +805,9 @@ int check_loop_countdown_route_prefers_prepared_preheader_handoff_value(
 
   const auto& join_transfer = control_flow->join_transfers.front();
   if (join_transfer.edge_transfers.size() != 2 ||
-      join_transfer.edge_transfers.front().predecessor_label != "preheader" ||
-      join_transfer.edge_transfers.back().predecessor_label != "body") {
+      block_label(prepared, join_transfer.edge_transfers.front().predecessor_label) !=
+          "preheader" ||
+      block_label(prepared, join_transfer.edge_transfers.back().predecessor_label) != "body") {
     return fail((std::string(failure_context) +
                  ": prepared loop fixture no longer exposes the authoritative preheader/body loop-carry ownership")
                     .c_str());
@@ -1037,7 +1062,8 @@ int check_local_countdown_guard_route_requires_authoritative_guard_branch_condit
   auto* control_flow = find_control_flow_function(prepared, function_name);
   if (control_flow == nullptr) {
     prepared.control_flow.functions.push_back(
-        prepare::PreparedControlFlowFunction{.function_name = function_name});
+        prepare::PreparedControlFlowFunction{
+            .function_name = intern_function_name(prepared, function_name)});
     control_flow = &prepared.control_flow.functions.back();
   }
   control_flow->branch_conditions.clear();
@@ -1053,8 +1079,8 @@ int check_local_countdown_guard_route_requires_authoritative_guard_branch_condit
   }
 
   control_flow->branch_conditions.push_back(prepare::PreparedBranchCondition{
-      .function_name = function_name,
-      .block_label = "guard",
+      .function_name = intern_function_name(prepared, function_name),
+      .block_label = intern_block_label(prepared, "guard"),
       .kind = prepare::PreparedBranchConditionKind::FusedCompare,
       .condition_value = bir::Value::named(bir::TypeKind::I32, "drifted.guard.condition"),
       .predicate = bir::BinaryOpcode::Ne,
@@ -1062,8 +1088,8 @@ int check_local_countdown_guard_route_requires_authoritative_guard_branch_condit
       .lhs = bir::Value::named(bir::TypeKind::I32, "guard.counter"),
       .rhs = bir::Value::immediate_i32(0),
       .can_fuse_with_branch = true,
-      .true_label = "drifted.guard.true",
-      .false_label = "cont",
+      .true_label = intern_block_label(prepared, "drifted.guard.true"),
+      .false_label = intern_block_label(prepared, "cont"),
   });
 
   try {
@@ -1095,7 +1121,8 @@ int check_local_countdown_guard_route_rejects_authoritative_join_transfer(
   auto* control_flow = find_control_flow_function(prepared, function_name);
   if (control_flow == nullptr) {
     prepared.control_flow.functions.push_back(
-        prepare::PreparedControlFlowFunction{.function_name = function_name});
+        prepare::PreparedControlFlowFunction{
+            .function_name = intern_function_name(prepared, function_name)});
     control_flow = &prepared.control_flow.functions.back();
   }
   control_flow->branch_conditions.clear();
@@ -1111,35 +1138,35 @@ int check_local_countdown_guard_route_rejects_authoritative_join_transfer(
   }
 
   control_flow->join_transfers.push_back(prepare::PreparedJoinTransfer{
-      .function_name = function_name,
-      .join_block_label = "loop1",
+      .function_name = intern_function_name(prepared, function_name),
+      .join_block_label = intern_block_label(prepared, "loop1"),
       .result = bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
       .kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot,
-      .storage_name = "%lv.counter",
+      .storage_name = intern_slot_name(prepared, "%lv.counter"),
       .edge_transfers =
           {
               prepare::PreparedEdgeValueTransfer{
-                  .predecessor_label = "cont",
-                  .successor_label = "loop1",
+                  .predecessor_label = intern_block_label(prepared, "cont"),
+                  .successor_label = intern_block_label(prepared, "loop1"),
                   .incoming_value = bir::Value::immediate_i32(2),
                   .destination_value =
                       bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
-                  .storage_name = "%lv.counter",
+                  .storage_name = intern_slot_name(prepared, "%lv.counter"),
               },
               prepare::PreparedEdgeValueTransfer{
-                  .predecessor_label = "body1",
-                  .successor_label = "loop1",
+                  .predecessor_label = intern_block_label(prepared, "body1"),
+                  .successor_label = intern_block_label(prepared, "loop1"),
                   .incoming_value = bir::Value::named(bir::TypeKind::I32, "body1.next"),
                   .destination_value =
                       bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
-                  .storage_name = "%lv.counter",
+                  .storage_name = intern_slot_name(prepared, "%lv.counter"),
               },
           },
-      .source_branch_block_label = "loop1",
+      .source_branch_block_label = intern_block_label(prepared, "loop1"),
       .source_true_transfer_index = 1,
       .source_false_transfer_index = 0,
-      .source_true_incoming_label = "body1",
-      .source_false_incoming_label = "cont",
+      .source_true_incoming_label = intern_block_label(prepared, "body1"),
+      .source_false_incoming_label = intern_block_label(prepared, "cont"),
   });
 
   try {
@@ -1199,11 +1226,12 @@ int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract(
 
   auto& branch_condition = mutable_control_flow->branch_conditions.front();
   branch_condition.predicate = bir::BinaryOpcode::Eq;
-  branch_condition.true_label = "exit";
-  branch_condition.false_label = "body";
+  branch_condition.true_label = intern_block_label(prepared, "exit");
+  branch_condition.false_label = intern_block_label(prepared, "body");
 
-  loop_block->terminator.true_label = branch_condition.true_label;
-  loop_block->terminator.false_label = branch_condition.false_label;
+  loop_block->terminator.true_label = std::string(block_label(prepared, branch_condition.true_label));
+  loop_block->terminator.false_label =
+      std::string(block_label(prepared, branch_condition.false_label));
 
   loop_compare->opcode = bir::BinaryOpcode::Eq;
   loop_compare->lhs = bir::Value::immediate_i32(7);
@@ -1261,11 +1289,12 @@ int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract_with_ze
   branch_condition.predicate = bir::BinaryOpcode::Eq;
   branch_condition.lhs = bir::Value::immediate_i32(0);
   branch_condition.rhs = bir::Value::named(bir::TypeKind::I32, "counter");
-  branch_condition.true_label = "exit";
-  branch_condition.false_label = "body";
+  branch_condition.true_label = intern_block_label(prepared, "exit");
+  branch_condition.false_label = intern_block_label(prepared, "body");
 
-  loop_block->terminator.true_label = branch_condition.true_label;
-  loop_block->terminator.false_label = branch_condition.false_label;
+  loop_block->terminator.true_label = std::string(block_label(prepared, branch_condition.true_label));
+  loop_block->terminator.false_label =
+      std::string(block_label(prepared, branch_condition.false_label));
 
   loop_compare->opcode = bir::BinaryOpcode::Eq;
   loop_compare->lhs = bir::Value::immediate_i32(7);

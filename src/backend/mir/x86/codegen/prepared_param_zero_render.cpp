@@ -201,17 +201,19 @@ bool is_supported_guard_compare_opcode(c4c::backend::bir::BinaryOpcode opcode) {
 }
 
 const c4c::backend::prepare::PreparedBranchCondition* find_prepared_branch_condition_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     std::string_view block_label) {
   if (function_control_flow == nullptr) {
     return nullptr;
   }
-  return c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
-                                                               block_label);
+  return c4c::backend::prepare::find_prepared_branch_condition(
+      prepared_names, *function_control_flow, block_label);
 }
 
 const c4c::backend::prepare::PreparedBranchCondition*
 find_prepared_i32_immediate_branch_condition_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     std::string_view block_label,
     const std::optional<std::string_view>& current_i32_name) {
@@ -219,7 +221,7 @@ find_prepared_i32_immediate_branch_condition_if_supported(
     return nullptr;
   }
   return c4c::backend::prepare::find_prepared_i32_immediate_branch_condition(
-      *function_control_flow, block_label, *current_i32_name);
+      prepared_names, *function_control_flow, block_label, *current_i32_name);
 }
 
 const c4c::backend::bir::BinaryInst* find_trailing_guard_compare_if_supported(
@@ -281,20 +283,26 @@ std::optional<ShortCircuitPlan> build_direct_branch_plan_from_targets(
 }
 
 std::optional<DirectBranchTargets> build_plain_cond_direct_branch_targets(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block,
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition) {
-  return resolve_direct_branch_targets(find_block,
-                                       branch_condition.true_label,
-                                       branch_condition.false_label);
+  return resolve_direct_branch_targets(
+      find_block,
+      c4c::backend::prepare::prepared_block_label(prepared_names, branch_condition.true_label),
+      c4c::backend::prepare::prepared_block_label(prepared_names, branch_condition.false_label));
 }
 
 std::optional<c4c::backend::prepare::PreparedShortCircuitJoinContext>
 find_prepared_short_circuit_join_context_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     std::string_view source_block_label) {
   const auto prepared_join_context = c4c::backend::prepare::
-      find_prepared_short_circuit_join_context(control_flow, function, source_block_label);
+      find_prepared_short_circuit_join_context(prepared_names,
+                                               control_flow,
+                                               function,
+                                               source_block_label);
   if (!prepared_join_context.has_value() || prepared_join_context->join_transfer == nullptr ||
       prepared_join_context->true_transfer == nullptr ||
       prepared_join_context->false_transfer == nullptr ||
@@ -355,6 +363,7 @@ CompareDrivenBranchRenderPlan build_compare_driven_render_plan(
 }
 
 std::optional<CompareDrivenBranchRenderPlan> build_compare_driven_entry_render_plan(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Block& source_block,
     const c4c::backend::bir::BinaryInst& compare,
@@ -364,7 +373,8 @@ std::optional<CompareDrivenBranchRenderPlan> build_compare_driven_entry_render_p
     const std::function<std::optional<ShortCircuitPlan>(
         const ShortCircuitEntryCompareContext&)>& branch_plan_builder) {
   const auto* branch_condition =
-      find_prepared_branch_condition_if_supported(function_control_flow, source_block.label);
+      find_prepared_branch_condition_if_supported(
+          prepared_names, function_control_flow, source_block.label);
   auto compare_context =
       branch_condition != nullptr
           ? render_prepared_guard_false_branch_compare_from_condition(
@@ -395,6 +405,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_compare_driven_entry_render_p
 }
 
 std::optional<CompareDrivenBranchRenderPlan> build_prepared_compare_driven_entry_render_plan(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Block& source_block,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
@@ -402,7 +413,8 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_compare_driven_entry
     const std::function<std::optional<ShortCircuitPlan>(
         const ShortCircuitEntryCompareContext&)>& branch_plan_builder) {
   const auto* branch_condition =
-      find_prepared_branch_condition_if_supported(function_control_flow, source_block.label);
+      find_prepared_branch_condition_if_supported(
+          prepared_names, function_control_flow, source_block.label);
   if (branch_condition == nullptr) {
     return std::nullopt;
   }
@@ -422,6 +434,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_compare_driven_entry
 }
 
 std::optional<CompareDrivenBranchRenderPlan> build_compare_driven_direct_entry_render_plan(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Block& source_block,
     const c4c::backend::bir::BinaryInst& compare,
@@ -431,6 +444,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_compare_driven_direct_entry_r
     const std::function<std::optional<DirectBranchTargets>(
         const ShortCircuitEntryCompareContext&)>& direct_target_builder) {
   return build_compare_driven_entry_render_plan(
+      prepared_names,
       function_control_flow,
       source_block,
       compare,
@@ -474,6 +488,7 @@ std::optional<std::string> render_prepared_param_zero_branch_function(
 }
 
 std::optional<std::string> find_and_render_prepared_param_zero_branch_return_context_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction& function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
@@ -484,12 +499,12 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
         render_return) {
   const auto prepared_branch_context =
       c4c::backend::prepare::find_prepared_param_zero_branch_return_context(
-          function_control_flow, function, entry, param, true);
+          prepared_names, function_control_flow, function, entry, param, true);
   if (!prepared_branch_context.has_value()) {
     return std::nullopt;
   }
   if (c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-          function_control_flow, entry.label)
+          prepared_names, function_control_flow, entry.label)
           .has_value()) {
     throw std::invalid_argument(
         "x86 backend emitter requires the authoritative prepared compare-join handoff through the canonical prepared-module handoff");
@@ -518,6 +533,7 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
 }
 
 std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
@@ -544,6 +560,7 @@ std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_suppo
   }
 
   return find_and_render_prepared_param_zero_branch_return_context_if_supported(
+      prepared_names,
       *function_control_flow,
       function,
       entry,
@@ -555,7 +572,7 @@ std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_suppo
 
 std::optional<std::string>
 find_and_render_prepared_materialized_compare_join_function_if_supported(
-    const c4c::backend::bir::Module& module,
+    const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedControlFlowFunction& function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
@@ -569,10 +586,10 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
         emit_same_module_global_data) {
   const auto resolved_render_contract =
       c4c::backend::prepare::find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
-          module, function_control_flow, function, entry, param, false);
+          module.names, module.module, function_control_flow, function, entry, param, false);
   if (!resolved_render_contract.has_value()) {
     if (c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-            function_control_flow, entry.label)
+            module.names, function_control_flow, entry.label)
             .has_value()) {
       throw std::invalid_argument(
           "x86 backend emitter requires the authoritative prepared compare-join handoff through the canonical prepared-module handoff");
@@ -612,7 +629,7 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
 }
 
 std::optional<std::string> render_prepared_materialized_compare_join_entry_if_supported(
-    const c4c::backend::bir::Module& module,
+    const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
@@ -653,7 +670,7 @@ std::optional<std::string> render_prepared_materialized_compare_join_entry_if_su
 }
 
 std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
-    const c4c::backend::bir::Module& module,
+    const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
@@ -671,6 +688,7 @@ std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
   if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !entry.terminator.value.has_value()) {
     if (const auto rendered_branch = render_prepared_minimal_compare_branch_entry_if_supported(
+            module.names,
             function_control_flow,
             function,
             entry,
@@ -697,6 +715,7 @@ std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
 }
 
 std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_render_plan(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& source_block,
@@ -709,7 +728,8 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_
         build_short_circuit_plan) {
   (void)function;
   const auto* branch_condition =
-      find_prepared_branch_condition_if_supported(function_control_flow, source_block.label);
+      find_prepared_branch_condition_if_supported(
+          prepared_names, function_control_flow, source_block.label);
   if (branch_condition == nullptr) {
     return std::nullopt;
   }
@@ -742,15 +762,15 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_
   }
 
   const auto prepared_target_labels =
-      c4c::backend::prepare::find_prepared_compare_branch_target_labels(*branch_condition,
-                                                                        source_block);
+      c4c::backend::prepare::find_prepared_compare_branch_target_labels(
+          prepared_names, *branch_condition, source_block);
   if (!prepared_target_labels.has_value()) {
     return std::nullopt;
   }
 
   const auto prepared_short_circuit_plan =
-      c4c::backend::prepare::find_prepared_short_circuit_branch_plan(join_context,
-                                                                     *prepared_target_labels);
+      c4c::backend::prepare::find_prepared_short_circuit_branch_plan(
+          prepared_names, join_context, *prepared_target_labels);
   if (!prepared_short_circuit_plan.has_value()) {
     return std::nullopt;
   }
@@ -764,6 +784,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_
 }
 
 std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_render_plan(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Block& source_block,
     std::size_t compare_index,
@@ -771,7 +792,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_ren
     const std::optional<std::string_view>& current_i32_name,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block) {
   const auto* branch_condition = find_prepared_i32_immediate_branch_condition_if_supported(
-      function_control_flow, source_block.label, current_i32_name);
+      prepared_names, function_control_flow, source_block.label, current_i32_name);
   if (branch_condition != nullptr) {
     const auto compare_context = build_prepared_guard_compare_context(
         *branch_condition, current_materialized_compare, current_i32_name);
@@ -781,7 +802,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_ren
     }
 
     const auto direct_targets =
-        build_plain_cond_direct_branch_targets(find_block, *branch_condition);
+        build_plain_cond_direct_branch_targets(prepared_names, find_block, *branch_condition);
     if (!direct_targets.has_value()) {
       throw std::invalid_argument(
           "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
@@ -808,6 +829,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_ren
   }
 
   return build_compare_driven_direct_entry_render_plan(
+      prepared_names,
       function_control_flow,
       source_block,
       *compare,
@@ -819,12 +841,14 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_ren
         if (compare_context.branch_condition == nullptr) {
           return std::nullopt;
         }
-        return build_plain_cond_direct_branch_targets(find_block,
+        return build_plain_cond_direct_branch_targets(prepared_names,
+                                                      find_block,
                                                       *compare_context.branch_condition);
       });
 }
 
 std::optional<CompareDrivenBranchRenderPlan> build_prepared_compare_join_entry_render_plan(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& source_block,
@@ -837,14 +861,16 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_compare_join_entry_r
         build_short_circuit_plan) {
   const auto prepared_branch_plan =
       c4c::backend::prepare::find_prepared_compare_join_entry_branch_plan(
-          function_control_flow, function, source_block, continuation_plan);
+          prepared_names, function_control_flow, function, source_block, continuation_plan);
   if (!prepared_branch_plan.has_value()) {
     return std::nullopt;
   }
   const auto* prepared_branch_condition =
-      find_prepared_branch_condition_if_supported(function_control_flow, source_block.label);
+      find_prepared_branch_condition_if_supported(
+          prepared_names, function_control_flow, source_block.label);
 
   if (const auto prepared_render_plan = build_prepared_compare_driven_entry_render_plan(
+          prepared_names,
           function_control_flow,
           source_block,
           current_materialized_compare,
@@ -866,6 +892,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_compare_join_entry_r
   }
 
   return build_compare_driven_entry_render_plan(
+      prepared_names,
       function_control_flow,
       source_block,
       *compare,

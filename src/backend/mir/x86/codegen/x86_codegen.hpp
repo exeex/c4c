@@ -778,6 +778,7 @@ std::optional<std::string> render_prepared_param_zero_branch_function(
     std::string_view trailing_data = {});
 
 std::optional<std::string> find_and_render_prepared_param_zero_branch_return_context_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction& function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
@@ -788,6 +789,7 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
         render_return);
 
 std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
@@ -800,7 +802,7 @@ std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_suppo
 
 std::optional<std::string>
 find_and_render_prepared_materialized_compare_join_function_if_supported(
-    const c4c::backend::bir::Module& module,
+    const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedControlFlowFunction& function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
@@ -814,7 +816,7 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
         emit_same_module_global_data);
 
 std::optional<std::string> render_prepared_materialized_compare_join_entry_if_supported(
-    const c4c::backend::bir::Module& module,
+    const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
@@ -829,7 +831,7 @@ std::optional<std::string> render_prepared_materialized_compare_join_entry_if_su
         emit_same_module_global_data);
 
 std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
-    const c4c::backend::bir::Module& module,
+    const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
@@ -863,6 +865,7 @@ std::optional<ShortCircuitEntryCompareContext> build_prepared_guard_compare_cont
 
 std::optional<c4c::backend::prepare::PreparedShortCircuitJoinContext>
 find_prepared_short_circuit_join_context_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     std::string_view source_block_label);
@@ -876,6 +879,7 @@ std::optional<ShortCircuitPlan> build_prepared_short_circuit_plan(
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
 
 std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_render_plan(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& source_block,
@@ -888,6 +892,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_
         build_short_circuit_plan);
 
 std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_render_plan(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Block& source_block,
     std::size_t compare_index,
@@ -896,6 +901,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_ren
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
 
 std::optional<CompareDrivenBranchRenderPlan> build_prepared_compare_join_entry_render_plan(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& source_block,
@@ -947,6 +953,7 @@ std::string render_prepared_return_body(std::string_view value_render,
 std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction& function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix);
@@ -954,6 +961,7 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
 std::optional<std::string> render_prepared_countdown_entry_routes_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix);
@@ -961,6 +969,7 @@ std::optional<std::string> render_prepared_countdown_entry_routes_if_supported(
 std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,

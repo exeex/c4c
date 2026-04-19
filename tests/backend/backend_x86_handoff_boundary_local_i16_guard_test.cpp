@@ -35,7 +35,8 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
     const prepare::PreparedBirModule& prepared,
     const char* function_name) {
   for (const auto& function : prepared.control_flow.functions) {
-    if (function.function_name == function_name) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) ==
+        function_name) {
       return &function;
     }
   }
@@ -306,7 +307,8 @@ int check_local_i16_guard_route_requires_authoritative_prepared_branch_labels(
 
   auto mutated = prepared;
   auto* mutable_control_flow = &mutated.control_flow.functions.front();
-  mutable_control_flow->branch_conditions.front().false_label = "drifted.i16.guard.false";
+  mutable_control_flow->branch_conditions.front().false_label =
+      mutated.names.block_labels.intern("drifted.i16.guard.false");
 
   try {
     (void)c4c::backend::x86::emit_prepared_module(mutated);
