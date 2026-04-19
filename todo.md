@@ -5,14 +5,14 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Migrate Consumers To The Authoritative Prepared Facts
-Plan Review Counter: 9 / 10
+Plan Review Counter: 10 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3 slice for idea 62. The
 `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
-handoff coverage now proves the trailing-join joined-branch `and` lane keeps
+handoff coverage now proves the trailing-join joined-branch `or` lane keeps
 following the authoritative prepared control-flow contract even when true-lane
 or false-lane passthrough topology drifts before the join.
 
@@ -20,9 +20,9 @@ or false-lane passthrough topology drifts before the join.
 
 Move to the next bounded `plan.md` Step 3 consumer family that still lacks an
 explicit prepared-contract drift or loss proof, preferably outside the
-joined-branch trailing-join `and`, short-circuit, guard-chain, and local-slot
-passthrough lanes now that each of those routes has an explicit authoritative
-prepared-target or topology-drift check.
+joined-branch trailing-join `and`, trailing-join `or`, short-circuit,
+guard-chain, and local-slot passthrough lanes now that each of those routes
+has an explicit authoritative prepared-target or topology-drift check.
 
 ## Watchouts
 
@@ -62,10 +62,10 @@ prepared-target or topology-drift check.
 - The local-slot single-successor passthrough lane now also has explicit
   prepared-target drift coverage, so future Step 3 packets should move to a
   different consumer family instead of restating raw entry-label drift there.
-- The joined-branch trailing-join `and` lane now also has explicit true-lane
-  and false-lane passthrough topology-drift coverage, so future Step 3 packets
-  should move to a different joined-branch subfamily instead of restating that
-  same carrier shape.
+- The joined-branch trailing-join `and` and trailing-join `or` lanes now both
+  have explicit true-lane and false-lane passthrough topology-drift coverage,
+  so future Step 3 packets should move to a different joined-branch subfamily
+  instead of restating either carrier shape.
 
 ## Proof
 
@@ -73,6 +73,6 @@ Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
 `backend_x86_handoff_boundary` proof passed after extending the joined-branch
-trailing-join `and` coverage so the route proves authoritative prepared
+trailing-join `or` coverage so the route proves authoritative prepared
 control-flow ownership over both true-lane and false-lane passthrough topology
 drift. `test_after.log` is the proof artifact for this packet.
