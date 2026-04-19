@@ -300,6 +300,11 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
     std::string_view asm_prefix,
     std::string_view return_register);
 
+std::optional<std::string> render_prepared_minimal_local_slot_return_if_supported(
+    const c4c::backend::bir::Function& function,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix);
+
 inline std::optional<PreparedBoundedMultiDefinedCallLaneRender>
 render_prepared_bounded_multi_defined_call_lane_body_if_supported(
     const c4c::backend::bir::Function& candidate,
