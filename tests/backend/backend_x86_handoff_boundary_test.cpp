@@ -11027,6 +11027,82 @@ int check_local_countdown_guard_route_requires_authoritative_guard_branch_condit
   return 0;
 }
 
+int check_local_countdown_guard_route_rejects_authoritative_join_transfer(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    prepared.control_flow.functions.push_back(
+        prepare::PreparedControlFlowFunction{.function_name = function_name});
+    control_flow = &prepared.control_flow.functions.back();
+  }
+  control_flow->branch_conditions.clear();
+  control_flow->join_transfers.clear();
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string(failure_context) +
+                 ": local countdown fallback fixture no longer renders before authoritative join ownership is injected: " +
+                 ex.what())
+                    .c_str());
+  }
+
+  control_flow->join_transfers.push_back(prepare::PreparedJoinTransfer{
+      .function_name = function_name,
+      .join_block_label = "loop1",
+      .result = bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
+      .kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot,
+      .storage_name = "%lv.counter",
+      .edge_transfers =
+          {
+              prepare::PreparedEdgeValueTransfer{
+                  .predecessor_label = "cont",
+                  .successor_label = "loop1",
+                  .incoming_value = bir::Value::immediate_i32(2),
+                  .destination_value =
+                      bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
+                  .storage_name = "%lv.counter",
+              },
+              prepare::PreparedEdgeValueTransfer{
+                  .predecessor_label = "body1",
+                  .successor_label = "loop1",
+                  .incoming_value = bir::Value::named(bir::TypeKind::I32, "body1.next"),
+                  .destination_value =
+                      bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
+                  .storage_name = "%lv.counter",
+              },
+          },
+      .source_branch_block_label = "loop1",
+      .source_true_transfer_index = 1,
+      .source_false_transfer_index = 0,
+      .source_true_incoming_label = "body1",
+      .source_false_incoming_label = "cont",
+  });
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a local countdown fallback while authoritative join ownership remained active")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the authoritative join-owned countdown fallback with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -13468,6 +13544,14 @@ int main() {
               make_x86_local_i32_countdown_guard_continuation_module(),
               "main",
               "two-segment local countdown fallback rejects mixed guard ownership once prepared branch metadata becomes authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_local_countdown_guard_route_rejects_authoritative_join_transfer(
+              make_x86_local_i32_countdown_guard_continuation_module(),
+              "main",
+              "two-segment local countdown fallback rejects authoritative join ownership on the continuation loop");
       status != 0) {
     return status;
   }

@@ -5,23 +5,24 @@ Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 3.4
 Current Step Title: Loop-Carry And Residual Consumer Cleanup
-Plan Review Counter: 8 / 10
+Plan Review Counter: 9 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed a Step 3.4 Loop-Carry And Residual Consumer Cleanup packet by
 hardening the residual two-segment local countdown fallback so it also rejects
-authoritative prepared guard-branch ownership on the mixed
-guard/continuation split instead of reopening raw countdown topology, and by
-adding a focused handoff regression for that contract.
+authoritative prepared join ownership on the continuation loop instead of
+reopening raw countdown topology, and by adding a focused handoff regression
+for that contract.
 
 ## Suggested Next
 
 Stay in Step 3.4 and inspect the remaining residual local countdown fallback
 for any adjacent post-prepare drift that can still bypass the canonical
 prepared-module handoff through unmatched countdown sub-blocks beyond the
-guard-owned continuation split now covered here.
+guard-owned continuation split and continuation-loop join ownership now
+covered here.
 
 ## Watchouts
 
@@ -72,6 +73,10 @@ guard-owned continuation split now covered here.
   fallback must now also reject once authoritative prepared branch ownership
   exists for that guard/continuation split; do not let later cleanup reopen
   the raw guard matcher behind that contract.
+- The residual two-segment local countdown fallback must now also reject once
+  authoritative prepared join ownership references the continuation loop; do
+  not let later helper cleanup treat non-`LoopCarry` join ownership on the
+  matched countdown blocks as a soft route miss.
 - The broader `^backend_` checkpoint currently reproduces five known failures:
   `backend_prepare_phi_materialize`, `variadic_double_bytes`,
   `variadic_pair_second`, `local_direct_dynamic_member_array_store`, and
@@ -83,5 +88,5 @@ guard-owned continuation split now covered here.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The focused Step 3.4 handoff proof passed with the new two-segment local
-countdown guard-ownership regression, leaving `test_after.log` as the
-canonical proof log for the packet before supervisor log roll-forward.
+countdown continuation-loop join-ownership regression, leaving `test_after.log`
+as the canonical proof log for the packet before supervisor log roll-forward.

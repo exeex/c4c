@@ -3610,12 +3610,6 @@ std::string emit_prepared_module(
       if (second_segment.has_value()) {
         require_no_authoritative_prepared_branch_contract(second_segment->cond_block);
       }
-      for (const auto& join_transfer : function_control_flow->join_transfers) {
-        if (join_transfer.kind == c4c::backend::prepare::PreparedJoinTransferKind::LoopCarry) {
-          throw std::invalid_argument(
-              "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
-        }
-      }
     }
 
     const auto slot_it = layout->offsets.find(first_segment->init_store->slot_name);
@@ -3646,6 +3640,44 @@ std::string emit_prepared_module(
       used_blocks.insert(second_segment->body_block);
       if (second_segment->return_block != nullptr) {
         used_blocks.insert(second_segment->return_block);
+      }
+    }
+
+    if (function_control_flow != nullptr) {
+      const auto join_transfer_references_used_block =
+          [&](const c4c::backend::prepare::PreparedJoinTransfer& join_transfer) {
+            const auto block_is_used = [&](std::string_view label) {
+              const auto* block = find_block(label);
+              return block != nullptr && used_blocks.find(block) != used_blocks.end();
+            };
+
+            if (block_is_used(join_transfer.join_block_label)) {
+              return true;
+            }
+            if (join_transfer.source_branch_block_label.has_value() &&
+                block_is_used(*join_transfer.source_branch_block_label)) {
+              return true;
+            }
+            for (const auto& incoming : join_transfer.incomings) {
+              if (block_is_used(incoming.label)) {
+                return true;
+              }
+            }
+            for (const auto& edge_transfer : join_transfer.edge_transfers) {
+              if (block_is_used(edge_transfer.predecessor_label) ||
+                  block_is_used(edge_transfer.successor_label)) {
+                return true;
+              }
+            }
+            return false;
+          };
+
+      for (const auto& join_transfer : function_control_flow->join_transfers) {
+        if (join_transfer.kind == c4c::backend::prepare::PreparedJoinTransferKind::LoopCarry ||
+            join_transfer_references_used_block(join_transfer)) {
+          throw std::invalid_argument(
+              "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+        }
       }
     }
 
