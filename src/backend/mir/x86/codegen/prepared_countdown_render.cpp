@@ -291,6 +291,29 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
   return asm_text;
 }
 
+std::optional<std::string> render_prepared_countdown_entry_routes_if_supported(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix) {
+  if (function_control_flow != nullptr) {
+    if (const auto rendered_loop_join = render_prepared_loop_join_countdown_if_supported(
+            function, entry, *function_control_flow, prepared_arch, asm_prefix);
+        rendered_loop_join.has_value()) {
+      return rendered_loop_join;
+    }
+  }
+
+  const auto layout = build_prepared_module_local_slot_layout(function, prepared_arch);
+  if (!layout.has_value()) {
+    return std::nullopt;
+  }
+
+  return render_prepared_local_i32_countdown_loop_if_supported(
+      function, entry, function_control_flow, prepared_arch, asm_prefix, *layout);
+}
+
 std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,

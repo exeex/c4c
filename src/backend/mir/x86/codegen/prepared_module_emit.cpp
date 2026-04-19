@@ -1330,29 +1330,6 @@ std::string emit_prepared_module(
     asm_text += *rendered_false;
     return asm_text;
   };
-  const auto render_loop_join_countdown_if_supported =
-      [&]() -> std::optional<std::string> {
-    const auto* function_control_flow = find_control_flow_function();
-    if (function_control_flow == nullptr) {
-      return std::nullopt;
-    }
-    return c4c::backend::x86::render_prepared_loop_join_countdown_if_supported(
-        function, entry, *function_control_flow, prepared_arch, asm_prefix);
-  };
-  const auto render_local_i32_countdown_loop_if_supported =
-      [&]() -> std::optional<std::string> {
-    const auto layout = build_prepared_module_local_slot_layout(function, prepared_arch);
-    if (!layout.has_value()) {
-      return std::nullopt;
-    }
-    return c4c::backend::x86::render_prepared_local_i32_countdown_loop_if_supported(
-        function,
-        entry,
-        find_control_flow_function(),
-        prepared_arch,
-        asm_prefix,
-        *layout);
-  };
   const auto render_local_i16_arithmetic_guard_if_supported =
       [&]() -> std::optional<std::string> {
     if (!function.params.empty() || function.blocks.size() != 3 ||
@@ -1823,13 +1800,11 @@ std::string emit_prepared_module(
         rendered_local_i32_guard.has_value()) {
       return *rendered_local_i32_guard;
     }
-    if (const auto rendered_loop_join_countdown = render_loop_join_countdown_if_supported();
-        rendered_loop_join_countdown.has_value()) {
-      return *rendered_loop_join_countdown;
-    }
-    if (const auto rendered_countdown_loop = render_local_i32_countdown_loop_if_supported();
-        rendered_countdown_loop.has_value()) {
-      return *rendered_countdown_loop;
+    if (const auto rendered_countdown_entry =
+            c4c::backend::x86::render_prepared_countdown_entry_routes_if_supported(
+                function, entry, find_control_flow_function(), prepared_arch, asm_prefix);
+        rendered_countdown_entry.has_value()) {
+      return *rendered_countdown_entry;
     }
     if (const auto rendered_local_i16_guard = render_local_i16_arithmetic_guard_if_supported();
         rendered_local_i16_guard.has_value()) {

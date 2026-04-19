@@ -762,6 +762,13 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix);
 
+std::optional<std::string> render_prepared_countdown_entry_routes_if_supported(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix);
+
 std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
