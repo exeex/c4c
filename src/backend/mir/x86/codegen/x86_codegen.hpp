@@ -341,6 +341,25 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix);
 
+std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    const std::unordered_set<std::string_view>& bounded_same_module_helper_names,
+    const std::unordered_set<std::string_view>& bounded_same_module_helper_global_names,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block,
+    const std::function<const c4c::backend::bir::Global*(std::string_view)>& find_same_module_global,
+    const std::function<bool(const c4c::backend::bir::Global&,
+                             c4c::backend::bir::TypeKind,
+                             std::size_t)>& same_module_global_supports_scalar_load,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
+        emit_same_module_global_data,
+    const std::function<std::string(std::string)>& prepend_bounded_same_module_helpers);
+
 inline std::optional<PreparedBoundedMultiDefinedCallLaneRender>
 render_prepared_bounded_multi_defined_call_lane_body_if_supported(
     const c4c::backend::bir::Function& candidate,
