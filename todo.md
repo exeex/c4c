@@ -5,21 +5,21 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 3.3.3
 Current Step Title: Close Trailing-Join And Residual Shared Helper Proof Gaps
-Plan Review Counter: 4 / 10
+Plan Review Counter: 5 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3.3.3 slice for idea 62. The
 `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
-trailing-join `lshr` consumer family now proves authoritative prepared
+trailing-join `ashr` consumer family now proves authoritative prepared
 joined-branch ownership for the `EdgeStoreSlot` lane, including true-lane and
 false-lane passthrough topology drift.
 
 ## Suggested Next
 
 Continue `plan.md` Step 3.3.3 with one adjacent trailing-join family at a
-time, starting with the adjacent trailing-join `ashr` `EdgeStoreSlot`
+time, starting with the remaining trailing-join `and` `EdgeStoreSlot`
 ownership and passthrough proof before widening into later helper cleanup.
 
 ## Watchouts
@@ -36,10 +36,10 @@ ownership and passthrough proof before widening into later helper cleanup.
 - Keep Step 3 packets focused on consumer migration proof, not on reopening
   Step 2.3-style fallback cleanup that already landed for stricter handoff
   surfaces.
-- The trailing-join `shl` and `lshr` families now have direct and
-  `EdgeStoreSlot` ownership plus passthrough-drift proof, so the next packet
-  should advance to the next adjacent trailing opcode instead of reopening
-  covered `xor`, `shl`, or `lshr` cases.
+- The trailing-join `or`, `mul`, `shl`, `lshr`, and `ashr` families now have
+  direct and `EdgeStoreSlot` ownership plus passthrough-drift proof, so the
+  next packet should advance to the remaining adjacent trailing opcode instead
+  of reopening covered shift or arithmetic cases.
 
 ## Proof
 
@@ -47,7 +47,7 @@ Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
 `backend_x86_handoff_boundary` proof passed after extending trailing-join
-`lshr` coverage so the shared prepared joined-branch handoff stays
+`ashr` coverage so the shared prepared joined-branch handoff stays
 authoritative for the `EdgeStoreSlot` lane across true-lane and false-lane
 passthrough topology drift. `test_after.log` is the proof artifact for this
 packet.
