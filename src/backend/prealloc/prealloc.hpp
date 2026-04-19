@@ -609,13 +609,10 @@ find_prepared_i32_immediate_branch_condition(const PreparedControlFlowFunction& 
 find_prepared_compare_branch_target_labels(const PreparedBranchCondition& branch_condition,
                                            const bir::Block& source_block) {
   if (source_block.terminator.kind != bir::TerminatorKind::CondBranch ||
-      source_block.terminator.condition.kind != bir::Value::Kind::Named ||
       !branch_condition.predicate.has_value() ||
       !branch_condition.compare_type.has_value() || !branch_condition.lhs.has_value() ||
       !branch_condition.rhs.has_value() ||
-      *branch_condition.compare_type != bir::TypeKind::I32 ||
-      branch_condition.condition_value.kind != bir::Value::Kind::Named ||
-      branch_condition.condition_value.name != source_block.terminator.condition.name) {
+      *branch_condition.compare_type != bir::TypeKind::I32) {
     return std::nullopt;
   }
 

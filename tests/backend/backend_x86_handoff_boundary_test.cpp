@@ -7791,6 +7791,14 @@ int check_short_circuit_route_consumes_prepared_control_flow_impl(const bir::Mod
   entry_compare->opcode = bir::BinaryOpcode::Eq;
   entry_compare->lhs = bir::Value::immediate_i32(7);
   entry_compare->rhs = bir::Value::immediate_i32(7);
+  entry_block->terminator.condition = bir::Value::named(bir::TypeKind::I32, "contract.entry.condition");
+  entry_block->insts.back() = bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "contract.entry.carrier"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(4),
+      .rhs = bir::Value::immediate_i32(8),
+  };
   const std::string original_join_carrier_name = join_select->result.name;
   join_select->result = bir::Value::named(bir::TypeKind::I32, "carrier.short_circuit.join");
   if (join_compare->lhs.kind == bir::Value::Kind::Named &&
@@ -8056,6 +8064,7 @@ int check_short_circuit_entry_branch_helper_publishes_prepared_target_labels(
 
   entry_block->terminator.true_label = "carrier.short_circuit";
   entry_block->terminator.false_label = "carrier.rhs";
+  entry_block->terminator.condition = bir::Value::named(bir::TypeKind::I32, "carrier.entry.condition");
   entry_branch_condition->true_label = "logic.rhs.9";
   entry_branch_condition->false_label = "logic.end.10";
 
@@ -8126,6 +8135,7 @@ int check_short_circuit_branch_plan_helper_publishes_prepared_labels(
   auto& join_transfer = control_flow->join_transfers.front();
   entry_block->terminator.true_label = "carrier.short_circuit";
   entry_block->terminator.false_label = "carrier.rhs";
+  entry_block->terminator.condition = bir::Value::named(bir::TypeKind::I32, "carrier.entry.condition");
   entry_branch_condition->true_label = "logic.rhs.9";
   entry_branch_condition->false_label = "logic.end.10";
   join_block->terminator.true_label = "carrier.join.true";

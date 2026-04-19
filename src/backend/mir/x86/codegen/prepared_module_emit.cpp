@@ -2483,21 +2483,36 @@ std::string emit_prepared_module(
           };
           const auto build_short_circuit_entry_render_plan =
               [&](const c4c::backend::bir::Block& source_block,
-                  const c4c::backend::bir::BinaryInst& compare,
                   const c4c::backend::prepare::PreparedShortCircuitJoinContext& join_context)
               -> std::optional<CompareDrivenBranchRenderPlan> {
-            const auto compare_context =
-                build_short_circuit_entry_compare_context(find_branch_condition,
-                                                          source_block,
-                                                          compare,
-                                                          true);
+            const auto* branch_condition = find_branch_condition(source_block.label);
+            if (branch_condition == nullptr) {
+              return std::nullopt;
+            }
+
+            auto compare_context = build_prepared_branch_compare_context(*branch_condition);
+            if (!compare_context.has_value()) {
+              const std::optional<std::string_view> authoritative_condition_name =
+                  branch_condition->condition_value.kind == c4c::backend::bir::Value::Kind::Named
+                      ? std::optional<std::string_view>(branch_condition->condition_value.name)
+                      : std::nullopt;
+              const auto* compare = find_trailing_guard_compare(
+                  source_block, compare_index, authoritative_condition_name);
+              if (compare == nullptr) {
+                return std::nullopt;
+              }
+              compare_context = build_short_circuit_entry_compare_context(find_branch_condition,
+                                                                         source_block,
+                                                                         *compare,
+                                                                         true);
+            }
             if (!compare_context.has_value()) {
               return std::nullopt;
             }
 
             const auto prepared_target_labels =
                 c4c::backend::prepare::find_prepared_compare_branch_target_labels(
-                    *compare_context->branch_condition, source_block);
+                    *branch_condition, source_block);
             if (!prepared_target_labels.has_value()) {
               return std::nullopt;
             }
@@ -2637,21 +2652,6 @@ std::string emit_prepared_module(
             return std::nullopt;
           }
 
-          if (block.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named) {
-            return std::nullopt;
-          }
-          std::optional<std::string_view> authoritative_condition_name = block.terminator.condition.name;
-          if (const auto* branch_condition = find_branch_condition(block.label);
-              branch_condition != nullptr &&
-              branch_condition->condition_value.kind == c4c::backend::bir::Value::Kind::Named) {
-            authoritative_condition_name = branch_condition->condition_value.name;
-          }
-          const auto* compare =
-              find_trailing_guard_compare(block, compare_index, authoritative_condition_name);
-          if (compare == nullptr) {
-            return std::nullopt;
-          }
-
           const auto try_render_short_circuit_plan =
               [&]() -> std::optional<std::string> {
             if (function_control_flow == nullptr) {
@@ -2665,7 +2665,7 @@ std::string emit_prepared_module(
             }
 
             const auto short_circuit_render_plan =
-                build_short_circuit_entry_render_plan(block, *compare, *join_context);
+                build_short_circuit_entry_render_plan(block, *join_context);
             if (!short_circuit_render_plan.has_value()) {
               return std::nullopt;
             }
@@ -2676,6 +2676,21 @@ std::string emit_prepared_module(
           if (const auto rendered_short_circuit = try_render_short_circuit_plan();
               rendered_short_circuit.has_value()) {
             return rendered_short_circuit;
+          }
+
+          if (block.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named) {
+            return std::nullopt;
+          }
+          std::optional<std::string_view> authoritative_condition_name = block.terminator.condition.name;
+          if (const auto* branch_condition = find_branch_condition(block.label);
+              branch_condition != nullptr &&
+              branch_condition->condition_value.kind == c4c::backend::bir::Value::Kind::Named) {
+            authoritative_condition_name = branch_condition->condition_value.name;
+          }
+          const auto* compare =
+              find_trailing_guard_compare(block, compare_index, authoritative_condition_name);
+          if (compare == nullptr) {
+            return std::nullopt;
           }
 
           const auto plain_cond_render_plan =
