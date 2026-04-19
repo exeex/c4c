@@ -9,20 +9,17 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3.4 Loop-Carry And Residual Consumer Cleanup packet by
-shrinking `render_loop_join_countdown_if_supported()` from an unbounded
-entry-to-preheader transparent-chain walk to a bounded entry-prefix legality
-check that still keeps the prepared preheader handoff authoritative for the
-two focused routes already under proof: direct `entry -> preheader -> loop`
-and `entry -> carrier -> preheader -> loop` with one empty transparent
-carrier.
+tightening `block_has_supported_init_handoff_carrier()` so the non-entry init
+predecessor must still own the prepared loop-carry handoff via the matching
+`StoreLocalInst`, instead of accepting an arbitrary empty block as a valid
+preheader handoff carrier.
 
 ## Suggested Next
 
-Stay in Step 3.4 and target the next residual legality seam in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp`, starting with whether
-`block_has_supported_init_handoff_carrier()` can be narrowed further around
-prepared preheader handoff acceptance without reintroducing CFG-shape recovery
-or widening into Step 4 emitter reorganization.
+Stay in Step 3.4 and inspect whether the remaining `init_block == &entry`
+fast-path in `render_loop_join_countdown_if_supported()` can be narrowed
+further around authoritative prepared init-value ownership without widening
+into Step 4 emitter reorganization or regrowing CFG-shape recovery.
 
 ## Watchouts
 
@@ -30,11 +27,10 @@ or widening into Step 4 emitter reorganization.
   into Step 3.2 compare-join reproving, generic Step 3.3 carrier hunting,
   Step 4 file organization, idea 57, idea 59, idea 60, idea 61, or the
   unrelated `^backend_` semantic-lowering failures.
-- This packet intentionally narrowed the accepted entry-to-preheader prefix to
-  the two focused prepared routes already covered by the handoff tests; if a
-  longer transparent carrier chain becomes necessary later, treat that as an
-  explicit Step 3.4 route decision instead of quietly regrowing a generic CFG
-  walk.
+- This packet intentionally removed the residual allowance for non-entry empty
+  init carriers. The covered preheader routes still pass because prepare keeps
+  the authoritative handoff on the matching preheader store; do not regrow
+  generic empty-block acceptance without an explicit Step 3.4 route decision.
 - Keep proving that x86 consumes prepared loop-carry ownership and init values
   through prepared metadata even when legalized preheader/body stores drift
   after prepare, rather than re-reading those values from local carrier code.
@@ -48,7 +44,6 @@ or widening into Step 4 emitter reorganization.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The focused Step 3.4 handoff proof passed after narrowing the residual
-entry-prefix legality check, preserving the trivial-preheader and single
-transparent-carrier countdown routes and leaving `test_after.log` at the repo
-root.
+The focused Step 3.4 handoff proof passed after narrowing residual init-carrier
+acceptance to the matching prepared preheader-store lane, leaving
+`test_after.log` at the repo root.

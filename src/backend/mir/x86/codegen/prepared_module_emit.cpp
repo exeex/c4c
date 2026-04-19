@@ -3171,16 +3171,13 @@ std::string emit_prepared_module(
       if (&candidate == &entry) {
         return true;
       }
-      if (candidate.insts.empty()) {
-        return true;
-      }
-      if (!join_transfer->storage_name.has_value() || candidate.insts.size() != 1) {
+      if (!join_transfer->storage_name.has_value() || !init_incoming->storage_name.has_value() ||
+          candidate.insts.size() != 1) {
         return false;
       }
       const auto* init_store =
           std::get_if<c4c::backend::bir::StoreLocalInst>(&candidate.insts.front());
-      return init_store != nullptr && init_incoming->storage_name.has_value() &&
-             *init_incoming->storage_name == *join_transfer->storage_name &&
+      return init_store != nullptr && *init_incoming->storage_name == *join_transfer->storage_name &&
              init_store->slot_name == *join_transfer->storage_name &&
              init_store->byte_offset == 0 && !init_store->address.has_value();
     };
