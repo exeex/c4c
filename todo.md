@@ -8,8 +8,8 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 3 Consume Prepared Control-Flow In X86 packet by extending
-the compare-join handoff proof in
+Completed a Step 3.2 Compare-Join Consumer Migration packet by extending the
+compare-join handoff proof in
 `tests/backend/backend_x86_handoff_boundary_test.cpp` so
 `render_materialized_compare_join_if_supported()` is now proven against the
 adjacent fixed-offset same-module global selected-value-chain route without
@@ -20,17 +20,19 @@ compare-join render contract.
 
 ## Suggested Next
 
-Stay in Step 3 on the same compare-join route and add the next focused
+Stay in Step 3.2 on the same compare-join route and add the next focused
 non-compare-entry-carrier handoff proof for the adjacent fixed-offset
 same-module global selected-value route without the selected-value chain and
-without pointer-backed roots, rather than widening into countdown-loop
-exceptions or unrelated join families.
+without pointer-backed roots; after that packet is either complete or blocked,
+re-evaluate whether remaining work belongs in Step 3.2 or Step 3.3 instead of
+leaving it under an undifferentiated Step 3 label.
 
 ## Watchouts
 
-- Keep this route in Step 3 consumer work; do not widen into Step 4 file
-  organization, idea 57, idea 59, idea 60, idea 61, or the unrelated
-  `^backend_` semantic-lowering failures.
+- Keep this route in Step 3.2 compare-join consumer work unless the packet
+  clearly shifts into Step 3.3 join-transfer carrier coverage; do not widen
+  into Step 4 file organization, idea 57, idea 59, idea 60, idea 61, or the
+  unrelated `^backend_` semantic-lowering failures.
 - Compare-join packets should keep proving that x86 consumes the shared
   resolved render contract for branch labels, join-transfer ownership, and
   selected-value return arms instead of re-deriving meaning from entry compare
