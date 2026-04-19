@@ -107,6 +107,116 @@ using FrameSlotMap =
   };
 }
 
+[[nodiscard]] std::optional<PreparedAddress> build_direct_symbol_backed_address(
+    const std::optional<bir::MemoryAddress>& address,
+    std::string_view fallback_symbol_name,
+    std::int64_t fallback_byte_offset,
+    std::size_t size_bytes,
+    std::size_t align_bytes) {
+  if (!address.has_value()) {
+    if (fallback_symbol_name.empty()) {
+      return std::nullopt;
+    }
+    return PreparedAddress{
+        .base_kind = PreparedAddressBaseKind::GlobalSymbol,
+        .symbol_name = std::string(fallback_symbol_name),
+        .byte_offset = fallback_byte_offset,
+        .size_bytes = size_bytes,
+        .align_bytes = align_bytes,
+        .can_use_base_plus_offset = true,
+    };
+  }
+
+  PreparedAddressBaseKind base_kind = PreparedAddressBaseKind::None;
+  switch (address->base_kind) {
+    case bir::MemoryAddress::BaseKind::GlobalSymbol:
+      base_kind = PreparedAddressBaseKind::GlobalSymbol;
+      break;
+    case bir::MemoryAddress::BaseKind::StringConstant:
+      base_kind = PreparedAddressBaseKind::StringConstant;
+      break;
+    default:
+      return std::nullopt;
+  }
+
+  const std::string_view symbol_name =
+      address->base_name.empty() ? fallback_symbol_name : std::string_view(address->base_name);
+  if (symbol_name.empty()) {
+    return std::nullopt;
+  }
+
+  return PreparedAddress{
+      .base_kind = base_kind,
+      .symbol_name = std::string(symbol_name),
+      .byte_offset = address->byte_offset + fallback_byte_offset,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes == 0 ? address->align_bytes : align_bytes,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
+    std::string_view function_name,
+    std::string_view block_label,
+    std::size_t inst_index,
+    const bir::LoadGlobalInst& inst) {
+  const std::size_t size_bytes =
+      stack_layout::normalize_size(inst.result.type, inst.result.type == bir::TypeKind::Void
+                                                         ? 0
+                                                         : stack_layout::fallback_type_size(
+                                                               inst.result.type));
+  const std::size_t align_bytes = stack_layout::normalize_alignment(
+      inst.result.type,
+      inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes : inst.align_bytes,
+      size_bytes);
+  auto address = build_direct_symbol_backed_address(
+      inst.address, inst.global_name, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
+  if (!address.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedMemoryAccess{
+      .function_name = std::string(function_name),
+      .block_label = std::string(block_label),
+      .inst_index = inst_index,
+      .result_value_name = inst.result.kind == bir::Value::Kind::Named
+                               ? std::optional<std::string>(inst.result.name)
+                               : std::nullopt,
+      .address = std::move(*address),
+  };
+}
+
+[[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
+    std::string_view function_name,
+    std::string_view block_label,
+    std::size_t inst_index,
+    const bir::StoreGlobalInst& inst) {
+  const std::size_t size_bytes =
+      stack_layout::normalize_size(inst.value.type, inst.value.type == bir::TypeKind::Void
+                                                        ? 0
+                                                        : stack_layout::fallback_type_size(
+                                                              inst.value.type));
+  const std::size_t align_bytes = stack_layout::normalize_alignment(
+      inst.value.type,
+      inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes : inst.align_bytes,
+      size_bytes);
+  auto address = build_direct_symbol_backed_address(
+      inst.address, inst.global_name, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
+  if (!address.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedMemoryAccess{
+      .function_name = std::string(function_name),
+      .block_label = std::string(block_label),
+      .inst_index = inst_index,
+      .stored_value_name = inst.value.kind == bir::Value::Kind::Named
+                               ? std::optional<std::string>(inst.value.name)
+                               : std::nullopt,
+      .address = std::move(*address),
+  };
+}
+
 void append_direct_frame_slot_accesses(PreparedAddressingFunction& function_addressing,
                                        const bir::Function& function,
                                        const FrameSlotMap& frame_slots_by_name) {
@@ -124,6 +234,22 @@ void append_direct_frame_slot_accesses(PreparedAddressingFunction& function_addr
       if (const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst)) {
         if (auto access = build_direct_frame_slot_access(
                 function.name, block.label, inst_index, *store_local, frame_slots_by_name);
+            access.has_value()) {
+          function_addressing.accesses.push_back(std::move(*access));
+        }
+        continue;
+      }
+      if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
+        if (auto access = build_direct_symbol_backed_access(
+                function.name, block.label, inst_index, *load_global);
+            access.has_value()) {
+          function_addressing.accesses.push_back(std::move(*access));
+        }
+        continue;
+      }
+      if (const auto* store_global = std::get_if<bir::StoreGlobalInst>(&inst)) {
+        if (auto access = build_direct_symbol_backed_access(
+                function.name, block.label, inst_index, *store_global);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
         }

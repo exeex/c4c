@@ -157,6 +157,17 @@ const prepare::PreparedStackObject* find_stack_object(
 
 prepare::PreparedBirModule prepare_stack_layout_module() {
   bir::Module module;
+  module.globals.push_back(bir::Global{
+      .name = "g.counter",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".L.str0",
+      .bytes = "stack-layout",
+      .align_bytes = 1,
+  });
 
   bir::Function function;
   function.name = "stack_layout_copy_coalescing_activation";
@@ -203,6 +214,22 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
       .slot_name = "lv.live",
       .align_bytes = 4,
   });
+  entry.insts.push_back(bir::StoreGlobalInst{
+      .global_name = "g.counter",
+      .value = bir::Value::named(bir::TypeKind::I32, "loaded"),
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "message.ptr"),
+      .global_name = "g.counter",
+      .align_bytes = 8,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::StringConstant,
+          .base_name = ".L.str0",
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+  });
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "sum"),
@@ -242,8 +269,8 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
       function_addressing->frame_alignment_bytes != 4) {
     return fail("expected prepared addressing frame facts to mirror stack-layout metrics");
   }
-  if (function_addressing->accesses.size() != 2) {
-    return fail("expected direct frame-slot load/store accesses for the surviving home slot only");
+  if (function_addressing->accesses.size() != 4) {
+    return fail("expected prepared addressing to publish both direct frame-slot and symbol-backed accesses");
   }
 
   const auto* live_object = find_stack_object(prepared, "lv.live");
@@ -289,6 +316,42 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
       load_access->address.align_bytes != 4 ||
       !load_access->address.can_use_base_plus_offset) {
     return fail("expected prepared addressing to preserve the direct live-slot load facts");
+  }
+
+  const auto* global_store_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 4);
+  if (global_store_access == nullptr) {
+    return fail("expected prepared addressing to record the direct global-symbol store");
+  }
+  if (global_store_access->result_value_name.has_value() ||
+      !global_store_access->stored_value_name.has_value() ||
+      *global_store_access->stored_value_name != "loaded" ||
+      global_store_access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !global_store_access->address.symbol_name.has_value() ||
+      *global_store_access->address.symbol_name != "g.counter" ||
+      global_store_access->address.byte_offset != 0 ||
+      global_store_access->address.size_bytes != 4 ||
+      global_store_access->address.align_bytes != 4 ||
+      !global_store_access->address.can_use_base_plus_offset) {
+    return fail("expected prepared addressing to preserve the direct global-symbol store facts");
+  }
+
+  const auto* string_load_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 5);
+  if (string_load_access == nullptr) {
+    return fail("expected prepared addressing to record the direct string-constant load");
+  }
+  if (!string_load_access->result_value_name.has_value() ||
+      *string_load_access->result_value_name != "message.ptr" ||
+      string_load_access->stored_value_name.has_value() ||
+      string_load_access->address.base_kind != prepare::PreparedAddressBaseKind::StringConstant ||
+      !string_load_access->address.symbol_name.has_value() ||
+      *string_load_access->address.symbol_name != ".L.str0" ||
+      string_load_access->address.byte_offset != 0 ||
+      string_load_access->address.size_bytes != 8 ||
+      string_load_access->address.align_bytes != 8 ||
+      !string_load_access->address.can_use_base_plus_offset) {
+    return fail("expected prepared addressing to preserve the direct string-constant load facts");
   }
 
   if (prepare::find_prepared_memory_access(*function_addressing, "entry", 0) != nullptr ||
