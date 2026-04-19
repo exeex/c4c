@@ -5,25 +5,25 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 3.3
 Current Step Title: Close Remaining Consumer Families And Shared Helper Gaps
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another `plan.md` Step 3 slice for idea 62. The
+Completed another `plan.md` Step 3.3 slice for idea 62. The
 `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
-handoff coverage now proves the trailing-join joined-branch `or` lane keeps
-following the authoritative prepared control-flow contract even when true-lane
-or false-lane passthrough topology drifts before the join.
+handoff coverage now proves the trailing-join joined-branch `mul`, `shl`,
+`lshr`, and `ashr` lanes keep following the authoritative prepared
+control-flow contract even when true-lane or false-lane passthrough topology
+drifts before the join.
 
 ## Suggested Next
 
-Move to `plan.md` Step 3.3 and pick the next bounded consumer family that
-still lacks explicit prepared-contract drift or loss proof, preferably outside
-the joined-branch trailing-join `and`, trailing-join `or`, short-circuit,
-guard-chain, compare-branch, compare-join, and local-slot passthrough lanes
-now that those routes have explicit authoritative prepared-target,
-branch-condition, entry-label, or topology-drift checks.
+Move to the next bounded `plan.md` Step 3.3 consumer family or shared helper
+surface that still lacks explicit prepared-contract drift or loss proof,
+preferably outside the joined-branch trailing-join family now that the
+`and`, `or`, `mul`, `shl`, `lshr`, and `ashr` lanes all have explicit
+authoritative prepared-target or topology-drift checks.
 
 ## Watchouts
 
@@ -67,6 +67,11 @@ branch-condition, entry-label, or topology-drift checks.
   have explicit true-lane and false-lane passthrough topology-drift coverage,
   so future Step 3 packets should move to a different joined-branch subfamily
   instead of restating either carrier shape.
+- The joined-branch trailing-join `mul`, `shl`, `lshr`, and `ashr` lanes now
+  also have explicit true-lane and false-lane passthrough topology-drift
+  coverage, so future Step 3.3 packets should move to a different consumer
+  family or shared helper gap instead of restating the same trailing-join
+  carrier shape.
 
 ## Proof
 
@@ -74,6 +79,7 @@ Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
 `backend_x86_handoff_boundary` proof passed after extending the joined-branch
-trailing-join `or` coverage so the route proves authoritative prepared
-control-flow ownership over both true-lane and false-lane passthrough topology
-drift. `test_after.log` is the proof artifact for this packet.
+trailing-join `mul`, `shl`, `lshr`, and `ashr` coverage so the route proves
+authoritative prepared control-flow ownership over both true-lane and
+false-lane passthrough topology drift. `test_after.log` is the proof artifact
+for this packet.

@@ -7839,6 +7839,26 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
       status != 0) {
     return status;
   }
+  if (const auto status =
+          check_join_route_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_mul_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_mul_asm(
+                  "branch_join_adjust_then_mul", "is_nonzero", 5, 1, 3),
+              "branch_join_adjust_then_mul",
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join mul ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_mul_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_mul_asm(
+                  "branch_join_adjust_then_mul", "is_nonzero", 5, 1, 3),
+              "branch_join_adjust_then_mul",
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join mul ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
 
   if (const auto status =
           check_route_outputs(
@@ -7857,6 +7877,26 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
                   "branch_join_adjust_then_shl", "is_nonzero", 5, 1, 2),
               "branch_join_adjust_then_shl",
               "scalar-control-flow compare-against-zero joined branch lane with trailing join shl prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_shl_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_shl_asm(
+                  "branch_join_adjust_then_shl", "is_nonzero", 5, 1, 2),
+              "branch_join_adjust_then_shl",
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join shl ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_shl_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_shl_asm(
+                  "branch_join_adjust_then_shl", "is_nonzero", 5, 1, 2),
+              "branch_join_adjust_then_shl",
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join shl ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }
@@ -7881,6 +7921,26 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
       status != 0) {
     return status;
   }
+  if (const auto status =
+          check_join_route_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_lshr_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_lshr_asm(
+                  "branch_join_adjust_then_lshr", "is_nonzero", 5, 1, 2),
+              "branch_join_adjust_then_lshr",
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join lshr ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_lshr_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_lshr_asm(
+                  "branch_join_adjust_then_lshr", "is_nonzero", 5, 1, 2),
+              "branch_join_adjust_then_lshr",
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join lshr ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
 
   if (const auto status =
           check_route_outputs(
@@ -7899,6 +7959,26 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
                   "branch_join_adjust_then_ashr", "is_nonzero", 5, 1, 2),
               "branch_join_adjust_then_ashr",
               "scalar-control-flow compare-against-zero joined branch lane with trailing join ashr prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_ashr_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_ashr_asm(
+                  "branch_join_adjust_then_ashr", "is_nonzero", 5, 1, 2),
+              "branch_join_adjust_then_ashr",
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join ashr ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_ashr_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_ashr_asm(
+                  "branch_join_adjust_then_ashr", "is_nonzero", 5, 1, 2),
+              "branch_join_adjust_then_ashr",
+              "scalar-control-flow compare-against-zero joined branch lane with trailing join ashr ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }
