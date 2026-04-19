@@ -5525,6 +5525,94 @@ int check_join_route_edge_store_slot_fixed_offset_global_selected_values_consume
       false);
 }
 
+int check_join_route_fixed_offset_global_selected_values_with_true_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false);
+}
+
+int check_join_route_edge_store_slot_fixed_offset_global_selected_values_with_true_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false);
+}
+
+int check_join_route_fixed_offset_global_selected_values_with_false_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true);
+}
+
+int check_join_route_edge_store_slot_fixed_offset_global_selected_values_with_false_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true);
+}
+
 int check_join_route_fixed_offset_global_selected_value_chain_consumes_prepared_control_flow(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -7730,6 +7818,44 @@ int check_materialized_compare_join_edge_store_slot_global_chain_route_ignores_n
       true,
       true,
       false,
+      false,
+      false,
+      false,
+      true,
+      &expected_asm);
+}
+
+int check_materialized_compare_join_fixed_offset_global_route_ignores_non_compare_entry_carrier(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module,
+      function_name,
+      failure_context,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      &expected_asm);
+}
+
+int check_materialized_compare_join_edge_store_slot_fixed_offset_global_route_ignores_non_compare_entry_carrier(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module,
+      function_name,
+      failure_context,
+      true,
+      false,
+      true,
       false,
       false,
       false,
@@ -10892,6 +11018,70 @@ int main() {
     return status;
   }
   if (const auto status =
+          check_join_route_fixed_offset_global_selected_values_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_offset_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_offset_globals_then_xor_asm(
+                  "branch_join_offset_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero_pair",
+                  4,
+                  "selected_nonzero_pair",
+                  4,
+                  3),
+              "branch_join_offset_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with fixed-offset same-module global selected values ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_fixed_offset_global_selected_values_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_offset_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_offset_globals_then_xor_asm(
+                  "branch_join_offset_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero_pair",
+                  4,
+                  "selected_nonzero_pair",
+                  4,
+                  3),
+              "branch_join_offset_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with fixed-offset same-module global selected values EdgeStoreSlot ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_fixed_offset_global_selected_values_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_offset_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_offset_globals_then_xor_asm(
+                  "branch_join_offset_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero_pair",
+                  4,
+                  "selected_nonzero_pair",
+                  4,
+                  3),
+              "branch_join_offset_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with fixed-offset same-module global selected values ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_fixed_offset_global_selected_values_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_offset_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_offset_globals_then_xor_asm(
+                  "branch_join_offset_global_then_xor",
+                  "carrier.nonzero",
+                  "selected_zero_pair",
+                  4,
+                  "selected_nonzero_pair",
+                  4,
+                  3),
+              "branch_join_offset_global_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with fixed-offset same-module global selected values EdgeStoreSlot ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_materialized_compare_join_branches_publish_prepared_fixed_offset_global_return_contexts(
               make_x86_param_eq_zero_branch_joined_offset_globals_then_xor_module(),
               "branch_join_offset_global_then_xor",
@@ -10904,6 +11094,38 @@ int main() {
               make_x86_param_eq_zero_branch_joined_offset_globals_then_xor_module(),
               "branch_join_offset_global_then_xor",
               "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot fixed-offset same-module global return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_fixed_offset_global_route_ignores_non_compare_entry_carrier(
+              make_x86_param_eq_zero_branch_joined_offset_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_offset_globals_then_xor_asm(
+                  "branch_join_offset_global_then_xor",
+                  "is_nonzero",
+                  "selected_zero_pair",
+                  4,
+                  "selected_nonzero_pair",
+                  4,
+                  3),
+              "branch_join_offset_global_then_xor",
+              "scalar-control-flow compare-against-zero fixed-offset same-module global compare-join route ignores non-compare entry carrier state when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_fixed_offset_global_route_ignores_non_compare_entry_carrier(
+              make_x86_param_eq_zero_branch_joined_offset_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_offset_globals_then_xor_asm(
+                  "branch_join_offset_global_then_xor",
+                  "is_nonzero",
+                  "selected_zero_pair",
+                  4,
+                  "selected_nonzero_pair",
+                  4,
+                  3),
+              "branch_join_offset_global_then_xor",
+              "scalar-control-flow compare-against-zero fixed-offset same-module global EdgeStoreSlot compare-join route ignores non-compare entry carrier state when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }
