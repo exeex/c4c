@@ -5,14 +5,14 @@ Source Idea Path: ideas/open/63_complete_phi_legalization_and_parallel_copy_reso
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Keep Downstream Phi Consumers Contract-Strict
-Plan Review Counter: 9 / 10
+Plan Review Counter: 10 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed a Step 3.2 (`Keep Downstream Phi Consumers Contract-Strict`) slice by
-tightening the joined-branch compare-join `branch_join_adjust_then_or`
-handoff-boundary proof so the trailing-or family now exercises the
+tightening the joined-branch compare-join `branch_join_adjust_then_mul`
+handoff-boundary proof so the trailing-mul family now exercises the
 authoritative render-contract, branch-plan, non-compare-entry rejection, and
 prepared-branch condition/record checks for both the default carrier and a
 forced `EdgeStoreSlot` carrier. This kept the packet bounded to one trailing
@@ -21,10 +21,10 @@ strict without widening into emitter changes.
 
 ## Suggested Next
 
-Continue Step 3.2 by applying the same trailing compare-join contract-strict
-coverage to one more bounded immediate-op family that still only proves
-passthrough ownership and render-contract behavior, preferably
-`branch_join_adjust_then_mul` before widening beyond
+Before accepting another Step 3.2 packet on this same route, run plan-owner
+review for the current step because the next accepted commit should hit the
+displayed review limit; after that review, the next bounded compare-join
+consumer slice is likely `branch_join_adjust_then_shl` if the route stays in
 `backend_x86_handoff_boundary`.
 
 ## Watchouts
@@ -33,7 +33,7 @@ passthrough ownership and render-contract behavior, preferably
 - Keep typed semantic ids as the public identity boundary.
 - Do not silently fold branch/join ownership work from idea 62 back into this
   route.
-- This packet only tightened trailing-or compare-join proof coverage;
+- This packet only tightened trailing-mul compare-join proof coverage;
   it did not change the x86 emitter or the authoritative prepared compare-join
   contract itself.
 - The joined-branch handoff-boundary fixtures still publish many explicit
@@ -53,7 +53,7 @@ passthrough ownership and render-contract behavior, preferably
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_x86_handoff_boundary$' > test_after.log 2>&1`
 ran for this Step 3.2 packet and preserved the canonical proof log in
 `test_after.log`; `backend_x86_handoff_boundary` passed with the joined-branch
-`branch_join_adjust_then_or` trailing-or compare-join family now proving
+`branch_join_adjust_then_mul` trailing-mul compare-join family now proving
 authoritative render-contract, branch-plan, non-compare-entry, and prepared-
 branch condition/record ownership for the default carrier and a forced
 `EdgeStoreSlot` carrier against the same authoritative prepared-control-flow
