@@ -5,26 +5,25 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Migrate Consumers To The Authoritative Prepared Facts
-Plan Review Counter: 2 / 10
+Plan Review Counter: 3 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed a `plan.md` Step 3 slice for idea 62. The minimal compare-branch
-route in `src/backend/mir/x86/codegen/prepared_param_zero_render.cpp` now
-requires authoritative prepared branch metadata whenever prepared control-flow
-exists, and `tests/backend/backend_x86_handoff_boundary_compare_branch_test.cpp`
-now proves the canonical prepared-module handoff rejects both drifted and
-missing prepared branch records instead of reopening raw compare-driven branch
-recovery.
+Completed another `plan.md` Step 3 slice for idea 62. The
+`tests/backend/backend_x86_handoff_boundary_compare_branch_test.cpp` handoff
+coverage now extends the same authoritative prepared-branch ownership checks to
+the remaining minimal compare-driven entry variants, proving the nonzero lane
+and the parameter-leaf return lane both keep following prepared control-flow
+metadata and reject drifted or missing prepared branch records instead of
+reopening raw compare-driven recovery.
 
 ## Suggested Next
 
-Advance another bounded `plan.md` Step 3 compare-branch packet that extends the
-same contract-strict prepared-branch rejection proof to the remaining minimal
-nonzero and parameter-leaf compare-driven entry variants, or switch to the next
-consumer family that still reopens raw branch recovery when authoritative
-prepared metadata is removed.
+Switch to the next bounded `plan.md` Step 3 consumer family that still falls
+back to raw branch or join recovery when authoritative prepared metadata is
+removed, most likely one of the remaining short-circuit or compare-join entry
+handoff paths in `src/backend/mir/x86/codegen/`.
 
 ## Watchouts
 
@@ -40,20 +39,22 @@ prepared metadata is removed.
 - Keep Step 3 packets focused on consumer migration proof, not on reopening
   Step 2.3-style fallback cleanup that already landed for local-slot and
   countdown handoff surfaces.
-- Keep the minimal compare-branch route aligned with the same prepared
-  branch-condition and prepared-target contract that the broader guard-chain
-  family already requires; do not reopen raw compare or terminator recovery
-  once the prepared control-flow block is authoritative.
-- Prefer authoritative prepared-metadata drift proofs over adding new
-  compare-shape-specific fallback logic in x86 codegen.
+- The minimal compare-branch routes now have contract-strict proof for zero,
+  nonzero, and parameter-leaf variants, so the next Step 3 packet should move
+  to a different consumer family instead of restating the same branch-lane
+  proof shape.
+- Keep the broader guard-chain and compare-join families aligned with the same
+  prepared branch-condition and prepared-target contract; do not reopen raw
+  compare or terminator recovery once the prepared control-flow block is
+  authoritative.
 
 ## Proof
 
 Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
-`backend_x86_handoff_boundary` proof passed after making the minimal
-compare-branch prepared-module consumer reject missing authoritative prepared
-branch records and adding handoff-boundary coverage for both drifted and
-missing prepared compare-branch metadata. `test_after.log` is the proof
+`backend_x86_handoff_boundary` proof passed after extending the minimal
+compare-branch handoff-boundary coverage so the nonzero and parameter-leaf
+variants also prove authoritative prepared branch ownership and rejection of
+drifted or missing prepared branch records. `test_after.log` is the proof
 artifact for this packet.

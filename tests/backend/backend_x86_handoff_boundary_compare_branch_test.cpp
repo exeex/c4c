@@ -593,12 +593,54 @@ int run_backend_x86_handoff_boundary_compare_branch_tests() {
     return status;
   }
   if (const auto status =
+          check_minimal_compare_branch_requires_authoritative_prepared_branch_labels(
+              make_x86_param_ne_zero_branch_module(),
+              "branch_on_nonzero",
+              "scalar-control-flow compare-against-zero nonzero branch lane rejects drifted authoritative prepared branch labels instead of falling back to raw branch recovery");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_requires_authoritative_prepared_branch_record(
+              make_x86_param_ne_zero_branch_module(),
+              "branch_on_nonzero",
+              "scalar-control-flow compare-against-zero nonzero branch lane rejects reopening raw branch recovery when the authoritative prepared branch record is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_route_outputs(
               make_x86_param_eq_zero_branch_param_or_immediate_module(),
               expected_minimal_param_eq_zero_branch_param_or_immediate_asm(
                   "branch_zero_or_passthrough", "is_nonzero", 5),
               "bir.func @branch_zero_or_passthrough(i32 p.x) -> i32 {",
               "scalar-control-flow compare-against-zero branch lane with parameter leaf return");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_param_or_immediate_module(),
+              expected_minimal_param_eq_zero_branch_param_or_immediate_asm(
+                  "branch_zero_or_passthrough", "is_nonzero", 5),
+              "branch_zero_or_passthrough",
+              "scalar-control-flow compare-against-zero branch lane with parameter leaf return prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_requires_authoritative_prepared_branch_labels(
+              make_x86_param_eq_zero_branch_param_or_immediate_module(),
+              "branch_zero_or_passthrough",
+              "scalar-control-flow compare-against-zero branch lane with parameter leaf return rejects drifted authoritative prepared branch labels instead of falling back to raw branch recovery");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_requires_authoritative_prepared_branch_record(
+              make_x86_param_eq_zero_branch_param_or_immediate_module(),
+              "branch_zero_or_passthrough",
+              "scalar-control-flow compare-against-zero branch lane with parameter leaf return rejects reopening raw branch recovery when the authoritative prepared branch record is missing");
       status != 0) {
     return status;
   }
