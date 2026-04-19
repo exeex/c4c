@@ -37,6 +37,8 @@ std::string emit_prepared_module(
   }
 
   const auto& function = *function_ptr;
+  const c4c::FunctionNameId function_name_id =
+      module.names.function_names.find(function.name);
   const auto asm_prefix = ".intel_syntax noprefix\n.text\n.globl " + function.name +
                           "\n.type " + function.name + ", @function\n" + function.name + ":\n";
   const auto narrow_abi_register = [](std::string_view wide_register) -> std::optional<std::string> {
@@ -90,8 +92,6 @@ std::string emit_prepared_module(
   };
   const auto find_control_flow_function =
       [&]() -> const c4c::backend::prepare::PreparedControlFlowFunction* {
-    const c4c::FunctionNameId function_name_id =
-        module.names.function_names.find(function.name);
     if (function_name_id == c4c::kInvalidFunctionName) {
       return nullptr;
     }
@@ -100,8 +100,6 @@ std::string emit_prepared_module(
   };
   const auto find_addressing_function =
       [&]() -> const c4c::backend::prepare::PreparedAddressingFunction* {
-    const c4c::FunctionNameId function_name_id =
-        module.names.function_names.find(function.name);
     if (function_name_id == c4c::kInvalidFunctionName) {
       return nullptr;
     }

@@ -5,25 +5,26 @@ Source Idea Path: ideas/open/64_shared_text_identity_and_semantic_name_table_ref
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Migrate The First Prepared Identity Surfaces
-Plan Review Counter: 8 / 10
+Plan Review Counter: 9 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another `plan.md` Step 3 packet by moving the remaining bounded
-countdown/legalize/x86 helper consumers onto the typed join/continuation
-entry paths: the x86 short-circuit join helper now takes `BlockLabelId`, the
-local-slot renderer resolves that id before asking for prepared join context,
-legalize publishes continuation branch facts through the typed join-context
-helper, and the countdown renderer resolves the carried counter once into
-`ValueNameId` before looking up incoming join transfers.
+Completed another `plan.md` Step 3 packet by moving the prepared
+module/local-slot lookup boundary onto semantic ids: `prepared_module_emit.cpp`
+now resolves `FunctionNameId` once and reuses it for prepared control-flow and
+addressing lookup, while `prepared_local_slot_render.cpp` resolves
+`FunctionNameId`/`BlockLabelId` at the function or block boundary and then
+keeps prepared stack/addressing lookups on typed ids instead of repeatedly
+re-entering through raw function or block spellings.
 
 ## Suggested Next
 
 Continue `plan.md` Step 3 by migrating the remaining non-owned prepared/backend
 consumers that still enter prepared identity helpers through raw function,
-block, or value spellings so the surviving string-view overloads stay
-compatibility adapters instead of normal internal call paths.
+block, or value spellings outside the x86 local-slot/module boundary, with
+priority on the remaining prepared/backend lookup helpers that still resolve
+the same semantic ids repeatedly from BIR names.
 
 ## Watchouts
 
@@ -35,7 +36,8 @@ compatibility adapters instead of normal internal call paths.
   semantic-id path.
 - Keep the remaining string-view overloads in `prealloc.hpp` and x86 helper
   shims as compatibility wrappers only. Do not let follow-on packets rebuild
-  string-first matching deeper in prepared/backend consumers.
+  string-first matching deeper in prepared/backend consumers that now already
+  carry typed function or block ids.
 - The delegated backend subset still has the same four pre-existing failures
   from baseline:
   `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
@@ -49,8 +51,7 @@ compatibility adapters instead of normal internal call paths.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_' > test_after.log 2>&1` and captured the
 build/test output in `test_after.log`. The build completed, the backend subset
-kept the prepared control-flow and x86 handoff coverage green while the
-countdown/legalize/x86 helper boundaries moved onto typed block/value ids, and
-the subset still reproduced only the same four known failing tests already
-called out above; any `diff` against `test_before.log` should be limited to
-test scheduling/order noise rather than a new behavioral regression.
+still reproduced only the same four known failing tests already called out
+above while the prepared module/local-slot lookup boundary moved onto typed
+function/block ids, so this packet did not introduce a new backend-subset
+regression beyond the existing baseline failures.
