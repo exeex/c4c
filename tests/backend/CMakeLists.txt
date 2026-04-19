@@ -163,6 +163,7 @@ add_executable(backend_x86_handoff_boundary_test
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_compare_branch_test.cpp"
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_i32_guard_chain_test.cpp"
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_joined_branch_test.cpp"
+    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_lir_test.cpp"
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_local_i16_guard_test.cpp"
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_local_i32_guard_test.cpp"
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_short_circuit_test.cpp"
