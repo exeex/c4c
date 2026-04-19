@@ -428,6 +428,60 @@ int check_short_circuit_route_with_rhs_passthrough_consumes_prepared_control_flo
       module, function_name, failure_context, true);
 }
 
+int check_short_circuit_route_prefers_prepared_passthrough_branch_target(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 3 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit continuation/control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* rhs_end_block = find_block(function, "logic.rhs.end.9");
+  if (rhs_end_block == nullptr ||
+      rhs_end_block->terminator.kind != bir::TerminatorKind::Branch) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer has the expected rhs passthrough branch")
+                    .c_str());
+  }
+
+  const auto rhs_end_label_id = find_block_label_id(prepared, rhs_end_block->label);
+  const auto* rhs_end_control_flow =
+      rhs_end_label_id == c4c::kInvalidBlockLabel
+          ? nullptr
+          : prepare::find_prepared_control_flow_block(*control_flow, rhs_end_label_id);
+  if (rhs_end_control_flow == nullptr ||
+      rhs_end_control_flow->terminator_kind != bir::TerminatorKind::Branch ||
+      block_label(prepared, rhs_end_control_flow->branch_target_label) != "logic.end.10") {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the authoritative rhs passthrough branch target")
+                    .c_str());
+  }
+
+  rhs_end_block->terminator.target_label = "contract.raw.rhs.end.drift";
+  function.blocks.push_back(bir::Block{
+      .label = "contract.raw.rhs.end.drift",
+      .terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(77)},
+  });
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_minimal_local_i32_short_circuit_or_guard_asm(function_name)) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped preferring the authoritative rhs passthrough branch target over raw branch drift")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_short_circuit_route_ignores_rhs_compare_carrier_state_when_prepared_control_flow_is_authoritative(
     const bir::Module& module,
     const char* function_name,
@@ -2070,6 +2124,14 @@ int run_backend_x86_handoff_boundary_short_circuit_tests() {
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
               "minimal local-slot short-circuit or-guard ignores rhs passthrough topology when prepared continuation ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_route_prefers_prepared_passthrough_branch_target(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit route prefers authoritative rhs passthrough branch targets over raw branch drift");
       status != 0) {
     return status;
   }

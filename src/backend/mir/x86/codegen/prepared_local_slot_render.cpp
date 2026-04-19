@@ -222,6 +222,37 @@ bool has_authoritative_prepared_short_circuit_continuation(
          continuation->false_label != c4c::kInvalidBlockLabel;
 }
 
+const c4c::backend::bir::Block* resolve_authoritative_prepared_branch_target(
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    c4c::BlockLabelId block_label_id,
+    const c4c::backend::bir::Block& source_block,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block) {
+  if (function_control_flow == nullptr || prepared_names == nullptr ||
+      block_label_id == c4c::kInvalidBlockLabel) {
+    return nullptr;
+  }
+
+  const auto* prepared_block =
+      c4c::backend::prepare::find_prepared_control_flow_block(*function_control_flow, block_label_id);
+  if (prepared_block == nullptr) {
+    return nullptr;
+  }
+  if (prepared_block->terminator_kind != c4c::backend::bir::TerminatorKind::Branch ||
+      prepared_block->branch_target_label == c4c::kInvalidBlockLabel) {
+    throw std::invalid_argument(
+        "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
+  }
+
+  const auto* target = find_block(c4c::backend::prepare::prepared_block_label(
+      *prepared_names, prepared_block->branch_target_label));
+  if (target == nullptr || target == &source_block) {
+    throw std::invalid_argument(
+        "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
+  }
+  return target;
+}
+
 }  // namespace
 
 std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
@@ -832,9 +863,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
               find_block,
               render_block);
         }
-        if (has_authoritative_prepared_short_circuit_continuation(continuation) ||
-            (compare_index != block.insts.size() &&
-             has_authoritative_prepared_control_flow_block(function_control_flow, block_label_id))) {
+        if (has_authoritative_prepared_short_circuit_continuation(continuation)) {
           throw std::invalid_argument(
               "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
         }
@@ -842,9 +871,13 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       if (compare_index != block.insts.size()) {
         return std::nullopt;
       }
-      const auto* target = find_block(block.terminator.target_label);
-      if (target == nullptr || target == &block) {
-        return std::nullopt;
+      const auto* target = resolve_authoritative_prepared_branch_target(
+          function_control_flow, prepared_names, block_label_id, block, find_block);
+      if (target == nullptr) {
+        target = find_block(block.terminator.target_label);
+        if (target == nullptr || target == &block) {
+          return std::nullopt;
+        }
       }
       const auto rendered_target = render_block(*target, continuation);
       if (!rendered_target.has_value()) {
