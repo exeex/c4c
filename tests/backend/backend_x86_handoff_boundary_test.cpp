@@ -6282,6 +6282,164 @@ int check_materialized_compare_join_branch_plan_helper_ignores_non_compare_entry
       module, function_name, failure_context, false, true);
 }
 
+int check_materialized_compare_join_route_ignores_non_compare_entry_carrier_impl(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context,
+    bool use_edge_store_slot_carrier) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-join control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* join_block = find_block(function, "join");
+  if (entry_block == nullptr || join_block == nullptr || entry_block->insts.empty() ||
+      function.params.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer has the expected entry/join blocks and param")
+                    .c_str());
+  }
+
+  const auto* entry_branch_condition =
+      prepare::find_prepared_branch_condition(*control_flow, entry_block->label);
+  if (entry_branch_condition == nullptr || !entry_branch_condition->predicate.has_value() ||
+      !entry_branch_condition->lhs.has_value() || !entry_branch_condition->rhs.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer publishes the authoritative compare-join entry branch metadata")
+                    .c_str());
+  }
+
+  auto* entry_compare = std::get_if<bir::BinaryInst>(&entry_block->insts.front());
+  if (entry_compare == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer exposes the expected entry compare carrier")
+                    .c_str());
+  }
+  *entry_compare = bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "contract.entry.compare.carrier"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(4),
+      .rhs = bir::Value::immediate_i32(8),
+  };
+
+  if (use_edge_store_slot_carrier) {
+    auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+    if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1) {
+      return fail((std::string(failure_context) +
+                   ": prepared compare-join fixture lost its mutable join-transfer contract")
+                      .c_str());
+    }
+
+    auto& join_transfer = mutable_control_flow->join_transfers.front();
+    if (join_transfer.edge_transfers.size() < 2 || !join_transfer.source_true_transfer_index.has_value() ||
+        !join_transfer.source_false_transfer_index.has_value()) {
+      return fail((std::string(failure_context) +
+                   ": prepared compare-join fixture no longer exposes authoritative true/false join ownership")
+                      .c_str());
+    }
+
+    std::size_t join_select_index = join_block->insts.size() - 1;
+    auto* join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
+    if (join_select == nullptr && join_block->insts.size() >= 2) {
+      join_select_index = join_block->insts.size() - 2;
+      join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
+    }
+    if (join_select == nullptr) {
+      return fail((std::string(failure_context) +
+                   ": prepared compare-join fixture no longer exposes the expected select carrier")
+                      .c_str());
+    }
+    const std::string original_carrier_result_name = join_select->result.name;
+
+    const auto true_transfer_index = *join_transfer.source_true_transfer_index;
+    const auto false_transfer_index = *join_transfer.source_false_transfer_index;
+    if (true_transfer_index >= join_transfer.edge_transfers.size() ||
+        false_transfer_index >= join_transfer.edge_transfers.size() ||
+        true_transfer_index == false_transfer_index) {
+      return fail((std::string(failure_context) +
+                   ": prepared compare-join fixture published invalid true/false join ownership indices")
+                      .c_str());
+    }
+
+    join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
+    join_transfer.storage_name = "%contract.route.join.slot";
+    join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
+    join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
+    function.local_slots.push_back(bir::LocalSlot{
+        .name = *join_transfer.storage_name,
+        .type = bir::TypeKind::I32,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .is_address_taken = false,
+    });
+
+    join_block->insts[join_select_index] = bir::LoadLocalInst{
+        .result = bir::Value::named(bir::TypeKind::I32, "carrier.join.route.edge.slot"),
+        .slot_name = *join_transfer.storage_name,
+    };
+    const auto rewritten_carrier_result =
+        bir::Value::named(bir::TypeKind::I32, "carrier.join.route.edge.slot");
+    for (auto& inst : join_block->insts) {
+      if (auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+        if (binary->lhs.kind == bir::Value::Kind::Named &&
+            binary->lhs.name == original_carrier_result_name) {
+          binary->lhs = rewritten_carrier_result;
+        }
+        if (binary->rhs.kind == bir::Value::Kind::Named &&
+            binary->rhs.name == original_carrier_result_name) {
+          binary->rhs = rewritten_carrier_result;
+        }
+      }
+    }
+  }
+
+  const auto resolved_render_contract =
+      prepare::find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
+          prepared.module, *control_flow, function, *entry_block, function.params.front(), false);
+  if (!resolved_render_contract.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped resolving the prepared compare-join render contract when the entry compare carrier drifts")
+                    .c_str());
+  }
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped preferring the prepared compare-join entry branch contract")
+                    .c_str());
+  }
+  return 0;
+}
+
+int check_materialized_compare_join_route_ignores_non_compare_entry_carrier(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_route_ignores_non_compare_entry_carrier_impl(
+      module, expected_asm, function_name, failure_context, false);
+}
+
+int check_materialized_compare_join_edge_store_slot_route_ignores_non_compare_entry_carrier(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_route_ignores_non_compare_entry_carrier_impl(
+      module, expected_asm, function_name, failure_context, true);
+}
+
 int check_materialized_compare_join_render_contract_publishes_prepared_globals_and_labels(
     const bir::Module& module,
     const char* function_name,
@@ -9292,10 +9450,30 @@ int main() {
     return status;
   }
   if (const auto status =
+          check_materialized_compare_join_route_ignores_non_compare_entry_carrier(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm(
+                  "branch_join_adjust_then_xor", "is_nonzero", 5, 1, 3),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero compare-join route ignores non-compare entry carrier state when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_materialized_compare_join_edge_store_slot_branch_plan_helper_publishes_prepared_labels(
               make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
               "branch_join_adjust_then_xor",
               "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot branch-plan ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_route_ignores_non_compare_entry_carrier(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm(
+                  "branch_join_adjust_then_xor", "is_nonzero", 5, 1, 3),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero compare-join EdgeStoreSlot route ignores non-compare entry carrier state when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }
