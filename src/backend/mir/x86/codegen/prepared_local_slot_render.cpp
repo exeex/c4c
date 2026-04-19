@@ -1182,12 +1182,21 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     compare_immediate = lhs_is_value_rhs_is_imm ? prepared_immediate_branch->rhs->immediate
                                                 : prepared_immediate_branch->lhs->immediate;
     compare_opcode = *prepared_immediate_branch->predicate;
+    const auto target_labels =
+        c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
+            *prepared_names,
+            function_control_flow,
+            entry_label_id,
+            entry,
+            *prepared_immediate_branch);
+    if (!target_labels.has_value()) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
+    }
     true_label = std::string(
-        c4c::backend::prepare::prepared_block_label(*prepared_names,
-                                                    prepared_immediate_branch->true_label));
+        c4c::backend::prepare::prepared_block_label(*prepared_names, target_labels->true_label));
     false_label = std::string(
-        c4c::backend::prepare::prepared_block_label(*prepared_names,
-                                                    prepared_immediate_branch->false_label));
+        c4c::backend::prepare::prepared_block_label(*prepared_names, target_labels->false_label));
   } else {
     const auto* compare = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.back());
     if (compare == nullptr ||
@@ -1462,12 +1471,21 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
     compare_immediate =
         lhs_is_value_rhs_is_imm ? prepared_branch_condition->rhs->immediate
                                 : prepared_branch_condition->lhs->immediate;
+    const auto target_labels =
+        c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
+            *prepared_names,
+            function_control_flow,
+            entry_label_id,
+            entry,
+            *prepared_branch_condition);
+    if (!target_labels.has_value()) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
+    }
     true_label = std::string(
-        c4c::backend::prepare::prepared_block_label(*prepared_names,
-                                                    prepared_branch_condition->true_label));
+        c4c::backend::prepare::prepared_block_label(*prepared_names, target_labels->true_label));
     false_label = std::string(
-        c4c::backend::prepare::prepared_block_label(*prepared_names,
-                                                    prepared_branch_condition->false_label));
+        c4c::backend::prepare::prepared_block_label(*prepared_names, target_labels->false_label));
   }
   if (compare_opcode != c4c::backend::bir::BinaryOpcode::Eq &&
       compare_opcode != c4c::backend::bir::BinaryOpcode::Ne) {

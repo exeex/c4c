@@ -5,29 +5,30 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Build An Authoritative Shared Prepared CFG Model
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed the first `plan.md` Step 2 slice for idea 62. `PreparedControlFlowFunction`
-now publishes semantic-id keyed per-block terminator facts through
-`PreparedControlFlowBlock`, populated in `src/backend/prealloc/legalize.cpp`
-alongside the existing `branch_conditions` and `join_transfers`. The
-compare-driven plain-conditional entry path in
-`src/backend/mir/x86/codegen/prepared_param_zero_render.cpp` now consumes those
-shared per-block target labels before resolving branch destinations, but only
-when they agree with the authoritative `PreparedBranchCondition` labels so the
-existing canonical handoff rejection still fires on drifted prepared
-contracts. This keeps the new CFG ownership fact in shared prepare without
-weakening the short-circuit or local-guard contract checks.
+Completed another `plan.md` Step 2 slice for idea 62. The dedicated local-slot
+arithmetic guard renderers in
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` now resolve their
+true/false branch destinations through a shared
+`resolve_prepared_compare_branch_target_labels(...)` helper in
+`src/backend/prealloc/prealloc.hpp`, so these compare-driven guard paths consume
+the authoritative prepared CFG targets when available instead of trusting
+`PreparedBranchCondition` labels in isolation. If the prepared branch condition
+and prepared per-block CFG facts drift, the x86 handoff now rejects that
+contract instead of silently rendering from whichever labels happen to be
+present locally.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by moving the next compare-driven consumers onto the
-same shared per-block CFG facts, starting with the remaining local-slot guard
-and compare-join helpers that still rediscover branch/join routing from BIR
-block shape after the prepared handoff.
+Continue `plan.md` Step 2 by moving the remaining compare-driven local-slot
+guard-chain helpers onto the same authoritative prepared CFG target resolution,
+especially the recursive branch/continuation path in
+`render_prepared_local_slot_guard_chain_if_supported(...)` that can still fall
+back to local BIR-shape discovery after the prepared handoff.
 
 ## Watchouts
 
@@ -36,12 +37,12 @@ block shape after the prepared handoff.
 - Keep phi-completion work in idea 63 unless it is strictly required to make
   CFG ownership truthful.
 - Reject testcase-shaped branch or join matcher growth.
-- Keep the new `PreparedControlFlowBlock` targets contract-consistent with
-  `PreparedBranchCondition`; mismatches should still fail the canonical
+- Keep `PreparedBranchCondition` and `PreparedControlFlowBlock` targets
+  contract-consistent; mismatches should still fail the canonical
   prepared-module handoff instead of silently preferring whichever record
   happens to look usable locally.
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` still falls
-  back to `build_prepared_plain_cond_entry_render_plan(...)` and local compare
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` still falls back
+  to `build_prepared_plain_cond_entry_render_plan(...)` and local compare
   matching when a prepared short-circuit or compare-join plan is missing.
 - `src/backend/mir/x86/codegen/prepared_countdown_render.cpp` still scans BIR
   blocks and join edges directly to rediscover loop/body/exit structure even

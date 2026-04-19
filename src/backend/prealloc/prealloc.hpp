@@ -914,6 +914,48 @@ find_prepared_compare_branch_target_labels(const PreparedNameTables& names,
 }
 
 [[nodiscard]] inline std::optional<PreparedBranchTargetLabels>
+resolve_prepared_compare_branch_target_labels(const PreparedNameTables& names,
+                                              const PreparedControlFlowFunction* function_cf,
+                                              BlockLabelId source_block_label_id,
+                                              const bir::Block& source_block,
+                                              const PreparedBranchCondition& branch_condition) {
+  const auto branch_target_labels =
+      find_prepared_compare_branch_target_labels(names, branch_condition, source_block);
+  if (!branch_target_labels.has_value()) {
+    return std::nullopt;
+  }
+  if (function_cf == nullptr || source_block_label_id == kInvalidBlockLabel) {
+    return branch_target_labels;
+  }
+
+  const auto control_flow_target_labels =
+      find_prepared_control_flow_branch_target_labels(*function_cf, source_block_label_id);
+  if (!control_flow_target_labels.has_value()) {
+    return branch_target_labels;
+  }
+  if (control_flow_target_labels->true_label != branch_target_labels->true_label ||
+      control_flow_target_labels->false_label != branch_target_labels->false_label) {
+    return std::nullopt;
+  }
+  return control_flow_target_labels;
+}
+
+[[nodiscard]] inline std::optional<PreparedBranchTargetLabels>
+resolve_prepared_compare_branch_target_labels(const PreparedNameTables& names,
+                                              const PreparedControlFlowFunction* function_cf,
+                                              const bir::Block& source_block,
+                                              const PreparedBranchCondition& branch_condition) {
+  const auto source_block_label_id =
+      resolve_prepared_block_label_id(names, source_block.label);
+  return resolve_prepared_compare_branch_target_labels(
+      names,
+      function_cf,
+      source_block_label_id.value_or(kInvalidBlockLabel),
+      source_block,
+      branch_condition);
+}
+
+[[nodiscard]] inline std::optional<PreparedBranchTargetLabels>
 find_prepared_compare_branch_target_labels(const PreparedNameTables& names,
                                            const PreparedControlFlowFunction& function_cf,
                                            BlockLabelId source_block_label_id,
