@@ -4407,26 +4407,14 @@ std::string emit_prepared_module(
     }
     return *value_render + *trailing_render + "    ret\n";
   };
-  const auto render_prepared_param_zero_branch_prefix_if_supported =
-      [&](c4c::backend::prepare::PreparedParamZeroBranchCondition::CompareShape compare_shape,
-          std::string_view false_label,
-          const char* false_branch_opcode,
-          std::string_view param_register_name) -> std::optional<std::string> {
-    if (false_branch_opcode == nullptr || false_label.empty()) {
-      return std::nullopt;
-    }
-
-    std::string rendered_compare;
-    switch (compare_shape) {
-      case c4c::backend::prepare::PreparedParamZeroBranchCondition::CompareShape::SelfTest:
-        rendered_compare = "    test " + std::string(param_register_name) + ", " +
-                           std::string(param_register_name) + "\n";
-        break;
-    }
-
-    return rendered_compare + "    " + std::string(false_branch_opcode) + " .L" + function.name +
-           "_" + std::string(false_label) + "\n";
-  };
+  const auto to_prepared_param_zero_compare_shape =
+      [&](c4c::backend::prepare::PreparedParamZeroBranchCondition::CompareShape compare_shape) {
+        switch (compare_shape) {
+          case c4c::backend::prepare::PreparedParamZeroBranchCondition::CompareShape::SelfTest:
+            return c4c::backend::x86::PreparedParamZeroCompareShape::SelfTest;
+        }
+        throw std::invalid_argument("unsupported prepared param-zero compare shape");
+      };
   const auto render_minimal_compare_branch_if_supported =
       [&]() -> std::optional<std::string> {
     if (function.params.size() != 1 || prepared_arch != c4c::TargetArch::X86_64 ||
@@ -4476,19 +4464,15 @@ std::string emit_prepared_module(
     if (!true_return.has_value() || !false_return.has_value()) {
       return std::nullopt;
     }
-
-    const auto rendered_branch_prefix =
-        render_prepared_param_zero_branch_prefix_if_supported(prepared_branch.compare_shape,
-                                                              prepared_branch.false_label,
-                                                              prepared_branch.false_branch_opcode,
-                                                              *param_register);
-    if (!rendered_branch_prefix.has_value()) {
-      return std::nullopt;
-    }
-    const std::string false_label =
-        ".L" + function.name + "_" + std::string(prepared_branch.false_label);
-    return asm_prefix + *rendered_branch_prefix + *true_return + false_label + ":\n" +
-           *false_return;
+    return c4c::backend::x86::render_prepared_param_zero_branch_function(
+        asm_prefix,
+        function.name,
+        to_prepared_param_zero_compare_shape(prepared_branch.compare_shape),
+        prepared_branch.false_label,
+        prepared_branch.false_branch_opcode,
+        *param_register,
+        *true_return,
+        *false_return);
   };
   const auto render_materialized_compare_join_if_supported =
       [&]() -> std::optional<std::string> {
@@ -4547,22 +4531,17 @@ std::string emit_prepared_module(
       }
       rendered_same_module_globals += *rendered_global_data;
     }
-
-    const auto rendered_branch_prefix =
-        render_prepared_param_zero_branch_prefix_if_supported(
-            resolved_render_contract->branch_plan.compare_shape,
-            resolved_render_contract->branch_plan.target_labels.false_label,
-            resolved_render_contract->branch_plan.false_branch_opcode,
-            *param_register);
-    if (!rendered_branch_prefix.has_value()) {
-      return std::nullopt;
-    }
-
-    const std::string false_label = ".L" + function.name + "_" +
-                                    std::string(resolved_render_contract->branch_plan
-                                                    .target_labels.false_label);
-    return asm_prefix + *rendered_branch_prefix + *true_return + false_label + ":\n" +
-           *false_return + rendered_same_module_globals;
+    return c4c::backend::x86::render_prepared_param_zero_branch_function(
+        asm_prefix,
+        function.name,
+        to_prepared_param_zero_compare_shape(
+            resolved_render_contract->branch_plan.compare_shape),
+        resolved_render_contract->branch_plan.target_labels.false_label,
+        resolved_render_contract->branch_plan.false_branch_opcode,
+        *param_register,
+        *true_return,
+        *false_return,
+        rendered_same_module_globals);
   };
   if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !entry.terminator.value.has_value()) {

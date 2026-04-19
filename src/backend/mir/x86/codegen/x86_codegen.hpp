@@ -147,6 +147,10 @@ enum class RiscvFloatClass : unsigned {
   Double,
 };
 
+enum class PreparedParamZeroCompareShape : unsigned {
+  SelfTest,
+};
+
 // Active intrinsic inventory carried by the translated x86 intrinsics owner.
 enum class IntrinsicOp : std::uint16_t {
   Lfence,
@@ -239,6 +243,17 @@ struct BlockId {
 struct StackSlot {
   std::int64_t raw = 0;
 };
+
+std::optional<std::string> render_prepared_param_zero_branch_function(
+    std::string_view asm_prefix,
+    std::string_view function_name,
+    PreparedParamZeroCompareShape compare_shape,
+    std::string_view false_label,
+    const char* false_branch_opcode,
+    std::string_view param_register_name,
+    std::string_view true_body,
+    std::string_view false_body,
+    std::string_view trailing_data = {});
 
 struct SlotAddr {
   enum class Kind : unsigned char {
