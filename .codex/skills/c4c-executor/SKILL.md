@@ -37,12 +37,11 @@ Follow this flow in order:
 2. Identify owned code files and the owned `todo.md` section.
 3. Read the delegated `Proof` command and treat it as fixed.
 4. Inspect only the files needed for that slice.
-5. Make the smallest coherent code change.
-6. Run the delegated `Proof` command.
-7. Update [`todo.md`](/workspaces/c4c/todo.md) with what just finished, the
+5. Run the delegated `Proof` command.
+6. Update [`todo.md`](/workspaces/c4c/todo.md) with what just finished, the
    executor-suggested next packet, any watchouts, and what proof ran.
-8. Preserve `test_after.log` on disk.
-9. Return concise handoff notes and stop.
+7. Preserve `test_after.log` on disk.
+8. Return concise handoff notes and stop.
 
 If you cannot finish one of these steps without crossing ownership, stop and
 report the blocker.
