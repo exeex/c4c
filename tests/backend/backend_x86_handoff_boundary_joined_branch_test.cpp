@@ -9175,6 +9175,14 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
       status != 0) {
     return status;
   }
+  if (const auto status =
+          check_materialized_compare_join_render_contract_publishes_prepared_globals_and_labels(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_mul_module(),
+              "branch_join_adjust_then_mul",
+              "scalar-control-flow compare-against-zero prepared compare-join trailing-mul render-contract ownership");
+      status != 0) {
+    return status;
+  }
 
   if (const auto status =
           check_route_outputs(
