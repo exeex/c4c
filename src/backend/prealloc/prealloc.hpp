@@ -2253,8 +2253,13 @@ find_prepared_compare_join_continuation_targets(const PreparedNameTables& names,
     const bir::Function& function,
     std::string_view source_block_label,
     const PreparedShortCircuitContinuationLabels& continuation_labels) {
+  const auto source_block_label_id =
+      resolve_prepared_block_label_id(names, source_block_label);
+  if (!source_block_label_id.has_value()) {
+    return prepared_compare_join_entry_target_labels(continuation_labels);
+  }
   return find_prepared_compare_join_entry_target_labels(
-      names, function_cf, function, names.block_labels.find(source_block_label), continuation_labels);
+      names, function_cf, function, *source_block_label_id, continuation_labels);
 }
 
 [[nodiscard]] inline PreparedBranchTargetLabels resolve_prepared_compare_join_entry_target_labels(
@@ -2277,12 +2282,13 @@ find_prepared_compare_join_continuation_targets(const PreparedNameTables& names,
     const bir::Function& function,
     const bir::Block& source_block,
     const PreparedShortCircuitContinuationLabels& continuation_labels) {
+  const auto source_block_label_id =
+      resolve_prepared_block_label_id(names, source_block.label);
+  if (!source_block_label_id.has_value()) {
+    return prepared_compare_join_entry_target_labels(continuation_labels);
+  }
   return resolve_prepared_compare_join_entry_target_labels(
-      names,
-      function_cf,
-      function,
-      names.block_labels.find(source_block.label),
-      continuation_labels);
+      names, function_cf, function, *source_block_label_id, continuation_labels);
 }
 
 [[nodiscard]] inline std::optional<PreparedShortCircuitBranchPlan>
