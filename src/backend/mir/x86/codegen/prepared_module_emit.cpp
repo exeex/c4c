@@ -422,18 +422,6 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
     static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
-    struct ShortCircuitRenderContext {
-      bool omit_true_continuation = false;
-      bool omit_false_lane = false;
-    };
-    struct RenderedShortCircuitFalseLane {
-      std::string label;
-      std::string rendered;
-    };
-    struct RenderedShortCircuitLanes {
-      std::string rendered_true;
-      RenderedShortCircuitFalseLane rendered_false_lane;
-    };
     const auto* function_control_flow = find_control_flow_function();
     const auto build_direct_branch_targets_from_continuation =
         [&](const c4c::backend::prepare::PreparedShortCircuitContinuationLabels&
@@ -504,115 +492,6 @@ std::string emit_prepared_module(
       }
       return plan;
     };
-    const auto render_short_circuit_target =
-        [&](const auto& render_block_fn,
-            const ShortCircuitTarget& target,
-            bool omit_continuation) -> std::optional<std::string> {
-      if (target.block == nullptr) {
-        return std::nullopt;
-      }
-      return render_block_fn(*target.block,
-                             omit_continuation ? std::nullopt : target.continuation);
-    };
-    const auto render_short_circuit_false_lane =
-        [&](const auto& render_block_fn,
-            const ShortCircuitPlan& plan,
-            const ShortCircuitRenderContext& render_context)
-        -> std::optional<RenderedShortCircuitFalseLane> {
-      RenderedShortCircuitFalseLane rendered_false_lane{
-          .label = ".L" + function.name + "_" + std::string(plan.on_compare_false.block->label),
-          .rendered = {},
-      };
-      if (render_context.omit_false_lane) {
-        return rendered_false_lane;
-      }
-
-      const auto rendered_false =
-          render_short_circuit_target(render_block_fn, plan.on_compare_false, false);
-      if (!rendered_false.has_value()) {
-        return std::nullopt;
-      }
-      rendered_false_lane.rendered =
-          rendered_false_lane.label + ":\n" + *rendered_false;
-      return rendered_false_lane;
-    };
-    const auto render_short_circuit_lanes =
-        [&](const auto& render_block_fn,
-            const ShortCircuitPlan& plan,
-            const ShortCircuitRenderContext& render_context)
-        -> std::optional<RenderedShortCircuitLanes> {
-      const auto rendered_true =
-          render_short_circuit_target(render_block_fn,
-                                      plan.on_compare_true,
-                                      render_context.omit_true_continuation);
-      if (!rendered_true.has_value()) {
-        return std::nullopt;
-      }
-
-      const auto rendered_false_lane =
-          render_short_circuit_false_lane(render_block_fn, plan, render_context);
-      if (!rendered_false_lane.has_value()) {
-        return std::nullopt;
-      }
-      return RenderedShortCircuitLanes{
-          .rendered_true = *rendered_true,
-          .rendered_false_lane = *rendered_false_lane,
-      };
-    };
-    const auto build_short_circuit_render_context =
-        [&](const ShortCircuitPlan& plan) -> std::optional<ShortCircuitRenderContext> {
-      const bool true_target_renders_false_lane =
-          plan.on_compare_true.continuation.has_value() &&
-          plan.on_compare_false.block ==
-              find_block(plan.on_compare_true.continuation->false_label);
-      const bool false_target_renders_true_lane =
-          plan.on_compare_false.continuation.has_value() &&
-          plan.on_compare_true.block ==
-              find_block(plan.on_compare_false.continuation->true_label);
-      if (true_target_renders_false_lane && false_target_renders_true_lane) {
-        return std::nullopt;
-      }
-      return ShortCircuitRenderContext{
-          .omit_true_continuation = false_target_renders_true_lane,
-          .omit_false_lane = true_target_renders_false_lane,
-      };
-    };
-    const auto assemble_short_circuit_rendered_plan =
-        [&](std::string_view rendered_body,
-            std::string_view compare_prefix,
-            std::string_view compare_branch,
-            std::string_view rendered_true,
-            const RenderedShortCircuitFalseLane& rendered_false_lane) {
-      std::string rendered = std::string(rendered_body) + std::string(compare_prefix) +
-                             "    " + std::string(compare_branch) + " " +
-                             rendered_false_lane.label + "\n" + std::string(rendered_true);
-      if (!rendered_false_lane.rendered.empty()) {
-        rendered += rendered_false_lane.rendered;
-      }
-      return rendered;
-    };
-    const auto render_compare_driven_branch_plan =
-        [&](const auto& render_block_fn,
-            std::string_view rendered_body,
-            const CompareDrivenBranchRenderPlan& render_plan) -> std::optional<std::string> {
-      const auto render_context = build_short_circuit_render_context(render_plan.branch_plan);
-      if (!render_context.has_value()) {
-        return std::nullopt;
-      }
-
-      const auto rendered_lanes =
-          render_short_circuit_lanes(render_block_fn, render_plan.branch_plan, *render_context);
-      if (!rendered_lanes.has_value()) {
-        return std::nullopt;
-      }
-
-      return assemble_short_circuit_rendered_plan(rendered_body,
-                                                  render_plan.compare_setup,
-                                                  render_plan.false_branch_opcode,
-                                                  rendered_lanes->rendered_true,
-                                                  rendered_lanes->rendered_false_lane);
-    };
-
     const auto render_function_return =
         [&](std::int32_t returned_imm) -> std::string {
       std::string rendered = "    mov eax, " + std::to_string(returned_imm) + "\n";
@@ -1081,9 +960,20 @@ std::string emit_prepared_module(
                       current_i32_name,
                       build_short_circuit_plan);
               if (compare_join_render_plan.has_value()) {
-                return render_compare_driven_branch_plan(render_block,
-                                                         body,
-                                                         *compare_join_render_plan);
+                return c4c::backend::x86::render_compare_driven_branch_plan(
+                    function.name,
+                    body,
+                    *compare_join_render_plan,
+                    find_block,
+                    [&](const ShortCircuitTarget& target,
+                        bool omit_continuation) -> std::optional<std::string> {
+                      if (target.block == nullptr) {
+                        return std::nullopt;
+                      }
+                      return render_block(*target.block,
+                                          omit_continuation ? std::nullopt
+                                                            : target.continuation);
+                    });
               }
             }
             if (compare_index != block.insts.size()) {
@@ -1130,9 +1020,20 @@ std::string emit_prepared_module(
             if (!short_circuit_render_plan.has_value()) {
               return std::nullopt;
             }
-            return render_compare_driven_branch_plan(render_block,
-                                                     body,
-                                                     *short_circuit_render_plan);
+            return c4c::backend::x86::render_compare_driven_branch_plan(
+                function.name,
+                body,
+                *short_circuit_render_plan,
+                find_block,
+                [&](const ShortCircuitTarget& target,
+                    bool omit_continuation) -> std::optional<std::string> {
+                  if (target.block == nullptr) {
+                    return std::nullopt;
+                  }
+                  return render_block(*target.block,
+                                      omit_continuation ? std::nullopt
+                                                        : target.continuation);
+                });
           };
           if (const auto rendered_short_circuit = try_render_short_circuit_plan();
               rendered_short_circuit.has_value()) {
@@ -1157,9 +1058,20 @@ std::string emit_prepared_module(
           if (!plain_cond_render_plan.has_value()) {
             return std::nullopt;
           }
-          return render_compare_driven_branch_plan(render_block,
-                                                   body,
-                                                   *plain_cond_render_plan);
+          return c4c::backend::x86::render_compare_driven_branch_plan(
+              function.name,
+              body,
+              *plain_cond_render_plan,
+              find_block,
+              [&](const ShortCircuitTarget& target,
+                  bool omit_continuation) -> std::optional<std::string> {
+                if (target.block == nullptr) {
+                  return std::nullopt;
+                }
+                return render_block(*target.block,
+                                    omit_continuation ? std::nullopt
+                                                      : target.continuation);
+              });
         };
 
     auto asm_text = asm_prefix;

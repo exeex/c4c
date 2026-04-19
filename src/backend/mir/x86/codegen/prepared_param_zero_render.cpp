@@ -777,6 +777,112 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_compare_join_entry_r
       });
 }
 
+std::optional<std::string> render_compare_driven_branch_plan(
+    std::string_view function_name,
+    std::string_view rendered_body,
+    const CompareDrivenBranchRenderPlan& render_plan,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block,
+    const std::function<std::optional<std::string>(const ShortCircuitTarget&, bool)>&
+        render_short_circuit_target) {
+  struct ShortCircuitRenderContext {
+    bool omit_true_continuation = false;
+    bool omit_false_lane = false;
+  };
+  struct RenderedShortCircuitFalseLane {
+    std::string label;
+    std::string rendered;
+  };
+  struct RenderedShortCircuitLanes {
+    std::string rendered_true;
+    RenderedShortCircuitFalseLane rendered_false_lane;
+  };
+
+  const auto build_short_circuit_render_context =
+      [&](const ShortCircuitPlan& plan) -> std::optional<ShortCircuitRenderContext> {
+    const bool true_target_renders_false_lane =
+        plan.on_compare_true.continuation.has_value() &&
+        plan.on_compare_false.block ==
+            find_block(plan.on_compare_true.continuation->false_label);
+    const bool false_target_renders_true_lane =
+        plan.on_compare_false.continuation.has_value() &&
+        plan.on_compare_true.block ==
+            find_block(plan.on_compare_false.continuation->true_label);
+    if (true_target_renders_false_lane && false_target_renders_true_lane) {
+      return std::nullopt;
+    }
+    return ShortCircuitRenderContext{
+        .omit_true_continuation = false_target_renders_true_lane,
+        .omit_false_lane = true_target_renders_false_lane,
+    };
+  };
+  const auto render_short_circuit_false_lane =
+      [&](const ShortCircuitPlan& plan,
+          const ShortCircuitRenderContext& render_context)
+      -> std::optional<RenderedShortCircuitFalseLane> {
+    if (plan.on_compare_false.block == nullptr) {
+      return std::nullopt;
+    }
+
+    RenderedShortCircuitFalseLane rendered_false_lane{
+        .label = ".L" + std::string(function_name) + "_" +
+                 std::string(plan.on_compare_false.block->label),
+        .rendered = {},
+    };
+    if (render_context.omit_false_lane) {
+      return rendered_false_lane;
+    }
+
+    const auto rendered_false =
+        render_short_circuit_target(plan.on_compare_false, false);
+    if (!rendered_false.has_value()) {
+      return std::nullopt;
+    }
+    rendered_false_lane.rendered = rendered_false_lane.label + ":\n" + *rendered_false;
+    return rendered_false_lane;
+  };
+  const auto render_short_circuit_lanes =
+      [&](const ShortCircuitPlan& plan,
+          const ShortCircuitRenderContext& render_context)
+      -> std::optional<RenderedShortCircuitLanes> {
+    const auto rendered_true = render_short_circuit_target(
+        plan.on_compare_true, render_context.omit_true_continuation);
+    if (!rendered_true.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto rendered_false_lane =
+        render_short_circuit_false_lane(plan, render_context);
+    if (!rendered_false_lane.has_value()) {
+      return std::nullopt;
+    }
+    return RenderedShortCircuitLanes{
+        .rendered_true = *rendered_true,
+        .rendered_false_lane = *rendered_false_lane,
+    };
+  };
+
+  const auto render_context =
+      build_short_circuit_render_context(render_plan.branch_plan);
+  if (!render_context.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto rendered_lanes =
+      render_short_circuit_lanes(render_plan.branch_plan, *render_context);
+  if (!rendered_lanes.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string rendered = std::string(rendered_body) + render_plan.compare_setup + "    " +
+                         render_plan.false_branch_opcode + " " +
+                         rendered_lanes->rendered_false_lane.label + "\n" +
+                         rendered_lanes->rendered_true;
+  if (!rendered_lanes->rendered_false_lane.rendered.empty()) {
+    rendered += rendered_lanes->rendered_false_lane.rendered;
+  }
+  return rendered;
+}
+
 std::optional<std::string> render_prepared_supported_immediate_binary(
     std::string_view return_register,
     const c4c::backend::prepare::PreparedSupportedImmediateBinary& binary) {
