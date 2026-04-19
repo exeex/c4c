@@ -5,14 +5,14 @@ Source Idea Path: ideas/open/63_complete_phi_legalization_and_parallel_copy_reso
 Source Plan Path: plan.md
 Current Step ID: 3.2.1
 Current Step Title: Finish Bounded Compare-Join Immediate-Op Consumer Coverage
-Plan Review Counter: 1 / 10
+Plan Review Counter: 2 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed a Step 3.2.1 (`Finish Bounded Compare-Join Immediate-Op Consumer
 Coverage`) slice by tightening the joined-branch compare-join
-`branch_join_adjust_then_shl` handoff-boundary proof so the trailing-shl family
+`branch_join_adjust_then_lshr` handoff-boundary proof so the trailing-lshr family
 now exercises the authoritative render-contract, branch-plan,
 non-compare-entry rejection, and prepared-branch condition/record checks for
 both the default carrier and a forced `EdgeStoreSlot` carrier. This kept the
@@ -22,7 +22,7 @@ substep without widening into emitter changes.
 ## Suggested Next
 
 Continue Step 3.2.1 by applying the same contract-strict compare-join coverage
-to the next bounded immediate-op family, with `branch_join_adjust_then_lshr` as
+to the next bounded immediate-op family, with `branch_join_adjust_then_ashr` as
 the current best-fit packet under `backend_x86_handoff_boundary`.
 
 ## Watchouts
@@ -31,7 +31,7 @@ the current best-fit packet under `backend_x86_handoff_boundary`.
 - Keep typed semantic ids as the public identity boundary.
 - Do not silently fold branch/join ownership work from idea 62 back into this
   route.
-- This packet only tightened trailing-shl compare-join proof coverage;
+- This packet only tightened trailing-lshr compare-join proof coverage;
   it did not change the x86 emitter or the authoritative prepared compare-join
   contract itself.
 - The joined-branch handoff-boundary fixtures still publish many explicit
@@ -51,7 +51,7 @@ the current best-fit packet under `backend_x86_handoff_boundary`.
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_x86_handoff_boundary$' > test_after.log 2>&1`
 ran for this Step 3.2.1 packet and preserved the canonical proof log in
 `test_after.log`; `backend_x86_handoff_boundary` passed with the joined-branch
-`branch_join_adjust_then_shl` trailing-shl compare-join family now proving
+`branch_join_adjust_then_lshr` trailing-lshr compare-join family now proving
 authoritative render-contract, branch-plan, non-compare-entry, and prepared-
 branch condition/record ownership for the default carrier and a forced
 `EdgeStoreSlot` carrier against the same authoritative prepared-control-flow
