@@ -5874,6 +5874,82 @@ int check_materialized_compare_join_edge_store_slot_global_chain_route_ignores_n
       &expected_asm);
 }
 
+int check_materialized_compare_join_global_chain_route_with_true_lane_passthrough(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module,
+      function_name,
+      failure_context,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      &expected_asm);
+}
+
+int check_materialized_compare_join_edge_store_slot_global_chain_route_with_true_lane_passthrough(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module,
+      function_name,
+      failure_context,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      &expected_asm);
+}
+
+int check_materialized_compare_join_global_chain_route_with_false_lane_passthrough(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module,
+      function_name,
+      failure_context,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      &expected_asm);
+}
+
+int check_materialized_compare_join_edge_store_slot_global_chain_route_with_false_lane_passthrough(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module,
+      function_name,
+      failure_context,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      &expected_asm);
+}
+
 int check_materialized_compare_join_fixed_offset_global_route_ignores_non_compare_entry_carrier(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -8053,6 +8129,70 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
                   3),
               "branch_join_global_then_xor",
               "scalar-control-flow compare-against-zero same-module global selected-value chain EdgeStoreSlot compare-join route ignores non-compare entry carrier state when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_global_chain_route_with_true_lane_passthrough(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_global_chains_then_xor_asm(
+                  "branch_join_global_then_xor",
+                  "is_nonzero",
+                  "selected_zero",
+                  4,
+                  "selected_nonzero",
+                  1,
+                  3),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero same-module global selected-value chain compare-join route ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_global_chain_route_with_true_lane_passthrough(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_global_chains_then_xor_asm(
+                  "branch_join_global_then_xor",
+                  "is_nonzero",
+                  "selected_zero",
+                  4,
+                  "selected_nonzero",
+                  1,
+                  3),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero same-module global selected-value chain EdgeStoreSlot compare-join route ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_global_chain_route_with_false_lane_passthrough(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_global_chains_then_xor_asm(
+                  "branch_join_global_then_xor",
+                  "is_nonzero",
+                  "selected_zero",
+                  4,
+                  "selected_nonzero",
+                  1,
+                  3),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero same-module global selected-value chain compare-join route ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_global_chain_route_with_false_lane_passthrough(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_global_chains_then_xor_asm(
+                  "branch_join_global_then_xor",
+                  "is_nonzero",
+                  "selected_zero",
+                  4,
+                  "selected_nonzero",
+                  1,
+                  3),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero same-module global selected-value chain EdgeStoreSlot compare-join route ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }
