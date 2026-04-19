@@ -1600,6 +1600,14 @@ std::string emit_prepared_module(
     };
     const auto build_plain_cond_direct_branch_targets =
         [&](const c4c::backend::bir::Block& source_block) -> std::optional<DirectBranchTargets> {
+      if (const auto prepared_targets =
+              c4c::backend::prepare::find_prepared_compare_branch_target_labels(
+                  function_control_flow, source_block);
+          prepared_targets.has_value()) {
+        return resolve_direct_branch_targets(source_block,
+                                             prepared_targets->true_label,
+                                             prepared_targets->false_label);
+      }
       return resolve_direct_branch_targets(source_block,
                                            source_block.terminator.true_label,
                                            source_block.terminator.false_label);

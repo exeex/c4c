@@ -7497,6 +7497,12 @@ int check_minimal_compare_branch_with_unreachable_block_consumes_prepared_contro
       module, expected_asm, function_name, failure_context, true);
 }
 
+int check_local_i32_guard_route_consumes_prepared_branch_targets(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context);
+
 int check_minimal_compare_branch_consumes_prepared_control_flow_impl(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -7544,6 +7550,54 @@ int check_minimal_compare_branch_consumes_prepared_control_flow_impl(
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative prepared branch metadata")
+                    .c_str());
+  }
+
+  return 0;
+}
+
+int check_local_i32_guard_route_consumes_prepared_branch_targets(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      !control_flow->join_transfers.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the local guard prepared branch contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  if (entry_block == nullptr || entry_block->insts.size() < 3) {
+    return fail((std::string(failure_context) +
+                 ": prepared local guard fixture no longer has the expected entry shape")
+                    .c_str());
+  }
+
+  const std::string original_true_label = entry_block->terminator.true_label;
+  const std::string original_false_label = entry_block->terminator.false_label;
+  entry_block->terminator.true_label = "contract.guard.true";
+  entry_block->terminator.false_label = "contract.guard.false";
+  function.blocks.push_back(bir::Block{
+      .label = "contract.guard.true",
+      .terminator = bir::BranchTerminator{.target_label = original_true_label},
+  });
+  function.blocks.push_back(bir::Block{
+      .label = "contract.guard.false",
+      .terminator = bir::BranchTerminator{.target_label = original_false_label},
+  });
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following authoritative prepared branch targets over guard carrier labels")
                     .c_str());
   }
 
@@ -9910,6 +9964,15 @@ int main() {
                               expected_minimal_local_i32_immediate_guard_asm("main", 123),
                               "bir.store_local %lv.x, i32 123",
                               "minimal local-slot compare-against-immediate guard route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_local_i32_guard_route_consumes_prepared_branch_targets(
+              make_x86_local_i32_immediate_guard_module(),
+              expected_minimal_local_i32_immediate_guard_asm("main", 123),
+              "main",
+              "minimal local-slot compare-against-immediate guard prepared branch-target ownership");
       status != 0) {
     return status;
   }

@@ -596,6 +596,22 @@ find_prepared_compare_branch_target_labels(const PreparedBranchCondition& branch
   };
 }
 
+[[nodiscard]] inline std::optional<PreparedBranchTargetLabels>
+find_prepared_compare_branch_target_labels(const PreparedControlFlowFunction* function_cf,
+                                           const bir::Block& source_block) {
+  if (function_cf == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* branch_condition =
+      find_prepared_branch_condition(*function_cf, source_block.label);
+  if (branch_condition == nullptr) {
+    return std::nullopt;
+  }
+
+  return find_prepared_compare_branch_target_labels(*branch_condition, source_block);
+}
+
 [[nodiscard]] inline std::optional<PreparedShortCircuitTargetLabels>
 build_prepared_short_circuit_target_labels(
     const PreparedEdgeValueTransfer& transfer,
