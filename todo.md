@@ -5,26 +5,27 @@ Source Idea Path: ideas/open/61_stack_frame_and_addressing_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Direct Frame And Symbol Access Consumption
-Plan Review Counter: 1 / 10
+Plan Review Counter: 2 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another Step 3.2 packet in
-`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` by extending the
-guard-chain same-module symbol consumer to accept offset `StoreGlobalInst`
-lanes and to keep resolved prepared symbol-plus-offset facts authoritative when
-spelling fallback memory operands. `tests/backend/backend_x86_handoff_boundary_i32_guard_chain_test.cpp`
-now covers a same-module offset-store guard route and drifts both raw
-store/load global carriers after prepare to prove the covered x86 route still
-follows authoritative prepared addressing data.
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` by moving the
+single-block `i16`/`i64` subtract-return direct frame-slot lane onto
+authoritative prepared frame-slot accesses. The helper now matches its short
+and long carriers by prepared frame-slot identity instead of raw `slot_name`
+equality or local-slot-layout fallback. `tests/backend/backend_x86_handoff_boundary_local_i16_guard_test.cpp`
+now drifts every raw short/long slot carrier after prepare to prove the
+covered x86 return route still follows canonical prepared frame-slot
+addressing data.
 
 ## Suggested Next
 
-Continue Step 3.2 by moving the remaining direct frame-slot consumers in the
-single-block local-return renderers onto authoritative prepared frame-slot
-lookups, with drift coverage that proves those routes no longer depend on raw
-slot-name carriers after prepare.
+Continue Step 3.2 by moving another remaining single-block direct frame-slot
+return/helper lane, likely `render_prepared_minimal_local_slot_return_if_supported`,
+onto authoritative prepared frame-slot matching with drift coverage that proves
+raw slot-name carriers no longer matter after prepare.
 
 ## Watchouts
 
@@ -38,6 +39,10 @@ slot-name carriers after prepare.
 - Keep Step 3.2 focused on direct frame-slot, global-symbol, and
   string-constant access consumption. Pointer-indirect memory operands belong
   to the later Step 3.3 cleanup packet.
+- The `i16`/`i64` subtract-return lane now expects prepared direct frame-slot
+  accesses at entry indices `0`, `1`, `2`, `3`, `7`, and `8`; if those
+  prepared records disappear, the helper correctly rejects the route instead of
+  reopening raw slot-carrier matching.
 - Some single-block local-return and addressed-local fallback paths still rely
   on older local reconstruction because the current consumer coverage is wider
   in guard-family lanes than in the remaining bounded renderers.
@@ -48,5 +53,6 @@ slot-name carriers after prepare.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
-for this Step 3.2 offset-store direct-symbol packet; the focused x86 handoff
-subset passed and `test_after.log` is the canonical proof log for the packet.
+for this Step 3.2 direct frame-slot subtract-return packet; the focused x86
+handoff subset passed and `test_after.log` is the canonical proof log for the
+packet.

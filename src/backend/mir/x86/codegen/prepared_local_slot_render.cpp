@@ -85,6 +85,29 @@ const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_function_memory
                                                              inst_index);
 }
 
+const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_frame_memory_access(
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    std::string_view block_label,
+    std::size_t inst_index) {
+  const auto* access =
+      find_prepared_function_memory_access(function_addressing, block_label, inst_index);
+  if (access == nullptr ||
+      access->address.base_kind != c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot ||
+      !access->address.frame_slot_id.has_value()) {
+    return nullptr;
+  }
+  return access;
+}
+
+bool prepared_frame_memory_accesses_match(
+    const c4c::backend::prepare::PreparedMemoryAccess* lhs,
+    const c4c::backend::prepare::PreparedMemoryAccess* rhs) {
+  return lhs != nullptr && rhs != nullptr && lhs->address.frame_slot_id.has_value() &&
+         rhs->address.frame_slot_id.has_value() &&
+         *lhs->address.frame_slot_id == *rhs->address.frame_slot_id &&
+         lhs->address.byte_offset == rhs->address.byte_offset;
+}
+
 std::optional<std::string> render_prepared_frame_slot_memory_operand_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedAddress& address,
@@ -1449,12 +1472,6 @@ std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported
       store_result->address.has_value() || load_result->address.has_value()) {
     return std::nullopt;
   }
-  if (store_short->slot_name != load_short->slot_name ||
-      store_short->slot_name != store_result->slot_name ||
-      store_short->slot_name != load_result->slot_name ||
-      store_long->slot_name != load_long->slot_name) {
-    return std::nullopt;
-  }
   const auto& returned = *entry.terminator.value;
   if (store_short->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
       store_short->value.type != c4c::backend::bir::TypeKind::I16 ||
@@ -1494,35 +1511,31 @@ std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported
     return std::nullopt;
   }
 
-  std::optional<std::string> short_memory;
-  if (const auto* prepared_short =
-          find_prepared_function_memory_access(function_addressing, entry.label, 0);
-      prepared_short != nullptr) {
-    short_memory = render_prepared_frame_slot_memory_operand_if_supported(*layout,
-                                                                          prepared_short->address,
-                                                                          "WORD");
+  const auto* prepared_store_short =
+      find_prepared_frame_memory_access(function_addressing, entry.label, 0);
+  const auto* prepared_store_long =
+      find_prepared_frame_memory_access(function_addressing, entry.label, 1);
+  const auto* prepared_load_long =
+      find_prepared_frame_memory_access(function_addressing, entry.label, 2);
+  const auto* prepared_load_short =
+      find_prepared_frame_memory_access(function_addressing, entry.label, 3);
+  const auto* prepared_store_result =
+      find_prepared_frame_memory_access(function_addressing, entry.label, 7);
+  const auto* prepared_load_result =
+      find_prepared_frame_memory_access(function_addressing, entry.label, 8);
+  if (!prepared_frame_memory_accesses_match(prepared_store_short, prepared_load_short) ||
+      !prepared_frame_memory_accesses_match(prepared_store_short, prepared_store_result) ||
+      !prepared_frame_memory_accesses_match(prepared_store_short, prepared_load_result) ||
+      !prepared_frame_memory_accesses_match(prepared_store_long, prepared_load_long)) {
+    return std::nullopt;
   }
-  if (!short_memory.has_value()) {
-    const auto short_slot_it = layout->offsets.find(store_short->slot_name);
-    if (short_slot_it == layout->offsets.end()) {
-      return std::nullopt;
-    }
-    short_memory = render_prepared_stack_memory_operand(short_slot_it->second, "WORD");
-  }
-  std::optional<std::string> long_memory;
-  if (const auto* prepared_long =
-          find_prepared_function_memory_access(function_addressing, entry.label, 1);
-      prepared_long != nullptr) {
-    long_memory = render_prepared_frame_slot_memory_operand_if_supported(*layout,
-                                                                         prepared_long->address,
-                                                                         "QWORD");
-  }
-  if (!long_memory.has_value()) {
-    const auto long_slot_it = layout->offsets.find(store_long->slot_name);
-    if (long_slot_it == layout->offsets.end()) {
-      return std::nullopt;
-    }
-    long_memory = render_prepared_stack_memory_operand(long_slot_it->second, "QWORD");
+
+  const auto short_memory = render_prepared_frame_slot_memory_operand_if_supported(
+      *layout, prepared_store_short->address, "WORD");
+  const auto long_memory = render_prepared_frame_slot_memory_operand_if_supported(
+      *layout, prepared_store_long->address, "QWORD");
+  if (!short_memory.has_value() || !long_memory.has_value()) {
+    return std::nullopt;
   }
 
   std::string asm_text = std::string(asm_prefix);

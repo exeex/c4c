@@ -325,6 +325,78 @@ int check_local_i16_guard_route_requires_authoritative_prepared_branch_labels(
   return 0;
 }
 
+int check_local_i16_i64_sub_return_route_consumes_prepared_frame_access_contract(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  if (function_addressing == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the i16/i64 subtract return prepared frame-slot accesses")
+                    .c_str());
+  }
+  const auto* short_store_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 0);
+  const auto* long_store_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 1);
+  const auto* long_load_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 2);
+  const auto* short_load_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 3);
+  const auto* short_store_result_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 7);
+  const auto* short_load_result_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 8);
+  if (short_store_access == nullptr || long_store_access == nullptr || long_load_access == nullptr ||
+      short_load_access == nullptr || short_store_result_access == nullptr ||
+      short_load_result_access == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared i16/i64 subtract return fixture lost one of the expected direct frame-slot accesses")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  if (function.blocks.size() != 1 || function.blocks.front().insts.size() < 9) {
+    return fail((std::string(failure_context) +
+                 ": prepared i16/i64 subtract return fixture no longer exposes the expected single-block carriers")
+                    .c_str());
+  }
+  auto& entry = function.blocks.front();
+  auto* store_short = std::get_if<bir::StoreLocalInst>(&entry.insts[0]);
+  auto* store_long = std::get_if<bir::StoreLocalInst>(&entry.insts[1]);
+  auto* load_long = std::get_if<bir::LoadLocalInst>(&entry.insts[2]);
+  auto* load_short = std::get_if<bir::LoadLocalInst>(&entry.insts[3]);
+  auto* store_result = std::get_if<bir::StoreLocalInst>(&entry.insts[7]);
+  auto* load_result = std::get_if<bir::LoadLocalInst>(&entry.insts[8]);
+  if (store_short == nullptr || store_long == nullptr || load_long == nullptr ||
+      load_short == nullptr || store_result == nullptr || load_result == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared i16/i64 subtract return fixture no longer exposes the expected raw local-slot carriers")
+                    .c_str());
+  }
+
+  store_short->slot_name = "%drifted.short.store";
+  store_long->slot_name = "%drifted.long.store";
+  load_long->slot_name = "%drifted.long.load";
+  load_short->slot_name = "%drifted.short.load";
+  store_result->slot_name = "%drifted.short.result.store";
+  load_result->slot_name = "%drifted.short.result.load";
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following authoritative prepared frame-slot accesses over drifted local slot carriers")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_local_i16_guard_tests() {
@@ -349,6 +421,15 @@ int run_backend_x86_handoff_boundary_local_i16_guard_tests() {
                               expected_minimal_local_i16_i64_sub_return_asm("main"),
                               "%t3 = bir.sub i64 %t2, %t0",
                               "minimal local-slot i16/i64 subtract return route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_local_i16_i64_sub_return_route_consumes_prepared_frame_access_contract(
+              make_x86_local_i16_i64_sub_return_module(),
+              expected_minimal_local_i16_i64_sub_return_asm("main"),
+              "main",
+              "minimal local-slot i16/i64 subtract return prepared frame-slot access ownership");
       status != 0) {
     return status;
   }
