@@ -2462,6 +2462,28 @@ std::string emit_prepared_module(
 
             return build_compare_driven_render_plan(*branch_plan, *compare_context);
           };
+          const auto build_prepared_compare_driven_entry_render_plan =
+              [&](const c4c::backend::bir::Block& source_block,
+                  const auto& branch_plan_builder)
+              -> std::optional<CompareDrivenBranchRenderPlan> {
+            const auto* branch_condition = find_branch_condition(source_block.label);
+            if (branch_condition == nullptr) {
+              return std::nullopt;
+            }
+
+            const auto compare_context =
+                build_prepared_branch_compare_context(*branch_condition);
+            if (!compare_context.has_value()) {
+              return std::nullopt;
+            }
+
+            const auto branch_plan = branch_plan_builder(*compare_context);
+            if (!branch_plan.has_value()) {
+              return std::nullopt;
+            }
+
+            return build_compare_driven_render_plan(*branch_plan, *compare_context);
+          };
           const auto build_compare_driven_direct_entry_render_plan =
               [&](const c4c::backend::bir::Block& source_block,
                   const c4c::backend::bir::BinaryInst& compare,
@@ -2576,7 +2598,6 @@ std::string emit_prepared_module(
           };
           const auto build_compare_join_entry_render_plan =
               [&](const c4c::backend::bir::Block& source_block,
-                  const c4c::backend::bir::BinaryInst& compare,
                   const c4c::backend::prepare::PreparedShortCircuitContinuationLabels&
                       continuation_plan)
               -> std::optional<CompareDrivenBranchRenderPlan> {
@@ -2587,9 +2608,26 @@ std::string emit_prepared_module(
               return std::nullopt;
             }
 
+            if (const auto prepared_render_plan =
+                    build_prepared_compare_driven_entry_render_plan(
+                        source_block,
+                        [&](const ShortCircuitEntryCompareContext&)
+                            -> std::optional<ShortCircuitPlan> {
+                          return build_short_circuit_plan(*prepared_branch_plan);
+                        });
+                prepared_render_plan.has_value()) {
+              return prepared_render_plan;
+            }
+
+            const auto* compare =
+                find_trailing_guard_compare(source_block, compare_index, std::nullopt);
+            if (compare == nullptr) {
+              return std::nullopt;
+            }
+
             return build_compare_driven_entry_render_plan(
                 source_block,
-                compare,
+                *compare,
                 false,
                 [&](const ShortCircuitEntryCompareContext&)
                     -> std::optional<ShortCircuitPlan> {
@@ -2620,14 +2658,9 @@ std::string emit_prepared_module(
 
           if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
             if (continuation.has_value()) {
-              const auto* compare =
-                  find_trailing_guard_compare(block, compare_index, std::nullopt);
-              if (compare != nullptr) {
-                const auto compare_join_render_plan =
-                    build_compare_join_entry_render_plan(block, *compare, *continuation);
-                if (!compare_join_render_plan.has_value()) {
-                  return std::nullopt;
-                }
+              const auto compare_join_render_plan =
+                  build_compare_join_entry_render_plan(block, *continuation);
+              if (compare_join_render_plan.has_value()) {
                 return render_compare_driven_branch_plan(render_block,
                                                          body,
                                                          *compare_join_render_plan);

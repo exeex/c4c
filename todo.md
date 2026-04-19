@@ -9,35 +9,32 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow In X86 packet by tightening
-the local-slot short-circuit entry seam around authoritative prepared branch
-ownership: `src/backend/prealloc/prealloc.hpp` now lets the shared short-circuit
-entry target-label helper trust the prepared branch contract for the block
-without re-reading the live terminator condition name, and
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` now tries the prepared
-short-circuit entry compare context before requiring a trailing carrier compare,
-so the covered short-circuit entry path keeps its compare setup and target
-ownership from prepared control-flow data when the live carrier compare and
-entry condition name are corrupted; `tests/backend/backend_x86_handoff_boundary_test.cpp`
-now proves the route still emits the canonical assembly after the entry compare
-is replaced with unrelated non-compare carrier state.
+the prepared compare-join entry seam around authoritative prepared branch
+ownership: `src/backend/mir/x86/codegen/prepared_module_emit.cpp` now tries a
+prepared compare-driven entry render path before requiring a trailing live
+compare, so compare-join entry rendering can consume a prepared branch-owned
+compare context when shared control-flow data already exposes it; and
+`tests/backend/backend_x86_handoff_boundary_test.cpp` now proves the shared
+compare-join branch-plan helper keeps publishing the authoritative entry branch
+shape even after the entry compare is replaced with unrelated non-compare
+carrier state.
 
 ## Suggested Next
 
-Stay in Step 3 and tighten the next compare-driven entry seam in the
-compare-join entry helper, where x86 still needs a recognizable live entry
-compare before it can consume the prepared compare-join branch plan even though
-the prepared control-flow contract already owns the branch targets and
-continuation labels.
+Stay in Step 3 and tighten the remaining compare-join continuation seam where
+the branch-with-continuation consumer still falls back to a recognizable live
+trailing compare whenever shared control-flow cannot yet supply compare setup
+for that lane, especially the short-circuit rhs compare-join path.
 
 ## Watchouts
 
 - Keep this route in Step 3 consumer work; do not widen into Step 4 file
   organization, idea 57, idea 59, idea 60, idea 61, or the unrelated
   `^backend_` semantic-lowering failures.
-- This packet only hardens the short-circuit entry consumer against mutated
-  entry compare state and entry condition-name drift; compare-join and other
-  compare-driven entry paths still have their own carrier-compare seams and
-  should be tightened separately.
+- This packet only removes one compare-join entry gate when a prepared branch
+  condition already exists for the source block; short-circuit rhs continuation
+  lanes that have no prepared compare contract still depend on their live
+  trailing compare semantics.
 - The route is acceptable because it removes dependence on carrier branch state
   and compare semantics for the covered case; do not regress into new
   emitter-local CFG recovery or

@@ -6093,7 +6093,8 @@ int check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels
     const bir::Module& module,
     const char* function_name,
     const char* failure_context,
-    bool use_edge_store_slot_carrier) {
+    bool use_edge_store_slot_carrier,
+    bool replace_entry_compare_with_non_compare = false) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -6127,6 +6128,21 @@ int check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels
   const std::string expected_false_label = entry_branch_condition->false_label;
   entry_block->terminator.true_label = "carrier.compare.true";
   entry_block->terminator.false_label = "carrier.compare.false";
+  if (replace_entry_compare_with_non_compare) {
+    auto* entry_compare = std::get_if<bir::BinaryInst>(&entry_block->insts.front());
+    if (entry_compare == nullptr) {
+      return fail((std::string(failure_context) +
+                   ": prepared compare-join fixture no longer exposes the expected entry compare carrier")
+                      .c_str());
+    }
+    *entry_compare = bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I32, "contract.entry.compare.carrier"),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::immediate_i32(4),
+        .rhs = bir::Value::immediate_i32(8),
+    };
+  }
 
   auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
   if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1) {
@@ -6256,6 +6272,14 @@ int check_materialized_compare_join_edge_store_slot_branch_plan_helper_publishes
     const char* failure_context) {
   return check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels_impl(
       module, function_name, failure_context, true);
+}
+
+int check_materialized_compare_join_branch_plan_helper_ignores_non_compare_entry_carrier(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels_impl(
+      module, function_name, failure_context, false, true);
 }
 
 int check_materialized_compare_join_render_contract_publishes_prepared_globals_and_labels(
@@ -8895,6 +8919,14 @@ int main() {
               make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
               "branch_join_adjust_then_xor",
               "scalar-control-flow compare-against-zero prepared compare-join branch-plan ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branch_plan_helper_ignores_non_compare_entry_carrier(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join branch-plan ownership ignores non-compare entry carrier state when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }
