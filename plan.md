@@ -320,10 +320,13 @@ Primary targets:
 
 Actions:
 
+- execute this step through the ordered substeps below rather than treating
+  all emitter organization as one undifferentiated cleanup stream
 - identify helper groups in `prepared_module_emit.cpp` by responsibility, not
   by testcase or matcher family
-- prefer extracting reusable comparison, shared consumer, or local query logic
-  into existing x86 codegen `.cpp` files before introducing any new filename
+- prefer extracting reusable comparison, shared consumer, local query, or
+  module-wrapper logic into existing x86 codegen `.cpp` files before
+  introducing any new filename
 - create a new `.cpp` name only when no current translation unit can own the
   logic without violating responsibility boundaries
 - keep branch, join, and loop-carry fact production in shared
@@ -333,9 +336,90 @@ Actions:
 
 Completion check:
 
+- Step 4.1 through Step 4.3 are all complete
 - `prepared_module_emit.cpp` has a narrower orchestration role, and the
   extracted logic lives primarily in existing x86 codegen `.cpp` files unless a
   new file was strictly necessary
+
+### Step 4.1: Bounded Multi-Defined Call-Lane Wrapper Contraction
+
+Goal: finish shrinking the bounded multi-defined call lane down to a narrow
+top-level orchestration surface in `prepared_module_emit.cpp`.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- `src/backend/mir/x86/codegen/x86_codegen.hpp`
+
+Actions:
+
+- keep the bounded multi-defined lane on the active prepared helper surface
+  instead of widening ownership into inactive files such as `calls.cpp`
+- extract remaining helper-prefix composition, fallback-contract checks,
+  entry-lane wrapper code, or adjacent lane-only data plumbing by
+  responsibility rather than by testcase shape
+- leave prepared control-flow semantics unchanged; this substep is limited to
+  x86 emitter organization around the bounded multi-defined route
+
+Completion check:
+
+- the bounded multi-defined lane uses shared helper seams for its remaining
+  wrapper/data work, and `prepared_module_emit.cpp` keeps only the minimal
+  top-level orchestration needed to select that route
+
+### Step 4.2: Single-Function Entry Orchestration Extraction
+
+Goal: isolate single-function entry orchestration from the surrounding
+prepared-module surface without reopening Step 3 control-flow semantics.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- existing x86 codegen `.cpp` files that already own adjacent prepared helper
+  logic
+
+Actions:
+
+- extract entry-routing orchestration, shared render-plan plumbing, or local
+  helper groups out of `prepared_module_emit.cpp` when an existing x86 codegen
+  seam can own them cleanly
+- keep this work on organization of already-supported prepared consumer paths;
+  do not hide unfinished producer-side control-flow gaps inside the cleanup
+- prefer grouping by one coherent orchestration responsibility at a time
+  rather than by one named testcase family
+
+Completion check:
+
+- the covered single-function entry path delegates its remaining helper groups
+  through stable seams, and the emitter's central block no longer mixes those
+  orchestration details with unrelated top-level dispatch
+
+### Step 4.3: Residual Prepared-Module Dispatch Narrowing
+
+Goal: finish the remaining top-level emitter cleanup needed before Step 4 can
+be treated as exhausted.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- existing x86 codegen translation units chosen by responsibility
+
+Actions:
+
+- remove or relocate any residual prepared-module dispatch helpers whose main
+  job is wrapper composition, route selection, or other top-level
+  orchestration rather than semantic lowering
+- keep the final narrowing bounded to existing Step 4 responsibilities and do
+  not widen into Step 5 test splitting or ideas 59 through 61
+- treat Step 4 as exhausted once only a narrow dispatcher remains in
+  `prepared_module_emit.cpp`; do not keep landing indefinite cosmetic packets
+
+Completion check:
+
+- `prepared_module_emit.cpp` retains only a compact prepared-module dispatcher
+  plus route selection glue, and no honest organization-only Step 4 packet
+  remains
 
 ## Step 5: Split `backend_x86_handoff_boundary_test.cpp` Into Focused Translation Units
 

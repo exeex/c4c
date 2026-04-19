@@ -3,14 +3,14 @@
 Status: Active
 Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Organize prepared_module_emit.cpp For Prepared Control-Flow Consumption
-Plan Review Counter: 10 / 10
+Current Step ID: 4.1
+Current Step Title: Bounded Multi-Defined Call-Lane Wrapper Contraction
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another Step 4 organization packet by extracting the bounded
+Completed another Step 4.1 organization packet by extracting the bounded
 multi-defined call lane's residual string-constant and same-module-global data
 aggregation out of `src/backend/mir/x86/codegen/prepared_module_emit.cpp` and
 onto the active prepared x86 codegen surface in
@@ -21,7 +21,7 @@ helper seam without reopening Step 3 consumer semantics.
 
 ## Suggested Next
 
-Continue Step 4 with another bounded extraction inside the same
+Continue Step 4.1 with another bounded extraction inside the same
 multi-defined-call lane, targeting the remaining entry-lane wrapper work in
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` such as the adjacent
 contract/orchestration helper path around the multi-defined lane fallback and
@@ -56,6 +56,6 @@ semantic lowering changes.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
-for this Step 4 packet after extracting the bounded multi-defined call-lane
+for this Step 4.1 packet after extracting the bounded multi-defined call-lane
 data aggregation into the active prepared helper surface; the delegated proof
 passed and `test_after.log` is the canonical proof log.
