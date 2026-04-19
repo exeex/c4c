@@ -121,6 +121,15 @@ struct PreparedBirModule;
   return names.value_names.spelling(id);
 }
 
+[[nodiscard]] inline std::optional<ValueNameId> prepared_named_value_id(
+    PreparedNameTables& names,
+    const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return std::nullopt;
+  }
+  return names.value_names.intern(value.name);
+}
+
 [[nodiscard]] inline std::string_view prepared_slot_name(
     const PreparedNameTables& names,
     SlotNameId id) {
