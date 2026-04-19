@@ -2300,10 +2300,11 @@ int check_short_circuit_edge_store_slot_branch_plan_helper_requires_authoritativ
       module, function_name, failure_context, true);
 }
 
-int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
+int check_short_circuit_route_validates_authoritative_join_carrier_impl(
     const bir::Module& module,
     const char* function_name,
-    const char* failure_context) {
+    const char* failure_context,
+    bool use_edge_store_slot_carrier) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -2384,10 +2385,6 @@ int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
       std::string(block_label(prepared, *join_transfer.source_false_incoming_label));
   join_transfer.source_true_incoming_label = intern_block_label(prepared, "contract.short_circuit");
   join_transfer.source_false_incoming_label = intern_block_label(prepared, "contract.rhs");
-  join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
-  join_transfer.storage_name = intern_slot_name(prepared, "%contract.short_circuit.slot");
-  join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
-  join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
   join_transfer.edge_transfers[false_transfer_index].incoming_value = bir::Value::immediate_i32(9);
   bool rewrote_short_circuit_label = false;
   bool rewrote_rhs_label = false;
@@ -2410,34 +2407,41 @@ int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
                     .c_str());
   }
 
-  function.local_slots.push_back(bir::LocalSlot{
-      .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
-      .type = bir::TypeKind::I32,
-      .size_bytes = 4,
-      .align_bytes = 4,
-      .is_address_taken = false,
-  });
-  const auto load_result = bir::Value::named(bir::TypeKind::I32, "carrier.short_circuit.join");
-  join_block->insts.front() = bir::LoadLocalInst{
-      .result = load_result,
-      .slot_name =
-          std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
-  };
-  if (join_compare->lhs.kind == bir::Value::Kind::Named &&
-      join_compare->lhs.name == join_transfer.result.name) {
-    join_compare->lhs = load_result;
-  }
-  if (join_compare->rhs.kind == bir::Value::Kind::Named &&
-      join_compare->rhs.name == join_transfer.result.name) {
-    join_compare->rhs = load_result;
-  }
-  if (join_branch_condition->lhs->kind == bir::Value::Kind::Named &&
-      join_branch_condition->lhs->name == join_transfer.result.name) {
-    *join_branch_condition->lhs = load_result;
-  }
-  if (join_branch_condition->rhs->kind == bir::Value::Kind::Named &&
-      join_branch_condition->rhs->name == join_transfer.result.name) {
-    *join_branch_condition->rhs = load_result;
+  if (use_edge_store_slot_carrier) {
+    join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
+    join_transfer.storage_name = intern_slot_name(prepared, "%contract.short_circuit.slot");
+    join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
+    join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
+
+    function.local_slots.push_back(bir::LocalSlot{
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
+        .type = bir::TypeKind::I32,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .is_address_taken = false,
+    });
+    const auto load_result = bir::Value::named(bir::TypeKind::I32, "carrier.short_circuit.join");
+    join_block->insts.front() = bir::LoadLocalInst{
+        .result = load_result,
+        .slot_name =
+            std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
+    };
+    if (join_compare->lhs.kind == bir::Value::Kind::Named &&
+        join_compare->lhs.name == join_transfer.result.name) {
+      join_compare->lhs = load_result;
+    }
+    if (join_compare->rhs.kind == bir::Value::Kind::Named &&
+        join_compare->rhs.name == join_transfer.result.name) {
+      join_compare->rhs = load_result;
+    }
+    if (join_branch_condition->lhs->kind == bir::Value::Kind::Named &&
+        join_branch_condition->lhs->name == join_transfer.result.name) {
+      *join_branch_condition->lhs = load_result;
+    }
+    if (join_branch_condition->rhs->kind == bir::Value::Kind::Named &&
+        join_branch_condition->rhs->name == join_transfer.result.name) {
+      *join_branch_condition->rhs = load_result;
+    }
   }
 
   entry_compare->opcode = bir::BinaryOpcode::Eq;
@@ -2454,11 +2458,35 @@ int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
   const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
   if (prepared_asm != expected_minimal_local_i32_short_circuit_or_guard_asm(function_name)) {
     return fail((std::string(failure_context) +
-                 ": x86 prepared-module consumer stopped validating the authoritative short-circuit EdgeStoreSlot carrier")
+                 ": x86 prepared-module consumer stopped validating the authoritative short-circuit join carrier")
                     .c_str());
   }
 
   return 0;
+}
+
+int check_short_circuit_route_validates_authoritative_join_carrier(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_route_validates_authoritative_join_carrier_impl(
+      module, function_name, failure_context, false);
+}
+
+int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_route_validates_authoritative_join_carrier_impl(
+      module, function_name, failure_context, true);
+}
+
+int check_short_circuit_edge_store_slot_route_validates_authoritative_join_carrier(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_route_validates_authoritative_join_carrier_impl(
+      module, function_name, failure_context, true);
 }
 
 }  // namespace
@@ -2635,10 +2663,26 @@ int run_backend_x86_handoff_boundary_short_circuit_tests() {
     return status;
   }
   if (const auto status =
+          check_short_circuit_route_validates_authoritative_join_carrier(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit route validates the authoritative PhiEdge join carrier");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
               "minimal local-slot short-circuit or-guard EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_edge_store_slot_route_validates_authoritative_join_carrier(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit route validates the authoritative EdgeStoreSlot join carrier");
       status != 0) {
     return status;
   }
