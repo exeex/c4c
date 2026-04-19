@@ -48,6 +48,8 @@ state, and creates the final commit. It does not own lifecycle rewrites or imple
   or `c4c-reviewer` packets should explicitly use `c4c-clang-tools` to save
   token on C++ exploration
 - flush completed ready slices before delegating new work
+- watch `todo.md` execution metadata so oversized steps can trigger plan review
+  from stable state instead of chat-only judgment
 
 ## Hard Boundaries
 
@@ -119,6 +121,18 @@ If Blocked: stop and report the exact history ambiguity
 Include `Tooling` only to steer delegated exploration. Keep this guidance in
 the delegated prompt, not in [`todo.md`](/workspaces/c4c/todo.md).
 
+Plan-owner review packet shape for oversized steps:
+
+```text
+to_subagent: c4c-plan-owner
+Objective: review whether <Current Step ID> / <Current Step Title> is oversized and rewrite `plan.md` if it should split into numbered substeps
+Trigger: `todo.md` shows Current Step ID = <id>, Current Step Title = <title>, and Plan Review Counter = <n> / <limit>
+Owned Files: plan.md, todo.md
+Do Not Touch: <implementation files, source idea unless durable intent changed>
+Done When: `plan.md` reflects the reviewed step structure and `todo.md` metadata is aligned
+If Blocked: stop and report the exact source-idea ambiguity
+```
+
 ## Regression Log State
 
 The supervisor owns regression-log state.
@@ -156,6 +170,10 @@ Choose the next specialist with these rules:
   selection and may reuse, refine, or replace that suggestion
 - if route friction can be fixed in `todo.md`, do that before `plan.md`
 - if route friction can be fixed in `plan.md`, do not touch the source idea
+- if `todo.md` shows the same `Current Step ID` has accumulated too many
+  accepted commits relative to its displayed review limit, call
+  `c4c-plan-owner` to review whether that step should split into numbered
+  substeps
 - if an active plan exists and code must change:
   call `c4c-executor`
 - for executor packets with proving tests:
@@ -171,9 +189,27 @@ Use `c4c-plan-owner` during normal execution only when one of these is true:
 
 - activation, switch, repair, or close is needed
 - the current `plan.md` contract is actually wrong or incomplete
+- `todo.md` shows an oversized current step by review-counter threshold and the
+  route would be clearer as explicit substeps
 - the current `plan.md` no longer faithfully represents the linked source idea
 - a reviewer explicitly justified route reset
 - a blocker cannot be resolved within the current runbook
+
+Oversized-step trigger:
+
+- read `Current Step ID`, `Current Step Title`, and
+  `Plan Review Counter: <counter> / <review_limit>` from the top of
+  [`todo.md`](/workspaces/c4c/todo.md)
+- treat the displayed counter as the number of accepted supervisor commits that
+  have landed on that same step since `plan.md` was last reviewed for it
+- keep canonical machine state in the local ignored
+  `.plan_review_state.json` file via `scripts/plan_review_state.py`
+- let the repo hook update the counter during commit preparation rather than
+  hand-editing it in specialist packets
+- reset the counter when the active step changes or when `plan-owner` rewrites
+  the current step
+- default to calling `c4c-plan-owner` when the displayed counter reaches its
+  displayed review limit and the next packet still points at that step
 
 Treat these as overfit-warning signals that normally require reviewer scrutiny
 before acceptance and often require rejection:
@@ -230,6 +266,9 @@ After a specialist returns:
     `plan.md` before more execution
 15. if the slice is complete, validation is sufficient, and no overfit concern
     remains, commit it promptly
+16. keep `Current Step ID` and `Current Step Title` accurate before commit and
+    rely on the repo hook to update `Plan Review Counter` from local state
+    during commit preparation
 
 Commit guidance:
 

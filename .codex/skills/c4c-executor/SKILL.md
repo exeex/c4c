@@ -70,6 +70,10 @@ Executor packets should normally include [`todo.md`](/workspaces/c4c/todo.md) in
 When updating [`todo.md`](/workspaces/c4c/todo.md):
 
 - edit only the relevant section for the active packet
+- keep `Current Step ID` and `Current Step Title` aligned with the delegated
+  `Plan Step`
+- do not hand-edit `Plan Review Counter`; that value belongs to the hook-backed
+  counter flow and plan-owner resets
 - use Markdown headings for the packet body: `# Current Packet`, then
   `## Just Finished`, `## Suggested Next`, `## Watchouts`, and `## Proof`
 - record `## Just Finished`: what this packet actually completed, including the

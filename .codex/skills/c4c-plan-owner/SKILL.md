@@ -47,6 +47,10 @@ When activation or repair requires writing `plan.md`:
 4. keep `todo.md` aligned to the regenerated `plan.md`
 5. when creating or resetting `todo.md`, write only the canonical skeleton
    expected by the executor protocol; do not invent a separate packet format
+6. if the delegated task is a plan review for an oversized step, keep
+   `todo.md` aligned by setting `Current Step ID` and `Current Step Title` to
+   the rewritten step metadata and resetting the local hook-managed
+   plan-review counter state
 
 ## Responsibilities
 
@@ -73,7 +77,9 @@ When activation or repair requires writing `plan.md`:
 6. Do not create a second `todo.md` protocol. When `todo.md` must be created or
    reset, use the same Markdown section shape the executor updates:
    `# Current Packet`, then `## Just Finished`, `## Suggested Next`,
-   `## Watchouts`, and `## Proof`. `Just Finished` should remain an
+   `## Watchouts`, and `## Proof`, with execution metadata near the top for
+   `Current Step ID`, `Current Step Title`, and `Plan Review Counter`.
+   `Just Finished` should remain an
    overwrite-style latest-packet summary that can name the relevant `plan.md`
    step once execution begins.
 
@@ -107,6 +113,10 @@ When activation or repair requires writing `plan.md`:
 13. If activation, repair, or switch must create or reset `todo.md`, keep it to
     metadata plus empty or placeholder executor fields. Do not pre-fill routine
     progress narratives on behalf of the executor.
+14. If the supervisor requests review of an oversized step, prefer splitting
+    that step into numbered substeps when the source idea supports it, then
+    reset the local hook-managed plan-review counter for the rewritten current
+    step.
 
 ## Close Gate
 

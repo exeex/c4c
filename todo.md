@@ -1,11 +1,11 @@
 # Execution State
 
 Status: Active
-Source Idea: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
-Source Plan: plan.md
-Current Step: Step 3.4 Loop-Carry And Residual Consumer Cleanup
-Last Plan Review Counter: 2
-
+Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
+Source Plan Path: plan.md
+Current Step ID: 3.4
+Current Step Title: Loop-Carry And Residual Consumer Cleanup
+Plan Review Counter: 3 / 3
 # Current Packet
 
 ## Just Finished

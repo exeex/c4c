@@ -19,6 +19,10 @@ This repo uses a single-plan lifecycle.
 - Treat `idea -> plan -> todo` like durable DNA -> execution transcript ->
   live packet state. Routine progress should mutate `todo.md`, not re-edit the
   higher layers.
+- `todo.md` execution metadata should keep regex-friendly single-line
+  `Current Step ID:`, `Current Step Title:`, and
+  `Plan Review Counter: <counter> / <review_limit>` fields near the top so
+  route-friction decisions do not depend on commit-history guesswork alone.
 - Treat `plan.md` exhaustion as separate from source-idea completion. A runbook
   can be blocked, retired, or replaced without the linked idea being complete.
 - If execution discovers a separate initiative, write it into `ideas/open/` and switch lifecycle state instead of silently expanding the current plan.
@@ -61,6 +65,9 @@ This repo uses a single-plan lifecycle.
 - Owns orchestration, route choice, and anti-drift decisions.
 - Chooses whether to call `plan-owner`, `executor`, or `reviewer`.
 - Compares execution against the linked source idea, not only `plan.md`.
+- Uses `todo.md` execution metadata, including `Current Step ID`,
+  `Current Step Title`, and `Plan Review Counter`, when deciding whether a
+  step needs plan review or substep expansion.
 - Checks `git status --short` before delegation and after return.
 - Owns broader validation, canonical regression-log state, and the final
   commit.
@@ -79,6 +86,8 @@ This repo uses a single-plan lifecycle.
 - Handles activation, repair, switch, runbook regeneration, and close.
 - Touches `todo.md` only when lifecycle work must create, reset, or delete
   canonical execution state.
+- Resets local plan-review counter state when a plan review rewrites or splits
+  the current step.
 - Reads and writes lifecycle state through `ideas/open/`, `plan.md`, `todo.md`,
   and `ideas/closed/`.
 - Does not do implementation edits, broad validation, or the final commit.
@@ -91,6 +100,8 @@ This repo uses a single-plan lifecycle.
   worker packets, not canonical lifecycle state.
 - Updates the assigned section of canonical `todo.md` with packet progress and
   proof results.
+- Keeps `Current Step ID` and `Current Step Title` in `todo.md` aligned with
+  the delegated packet step, but does not decide when plan review is required.
 - Uses `test_after.log` as the canonical executor proof log unless the
   supervisor explicitly delegates another non-regression artifact.
 - Runs the exact proof command delegated by the supervisor; it does not own

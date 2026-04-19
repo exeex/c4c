@@ -93,8 +93,11 @@ An active runbook should declare near the top:
 Execution state should declare near the top:
 
 - `Status: Active`
-- `Source Idea: ideas/open/<name>.md`
-- `Source Plan: plan.md`
+- `Source Idea Path: ideas/open/<name>.md`
+- `Source Plan Path: plan.md`
+- `Current Step ID: <step number from plan.md, or none>`
+- `Current Step Title: <step label from plan.md, or none>`
+- `Plan Review Counter: <accepted-commit count> / <review-limit>`
 
 When lifecycle work creates or resets [`todo.md`](/workspaces/c4c/todo.md), use
 an executor-compatible skeleton instead of a custom format. The mutable packet
@@ -108,6 +111,14 @@ body should be framed with:
 
 `## Just Finished` should be written as a short overwrite-style summary of the
 latest completed packet, and should identify which `plan.md` step it advanced.
+
+`Current Step ID` and `Current Step Title` are the supervisor-facing pointer to
+the active runbook step.
+`Plan Review Counter` is a regex-friendly display of accepted-commit count and
+review limit for that same step. Canonical machine state may live in a local
+ignored file maintained by repo scripts, but `todo.md` must mirror it. Lifecycle
+work that creates, repairs, or rewrites the active step should reset the
+counter to `0 / <review-limit>`.
 
 ### `ideas/open/*.md` and `ideas/closed/*.md`
 

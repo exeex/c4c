@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+script="$repo_root/scripts/plan_review_state.py"
+
+if [[ ! -x "$script" ]]; then
+  exit 0
+fi
+
+"$script" prepare-commit
