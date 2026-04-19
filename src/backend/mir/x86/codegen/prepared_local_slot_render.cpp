@@ -1110,9 +1110,12 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
               return c4c::backend::prepare::find_prepared_branch_condition(
                   *function_control_flow, entry_label_id);
             }();
+  const c4c::BlockLabelId entry_label_id =
+      prepared_names == nullptr ? c4c::kInvalidBlockLabel
+                                : prepared_names->block_labels.find(entry.label);
   if (function_control_flow != nullptr && prepared_names != nullptr &&
       c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-          *prepared_names, *function_control_flow, entry.label)
+          *prepared_names, *function_control_flow, entry_label_id)
           .has_value()) {
     throw std::invalid_argument(
         "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
@@ -1130,8 +1133,12 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     const auto* matched_prepared_compared_value =
         static_cast<const c4c::backend::bir::Value*>(nullptr);
     for (const auto& [value_name, _] : named_i32_exprs) {
+      const c4c::ValueNameId value_name_id = prepared_names->value_names.find(value_name);
+      if (value_name_id == c4c::kInvalidValueName) {
+        continue;
+      }
       const auto* candidate = c4c::backend::prepare::find_prepared_i32_immediate_branch_condition(
-          *prepared_names, *function_control_flow, entry.label, value_name);
+          *prepared_names, *function_control_flow, entry_label_id, value_name_id);
       if (candidate == nullptr) {
         continue;
       }
@@ -1404,9 +1411,12 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
               return c4c::backend::prepare::find_prepared_branch_condition(
                   *function_control_flow, entry_label_id);
             }();
+  const c4c::BlockLabelId widened_entry_label_id =
+      prepared_names == nullptr ? c4c::kInvalidBlockLabel
+                                : prepared_names->block_labels.find(entry.label);
   if (function_control_flow != nullptr && prepared_names != nullptr &&
       c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-          *prepared_names, *function_control_flow, entry.label)
+          *prepared_names, *function_control_flow, widened_entry_label_id)
           .has_value()) {
     throw std::invalid_argument(
         "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");

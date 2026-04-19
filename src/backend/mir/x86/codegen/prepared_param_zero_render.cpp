@@ -224,8 +224,13 @@ find_prepared_i32_immediate_branch_condition_if_supported(
   if (function_control_flow == nullptr || !current_i32_name.has_value()) {
     return nullptr;
   }
+  const c4c::BlockLabelId block_label_id = prepared_names.block_labels.find(block_label);
+  const c4c::ValueNameId value_name_id = prepared_names.value_names.find(*current_i32_name);
+  if (block_label_id == c4c::kInvalidBlockLabel || value_name_id == c4c::kInvalidValueName) {
+    return nullptr;
+  }
   return c4c::backend::prepare::find_prepared_i32_immediate_branch_condition(
-      prepared_names, *function_control_flow, block_label, *current_i32_name);
+      prepared_names, *function_control_flow, block_label_id, value_name_id);
 }
 
 const c4c::backend::bir::BinaryInst* find_trailing_guard_compare_if_supported(
@@ -302,11 +307,15 @@ find_prepared_short_circuit_join_context_if_supported(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     std::string_view source_block_label) {
+  const c4c::BlockLabelId source_block_label_id = prepared_names.block_labels.find(source_block_label);
+  if (source_block_label_id == c4c::kInvalidBlockLabel) {
+    return std::nullopt;
+  }
   const auto prepared_join_context = c4c::backend::prepare::
       find_prepared_short_circuit_join_context(prepared_names,
                                                control_flow,
                                                function,
-                                               source_block_label);
+                                               source_block_label_id);
   if (!prepared_join_context.has_value() || prepared_join_context->join_transfer == nullptr ||
       prepared_join_context->true_transfer == nullptr ||
       prepared_join_context->false_transfer == nullptr ||
@@ -515,7 +524,9 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
     return std::nullopt;
   }
   if (c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-          prepared_names, function_control_flow, entry.label)
+          prepared_names,
+          function_control_flow,
+          prepared_names.block_labels.find(entry.label))
           .has_value()) {
     throw std::invalid_argument(
         "x86 backend emitter requires the authoritative prepared compare-join handoff through the canonical prepared-module handoff");
@@ -604,9 +615,11 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
           entry,
           param,
           false);
-  if (!resolved_render_contract.has_value()) {
-    if (c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-            module.names, function_control_flow, entry.label)
+    if (!resolved_render_contract.has_value()) {
+      if (c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
+            module.names,
+            function_control_flow,
+            module.names.block_labels.find(entry.label))
             .has_value()) {
       throw std::invalid_argument(
           "x86 backend emitter requires the authoritative prepared compare-join handoff through the canonical prepared-module handoff");
