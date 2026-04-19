@@ -5,25 +5,26 @@ Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 3.4
 Current Step Title: Loop-Carry And Residual Consumer Cleanup
-Plan Review Counter: 3 / 10
+Plan Review Counter: 4 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed a Step 3.4 Loop-Carry And Residual Consumer Cleanup packet by
-tightening `render_local_i16_arithmetic_guard_if_supported()` so the residual
-local-slot `i16` increment-guard lane now consumes the authoritative prepared
-entry branch contract instead of raw entry labels, and by adding a regression
-that drifts the prepared `false_label` after prepare to prove the emitter now
-rejects that route instead of silently falling back to the raw guard matcher.
+tightening `render_local_slot_guard_chain_if_supported()` so the plain
+equality-against-immediate guard-chain lane now treats the authoritative
+prepared branch contract as mandatory once prepare published it, and by adding
+a regression that drifts the prepared `false_label` for the second guard-chain
+branch after prepare to prove the emitter now rejects that route instead of
+silently falling back to the raw guard-chain matcher.
 
 ## Suggested Next
 
 Stay in Step 3.4 and inspect the remaining generic fallback helpers after the
-authoritative compare/join consumers, especially
-`render_local_slot_guard_chain_if_supported()` and the residual local countdown
-lane, for any other route where prepared branch/join or loop ownership can
-still be bypassed after post-prepare module drift.
+authoritative compare/join consumers, especially the same-module-global and
+pointer-backed guard-chain variants plus the residual local countdown lane, for
+any other route where prepared branch/join or loop ownership can still be
+bypassed after post-prepare module drift.
 
 ## Watchouts
 
@@ -31,6 +32,10 @@ still be bypassed after post-prepare module drift.
   Step 3.2 compare-join reproving, Step 3.3 carrier hunting, Step 4 file
   organization, idea 57, idea 59, idea 60, idea 61, or the unrelated
   `^backend_` semantic-lowering failures.
+- The plain equality-against-immediate guard-chain lane must now reject once
+  an authoritative prepared branch contract exists for that block but no
+  longer resolves valid prepared branch targets; do not let later helper
+  cleanup turn that failure back into a soft route miss.
 - The local-slot short-circuit rhs continuation must now reject once a prepared
   rhs branch condition exists but no longer yields a valid prepared compare
   context; do not reopen the raw trailing-compare fallback behind that
@@ -68,6 +73,6 @@ still be bypassed after post-prepare module drift.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The focused Step 3.4 handoff proof passed after the residual local-slot `i16`
-increment guard began honoring the prepared branch contract and rejected a
+The focused Step 3.4 handoff proof passed after the plain guard-chain lane
+began treating its prepared branch labels as authoritative and rejected a
 drifted prepared `false_label`, leaving `test_after.log` at the repo root.

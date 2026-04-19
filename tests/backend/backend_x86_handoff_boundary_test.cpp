@@ -8769,6 +8769,55 @@ int check_local_i16_guard_route_requires_authoritative_prepared_branch_labels(
   return 0;
 }
 
+int check_i32_guard_chain_route_requires_authoritative_prepared_branch_labels(
+    const bir::Module& module,
+    const char* function_name,
+    const char* branch_block_label,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 2 ||
+      !control_flow->join_transfers.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the guard-chain prepared branch contracts")
+                    .c_str());
+  }
+
+  auto* branch_condition = static_cast<prepare::PreparedBranchCondition*>(nullptr);
+  for (auto& candidate : control_flow->branch_conditions) {
+    if (candidate.block_label == branch_block_label) {
+      branch_condition = &candidate;
+      break;
+    }
+  }
+  if (branch_condition == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared guard-chain fixture no longer exposes the expected authoritative branch contract")
+                    .c_str());
+  }
+
+  branch_condition->false_label = "drifted.guard.chain.false";
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted drifted prepared guard-chain labels")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected drifted prepared guard-chain labels with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_local_i32_guard_route_rejects_authoritative_join_contract(
     const bir::Module& module,
     const char* function_name,
@@ -13194,6 +13243,15 @@ int main() {
                               expected_minimal_i32_immediate_guard_chain_asm("main"),
                               "cmp.second = bir.ne i32 1, 1",
                               "minimal non-global equality-against-immediate guard-chain route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_i32_guard_chain_route_requires_authoritative_prepared_branch_labels(
+              make_x86_immediate_i32_guard_chain_module(),
+              "main",
+              "block_2",
+              "minimal non-global equality-against-immediate guard-chain route rejects drifted prepared branch labels instead of falling back to the raw guard-chain matcher");
       status != 0) {
     return status;
   }

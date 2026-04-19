@@ -2565,19 +2565,22 @@ std::string emit_prepared_module(
               const auto compare_context =
                   build_prepared_branch_compare_context(*branch_condition);
               if (!compare_context.has_value()) {
-                return std::nullopt;
+                throw std::invalid_argument(
+                    "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
               }
 
               const auto direct_targets =
                   build_plain_cond_direct_branch_targets(source_block, *branch_condition);
               if (!direct_targets.has_value()) {
-                return std::nullopt;
+                throw std::invalid_argument(
+                    "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
               }
 
               const auto branch_plan =
                   build_direct_branch_plan_from_targets(source_block, *direct_targets);
               if (!branch_plan.has_value()) {
-                return std::nullopt;
+                throw std::invalid_argument(
+                    "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
               }
 
               return build_compare_driven_render_plan(*branch_plan, *compare_context);
