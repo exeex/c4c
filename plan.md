@@ -258,7 +258,38 @@ Completion check:
   extracted logic lives primarily in existing x86 codegen `.cpp` files unless a
   new file was strictly necessary
 
-## Step 5: Validate The Route
+## Step 5: Split `backend_x86_handoff_boundary_test.cpp` Into Focused Translation Units
+
+Goal: reduce the test file's mixed responsibilities so backend/x86 handoff
+coverage stays reviewable and future packets can target narrower ownership
+seams.
+
+Primary targets:
+
+- `tests/backend/backend_x86_handoff_boundary_test.cpp`
+- sibling backend test translation units under `tests/backend/` that can
+  responsibly own extracted coverage
+
+Actions:
+
+- group the current handoff-boundary cases by semantic coverage family rather
+  than by ad hoc testcase order
+- move grouped cases into multiple focused `.cpp` files with names that make
+  the covered handoff family discoverable
+- keep shared fixtures, helpers, and registration mechanics coherent after the
+  split
+- do not weaken assertions, reclassify supported-path coverage, or use the
+  split as cover for testcase-overfit cleanup
+- keep this step on test translation-unit organization; do not widen it into
+  emitter or semantic lowering changes
+
+Completion check:
+
+- `tests/backend/backend_x86_handoff_boundary_test.cpp` no longer acts as one
+  oversized mixed-responsibility translation unit, and the resulting test
+  files preserve the existing handoff coverage with clearer ownership seams
+
+## Step 6: Validate The Route
 
 Goal: prove the new shared/consumer boundary without relying on a single named
 testcase.
