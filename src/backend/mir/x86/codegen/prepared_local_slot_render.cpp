@@ -201,6 +201,16 @@ find_required_prepared_guard_branch_condition(
   return branch_condition;
 }
 
+bool has_authoritative_prepared_control_flow_block(
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    c4c::BlockLabelId block_label_id) {
+  if (function_control_flow == nullptr || block_label_id == c4c::kInvalidBlockLabel) {
+    return false;
+  }
+  return c4c::backend::prepare::find_prepared_control_flow_block(*function_control_flow,
+                                                                 block_label_id) != nullptr;
+}
+
 }  // namespace
 
 std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
@@ -811,6 +821,11 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
               find_block,
               render_block);
         }
+        if (compare_index != block.insts.size() &&
+            has_authoritative_prepared_control_flow_block(function_control_flow, block_label_id)) {
+          throw std::invalid_argument(
+              "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
+        }
       }
       if (compare_index != block.insts.size()) {
         return std::nullopt;
@@ -878,6 +893,12 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     if (const auto rendered_short_circuit = try_render_short_circuit_plan();
         rendered_short_circuit.has_value()) {
       return rendered_short_circuit;
+    }
+    if (has_authoritative_prepared_control_flow_block(function_control_flow, block_label_id) &&
+        c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
+                                                              block_label_id) == nullptr) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
     }
     if (function_control_flow != nullptr &&
         prepared_names != nullptr &&

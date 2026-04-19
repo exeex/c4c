@@ -32,6 +32,17 @@ int fail(const char* message) {
   return 1;
 }
 
+prepare::PreparedControlFlowFunction* find_control_flow_function(prepare::PreparedBirModule& prepared,
+                                                                 const char* function_name) {
+  for (auto& function : prepared.control_flow.functions) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) ==
+        function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
 std::string asm_header(const char* function_name) {
   return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
          "\n.type " + function_name + ", @function\n" + function_name + ":\n";
@@ -411,6 +422,40 @@ int check_route_outputs(const bir::Module& module,
   return 0;
 }
 
+int check_guard_lane_requires_authoritative_prepared_branch_record(const bir::Module& module,
+                                                                   const char* function_name,
+                                                                   const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->blocks.empty() ||
+      control_flow->branch_conditions.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the local-slot guard prepared control-flow contract")
+                    .c_str());
+  }
+
+  control_flow->branch_conditions.clear();
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly reopened the raw compare-driven local-slot guard carrier after the prepared branch record was removed")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the missing prepared branch record with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_local_slot_guard_lane_tests() {
@@ -422,6 +467,14 @@ int run_backend_x86_handoff_boundary_local_slot_guard_lane_tests() {
                               expected_minimal_local_i32_add_chain_guard_asm("main"),
                               "%t10 = bir.add i32 %t6, %t9",
                               "minimal local-slot add-chain guard route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_guard_lane_requires_authoritative_prepared_branch_record(
+              make_x86_local_i32_add_chain_guard_module(),
+              "main",
+              "minimal local-slot add-chain guard route rejects reopening the raw compare-driven fallback when prepared control-flow ownership is authoritative");
       status != 0) {
     return status;
   }
@@ -439,6 +492,14 @@ int run_backend_x86_handoff_boundary_local_slot_guard_lane_tests() {
                               expected_minimal_local_i8_address_guard_asm("main", 2),
                               "bir.load_local i8 %t.addr, addr %lv.arr.0+7",
                               "minimal local-slot byte addressed-guard route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_guard_lane_requires_authoritative_prepared_branch_record(
+              make_x86_local_i8_address_guard_module(),
+              "main",
+              "minimal local-slot byte addressed-guard route rejects reopening the raw compare-driven fallback when prepared control-flow ownership is authoritative");
       status != 0) {
     return status;
   }
