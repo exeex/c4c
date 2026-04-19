@@ -1,236 +1,159 @@
-# Shared Text Identity And Semantic Name Table Refactor
+# Prealloc CFG Generalization And Authoritative Control-Flow Facts
 
 Status: Active
-Source Idea: ideas/open/64_shared_text_identity_and_semantic_name_table_refactor.md
-Activated from: ideas/open/62_prealloc_cfg_generalization_and_authoritative_control_flow.md
+Source Idea: ideas/open/62_prealloc_cfg_generalization_and_authoritative_control_flow.md
+Activated from: ideas/closed/64_shared_text_identity_and_semantic_name_table_refactor.md
 
 ## Purpose
 
-Turn idea 64 into an execution runbook that moves shared text identity above
-the frontend and establishes semantic name tables before CFG and phi ownership
-work hardens new prepared contracts.
+Turn idea 62 into an execution runbook that replaces bootstrap-shaped
+control-flow recovery with authoritative prepared CFG facts built on the typed
+identity layer that idea 64 established.
 
 ## Goal
 
-Provide a shared text-id substrate plus semantic name tables such as
-`BlockLabelId` and `FunctionNameId` so downstream prepared/backend work can use
-typed symbolic identities instead of `std::string` or raw `TextId`.
+Publish a stable shared-prepare CFG/control-flow contract so downstream
+consumers use prepared predecessor, successor, branch-condition, and join
+ownership facts instead of re-deriving them from local CFG shape.
 
 ## Core Rule
 
-Do not ship new public prepared contracts keyed by `std::string` or raw
-`TextId` when a semantic id layer is the real requirement.
+Do not add testcase-shaped branch or join matchers. New work must improve
+general CFG ownership and consumer contracts.
 
 ## Read First
 
-- `ideas/open/64_shared_text_identity_and_semantic_name_table_refactor.md`
 - `ideas/open/62_prealloc_cfg_generalization_and_authoritative_control_flow.md`
 - `ideas/open/63_complete_phi_legalization_and_parallel_copy_resolution.md`
-- `src/frontend/string_id_table.hpp`
-- `src/frontend/link_name_table.hpp`
+- `ideas/closed/64_shared_text_identity_and_semantic_name_table_refactor.md`
+- `src/backend/prealloc/legalize.cpp`
 - `src/backend/prealloc/prealloc.hpp`
+- `src/backend/mir/x86/codegen/`
 
 ## Scope
 
-- move the shared text-id table out of the frontend layer
-- define semantic name-table/id types for backend-visible symbolic domains
-- prepare the identity substrate needed by idea 62 CFG ownership work and idea
-  63 phi completeness work
-- keep downstream contract migration focused on identity surfaces, not on
-  finishing CFG or phi algorithms in this runbook
+- build authoritative prepared CFG facts for BIR functions
+- make join ownership and continuation semantics derive from shared analysis
+- move downstream consumers to the shared prepared control-flow contract
+- keep symbolic identity on `FunctionNameId` and `BlockLabelId` surfaces
 
 ## Non-Goals
 
-- completing CFG ownership generalization itself
-- completing phi destruction or parallel-copy resolution itself
-- mixing this refactor into unrelated emitter or instruction-selection work
-- introducing one mega-id type that erases domain meaning
+- completing phi destruction beyond the CFG facts needed for truthful prepared
+  ownership
+- generic scalar instruction selection
+- unrelated x86 emitter rewrites
+- new public CFG contracts keyed by raw strings
 
 ## Working Model
 
-- a shared text table owns canonical byte storage
-- semantic tables map shared text ids into domain-specific ids such as
-  `BlockLabelId`, `FunctionNameId`, `ValueNameId`, and `SlotNameId`
-- downstream prepared/backend structs carry semantic ids, not symbolic strings
-  and not bare text-storage keys
+- prepare owns the authoritative per-function CFG view
+- prepared data publishes predecessor, successor, branch-condition, and join
+  ownership facts keyed by semantic ids
+- consumers query that prepared contract instead of reconstructing branch and
+  join meaning from bootstrap CFG shapes
 
 ## Execution Rules
 
-- keep the layering direction clean: backend/shared code must not depend on a
-  frontend-private text-id header
-- prefer semantic id tables modeled after `LinkNameTable` over bare `TextId`
-  plumbing
+- keep control-flow meaning in shared prepare, not in x86-local reconstruction
+- prefer one-time CFG analysis plus typed prepared facts over repeated
+  shape-sensitive helper queries
 - update `todo.md`, not this file, for routine packet progress
-- require `build -> narrow proof` for each code slice
-- stop short of broad CFG/phi rewrites once the identity substrate and first
-  consumer migrations are coherent
+- require `build -> narrow proof` for every accepted code slice
+- broaden validation when a slice changes shared prepare plus multiple
+  downstream consumer families
 
-## Step 1: Extract The Shared Text Table Layer
+## Step 1: Inventory The Existing Prepared Control-Flow Contract
 
-Goal: move the text-id table into a shared layer that frontend and backend code
-can both depend on without layering inversion.
-
-Primary targets:
-
-- `src/frontend/string_id_table.hpp`
-- destination shared/support layer files
-
-Actions:
-
-- move or rehome the text-id table interface into a layer above the frontend
-- update includes and namespaces so existing users still compile against the
-  shared location
-- keep the data structure append-only and compatible with existing canonical
-  text storage expectations
-
-Completion check:
-
-- the text-id table no longer lives under `src/frontend/`, and both frontend
-  and backend code can include the shared layer cleanly
-
-## Step 2: Introduce Semantic Name Tables
-
-Goal: define domain-specific symbolic id tables on top of shared text storage.
+Goal: map the bootstrap control-flow ownership that exists today so the
+replacement work stays focused on shared prepared facts instead of ad hoc
+consumer rewrites.
 
 Primary targets:
 
-- shared naming utilities adjacent to the extracted text-id layer
-- `src/frontend/link_name_table.hpp`
+- `src/backend/prealloc/legalize.cpp`
 - `src/backend/prealloc/prealloc.hpp`
+- current x86 consumer entry points under `src/backend/mir/x86/codegen/`
 
 Actions:
 
-- define typed ids such as `FunctionNameId`, `BlockLabelId`, `ValueNameId`,
-  and `SlotNameId` where justified
-- introduce semantic tables that intern shared `TextId` values into those
-  domain ids
-- keep the design consistent with `LinkNameTable` rather than inventing a
-  string wrapper without domain meaning
+- identify the current prepared branch, continuation, and join facts that
+  consumers read
+- note the remaining places where consumers still recover meaning from CFG
+  shape or local ambiguity heuristics
+- confirm the typed `FunctionNameId` and `BlockLabelId` surfaces from idea 64
+  are the identity boundary for new work
 
 Completion check:
 
-- the repo has semantic name-table infrastructure that can express backend and
-  prepared symbolic identity without depending on raw strings or bare text ids
+- the route has a concrete list of authoritative facts to preserve, bootstrap
+  heuristics to eliminate, and consumer entry points that must migrate without
+  widening scope
 
-## Step 3: Migrate The First Prepared Identity Surfaces
+## Step 2: Build An Authoritative Shared Prepared CFG Model
 
-Goal: land the first downstream users on semantic ids so idea 62 can build on
-them instead of starting from string-shaped contracts.
+Goal: make shared prepare own per-function CFG, branch-condition, and join
+  facts as a stable consumer contract.
 
 Primary targets:
 
+- `src/backend/prealloc/legalize.cpp`
 - `src/backend/prealloc/prealloc.hpp`
-- small, adjacent prepared/backend users needed to prove the new substrate
+- any extracted shared prepare helpers required to keep the analysis coherent
 
 Actions:
 
-- convert the minimal prepared symbolic surfaces needed by upcoming CFG work to
-  semantic ids
-- keep this step focused on identity contracts, not full CFG or phi algorithm
-  completion
-- document the follow-on expectation that idea 62 should consume `BlockLabelId`
-  and related semantic ids directly
-
-### Step 3.1: Move Prepared Control-Flow And Addressing Boundaries To Semantic Ids
-
-Goal: keep the already-started prepared control-flow, join, x86 local-slot,
-module, and stack-layout boundaries on typed function and block identities
-instead of repeated raw spelling lookup.
-
-Primary targets:
-
-- `src/backend/prealloc/prealloc.hpp`
-- `src/backend/prealloc/stack_layout.cpp`
-- adjacent prepared/x86 lookup boundaries already carrying control-flow or
-  addressing metadata
+- add or reshape prepared structures so per-block predecessor, successor, and
+  branch-condition facts are published on semantic ids
+- drive join ownership from authoritative graph analysis rather than ambiguous
+  post-hoc recovery
+- keep the public prepared surface focused on consumer-ready control-flow
+  facts, not on hidden bootstrap shape assumptions
 
 Completion check:
 
-- the main prepared control-flow and addressing entry boundaries resolve
-  `FunctionNameId` and `BlockLabelId` once and any remaining string-view paths
-  in this area are compatibility shims rather than the primary contract
+- shared prepare can publish authoritative CFG and join facts for ordinary
+  branch ownership without requiring downstream shape reconstruction
 
-### Step 3.2: Migrate Remaining Prepared Lookup Helpers And Liveness Consumers
+## Step 3: Migrate Consumers To The Authoritative Prepared Facts
 
-Goal: move the remaining lookup-heavy prepared helpers off raw value and block
-spellings so typed ids stay authoritative inside the helper graph.
-
-Primary targets:
-
-- residual lookup helpers in `src/backend/prealloc/prealloc.hpp`
-- `src/backend/prealloc/liveness.cpp`
-- adjacent call sites that still enter those helpers through `std::string_view`
-  names
-
-### Step 3.2.1: Move Liveness Consumers To Prepared Semantic Id Boundaries
-
-Goal: migrate the `liveness.cpp` label and value lookup consumers so liveness
-walks typed ids after a single boundary translation instead of redoing raw
-spelling lookup inside helper flows.
+Goal: move current consumers onto the shared prepared contract so short-circuit
+and materialized-select paths stop depending on bespoke CFG interpretation.
 
 Primary targets:
 
-- `src/backend/prealloc/liveness.cpp`
-- local lookup helpers such as `lookup_named_value_id(...)` and
-  `lookup_block_label_id(...)`
-- successor/predecessor and phi-use builders that still derive ids from raw
-  labels or value spellings mid-flow
-
-Completion check:
-
-- liveness-side block and value consumers resolve `BlockLabelId` and
-  `ValueNameId` through shared prepared boundary helpers or equivalent
-  one-time translation points, and the internal liveness helper graph no
-  longer treats raw spellings as the authoritative lookup key
-
-### Step 3.2.2: Finish Residual Prepared Compare/Join Helper Cleanup
-
-Goal: clear the remaining `prealloc.hpp` lookup-heavy helper entry points so
-the compare/join and branch helper graph stays on typed ids internally.
-
-Primary targets:
-
-- residual compare/join continuation and entry-target helpers in
-  `src/backend/prealloc/prealloc.hpp`
-- adjacent join-transfer or short-circuit helpers that still perform
-  `names.block_labels.find(...)` or `names.value_names.find(...)` inside the
-  helper body instead of only at the edge
-
-Completion check:
-
-- the remaining hot prepared lookup paths in `prealloc.hpp` resolve typed ids
-  once at the edge and carry `BlockLabelId` and `ValueNameId` internally, with
-  string-view overloads reduced to compatibility wrappers where still needed
-
-### Step 3.3: Confirm Idea 62 Starter Surfaces Are Clean
-
-Goal: leave the first prepared/backend identity surfaces in a state that idea
-62 can consume without introducing new string-keyed contracts.
-
-Primary targets:
-
-- prepared/backend helper surfaces that upcoming CFG ownership work will build
-  on first
-
-Completion check:
-
-- the first prepared/backend identity surfaces use semantic ids cleanly enough
-  that idea 62 can proceed without introducing new string-keyed contracts
-
-## Step 4: Validate The Refactor
-
-Goal: prove the shared identity refactor without bundling unrelated backend
-algorithm changes.
+- consumer paths under `src/backend/mir/x86/codegen/`
+- shared helpers that currently reconstruct branch or join meaning from CFG
+  shape
 
 Actions:
 
-- require a fresh build for every accepted slice
-- choose narrow proof that exercises both extracted shared-layer users and the
-  migrated prepared identity surfaces
-- broaden validation when include-path or shared naming changes affect several
-  subsystems
+- replace local branch/join reconstruction with reads from the prepared
+  control-flow contract
+- keep consumer changes narrow to the paths needed to consume the new prepared
+  facts
+- reject testcase-driven local matcher growth when a shared prepared fact is
+  the right fix
 
 Completion check:
 
-- accepted identity-refactor slices have fresh proof and the repo builds
-  cleanly against the shared text/name-table layer
+- the main consumers read prepared predecessor, successor, branch-condition,
+  and join facts directly enough that CFG shape recovery is no longer the
+  authoritative path
+
+## Step 4: Validate The CFG Ownership Route
+
+Goal: prove the new shared prepare CFG route without bundling phi-completion or
+unrelated backend rewrites.
+
+Actions:
+
+- require a fresh `cmake --build --preset default` for each accepted slice
+- use a backend-focused proving subset for routine packets
+- broaden validation when a slice changes shared prepare plus multiple
+  consumer families or when the route reaches a closure-quality checkpoint
+
+Completion check:
+
+- accepted slices build cleanly and the proving logs show consumer-visible CFG
+  ownership behavior is stable on the chosen validation scope

@@ -1,11 +1,24 @@
 # Shared Text Identity And Semantic Name Table Refactor
 
-Status: Open
+Status: Closed
 Created: 2026-04-19
 Last-Updated: 2026-04-19
+Closed: 2026-04-19
 Blocks:
 - idea 62 prealloc CFG generalization and authoritative control-flow facts
 - idea 63 complete phi legalization and parallel-copy resolution
+
+Closure note:
+- Shared text identity now lives above the frontend, semantic name-table/id
+  types exist for backend-visible symbolic domains, and the first prepared
+  control-flow, addressing, liveness, and join/compare surfaces carry typed
+  ids instead of raw strings or bare `TextId` contracts.
+- Close gate accepted on the canonical backend subset with
+  `--allow-non-decreasing-passed`: `69` passed before and after, `4` known
+  backend-route failures before and after, and no new failures or timeout
+  regressions.
+- Follow-on CFG ownership and phi work remain separate in ideas 62 and 63; no
+  additional lifecycle scope is carried in this closed slice.
 
 ## Intent
 
