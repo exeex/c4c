@@ -44,6 +44,15 @@ prepare::PreparedControlFlowFunction* find_control_flow_function(prepare::Prepar
   return nullptr;
 }
 
+bir::Block* find_block(bir::Function& function, std::string_view label) {
+  for (auto& block : function.blocks) {
+    if (block.label == label) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
 std::string asm_header(const char* function_name) {
   return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
          "\n.type " + function_name + ", @function\n" + function_name + ":\n";
@@ -530,6 +539,63 @@ int check_guard_lane_requires_authoritative_prepared_branch_record(const bir::Mo
   return 0;
 }
 
+int check_guard_lane_consumes_prepared_branch_contract(const bir::Module& module,
+                                                       const std::string& expected_asm,
+                                                       const char* function_name,
+                                                       const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.empty() ||
+      !control_flow->join_transfers.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the local-slot guard prepared branch contract")
+                    .c_str());
+  }
+
+  auto* entry_block = find_block(prepared.module.functions.front(), "entry");
+  if (entry_block == nullptr || entry_block->terminator.kind != bir::TerminatorKind::CondBranch ||
+      entry_block->insts.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepared local-slot guard fixture no longer has the expected entry shape")
+                    .c_str());
+  }
+  auto* entry_compare = std::get_if<bir::BinaryInst>(&entry_block->insts.back());
+  if (entry_compare == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared local-slot guard fixture no longer exposes the bounded compare carrier")
+                    .c_str());
+  }
+
+  const std::string original_true_label = entry_block->terminator.true_label;
+  const std::string original_false_label = entry_block->terminator.false_label;
+  entry_block->terminator.condition.name = "contract.local_slot.guard.condition";
+  entry_block->terminator.true_label = original_false_label;
+  entry_block->terminator.false_label = original_true_label;
+  entry_compare->opcode = bir::BinaryOpcode::Eq;
+  entry_compare->lhs = bir::Value::immediate_i32(7);
+  entry_compare->rhs = bir::Value::immediate_i32(9);
+
+  std::string prepared_asm;
+  try {
+    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer rejected the drifted local-slot guard carriers with exception: " +
+                 ex.what())
+                    .c_str());
+  }
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative local-slot prepared branch contract over raw entry-label carrier drift")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_branch_lane_requires_authoritative_prepared_block_record(const bir::Module& module,
                                                                    const char* function_name,
                                                                    const char* failure_context) {
@@ -605,10 +671,28 @@ int run_backend_x86_handoff_boundary_local_slot_guard_lane_tests() {
     return status;
   }
   if (const auto status =
+          check_guard_lane_consumes_prepared_branch_contract(
+              make_x86_local_i32_add_chain_guard_module(),
+              expected_minimal_local_i32_add_chain_guard_asm("main"),
+              "main",
+              "minimal local-slot add-chain guard route follows authoritative prepared branch labels over drifted raw entry carriers");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_route_outputs(make_x86_local_i32_sub_guard_module(),
                               expected_minimal_local_i32_sub_guard_asm("main"),
                               "%t6 = bir.sub i32 %t3, %t5",
                               "minimal local-slot sub guard route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_guard_lane_consumes_prepared_branch_contract(
+              make_x86_local_i32_sub_guard_module(),
+              expected_minimal_local_i32_sub_guard_asm("main"),
+              "main",
+              "minimal local-slot sub guard route follows authoritative prepared branch labels over drifted raw entry carriers");
       status != 0) {
     return status;
   }
@@ -642,6 +726,15 @@ int run_backend_x86_handoff_boundary_local_slot_guard_lane_tests() {
               make_x86_local_i8_address_guard_module(),
               "main",
               "minimal local-slot byte addressed-guard route rejects reopening the raw compare-driven fallback when prepared control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_guard_lane_consumes_prepared_branch_contract(
+              make_x86_local_i8_address_guard_module(),
+              expected_minimal_local_i8_address_guard_asm("main", 2),
+              "main",
+              "minimal local-slot byte addressed-guard route follows authoritative prepared branch labels over drifted raw entry carriers");
       status != 0) {
     return status;
   }
