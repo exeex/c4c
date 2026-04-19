@@ -11225,6 +11225,64 @@ int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract_with_ze
   return 0;
 }
 
+int check_loop_countdown_route_prefers_authoritative_prepared_branch_labels(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown control-flow contract")
+                    .c_str());
+  }
+  if (control_flow->join_transfers.front().kind != prepare::PreparedJoinTransferKind::LoopCarry) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer classifies the loop countdown join as explicit loop-carry traffic")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* loop_block = find_block(function, "loop");
+  auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+  if (loop_block == nullptr || mutable_control_flow == nullptr ||
+      mutable_control_flow->branch_conditions.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture lost its mutable loop-countdown branch contract")
+                    .c_str());
+  }
+  if (loop_block->terminator.kind != bir::TerminatorKind::CondBranch) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer exposes the expected loop cond branch")
+                    .c_str());
+  }
+
+  auto& branch_condition = mutable_control_flow->branch_conditions.front();
+  loop_block->terminator.condition = bir::Value::named(bir::TypeKind::I32, "drifted.loop.cond");
+  loop_block->terminator.true_label = "drifted.body";
+  loop_block->terminator.false_label = "drifted.exit";
+  if (branch_condition.condition_value.kind != bir::Value::Kind::Named ||
+      branch_condition.condition_value.name != "cmp0") {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer exposes the expected authoritative prepared condition value")
+                    .c_str());
+  }
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped preferring authoritative prepared loop branch metadata over raw loop terminator drift")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_route_rejection(const bir::Module& module,
                           std::string_view expected_message_fragment,
                           const char* failure_context) {
@@ -13570,6 +13628,15 @@ int main() {
               expected_minimal_loop_countdown_join_asm("main"),
               "main",
               "minimal loop-carried join countdown prepared-control-flow ownership respects the mirrored alternate eq-zero branch contract");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_prefers_authoritative_prepared_branch_labels(
+              make_x86_loop_countdown_join_module(),
+              expected_minimal_loop_countdown_join_asm("main"),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership prefers authoritative prepared branch metadata over raw loop-terminator drift");
       status != 0) {
     return status;
   }

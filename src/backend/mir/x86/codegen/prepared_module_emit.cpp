@@ -3095,6 +3095,15 @@ std::string emit_prepared_module(
               c4c::backend::bir::TerminatorKind::CondBranch) {
         continue;
       }
+      const auto* candidate_loop_compare =
+          candidate_loop_block->insts.empty()
+              ? nullptr
+              : std::get_if<c4c::backend::bir::BinaryInst>(&candidate_loop_block->insts.back());
+      if (candidate_loop_compare == nullptr ||
+          candidate_loop_compare->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          candidate_loop_compare->result.type != c4c::backend::bir::TypeKind::I32) {
+        continue;
+      }
 
       const auto* candidate_branch_condition =
           c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
@@ -3109,7 +3118,7 @@ std::string emit_prepared_module(
           candidate_branch_condition->condition_value.kind !=
               c4c::backend::bir::Value::Kind::Named ||
           candidate_branch_condition->condition_value.name !=
-              candidate_loop_block->terminator.condition.name) {
+              candidate_loop_compare->result.name) {
         continue;
       }
 
@@ -3188,8 +3197,6 @@ std::string emit_prepared_module(
         body_block == &entry || exit_block == &entry || body_block == loop_block ||
         exit_block == loop_block || exit_block == body_block ||
         loop_block->terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
-        loop_block->terminator.true_label != branch_condition->true_label ||
-        loop_block->terminator.false_label != branch_condition->false_label ||
         body_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
         body_block->terminator.target_label != loop_block->label ||
         exit_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||

@@ -5,21 +5,22 @@ Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 3.4.2
 Current Step Title: Loop-Carry Consumer Lookup Finishing
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed a Step 3.4 plan review after the countdown-specific fallback family
-reached the review threshold. Step 3.4 is now split into explicit substeps,
-with the exhausted countdown-fallback work isolated as Step 3.4.1 and
-execution moved to Step 3.4.2 Loop-Carry Consumer Lookup Finishing.
+Completed Step 3.4.2 Loop-Carry Consumer Lookup Finishing for the residual
+prepared loop branch consumer path by making the x86 countdown loop route
+follow authoritative prepared branch metadata even when the raw loop
+terminator condition and labels drift.
 
 ## Suggested Next
 
-Stay within Step 3.4.2 and inspect remaining loop-carry consumer paths outside
-the exhausted countdown-specific fallback family, prioritizing prepared
-transfer lookups over any further countdown-only matcher cleanup.
+Review whether any honest Step 3.4.2 loop-carry consumer packet remains beyond
+the now-covered prepared branch-label drift seam; if not, move to Step 3.4.3
+residual non-countdown consumer cleanup instead of reopening countdown-shaped
+matcher work.
 
 ## Watchouts
 
@@ -32,8 +33,9 @@ transfer lookups over any further countdown-only matcher cleanup.
   rejects authoritative prepared branch ownership on the matched cond and
   guard blocks, and authoritative prepared join ownership anywhere that
   references the matched countdown region.
-- Keep Step 3.4.2 on consumer-side prepared ownership. If a route needs new
-  prepared-carrier production semantics, that is Step 3.3 or a new plan
+- Keep Step 3.4.2 on consumer-side prepared ownership. This packet only
+  removed residual dependence on raw loop terminator branch metadata; any new
+  prepared-carrier production semantics would be Step 3.3 or a new plan
   review, not more Step 3.4.2 matcher growth.
 - The broader `^backend_` checkpoint currently reproduces five known failures:
   `backend_prepare_phi_materialize`, `variadic_double_bytes`,
@@ -43,7 +45,6 @@ transfer lookups over any further countdown-only matcher cleanup.
 
 ## Proof
 
-No new proof run for this lifecycle-only plan review. The active focused proof
-contract remains `cmake --build --preset default && ctest --test-dir build -j
+Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
-for the next Step 3.4.2 executor packet.
+for this Step 3.4.2 packet; `test_after.log` is the canonical proof log.
