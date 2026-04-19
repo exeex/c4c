@@ -402,7 +402,42 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
         block->terminator.value->type != c4c::backend::bir::TypeKind::I32) {
       return nullptr;
     }
-    return block;
+      return block;
+  };
+
+  const auto resolve_authoritative_prepared_branch_target =
+      [&](const c4c::backend::bir::Block& source_block) -> const c4c::backend::bir::Block* {
+    if (function_control_flow == nullptr || prepared_names == nullptr) {
+      return nullptr;
+    }
+
+    const auto block_label_id =
+        c4c::backend::prepare::resolve_prepared_block_label_id(*prepared_names,
+                                                               source_block.label);
+    if (!block_label_id.has_value()) {
+      return nullptr;
+    }
+
+    const auto* prepared_block = c4c::backend::prepare::find_prepared_control_flow_block(
+        *function_control_flow, *block_label_id);
+    if (prepared_block == nullptr) {
+      return nullptr;
+    }
+    if (prepared_block->terminator_kind != c4c::backend::bir::TerminatorKind::Branch ||
+        prepared_block->branch_target_label == c4c::kInvalidBlockLabel) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+    }
+
+    const auto* target_block = find_block(
+        function,
+        c4c::backend::prepare::prepared_block_label(*prepared_names,
+                                                    prepared_block->branch_target_label));
+    if (target_block == nullptr || target_block == &source_block) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+    }
+    return target_block;
   };
 
   const auto match_counter_init_block =
@@ -432,7 +467,10 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
       last_store = store;
     }
 
-    const auto* next_block = find_block(function, block->terminator.target_label);
+    const auto* next_block = resolve_authoritative_prepared_branch_target(*block);
+    if (next_block == nullptr) {
+      next_block = find_block(function, block->terminator.target_label);
+    }
     if (last_store == nullptr || next_block == nullptr) {
       return std::nullopt;
     }
@@ -713,8 +751,14 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
           body_store->slot_name != segment.init_store->slot_name ||
           body_store->value.kind != c4c::backend::bir::Value::Kind::Named ||
           body_store->value.name != body_sub->result.name ||
-          body_store->value.type != c4c::backend::bir::TypeKind::I32 ||
-          find_block(function, body_block->terminator.target_label) != cond_block) {
+          body_store->value.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      const auto* next_block = resolve_authoritative_prepared_branch_target(*body_block);
+      if (next_block == nullptr) {
+        next_block = find_block(function, body_block->terminator.target_label);
+      }
+      if (next_block != cond_block) {
         return std::nullopt;
       }
       return body_sub;
@@ -765,7 +809,11 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
 
     if (segment.cond_block == nullptr &&
         segment.entry_target->terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
-      const auto* candidate_cond = find_block(function, segment.entry_target->terminator.target_label);
+      const auto* candidate_cond =
+          resolve_authoritative_prepared_branch_target(*segment.entry_target);
+      if (candidate_cond == nullptr) {
+        candidate_cond = find_block(function, segment.entry_target->terminator.target_label);
+      }
       if (const auto cond_match = match_cond_block(candidate_cond); cond_match.has_value()) {
         const auto cond_targets =
             resolve_cond_targets(*candidate_cond, *cond_match->first, *cond_match->second);

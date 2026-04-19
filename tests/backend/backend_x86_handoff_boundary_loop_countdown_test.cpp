@@ -1220,6 +1220,63 @@ int check_local_countdown_guard_route_consumes_authoritative_join_transfer(
   return 0;
 }
 
+int check_local_countdown_guard_route_prefers_authoritative_continuation_init_target(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the local countdown control-flow contract")
+                    .c_str());
+  }
+  control_flow->branch_conditions.clear();
+  control_flow->join_transfers.clear();
+
+  std::string baseline_asm;
+  try {
+    baseline_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string(failure_context) +
+                 ": local countdown fallback fixture no longer renders before continuation-carrier target drift is injected: " +
+                 ex.what())
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* continuation_init = find_block(function, "cont");
+  if (continuation_init == nullptr ||
+      continuation_init->terminator.kind != bir::TerminatorKind::Branch) {
+    return fail((std::string(failure_context) +
+                 ": local countdown fallback fixture no longer exposes the continuation init branch carrier")
+                    .c_str());
+  }
+
+  continuation_init->terminator.target_label = "drifted.cont.loop";
+
+  std::string prepared_asm;
+  try {
+    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer rejected the authoritative continuation-carrier branch ownership with exception: " +
+                 ex.what())
+                    .c_str());
+  }
+  if (prepared_asm != baseline_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following authoritative prepared continuation-carrier targets over raw branch drift")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_local_countdown_guard_route_prefers_authoritative_loop_targets_after_join_transfer(
     const bir::Module& module,
     const char* function_name,
@@ -1605,6 +1662,14 @@ int run_backend_x86_handoff_boundary_loop_countdown_tests() {
               make_x86_local_i32_countdown_guard_continuation_module(),
               "main",
               "two-segment local countdown fallback consumes authoritative continuation-loop join ownership over a drifted local init carrier");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_local_countdown_guard_route_prefers_authoritative_continuation_init_target(
+              make_x86_local_i32_countdown_guard_continuation_module(),
+              "main",
+              "two-segment local countdown fallback consumes authoritative continuation-carrier branch targets over raw continuation-init drift");
       status != 0) {
     return status;
   }

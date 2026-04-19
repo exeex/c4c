@@ -5,29 +5,28 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Build An Authoritative Shared Prepared CFG Model
-Plan Review Counter: 9 / 10
+Plan Review Counter: 10 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another `plan.md` Step 2 slice for idea 62. The continuation-driven
-local-slot short-circuit branch path in
-`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` now consumes the
-authoritative prepared branch target for passthrough `Branch` blocks before it
-will recurse through a raw local target, so the rhs passthrough lane stops
-depending on driftable local branch labels once shared prepare already owns
-that CFG edge. The x86 handoff boundary short-circuit suite now proves the
-existing prepared rhs passthrough block still emits the canonical asm even
-after its raw branch target is drifted away from the authoritative prepared
-successor.
+Completed another `plan.md` Step 2 slice for idea 62. The local countdown
+renderer in `src/backend/mir/x86/codegen/prepared_countdown_render.cpp` now
+prefers authoritative prepared single-successor targets for init carriers,
+countdown body backedges, and continuation-entry branch carriers before it
+will trust a raw `target_label`, so the two-segment countdown fallback no
+longer depends on driftable local branch labels once shared prepare already
+owns those CFG edges. The x86 handoff boundary countdown suite now proves the
+existing continuation carrier still emits the canonical asm even after its raw
+branch target is drifted away from the authoritative prepared successor.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by pushing the remaining authoritative
-continuation/control-flow consumers in the x86 renderers onto the same strict
-prepared CFG route, especially any remaining local-slot or countdown branch
-carrier path that still resolves a raw successor after shared prepare has
-already published an authoritative target.
+Continue `plan.md` Step 2 by pushing the remaining countdown control-flow
+consumers onto the same strict prepared CFG route, especially the
+`render_prepared_loop_join_countdown_if_supported` branch-carrier checks that
+still read raw single-successor labels in the loop-join matcher after shared
+prepare has already published authoritative branch targets.
 
 ## Watchouts
 
@@ -53,6 +52,10 @@ already published an authoritative target.
   dedicated prepared branch-condition record; keep that route strict about
   rejecting mismatched authoritative metadata instead of silently falling back
   to raw terminator drift.
+- The remaining loop-join countdown matcher still has a few raw
+  single-successor branch-label reads in its bounded carrier checks; keep the
+  next packet focused on replacing those with the same prepared-control-flow
+  contract instead of widening into unrelated countdown rewrites.
 
 ## Proof
 
@@ -61,9 +64,9 @@ Ran the delegated proof command
 and wrote the canonical proof log to `test_after.log`. Before the full subset
 run, `cmake --build --preset default --target backend_x86_handoff_boundary_test`
 and `ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$'`
-passed with the new rhs passthrough branch-target drift coverage. The backend
-subset stayed at the expected baseline with the same four pre-existing route
-failures already present in `test_before.log`:
+passed with the new continuation-carrier branch-target drift coverage. The
+backend subset stayed at the expected baseline with the same four pre-existing
+route failures already present in `test_before.log`:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
 `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,
