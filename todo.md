@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Split `backend_x86_handoff_boundary_test.cpp` Into Focused Translation Units
-Plan Review Counter: 10 / 10
+Current Step ID: 5.2
+Current Step Title: Split Residual Local-Slot Guard Lane
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
@@ -21,10 +21,10 @@ fixture helpers from the monolithic handoff file.
 
 ## Suggested Next
 
-Before sending another Step 5 packet, have the supervisor route through the
-plan-review threshold for this still-active step; if Step 5 remains open after
-review, the next coherent split is the remaining local add/sub/address guard
-family that still sits beside the base helper harness in the monolithic file.
+Execute Step 5.2 by extracting the remaining local add/sub/address guard lane
+out of `tests/backend/backend_x86_handoff_boundary_test.cpp` into a focused
+translation unit, keeping the helper seam bounded and leaving the monolithic
+file with only intentionally central ownership.
 
 ## Watchouts
 

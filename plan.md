@@ -491,10 +491,8 @@ Primary targets:
 
 Actions:
 
-- group the current handoff-boundary cases by semantic coverage family rather
-  than by ad hoc testcase order
-- move grouped cases into multiple focused `.cpp` files with names that make
-  the covered handoff family discoverable
+- execute this step through the ordered substeps below rather than treating
+  all remaining test splitting as one undifferentiated packet stream
 - keep shared fixtures, helpers, and registration mechanics coherent after the
   split
 - do not weaken assertions, reclassify supported-path coverage, or use the
@@ -504,9 +502,83 @@ Actions:
 
 Completion check:
 
+- Step 5.1 through Step 5.3 are all complete
 - `tests/backend/backend_x86_handoff_boundary_test.cpp` no longer acts as one
   oversized mixed-responsibility translation unit, and the resulting test
   files preserve the existing handoff coverage with clearer ownership seams
+
+### Step 5.1: Extract Broad Semantic Families
+
+Goal: isolate the already-identified semantic coverage families that do not
+need to stay attached to the monolithic helper harness.
+
+Primary targets:
+
+- `tests/backend/backend_x86_handoff_boundary_test.cpp`
+- focused sibling translation units under `tests/backend/`
+
+Actions:
+
+- keep grouping by semantic coverage family rather than ad hoc testcase order
+- preserve the completed compare-branch, joined-branch, short-circuit,
+  countdown-loop, guard-chain, multi-defined, and scalar-smoke splits as the
+  model for later Step 5 packets
+- prefer small duplicated harness subsets inside focused files over a broad
+  shared-helper rewrite when the seam is still bounded
+
+Completion check:
+
+- the completed broad semantic family splits remain focused and stable without
+  reopening the monolithic file as their owner
+
+### Step 5.2: Split Residual Local-Slot Guard Lane
+
+Goal: remove the remaining local add/sub/address guard family from the
+monolithic handoff file while keeping the helper seam bounded.
+
+Primary targets:
+
+- `tests/backend/backend_x86_handoff_boundary_test.cpp`
+- a focused sibling translation unit under `tests/backend/`
+
+Actions:
+
+- extract the minimal local-slot add-chain, sub-guard, and byte
+  addressed-guard routes into a clearly named focused translation unit
+- keep the moved lane self-contained with only the bounded helper subset it
+  genuinely needs
+- avoid turning this packet into a central helper refactor or any emitter work
+
+Completion check:
+
+- `tests/backend/backend_x86_handoff_boundary_test.cpp` no longer owns the
+  residual local add/sub/address guard family
+
+### Step 5.3: Exhaust Residual Monolithic Ownership
+
+Goal: finish Step 5 by deciding whether any coherent semantic lane still needs
+  extraction after Step 5.2, or declare the step exhausted once only
+  intentionally central harness ownership remains.
+
+Primary targets:
+
+- `tests/backend/backend_x86_handoff_boundary_test.cpp`
+- focused sibling translation units under `tests/backend/` only if one honest
+  last lane still exists
+
+Actions:
+
+- review the residual monolithic file after Step 5.2 instead of assuming it
+  still hides another real family
+- extract one final coherent lane only if the remaining ownership is still
+  semantic rather than just central harness glue
+- stop the step once the remaining monolithic ownership is intentionally
+  central and reviewable
+
+Completion check:
+
+- the monolithic handoff file is reduced to intentionally central harness or
+  registration ownership, not another hidden semantic family
 
 ## Step 6: Validate The Route
 
