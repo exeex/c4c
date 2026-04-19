@@ -5,25 +5,24 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Migrate Consumers To The Authoritative Prepared Facts
-Plan Review Counter: 7 / 10
+Plan Review Counter: 8 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3 slice for idea 62. The
-`tests/backend/backend_x86_handoff_boundary_i32_guard_chain_test.cpp` handoff
-coverage now extends the same-module global offset-store guard-chain lane so it
-proves the x86 consumer rejects drifted prepared branch labels there instead of
-reopening the raw guard-chain matcher, and the shared branch-label helper now
-accepts the single-branch store route without assuming multi-branch-only guard
-chains.
+`tests/backend/backend_x86_handoff_boundary_local_slot_guard_lane_test.cpp`
+handoff coverage now proves the local-slot single-successor passthrough lane
+follows the authoritative prepared branch target over drifted raw entry labels
+instead of reopening the local branch carrier once prepared control-flow
+ownership exists.
 
 ## Suggested Next
 
 Move to the next bounded `plan.md` Step 3 consumer family that still lacks an
 explicit prepared-contract drift or loss proof, preferably outside the
-guard-chain lane now that the same-module global offset-store route has both
-prepared-address loss and prepared-branch drift coverage.
+short-circuit, guard-chain, and local-slot passthrough lanes now that each of
+those routes has an explicit authoritative prepared-target drift check.
 
 ## Watchouts
 
@@ -60,15 +59,16 @@ prepared-address loss and prepared-branch drift coverage.
   offset-store guard-chain lane both now have explicit contract drift coverage,
   so the next packet should move to a different consumer family instead of
   restating those shapes.
+- The local-slot single-successor passthrough lane now also has explicit
+  prepared-target drift coverage, so future Step 3 packets should move to a
+  different consumer family instead of restating raw entry-label drift there.
 
 ## Proof
 
 Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
-`backend_x86_handoff_boundary` proof passed after extending short-circuit
-`EdgeStoreSlot` coverage so the route proves authoritative rhs passthrough
-target ownership over raw branch drift and preserves the helper-published
-prepared branch-plan labels after the join carrier switches to
-`PreparedJoinTransferKind::EdgeStoreSlot`. `test_after.log` is the proof
-artifact for this packet.
+`backend_x86_handoff_boundary` proof passed after extending the local-slot
+single-successor passthrough coverage so the route proves authoritative
+prepared branch-target ownership over raw entry-label drift. `test_after.log`
+is the proof artifact for this packet.

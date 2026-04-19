@@ -648,6 +648,65 @@ int check_branch_lane_requires_authoritative_prepared_block_record(const bir::Mo
   return 0;
 }
 
+int check_branch_lane_consumes_prepared_block_contract(const bir::Module& module,
+                                                       const std::string& expected_asm,
+                                                       const char* function_name,
+                                                       const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->blocks.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the local-slot passthrough control-flow contract")
+                    .c_str());
+  }
+
+  auto* entry_block = find_block(prepared.module.functions.front(), "entry");
+  if (entry_block == nullptr || entry_block->terminator.kind != bir::TerminatorKind::Branch) {
+    return fail((std::string(failure_context) +
+                 ": prepared local-slot passthrough fixture no longer has the expected branch entry")
+                    .c_str());
+  }
+
+  const auto entry_label_id = prepare::resolve_prepared_block_label_id(prepared.names, "entry");
+  const auto guard_label_id = prepare::resolve_prepared_block_label_id(prepared.names, "guard");
+  if (!entry_label_id.has_value() || !guard_label_id.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared local-slot passthrough fixture no longer interns the expected block labels")
+                    .c_str());
+  }
+
+  const auto* prepared_entry_block =
+      prepare::find_prepared_control_flow_block(*control_flow, *entry_label_id);
+  if (prepared_entry_block == nullptr ||
+      prepared_entry_block->branch_target_label != *guard_label_id) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the authoritative passthrough branch target contract")
+                    .c_str());
+  }
+
+  entry_block->terminator.target_label = "block_1";
+
+  std::string prepared_asm;
+  try {
+    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer rejected the drifted local-slot passthrough carrier with exception: " +
+                 ex.what())
+                    .c_str());
+  }
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative prepared passthrough target over raw branch drift")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_local_slot_guard_lane_tests() {
@@ -709,6 +768,15 @@ int run_backend_x86_handoff_boundary_local_slot_guard_lane_tests() {
               make_x86_local_i32_branch_passthrough_module(),
               "main",
               "minimal local-slot single-successor passthrough route rejects reopening the raw branch carrier when prepared control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_branch_lane_consumes_prepared_block_contract(
+              make_x86_local_i32_branch_passthrough_module(),
+              expected_minimal_local_i32_branch_passthrough_asm("main"),
+              "main",
+              "minimal local-slot single-successor passthrough route follows authoritative prepared branch targets over drifted raw entry labels");
       status != 0) {
     return status;
   }
