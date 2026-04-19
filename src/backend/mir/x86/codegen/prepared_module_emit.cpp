@@ -3166,34 +3166,61 @@ std::string emit_prepared_module(
     }
     const auto* init_block =
         init_incoming == nullptr ? nullptr : find_block(init_incoming->predecessor_label);
-    const auto init_block_has_supported_handoff_carrier = [&]() -> bool {
-      if (init_block == nullptr || init_block == &entry) {
-        return init_block != nullptr;
-      }
-      if (init_block->insts.empty()) {
+    const auto block_has_supported_init_handoff_carrier =
+        [&](const c4c::backend::bir::Block& candidate) -> bool {
+      if (&candidate == &entry) {
         return true;
       }
-      if (!join_transfer->storage_name.has_value() || init_block->insts.size() != 1) {
+      if (candidate.insts.empty()) {
+        return true;
+      }
+      if (!join_transfer->storage_name.has_value() || candidate.insts.size() != 1) {
         return false;
       }
       const auto* init_store =
-          std::get_if<c4c::backend::bir::StoreLocalInst>(&init_block->insts.front());
+          std::get_if<c4c::backend::bir::StoreLocalInst>(&candidate.insts.front());
       return init_store != nullptr &&
              init_store->slot_name == *join_transfer->storage_name &&
              init_store->value.kind == c4c::backend::bir::Value::Kind::Immediate &&
              init_store->value.type == c4c::backend::bir::TypeKind::I32 &&
              init_store->value.immediate == init_incoming->incoming_value.immediate;
+    };
+    const bool entry_reaches_loop_through_supported_handoff_chain = [&]() -> bool {
+      if (init_block == nullptr) {
+        return false;
+      }
+      if (init_block == &entry) {
+        return entry.terminator.target_label == loop_block->label;
+      }
+      if (init_block == loop_block || init_block == body_block || init_block == exit_block ||
+          init_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
+          init_block->terminator.target_label != loop_block->label ||
+          !block_has_supported_init_handoff_carrier(*init_block)) {
+        return false;
+      }
+
+      const c4c::backend::bir::Block* current = &entry;
+      for (std::size_t steps = 0; steps < function.blocks.size(); ++steps) {
+        if (current->terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
+          return false;
+        }
+        const auto* next = find_block(current->terminator.target_label);
+        if (next == nullptr || next == loop_block || next == body_block || next == exit_block) {
+          return false;
+        }
+        if (next == init_block) {
+          return true;
+        }
+        if (next == &entry || !next->insts.empty() ||
+            next->terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
+          return false;
+        }
+        current = next;
+      }
+      return false;
     }();
-    const bool entry_reaches_loop_through_trivial_preheader =
-        init_block != nullptr &&
-        ((init_block == &entry && entry.terminator.target_label == loop_block->label) ||
-         (init_block != &entry && init_block != loop_block && init_block != body_block &&
-          init_block != exit_block && init_block_has_supported_handoff_carrier &&
-          init_block->terminator.kind == c4c::backend::bir::TerminatorKind::Branch &&
-          init_block->terminator.target_label == loop_block->label &&
-          entry.terminator.target_label == init_block->label));
     if (init_incoming == nullptr || body_incoming == nullptr || init_block == nullptr ||
-        !entry_reaches_loop_through_trivial_preheader ||
+        !entry_reaches_loop_through_supported_handoff_chain ||
         init_incoming->incoming_value.kind != c4c::backend::bir::Value::Kind::Immediate ||
         init_incoming->incoming_value.type != c4c::backend::bir::TypeKind::I32 ||
         init_incoming->incoming_value.immediate < 0 ||
