@@ -587,6 +587,8 @@ testcase.
 
 Actions:
 
+- execute this step through the ordered substeps below rather than treating
+  broader validation as a close decision by default
 - require a fresh build for every accepted slice
 - choose the narrowest proving test that exercises the changed control-flow
   family
@@ -597,5 +599,85 @@ Actions:
 
 Completion check:
 
+- Step 6.1 through Step 6.3 are all complete
 - accepted slices have fresh proof logs and validation proportional to the
-  control-flow blast radius
+  control-flow blast radius, and broader proof no longer fails on an in-scope
+  idea 58 control-flow contract check
+
+### Step 6.1: Broader Validation Triage
+
+Goal: separate any remaining in-scope idea 58 proof blocker from unrelated
+adjacent backend debt before making a close decision.
+
+Primary targets:
+
+- `todo.md`
+- broader backend proof logs for `^backend_`
+- `tests/backend/backend_prepare_phi_materialize_test.cpp`
+
+Actions:
+
+- record the broader validation result without treating every reproduced
+  backend failure as equally relevant to idea 58 closure
+- classify `backend_prepare_phi_materialize` as an in-scope prepared
+  control-flow contract blocker when it fails on short-circuit branch/join
+  metadata expectations
+- keep variadic and dynamic-member-array failures as adjacent debt unless the
+  proof shows they now exercise the same prepared-control-flow contract
+
+Completion check:
+
+- the active lifecycle state distinguishes the in-scope short-circuit contract
+  blocker from unrelated backend debt instead of drifting toward premature
+  closure
+
+### Step 6.2: Repair Short-Circuit Prepared Control-Flow Contract
+
+Goal: restore the missing short-circuit prepared branch/join metadata that the
+broader validation checkpoint exposed as an idea 58 blocker.
+
+Primary targets:
+
+- `src/backend/prealloc/legalize.cpp`
+- `src/backend/prealloc/prealloc.hpp`
+- `tests/backend/backend_prepare_phi_materialize_test.cpp`
+
+Actions:
+
+- repair the shared prepared-control-flow producer path so legalized
+  short-circuit routes publish the expected branch-condition and join-transfer
+  records
+- keep the fix in shared lowering or the prepared contract surface rather than
+  x86-local fallback logic or testcase-shaped special cases
+- prove the repaired route against `backend_prepare_phi_materialize` and any
+  narrow companion coverage needed to show the short-circuit contract is
+  authoritative again
+
+Completion check:
+
+- `backend_prepare_phi_materialize` passes its short-circuit prepared
+  control-flow assertions without expectation weakening or x86-local semantic
+  recovery
+
+### Step 6.3: Re-Run Broader Validation After Repair
+
+Goal: confirm the repaired short-circuit contract removes the in-scope blocker
+from the broader backend checkpoint.
+
+Primary targets:
+
+- broader backend proof coverage for `^backend_`
+- `todo.md`
+
+Actions:
+
+- rerun the broader backend checkpoint after Step 6.2 lands
+- verify that `backend_prepare_phi_materialize` no longer appears in the
+  reproduced failure list
+- record any still-failing adjacent backend debt separately from idea 58
+  closure readiness
+
+Completion check:
+
+- broader backend validation no longer fails on the in-scope idea 58
+  short-circuit prepared-control-flow contract
