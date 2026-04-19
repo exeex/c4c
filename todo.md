@@ -5,29 +5,28 @@ Source Idea Path: ideas/open/63_complete_phi_legalization_and_parallel_copy_reso
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Keep Downstream Phi Consumers Contract-Strict
-Plan Review Counter: 6 / 10
+Plan Review Counter: 7 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed a Step 3.2 (`Keep Downstream Phi Consumers Contract-Strict`) slice by
 tightening the joined-branch compare-join
-`branch_join_offset_pointer_backed_global_then_xor` handoff-boundary proof so
-the fixed-offset pointer-backed same-module global route now exercises true-
-lane and false-lane passthrough topology against the same authoritative
-prepared-control-flow contract for both the default `PhiEdge` carrier and a
-forced `EdgeStoreSlot` carrier. The non-chain compare-join route now matches
-the passthrough parity already covered by the corresponding selected-value-
-chain family and by its prepared return-context proofs.
+`branch_join_offset_global_then_xor` handoff-boundary proof so the fixed-
+offset same-module global non-chain route now exercises true-lane and false-
+lane passthrough topology against the same authoritative prepared-control-flow
+contract for both the default `PhiEdge` carrier and a forced `EdgeStoreSlot`
+carrier. The compare-join helper coverage now matches the passthrough parity
+already carried by the corresponding selected-value-chain family and by the
+prepared return-context proofs for the same fixed-offset global route.
 
 ## Suggested Next
 
 Continue Step 3.2 by applying the same carrier-agnostic proof tightening to one
 more bounded joined-branch compare-join family that still lacks full
 passthrough parity between the default carrier and forced `EdgeStoreSlot`
-coverage, preferably one of the remaining non-chain same-module global routes
-such as the fixed-offset or pointer-backed global compare-join helpers before
-widening beyond `backend_x86_handoff_boundary`.
+coverage, preferably the plain pointer-backed same-module global non-chain
+compare-join helpers before widening beyond `backend_x86_handoff_boundary`.
 
 ## Watchouts
 
@@ -35,9 +34,9 @@ widening beyond `backend_x86_handoff_boundary`.
 - Keep typed semantic ids as the public identity boundary.
 - Do not silently fold branch/join ownership work from idea 62 back into this
   route.
-- This packet only tightened fixed-offset pointer-backed same-module global
-  compare-join proof coverage; it did not change the x86 emitter or the
-  authoritative prepared compare-join contract itself.
+- This packet only tightened fixed-offset same-module global compare-join proof
+  coverage; it did not change the x86 emitter or the authoritative prepared
+  compare-join contract itself.
 - The joined-branch handoff-boundary fixtures still publish many explicit
   `EdgeStoreSlot` join carriers, so keep the next slice narrowly focused on one
   consumer path that is already carrier-agnostic in implementation.
@@ -51,7 +50,7 @@ widening beyond `backend_x86_handoff_boundary`.
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_x86_handoff_boundary$' > test_after.log 2>&1`
 ran for this Step 3.2 packet and preserved the canonical proof log in
 `test_after.log`; `backend_x86_handoff_boundary` passed with the joined-branch
-`branch_join_offset_pointer_backed_global_then_xor` fixed-offset pointer-backed
-same-module global compare-join family now proving both passthrough topologies
-for the default `PhiEdge` carrier and a forced `EdgeStoreSlot` carrier against
-the same authoritative prepared-control-flow contract.
+`branch_join_offset_global_then_xor` fixed-offset same-module global
+compare-join family now proving both passthrough topologies for the default
+`PhiEdge` carrier and a forced `EdgeStoreSlot` carrier against the same
+authoritative prepared-control-flow contract.
