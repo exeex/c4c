@@ -249,6 +249,11 @@ struct StackSlot {
   std::int64_t raw = 0;
 };
 
+struct PreparedModuleLocalSlotLayout {
+  std::unordered_map<std::string_view, std::size_t> offsets;
+  std::size_t frame_size = 0;
+};
+
 std::optional<std::string> render_prepared_param_zero_branch_function(
     std::string_view asm_prefix,
     std::string_view function_name,
@@ -303,6 +308,21 @@ std::optional<std::string> render_prepared_materialized_compare_join_return_if_s
 
 std::string render_prepared_return_body(std::string_view value_render,
                                         std::string_view trailing_render = {});
+
+std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedControlFlowFunction& function_control_flow,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix);
+
+std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    const PreparedModuleLocalSlotLayout& layout);
 
 struct SlotAddr {
   enum class Kind : unsigned char {
