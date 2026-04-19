@@ -6231,9 +6231,11 @@ int check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels
 
   if (prepared_branch_plan->target_labels.true_label != expected_true_label ||
       prepared_branch_plan->target_labels.false_label != expected_false_label ||
-      std::string(prepared_branch_plan->false_branch_opcode) != "jne") {
+      std::string(prepared_branch_plan->false_branch_opcode) != "jne" ||
+      prepared_branch_plan->compare_shape !=
+          prepare::PreparedParamZeroBranchCondition::CompareShape::SelfTest) {
     return fail((std::string(failure_context) +
-                 ": shared helper stopped publishing authoritative compare-join entry branch labels")
+                 ": shared helper stopped publishing the authoritative compare-join entry branch shape")
                     .c_str());
   }
 
@@ -6321,9 +6323,11 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
   }
   if (expected_branch_plan->target_labels.true_label != expected_true_label ||
       expected_branch_plan->target_labels.false_label != expected_false_label ||
-      std::string(expected_branch_plan->false_branch_opcode) != "jne") {
+      std::string(expected_branch_plan->false_branch_opcode) != "jne" ||
+      expected_branch_plan->compare_shape !=
+          prepare::PreparedParamZeroBranchCondition::CompareShape::SelfTest) {
     return fail((std::string(failure_context) +
-                 ": shared helper no longer publishes authoritative compare-join entry branch labels")
+                 ": shared helper no longer publishes the authoritative compare-join entry branch shape")
                     .c_str());
   }
   if (render_contract->branch_plan.target_labels.true_label !=
@@ -6331,9 +6335,10 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
       render_contract->branch_plan.target_labels.false_label !=
           expected_branch_plan->target_labels.false_label ||
       std::string(render_contract->branch_plan.false_branch_opcode) !=
-          expected_branch_plan->false_branch_opcode) {
+          expected_branch_plan->false_branch_opcode ||
+      render_contract->branch_plan.compare_shape != expected_branch_plan->compare_shape) {
     return fail((std::string(failure_context) +
-                 ": shared helper stopped packaging the compare-join branch plan")
+                 ": shared helper stopped packaging the compare-join entry branch shape")
                     .c_str());
   }
 
@@ -6392,6 +6397,8 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
           render_contract->branch_plan.target_labels.false_label ||
       std::string(resolved_render_contract->branch_plan.false_branch_opcode) !=
           render_contract->branch_plan.false_branch_opcode ||
+      resolved_render_contract->branch_plan.compare_shape !=
+          render_contract->branch_plan.compare_shape ||
       resolved_render_contract->same_module_globals.size() !=
           resolved_same_module_globals->size()) {
     return fail((std::string(failure_context) +
@@ -6413,6 +6420,8 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
           resolved_render_contract->branch_plan.target_labels.false_label ||
       std::string(directly_resolved_render_contract->branch_plan.false_branch_opcode) !=
           resolved_render_contract->branch_plan.false_branch_opcode ||
+      directly_resolved_render_contract->branch_plan.compare_shape !=
+          resolved_render_contract->branch_plan.compare_shape ||
       directly_resolved_render_contract->same_module_globals.size() !=
           resolved_render_contract->same_module_globals.size()) {
     return fail((std::string(failure_context) +
@@ -6435,6 +6444,8 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
           directly_resolved_render_contract->branch_plan.target_labels.false_label ||
       std::string(direct_param_zero_resolved_render_contract->branch_plan.false_branch_opcode) !=
           directly_resolved_render_contract->branch_plan.false_branch_opcode ||
+      direct_param_zero_resolved_render_contract->branch_plan.compare_shape !=
+          directly_resolved_render_contract->branch_plan.compare_shape ||
       direct_param_zero_resolved_render_contract->same_module_globals.size() !=
           directly_resolved_render_contract->same_module_globals.size()) {
     return fail((std::string(failure_context) +

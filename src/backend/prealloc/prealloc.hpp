@@ -627,6 +627,9 @@ struct PreparedParamZeroBranchCondition {
   const PreparedBranchCondition* branch_condition = nullptr;
   std::string_view false_label;
   const char* false_branch_opcode = nullptr;
+  enum class CompareShape {
+    SelfTest,
+  } compare_shape = CompareShape::SelfTest;
 };
 
 struct PreparedParamZeroBranchReturnContext {
@@ -648,6 +651,8 @@ struct PreparedParamZeroMaterializedCompareJoinBranches {
 struct PreparedMaterializedCompareJoinBranchPlan {
   PreparedBranchTargetLabels target_labels;
   const char* false_branch_opcode = nullptr;
+  PreparedParamZeroBranchCondition::CompareShape compare_shape =
+      PreparedParamZeroBranchCondition::CompareShape::SelfTest;
 };
 
 struct PreparedMaterializedCompareJoinReturnArm {
@@ -853,6 +858,7 @@ find_prepared_param_zero_branch_condition(const PreparedControlFlowFunction& fun
         .branch_condition = branch_condition,
         .false_label = branch_condition->false_label,
         .false_branch_opcode = "jne",
+        .compare_shape = PreparedParamZeroBranchCondition::CompareShape::SelfTest,
     };
   }
   if (*branch_condition->predicate == bir::BinaryOpcode::Ne) {
@@ -860,6 +866,7 @@ find_prepared_param_zero_branch_condition(const PreparedControlFlowFunction& fun
         .branch_condition = branch_condition,
         .false_label = branch_condition->false_label,
         .false_branch_opcode = "je",
+        .compare_shape = PreparedParamZeroBranchCondition::CompareShape::SelfTest,
     };
   }
 
@@ -1839,7 +1846,8 @@ find_prepared_materialized_compare_join_branch_plan(
               .false_label = branch_condition.false_label,
           },
       .false_branch_opcode =
-      prepared_compare_join_branches.prepared_branch.false_branch_opcode,
+          prepared_compare_join_branches.prepared_branch.false_branch_opcode,
+      .compare_shape = prepared_compare_join_branches.prepared_branch.compare_shape,
   };
 }
 

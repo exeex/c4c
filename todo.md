@@ -8,34 +8,35 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 3 Consume Prepared Control-Flow In X86 packet by moving the
-materialized compare-join branch-plan labels onto the prepared branch contract:
-`src/backend/prealloc/prealloc.hpp` now makes
-`find_prepared_materialized_compare_join_branch_plan()` publish entry labels
-from the prepared branch condition instead of mutable predecessor-block labels,
-and `tests/backend/backend_x86_handoff_boundary_test.cpp` now proves the same
-authoritative labels survive later predecessor relabeling for both the normal
-and `PreparedJoinTransferKind::EdgeStoreSlot` compare-join carriers.
+Completed a Step 3 Consume Prepared Control-Flow In X86 packet by publishing
+the materialized compare-join entry compare/test shape on the prepared param-
+zero branch contract: `src/backend/prealloc/prealloc.hpp` now carries a
+`CompareShape::SelfTest` field through the param-zero branch helper and the
+materialized compare-join branch plan, `src/backend/mir/x86/codegen/
+prepared_module_emit.cpp` now renders the compare-join branch prefix from that
+prepared contract instead of hardcoding the param-zero `test`/`jcc` setup
+inline, and `tests/backend/backend_x86_handoff_boundary_test.cpp` now proves
+the same branch-shape contract survives the normal and
+`PreparedJoinTransferKind::EdgeStoreSlot` render-contract paths.
 
 ## Suggested Next
 
-Stay in Step 3 and keep migrating the materialized compare-join consumer path by
-publishing one prepared helper for the entry compare/test shape itself, so the
-x86 render path can stop hardcoding the param-zero `test`/`jcc` setup around
-the now-authoritative branch and EdgeStoreSlot join labels.
+Stay in Step 3 and keep tightening prepared branch consumption by reusing the
+same prepared param-zero compare-shape contract anywhere adjacent x86
+branch-only consumers still reconstruct the entry compare prefix from local
+branch metadata instead of one shared prepared branch seam.
 
 ## Watchouts
 
 - Keep this route in Step 3 consumer work; do not widen into Step 4 file
   organization, idea 57, idea 59, idea 60, idea 61, or the unrelated
   `^backend_` semantic-lowering failures.
-- This packet intentionally moved label ownership, not feature coverage: do not
-  justify new compare-join passthrough shapes or emitter-local matcher growth
-  from it.
-- The materialized compare-join branch plan now ignores post-hoc predecessor
-  relabeling, but x86 still hardcodes the surrounding param-zero compare/test
-  spelling; keep the next packet focused on one more prepared consumer seam
-  instead of broad cleanup.
+- This packet publishes only the existing param-zero self-test shape; do not
+  justify new compare families, new matcher lanes, or value-location work from
+  the new `CompareShape` field without another bounded Step 3 packet.
+- The compare-join path now consumes prepared entry-branch shape data, but the
+  same route should stay semantic and contract-driven rather than turning the
+  new field into a testcase-shaped branch enum.
 - The broader `^backend_` checkpoint still has the same four known failures in
   variadic and dynamic-member-array semantic lowering outside this packet's
   owned files.
