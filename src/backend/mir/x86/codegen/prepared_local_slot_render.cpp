@@ -179,6 +179,28 @@ std::optional<std::string> render_prepared_symbol_memory_operand_if_supported(
   return memory;
 }
 
+const c4c::backend::prepare::PreparedBranchCondition*
+find_required_prepared_guard_branch_condition(
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    c4c::BlockLabelId block_label_id) {
+  if (function_control_flow == nullptr || prepared_names == nullptr ||
+      block_label_id == c4c::kInvalidBlockLabel) {
+    return nullptr;
+  }
+  if (c4c::backend::prepare::find_prepared_control_flow_block(*function_control_flow,
+                                                              block_label_id) == nullptr) {
+    return nullptr;
+  }
+  const auto* branch_condition =
+      c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow, block_label_id);
+  if (branch_condition == nullptr) {
+    throw std::invalid_argument(
+        "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
+  }
+  return branch_condition;
+}
+
 }  // namespace
 
 std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
@@ -1110,15 +1132,8 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
   }
 
   const auto* prepared_branch_condition =
-      function_control_flow == nullptr || prepared_names == nullptr
-          ? nullptr
-          : [&]() -> const c4c::backend::prepare::PreparedBranchCondition* {
-              if (entry_label_id == c4c::kInvalidBlockLabel) {
-                return nullptr;
-              }
-              return c4c::backend::prepare::find_prepared_branch_condition(
-                  *function_control_flow, entry_label_id);
-            }();
+      find_required_prepared_guard_branch_condition(
+          function_control_flow, prepared_names, entry_label_id);
   if (function_control_flow != nullptr && prepared_names != nullptr &&
       c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
           *prepared_names, *function_control_flow, entry_label_id)
@@ -1422,15 +1437,8 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
     return rendered;
   };
   const auto* prepared_branch_condition =
-      function_control_flow == nullptr || prepared_names == nullptr
-          ? nullptr
-          : [&]() -> const c4c::backend::prepare::PreparedBranchCondition* {
-              if (entry_label_id == c4c::kInvalidBlockLabel) {
-                return nullptr;
-              }
-              return c4c::backend::prepare::find_prepared_branch_condition(
-                  *function_control_flow, entry_label_id);
-            }();
+      find_required_prepared_guard_branch_condition(
+          function_control_flow, prepared_names, entry_label_id);
   if (function_control_flow != nullptr && prepared_names != nullptr &&
       c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
           *prepared_names, *function_control_flow, entry_label_id)
