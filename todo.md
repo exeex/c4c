@@ -3,14 +3,16 @@
 Status: Active
 Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_control_flow.md
 Source Plan Path: plan.md
-Current Step ID: 3.3
-Current Step Title: Close Remaining Consumer Families And Shared Helper Gaps
-Plan Review Counter: 10 / 10
+Current Step ID: 3.3.1
+Current Step Title: Finish Immediate Materialized-Select Passthrough Surfaces
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another `plan.md` Step 3.3 slice for idea 62. The
+Plan review split former `plan.md` Step 3.3 into numbered substeps after the
+review threshold was reached. The latest completed executor packet advanced the
+new Step 3.3.1 surface for idea 62. The
 `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
 plain immediate selected-values joined-branch route-level handoff now proves
 authoritative prepared ownership survives true-lane and false-lane
@@ -18,10 +20,10 @@ passthrough topology drift for both the direct and `EdgeStoreSlot` lanes.
 
 ## Suggested Next
 
-Move to the next adjacent `plan.md` Step 3.3 residual materialized-select
-consumer family that still lacks explicit passthrough-drift proof, keeping
-the packet bounded to one surface rather than reopening already-covered
-selected-value routes.
+Continue `plan.md` Step 3.3.1 by adding the adjacent plain immediate
+selected-values compare-join helper passthrough-drift proof that still lacks
+explicit true-lane and false-lane coverage, while keeping the packet bounded
+to that immediate family instead of widening into global-backed variants.
 
 ## Watchouts
 
@@ -37,10 +39,9 @@ selected-value routes.
 - Keep Step 3 packets focused on consumer migration proof, not on reopening
   Step 2.3-style fallback cleanup that already landed for stricter handoff
   surfaces.
-- The plain immediate selected-values joined-branch route now has explicit
-  passthrough-drift proof, so the next packet should move sideways to one
-  adjacent residual materialized-select surface instead of restating this
-  family.
+- The rewritten Step 3.3 route now starts with immediate materialized-select
+  surfaces, so keep the next packet inside Step 3.3.1 until the remaining
+  immediate compare-join helper drift proof is closed.
 
 ## Proof
 

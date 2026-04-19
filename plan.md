@@ -274,6 +274,86 @@ Completion check:
 - no Step 3 consumer family still depends on bespoke CFG interpretation once
   authoritative prepared control-flow data exists
 
+#### Step 3.3.1: Finish Immediate Materialized-Select Passthrough Surfaces
+
+Goal: close the remaining immediate selected-value consumer proofs so both the
+joined-branch routes and adjacent compare-join helper surfaces stay aligned
+with authoritative prepared ownership under passthrough drift.
+
+Primary targets:
+
+- immediate selected-value and immediate selected-value-chain consumers in
+  `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
+- the corresponding passthrough-heavy helper surfaces under
+  `src/backend/mir/x86/codegen/`
+
+Actions:
+
+- keep the immediate joined-branch route proofs authoritative for direct and
+  `EdgeStoreSlot` lanes when true-lane or false-lane passthrough topology is
+  introduced
+- add the adjacent immediate compare-join helper drift proof that is still
+  missing after the route-level slices already landed
+- do not reopen broader global-backed or trailing-join families while this
+  immediate packet group is still incomplete
+
+Completion check:
+
+- the immediate materialized-select family no longer has any residual route or
+  compare-join passthrough-drift gap for the current prepared-control-flow
+  contract
+
+#### Step 3.3.2: Finish Global-Backed Materialized-Select Variants
+
+Goal: close the remaining same-module global, pointer-backed, and fixed-offset
+materialized-select consumers without letting those routes fall back to local
+topology interpretation.
+
+Primary targets:
+
+- same-module global selected-value consumers
+- pointer-backed and fixed-offset global selected-value variants
+- any adjacent compare-join route or helper surfaces still missing explicit
+  prepared-contract drift proof
+
+Actions:
+
+- keep direct and `EdgeStoreSlot` lanes reading authoritative prepared
+  ownership across the remaining global-backed families
+- add only the missing entry-carrier or passthrough-drift proof surfaces for
+  each adjacent family instead of broad test sweeps
+- keep packet boundaries aligned to one residual family at a time
+
+Completion check:
+
+- the remaining global-backed materialized-select variants no longer depend on
+  bespoke route or helper reconstruction when prepared control-flow data exists
+
+#### Step 3.3.3: Close Trailing-Join And Residual Shared Helper Proof Gaps
+
+Goal: finish the last passthrough-heavy trailing-join and shared helper
+surfaces so Step 3 closes with no orphan consumer family outside the earlier
+branch-target and join-carrying lanes.
+
+Primary targets:
+
+- trailing-join arithmetic and bitwise consumer families
+- any leftover shared helper surface that still lacks explicit prepared
+  contract proof after Steps 3.3.1 and 3.3.2
+
+Actions:
+
+- keep trailing-join and late shared-helper proof focused on authoritative
+  prepared ownership rather than topology-shaped recovery
+- prove the remaining residual helper paths on the narrowest adjacent surface
+  that is still uncovered
+- stop Step 3.3 once no consumer family still needs bespoke CFG interpretation
+
+Completion check:
+
+- Step 3.3 has no remaining residual materialized-select, trailing-join, or
+  shared-helper proof gap that would justify another broad catch-all packet
+
 ## Step 4: Validate The CFG Ownership Route
 
 Goal: prove the new shared prepare CFG route without bundling phi-completion or
