@@ -11,16 +11,18 @@ namespace c4c::backend::prepare {
 
 namespace {
 
-using FrameSlotMap =
-    std::unordered_map<std::string_view, const PreparedFrameSlot*>;
+using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
 
 [[nodiscard]] FrameSlotMap build_frame_slot_map(
     const std::vector<PreparedStackObject>& function_objects,
     const std::vector<PreparedFrameSlot>& function_slots) {
-  std::unordered_map<PreparedObjectId, std::string_view> slot_names_by_object_id;
+  std::unordered_map<PreparedObjectId, SlotNameId> slot_names_by_object_id;
   slot_names_by_object_id.reserve(function_objects.size());
   for (const auto& object : function_objects) {
-    slot_names_by_object_id.emplace(object.object_id, object.source_name);
+    if (!object.slot_name.has_value()) {
+      continue;
+    }
+    slot_names_by_object_id.emplace(object.object_id, *object.slot_name);
   }
 
   FrameSlotMap frame_slots_by_name;
@@ -46,7 +48,7 @@ using FrameSlotMap =
       inst.address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot) {
     return std::nullopt;
   }
-  const auto slot_it = frame_slots_by_name.find(inst.slot_name);
+  const auto slot_it = frame_slots_by_name.find(names.slot_names.find(inst.slot_name));
   if (slot_it == frame_slots_by_name.end()) {
     return std::nullopt;
   }
@@ -87,7 +89,7 @@ using FrameSlotMap =
       inst.address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot) {
     return std::nullopt;
   }
-  const auto slot_it = frame_slots_by_name.find(inst.slot_name);
+  const auto slot_it = frame_slots_by_name.find(names.slot_names.find(inst.slot_name));
   if (slot_it == frame_slots_by_name.end()) {
     return std::nullopt;
   }
@@ -482,8 +484,8 @@ void BirPreAlloc::run_stack_layout() {
 
     auto function_objects =
         stack_layout::collect_function_stack_objects(prepared_.names, function, next_object_id);
-    stack_layout::apply_alloca_coalescing_hints(function, function_objects);
-    stack_layout::apply_copy_coalescing_hints(function, function_objects);
+    stack_layout::apply_alloca_coalescing_hints(prepared_.names, function, function_objects);
+    stack_layout::apply_copy_coalescing_hints(prepared_.names, function, function_objects);
 
     const auto inline_asm_summary = stack_layout::summarize_inline_asm(function);
     stack_layout::apply_regalloc_hints(

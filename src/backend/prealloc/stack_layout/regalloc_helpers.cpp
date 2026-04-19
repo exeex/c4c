@@ -29,10 +29,13 @@ void apply_regalloc_hints(PreparedNameTables& names,
     bool requires_home_slot = object.requires_home_slot;
     bool permanent_home_slot = object.permanent_home_slot;
 
-    if (const auto* slot = find_local_slot(function, object.source_name); slot != nullptr) {
-      address_exposed = address_exposed || slot->is_address_taken;
-      requires_home_slot = requires_home_slot || slot->is_address_taken;
-      permanent_home_slot = permanent_home_slot || slot->is_address_taken;
+    if (object.slot_name.has_value()) {
+      if (const auto* slot = find_local_slot(function, prepared_slot_name(names, *object.slot_name));
+          slot != nullptr) {
+        address_exposed = address_exposed || slot->is_address_taken;
+        requires_home_slot = requires_home_slot || slot->is_address_taken;
+        permanent_home_slot = permanent_home_slot || slot->is_address_taken;
+      }
     }
     permanent_home_slot = permanent_home_slot || address_exposed;
 

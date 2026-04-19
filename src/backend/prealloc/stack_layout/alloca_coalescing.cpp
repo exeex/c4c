@@ -337,7 +337,8 @@ void record_call_pointer_uses(const bir::CallInst& call,
 
 }  // namespace
 
-void apply_alloca_coalescing_hints(const bir::Function& function,
+void apply_alloca_coalescing_hints(const PreparedNameTables& names,
+                                   const bir::Function& function,
                                    std::vector<PreparedStackObject>& objects) {
   std::unordered_map<std::string_view, const bir::LocalSlot*> slots_by_name;
   slots_by_name.reserve(function.local_slots.size());
@@ -354,7 +355,10 @@ void apply_alloca_coalescing_hints(const bir::Function& function,
   const SlotUseSummary use_summary = collect_slot_use_summary(function, local_slot_names);
 
   for (auto& object : objects) {
-    const auto slot_it = slots_by_name.find(object.source_name);
+    if (!object.slot_name.has_value()) {
+      continue;
+    }
+    const auto slot_it = slots_by_name.find(prepared_slot_name(names, *object.slot_name));
     if (slot_it == slots_by_name.end()) {
       continue;
     }

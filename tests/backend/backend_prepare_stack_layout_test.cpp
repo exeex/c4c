@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
+#include <utility>
 
 namespace {
 
@@ -23,7 +24,19 @@ int fail(const char* message) {
 const prepare::PreparedStackObject* find_stack_object(const prepare::PreparedBirModule& prepared,
                                                       std::string_view source_name) {
   for (const auto& object : prepared.stack_layout.objects) {
-    if (object.source_name == source_name) {
+    if (prepare::prepared_stack_object_name(prepared.names, object) == source_name) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
+const prepare::PreparedStackObject* find_stack_object(
+    const prepare::PreparedNameTables& names,
+    const std::vector<prepare::PreparedStackObject>& objects,
+    std::string_view source_name) {
+  for (const auto& object : objects) {
+    if (prepare::prepared_stack_object_name(names, object) == source_name) {
       return &object;
     }
   }
@@ -82,14 +95,17 @@ bir::Function make_stack_layout_analysis_object_collection_function() {
   return function;
 }
 
-std::vector<prepare::PreparedStackObject> collect_stack_layout_analysis_objects() {
+std::pair<prepare::PreparedNameTables, std::vector<prepare::PreparedStackObject>>
+collect_stack_layout_analysis_objects_with_names() {
   bir::Function function = make_stack_layout_analysis_object_collection_function();
   prepare::PreparedNameTables names;
   prepare::PreparedObjectId next_object_id = 0;
-  return prepare::stack_layout::collect_function_stack_objects(names, function, next_object_id);
+  auto objects = prepare::stack_layout::collect_function_stack_objects(names, function, next_object_id);
+  return {std::move(names), std::move(objects)};
 }
 
-std::vector<prepare::PreparedStackObject> collect_stack_layout_regalloc_hint_objects() {
+std::pair<prepare::PreparedNameTables, std::vector<prepare::PreparedStackObject>>
+collect_stack_layout_regalloc_hint_objects() {
   bir::Function function = make_stack_layout_analysis_object_collection_function();
   prepare::PreparedNameTables names;
   prepare::PreparedObjectId next_object_id = 0;
@@ -98,7 +114,7 @@ std::vector<prepare::PreparedStackObject> collect_stack_layout_regalloc_hint_obj
                                               function,
                                               prepare::stack_layout::FunctionInlineAsmSummary{},
                                               objects);
-  return objects;
+  return {std::move(names), std::move(objects)};
 }
 
 bir::Function make_stack_layout_param_object_collection_function() {
@@ -129,14 +145,17 @@ bir::Function make_stack_layout_param_object_collection_function() {
   return function;
 }
 
-std::vector<prepare::PreparedStackObject> collect_stack_layout_param_objects() {
+std::pair<prepare::PreparedNameTables, std::vector<prepare::PreparedStackObject>>
+collect_stack_layout_param_objects_with_names() {
   bir::Function function = make_stack_layout_param_object_collection_function();
   prepare::PreparedNameTables names;
   prepare::PreparedObjectId next_object_id = 0;
-  return prepare::stack_layout::collect_function_stack_objects(names, function, next_object_id);
+  auto objects = prepare::stack_layout::collect_function_stack_objects(names, function, next_object_id);
+  return {std::move(names), std::move(objects)};
 }
 
-std::vector<prepare::PreparedStackObject> collect_stack_layout_param_regalloc_hint_objects() {
+std::pair<prepare::PreparedNameTables, std::vector<prepare::PreparedStackObject>>
+collect_stack_layout_param_regalloc_hint_objects() {
   bir::Function function = make_stack_layout_param_object_collection_function();
   prepare::PreparedNameTables names;
   prepare::PreparedObjectId next_object_id = 0;
@@ -145,18 +164,7 @@ std::vector<prepare::PreparedStackObject> collect_stack_layout_param_regalloc_hi
                                               function,
                                               prepare::stack_layout::FunctionInlineAsmSummary{},
                                               objects);
-  return objects;
-}
-
-const prepare::PreparedStackObject* find_stack_object(
-    const std::vector<prepare::PreparedStackObject>& objects,
-    std::string_view source_name) {
-  for (const auto& object : objects) {
-    if (object.source_name == source_name) {
-      return &object;
-    }
-  }
-  return nullptr;
+  return {std::move(names), std::move(objects)};
 }
 
 prepare::PreparedBirModule prepare_stack_layout_module() {
@@ -2563,11 +2571,12 @@ int check_dead_lowering_scratch_frame_slot_activation(const prepare::PreparedBir
 }
 
 int check_stack_layout_analysis_object_collection_activation(
+    const prepare::PreparedNameTables& names,
     const std::vector<prepare::PreparedStackObject>& objects) {
-  const auto* scratch_object = find_stack_object(objects, "lv.analysis.scratch");
-  const auto* copy_object = find_stack_object(objects, "lv.analysis.byval_copy");
-  const auto* phi_object = find_stack_object(objects, "lv.analysis.phi");
-  const auto* addressed_object = find_stack_object(objects, "lv.analysis.addr");
+  const auto* scratch_object = find_stack_object(names, objects, "lv.analysis.scratch");
+  const auto* copy_object = find_stack_object(names, objects, "lv.analysis.byval_copy");
+  const auto* phi_object = find_stack_object(names, objects, "lv.analysis.phi");
+  const auto* addressed_object = find_stack_object(names, objects, "lv.analysis.addr");
   if (scratch_object == nullptr || copy_object == nullptr || phi_object == nullptr ||
       addressed_object == nullptr) {
     return fail("expected analysis object collection to publish all local-slot objects");
@@ -2596,10 +2605,11 @@ int check_stack_layout_analysis_object_collection_activation(
 }
 
 int check_stack_layout_param_object_collection_activation(
+    const prepare::PreparedNameTables& names,
     const std::vector<prepare::PreparedStackObject>& objects) {
-  const auto* byval_object = find_stack_object(objects, "p.analysis.byval");
-  const auto* sret_object = find_stack_object(objects, "p.analysis.sret");
-  const auto* plain_object = find_stack_object(objects, "p.analysis.plain");
+  const auto* byval_object = find_stack_object(names, objects, "p.analysis.byval");
+  const auto* sret_object = find_stack_object(names, objects, "p.analysis.sret");
+  const auto* plain_object = find_stack_object(names, objects, "p.analysis.plain");
   if (byval_object == nullptr || sret_object == nullptr) {
     return fail("expected byval and sret params to publish prepared stack objects");
   }
@@ -2627,9 +2637,10 @@ int check_stack_layout_param_object_collection_activation(
 }
 
 int check_stack_layout_unused_param_divergence_activation(
+    const prepare::PreparedNameTables& names,
     const std::vector<prepare::PreparedStackObject>& objects) {
-  const auto* byval_object = find_stack_object(objects, "p.analysis.byval");
-  const auto* sret_object = find_stack_object(objects, "p.analysis.sret");
+  const auto* byval_object = find_stack_object(names, objects, "p.analysis.byval");
+  const auto* sret_object = find_stack_object(names, objects, "p.analysis.sret");
   if (byval_object == nullptr || sret_object == nullptr) {
     return fail(
         "expected unused byval and sret params to stay materialized until the "
@@ -2641,11 +2652,12 @@ int check_stack_layout_unused_param_divergence_activation(
 }
 
 int check_stack_layout_regalloc_hint_activation(
+    const prepare::PreparedNameTables& names,
     const std::vector<prepare::PreparedStackObject>& objects) {
-  const auto* scratch_object = find_stack_object(objects, "lv.analysis.scratch");
-  const auto* copy_object = find_stack_object(objects, "lv.analysis.byval_copy");
-  const auto* phi_object = find_stack_object(objects, "lv.analysis.phi");
-  const auto* addressed_object = find_stack_object(objects, "lv.analysis.addr");
+  const auto* scratch_object = find_stack_object(names, objects, "lv.analysis.scratch");
+  const auto* copy_object = find_stack_object(names, objects, "lv.analysis.byval_copy");
+  const auto* phi_object = find_stack_object(names, objects, "lv.analysis.phi");
+  const auto* addressed_object = find_stack_object(names, objects, "lv.analysis.addr");
   if (scratch_object == nullptr || copy_object == nullptr || phi_object == nullptr ||
       addressed_object == nullptr) {
     return fail("expected regalloc hints to preserve all analysis objects");
@@ -2674,10 +2686,11 @@ int check_stack_layout_regalloc_hint_activation(
 }
 
 int check_stack_layout_param_regalloc_hint_activation(
+    const prepare::PreparedNameTables& names,
     const std::vector<prepare::PreparedStackObject>& objects) {
-  const auto* byval_object = find_stack_object(objects, "p.analysis.byval");
-  const auto* sret_object = find_stack_object(objects, "p.analysis.sret");
-  const auto* plain_object = find_stack_object(objects, "p.analysis.plain");
+  const auto* byval_object = find_stack_object(names, objects, "p.analysis.byval");
+  const auto* sret_object = find_stack_object(names, objects, "p.analysis.sret");
+  const auto* plain_object = find_stack_object(names, objects, "p.analysis.plain");
   if (byval_object == nullptr || sret_object == nullptr) {
     return fail("expected regalloc hints to preserve byval and sret parameter objects");
   }
@@ -3403,33 +3416,40 @@ int check_prepared_addressing_contract_activation() {
 }  // namespace
 
 int main() {
-  const auto analysis_objects = collect_stack_layout_analysis_objects();
-  if (const int rc = check_stack_layout_analysis_object_collection_activation(analysis_objects);
+  const auto [analysis_names, analysis_objects] = collect_stack_layout_analysis_objects_with_names();
+  if (const int rc =
+          check_stack_layout_analysis_object_collection_activation(analysis_names, analysis_objects);
       rc != 0) {
     return rc;
   }
 
-  const auto param_analysis_objects = collect_stack_layout_param_objects();
+  const auto [param_analysis_names, param_analysis_objects] =
+      collect_stack_layout_param_objects_with_names();
   if (const int rc =
-          check_stack_layout_param_object_collection_activation(param_analysis_objects);
+          check_stack_layout_param_object_collection_activation(param_analysis_names,
+                                                               param_analysis_objects);
       rc != 0) {
     return rc;
   }
   if (const int rc =
-          check_stack_layout_unused_param_divergence_activation(param_analysis_objects);
+          check_stack_layout_unused_param_divergence_activation(param_analysis_names,
+                                                               param_analysis_objects);
       rc != 0) {
     return rc;
   }
 
-  const auto regalloc_hint_objects = collect_stack_layout_regalloc_hint_objects();
-  if (const int rc = check_stack_layout_regalloc_hint_activation(regalloc_hint_objects);
+  const auto [regalloc_hint_names, regalloc_hint_objects] = collect_stack_layout_regalloc_hint_objects();
+  if (const int rc =
+          check_stack_layout_regalloc_hint_activation(regalloc_hint_names, regalloc_hint_objects);
       rc != 0) {
     return rc;
   }
 
-  const auto param_regalloc_hint_objects = collect_stack_layout_param_regalloc_hint_objects();
+  const auto [param_regalloc_hint_names, param_regalloc_hint_objects] =
+      collect_stack_layout_param_regalloc_hint_objects();
   if (const int rc =
-          check_stack_layout_param_regalloc_hint_activation(param_regalloc_hint_objects);
+          check_stack_layout_param_regalloc_hint_activation(param_regalloc_hint_names,
+                                                           param_regalloc_hint_objects);
       rc != 0) {
     return rc;
   }

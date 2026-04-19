@@ -72,7 +72,8 @@ struct SlotAccessSummary {
 
 }  // namespace
 
-void apply_copy_coalescing_hints(const bir::Function& function,
+void apply_copy_coalescing_hints(const PreparedNameTables& names,
+                                 const bir::Function& function,
                                  std::vector<PreparedStackObject>& objects) {
   if (objects.empty() || function.local_slots.empty()) {
     return;
@@ -87,7 +88,10 @@ void apply_copy_coalescing_hints(const bir::Function& function,
   }
 
   for (auto& object : objects) {
-    const auto candidate_it = candidate_slots.find(object.source_name);
+    if (!object.slot_name.has_value()) {
+      continue;
+    }
+    const auto candidate_it = candidate_slots.find(prepared_slot_name(names, *object.slot_name));
     if (candidate_it == candidate_slots.end() || !candidate_it->second) {
       continue;
     }

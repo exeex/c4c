@@ -39,7 +39,7 @@ namespace {
   return PreparedStackObject{
       .object_id = object_id,
       .function_name = names.function_names.intern(function.name),
-      .source_name = slot.name,
+      .slot_name = names.slot_names.intern(slot.name),
       .source_kind = std::string(source_kind),
       .type = slot.type,
       .size_bytes = slot.size_bytes,
@@ -82,7 +82,7 @@ namespace {
   return PreparedStackObject{
       .object_id = object_id,
       .function_name = names.function_names.intern(function.name),
-      .source_name = param.name,
+      .value_name = names.value_names.intern(param.name),
       .source_kind = std::string(source_kind),
       .type = param.type,
       .size_bytes = param.size_bytes,

@@ -137,14 +137,18 @@ void absorb_value_metadata(DenseValueInfo& info,
 }
 
 [[nodiscard]] std::unordered_map<std::string, std::vector<const PreparedStackObject*>>
-build_stack_object_lookup(FunctionNameId function_name,
+build_stack_object_lookup(const PreparedNameTables& names,
+                          FunctionNameId function_name,
                           const PreparedStackLayout& stack_layout) {
   std::unordered_map<std::string, std::vector<const PreparedStackObject*>> lookup;
   for (const auto& object : stack_layout.objects) {
     if (object.function_name != function_name) {
       continue;
     }
-    lookup[object.source_name].push_back(&object);
+    if (!object.value_name.has_value()) {
+      continue;
+    }
+    lookup[std::string(prepared_value_name(names, *object.value_name))].push_back(&object);
   }
   return lookup;
 }
@@ -308,7 +312,7 @@ void collect_dense_values_from_terminator(
                                                   const bir::Function& function,
                                                   const PreparedStackLayout& stack_layout) {
   const FunctionNameId function_name_id = names.function_names.intern(function.name);
-  const auto stack_object_lookup = build_stack_object_lookup(function_name_id, stack_layout);
+  const auto stack_object_lookup = build_stack_object_lookup(names, function_name_id, stack_layout);
   DenseValueSet dense_values;
 
   for (const auto& param : function.params) {

@@ -136,7 +136,8 @@ struct PreparedBirModule;
 struct PreparedStackObject {
   PreparedObjectId object_id = 0;
   FunctionNameId function_name = kInvalidFunctionName;
-  std::string source_name;
+  std::optional<SlotNameId> slot_name;
+  std::optional<ValueNameId> value_name;
   std::string source_kind;
   c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
   std::size_t size_bytes = 0;
@@ -155,6 +156,27 @@ struct PreparedFrameSlot {
   std::size_t align_bytes = 0;
   bool fixed_location = false;
 };
+
+[[nodiscard]] inline std::string_view prepared_stack_object_slot_name(
+    const PreparedNameTables& names,
+    const PreparedStackObject& object) {
+  return object.slot_name.has_value() ? prepared_slot_name(names, *object.slot_name)
+                                      : std::string_view{};
+}
+
+[[nodiscard]] inline std::string_view prepared_stack_object_value_name(
+    const PreparedNameTables& names,
+    const PreparedStackObject& object) {
+  return object.value_name.has_value() ? prepared_value_name(names, *object.value_name)
+                                       : std::string_view{};
+}
+
+[[nodiscard]] inline std::string_view prepared_stack_object_name(
+    const PreparedNameTables& names,
+    const PreparedStackObject& object) {
+  const std::string_view slot_name = prepared_stack_object_slot_name(names, object);
+  return slot_name.empty() ? prepared_stack_object_value_name(names, object) : slot_name;
+}
 
 struct PreparedStackLayout {
   std::vector<PreparedStackObject> objects;
@@ -276,10 +298,12 @@ std::vector<PreparedStackObject> collect_function_stack_objects(PreparedNameTabl
                                                                 const bir::Function& function,
                                                                 PreparedObjectId& next_object_id);
 
-void apply_alloca_coalescing_hints(const bir::Function& function,
+void apply_alloca_coalescing_hints(const PreparedNameTables& names,
+                                   const bir::Function& function,
                                    std::vector<PreparedStackObject>& objects);
 
-void apply_copy_coalescing_hints(const bir::Function& function,
+void apply_copy_coalescing_hints(const PreparedNameTables& names,
+                                 const bir::Function& function,
                                  std::vector<PreparedStackObject>& objects);
 
 FunctionInlineAsmSummary summarize_inline_asm(const bir::Function& function);
