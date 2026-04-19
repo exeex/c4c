@@ -3184,7 +3184,7 @@ std::string emit_prepared_module(
              init_store->slot_name == *join_transfer->storage_name &&
              init_store->byte_offset == 0 && !init_store->address.has_value();
     };
-    const bool entry_reaches_loop_through_supported_handoff_chain = [&]() -> bool {
+    const bool entry_reaches_loop_through_supported_handoff_prefix = [&]() -> bool {
       if (init_block == nullptr) {
         return false;
       }
@@ -3198,28 +3198,23 @@ std::string emit_prepared_module(
         return false;
       }
 
-      const c4c::backend::bir::Block* current = &entry;
-      for (std::size_t steps = 0; steps < function.blocks.size(); ++steps) {
-        if (current->terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
-          return false;
-        }
-        const auto* next = find_block(current->terminator.target_label);
-        if (next == nullptr || next == loop_block || next == body_block || next == exit_block) {
-          return false;
-        }
-        if (next == init_block) {
-          return true;
-        }
-        if (next == &entry || !next->insts.empty() ||
-            next->terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
-          return false;
-        }
-        current = next;
+      if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
+        return false;
       }
-      return false;
+      if (entry.terminator.target_label == init_block->label) {
+        return true;
+      }
+
+      const auto* carrier_block = find_block(entry.terminator.target_label);
+      return carrier_block != nullptr && carrier_block != &entry &&
+             carrier_block != loop_block && carrier_block != body_block &&
+             carrier_block != exit_block && carrier_block != init_block &&
+             carrier_block->insts.empty() &&
+             carrier_block->terminator.kind == c4c::backend::bir::TerminatorKind::Branch &&
+             carrier_block->terminator.target_label == init_block->label;
     }();
     if (init_incoming == nullptr || body_incoming == nullptr || init_block == nullptr ||
-        !entry_reaches_loop_through_supported_handoff_chain ||
+        !entry_reaches_loop_through_supported_handoff_prefix ||
         init_incoming->incoming_value.kind != c4c::backend::bir::Value::Kind::Immediate ||
         init_incoming->incoming_value.type != c4c::backend::bir::TypeKind::I32 ||
         init_incoming->incoming_value.immediate < 0 ||
