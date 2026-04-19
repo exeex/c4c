@@ -5,26 +5,23 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 3.3
 Current Step Title: Close Remaining Consumer Families And Shared Helper Gaps
-Plan Review Counter: 7 / 10
+Plan Review Counter: 8 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3.3 slice for idea 62. The
 `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
-fixed-offset pointer-backed same-module global non-chain compare-join
-return-context helper now proves authoritative prepared ownership survives
-true-lane and false-lane passthrough topology drift, for both the direct and
-`EdgeStoreSlot` lanes.
+immediate selected-value-chain compare-join return-context helper now proves
+authoritative prepared ownership survives true-lane and false-lane
+passthrough topology drift for both the direct and `EdgeStoreSlot` lanes.
 
 ## Suggested Next
 
-Move to the next bounded `plan.md` Step 3.3 compare-join consumer family or
-shared helper surface that still lacks explicit passthrough drift proof,
-preferably outside the fixed-offset pointer-backed same-module global
-compare-join helper family now that both the non-chain return-context helper
-and the selected-value-chain route cover direct and `EdgeStoreSlot`
-true/false lane drift.
+Move to the adjacent `plan.md` Step 3.3 joined-branch consumer proof for the
+same immediate selected-value-chain family by adding explicit true-lane and
+false-lane passthrough topology-drift coverage to the route-level prepared
+handoff, again for both the direct and `EdgeStoreSlot` lanes.
 
 ## Watchouts
 
@@ -33,82 +30,25 @@ true/false lane drift.
 - Keep phi-completion work in idea 63 unless it is strictly required to make
   CFG ownership truthful.
 - Reject testcase-shaped branch or join matcher growth.
-- The guard-chain branch-label proof helper now covers both multi-branch and
-  single-branch routes; keep future Step 3 additions aligned to authoritative
-  prepared branch metadata instead of reintroducing raw matcher-specific
-  helpers.
 - Keep `PreparedBranchCondition` and `PreparedControlFlowBlock` targets
   contract-consistent; mismatches should still fail the canonical
   prepared-module handoff instead of silently preferring whichever record
   happens to look usable locally.
 - Keep Step 3 packets focused on consumer migration proof, not on reopening
-  Step 2.3-style fallback cleanup that already landed for local-slot and
-  countdown handoff surfaces.
-- The minimal compare-branch routes now have contract-strict proof for zero,
-  nonzero, and parameter-leaf variants, so the next Step 3 packet should move
-  to a different consumer family instead of restating the same branch-lane
-  proof shape.
-- Keep the broader guard-chain and compare-join families aligned with the same
-  prepared branch-condition and prepared-target contract; do not reopen raw
-  compare or terminator recovery once the prepared control-flow block is
-  authoritative.
-- The joined-branch compare-join route intentionally continues to follow
-  authoritative prepared entry labels over raw entry-label drift; do not
-  convert that family to short-circuit-style label rejection, because the
-  current migration proof already relies on authoritative prepared ownership
-  winning over raw carrier labels there.
-- The short-circuit passthrough/helper lane and the same-module global
-  offset-store guard-chain lane both now have explicit contract drift coverage,
-  so the next packet should move to a different consumer family instead of
-  restating those shapes.
-- The fixed-offset same-module global compare-join return-context helpers now
+  Step 2.3-style fallback cleanup that already landed for stricter handoff
+  surfaces.
+- The immediate selected-value-chain compare-join return-context helpers now
   also ignore true-lane and false-lane passthrough topology drift for both
-  direct and `EdgeStoreSlot` lanes, so future Step 3.3 packets should move to
-  a different compare-join family instead of restating that helper surface.
-- The fixed-offset same-module global selected-value-chain compare-join route
-  now also ignores true-lane and false-lane passthrough topology drift for
-  both direct and `EdgeStoreSlot` lanes, so future Step 3.3 packets should
-  move to a different compare-join family instead of restating that route.
-- The fixed-offset pointer-backed same-module global selected-value-chain
-  compare-join route now also ignores true-lane and false-lane passthrough
-  topology drift for both direct and `EdgeStoreSlot` lanes, so future Step
-  3.3 packets should move to a different compare-join family instead of
-  restating that route.
-- The fixed-offset pointer-backed same-module global non-chain compare-join
-  return-context helper now also ignores true-lane and false-lane passthrough
-  topology drift for both direct and `EdgeStoreSlot` lanes, so future Step
-  3.3 packets should move to a different helper surface instead of restating
-  that coverage.
-- The same-module global selected-value chain compare-join return-context
-  helpers now also ignore true-lane and false-lane passthrough topology drift
-  for both direct and `EdgeStoreSlot` lanes, so future Step 3.3 packets
-  should move to a different consumer family or helper surface instead of
-  restating that coverage.
-- The prepared short-circuit branch-plan helper now also rejects missing
-  authoritative entry-target and continuation-label inputs for both direct and
-  `EdgeStoreSlot` lanes, so future Step 3.3 packets should move to a different
-  helper surface instead of restating short-circuit branch-plan loss proof.
-- The local-slot single-successor passthrough lane now also has explicit
-  prepared-target drift coverage, so future Step 3 packets should move to a
-  different consumer family instead of restating raw entry-label drift there.
-- The joined-branch trailing-join `and` and trailing-join `or` lanes now both
-  have explicit true-lane and false-lane passthrough topology-drift coverage,
-  so future Step 3 packets should move to a different joined-branch subfamily
-  instead of restating either carrier shape.
-- The joined-branch trailing-join `mul`, `shl`, `lshr`, and `ashr` lanes now
-  also have explicit true-lane and false-lane passthrough topology-drift
-  coverage, so future Step 3.3 packets should move to a different consumer
-  family or shared helper gap instead of restating the same trailing-join
-  carrier shape.
+  direct and `EdgeStoreSlot` lanes, so the next packet should move to the
+  adjacent route-level proof instead of restating that helper surface.
 
 ## Proof
 
 Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
-`backend_x86_handoff_boundary` proof passed after extending the
-fixed-offset pointer-backed same-module global non-chain compare-join
-return-context helper coverage so the shared prepared handoff ignores
-true-lane and false-lane passthrough topology drift for both direct and
-`EdgeStoreSlot` lanes. `test_after.log` is the proof artifact for this
-packet.
+`backend_x86_handoff_boundary` proof passed after extending the immediate
+selected-value-chain compare-join return-context helper coverage so the
+shared prepared handoff ignores true-lane and false-lane passthrough
+topology drift for both direct and `EdgeStoreSlot` lanes. `test_after.log`
+is the proof artifact for this packet.

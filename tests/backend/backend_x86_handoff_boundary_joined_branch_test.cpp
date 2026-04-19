@@ -4756,7 +4756,9 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
     const char* function_name,
     const char* failure_context,
     bool use_edge_store_slot_carrier,
-    bool use_selected_value_chain) {
+    bool use_selected_value_chain,
+    bool add_true_lane_passthrough_block = false,
+    bool add_false_lane_passthrough_block = false) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -4912,6 +4914,47 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
     }
   }
 
+  if (add_true_lane_passthrough_block) {
+    const std::string true_predecessor_label = std::string(
+        block_label(prepared, join_transfer.edge_transfers[true_transfer_index].predecessor_label));
+    auto* true_predecessor =
+        find_block(function, true_predecessor_label.c_str());
+    if (true_predecessor == nullptr) {
+      return fail((std::string(failure_context) +
+                   ": prepared compare-join fixture no longer exposes the authoritative true-lane predecessor")
+                      .c_str());
+    }
+    true_predecessor->terminator = bir::BranchTerminator{.target_label = "contract.true.bridge"};
+    function.blocks.push_back(bir::Block{
+        .label = "contract.true.bridge",
+        .terminator = bir::BranchTerminator{.target_label = join_block->label},
+    });
+  }
+  if (add_false_lane_passthrough_block) {
+    const std::string false_predecessor_label = std::string(
+        block_label(prepared, join_transfer.edge_transfers[false_transfer_index].predecessor_label));
+    auto* false_predecessor =
+        find_block(function, false_predecessor_label.c_str());
+    if (false_predecessor == nullptr) {
+      return fail((std::string(failure_context) +
+                   ": prepared compare-join fixture no longer exposes the authoritative false-lane predecessor")
+                      .c_str());
+    }
+    false_predecessor->terminator = bir::BranchTerminator{.target_label = "contract.false.bridge"};
+    function.blocks.push_back(bir::Block{
+        .label = "contract.false.bridge",
+        .terminator = bir::BranchTerminator{.target_label = join_block->label},
+    });
+  }
+
+  entry_block = find_block(function, "entry");
+  join_block = find_block(function, "join");
+  if (entry_block == nullptr || join_block == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer preserves entry/join blocks after passthrough rewrites")
+                    .c_str());
+  }
+
   const auto compare_join_context = prepare::find_prepared_param_zero_materialized_compare_join_context(
       prepared.names, *control_flow, function, *entry_block, function.params.front(), true);
   if (!compare_join_context.has_value()) {
@@ -5012,6 +5055,38 @@ int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_im
     const char* failure_context) {
   return check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts_impl(
       module, function_name, failure_context, true, true);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_immediate_chain_return_contexts_with_true_lane_passthrough(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts_impl(
+      module, function_name, failure_context, false, true, true, false);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_immediate_chain_return_contexts_with_true_lane_passthrough(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts_impl(
+      module, function_name, failure_context, true, true, true, false);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_immediate_chain_return_contexts_with_false_lane_passthrough(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts_impl(
+      module, function_name, failure_context, false, true, false, true);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_immediate_chain_return_contexts_with_false_lane_passthrough(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_immediate_return_contexts_impl(
+      module, function_name, failure_context, true, true, false, true);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
@@ -6645,6 +6720,38 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
               make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
               "branch_join_immediate_then_xor",
               "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot immediate selected-value chain return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_immediate_chain_return_contexts_with_true_lane_passthrough(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join immediate selected-value chain return context ownership ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_edge_store_slot_immediate_chain_return_contexts_with_true_lane_passthrough(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot immediate selected-value chain return context ownership ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_immediate_chain_return_contexts_with_false_lane_passthrough(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join immediate selected-value chain return context ownership ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_edge_store_slot_immediate_chain_return_contexts_with_false_lane_passthrough(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot immediate selected-value chain return context ownership ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }
