@@ -2546,6 +2546,26 @@ int check_join_route_immediate_selected_value_chain_consumes_prepared_control_fl
       expected_asm,
       function_name,
       failure_context,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false);
+}
+
+int check_join_route_edge_store_slot_immediate_selected_value_chain_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
       true,
       true,
       true,
@@ -2554,6 +2574,94 @@ int check_join_route_immediate_selected_value_chain_consumes_prepared_control_fl
       false,
       false,
       false);
+}
+
+int check_join_route_immediate_selected_value_chain_with_true_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false);
+}
+
+int check_join_route_edge_store_slot_immediate_selected_value_chain_with_true_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false);
+}
+
+int check_join_route_immediate_selected_value_chain_with_false_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true);
+}
+
+int check_join_route_edge_store_slot_immediate_selected_value_chain_with_false_lane_passthrough_consumes_prepared_control_flow(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_join_route_consumes_prepared_control_flow_impl(
+      module,
+      expected_asm,
+      function_name,
+      failure_context,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true);
 }
 
 int check_join_route_global_selected_values_consumes_prepared_control_flow(
@@ -6703,7 +6811,57 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
               expected_minimal_param_eq_zero_branch_joined_immediate_chains_then_xor_asm(
                   "branch_join_immediate_then_xor", "carrier.nonzero", 5, 4, 7, 6, 0, 3),
               "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with immediate selected-value chain prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_immediate_selected_value_chain_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_immediate_chains_then_xor_asm(
+                  "branch_join_immediate_then_xor", "carrier.nonzero", 5, 4, 7, 6, 0, 3),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with immediate selected-value chain ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_immediate_selected_value_chain_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_immediate_chains_then_xor_asm(
+                  "branch_join_immediate_then_xor", "carrier.nonzero", 5, 4, 7, 6, 0, 3),
+              "branch_join_immediate_then_xor",
               "scalar-control-flow compare-against-zero joined branch lane with immediate selected-value chain EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_immediate_selected_value_chain_with_true_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_immediate_chains_then_xor_asm(
+                  "branch_join_immediate_then_xor", "carrier.nonzero", 5, 4, 7, 6, 0, 3),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with immediate selected-value chain EdgeStoreSlot ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_immediate_selected_value_chain_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_immediate_chains_then_xor_asm(
+                  "branch_join_immediate_then_xor", "carrier.nonzero", 5, 4, 7, 6, 0, 3),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with immediate selected-value chain ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_join_route_edge_store_slot_immediate_selected_value_chain_with_false_lane_passthrough_consumes_prepared_control_flow(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_immediate_chains_then_xor_asm(
+                  "branch_join_immediate_then_xor", "carrier.nonzero", 5, 4, 7, 6, 0, 3),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with immediate selected-value chain EdgeStoreSlot ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }
