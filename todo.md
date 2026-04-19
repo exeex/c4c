@@ -15,29 +15,36 @@ module global selected-value chain route without fixed offsets and without
 pointer-backed roots under true-lane and false-lane passthrough topology
 drift, including the `PreparedJoinTransferKind::EdgeStoreSlot` carrier shape,
 while the x86 consumer still follows the authoritative prepared join-transfer
-contract instead of rediscovering ownership from join-block topology.
+contract instead of rediscovering ownership from join-block topology. A
+reviewer check in `review/step3_3_route_drift_review.md` confirmed that the
+focused Step 3.3 carrier matrix is now saturated enough that more generic
+carrier hunting would be proof churn rather than fresh capability progress.
 
 ## Suggested Next
 
-Stay in Step 3.3 and choose the next uncovered join-transfer carrier route, if
-any remain in the focused handoff proof, before widening into compare-join
-return-context reproving or Step 3.4 loop-cleanup work.
+Move to Step 3.4 and target one concrete residual consumer path in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp`, starting with loop-
+carried join-transfer handling that still depends on emitter-local recovery
+instead of authoritative prepared transfer data, then prove that slice with
+focused backend/x86 coverage.
 
 ## Watchouts
 
-- Keep this route in Step 3.3 join-transfer carrier coverage; do not slide
-  back into Step 3.2 compare-join reproving, Step 3.4 loop cleanup, Step 4
-  file organization, idea 57, idea 59, idea 60, idea 61, or the unrelated
-  `^backend_` semantic-lowering failures.
+- Keep this route in Step 3.4 residual consumer cleanup; do not slide back
+  into Step 3.2 compare-join reproving, generic Step 3.3 carrier hunting,
+  Step 4 file organization, idea 57, idea 59, idea 60, idea 61, or the
+  unrelated `^backend_` semantic-lowering failures.
 - Carrier packets should keep proving that x86 consumes shared join-transfer
   ownership through prepared lookups even when predecessor topology drifts via
   passthrough blocks, rather than re-deriving ownership from local join-block
   shape.
-- The focused handoff proof already covers the non-fixed-offset non-pointer-
-  backed same-module global selected-value chain route with and without
-  `PreparedJoinTransferKind::EdgeStoreSlot`; the next packet should stay on
-  remaining Step 3.3 carrier routes only, rather than sliding into adjacent
-  compare-join return-context coverage.
+- Treat generic Step 3.3 carrier hunting as exhausted unless a specifically
+  identified uncovered join-transfer consumer path appears; do not spend more
+  packets searching for another adjacent passthrough testcase variant.
+- The next packet should stay on Step 3.4 residual consumer cleanup, with
+  emphasis on loop-carry handling in `prepared_module_emit.cpp`, rather than
+  sliding back into Step 3.2 compare-join return-context reproving or Step 4
+  file organization.
 - The broader `^backend_` checkpoint currently reproduces five known failures:
   `backend_prepare_phi_materialize`, `variadic_double_bytes`,
   `variadic_pair_second`, `local_direct_dynamic_member_array_store`, and
