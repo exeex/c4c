@@ -4213,164 +4213,17 @@ std::string emit_prepared_module(
     }
     return *value_render + "    ret\n";
   };
-  const auto render_prepared_computed_value_if_supported =
-      [&](const c4c::backend::prepare::PreparedComputedValue& computed_value,
-          const c4c::backend::bir::Param& param)
-      -> std::optional<std::string> {
-    std::string rendered;
-    switch (computed_value.base.kind) {
-      case c4c::backend::prepare::PreparedComputedBaseKind::ImmediateI32:
-        rendered = "    mov " + *return_register + ", " +
-                   std::to_string(static_cast<std::int32_t>(computed_value.base.immediate)) +
-                   "\n";
-        break;
-      case c4c::backend::prepare::PreparedComputedBaseKind::ParamValue: {
-        if (computed_value.base.param_name != param.name) {
-          return std::nullopt;
-        }
-        const auto param_register = minimal_param_register(param);
-        if (!param_register.has_value()) {
-          return std::nullopt;
-        }
-        rendered = "    mov " + *return_register + ", " + *param_register + "\n";
-        break;
-      }
-      case c4c::backend::prepare::PreparedComputedBaseKind::GlobalI32Load: {
-        const auto* global = find_same_module_global(computed_value.base.global_name);
-        if (global == nullptr ||
-            !same_module_global_supports_scalar_load(
-                *global,
-                c4c::backend::bir::TypeKind::I32,
-                computed_value.base.global_byte_offset)) {
-          return std::nullopt;
-        }
-        rendered = "    mov " + *return_register + ", DWORD PTR [rip + " +
-                   render_asm_symbol_name(computed_value.base.global_name);
-        if (computed_value.base.global_byte_offset != 0) {
-          rendered += " + " + std::to_string(computed_value.base.global_byte_offset);
-        }
-        rendered += "]\n";
-        break;
-      }
-      case c4c::backend::prepare::PreparedComputedBaseKind::PointerBackedGlobalI32Load: {
-        const auto* pointer_root =
-            find_same_module_global(computed_value.base.pointer_root_global_name);
-        const auto* global = find_same_module_global(computed_value.base.global_name);
-        if (pointer_root == nullptr || pointer_root->type != c4c::backend::bir::TypeKind::Ptr ||
-            global == nullptr ||
-            !same_module_global_supports_scalar_load(
-                *global,
-                c4c::backend::bir::TypeKind::I32,
-                computed_value.base.global_byte_offset)) {
-          return std::nullopt;
-        }
-        rendered = "    mov rax, QWORD PTR [rip + " +
-                   render_asm_symbol_name(computed_value.base.pointer_root_global_name) +
-                   "]\n    mov " + *return_register + ", DWORD PTR [rip + " +
-                   render_asm_symbol_name(computed_value.base.global_name);
-        if (computed_value.base.global_byte_offset != 0) {
-          rendered += " + " + std::to_string(computed_value.base.global_byte_offset);
-        }
-        rendered += "]\n";
-        break;
-      }
-    }
-    for (const auto& operation : computed_value.operations) {
-      const auto operation_render = render_supported_immediate_binary(operation);
-      if (!operation_render.has_value()) {
-        return std::nullopt;
-      }
-      rendered += *operation_render;
-    }
-    return rendered;
-  };
-  const auto render_resolved_materialized_compare_join_value_if_supported =
-      [&](const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&
-              prepared_return_arm,
-          const c4c::backend::bir::Param& param) -> std::optional<std::string> {
-    const auto& computed_value = prepared_return_arm.arm.context.selected_value;
-    switch (computed_value.base.kind) {
-      case c4c::backend::prepare::PreparedComputedBaseKind::ImmediateI32:
-      case c4c::backend::prepare::PreparedComputedBaseKind::ParamValue:
-        return render_prepared_computed_value_if_supported(computed_value, param);
-      case c4c::backend::prepare::PreparedComputedBaseKind::GlobalI32Load: {
-        if (prepared_return_arm.global == nullptr ||
-            !same_module_global_supports_scalar_load(
-                *prepared_return_arm.global,
-                c4c::backend::bir::TypeKind::I32,
-                computed_value.base.global_byte_offset)) {
-          return std::nullopt;
-        }
-        std::string rendered = "    mov " + *return_register + ", DWORD PTR [rip + " +
-                               render_asm_symbol_name(prepared_return_arm.global->name);
-        if (computed_value.base.global_byte_offset != 0) {
-          rendered += " + " + std::to_string(computed_value.base.global_byte_offset);
-        }
-        rendered += "]\n";
-        for (const auto& operation : computed_value.operations) {
-          const auto operation_render = render_supported_immediate_binary(operation);
-          if (!operation_render.has_value()) {
-            return std::nullopt;
-          }
-          rendered += *operation_render;
-        }
-        return rendered;
-      }
-      case c4c::backend::prepare::PreparedComputedBaseKind::PointerBackedGlobalI32Load: {
-        if (prepared_return_arm.pointer_root_global == nullptr ||
-            prepared_return_arm.pointer_root_global->type != c4c::backend::bir::TypeKind::Ptr ||
-            prepared_return_arm.global == nullptr ||
-            !same_module_global_supports_scalar_load(
-                *prepared_return_arm.global,
-                c4c::backend::bir::TypeKind::I32,
-                computed_value.base.global_byte_offset)) {
-          return std::nullopt;
-        }
-        std::string rendered =
-            "    mov rax, QWORD PTR [rip + " +
-            render_asm_symbol_name(prepared_return_arm.pointer_root_global->name) +
-            "]\n    mov " + *return_register + ", DWORD PTR [rip + " +
-            render_asm_symbol_name(prepared_return_arm.global->name);
-        if (computed_value.base.global_byte_offset != 0) {
-          rendered += " + " + std::to_string(computed_value.base.global_byte_offset);
-        }
-        rendered += "]\n";
-        for (const auto& operation : computed_value.operations) {
-          const auto operation_render = render_supported_immediate_binary(operation);
-          if (!operation_render.has_value()) {
-            return std::nullopt;
-          }
-          rendered += *operation_render;
-        }
-        return rendered;
-      }
-    }
-    return std::nullopt;
-  };
   const auto render_materialized_compare_join_return_if_supported =
       [&](const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&
               prepared_return_arm,
           const c4c::backend::bir::Param& param) -> std::optional<std::string> {
-    const auto value_render =
-        render_resolved_materialized_compare_join_value_if_supported(prepared_return_arm, param);
-    if (!value_render.has_value()) {
-      return std::nullopt;
-    }
-    const auto binary_plan =
-        c4c::backend::prepare::find_prepared_materialized_compare_join_return_binary_plan(
-            prepared_return_arm.arm);
-    if (!binary_plan.has_value()) {
-      return std::nullopt;
-    }
-    if (!binary_plan->trailing_binary.has_value()) {
-      return c4c::backend::x86::render_prepared_return_body(*value_render);
-    }
-    const auto trailing_render =
-        render_supported_immediate_binary(*binary_plan->trailing_binary);
-    if (!trailing_render.has_value()) {
-      return std::nullopt;
-    }
-    return c4c::backend::x86::render_prepared_return_body(*value_render, *trailing_render);
+    return c4c::backend::x86::render_prepared_materialized_compare_join_return_if_supported(
+        *return_register,
+        prepared_return_arm,
+        param,
+        minimal_param_register,
+        render_asm_symbol_name,
+        same_module_global_supports_scalar_load);
   };
   const auto to_prepared_param_zero_compare_shape =
       [&](c4c::backend::prepare::PreparedParamZeroBranchCondition::CompareShape compare_shape) {

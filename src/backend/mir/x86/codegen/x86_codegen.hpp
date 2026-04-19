@@ -30,6 +30,7 @@ enum class BinaryOpcode : unsigned char;
 }
 namespace prepare {
 struct PreparedBirModule;
+struct PreparedResolvedMaterializedCompareJoinReturnArm;
 struct PreparedSupportedImmediateBinary;
 }
 
@@ -259,6 +260,18 @@ std::optional<std::string> render_prepared_param_zero_branch_function(
 std::optional<std::string> render_prepared_supported_immediate_binary(
     std::string_view return_register,
     const c4c::backend::prepare::PreparedSupportedImmediateBinary& binary);
+
+std::optional<std::string> render_prepared_materialized_compare_join_return_if_supported(
+    std::string_view return_register,
+    const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&
+        prepared_return_arm,
+    const c4c::backend::bir::Param& param,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
+        minimal_param_register,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
+    const std::function<bool(const c4c::backend::bir::Global&,
+                             c4c::backend::bir::TypeKind,
+                             std::size_t)>& same_module_global_supports_scalar_load);
 
 std::string render_prepared_return_body(std::string_view value_render,
                                         std::string_view trailing_render = {});
