@@ -3255,6 +3255,76 @@ bir::Module make_x86_loop_countdown_join_module() {
   return module;
 }
 
+bir::Module make_x86_loop_countdown_join_with_preheader_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::BranchTerminator{.target_label = "preheader"};
+
+  bir::Block preheader;
+  preheader.label = "preheader";
+  preheader.terminator = bir::BranchTerminator{.target_label = "loop"};
+
+  bir::Block loop;
+  loop.label = "loop";
+  loop.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "counter"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "preheader",
+              .value = bir::Value::immediate_i32(3),
+          },
+          bir::PhiIncoming{
+              .label = "body",
+              .value = bir::Value::named(bir::TypeKind::I32, "next"),
+          },
+      },
+  });
+  loop.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cmp0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "counter"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  loop.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cmp0"),
+      .true_label = "body",
+      .false_label = "exit",
+  };
+
+  bir::Block body;
+  body.label = "body";
+  body.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "next"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "counter"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  body.terminator = bir::BranchTerminator{.target_label = "loop"};
+
+  bir::Block exit;
+  exit.label = "exit";
+  exit.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "counter"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(preheader));
+  function.blocks.push_back(std::move(loop));
+  function.blocks.push_back(std::move(body));
+  function.blocks.push_back(std::move(exit));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_x86_local_i16_increment_guard_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -4528,7 +4598,15 @@ int check_route_outputs(const bir::Module& module,
                     .c_str());
   }
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  std::string prepared_asm;
+  try {
+    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer rejected the prepared handoff with exception: " +
+                 ex.what())
+                    .c_str());
+  }
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer did not emit the canonical asm")
@@ -9115,6 +9193,55 @@ int check_loop_countdown_route_consumes_prepared_control_flow_with_reversed_join
   return 0;
 }
 
+int check_loop_countdown_route_consumes_prepared_control_flow_with_preheader_block(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown control-flow contract")
+                    .c_str());
+  }
+  if (control_flow->join_transfers.front().kind != prepare::PreparedJoinTransferKind::LoopCarry) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer classifies the loop countdown join as explicit loop-carry traffic")
+                    .c_str());
+  }
+
+  const auto& join_transfer = control_flow->join_transfers.front();
+  if (join_transfer.edge_transfers.size() != 2 ||
+      join_transfer.edge_transfers.front().predecessor_label != "preheader" ||
+      join_transfer.edge_transfers.back().predecessor_label != "body") {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer exposes the preheader/body loop-carry ownership")
+                    .c_str());
+  }
+
+  std::string prepared_asm;
+  try {
+    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer rejected the prepared loop handoff with exception: " +
+                 ex.what())
+                    .c_str());
+  }
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative loop join contract when entry reaches the header through a trivial preheader")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -11052,6 +11179,15 @@ int main() {
               expected_minimal_loop_countdown_join_asm("main"),
               "main",
               "minimal loop-carried join countdown prepared-control-flow ownership ignores join-edge ordering when predecessor labels stay authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_consumes_prepared_control_flow_with_preheader_block(
+              make_x86_loop_countdown_join_with_preheader_module(),
+              expected_minimal_loop_countdown_join_asm("main"),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership tolerates a trivial preheader when prepared predecessor labels stay authoritative");
       status != 0) {
     return status;
   }
