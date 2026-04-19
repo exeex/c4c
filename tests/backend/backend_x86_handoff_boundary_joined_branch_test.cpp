@@ -5305,6 +5305,8 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
     bool add_true_lane_passthrough_block = false,
     bool add_false_lane_passthrough_block = false,
     bool rewrite_entry_compare_to_non_compare = false,
+    bool reject_drifted_branch_condition = false,
+    bool reject_missing_branch_record = false,
     const std::string* expected_asm = nullptr) {
   c4c::TargetProfile target_profile;
   auto prepared =
@@ -5544,6 +5546,37 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
     return fail((std::string(failure_context) +
                  ": prepared compare-join fixture no longer preserves entry/join blocks after passthrough rewrites")
                     .c_str());
+  }
+
+  if (reject_drifted_branch_condition || reject_missing_branch_record) {
+    auto* rejection_control_flow = find_control_flow_function(prepared, function_name);
+    if (rejection_control_flow == nullptr || rejection_control_flow->branch_conditions.size() != 1) {
+      return fail((std::string(failure_context) +
+                   ": prepared compare-join fixture no longer publishes the authoritative branch contract")
+                      .c_str());
+    }
+
+    if (reject_drifted_branch_condition) {
+      rejection_control_flow->branch_conditions.front().predicate.reset();
+    } else {
+      rejection_control_flow->branch_conditions.clear();
+    }
+
+    try {
+      (void)c4c::backend::x86::emit_prepared_module(prepared);
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer unexpectedly accepted a broken compare-join prepared branch contract")
+                      .c_str());
+    } catch (const std::invalid_argument& error) {
+      if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+          std::string_view::npos) {
+        return fail((std::string(failure_context) +
+                     ": x86 prepared-module consumer rejected the broken compare-join prepared branch contract with the wrong contract message")
+                        .c_str());
+      }
+    }
+
+    return 0;
   }
 
   const auto compare_join_context = prepare::find_prepared_param_zero_materialized_compare_join_context(
@@ -5948,6 +5981,38 @@ int check_materialized_compare_join_edge_store_slot_global_chain_route_with_fals
       true,
       false,
       &expected_asm);
+}
+
+int check_materialized_compare_join_global_chain_route_requires_authoritative_prepared_branch_condition(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, false, true, false, false, false, false, false, true);
+}
+
+int check_materialized_compare_join_edge_store_slot_global_chain_route_requires_authoritative_prepared_branch_condition(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, true, true, false, false, false, false, false, true);
+}
+
+int check_materialized_compare_join_global_chain_route_requires_authoritative_prepared_branch_record(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, false, true, false, false, false, false, false, false, true);
+}
+
+int check_materialized_compare_join_edge_store_slot_global_chain_route_requires_authoritative_prepared_branch_record(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, true, true, false, false, false, false, false, false, true);
 }
 
 int check_materialized_compare_join_fixed_offset_global_route_ignores_non_compare_entry_carrier(
@@ -8429,6 +8494,38 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
                   3),
               "branch_join_global_then_xor",
               "scalar-control-flow compare-against-zero same-module global selected-value chain EdgeStoreSlot compare-join route ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_global_chain_route_requires_authoritative_prepared_branch_condition(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero same-module global selected-value chain compare-join route rejects a drifted authoritative prepared branch contract instead of falling back past the compare-join handoff");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_global_chain_route_requires_authoritative_prepared_branch_record(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero same-module global selected-value chain compare-join route rejects reopening raw recovery when the authoritative prepared branch record is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_global_chain_route_requires_authoritative_prepared_branch_condition(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero same-module global selected-value chain EdgeStoreSlot compare-join route rejects a drifted authoritative prepared branch contract instead of falling back past the compare-join handoff");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_global_chain_route_requires_authoritative_prepared_branch_record(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero same-module global selected-value chain EdgeStoreSlot compare-join route rejects reopening raw recovery when the authoritative prepared branch record is missing");
       status != 0) {
     return status;
   }
