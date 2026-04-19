@@ -254,6 +254,20 @@ struct PreparedModuleLocalSlotLayout {
   std::size_t frame_size = 0;
 };
 
+std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
+    const c4c::backend::bir::Function& function,
+    c4c::TargetArch prepared_arch);
+
+std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
+                                                 std::string_view size_name);
+
+std::string render_prepared_stack_address_expr(std::size_t byte_offset);
+
+std::optional<std::string> render_prepared_local_address_operand_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const std::optional<c4c::backend::bir::MemoryAddress>& address,
+    std::string_view size_name);
+
 std::optional<std::string> render_prepared_param_zero_branch_function(
     std::string_view asm_prefix,
     std::string_view function_name,
