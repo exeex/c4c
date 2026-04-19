@@ -3168,9 +3168,6 @@ std::string emit_prepared_module(
         init_incoming == nullptr ? nullptr : find_block(init_incoming->predecessor_label);
     const auto block_has_supported_init_handoff_carrier =
         [&](const c4c::backend::bir::Block& candidate) -> bool {
-      if (&candidate == &entry) {
-        return true;
-      }
       if (!join_transfer->storage_name.has_value() || !init_incoming->storage_name.has_value() ||
           candidate.insts.size() != 1) {
         return false;
@@ -3186,7 +3183,8 @@ std::string emit_prepared_module(
         return false;
       }
       if (init_block == &entry) {
-        return entry.terminator.target_label == loop_block->label;
+        return entry.terminator.target_label == loop_block->label &&
+               block_has_supported_init_handoff_carrier(entry);
       }
       if (init_block == loop_block || init_block == body_block || init_block == exit_block ||
           init_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
