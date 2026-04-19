@@ -1050,7 +1050,7 @@ int check_loop_countdown_route_rejects_transfer_drift_when_authoritative_branch_
   return 0;
 }
 
-int check_local_countdown_guard_route_requires_authoritative_guard_branch_condition(
+int check_local_countdown_guard_route_consumes_authoritative_guard_branch_condition(
     const bir::Module& module,
     const char* function_name,
     const char* failure_context) {
@@ -1069,8 +1069,9 @@ int check_local_countdown_guard_route_requires_authoritative_guard_branch_condit
   control_flow->branch_conditions.clear();
   control_flow->join_transfers.clear();
 
+  std::string baseline_asm;
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    baseline_asm = c4c::backend::x86::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": local countdown fallback fixture no longer renders before authoritative guard ownership is injected: " +
@@ -1078,38 +1079,52 @@ int check_local_countdown_guard_route_requires_authoritative_guard_branch_condit
                     .c_str());
   }
 
+  auto& function = prepared.module.functions.front();
+  auto* guard_block = find_block(function, "guard");
+  if (guard_block == nullptr || guard_block->terminator.kind != bir::TerminatorKind::CondBranch) {
+    return fail((std::string(failure_context) +
+                 ": local countdown fallback fixture no longer exposes the expected mutable guard branch")
+                    .c_str());
+  }
+
   control_flow->branch_conditions.push_back(prepare::PreparedBranchCondition{
       .function_name = intern_function_name(prepared, function_name),
       .block_label = intern_block_label(prepared, "guard"),
       .kind = prepare::PreparedBranchConditionKind::FusedCompare,
-      .condition_value = bir::Value::named(bir::TypeKind::I32, "drifted.guard.condition"),
+      .condition_value = bir::Value::named(bir::TypeKind::I32, "guard.cmp"),
       .predicate = bir::BinaryOpcode::Ne,
       .compare_type = bir::TypeKind::I32,
       .lhs = bir::Value::named(bir::TypeKind::I32, "guard.counter"),
       .rhs = bir::Value::immediate_i32(0),
       .can_fuse_with_branch = true,
-      .true_label = intern_block_label(prepared, "drifted.guard.true"),
+      .true_label = intern_block_label(prepared, "guard_true"),
       .false_label = intern_block_label(prepared, "cont"),
   });
 
+  guard_block->terminator.condition =
+      bir::Value::named(bir::TypeKind::I32, "drifted.guard.condition");
+  guard_block->terminator.true_label = "drifted.guard.true";
+  guard_block->terminator.false_label = "drifted.guard.false";
+
+  std::string prepared_asm;
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
-                 ": x86 prepared-module consumer unexpectedly accepted a local countdown guard fallback while authoritative guard ownership remained active")
+                 ": x86 prepared-module consumer rejected the authoritative guard-owned countdown fallback with exception: " +
+                 ex.what())
                     .c_str());
-  } catch (const std::invalid_argument& error) {
-    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
-        std::string_view::npos) {
-      return fail((std::string(failure_context) +
-                   ": x86 prepared-module consumer rejected the authoritative guard-owned countdown fallback with the wrong contract message")
-                      .c_str());
-    }
+  }
+  if (prepared_asm != baseline_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following authoritative prepared guard metadata over raw guard-terminator drift")
+                    .c_str());
   }
 
   return 0;
 }
 
-int check_local_countdown_guard_route_rejects_authoritative_join_transfer(
+int check_local_countdown_guard_route_consumes_authoritative_join_transfer(
     const bir::Module& module,
     const char* function_name,
     const char* failure_context) {
@@ -1128,12 +1143,28 @@ int check_local_countdown_guard_route_rejects_authoritative_join_transfer(
   control_flow->branch_conditions.clear();
   control_flow->join_transfers.clear();
 
+  std::string baseline_asm;
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    baseline_asm = c4c::backend::x86::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": local countdown fallback fixture no longer renders before authoritative join ownership is injected: " +
                  ex.what())
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* continuation_init = find_block(function, "cont");
+  if (continuation_init == nullptr || continuation_init->insts.empty()) {
+    return fail((std::string(failure_context) +
+                 ": local countdown fallback fixture no longer exposes the continuation init carrier")
+                    .c_str());
+  }
+  auto* continuation_store =
+      std::get_if<bir::StoreLocalInst>(&continuation_init->insts.front());
+  if (continuation_store == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": local countdown fallback fixture no longer exposes the mutable continuation init store")
                     .c_str());
   }
 
@@ -1169,18 +1200,21 @@ int check_local_countdown_guard_route_rejects_authoritative_join_transfer(
       .source_false_incoming_label = intern_block_label(prepared, "cont"),
   });
 
+  continuation_store->value = bir::Value::immediate_i32(99);
+
+  std::string prepared_asm;
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
-                 ": x86 prepared-module consumer unexpectedly accepted a local countdown fallback while authoritative join ownership remained active")
+                 ": x86 prepared-module consumer rejected the authoritative join-owned countdown fallback with exception: " +
+                 ex.what())
                     .c_str());
-  } catch (const std::invalid_argument& error) {
-    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
-        std::string_view::npos) {
-      return fail((std::string(failure_context) +
-                   ": x86 prepared-module consumer rejected the authoritative join-owned countdown fallback with the wrong contract message")
-                      .c_str());
-    }
+  }
+  if (prepared_asm != baseline_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following authoritative continuation join ownership over a drifted local init store")
+                    .c_str());
   }
 
   return 0;
@@ -1466,18 +1500,18 @@ int run_backend_x86_handoff_boundary_loop_countdown_tests() {
     return status;
   }
   if (const auto status =
-          check_local_countdown_guard_route_requires_authoritative_guard_branch_condition(
+          check_local_countdown_guard_route_consumes_authoritative_guard_branch_condition(
               make_x86_local_i32_countdown_guard_continuation_module(),
               "main",
-              "two-segment local countdown fallback rejects mixed guard ownership once prepared branch metadata becomes authoritative");
+              "two-segment local countdown fallback consumes authoritative prepared guard ownership over raw guard-terminator drift");
       status != 0) {
     return status;
   }
   if (const auto status =
-          check_local_countdown_guard_route_rejects_authoritative_join_transfer(
+          check_local_countdown_guard_route_consumes_authoritative_join_transfer(
               make_x86_local_i32_countdown_guard_continuation_module(),
               "main",
-              "two-segment local countdown fallback rejects authoritative join ownership on the continuation loop");
+              "two-segment local countdown fallback consumes authoritative continuation-loop join ownership over a drifted local init carrier");
       status != 0) {
     return status;
   }

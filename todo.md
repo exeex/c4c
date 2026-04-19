@@ -5,29 +5,28 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Build An Authoritative Shared Prepared CFG Model
-Plan Review Counter: 2 / 10
+Plan Review Counter: 3 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another `plan.md` Step 2 slice for idea 62. The shared short-circuit
-compare-driven entry helpers in
-`src/backend/mir/x86/codegen/prepared_param_zero_render.cpp` and
-`src/backend/prealloc/prealloc.hpp` now resolve entry-branch targets through
-`resolve_prepared_compare_branch_target_labels(...)` instead of trusting
-`PreparedBranchCondition` labels in isolation. That closes the remaining
-guard-chain recursion gap where authoritative prepared CFG ownership could
-still be bypassed by drifted entry labels, and the x86 boundary suite now
-covers both select-carried and `EdgeStoreSlot` short-circuit routes rejecting
-that drift.
+Completed another `plan.md` Step 2 slice for idea 62. The compare-driven local
+countdown route in
+`src/backend/mir/x86/codegen/prepared_countdown_render.cpp` now consumes
+authoritative prepared guard-branch and continuation-loop join ownership when
+that metadata is present and contract-consistent, instead of rejecting any
+prepared ownership on those blocks outright. The x86 boundary suite now proves
+that the countdown fallback keeps following prepared guard targets over raw
+guard-terminator drift and keeps the continuation init value authoritative over
+a drifted local carrier store.
 
 ## Suggested Next
 
 Continue `plan.md` Step 2 by moving the remaining compare-driven local-slot
-guard-chain helpers onto the same authoritative prepared CFG ownership model,
-especially `src/backend/mir/x86/codegen/prepared_countdown_render.cpp`, which
-still rediscovers loop/body/exit structure from local BIR block shape after it
-has already identified a prepared loop-carry join.
+fallbacks in `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` onto
+the same authoritative prepared CFG ownership model, especially the plain
+compare/guard entry path that still reconstructs branch meaning from local BIR
+shape when prepared branch metadata is already available.
 
 ## Watchouts
 
@@ -43,21 +42,22 @@ has already identified a prepared loop-carry join.
 - `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` still falls back
   to `build_prepared_plain_cond_entry_render_plan(...)` and local compare
   matching when a prepared short-circuit or compare-join plan is missing.
-- `src/backend/mir/x86/codegen/prepared_countdown_render.cpp` still scans BIR
-  blocks and join edges directly to rediscover loop/body/exit structure even
-  after it has identified a prepared loop-carry join.
-- Several x86 paths deliberately `throw` when an authoritative branch-owned
-  join exists but the prepared handoff is not rich enough to replace the old
-  bootstrap route; that is the gap to close in Step 2.
+- The countdown fallback now accepts authoritative guard/join ownership only
+  when the prepared branch/join records still agree with the supported local
+  slot route; any mismatch should keep failing through the canonical prepared
+  handoff message instead of reopening the bootstrap path.
+- The loop-carried countdown fast path still depends on raw block-shape checks
+  after it has identified a prepared loop-carry join; that remains a distinct
+  Step 2 gap if we keep pushing `prepared_countdown_render.cpp`.
 
 ## Proof
 
-Ran `cmake --build --preset default && ctest --test-dir build -j
---output-on-failure -R '^backend_' | tee test_after.log`. The build completed
-cleanly. The backend subset returned to the expected baseline shape: the
-updated `backend_x86_handoff_boundary` suite passed, and `test_after.log`
-matches `test_before.log` with only the same four pre-existing backend-route
-failures already tracked for this runbook:
+Ran the delegated proof command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`.
+The build completed cleanly, `backend_x86_handoff_boundary` passed with the new
+countdown ownership coverage, and the backend subset stayed at the expected
+baseline with only the same four pre-existing route failures already tracked
+for this runbook:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
 `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,

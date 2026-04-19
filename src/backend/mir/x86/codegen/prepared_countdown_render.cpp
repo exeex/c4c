@@ -21,6 +21,22 @@ std::string render_stack_memory_operand(std::size_t byte_offset, std::string_vie
   return std::string(size_name) + " PTR [rsp + " + std::to_string(byte_offset) + "]";
 }
 
+[[nodiscard]] bool is_i32_named_value(const c4c::backend::bir::Value& value,
+                                      std::string_view expected_name) {
+  return value.kind == c4c::backend::bir::Value::Kind::Named &&
+         value.type == c4c::backend::bir::TypeKind::I32 && value.name == expected_name;
+}
+
+[[nodiscard]] bool is_i32_zero_immediate(const c4c::backend::bir::Value& value) {
+  return value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+         value.type == c4c::backend::bir::TypeKind::I32 && value.immediate == 0;
+}
+
+[[nodiscard]] bool is_i32_immediate(const c4c::backend::bir::Value& value) {
+  return value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+         value.type == c4c::backend::bir::TypeKind::I32;
+}
+
 }  // namespace
 
 std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
@@ -428,11 +444,148 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
     const c4c::backend::bir::StoreLocalInst* init_store = nullptr;
     const c4c::backend::bir::Block* entry_target = nullptr;
     const c4c::backend::bir::Block* cond_block = nullptr;
+    const c4c::backend::bir::LoadLocalInst* cond_load = nullptr;
+    const c4c::backend::bir::BinaryInst* cond_compare = nullptr;
     const c4c::backend::bir::Block* body_block = nullptr;
+    const c4c::backend::bir::BinaryInst* body_sub = nullptr;
     const c4c::backend::bir::Block* return_block = nullptr;
     const c4c::backend::bir::Block* guard_block = nullptr;
     const c4c::backend::bir::Block* guard_true_return_block = nullptr;
     const c4c::backend::bir::Block* continuation_init_block = nullptr;
+    std::int64_t emitted_init_immediate = 0;
+  };
+
+  struct ResolvedBranchTargets {
+    const c4c::backend::prepare::PreparedBranchCondition* branch_condition = nullptr;
+    const c4c::backend::bir::Block* true_block = nullptr;
+    const c4c::backend::bir::Block* false_block = nullptr;
+  };
+
+  const auto resolve_branch_targets =
+      [&](const c4c::backend::bir::Block& block,
+          std::string_view expected_condition_name,
+          std::string_view expected_counter_name) -> std::optional<ResolvedBranchTargets> {
+    if (prepared_names == nullptr || function_control_flow == nullptr) {
+      return std::nullopt;
+    }
+
+    const auto block_label_id =
+        c4c::backend::prepare::resolve_prepared_block_label_id(*prepared_names, block.label);
+    if (!block_label_id.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto* branch_condition =
+        c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
+                                                              *block_label_id);
+    if (branch_condition == nullptr) {
+      return std::nullopt;
+    }
+    if (!branch_condition->compare_type.has_value() ||
+        *branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
+        !branch_condition->lhs.has_value() || !branch_condition->rhs.has_value() ||
+        branch_condition->condition_value.kind != c4c::backend::bir::Value::Kind::Named ||
+        branch_condition->condition_value.name != expected_condition_name ||
+        (!is_i32_named_value(*branch_condition->lhs, expected_counter_name) ||
+         !is_i32_zero_immediate(*branch_condition->rhs)) &&
+            (!is_i32_named_value(*branch_condition->rhs, expected_counter_name) ||
+             !is_i32_zero_immediate(*branch_condition->lhs))) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+    }
+
+    const auto target_labels = c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
+        *prepared_names,
+        function_control_flow,
+        *block_label_id,
+        block,
+        *branch_condition);
+    if (!target_labels.has_value()) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+    }
+
+    const auto* true_block = find_block(
+        function,
+        c4c::backend::prepare::prepared_block_label(*prepared_names, target_labels->true_label));
+    const auto* false_block = find_block(
+        function,
+        c4c::backend::prepare::prepared_block_label(*prepared_names, target_labels->false_label));
+    if (true_block == nullptr || false_block == nullptr || true_block == &block ||
+        false_block == &block) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+    }
+
+    return ResolvedBranchTargets{
+        .branch_condition = branch_condition,
+        .true_block = true_block,
+        .false_block = false_block,
+    };
+  };
+
+  const auto apply_authoritative_join_transfer =
+      [&](CountdownSegment& segment) -> const c4c::backend::prepare::PreparedJoinTransfer* {
+    if (prepared_names == nullptr || function_control_flow == nullptr || segment.cond_block == nullptr ||
+        segment.cond_load == nullptr || segment.body_block == nullptr || segment.body_sub == nullptr) {
+      return nullptr;
+    }
+
+    const auto join_block_label_id =
+        c4c::backend::prepare::resolve_prepared_block_label_id(*prepared_names,
+                                                               segment.cond_block->label);
+    if (!join_block_label_id.has_value()) {
+      return nullptr;
+    }
+
+    const auto* join_transfer = c4c::backend::prepare::find_prepared_join_transfer(
+        *prepared_names,
+        *function_control_flow,
+        *join_block_label_id,
+        segment.cond_load->result.name);
+    if (join_transfer == nullptr) {
+      return nullptr;
+    }
+
+    if (join_transfer->kind != c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
+        join_transfer->edge_transfers.size() != 2 || !join_transfer->storage_name.has_value() ||
+        c4c::backend::prepare::prepared_slot_name(*prepared_names, *join_transfer->storage_name) !=
+            segment.init_store->slot_name) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+    }
+
+    const auto* init_incoming = static_cast<const c4c::backend::prepare::PreparedEdgeValueTransfer*>(nullptr);
+    const auto* body_incoming = static_cast<const c4c::backend::prepare::PreparedEdgeValueTransfer*>(nullptr);
+    for (const auto& incoming : join_transfer->edge_transfers) {
+      const auto predecessor_label =
+          c4c::backend::prepare::prepared_block_label(*prepared_names, incoming.predecessor_label);
+      const auto successor_label =
+          c4c::backend::prepare::prepared_block_label(*prepared_names, incoming.successor_label);
+      if (successor_label != segment.cond_block->label) {
+        throw std::invalid_argument(
+            "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+      }
+      if (predecessor_label == segment.init_block->label) {
+        init_incoming = &incoming;
+      } else if (predecessor_label == segment.body_block->label) {
+        body_incoming = &incoming;
+      } else {
+        throw std::invalid_argument(
+            "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+      }
+    }
+
+    if (init_incoming == nullptr || body_incoming == nullptr ||
+        !is_i32_immediate(init_incoming->incoming_value) ||
+        !is_i32_named_value(body_incoming->incoming_value, segment.body_sub->result.name) ||
+        !is_i32_named_value(join_transfer->result, segment.cond_load->result.name)) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+    }
+
+    segment.emitted_init_immediate = init_incoming->incoming_value.immediate;
+    return join_transfer;
   };
 
   const auto match_countdown_segment =
@@ -448,44 +601,50 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
     segment.init_block = init_block;
     segment.init_store = init_info->first;
     segment.entry_target = init_info->second;
+    segment.emitted_init_immediate = segment.init_store->value.immediate;
     if (layout.offsets.find(segment.init_store->slot_name) == layout.offsets.end() ||
         segment.entry_target == nullptr || segment.entry_target == init_block) {
       return std::nullopt;
     }
 
-    const auto matches_cond_block = [&](const c4c::backend::bir::Block* cond_block) -> bool {
+    const auto match_cond_block =
+        [&](const c4c::backend::bir::Block* cond_block)
+        -> std::optional<std::pair<const c4c::backend::bir::LoadLocalInst*,
+                                   const c4c::backend::bir::BinaryInst*>> {
       if (cond_block == nullptr || cond_block == init_block || cond_block->insts.size() != 2 ||
           cond_block->terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
-        return false;
+        return std::nullopt;
       }
       const auto* cond_load =
           std::get_if<c4c::backend::bir::LoadLocalInst>(&cond_block->insts.front());
       const auto* cond_compare =
           std::get_if<c4c::backend::bir::BinaryInst>(&cond_block->insts.back());
-      return cond_load != nullptr && cond_compare != nullptr && !cond_load->address.has_value() &&
-             cond_load->byte_offset == 0 &&
-             cond_load->result.type == c4c::backend::bir::TypeKind::I32 &&
-             cond_load->slot_name == segment.init_store->slot_name &&
-             cond_compare->opcode == c4c::backend::bir::BinaryOpcode::Ne &&
-             cond_compare->operand_type == c4c::backend::bir::TypeKind::I32 &&
-             (cond_compare->result.type == c4c::backend::bir::TypeKind::I1 ||
-              cond_compare->result.type == c4c::backend::bir::TypeKind::I32) &&
-             cond_compare->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
-             cond_compare->lhs.name == cond_load->result.name &&
-             cond_compare->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-             cond_compare->rhs.type == c4c::backend::bir::TypeKind::I32 &&
-             cond_compare->rhs.immediate == 0 &&
-             cond_block->terminator.condition.kind == c4c::backend::bir::Value::Kind::Named &&
-             cond_block->terminator.condition.name == cond_compare->result.name;
+      if (cond_load == nullptr || cond_compare == nullptr || cond_load->address.has_value() ||
+          cond_load->byte_offset != 0 ||
+          cond_load->result.type != c4c::backend::bir::TypeKind::I32 ||
+          cond_load->slot_name != segment.init_store->slot_name ||
+          cond_compare->opcode != c4c::backend::bir::BinaryOpcode::Ne ||
+          cond_compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
+          (cond_compare->result.type != c4c::backend::bir::TypeKind::I1 &&
+           cond_compare->result.type != c4c::backend::bir::TypeKind::I32) ||
+          cond_compare->lhs.kind != c4c::backend::bir::Value::Kind::Named ||
+          cond_compare->lhs.name != cond_load->result.name ||
+          cond_compare->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+          cond_compare->rhs.type != c4c::backend::bir::TypeKind::I32 ||
+          cond_compare->rhs.immediate != 0) {
+        return std::nullopt;
+      }
+      return std::pair{cond_load, cond_compare};
     };
 
-    const auto matches_body_block =
+    const auto match_body_block =
         [&](const c4c::backend::bir::Block* body_block,
-            const c4c::backend::bir::Block* cond_block) -> bool {
+            const c4c::backend::bir::Block* cond_block)
+        -> std::optional<const c4c::backend::bir::BinaryInst*> {
       if (body_block == nullptr || body_block == init_block || body_block == cond_block ||
           body_block->insts.size() != 3 ||
           body_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
-        return false;
+        return std::nullopt;
       }
       const auto* body_load =
           std::get_if<c4c::backend::bir::LoadLocalInst>(&body_block->insts[0]);
@@ -493,54 +652,107 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
           std::get_if<c4c::backend::bir::BinaryInst>(&body_block->insts[1]);
       const auto* body_store =
           std::get_if<c4c::backend::bir::StoreLocalInst>(&body_block->insts[2]);
-      return body_load != nullptr && body_sub != nullptr && body_store != nullptr &&
-             !body_load->address.has_value() && body_load->byte_offset == 0 &&
-             body_load->result.type == c4c::backend::bir::TypeKind::I32 &&
-             body_load->slot_name == segment.init_store->slot_name &&
-             body_sub->opcode == c4c::backend::bir::BinaryOpcode::Sub &&
-             body_sub->operand_type == c4c::backend::bir::TypeKind::I32 &&
-             body_sub->result.type == c4c::backend::bir::TypeKind::I32 &&
-             body_sub->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
-             body_sub->lhs.name == body_load->result.name &&
-             body_sub->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-             body_sub->rhs.type == c4c::backend::bir::TypeKind::I32 &&
-             body_sub->rhs.immediate == 1 && !body_store->address.has_value() &&
-             body_store->byte_offset == 0 &&
-             body_store->slot_name == segment.init_store->slot_name &&
-             body_store->value.kind == c4c::backend::bir::Value::Kind::Named &&
-             body_store->value.name == body_sub->result.name &&
-             body_store->value.type == c4c::backend::bir::TypeKind::I32 &&
-             find_block(function, body_block->terminator.target_label) == cond_block;
+      if (body_load == nullptr || body_sub == nullptr || body_store == nullptr ||
+          body_load->address.has_value() || body_load->byte_offset != 0 ||
+          body_load->result.type != c4c::backend::bir::TypeKind::I32 ||
+          body_load->slot_name != segment.init_store->slot_name ||
+          body_sub->opcode != c4c::backend::bir::BinaryOpcode::Sub ||
+          body_sub->operand_type != c4c::backend::bir::TypeKind::I32 ||
+          body_sub->result.type != c4c::backend::bir::TypeKind::I32 ||
+          body_sub->lhs.kind != c4c::backend::bir::Value::Kind::Named ||
+          body_sub->lhs.name != body_load->result.name ||
+          body_sub->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+          body_sub->rhs.type != c4c::backend::bir::TypeKind::I32 ||
+          body_sub->rhs.immediate != 1 || body_store->address.has_value() ||
+          body_store->byte_offset != 0 ||
+          body_store->slot_name != segment.init_store->slot_name ||
+          body_store->value.kind != c4c::backend::bir::Value::Kind::Named ||
+          body_store->value.name != body_sub->result.name ||
+          body_store->value.type != c4c::backend::bir::TypeKind::I32 ||
+          find_block(function, body_block->terminator.target_label) != cond_block) {
+        return std::nullopt;
+      }
+      return body_sub;
     };
 
-    if (matches_cond_block(segment.entry_target)) {
-      const auto* candidate_body = find_block(function, segment.entry_target->terminator.true_label);
-      if (matches_body_block(candidate_body, segment.entry_target)) {
-        segment.cond_block = segment.entry_target;
-        segment.body_block = candidate_body;
+    const auto resolve_cond_targets =
+        [&](const c4c::backend::bir::Block& cond_block,
+            const c4c::backend::bir::LoadLocalInst& cond_load,
+            const c4c::backend::bir::BinaryInst& cond_compare)
+        -> std::optional<std::pair<const c4c::backend::bir::Block*,
+                                   const c4c::backend::bir::Block*>> {
+      if (const auto authoritative_targets =
+              resolve_branch_targets(cond_block, cond_compare.result.name, cond_load.result.name);
+          authoritative_targets.has_value()) {
+        return std::pair{authoritative_targets->true_block, authoritative_targets->false_block};
+      }
+      const auto* true_block = find_block(function, cond_block.terminator.true_label);
+      const auto* false_block = find_block(function, cond_block.terminator.false_label);
+      if (true_block == nullptr || false_block == nullptr || true_block == &cond_block ||
+          false_block == &cond_block) {
+        return std::nullopt;
+      }
+      return std::pair{true_block, false_block};
+    };
+
+    if (const auto cond_match = match_cond_block(segment.entry_target); cond_match.has_value()) {
+      const auto cond_targets = resolve_cond_targets(*segment.entry_target,
+                                                    *cond_match->first,
+                                                    *cond_match->second);
+      if (cond_targets.has_value()) {
+        const auto* candidate_body =
+            match_body_block(cond_targets->first, segment.entry_target).has_value()
+                ? cond_targets->first
+                : cond_targets->second;
+        if (const auto body_match = match_body_block(candidate_body, segment.entry_target);
+            body_match.has_value()) {
+          const auto* candidate_false_target =
+              candidate_body == cond_targets->first ? cond_targets->second : cond_targets->first;
+          segment.cond_block = segment.entry_target;
+          segment.cond_load = cond_match->first;
+          segment.cond_compare = cond_match->second;
+          segment.body_block = candidate_body;
+          segment.body_sub = *body_match;
+          segment.return_block = candidate_false_target;
+        }
       }
     }
 
     if (segment.cond_block == nullptr &&
         segment.entry_target->terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
       const auto* candidate_cond = find_block(function, segment.entry_target->terminator.target_label);
-      if (matches_cond_block(candidate_cond) &&
-          find_block(function, candidate_cond->terminator.true_label) == segment.entry_target &&
-          matches_body_block(segment.entry_target, candidate_cond)) {
-        segment.cond_block = candidate_cond;
-        segment.body_block = segment.entry_target;
+      if (const auto cond_match = match_cond_block(candidate_cond); cond_match.has_value()) {
+        const auto cond_targets =
+            resolve_cond_targets(*candidate_cond, *cond_match->first, *cond_match->second);
+        if (cond_targets.has_value()) {
+          const auto* candidate_body =
+              cond_targets->first == segment.entry_target ? cond_targets->first
+                                                          : cond_targets->second;
+          if (candidate_body == segment.entry_target &&
+              match_body_block(candidate_body, candidate_cond).has_value()) {
+            const auto* candidate_false_target =
+                candidate_body == cond_targets->first ? cond_targets->second : cond_targets->first;
+            segment.cond_block = candidate_cond;
+            segment.cond_load = cond_match->first;
+            segment.cond_compare = cond_match->second;
+            segment.body_block = segment.entry_target;
+            segment.body_sub = *match_body_block(candidate_body, candidate_cond);
+            segment.return_block = candidate_false_target;
+          }
+        }
       }
     }
 
-    if (segment.cond_block == nullptr || segment.body_block == nullptr) {
+    if (segment.cond_block == nullptr || segment.cond_load == nullptr || segment.cond_compare == nullptr ||
+        segment.body_block == nullptr || segment.body_sub == nullptr || segment.return_block == nullptr) {
       return std::nullopt;
     }
 
     if (const auto* return_block =
-            resolve_slot_return_block(segment.cond_block->terminator.false_label,
-                                      segment.init_store->slot_name);
+            resolve_slot_return_block(segment.return_block->label, segment.init_store->slot_name);
         return_block != nullptr) {
       segment.return_block = return_block;
+      apply_authoritative_join_transfer(segment);
       return segment;
     }
 
@@ -548,7 +760,7 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
       return std::nullopt;
     }
 
-    const auto* guard_block = find_block(function, segment.cond_block->terminator.false_label);
+    const auto* guard_block = segment.return_block;
     if (guard_block == nullptr || guard_block->insts.size() != 2 ||
         guard_block->terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
       return std::nullopt;
@@ -570,23 +782,47 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
         guard_compare->lhs.name != guard_load->result.name ||
         guard_compare->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
         guard_compare->rhs.type != c4c::backend::bir::TypeKind::I32 ||
-        guard_compare->rhs.immediate != 0 ||
-        guard_block->terminator.condition.kind != c4c::backend::bir::Value::Kind::Named ||
-        guard_block->terminator.condition.name != guard_compare->result.name) {
+        guard_compare->rhs.immediate != 0) {
       return std::nullopt;
     }
 
-    const auto* guard_true_return =
-        resolve_immediate_return_block(guard_block->terminator.true_label);
-    const auto* continuation_init = find_block(function, guard_block->terminator.false_label);
-    if (guard_true_return == nullptr || continuation_init == nullptr ||
-        continuation_init == guard_block) {
+    const auto guard_targets =
+        [&]() -> std::optional<std::pair<const c4c::backend::bir::Block*,
+                                         const c4c::backend::bir::Block*>> {
+      if (const auto authoritative_targets =
+              resolve_branch_targets(*guard_block, guard_compare->result.name, guard_load->result.name);
+          authoritative_targets.has_value()) {
+        return std::pair{authoritative_targets->true_block, authoritative_targets->false_block};
+      }
+      const auto* true_block = find_block(function, guard_block->terminator.true_label);
+      const auto* false_block = find_block(function, guard_block->terminator.false_label);
+      if (true_block == nullptr || false_block == nullptr || true_block == guard_block ||
+          false_block == guard_block) {
+        return std::nullopt;
+      }
+      return std::pair{true_block, false_block};
+    }();
+    if (!guard_targets.has_value()) {
       return std::nullopt;
+    }
+
+    const auto* guard_true_return = resolve_immediate_return_block(guard_targets->first->label);
+    const auto* continuation_init = guard_targets->second;
+    if (guard_true_return == nullptr || continuation_init == nullptr || continuation_init == guard_block) {
+      if (const auto* alternate_return = resolve_immediate_return_block(guard_targets->second->label);
+          alternate_return != nullptr && guard_targets->first != nullptr &&
+          guard_targets->first != guard_block) {
+        guard_true_return = alternate_return;
+        continuation_init = guard_targets->first;
+      } else {
+        return std::nullopt;
+      }
     }
 
     segment.guard_block = guard_block;
     segment.guard_true_return_block = guard_true_return;
     segment.continuation_init_block = continuation_init;
+    apply_authoritative_join_transfer(segment);
     return segment;
   };
 
@@ -605,32 +841,6 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
     }
   } else if (first_segment->return_block == nullptr) {
     return std::nullopt;
-  }
-
-  if (function_control_flow != nullptr) {
-    const auto require_no_authoritative_prepared_branch_contract =
-        [&](const c4c::backend::bir::Block* block) {
-          if (block != nullptr &&
-              prepared_names != nullptr &&
-              [&]() -> const c4c::backend::prepare::PreparedBranchCondition* {
-                const auto block_label_id =
-                    c4c::backend::prepare::resolve_prepared_block_label_id(*prepared_names,
-                                                                           block->label);
-                if (!block_label_id.has_value()) {
-                  return nullptr;
-                }
-                return c4c::backend::prepare::find_prepared_branch_condition(
-                    *function_control_flow, *block_label_id);
-              }() != nullptr) {
-        throw std::invalid_argument(
-            "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
-      }
-    };
-    require_no_authoritative_prepared_branch_contract(first_segment->cond_block);
-    require_no_authoritative_prepared_branch_contract(first_segment->guard_block);
-    if (second_segment.has_value()) {
-      require_no_authoritative_prepared_branch_contract(second_segment->cond_block);
-    }
   }
 
   const auto slot_it = layout.offsets.find(first_segment->init_store->slot_name);
@@ -700,9 +910,12 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
       return false;
     };
 
+    const auto* accepted_second_segment_join_transfer =
+        second_segment.has_value() ? apply_authoritative_join_transfer(*second_segment) : nullptr;
     for (const auto& join_transfer : function_control_flow->join_transfers) {
       if (join_transfer.kind == c4c::backend::prepare::PreparedJoinTransferKind::LoopCarry ||
-          join_transfer_references_used_block(join_transfer)) {
+          (&join_transfer != accepted_second_segment_join_transfer &&
+           join_transfer_references_used_block(join_transfer))) {
         throw std::invalid_argument(
             "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
       }
@@ -726,7 +939,7 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
     std::string asm_text;
     if (emit_init) {
       asm_text += "    mov " + counter_memory + ", " +
-                  std::to_string(static_cast<std::int32_t>(segment.init_store->value.immediate)) +
+                  std::to_string(static_cast<std::int32_t>(segment.emitted_init_immediate)) +
                   "\n";
       asm_text += "    jmp " +
                   (segment.entry_target == segment.body_block ? body_label : cond_label) + "\n";
@@ -741,7 +954,7 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
       const auto next_body_label =
           ".L" + function.name + "_" + std::string(next_segment->body_block->label);
       asm_text += "    mov " + counter_memory + ", " +
-                  std::to_string(static_cast<std::int32_t>(next_segment->init_store->value.immediate)) +
+                  std::to_string(static_cast<std::int32_t>(next_segment->emitted_init_immediate)) +
                   "\n";
       asm_text += "    jmp " +
                   (next_segment->entry_target == next_segment->body_block ? next_body_label
