@@ -9,6 +9,7 @@ namespace c4c::backend::prepare {
 void BirPreAlloc::run_stack_layout() {
   prepared_.completed_phases.push_back("stack_layout");
   prepared_.stack_layout = {};
+  prepared_.addressing.functions.clear();
 
   PreparedObjectId next_object_id = 0;
   PreparedFrameSlotId next_slot_id = 0;
@@ -34,6 +35,11 @@ void BirPreAlloc::run_stack_layout() {
         std::max(prepared_.stack_layout.frame_size_bytes, function_frame_size);
     prepared_.stack_layout.frame_alignment_bytes =
         std::max(prepared_.stack_layout.frame_alignment_bytes, function_frame_alignment);
+    prepared_.addressing.functions.push_back(PreparedAddressingFunction{
+        .function_name = function.name,
+        .frame_size_bytes = function_frame_size,
+        .frame_alignment_bytes = function_frame_alignment,
+    });
 
     prepared_.stack_layout.objects.insert(prepared_.stack_layout.objects.end(),
                                           std::make_move_iterator(function_objects.begin()),

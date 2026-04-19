@@ -232,6 +232,25 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
   return std::move(planner.prepared());
 }
 
+int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirModule& prepared) {
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, "stack_layout_copy_coalescing_activation");
+  if (function_addressing == nullptr) {
+    return fail("expected stack layout to publish per-function prepared addressing frame facts");
+  }
+  if (function_addressing->frame_size_bytes != 4 ||
+      function_addressing->frame_alignment_bytes != 4) {
+    return fail("expected prepared addressing frame facts to mirror stack-layout metrics");
+  }
+  if (!function_addressing->accesses.empty()) {
+    return fail("expected the frame-fact bootstrap packet to leave per-instruction accesses empty");
+  }
+  if (prepare::find_prepared_addressing(prepared, "missing_function") != nullptr) {
+    return fail("expected prepared addressing frame-fact bootstrap to reject missing functions");
+  }
+  return 0;
+}
+
 prepare::PreparedBirModule prepare_param_permanent_home_slot_module() {
   bir::Module module;
 
@@ -3208,6 +3227,9 @@ int main() {
 
   const auto copy_prepared = prepare_stack_layout_module();
   if (const int rc = check_stack_layout_activation(copy_prepared); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_prepared_addressing_frame_fact_bootstrap(copy_prepared); rc != 0) {
     return rc;
   }
   if (const int rc = check_prepared_addressing_contract_activation(); rc != 0) {

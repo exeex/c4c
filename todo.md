@@ -3,27 +3,27 @@
 Status: Active
 Source Idea Path: ideas/open/61_stack_frame_and_addressing_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Lock The Prepared Addressing Contract
-Plan Review Counter: 1 / 10
+Current Step ID: 2
+Current Step Title: Produce Frame And Addressing Facts In Shared Prepare
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed the first Step 1 packet by defining the initial prepared
-frame/addressing contract in `src/backend/prealloc/prealloc.hpp`: added
-consumer-oriented prepared addressing records, base-kind naming, function and
-memory-access lookup helpers, and the `PreparedBirModule::addressing` surface;
-`tests/backend/backend_prepare_stack_layout_test.cpp` now exercises that
-header-only contract with a focused lookup activation.
+Completed the first Step 2 bootstrap packet by teaching shared prepare to
+publish per-function prepared-addressing frame facts during stack layout:
+`src/backend/prealloc/stack_layout.cpp` now records each function's canonical
+frame size/alignment in `PreparedBirModule::addressing`, and
+`tests/backend/backend_prepare_stack_layout_test.cpp` proves that the producer
+path exposes those frame metrics while leaving per-instruction accesses empty
+for later Step 2 packets.
 
 ## Suggested Next
 
-Execute the next Step 1 packet or Step 2 handoff by beginning the shared
-producer path in `src/backend/prealloc/legalize.cpp`: populate function-level
-frame size/alignment and per-instruction prepared addressing records for the
-existing stack-slot and direct-memory routes now that the contract surface
-exists.
+Execute the next Step 2 packet by populating per-instruction prepared
+addressing records for direct frame-slot loads/stores in shared prepare,
+reusing the new per-function addressing container instead of adding x86-local
+slot or offset reconstruction.
 
 ## Watchouts
 
@@ -31,9 +31,11 @@ exists.
   activate blocked idea 59 through the runbook text.
 - Treat value-home and move-bundle ownership as idea 60 scope, not something
   to absorb into this plan.
-- The current packet only locked the contract surface; shared prepare still
-  needs to populate `PreparedBirModule::addressing`, and x86 still consumes
-  private frame/address reconstruction until later steps land.
+- Shared prepare now publishes frame metrics, but `PreparedAddressingFunction`
+  still has no per-instruction access records; direct frame-slot, symbol, and
+  pointer-indirect classification remain open Step 2 work.
+- X86 still consumes private frame/address reconstruction until later Step 3
+  packets land.
 - Prefer prepared frame/address data over x86-local slot-name, suffix, or
   offset reconstruction.
 
@@ -41,5 +43,5 @@ exists.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_prepare_stack_layout$' | tee test_after.log`
-for this Step 1 packet; the focused stack-layout subset passed and
+for this Step 2 bootstrap packet; the focused stack-layout subset passed and
 `test_after.log` is the canonical proof log for the packet.
