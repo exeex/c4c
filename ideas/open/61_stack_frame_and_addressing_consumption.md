@@ -8,6 +8,15 @@ Depends-On:
 Blocks:
 - idea 59 generic scalar instruction selection for x86
 
+## Deactivation Note
+
+2026-04-19: active execution switched away from this idea before Step 3.2 was
+exhausted. The current route has already moved direct frame-slot and same-module
+global guard/helper consumers toward authoritative prepared addressing, but
+string-backed and residual direct symbol lanes still remain on the open side of
+Step 3.2. Resume from the active `plan.md` / `todo.md` history for idea 61 if
+this idea is reactivated later.
+
 ## Intent
 
 This idea makes frame layout and memory-address provenance canonical for the

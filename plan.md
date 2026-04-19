@@ -1,225 +1,155 @@
-# Stack Frame And Addressing Consumption For Prepared X86
+# Shared Text Identity And Semantic Name Table Refactor
 
 Status: Active
-Source Idea: ideas/open/61_stack_frame_and_addressing_consumption.md
+Source Idea: ideas/open/64_shared_text_identity_and_semantic_name_table_refactor.md
+Activated from: ideas/open/62_prealloc_cfg_generalization_and_authoritative_control_flow.md
 
 ## Purpose
 
-Turn idea 61 into an execution runbook that makes prepared frame and address
-facts authoritative before x86 emission.
+Turn idea 64 into an execution runbook that moves shared text identity above
+the frontend and establishes semantic name tables before CFG and phi ownership
+work hardens new prepared contracts.
 
 ## Goal
 
-Make shared prepare ownership publish canonical frame layout and memory-access
-addressing facts so x86 consumes prepared frame/address data instead of
-rebuilding local-slot offsets and provenance locally.
+Provide a shared text-id substrate plus semantic name tables such as
+`BlockLabelId` and `FunctionNameId` so downstream prepared/backend work can use
+typed symbolic identities instead of `std::string` or raw `TextId`.
 
 ## Core Rule
 
-Do not grow new x86-local local-slot layout rebuilders or testcase-shaped
-address matchers. Frame and addressing meaning must be produced in shared
-prepare code and consumed by x86 as data.
+Do not ship new public prepared contracts keyed by `std::string` or raw
+`TextId` when a semantic id layer is the real requirement.
 
 ## Read First
 
-- `ideas/open/61_stack_frame_and_addressing_consumption.md`
+- `ideas/open/64_shared_text_identity_and_semantic_name_table_refactor.md`
+- `ideas/open/62_prealloc_cfg_generalization_and_authoritative_control_flow.md`
+- `ideas/open/63_complete_phi_legalization_and_parallel_copy_resolution.md`
+- `src/frontend/string_id_table.hpp`
+- `src/frontend/link_name_table.hpp`
 - `src/backend/prealloc/prealloc.hpp`
-- `src/backend/prealloc/legalize.cpp`
-- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
 
 ## Scope
 
-- define consumer-oriented prepared frame and addressing data
-- produce frame-size, frame-slot, and memory-access facts in shared prepare
-- teach x86 to consume those facts for prologue/epilogue and load/store routes
-- prove the route with build plus narrow backend/x86 coverage, then broaden as
-  needed
+- move the shared text-id table out of the frontend layer
+- define semantic name-table/id types for backend-visible symbolic domains
+- prepare the identity substrate needed by idea 62 CFG ownership work and idea
+  63 phi completeness work
+- keep downstream contract migration focused on identity surfaces, not on
+  finishing CFG or phi algorithms in this runbook
 
 ## Non-Goals
 
-- reactivating idea 58 control-flow ownership work
-- value-home or move-bundle work from idea 60
-- activating idea 59 generic scalar instruction selection
-- introducing new x86 matcher families whose practical scope is one testcase
+- completing CFG ownership generalization itself
+- completing phi destruction or parallel-copy resolution itself
+- mixing this refactor into unrelated emitter or instruction-selection work
+- introducing one mega-id type that erases domain meaning
 
 ## Working Model
 
-- shared prepare owns frame size, frame-slot identity, and address provenance
-- prepared addressing data is keyed by function, block, and instruction
-- x86 may reject unsupported operand forms, but it must not rediscover local
-  slot offsets or memory provenance when prepared data exists
+- a shared text table owns canonical byte storage
+- semantic tables map shared text ids into domain-specific ids such as
+  `BlockLabelId`, `FunctionNameId`, `ValueNameId`, and `SlotNameId`
+- downstream prepared/backend structs carry semantic ids, not symbolic strings
+  and not bare text-storage keys
 
 ## Execution Rules
 
-- prefer prepared addressing lookup helpers over x86-local slot-name analysis
-- keep packet boundaries small enough for `todo.md` tracking
+- keep the layering direction clean: backend/shared code must not depend on a
+  frontend-private text-id header
+- prefer semantic id tables modeled after `LinkNameTable` over bare `TextId`
+  plumbing
 - update `todo.md`, not this file, for routine packet progress
 - require `build -> narrow proof` for each code slice
-- escalate to broader validation when shared prepare helpers or x86 memory
-  consumers change across multiple families
+- stop short of broad CFG/phi rewrites once the identity substrate and first
+  consumer migrations are coherent
 
-## Step 1: Lock The Prepared Addressing Contract
+## Step 1: Extract The Shared Text Table Layer
 
-Goal: define the data and lookup surface that make frame layout and address
-meaning explicit to x86.
+Goal: move the text-id table into a shared layer that frontend and backend code
+can both depend on without layering inversion.
 
 Primary targets:
 
+- `src/frontend/string_id_table.hpp`
+- destination shared/support layer files
+
+Actions:
+
+- move or rehome the text-id table interface into a layer above the frontend
+- update includes and namespaces so existing users still compile against the
+  shared location
+- keep the data structure append-only and compatible with existing canonical
+  text storage expectations
+
+Completion check:
+
+- the text-id table no longer lives under `src/frontend/`, and both frontend
+  and backend code can include the shared layer cleanly
+
+## Step 2: Introduce Semantic Name Tables
+
+Goal: define domain-specific symbolic id tables on top of shared text storage.
+
+Primary targets:
+
+- shared naming utilities adjacent to the extracted text-id layer
+- `src/frontend/link_name_table.hpp`
 - `src/backend/prealloc/prealloc.hpp`
 
 Actions:
 
-- add or refine prepared frame/addressing enums and structs for frame-slot,
-  global-symbol, pointer-value, and string-constant access bases
-- expose function-level addressing records that can answer frame size,
-  alignment, and per-instruction access questions
-- add consumer lookup helpers for prepared addressing by function, block, and
-  instruction identity
-- keep names flexible, but preserve the source-idea semantics and invariants
+- define typed ids such as `FunctionNameId`, `BlockLabelId`, `ValueNameId`,
+  and `SlotNameId` where justified
+- introduce semantic tables that intern shared `TextId` values into those
+  domain ids
+- keep the design consistent with `LinkNameTable` rather than inventing a
+  string wrapper without domain meaning
 
 Completion check:
 
-- the header exposes a consumer-oriented prepared addressing contract that can
-  answer frame and memory-access questions without emitter-local slot rebuilds
+- the repo has semantic name-table infrastructure that can express backend and
+  prepared symbolic identity without depending on raw strings or bare text ids
 
-## Step 2: Produce Frame And Addressing Facts In Shared Prepare
+## Step 3: Migrate The First Prepared Identity Surfaces
 
-Goal: populate the prepared addressing contract from shared prepare ownership.
+Goal: land the first downstream users on semantic ids so idea 62 can build on
+them instead of starting from string-shaped contracts.
 
 Primary targets:
 
-- `src/backend/prealloc/legalize.cpp`
-- related shared prepare helpers if extraction is needed
+- `src/backend/prealloc/prealloc.hpp`
+- small, adjacent prepared/backend users needed to prove the new substrate
 
 Actions:
 
-- build prepared frame-size and alignment facts from the canonical stack layout
-- classify direct frame-slot, global-symbol, string-constant, and
-  pointer-indirect memory accesses into prepared addressing records
-- keep address provenance ownership in shared prepare rather than x86-local
-  helper paths
-- ensure the producer path records enough information for later consumer
-  lookups by function, block label, and instruction index
+- convert the minimal prepared symbolic surfaces needed by upcoming CFG work to
+  semantic ids
+- keep this step focused on identity contracts, not full CFG or phi algorithm
+  completion
+- document the follow-on expectation that idea 62 should consume `BlockLabelId`
+  and related semantic ids directly
 
 Completion check:
 
-- prepared modules carry frame and addressing facts that cover ordinary
-  prologue/epilogue and load/store consumption without x86-local slot analysis
+- the first prepared/backend identity surfaces use semantic ids cleanly enough
+  that idea 62 can proceed without introducing new string-keyed contracts
 
-## Step 3: Consume Prepared Addressing In X86
+## Step 4: Validate The Refactor
 
-Goal: remove x86 dependence on private frame-slot and address reconstruction
-for the covered routes.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
-
-Actions:
-
-- execute this step through the ordered substeps below rather than treating all
-  frame/address consumption as one undifferentiated packet stream
-- keep target-specific decisions limited to x86 legality and spelling
-- do not widen this step into idea 60 value-home work, idea 59 instruction
-  selection, or unrelated control-flow work
-- delete or simplify x86-local layout/address helpers only when the prepared
-  consumer path makes the emitter-local reconstruction unnecessary
-
-Completion check:
-
-- Step 3.1 through Step 3.3 are all complete
-- the covered x86 prologue/epilogue and load/store paths consult prepared
-  frame/address data instead of rebuilding slot layout or provenance locally
-
-### Step 3.1: Frame Layout Consumer Migration
-
-Goal: move prologue/epilogue and direct frame-size consumers onto prepared
-frame data.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
-
-Actions:
-
-- add or refine one shared frame-layout lookup/helper path in the x86 prepared
-  consumer
-- route covered prologue/epilogue emission through prepared frame size and
-  alignment facts instead of x86-local layout recomputation
-- keep this substep focused on frame-layout consumption, not memory-access
-  breadth
-
-Completion check:
-
-- the covered x86 frame-layout paths consume prepared frame facts as the
-  authoritative source of stack size and alignment
-
-### Step 3.2: Direct Frame And Symbol Access Consumption
-
-Goal: move direct frame-slot, global-symbol, and string-constant access lanes
-onto prepared addressing lookups.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
-- focused backend/x86 proof coverage that matches the changed route
-
-Actions:
-
-- add one shared prepared-address lookup/helper path in the x86 consumer
-- begin consuming canonical prepared addressing for direct frame-slot loads and
-  stores, plus symbol-backed accesses where the same contract applies
-- cover adjacent bounded local/global memory cases through prepared addressing
-  ownership rather than local slot-name or byte-offset reconstruction
-
-Completion check:
-
-- the covered x86 direct frame and symbol-backed access paths consume prepared
-  addressing data without emitter-local slot analysis
-
-### Step 3.3: Pointer-Indirect And Residual Address Cleanup
-
-Goal: finish the remaining prepared-address consumer paths without widening
-scope beyond frame/address consumption.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
-- focused backend/x86 proof coverage that matches the changed route
-
-Actions:
-
-- finish pointer-value-based addressing and residual base-plus-offset consumer
-  paths through prepared addressing lookups
-- remove or isolate any remaining x86-local local-slot root/suffix rebuilders
-  once prepared addressing covers the matched family
-- stop the step when the remaining x86 ownership is target legality rather
-  than semantic address recovery
-
-Completion check:
-
-- the remaining covered pointer-indirect and residual address lanes consult
-  prepared frame/address data instead of local slot or provenance recovery,
-  and Step 3 can be treated as exhausted
-
-## Step 4: Validate The Route
-
-Goal: prove the prepared frame/address boundary without relying on one named
-testcase.
+Goal: prove the shared identity refactor without bundling unrelated backend
+algorithm changes.
 
 Actions:
 
 - require a fresh build for every accepted slice
-- choose the narrowest proving test that exercises the changed memory/address
-  family
-- broaden validation when shared prepare changes affect multiple backend
-  buckets or when several narrow-only packets have landed
-- reject slices whose main effect is expectation weakening or local matcher
-  growth instead of prepared-address consumption
+- choose narrow proof that exercises both extracted shared-layer users and the
+  migrated prepared identity surfaces
+- broaden validation when include-path or shared naming changes affect several
+  subsystems
 
 Completion check:
 
-- accepted slices have fresh proof logs and validation proportional to the
-  frame/addressing blast radius
+- accepted identity-refactor slices have fresh proof and the repo builds
+  cleanly against the shared text/name-table layer
