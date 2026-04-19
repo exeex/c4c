@@ -576,6 +576,35 @@ struct PreparedControlFlow {
   return nullptr;
 }
 
+[[nodiscard]] inline const PreparedBranchCondition*
+find_prepared_i32_immediate_branch_condition(const PreparedControlFlowFunction& function_cf,
+                                             std::string_view block_label,
+                                             std::string_view value_name) {
+  const auto* branch_condition = find_prepared_branch_condition(function_cf, block_label);
+  if (branch_condition == nullptr || !branch_condition->predicate.has_value() ||
+      !branch_condition->compare_type.has_value() || !branch_condition->lhs.has_value() ||
+      !branch_condition->rhs.has_value() ||
+      *branch_condition->compare_type != bir::TypeKind::I32) {
+    return nullptr;
+  }
+
+  const bool lhs_is_value_rhs_is_i32_immediate =
+      branch_condition->lhs->kind == bir::Value::Kind::Named &&
+      branch_condition->lhs->name == value_name &&
+      branch_condition->rhs->kind == bir::Value::Kind::Immediate &&
+      branch_condition->rhs->type == bir::TypeKind::I32;
+  const bool rhs_is_value_lhs_is_i32_immediate =
+      branch_condition->rhs->kind == bir::Value::Kind::Named &&
+      branch_condition->rhs->name == value_name &&
+      branch_condition->lhs->kind == bir::Value::Kind::Immediate &&
+      branch_condition->lhs->type == bir::TypeKind::I32;
+  if (!lhs_is_value_rhs_is_i32_immediate && !rhs_is_value_lhs_is_i32_immediate) {
+    return nullptr;
+  }
+
+  return branch_condition;
+}
+
 [[nodiscard]] inline std::optional<PreparedBranchTargetLabels>
 find_prepared_compare_branch_target_labels(const PreparedBranchCondition& branch_condition,
                                            const bir::Block& source_block) {

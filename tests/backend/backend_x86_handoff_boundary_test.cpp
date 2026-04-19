@@ -7580,12 +7580,21 @@ int check_local_i32_guard_route_consumes_prepared_branch_contract(
                  ": prepared local guard fixture no longer has the expected entry shape")
                     .c_str());
   }
+  auto* entry_compare = std::get_if<bir::BinaryInst>(&entry_block->insts.back());
+  if (entry_compare == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared local guard fixture no longer exposes the bounded compare carrier")
+                    .c_str());
+  }
 
   const std::string original_true_label = entry_block->terminator.true_label;
   const std::string original_false_label = entry_block->terminator.false_label;
   entry_block->terminator.condition.name = "contract.guard.condition";
   entry_block->terminator.true_label = "contract.guard.true";
   entry_block->terminator.false_label = "contract.guard.false";
+  entry_compare->opcode = bir::BinaryOpcode::Eq;
+  entry_compare->lhs = bir::Value::immediate_i32(7);
+  entry_compare->rhs = bir::Value::immediate_i32(9);
   function.blocks.push_back(bir::Block{
       .label = "contract.guard.true",
       .terminator = bir::BranchTerminator{.target_label = original_true_label},
@@ -7599,6 +7608,60 @@ int check_local_i32_guard_route_consumes_prepared_branch_contract(
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative prepared branch contract over local guard carrier state")
+                    .c_str());
+  }
+
+  return 0;
+}
+
+int check_local_i32_guard_helper_publishes_prepared_compare_contract(const bir::Module& module,
+                                                                     const char* function_name,
+                                                                     const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      !control_flow->join_transfers.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the local guard prepared branch contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  if (entry_block == nullptr || entry_block->insts.size() < 3) {
+    return fail((std::string(failure_context) +
+                 ": prepared local guard fixture no longer has the expected entry shape")
+                    .c_str());
+  }
+  auto* entry_compare = std::get_if<bir::BinaryInst>(&entry_block->insts.back());
+  if (entry_compare == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared local guard fixture no longer exposes the bounded compare carrier")
+                    .c_str());
+  }
+
+  entry_compare->opcode = bir::BinaryOpcode::Eq;
+  entry_compare->lhs = bir::Value::immediate_i32(7);
+  entry_compare->rhs = bir::Value::immediate_i32(9);
+
+  const auto* prepared_branch_condition =
+      prepare::find_prepared_i32_immediate_branch_condition(*control_flow, entry_block->label, "loaded");
+  if (prepared_branch_condition == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer recognizes the authoritative local guard compare contract")
+                    .c_str());
+  }
+  if (!prepared_branch_condition->predicate.has_value() ||
+      *prepared_branch_condition->predicate != bir::BinaryOpcode::Ne ||
+      !prepared_branch_condition->lhs.has_value() || prepared_branch_condition->lhs->name != "loaded" ||
+      !prepared_branch_condition->rhs.has_value() ||
+      prepared_branch_condition->rhs->kind != bir::Value::Kind::Immediate ||
+      prepared_branch_condition->rhs->immediate != 123) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped publishing the authoritative local guard compare semantics")
                     .c_str());
   }
 
@@ -9974,6 +10037,14 @@ int main() {
               expected_minimal_local_i32_immediate_guard_asm("main", 123),
               "main",
               "minimal local-slot compare-against-immediate guard prepared branch-contract ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_local_i32_guard_helper_publishes_prepared_compare_contract(
+              make_x86_local_i32_immediate_guard_module(),
+              "main",
+              "minimal local-slot compare-against-immediate guard helper publishes prepared compare contract");
       status != 0) {
     return status;
   }

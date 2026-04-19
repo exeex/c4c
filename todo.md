@@ -9,22 +9,22 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow In X86 packet by tightening
-the plain compare-driven local-guard entry seam around authoritative prepared
-branch ownership: `src/backend/mir/x86/codegen/prepared_module_emit.cpp` now
-requires the prepared branch-condition contract for that plain-cond render path,
-uses the prepared condition name when locating the trailing guard compare, and
-takes direct branch targets from the prepared branch condition instead of
-carrier terminator state; `tests/backend/backend_x86_handoff_boundary_test.cpp`
-now proves the route still emits the canonical asm after prepared BIR
-topology rewrites corrupt both the local guard carrier condition name and its
-carrier branch labels.
+the next plain compare-driven local-guard seam around authoritative prepared
+branch ownership: `src/backend/prealloc/prealloc.hpp` now publishes a shared
+helper for prepared i32-immediate branch conditions keyed by block/value name,
+and `src/backend/mir/x86/codegen/prepared_module_emit.cpp` uses that helper so
+the plain local-guard render path takes compare setup from the prepared branch
+contract instead of the live carrier compare when that prepared contract is
+available; `tests/backend/backend_x86_handoff_boundary_test.cpp` now proves the
+route and helper still publish the canonical semantics after the carrier
+compare opcode/operands and branch topology are corrupted.
 
 ## Suggested Next
 
-Stay in Step 3 and tighten the next compare-driven entry seam by moving more
-plain local-guard compare setup ownership onto prepared branch conditions where
-x86 still succeeds only because the live carrier compare instruction remains
-locally recognizable.
+Stay in Step 3 and tighten the next compare-driven entry seam in the
+short-circuit or compare-join entry helpers, where x86 still depends on the
+carrier compare being locally recognizable even though prepared control-flow
+already owns the branch/join semantics.
 
 ## Watchouts
 
@@ -32,11 +32,12 @@ locally recognizable.
   organization, idea 57, idea 59, idea 60, idea 61, or the unrelated
   `^backend_` semantic-lowering failures.
 - This packet only hardens the plain direct-entry local-guard consumer against
-  mutated carrier condition and label state; short-circuit and compare-join
-  helper paths still have their own prepared-contract seams and should be
-  tightened separately.
+  mutated carrier compare semantics and label state; short-circuit,
+  compare-join, and other guard-chain consumers still have their own
+  carrier-compare seams and should be tightened separately.
 - The route is acceptable because it removes dependence on carrier branch state
-  for the covered case; do not regress into new emitter-local CFG recovery or
+  and compare semantics for the covered case; do not regress into new
+  emitter-local CFG recovery or
   testcase-shaped guard lanes.
 - The broader `^backend_` checkpoint still has the same four known failures in
   variadic and dynamic-member-array semantic lowering outside this packet's
