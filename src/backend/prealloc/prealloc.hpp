@@ -1593,9 +1593,9 @@ find_authoritative_join_branch_sources(
     const bir::Block& entry_block,
     std::string_view true_block_label,
     std::string_view false_block_label) {
-  const BlockLabelId true_block_label_id = names.block_labels.find(true_block_label);
-  const BlockLabelId false_block_label_id = names.block_labels.find(false_block_label);
-  if (true_block_label_id == kInvalidBlockLabel || false_block_label_id == kInvalidBlockLabel) {
+  const auto true_block_label_id = resolve_prepared_block_label_id(names, true_block_label);
+  const auto false_block_label_id = resolve_prepared_block_label_id(names, false_block_label);
+  if (!true_block_label_id.has_value() || !false_block_label_id.has_value()) {
     return std::nullopt;
   }
   return find_authoritative_join_branch_sources(
@@ -1603,8 +1603,8 @@ find_authoritative_join_branch_sources(
       authoritative_join_transfer,
       function,
       entry_block,
-      true_block_label_id,
-      false_block_label_id);
+      *true_block_label_id,
+      *false_block_label_id);
 }
 
 [[nodiscard]] inline std::optional<PreparedClassifiedShortCircuitIncoming>
@@ -1990,9 +1990,9 @@ find_materialized_compare_join_context(
     const bir::Block& entry_block,
     std::string_view true_block_label,
     std::string_view false_block_label) {
-  const BlockLabelId true_block_label_id = names.block_labels.find(true_block_label);
-  const BlockLabelId false_block_label_id = names.block_labels.find(false_block_label);
-  if (true_block_label_id == kInvalidBlockLabel || false_block_label_id == kInvalidBlockLabel) {
+  const auto true_block_label_id = resolve_prepared_block_label_id(names, true_block_label);
+  const auto false_block_label_id = resolve_prepared_block_label_id(names, false_block_label);
+  if (!true_block_label_id.has_value() || !false_block_label_id.has_value()) {
     return std::nullopt;
   }
   return find_materialized_compare_join_context(
@@ -2000,8 +2000,8 @@ find_materialized_compare_join_context(
       authoritative_join_transfer,
       function,
       entry_block,
-      true_block_label_id,
-      false_block_label_id);
+      *true_block_label_id,
+      *false_block_label_id);
 }
 
 [[nodiscard]] inline std::optional<PreparedCompareJoinContinuationTargets>

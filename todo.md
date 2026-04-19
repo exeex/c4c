@@ -5,28 +5,28 @@ Source Idea Path: ideas/open/64_shared_text_identity_and_semantic_name_table_ref
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Migrate Remaining Prepared Lookup Helpers And Liveness Consumers
-Plan Review Counter: 4 / 10
+Plan Review Counter: 5 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3.2 packet in `src/backend/prealloc/prealloc.hpp`
-by cleaning up the remaining source-branch and predecessor-label join lookup
-wrappers: `find_branch_owned_join_transfer(...)`,
-`find_select_materialization_join_transfer(...)`, and
-`find_authoritative_branch_owned_join_transfer(...)` now resolve
-`BlockLabelId` inputs once at the boundary through a shared helper and then
-delegate to the typed-id entry paths instead of open-coding raw spelling
-lookups in each overload.
+by cleaning up the remaining true/false block-label join-source wrappers:
+`find_authoritative_join_branch_sources(...)` and
+`find_materialized_compare_join_context(...)` now resolve both block labels
+through the shared `BlockLabelId` boundary helper and then delegate to the
+typed-id entry paths instead of open-coding raw spelling lookup in each
+wrapper.
 
 ## Suggested Next
 
 Continue `plan.md` Step 3.2 in `src/backend/prealloc/prealloc.hpp` by auditing
-the remaining true/false block-label entry helpers around
-`find_authoritative_join_branch_sources(...)` and
-`find_materialized_compare_join_context(...)` so the surviving
-`std::string_view` overloads in that join-source family stay compatibility
-wrappers only.
+the remaining source-block label wrappers around
+`find_prepared_short_circuit_continuation_targets(...)`,
+`find_prepared_compare_join_continuation_targets(...)`, and
+`find_prepared_short_circuit_join_context(...)` so those `std::string_view`
+entry points resolve `BlockLabelId` once at the boundary and defer to typed
+helpers only.
 
 ## Watchouts
 
@@ -43,6 +43,9 @@ wrappers only.
   follow-on packets should reuse that pattern for adjacent block-label wrapper
   families instead of reintroducing duplicated `names.block_labels.find(...)`
   logic.
+- The true/false join-source wrappers now follow that shared resolver pattern
+  too; future packets should carry it through the remaining source-block
+  wrapper family rather than mixing direct `find(...)` calls back in.
 - The new compare-join and short-circuit typed entry paths still translate BIR
   spellings once at the outer boundary; future packets should preserve that
   pattern rather than threading raw string labels deeper into helper internals.
@@ -64,5 +67,5 @@ Ran `cmake --build --preset default && ctest --test-dir build -j
 build/test output in `test_after.log`. The build completed, and the backend
 subset again reported the same four known failing tests already called out
 above, matching the `test_before.log` failing-test set after the
-`prealloc.hpp` source-branch and predecessor-label join-lookup wrappers moved
-onto shared `BlockLabelId` boundary resolution and typed helper delegation.
+`prealloc.hpp` true/false block-label join-source wrappers moved onto shared
+`BlockLabelId` boundary resolution and typed helper delegation.
