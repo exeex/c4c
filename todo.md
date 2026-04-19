@@ -3,25 +3,25 @@
 Status: Active
 Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_control_flow.md
 Source Plan Path: plan.md
-Current Step ID: 3.3.3.2
-Current Step Title: Finish Trailing Arithmetic And Shift Helper Coverage
-Plan Review Counter: 4 / 10
+Current Step ID: 3.3.3.3
+Current Step Title: Audit Final Residual Shared Helper Gaps
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another `plan.md` Step 3.3.3 slice for idea 62. The
-`tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
-residual shared-helper surface now explicitly proves the prepared
-compare-join render contract on the trailing-`ashr` joined-branch family,
-so that helper path is now covered alongside the existing route-level
-prepared-control-flow proof.
+Completed the `plan.md` Step 3.3.3.3 audit for idea 62. The focused
+joined-branch helper proof surface now shows no remaining residual late
+shared-helper gap after the generic compare-join render-contract check and
+the explicit trailing `xor`, `and`, `or`, `mul`, `shl`, `lshr`, and `ashr`
+helper lanes are all accounted for.
 
 ## Suggested Next
 
-Supervisor should verify whether `plan.md` Step 3.3.3.2 is now exhausted and,
-if so, advance to Step 3.3.3.3 to audit any final residual shared-helper gaps
-instead of reopening the completed trailing arithmetic and shift helper lanes.
+Supervisor should treat `plan.md` Step 3.3.3 as audited on the current narrow
+proof surface and decide whether the route can advance beyond Step 3.3 or
+whether a specific non-trailing helper gap still needs a newly-identified
+packet.
 
 ## Watchouts
 
@@ -39,17 +39,19 @@ instead of reopening the completed trailing arithmetic and shift helper lanes.
   surfaces.
 - The trailing-join arithmetic, `xor`, `and`, `or`, `mul`, `shl`, `lshr`, and
   `ashr` families already have direct and `EdgeStoreSlot` joined-route proof.
-  The trailing-`xor`, trailing-`and`, trailing-`or`, trailing-`mul`,
-  trailing-`shl`, trailing-`lshr`, and trailing-`ashr` lanes now also have
-  explicit compare-join render-contract helper proof, so the next route
-  decision should confirm whether any non-trailing residual helper surface
-  remains before reopening this family.
+- The generic compare-join render-contract helper case and the explicit
+  trailing `xor`, `and`, `or`, `mul`, `shl`, `lshr`, and `ashr` helper lanes
+  are all present in
+  `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`.
+- If the supervisor opens another Step 3.3 packet, it should name the exact
+  residual helper surface first instead of reopening this finished trailing
+  family on speculation.
 
 ## Proof
 
 Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
-`backend_x86_handoff_boundary` proof passed after adding explicit trailing-`ashr`
-compare-join render-contract helper coverage on top of the existing route-level
-joined-branch proof. `test_after.log` is the proof artifact for this packet.
+`backend_x86_handoff_boundary` proof passed during the Step 3.3.3.3 audit
+without finding another residual helper proof gap on the current joined-branch
+surface. `test_after.log` is the proof artifact for this packet.
