@@ -6896,6 +6896,118 @@ int check_materialized_compare_join_edge_store_slot_route_requires_authoritative
       module, function_name, failure_context, true);
 }
 
+int check_minimal_compare_branch_route_rejects_authoritative_join_contract_impl(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context,
+    bool use_edge_store_slot_carrier) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the joined-branch control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* true_block = find_block(function, "is_zero");
+  auto* false_block = find_block(function, "is_nonzero");
+  auto* join_block = find_block(function, "join");
+  if (entry_block == nullptr || true_block == nullptr || false_block == nullptr ||
+      join_block == nullptr || entry_block->insts.size() != 1 || function.params.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared joined-branch fixture no longer has the expected entry, leaves, join, and param")
+                    .c_str());
+  }
+
+  auto& join_transfer = control_flow->join_transfers.front();
+  if (!join_transfer.source_true_transfer_index.has_value() ||
+      !join_transfer.source_false_transfer_index.has_value() ||
+      join_transfer.edge_transfers.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepared joined-branch fixture no longer exposes authoritative true/false join ownership")
+                    .c_str());
+  }
+
+  if (use_edge_store_slot_carrier) {
+    std::size_t join_select_index = join_block->insts.size() - 1;
+    auto* join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
+    if (join_select == nullptr && join_block->insts.size() >= 2) {
+      join_select_index = join_block->insts.size() - 2;
+      join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
+    }
+    if (join_select == nullptr) {
+      return fail((std::string(failure_context) +
+                   ": prepared joined-branch fixture no longer exposes the expected select carrier")
+                      .c_str());
+    }
+
+    const std::size_t true_transfer_index = *join_transfer.source_true_transfer_index;
+    const std::size_t false_transfer_index = *join_transfer.source_false_transfer_index;
+    if (true_transfer_index >= join_transfer.edge_transfers.size() ||
+        false_transfer_index >= join_transfer.edge_transfers.size() ||
+        true_transfer_index == false_transfer_index) {
+      return fail((std::string(failure_context) +
+                   ": prepared joined-branch fixture published invalid true/false join ownership indices")
+                      .c_str());
+    }
+
+    join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
+    join_transfer.storage_name = "%contract.route.join.slot";
+    join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
+    join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
+    function.local_slots.push_back(bir::LocalSlot{
+        .name = *join_transfer.storage_name,
+        .type = bir::TypeKind::I32,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .is_address_taken = false,
+    });
+  }
+
+  true_block->insts.clear();
+  true_block->terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(7)};
+  false_block->insts.clear();
+  false_block->terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(11)};
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a plain param-zero branch fallback while authoritative join ownership remained active")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the drifted joined-branch contract with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
+int check_minimal_compare_branch_route_rejects_authoritative_join_contract(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_minimal_compare_branch_route_rejects_authoritative_join_contract_impl(
+      module, function_name, failure_context, false);
+}
+
+int check_minimal_compare_branch_edge_store_slot_route_rejects_authoritative_join_contract(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_minimal_compare_branch_route_rejects_authoritative_join_contract_impl(
+      module, function_name, failure_context, true);
+}
+
 int check_materialized_compare_join_render_contract_publishes_prepared_globals_and_labels(
     const bir::Module& module,
     const char* function_name,
@@ -10896,6 +11008,22 @@ int main() {
                   "branch_join_adjust", "is_nonzero", 5, 1),
               "branch_join_adjust",
               "scalar-control-flow compare-against-zero joined branch lane EdgeStoreSlot prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_route_rejects_authoritative_join_contract(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_module(),
+              "branch_join_adjust",
+              "scalar-control-flow compare-against-zero joined branch lane rejects fallback to the plain param-zero branch consumer when authoritative join ownership remains active");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_edge_store_slot_route_rejects_authoritative_join_contract(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_module(),
+              "branch_join_adjust",
+              "scalar-control-flow compare-against-zero joined branch EdgeStoreSlot lane rejects fallback to the plain param-zero branch consumer when authoritative join ownership remains active");
       status != 0) {
     return status;
   }

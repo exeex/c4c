@@ -4301,6 +4301,12 @@ std::string emit_prepared_module(
     if (!prepared_branch_context.has_value()) {
       return std::nullopt;
     }
+    if (c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
+            *function_control_flow, entry.label)
+            .has_value()) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared compare-join handoff through the canonical prepared-module handoff");
+    }
     const auto& prepared_branch = prepared_branch_context->prepared_branch;
     const auto* true_block = prepared_branch_context->true_block;
     const auto* false_block = prepared_branch_context->false_block;

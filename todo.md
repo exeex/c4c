@@ -5,27 +5,26 @@ Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 3.4
 Current Step Title: Loop-Carry And Residual Consumer Cleanup
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed a Step 3.4 Loop-Carry And Residual Consumer Cleanup packet by
-tightening `render_materialized_compare_join_if_supported()` so a param-zero
-compare-join or joined-branch route now throws once authoritative prepared
-branch-owned join ownership exists but the resolved prepared compare-join
-render contract has drifted away, instead of quietly dropping past the
-compare-join handoff, and by adding regressions for both the select-carried
-and `EdgeStoreSlot` variants that reset the authoritative entry prepared
-branch contract.
+tightening `render_minimal_compare_branch_if_supported()` so the plain
+param-zero branch lane now rejects drifted direct-return leaf rewrites once
+authoritative prepared join ownership is still published for the entry block,
+instead of accepting a fallback past the compare-join/join handoff, and by
+adding regressions for both the select-carried and `EdgeStoreSlot` joined
+branch variants that mutate the prepared fixture into direct return leaves
+after prepare.
 
 ## Suggested Next
 
-Stay in Step 3.4 and inspect the remaining param-zero helper order around
-`render_minimal_compare_branch_if_supported()` and adjacent joined-branch
-consumers for any other authoritative prepared join ownership that can still
-degrade into a generic acceptance lane once the compare-join render contract is
-absent.
+Stay in Step 3.4 and inspect the remaining plain param-zero branch and joined
+consumer boundaries for any other route where authoritative prepared branch or
+join ownership can still be bypassed by a later generic guard/countdown helper
+after post-prepare module drift.
 
 ## Watchouts
 
@@ -45,6 +44,10 @@ absent.
   authoritative branch-owned join ownership exists but the resolved prepared
   compare-join render contract disappears; do not let that route silently drop
   past the compare-join handoff into any adjacent generic branch family.
+- The plain param-zero branch lane must now also reject if the module is
+  post-prepare mutated into direct-return leaves while authoritative joined
+  prepared ownership for the same entry block remains active; do not reopen
+  that fallback while checking adjacent residual helpers.
 - The local countdown fallback must stay unavailable once a function carries
   authoritative `PreparedJoinTransferKind::LoopCarry` ownership; do not reopen
   that bypass while chasing other residual helpers.
@@ -58,7 +61,7 @@ absent.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The focused Step 3.4 handoff proof passed after rejecting drifted authoritative
-prepared compare-join branch metadata in both select-carried and
-`EdgeStoreSlot` param-zero compare-join routes instead of dropping past the
-compare-join handoff, leaving `test_after.log` at the repo root.
+The focused Step 3.4 handoff proof passed after rejecting a drifted plain
+param-zero fallback when authoritative joined prepared ownership still existed
+for both the select-carried and `EdgeStoreSlot` variants, leaving
+`test_after.log` at the repo root.
