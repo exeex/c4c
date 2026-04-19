@@ -13264,6 +13264,15 @@ int main() {
       status != 0) {
     return status;
   }
+  if (const auto status =
+          check_i32_guard_chain_route_requires_authoritative_prepared_branch_labels(
+              make_x86_same_module_global_i32_guard_chain_module(),
+              "main",
+              "block_2",
+              "same-module defined-global equality-against-immediate guard route rejects drifted prepared branch labels instead of falling back to the raw guard-chain matcher");
+      status != 0) {
+    return status;
+  }
 
   if (const auto status =
           check_route_outputs(
@@ -13271,6 +13280,15 @@ int main() {
               expected_minimal_pointer_backed_same_module_global_guard_chain_asm("main"),
               "loaded.ptr = bir.load_global ptr @s_backing, offset 8",
               "pointer-backed same-module global equality-against-immediate guard route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_i32_guard_chain_route_requires_authoritative_prepared_branch_labels(
+              make_x86_pointer_backed_same_module_global_guard_chain_module(),
+              "main",
+              "block_10",
+              "pointer-backed same-module global equality-against-immediate guard route rejects drifted prepared branch labels instead of falling back to the raw guard-chain matcher");
       status != 0) {
     return status;
   }

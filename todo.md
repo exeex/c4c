@@ -5,26 +5,23 @@ Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 3.4
 Current Step Title: Loop-Carry And Residual Consumer Cleanup
-Plan Review Counter: 4 / 10
+Plan Review Counter: 5 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed a Step 3.4 Loop-Carry And Residual Consumer Cleanup packet by
-tightening `render_local_slot_guard_chain_if_supported()` so the plain
-equality-against-immediate guard-chain lane now treats the authoritative
-prepared branch contract as mandatory once prepare published it, and by adding
-a regression that drifts the prepared `false_label` for the second guard-chain
-branch after prepare to prove the emitter now rejects that route instead of
-silently falling back to the raw guard-chain matcher.
+Completed a Step 3.4 Loop-Carry And Residual Consumer Cleanup packet by adding
+focused handoff regressions that prove the same-module-global and
+pointer-backed equality-against-immediate guard-chain lanes also reject
+drifted authoritative prepared branch labels instead of silently falling back
+to the raw guard-chain matcher.
 
 ## Suggested Next
 
-Stay in Step 3.4 and inspect the remaining generic fallback helpers after the
-authoritative compare/join consumers, especially the same-module-global and
-pointer-backed guard-chain variants plus the residual local countdown lane, for
-any other route where prepared branch/join or loop ownership can still be
-bypassed after post-prepare module drift.
+Stay in Step 3.4 and inspect the residual local countdown fallback after the
+authoritative loop-carry consumer for any remaining route where post-prepare
+branch or loop-contract drift can still bypass the canonical prepared-module
+handoff.
 
 ## Watchouts
 
@@ -48,6 +45,10 @@ bypassed after post-prepare module drift.
   authoritative branch-owned short-circuit join ownership remains active for
   the same entry block; do not let later local guard cleanups reopen that
   bypass behind a valid-looking prepared branch record.
+- The same-module-global and pointer-backed guard-chain variants now have the
+  same drifted-label regression shape as the non-global guard-chain lane; keep
+  those routes on the shared authoritative prepared-branch contract instead of
+  growing variant-specific fallback behavior.
 - The residual local `i16` increment guard must now treat the prepared entry
   branch labels and compare contract as authoritative; do not let later helper
   cleanups reopen the raw entry-label fallback when the prepared branch record
@@ -73,6 +74,6 @@ bypassed after post-prepare module drift.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The focused Step 3.4 handoff proof passed after the plain guard-chain lane
-began treating its prepared branch labels as authoritative and rejected a
-drifted prepared `false_label`, leaving `test_after.log` at the repo root.
+The focused Step 3.4 handoff proof passed with the new same-module-global and
+pointer-backed guard-chain authoritative-label regressions, leaving
+`test_after.log` as the canonical proof log.
