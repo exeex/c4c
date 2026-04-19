@@ -84,16 +84,18 @@ bir::Function make_stack_layout_analysis_object_collection_function() {
 
 std::vector<prepare::PreparedStackObject> collect_stack_layout_analysis_objects() {
   bir::Function function = make_stack_layout_analysis_object_collection_function();
-
+  prepare::PreparedNameTables names;
   prepare::PreparedObjectId next_object_id = 0;
-  return prepare::stack_layout::collect_function_stack_objects(function, next_object_id);
+  return prepare::stack_layout::collect_function_stack_objects(names, function, next_object_id);
 }
 
 std::vector<prepare::PreparedStackObject> collect_stack_layout_regalloc_hint_objects() {
   bir::Function function = make_stack_layout_analysis_object_collection_function();
+  prepare::PreparedNameTables names;
   prepare::PreparedObjectId next_object_id = 0;
-  auto objects = prepare::stack_layout::collect_function_stack_objects(function, next_object_id);
-  prepare::stack_layout::apply_regalloc_hints(function,
+  auto objects = prepare::stack_layout::collect_function_stack_objects(names, function, next_object_id);
+  prepare::stack_layout::apply_regalloc_hints(names,
+                                              function,
                                               prepare::stack_layout::FunctionInlineAsmSummary{},
                                               objects);
   return objects;
@@ -129,16 +131,18 @@ bir::Function make_stack_layout_param_object_collection_function() {
 
 std::vector<prepare::PreparedStackObject> collect_stack_layout_param_objects() {
   bir::Function function = make_stack_layout_param_object_collection_function();
-
+  prepare::PreparedNameTables names;
   prepare::PreparedObjectId next_object_id = 0;
-  return prepare::stack_layout::collect_function_stack_objects(function, next_object_id);
+  return prepare::stack_layout::collect_function_stack_objects(names, function, next_object_id);
 }
 
 std::vector<prepare::PreparedStackObject> collect_stack_layout_param_regalloc_hint_objects() {
   bir::Function function = make_stack_layout_param_object_collection_function();
+  prepare::PreparedNameTables names;
   prepare::PreparedObjectId next_object_id = 0;
-  auto objects = prepare::stack_layout::collect_function_stack_objects(function, next_object_id);
-  prepare::stack_layout::apply_regalloc_hints(function,
+  auto objects = prepare::stack_layout::collect_function_stack_objects(names, function, next_object_id);
+  prepare::stack_layout::apply_regalloc_hints(names,
+                                              function,
                                               prepare::stack_layout::FunctionInlineAsmSummary{},
                                               objects);
   return objects;
@@ -280,6 +284,12 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
   const auto* live_slot = find_frame_slot(prepared, live_object->object_id);
   if (live_slot == nullptr) {
     return fail("expected the live local slot to keep a canonical frame slot");
+  }
+  if (prepare::prepared_function_name(prepared.names, live_object->function_name) !=
+          "stack_layout_copy_coalescing_activation" ||
+      prepare::prepared_function_name(prepared.names, live_slot->function_name) !=
+          "stack_layout_copy_coalescing_activation") {
+    return fail("expected stack-layout objects and frame slots to carry semantic function ids");
   }
 
   const auto* store_access =

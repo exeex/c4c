@@ -135,7 +135,7 @@ struct PreparedBirModule;
 
 struct PreparedStackObject {
   PreparedObjectId object_id = 0;
-  std::string function_name;
+  FunctionNameId function_name = kInvalidFunctionName;
   std::string source_name;
   std::string source_kind;
   c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
@@ -149,7 +149,7 @@ struct PreparedStackObject {
 struct PreparedFrameSlot {
   PreparedFrameSlotId slot_id = 0;
   PreparedObjectId object_id = 0;
-  std::string function_name;
+  FunctionNameId function_name = kInvalidFunctionName;
   std::size_t offset_bytes = 0;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
@@ -272,7 +272,8 @@ struct FunctionInlineAsmSummary {
   bool has_side_effects = false;
 };
 
-std::vector<PreparedStackObject> collect_function_stack_objects(const bir::Function& function,
+std::vector<PreparedStackObject> collect_function_stack_objects(PreparedNameTables& names,
+                                                                const bir::Function& function,
                                                                 PreparedObjectId& next_object_id);
 
 void apply_alloca_coalescing_hints(const bir::Function& function,
@@ -283,7 +284,8 @@ void apply_copy_coalescing_hints(const bir::Function& function,
 
 FunctionInlineAsmSummary summarize_inline_asm(const bir::Function& function);
 
-void apply_regalloc_hints(const bir::Function& function,
+void apply_regalloc_hints(PreparedNameTables& names,
+                          const bir::Function& function,
                           const FunctionInlineAsmSummary& inline_asm_summary,
                           std::vector<PreparedStackObject>& objects);
 

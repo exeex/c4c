@@ -137,10 +137,11 @@ void absorb_value_metadata(DenseValueInfo& info,
 }
 
 [[nodiscard]] std::unordered_map<std::string, std::vector<const PreparedStackObject*>>
-build_stack_object_lookup(const bir::Function& function, const PreparedStackLayout& stack_layout) {
+build_stack_object_lookup(FunctionNameId function_name,
+                          const PreparedStackLayout& stack_layout) {
   std::unordered_map<std::string, std::vector<const PreparedStackObject*>> lookup;
   for (const auto& object : stack_layout.objects) {
-    if (object.function_name != function.name) {
+    if (object.function_name != function_name) {
       continue;
     }
     lookup[object.source_name].push_back(&object);
@@ -303,9 +304,11 @@ void collect_dense_values_from_terminator(
   }
 }
 
-[[nodiscard]] DenseValueSet build_dense_value_set(const bir::Function& function,
+[[nodiscard]] DenseValueSet build_dense_value_set(PreparedNameTables& names,
+                                                  const bir::Function& function,
                                                   const PreparedStackLayout& stack_layout) {
-  const auto stack_object_lookup = build_stack_object_lookup(function, stack_layout);
+  const FunctionNameId function_name_id = names.function_names.intern(function.name);
+  const auto stack_object_lookup = build_stack_object_lookup(function_name_id, stack_layout);
   DenseValueSet dense_values;
 
   for (const auto& param : function.params) {
@@ -800,7 +803,8 @@ void BirPreAlloc::run_liveness() {
       continue;
     }
 
-    const DenseValueSet dense_values = build_dense_value_set(function, prepared_.stack_layout);
+    const DenseValueSet dense_values =
+        build_dense_value_set(prepared_.names, function, prepared_.stack_layout);
     const auto block_indices = build_block_index_map(function);
     const auto successors = build_successors(function, block_indices);
     const auto predecessors = build_predecessors(successors);

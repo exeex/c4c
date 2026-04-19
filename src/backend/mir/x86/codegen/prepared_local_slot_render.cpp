@@ -53,8 +53,11 @@ std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_la
     max_align = std::max(max_align, slot_align);
   }
   if (stack_layout != nullptr) {
+    const auto function_name_id =
+        prepared_names == nullptr ? c4c::kInvalidFunctionName
+                                  : prepared_names->function_names.find(function.name);
     for (const auto& frame_slot : stack_layout->frame_slots) {
-      if (frame_slot.function_name != function.name) {
+      if (frame_slot.function_name != function_name_id) {
         continue;
       }
       layout.frame_slot_offsets.emplace(frame_slot.slot_id, frame_slot.offset_bytes);

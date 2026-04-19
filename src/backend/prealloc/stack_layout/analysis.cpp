@@ -30,6 +30,7 @@ namespace {
 }
 
 [[nodiscard]] PreparedStackObject make_local_slot_object(const bir::Function& function,
+                                                         PreparedNameTables& names,
                                                          const bir::LocalSlot& slot,
                                                          PreparedObjectId object_id) {
   const std::string_view source_kind = local_slot_source_kind(slot);
@@ -37,7 +38,7 @@ namespace {
       local_slot_has_explicit_home_slot_contract(slot, source_kind);
   return PreparedStackObject{
       .object_id = object_id,
-      .function_name = function.name,
+      .function_name = names.function_names.intern(function.name),
       .source_name = slot.name,
       .source_kind = std::string(source_kind),
       .type = slot.type,
@@ -50,6 +51,7 @@ namespace {
 }
 
 [[nodiscard]] std::optional<PreparedStackObject> make_param_object(const bir::Function& function,
+                                                                   PreparedNameTables& names,
                                                                    const bir::Param& param,
                                                                    PreparedObjectId object_id) {
   // The active C++ BIR models aggregate params directly on `bir::Param`.
@@ -79,7 +81,7 @@ namespace {
 
   return PreparedStackObject{
       .object_id = object_id,
-      .function_name = function.name,
+      .function_name = names.function_names.intern(function.name),
       .source_name = param.name,
       .source_kind = std::string(source_kind),
       .type = param.type,
@@ -93,17 +95,18 @@ namespace {
 
 }  // namespace
 
-std::vector<PreparedStackObject> collect_function_stack_objects(const bir::Function& function,
+std::vector<PreparedStackObject> collect_function_stack_objects(PreparedNameTables& names,
+                                                                const bir::Function& function,
                                                                 PreparedObjectId& next_object_id) {
   std::vector<PreparedStackObject> objects;
   objects.reserve(function.local_slots.size() + function.params.size());
 
   for (const auto& slot : function.local_slots) {
-    objects.push_back(make_local_slot_object(function, slot, next_object_id++));
+    objects.push_back(make_local_slot_object(function, names, slot, next_object_id++));
   }
 
   for (const auto& param : function.params) {
-    if (auto object = make_param_object(function, param, next_object_id); object.has_value()) {
+    if (auto object = make_param_object(function, names, param, next_object_id); object.has_value()) {
       ++next_object_id;
       objects.push_back(*object);
     }

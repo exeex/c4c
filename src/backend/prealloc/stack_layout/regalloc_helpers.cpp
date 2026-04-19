@@ -15,11 +15,13 @@ const bir::LocalSlot* find_local_slot(const bir::Function& function, std::string
 
 }  // namespace
 
-void apply_regalloc_hints(const bir::Function& function,
+void apply_regalloc_hints(PreparedNameTables& names,
+                          const bir::Function& function,
                           const FunctionInlineAsmSummary& inline_asm_summary,
                           std::vector<PreparedStackObject>& objects) {
+  const FunctionNameId function_name_id = names.function_names.intern(function.name);
   for (auto& object : objects) {
-    if (object.function_name != function.name) {
+    if (object.function_name != function_name_id) {
       continue;
     }
 

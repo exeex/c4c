@@ -480,12 +480,14 @@ void BirPreAlloc::run_stack_layout() {
       continue;
     }
 
-    auto function_objects = stack_layout::collect_function_stack_objects(function, next_object_id);
+    auto function_objects =
+        stack_layout::collect_function_stack_objects(prepared_.names, function, next_object_id);
     stack_layout::apply_alloca_coalescing_hints(function, function_objects);
     stack_layout::apply_copy_coalescing_hints(function, function_objects);
 
     const auto inline_asm_summary = stack_layout::summarize_inline_asm(function);
-    stack_layout::apply_regalloc_hints(function, inline_asm_summary, function_objects);
+    stack_layout::apply_regalloc_hints(
+        prepared_.names, function, inline_asm_summary, function_objects);
 
     std::size_t function_frame_size = 0;
     std::size_t function_frame_alignment = 1;
