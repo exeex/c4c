@@ -681,6 +681,7 @@ struct PreparedShortCircuitBranchPlan {
 struct PreparedJoinCarrier {
   std::size_t carrier_index = 0;
   std::string_view result_name;
+  ValueNameId result_name_id = kInvalidValueName;
 };
 
 struct PreparedSupportedImmediateBinary {
@@ -720,6 +721,7 @@ struct PreparedMaterializedCompareJoinContext {
   const bir::BinaryInst* trailing_binary = nullptr;
   std::size_t carrier_index = 0;
   std::string_view carrier_result_name;
+  ValueNameId carrier_result_name_id = kInvalidValueName;
 };
 
 struct PreparedMaterializedCompareJoinReturnContext {
@@ -1107,16 +1109,16 @@ find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
 [[nodiscard]] inline std::optional<PreparedParamZeroBranchCondition>
 find_prepared_param_zero_branch_condition(const PreparedNameTables& names,
                                           const PreparedControlFlowFunction& function_cf,
+                                          BlockLabelId source_block_label_id,
                                           const bir::Block& source_block,
-                                          const bir::Param& param,
+                                          ValueNameId param_name_id,
                                           bool require_label_match) {
   if (source_block.terminator.kind != bir::TerminatorKind::CondBranch ||
       source_block.terminator.condition.kind != bir::Value::Kind::Named) {
     return std::nullopt;
   }
 
-  const BlockLabelId source_block_label_id = names.block_labels.find(source_block.label);
-  if (source_block_label_id == kInvalidBlockLabel) {
+  if (source_block_label_id == kInvalidBlockLabel || param_name_id == kInvalidValueName) {
     return std::nullopt;
   }
 
@@ -1140,15 +1142,16 @@ find_prepared_param_zero_branch_condition(const PreparedNameTables& names,
     return std::nullopt;
   }
 
+  const std::string_view param_name = prepared_value_name(names, param_name_id);
   const bool lhs_is_param_rhs_is_zero =
       branch_condition->lhs->kind == bir::Value::Kind::Named &&
-      branch_condition->lhs->name == param.name &&
+      branch_condition->lhs->name == param_name &&
       branch_condition->rhs->kind == bir::Value::Kind::Immediate &&
       branch_condition->rhs->type == bir::TypeKind::I32 &&
       branch_condition->rhs->immediate == 0;
   const bool rhs_is_param_lhs_is_zero =
       branch_condition->rhs->kind == bir::Value::Kind::Named &&
-      branch_condition->rhs->name == param.name &&
+      branch_condition->rhs->name == param_name &&
       branch_condition->lhs->kind == bir::Value::Kind::Immediate &&
       branch_condition->lhs->type == bir::TypeKind::I32 &&
       branch_condition->lhs->immediate == 0;
@@ -1174,6 +1177,20 @@ find_prepared_param_zero_branch_condition(const PreparedNameTables& names,
   }
 
   return std::nullopt;
+}
+
+[[nodiscard]] inline std::optional<PreparedParamZeroBranchCondition>
+find_prepared_param_zero_branch_condition(const PreparedNameTables& names,
+                                          const PreparedControlFlowFunction& function_cf,
+                                          const bir::Block& source_block,
+                                          const bir::Param& param,
+                                          bool require_label_match) {
+  return find_prepared_param_zero_branch_condition(names,
+                                                   function_cf,
+                                                   names.block_labels.find(source_block.label),
+                                                   source_block,
+                                                   names.value_names.find(param.name),
+                                                   require_label_match);
 }
 
 [[nodiscard]] inline const bir::Block* find_block_in_function(const bir::Function& function,
@@ -1242,18 +1259,22 @@ find_prepared_param_zero_branch_return_context(const PreparedNameTables& names,
 }
 
 [[nodiscard]] inline const PreparedJoinTransfer* find_prepared_join_transfer(
+    const PreparedNameTables& names,
     const PreparedControlFlowFunction& function_cf,
     BlockLabelId join_block_label,
     std::string_view destination_value_name) {
-  for (const auto& transfer : function_cf.join_transfers) {
-    if (transfer.join_block_label == join_block_label &&
-        transfer.result.kind == bir::Value::Kind::Named &&
-        transfer.result.name == destination_value_name) {
-      return &transfer;
-    }
+  const ValueNameId destination_value_name_id = names.value_names.find(destination_value_name);
+  if (destination_value_name_id == kInvalidValueName) {
+    return nullptr;
   }
-  return nullptr;
+  return find_prepared_join_transfer(
+      names, function_cf, join_block_label, destination_value_name_id);
 }
+
+[[nodiscard]] inline const PreparedJoinTransfer* find_prepared_join_transfer(
+    const PreparedControlFlowFunction& function_cf,
+    BlockLabelId join_block_label,
+    std::string_view destination_value_name) = delete;
 
 [[nodiscard]] inline const PreparedJoinTransfer* find_prepared_join_transfer(
     const PreparedNameTables& names,
@@ -1264,7 +1285,8 @@ find_prepared_param_zero_branch_return_context(const PreparedNameTables& names,
   if (join_block_label_id == kInvalidBlockLabel) {
     return nullptr;
   }
-  return find_prepared_join_transfer(function_cf, join_block_label_id, destination_value_name);
+  return find_prepared_join_transfer(
+      names, function_cf, join_block_label_id, destination_value_name);
 }
 
 [[nodiscard]] inline const PreparedJoinTransfer* find_branch_owned_join_transfer(
@@ -1598,29 +1620,36 @@ find_authoritative_short_circuit_join_sources(
 
   const auto& join_carrier = join_block.insts[carrier_index];
   if (const auto* select = std::get_if<bir::SelectInst>(&join_carrier); select != nullptr) {
+    const ValueNameId result_name_id =
+        const_cast<ValueNameTable&>(names.value_names).intern(select->result.name);
     if (join_transfer.kind != PreparedJoinTransferKind::SelectMaterialization ||
         select->result.kind != bir::Value::Kind::Named ||
-        select->result.type != bir::TypeKind::I32) {
+        select->result.type != bir::TypeKind::I32 || result_name_id == kInvalidValueName) {
       return std::nullopt;
     }
     return PreparedJoinCarrier{
         .carrier_index = carrier_index,
         .result_name = select->result.name,
+        .result_name_id = result_name_id,
     };
   }
 
   if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&join_carrier);
       load_local != nullptr) {
+    const ValueNameId result_name_id =
+        const_cast<ValueNameTable&>(names.value_names).intern(load_local->result.name);
     if (join_transfer.kind != PreparedJoinTransferKind::EdgeStoreSlot ||
         !join_transfer.storage_name.has_value() ||
         load_local->slot_name != prepared_slot_name(names, *join_transfer.storage_name) ||
         load_local->result.kind != bir::Value::Kind::Named ||
-        load_local->result.type != bir::TypeKind::I32) {
+        load_local->result.type != bir::TypeKind::I32 ||
+        result_name_id == kInvalidValueName) {
       return std::nullopt;
     }
     return PreparedJoinCarrier{
         .carrier_index = carrier_index,
         .result_name = load_local->result.name,
+        .result_name_id = result_name_id,
     };
   }
 
@@ -1884,7 +1913,8 @@ find_materialized_compare_join_context(
   }
   if (join_block->terminator.value->kind != bir::Value::Kind::Named ||
       (trailing_binary == nullptr &&
-       join_block->terminator.value->name != prepared_carrier->result_name)) {
+       join_block->terminator.value->name !=
+           prepared_value_name(names, prepared_carrier->result_name_id))) {
     return std::nullopt;
   }
 
@@ -1899,6 +1929,7 @@ find_materialized_compare_join_context(
       .trailing_binary = trailing_binary,
       .carrier_index = prepared_carrier->carrier_index,
       .carrier_result_name = prepared_carrier->result_name,
+      .carrier_result_name_id = prepared_carrier->result_name_id,
   };
 }
 
@@ -1927,13 +1958,15 @@ find_prepared_compare_join_continuation_targets(
 
   const bool lhs_is_join_result_rhs_is_zero =
       join_branch_condition.lhs->kind == bir::Value::Kind::Named &&
-      join_branch_condition.lhs->name == prepared_carrier->result_name &&
+      join_branch_condition.lhs->name ==
+          prepared_value_name(names, prepared_carrier->result_name_id) &&
       join_branch_condition.rhs->kind == bir::Value::Kind::Immediate &&
       join_branch_condition.rhs->type == bir::TypeKind::I32 &&
       join_branch_condition.rhs->immediate == 0;
   const bool rhs_is_join_result_lhs_is_zero =
       join_branch_condition.rhs->kind == bir::Value::Kind::Named &&
-      join_branch_condition.rhs->name == prepared_carrier->result_name &&
+      join_branch_condition.rhs->name ==
+          prepared_value_name(names, prepared_carrier->result_name_id) &&
       join_branch_condition.lhs->kind == bir::Value::Kind::Immediate &&
       join_branch_condition.lhs->type == bir::TypeKind::I32 &&
       join_branch_condition.lhs->immediate == 0;
@@ -2358,8 +2391,9 @@ find_prepared_materialized_compare_join_return_context(
 
   std::optional<PreparedSupportedImmediateBinary> trailing_binary;
   if (compare_join_context.trailing_binary != nullptr) {
-    trailing_binary = classify_supported_immediate_binary(*compare_join_context.trailing_binary,
-                                                          compare_join_context.carrier_result_name);
+    trailing_binary = classify_supported_immediate_binary(
+        *compare_join_context.trailing_binary,
+        prepared_value_name(names, compare_join_context.carrier_result_name_id));
     if (!trailing_binary.has_value()) {
       return std::nullopt;
     }
