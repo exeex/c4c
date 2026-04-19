@@ -8,37 +8,36 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 3 Consume Prepared Control-Flow In X86 packet by tightening
-the prepared compare-join entry seam around authoritative prepared branch
-ownership: `src/backend/mir/x86/codegen/prepared_module_emit.cpp` now tries a
-prepared compare-driven entry render path before requiring a trailing live
-compare, so compare-join entry rendering can consume a prepared branch-owned
-compare context when shared control-flow data already exposes it; and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` now proves the shared
-compare-join branch-plan helper keeps publishing the authoritative entry branch
-shape even after the entry compare is replaced with unrelated non-compare
-carrier state.
+Completed a Step 3 Consume Prepared Control-Flow In X86 packet by publishing
+authoritative prepared branch metadata for short-circuit rhs continuation
+blocks in shared prepare control-flow data: `src/backend/prealloc/legalize.cpp`
+now records a continuation `PreparedBranchCondition` for branch-to-join rhs
+compare blocks when an existing short-circuit join contract already determines
+their true/false continuation labels, and
+`tests/backend/backend_x86_handoff_boundary_test.cpp` now proves both that the
+shared helper publishes the authoritative rhs continuation compare contract and
+that x86 keeps emitting the expected short-circuit route after the live rhs
+compare carrier is rewritten to unrelated compare state.
 
 ## Suggested Next
 
-Stay in Step 3 and tighten the remaining compare-join continuation seam where
-the branch-with-continuation consumer still falls back to a recognizable live
-trailing compare whenever shared control-flow cannot yet supply compare setup
-for that lane, especially the short-circuit rhs compare-join path.
+Stay in Step 3 and extend the prepared continuation-branch contract beyond the
+plain short-circuit rhs lane, especially the EdgeStoreSlot short-circuit lane
+and any remaining compare-join continuation helpers that still assume only the
+entry and join blocks own prepared branch metadata.
 
 ## Watchouts
 
 - Keep this route in Step 3 consumer work; do not widen into Step 4 file
   organization, idea 57, idea 59, idea 60, idea 61, or the unrelated
   `^backend_` semantic-lowering failures.
-- This packet only removes one compare-join entry gate when a prepared branch
-  condition already exists for the source block; short-circuit rhs continuation
-  lanes that have no prepared compare contract still depend on their live
-  trailing compare semantics.
-- The route is acceptable because it removes dependence on carrier branch state
-  and compare semantics for the covered case; do not regress into new
-  emitter-local CFG recovery or
-  testcase-shaped guard lanes.
+- Short-circuit prepare control-flow now publishes an extra continuation branch
+  condition for the rhs compare block, so handoff-boundary checks must stop
+  assuming the short-circuit fixture has exactly two branch conditions.
+- The route is acceptable because it moves rhs continuation compare ownership
+  into shared prepared control-flow instead of adding another x86-local matcher;
+  do not regress into emitter-local continuation recovery or testcase-shaped
+  branch lanes.
 - The broader `^backend_` checkpoint still has the same four known failures in
   variadic and dynamic-member-array semantic lowering outside this packet's
   owned files.

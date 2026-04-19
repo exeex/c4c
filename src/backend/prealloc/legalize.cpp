@@ -975,6 +975,20 @@ PreparedBranchCondition make_branch_condition(const std::string& function_name,
   return condition;
 }
 
+const bir::BinaryInst* find_trailing_branch_compare(const bir::Block& block) {
+  if (block.terminator.kind != bir::TerminatorKind::Branch || block.insts.empty()) {
+    return nullptr;
+  }
+
+  const auto* compare = std::get_if<bir::BinaryInst>(&block.insts.back());
+  if (compare == nullptr || !bir::is_compare_opcode(compare->opcode) ||
+      (compare->result.type != bir::TypeKind::I1 &&
+       compare->result.type != bir::TypeKind::I32)) {
+    return nullptr;
+  }
+  return compare;
+}
+
 std::optional<std::string> find_linear_join_predecessor(
     const std::unordered_map<std::string, const bir::Block*>& blocks_by_label,
     std::string_view start_label,
@@ -1082,6 +1096,81 @@ void annotate_branch_owned_join_transfers(
       transfer.source_false_transfer_index = candidate->false_transfer_index;
       transfer.source_true_incoming_label = std::move(candidate->true_incoming_label);
       transfer.source_false_incoming_label = std::move(candidate->false_incoming_label);
+    }
+  }
+}
+
+void publish_short_circuit_continuation_branch_conditions(
+    const bir::Function& function,
+    PreparedControlFlowFunction* function_control_flow) {
+  if (function_control_flow == nullptr ||
+      function_control_flow->branch_conditions.empty() ||
+      function_control_flow->join_transfers.empty()) {
+    return;
+  }
+
+  const std::size_t original_branch_condition_count =
+      function_control_flow->branch_conditions.size();
+  for (std::size_t index = 0; index < original_branch_condition_count; ++index) {
+    const auto& entry_branch_condition = function_control_flow->branch_conditions[index];
+    const auto* entry_block = find_block(function, entry_branch_condition.block_label);
+    if (entry_block == nullptr) {
+      continue;
+    }
+
+    const auto prepared_entry_targets =
+        find_prepared_compare_branch_target_labels(entry_branch_condition, *entry_block);
+    if (!prepared_entry_targets.has_value()) {
+      continue;
+    }
+
+    const auto short_circuit_join_context =
+        find_prepared_short_circuit_join_context(
+            *function_control_flow, function, entry_branch_condition.block_label);
+    if (!short_circuit_join_context.has_value()) {
+      continue;
+    }
+
+    const auto prepared_branch_plan =
+        find_prepared_short_circuit_branch_plan(*short_circuit_join_context,
+                                                *prepared_entry_targets);
+    if (!prepared_branch_plan.has_value()) {
+      continue;
+    }
+
+    for (const auto* target :
+         {&prepared_branch_plan->on_compare_true, &prepared_branch_plan->on_compare_false}) {
+      if (target == nullptr || !target->continuation.has_value()) {
+        continue;
+      }
+
+      if (find_prepared_branch_condition(*function_control_flow, target->block_label) != nullptr) {
+        continue;
+      }
+
+      const auto* continuation_block = find_block(function, target->block_label);
+      if (continuation_block == nullptr) {
+        continue;
+      }
+
+      const auto* continuation_compare = find_trailing_branch_compare(*continuation_block);
+      if (continuation_compare == nullptr) {
+        continue;
+      }
+
+      function_control_flow->branch_conditions.push_back(PreparedBranchCondition{
+          .function_name = function.name,
+          .block_label = continuation_block->label,
+          .kind = PreparedBranchConditionKind::FusedCompare,
+          .condition_value = continuation_compare->result,
+          .predicate = continuation_compare->opcode,
+          .compare_type = continuation_compare->operand_type,
+          .lhs = continuation_compare->lhs,
+          .rhs = continuation_compare->rhs,
+          .can_fuse_with_branch = true,
+          .true_label = std::string(target->continuation->true_label),
+          .false_label = std::string(target->continuation->false_label),
+      });
     }
   }
 }
@@ -1315,6 +1404,7 @@ void legalize_module(const c4c::TargetProfile& target_profile,
         &function_control_flow.join_transfers);
     annotate_branch_owned_join_transfers(
         function, function_control_flow.branch_conditions, &function_control_flow.join_transfers);
+    publish_short_circuit_continuation_branch_conditions(function, &function_control_flow);
 
     if (control_flow != nullptr &&
         (!function_control_flow.branch_conditions.empty() ||

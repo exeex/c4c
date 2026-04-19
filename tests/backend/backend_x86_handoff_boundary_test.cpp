@@ -7712,6 +7712,73 @@ int check_short_circuit_route_with_rhs_passthrough_consumes_prepared_control_flo
       module, function_name, failure_context, true);
 }
 
+int check_short_circuit_route_ignores_rhs_compare_carrier_state_when_prepared_control_flow_is_authoritative(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 3 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit continuation branch contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* rhs_block = find_block(function, "logic.rhs.7");
+  if (rhs_block == nullptr || rhs_block->insts.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer has the expected rhs compare block")
+                    .c_str());
+  }
+
+  const auto* rhs_branch_condition =
+      prepare::find_prepared_branch_condition(*control_flow, rhs_block->label);
+  if (rhs_branch_condition == nullptr || !rhs_branch_condition->predicate.has_value() ||
+      !rhs_branch_condition->lhs.has_value() || !rhs_branch_condition->rhs.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer publishes authoritative rhs continuation compare metadata")
+                    .c_str());
+  }
+  if (*rhs_branch_condition->predicate != bir::BinaryOpcode::Ne ||
+      rhs_branch_condition->lhs->kind != bir::Value::Kind::Named ||
+      rhs_branch_condition->lhs->name != "%t12" ||
+      rhs_branch_condition->rhs->kind != bir::Value::Kind::Immediate ||
+      rhs_branch_condition->rhs->immediate != 3 ||
+      rhs_branch_condition->true_label != "block_1" ||
+      rhs_branch_condition->false_label != "block_2") {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped publishing the authoritative rhs continuation compare semantics")
+                    .c_str());
+  }
+
+  auto* rhs_compare = std::get_if<bir::BinaryInst>(&rhs_block->insts.back());
+  if (rhs_compare == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the expected rhs compare carrier")
+                    .c_str());
+  }
+  *rhs_compare = bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "contract.rhs.compare.carrier"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(7),
+      .rhs = bir::Value::immediate_i32(7),
+  };
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_minimal_local_i32_short_circuit_or_guard_asm(function_name)) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped preferring the prepared rhs continuation compare contract")
+                    .c_str());
+  }
+  return 0;
+}
+
 int check_short_circuit_route_consumes_prepared_control_flow_impl(const bir::Module& module,
                                                                   const char* function_name,
                                                                   const char* failure_context,
@@ -7721,7 +7788,7 @@ int check_short_circuit_route_consumes_prepared_control_flow_impl(const bir::Mod
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
   const auto* control_flow = find_control_flow_function(prepared, function_name);
-  if (control_flow == nullptr || control_flow->branch_conditions.size() != 2 ||
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 2 ||
       control_flow->join_transfers.size() != 1) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the short-circuit control-flow contract")
@@ -7748,7 +7815,7 @@ int check_short_circuit_route_consumes_prepared_control_flow_impl(const bir::Mod
   }
   auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
   if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1 ||
-      mutable_control_flow->branch_conditions.size() != 2) {
+      mutable_control_flow->branch_conditions.size() < 2) {
     return fail((std::string(failure_context) +
                  ": prepared short-circuit fixture lost its mutable join-transfer contract")
                     .c_str());
@@ -7884,7 +7951,7 @@ int check_short_circuit_context_publishes_prepared_continuation_labels_impl(
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
   auto* control_flow = find_control_flow_function(prepared, function_name);
-  if (control_flow == nullptr || control_flow->branch_conditions.size() != 2 ||
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 2 ||
       control_flow->join_transfers.size() != 1) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the short-circuit control-flow contract")
@@ -8058,7 +8125,7 @@ int check_short_circuit_entry_branch_helper_publishes_prepared_target_labels(
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
   auto* control_flow = find_control_flow_function(prepared, function_name);
-  if (control_flow == nullptr || control_flow->branch_conditions.size() != 2) {
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 2) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the short-circuit entry branch contract")
                     .c_str());
@@ -8118,7 +8185,7 @@ int check_short_circuit_branch_plan_helper_publishes_prepared_labels(
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
   auto* control_flow = find_control_flow_function(prepared, function_name);
-  if (control_flow == nullptr || control_flow->branch_conditions.size() != 2 ||
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 2 ||
       control_flow->join_transfers.size() != 1) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the short-circuit branch-plan contract")
@@ -8224,7 +8291,7 @@ int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
   const auto* control_flow = find_control_flow_function(prepared, function_name);
-  if (control_flow == nullptr || control_flow->branch_conditions.size() != 2 ||
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 2 ||
       control_flow->join_transfers.size() != 1) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the short-circuit control-flow contract")
@@ -8252,7 +8319,7 @@ int check_short_circuit_edge_store_slot_route_consumes_prepared_control_flow(
 
   auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
   if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1 ||
-      mutable_control_flow->branch_conditions.size() != 2) {
+      mutable_control_flow->branch_conditions.size() < 2) {
     return fail((std::string(failure_context) +
                  ": prepared short-circuit fixture lost its mutable join-transfer contract")
                     .c_str());
@@ -10139,6 +10206,14 @@ int main() {
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
               "minimal local-slot short-circuit or-guard ignores rhs passthrough topology when prepared continuation ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_route_ignores_rhs_compare_carrier_state_when_prepared_control_flow_is_authoritative(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit or-guard ignores rhs compare carrier state when prepared continuation ownership is authoritative");
       status != 0) {
     return status;
   }
