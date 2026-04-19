@@ -343,13 +343,12 @@ template <typename CanEvict>
 
 [[nodiscard]] std::optional<PreparedStackSlotAssignment> existing_stack_slot_assignment(
     const PreparedStackLayout& stack_layout,
-    std::string_view function_name,
     const PreparedRegallocValue& value) {
   if (!value.stack_object_id.has_value()) {
     return std::nullopt;
   }
   for (const auto& slot : stack_layout.frame_slots) {
-    if (slot.function_name != function_name || slot.object_id != *value.stack_object_id) {
+    if (slot.object_id != *value.stack_object_id) {
       continue;
     }
     return PreparedStackSlotAssignment{
@@ -360,14 +359,12 @@ template <typename CanEvict>
   return std::nullopt;
 }
 
-[[nodiscard]] PreparedStackSlotAssignment allocate_stack_slot(std::string_view function_name,
-                                                              const PreparedRegallocValue& value,
+[[nodiscard]] PreparedStackSlotAssignment allocate_stack_slot(const PreparedRegallocValue& value,
                                                               const PreparedStackLayout& stack_layout,
                                                               PreparedFrameSlotId& next_slot_id,
                                                               std::size_t& next_offset_bytes,
                                                               std::size_t& frame_alignment_bytes) {
-  if (const auto existing = existing_stack_slot_assignment(stack_layout, function_name, value);
-      existing.has_value()) {
+  if (const auto existing = existing_stack_slot_assignment(stack_layout, value); existing.has_value()) {
     return *existing;
   }
 
@@ -391,11 +388,13 @@ template <typename CanEvict>
 }
 
 [[nodiscard]] const bir::Function* find_bir_function(const bir::Module& module,
-                                                     std::string_view function_name) {
+                                                     const PreparedNameTables& names,
+                                                     FunctionNameId function_name) {
+  const std::string_view function_spelling = prepared_function_name(names, function_name);
   const auto it = std::find_if(module.functions.begin(),
                                module.functions.end(),
-                               [function_name](const bir::Function& function) {
-                                 return function.name == function_name;
+                               [function_spelling](const bir::Function& function) {
+                                 return function.name == function_spelling;
                                });
   if (it == module.functions.end()) {
     return nullptr;
@@ -405,11 +404,16 @@ template <typename CanEvict>
 
 [[nodiscard]] const PreparedRegallocValue* find_regalloc_value(
     const PreparedRegallocFunction& function,
+    const PreparedNameTables& names,
     std::string_view value_name) {
+  const ValueNameId value_name_id = names.value_names.find(value_name);
+  if (value_name_id == kInvalidValueName) {
+    return nullptr;
+  }
   const auto it = std::find_if(function.values.begin(),
                                function.values.end(),
-                               [value_name](const PreparedRegallocValue& value) {
-                                 return value.value_name == value_name;
+                               [value_name_id](const PreparedRegallocValue& value) {
+                                 return value.value_name == value_name_id;
                                });
   if (it == function.values.end()) {
     return nullptr;
@@ -417,7 +421,8 @@ template <typename CanEvict>
   return &*it;
 }
 
-void append_phi_move_resolution(const bir::Function& function,
+void append_phi_move_resolution(const PreparedNameTables& names,
+                                const bir::Function& function,
                                 PreparedRegallocFunction& regalloc_function) {
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
@@ -427,7 +432,7 @@ void append_phi_move_resolution(const bir::Function& function,
         continue;
       }
 
-      const auto* destination = find_regalloc_value(regalloc_function, phi->result.name);
+      const auto* destination = find_regalloc_value(regalloc_function, names, phi->result.name);
       if (destination == nullptr || assigned_storage_kind(*destination) == PreparedMoveStorageKind::None) {
         continue;
       }
@@ -437,7 +442,7 @@ void append_phi_move_resolution(const bir::Function& function,
           continue;
         }
 
-        const auto* source = find_regalloc_value(regalloc_function, incoming.value.name);
+        const auto* source = find_regalloc_value(regalloc_function, names, incoming.value.name);
         if (source == nullptr || assigned_storage_kind(*source) == PreparedMoveStorageKind::None ||
             assigned_storage_matches(*source, *destination)) {
           continue;
@@ -454,7 +459,8 @@ void append_phi_move_resolution(const bir::Function& function,
   }
 }
 
-void append_consumer_move_resolution(const bir::Function& function,
+void append_consumer_move_resolution(const PreparedNameTables& names,
+                                     const bir::Function& function,
                                      PreparedRegallocFunction& regalloc_function) {
   auto append_for_instruction = [&](const bir::Value& result,
                                     std::initializer_list<const bir::Value*> operands,
@@ -464,7 +470,7 @@ void append_consumer_move_resolution(const bir::Function& function,
       return;
     }
 
-    const auto* destination = find_regalloc_value(regalloc_function, result.name);
+    const auto* destination = find_regalloc_value(regalloc_function, names, result.name);
     if (destination == nullptr) {
       return;
     }
@@ -473,7 +479,7 @@ void append_consumer_move_resolution(const bir::Function& function,
       if (operand == nullptr || operand->kind != bir::Value::Kind::Named) {
         continue;
       }
-      const auto* source = find_regalloc_value(regalloc_function, operand->name);
+      const auto* source = find_regalloc_value(regalloc_function, names, operand->name);
       if (source == nullptr) {
         continue;
       }
@@ -558,7 +564,8 @@ void append_consumer_move_resolution(const bir::Function& function,
   return PreparedMoveStorageKind::None;
 }
 
-void append_call_arg_move_resolution(const c4c::TargetProfile& target_profile,
+void append_call_arg_move_resolution(const PreparedNameTables& names,
+                                     const c4c::TargetProfile& target_profile,
                                      const bir::Function& function,
                                      PreparedRegallocFunction& regalloc_function) {
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
@@ -575,7 +582,7 @@ void append_call_arg_move_resolution(const c4c::TargetProfile& target_profile,
           continue;
         }
 
-        const auto* source = find_regalloc_value(regalloc_function, arg.name);
+        const auto* source = find_regalloc_value(regalloc_function, names, arg.name);
         if (source == nullptr) {
           continue;
         }
@@ -610,7 +617,8 @@ void append_call_arg_move_resolution(const c4c::TargetProfile& target_profile,
   }
 }
 
-void append_call_result_move_resolution(const c4c::TargetProfile& target_profile,
+void append_call_result_move_resolution(const PreparedNameTables& names,
+                                        const c4c::TargetProfile& target_profile,
                                         const bir::Function& function,
                                         PreparedRegallocFunction& regalloc_function) {
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
@@ -621,7 +629,7 @@ void append_call_result_move_resolution(const c4c::TargetProfile& target_profile
         continue;
       }
 
-      const auto* result = find_regalloc_value(regalloc_function, call->result->name);
+      const auto* result = find_regalloc_value(regalloc_function, names, call->result->name);
       if (result == nullptr) {
         continue;
       }
@@ -654,7 +662,8 @@ void append_call_result_move_resolution(const c4c::TargetProfile& target_profile
   }
 }
 
-void append_return_move_resolution(const c4c::TargetProfile& target_profile,
+void append_return_move_resolution(const PreparedNameTables& names,
+                                   const c4c::TargetProfile& target_profile,
                                    const bir::Function& function,
                                    PreparedRegallocFunction& regalloc_function) {
   const PreparedMoveStorageKind consumed_kind = function_return_storage_kind(function);
@@ -669,7 +678,7 @@ void append_return_move_resolution(const c4c::TargetProfile& target_profile,
       continue;
     }
 
-    const auto* source = find_regalloc_value(regalloc_function, block.terminator.value->name);
+    const auto* source = find_regalloc_value(regalloc_function, names, block.terminator.value->name);
     if (source == nullptr) {
       continue;
     }
@@ -957,8 +966,7 @@ void BirPreAlloc::run_regalloc() {
       }
 
       if (value.requires_home_slot) {
-        value.assigned_stack_slot = allocate_stack_slot(regalloc_function.function_name,
-                                                        value,
+        value.assigned_stack_slot = allocate_stack_slot(value,
                                                         prepared_.stack_layout,
                                                         next_slot_id,
                                                         next_offset_bytes,
@@ -970,8 +978,7 @@ void BirPreAlloc::run_regalloc() {
 
       if (!value.live_interval.has_value() || value.register_class == PreparedRegisterClass::None) {
         if (normalized_value_size(value) != 0U) {
-          value.assigned_stack_slot = allocate_stack_slot(regalloc_function.function_name,
-                                                          value,
+          value.assigned_stack_slot = allocate_stack_slot(value,
                                                           prepared_.stack_layout,
                                                           next_slot_id,
                                                           next_offset_bytes,
@@ -982,8 +989,7 @@ void BirPreAlloc::run_regalloc() {
         continue;
       }
 
-      value.assigned_stack_slot = allocate_stack_slot(regalloc_function.function_name,
-                                                      value,
+      value.assigned_stack_slot = allocate_stack_slot(value,
                                                       prepared_.stack_layout,
                                                       next_slot_id,
                                                       next_offset_bytes,
@@ -993,13 +999,17 @@ void BirPreAlloc::run_regalloc() {
     }
 
     append_spill_reload_ops(liveness_function, spill_points, regalloc_function);
-    if (const auto* function = find_bir_function(prepared_.module, regalloc_function.function_name);
+    if (const auto* function =
+            find_bir_function(prepared_.module, prepared_.names, regalloc_function.function_name);
         function != nullptr) {
-      append_phi_move_resolution(*function, regalloc_function);
-      append_consumer_move_resolution(*function, regalloc_function);
-      append_call_arg_move_resolution(prepared_.target_profile, *function, regalloc_function);
-      append_call_result_move_resolution(prepared_.target_profile, *function, regalloc_function);
-      append_return_move_resolution(prepared_.target_profile, *function, regalloc_function);
+      append_phi_move_resolution(prepared_.names, *function, regalloc_function);
+      append_consumer_move_resolution(prepared_.names, *function, regalloc_function);
+      append_call_arg_move_resolution(
+          prepared_.names, prepared_.target_profile, *function, regalloc_function);
+      append_call_result_move_resolution(
+          prepared_.names, prepared_.target_profile, *function, regalloc_function);
+      append_return_move_resolution(
+          prepared_.names, prepared_.target_profile, *function, regalloc_function);
     }
 
     prepared_.stack_layout.frame_size_bytes =
@@ -1010,7 +1020,9 @@ void BirPreAlloc::run_regalloc() {
 
     prepared_.notes.push_back(PrepareNote{
         .phase = "regalloc",
-        .message = "regalloc seeded function '" + regalloc_function.function_name + "' with " +
+        .message = "regalloc seeded function '" +
+                   std::string(prepared_function_name(prepared_.names, regalloc_function.function_name)) +
+                   "' with " +
                    std::to_string(regalloc_function.constraints.size()) +
                    " allocation constraint(s) and " +
                    std::to_string(regalloc_function.interference.size()) +

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../bir/bir.hpp"
+#include "../../shared/text_id_table.hpp"
 #include "../../target_profile.hpp"
 
 #include <cstdlib>
@@ -31,6 +32,92 @@ struct PrepareNote {
   std::string phase;
   std::string message;
 };
+
+struct PreparedNameTables {
+  PreparedNameTables() { reattach(); }
+
+  PreparedNameTables(const PreparedNameTables& other)
+      : texts(other.texts),
+        function_names(other.function_names),
+        block_labels(other.block_labels),
+        value_names(other.value_names),
+        slot_names(other.slot_names),
+        link_names(other.link_names) {
+    reattach();
+  }
+
+  PreparedNameTables(PreparedNameTables&& other) noexcept
+      : texts(std::move(other.texts)),
+        function_names(std::move(other.function_names)),
+        block_labels(std::move(other.block_labels)),
+        value_names(std::move(other.value_names)),
+        slot_names(std::move(other.slot_names)),
+        link_names(std::move(other.link_names)) {
+    reattach();
+  }
+
+  PreparedNameTables& operator=(const PreparedNameTables& other) {
+    if (this == &other) {
+      return *this;
+    }
+    texts = other.texts;
+    function_names = other.function_names;
+    block_labels = other.block_labels;
+    value_names = other.value_names;
+    slot_names = other.slot_names;
+    link_names = other.link_names;
+    reattach();
+    return *this;
+  }
+
+  PreparedNameTables& operator=(PreparedNameTables&& other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+    texts = std::move(other.texts);
+    function_names = std::move(other.function_names);
+    block_labels = std::move(other.block_labels);
+    value_names = std::move(other.value_names);
+    slot_names = std::move(other.slot_names);
+    link_names = std::move(other.link_names);
+    reattach();
+    return *this;
+  }
+
+  TextTable texts;
+  FunctionNameTable function_names{&texts};
+  BlockLabelTable block_labels{&texts};
+  ValueNameTable value_names{&texts};
+  SlotNameTable slot_names{&texts};
+  LinkNameTable link_names{&texts};
+
+ private:
+  void reattach() {
+    function_names.attach_text_table(&texts);
+    block_labels.attach_text_table(&texts);
+    value_names.attach_text_table(&texts);
+    slot_names.attach_text_table(&texts);
+    link_names.attach_text_table(&texts);
+  }
+};
+
+[[nodiscard]] inline std::string_view prepared_function_name(
+    const PreparedNameTables& names,
+    FunctionNameId id) {
+  return names.function_names.spelling(id);
+}
+
+[[nodiscard]] inline std::string_view prepared_block_label(
+    const PreparedNameTables& names,
+    BlockLabelId id) {
+  return names.block_labels.spelling(id);
+}
+
+[[nodiscard]] inline std::string_view prepared_value_name(
+    const PreparedNameTables& names,
+    ValueNameId id) {
+  return names.value_names.spelling(id);
+}
 
 struct PreparedStackObject {
   PreparedObjectId object_id = 0;
@@ -203,8 +290,8 @@ struct PreparedLiveInterval {
 struct PreparedLivenessValue {
   PreparedValueId value_id = 0;
   std::optional<PreparedObjectId> stack_object_id;
-  std::string function_name;
-  std::string value_name;
+  FunctionNameId function_name = kInvalidFunctionName;
+  ValueNameId value_name = kInvalidValueName;
   c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
   PreparedValueKind value_kind = PreparedValueKind::Temporary;
   bool address_taken = false;
@@ -216,7 +303,7 @@ struct PreparedLivenessValue {
 };
 
 struct PreparedLivenessBlock {
-  std::string block_name;
+  BlockLabelId block_name = kInvalidBlockLabel;
   std::size_t block_index = 0;
   std::size_t start_point = 0;
   std::size_t end_point = 0;
@@ -227,7 +314,7 @@ struct PreparedLivenessBlock {
 };
 
 struct PreparedLivenessFunction {
-  std::string function_name;
+  FunctionNameId function_name = kInvalidFunctionName;
   std::size_t instruction_count = 0;
   std::vector<PreparedLiveInterval> intervals;
   std::vector<std::size_t> call_points;
@@ -371,8 +458,8 @@ struct PreparedSpillReloadOp {
 struct PreparedRegallocValue {
   PreparedValueId value_id = 0;
   std::optional<PreparedObjectId> stack_object_id;
-  std::string function_name;
-  std::string value_name;
+  FunctionNameId function_name = kInvalidFunctionName;
+  ValueNameId value_name = kInvalidValueName;
   c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
   PreparedValueKind value_kind = PreparedValueKind::Temporary;
   PreparedRegisterClass register_class = PreparedRegisterClass::None;
@@ -388,7 +475,7 @@ struct PreparedRegallocValue {
 };
 
 struct PreparedRegallocFunction {
-  std::string function_name;
+  FunctionNameId function_name = kInvalidFunctionName;
   std::vector<PreparedRegallocValue> values;
   std::vector<PreparedAllocationConstraint> constraints;
   std::vector<PreparedInterferenceEdge> interference;
@@ -2255,6 +2342,7 @@ struct PreparedBirModule {
   c4c::TargetProfile target_profile{};
   PrepareRoute route = PrepareRoute::SemanticBirShared;
   std::vector<PreparedBirInvariant> invariants;
+  PreparedNameTables names;
   PreparedControlFlow control_flow;
   PreparedStackLayout stack_layout;
   PreparedAddressing addressing;

@@ -708,6 +708,7 @@ void record_point_activity(const std::vector<std::size_t>& uses,
 }
 
 [[nodiscard]] std::vector<PreparedLivenessBlock> build_prepared_blocks(
+    PreparedNameTables& names,
     const bir::Function& function,
     const std::vector<BlockProgramPoints>& block_points,
     const std::vector<std::vector<std::size_t>>& successors,
@@ -719,7 +720,7 @@ void record_point_activity(const std::vector<std::size_t>& uses,
   blocks.reserve(function.blocks.size());
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     blocks.push_back(PreparedLivenessBlock{
-        .block_name = function.blocks[block_index].label,
+        .block_name = names.block_labels.intern(function.blocks[block_index].label),
         .block_index = block_index,
         .start_point = block_points[block_index].start_point,
         .end_point = block_points[block_index].end_point,
@@ -751,7 +752,8 @@ void extend_intervals_from_liveness(const std::vector<BlockProgramPoints>& block
 }
 
 [[nodiscard]] PreparedLivenessValue build_liveness_value(const DenseValueInfo& info,
-                                                         const std::string& function_name,
+                                                         PreparedNameTables& names,
+                                                         FunctionNameId function_name,
                                                          PreparedValueId value_id,
                                                          std::optional<std::size_t> definition_point,
                                                          std::vector<std::size_t> use_points,
@@ -761,7 +763,7 @@ void extend_intervals_from_liveness(const std::vector<BlockProgramPoints>& block
       .value_id = value_id,
       .stack_object_id = info.stack_object_id,
       .function_name = function_name,
-      .value_name = info.value_name,
+      .value_name = names.value_names.intern(info.value_name),
       .type = info.type,
       .value_kind = info.value_kind,
       .address_taken = info.address_taken,
@@ -819,14 +821,23 @@ void BirPreAlloc::run_liveness() {
       dense_value_ids.push_back(next_value_id + dense_index);
     }
 
+    const FunctionNameId function_name_id =
+        prepared_.names.function_names.intern(function.name);
     PreparedLivenessFunction prepared_function{
-        .function_name = function.name,
+        .function_name = function_name_id,
         .instruction_count = points.total_points,
         .intervals = {},
         .call_points = std::move(points.call_points),
         .block_loop_depth = compute_loop_depth(successors),
         .blocks = build_prepared_blocks(
-            function, points.blocks, successors, predecessors, live_in, live_out, dense_value_ids),
+            prepared_.names,
+            function,
+            points.blocks,
+            successors,
+            predecessors,
+            live_in,
+            live_out,
+            dense_value_ids),
         .values = {},
     };
     prepared_function.values.reserve(dense_values.values.size());
@@ -841,13 +852,15 @@ void BirPreAlloc::run_liveness() {
             .end_point = std::max(points.first_points[dense_index], points.last_points[dense_index]),
         };
       }
-      auto value = build_liveness_value(dense_values.values[dense_index],
-                                        function.name,
-                                        dense_value_ids[dense_index],
-                                        points.def_points[dense_index],
-                                        points.use_points[dense_index],
-                                        interval,
-                                        prepared_function.call_points);
+      auto value =
+          build_liveness_value(dense_values.values[dense_index],
+                               prepared_.names,
+                               function_name_id,
+                               dense_value_ids[dense_index],
+                               points.def_points[dense_index],
+                               points.use_points[dense_index],
+                               interval,
+                               prepared_function.call_points);
       if (value.live_interval.has_value()) {
         prepared_function.intervals.push_back(*value.live_interval);
       }

@@ -11,10 +11,18 @@ namespace c4c {
 using TextId = uint32_t;
 using LinkNameId = uint32_t;
 using MemberSymbolId = uint32_t;
+using FunctionNameId = uint32_t;
+using BlockLabelId = uint32_t;
+using ValueNameId = uint32_t;
+using SlotNameId = uint32_t;
 
 constexpr TextId kInvalidText = 0;
 constexpr LinkNameId kInvalidLinkName = 0;
 constexpr MemberSymbolId kInvalidMemberSymbol = 0;
+constexpr FunctionNameId kInvalidFunctionName = 0;
+constexpr BlockLabelId kInvalidBlockLabel = 0;
+constexpr ValueNameId kInvalidValueName = 0;
+constexpr SlotNameId kInvalidSlotName = 0;
 
 // Generic stable-id table keyed by a caller-provided value type.
 template <typename Id, Id InvalidId, typename Key>
@@ -122,91 +130,55 @@ struct PathIdTable : KeyIdTable<Id, InvalidId, std::string> {
 
 using TextTable = StringIdTable<TextId, kInvalidText>;
 
-// Final logical symbol identity layer. Link names reuse TextTable storage
-// rather than owning a second copy of the spelling bytes.
-struct LinkNameTable {
-  explicit LinkNameTable(TextTable* texts = nullptr) : texts_(texts) {}
+// Semantic ids reuse TextTable storage so domain-specific name tables can carry
+// meaning without owning duplicate spelling bytes.
+template <typename Id, Id InvalidId>
+struct SemanticNameTable {
+  explicit SemanticNameTable(TextTable* texts = nullptr) : texts_(texts) {}
 
   void attach_text_table(TextTable* texts) { texts_ = texts; }
 
-  LinkNameId find(TextId text_id) const {
-    if (!texts_ || text_id == kInvalidText) return kInvalidLinkName;
-    return link_name_ids_.find(text_id);
+  Id find(TextId text_id) const {
+    if (!texts_ || text_id == kInvalidText) return InvalidId;
+    return ids_.find(text_id);
   }
 
-  LinkNameId find(std::string_view text) const {
-    if (!texts_ || text.empty()) return kInvalidLinkName;
+  Id find(std::string_view text) const {
+    if (!texts_ || text.empty()) return InvalidId;
     return find(texts_->find(text));
   }
 
-  LinkNameId intern(TextId text_id) {
-    if (!texts_ || text_id == kInvalidText) return kInvalidLinkName;
-    return link_name_ids_.intern(text_id);
+  Id intern(TextId text_id) {
+    if (!texts_ || text_id == kInvalidText) return InvalidId;
+    return ids_.intern(text_id);
   }
 
-  LinkNameId intern(std::string_view logical_name) {
-    if (!texts_) return kInvalidLinkName;
-    return intern(texts_->intern(logical_name));
-  }
-
-  TextId text_id(LinkNameId id) const {
-    const TextId* stored = link_name_ids_.lookup(id);
-    return stored ? *stored : kInvalidText;
-  }
-
-  std::string_view spelling(LinkNameId id) const {
-    if (!texts_) return {};
-    return texts_->lookup(text_id(id));
-  }
-
-  size_t size() const { return link_name_ids_.size(); }
-
-  TextTable* texts_ = nullptr;
-  KeyIdTable<LinkNameId, kInvalidLinkName, TextId> link_name_ids_;
-};
-
-// Struct/union member semantic identity layer. Member symbols are not
-// link-visible, but still need a stable semantic id once a concrete owner tag
-// is known. Like LinkNameTable, this reuses TextTable storage.
-struct MemberSymbolTable {
-  explicit MemberSymbolTable(TextTable* texts = nullptr) : texts_(texts) {}
-
-  void attach_text_table(TextTable* texts) { texts_ = texts; }
-
-  MemberSymbolId find(TextId text_id) const {
-    if (!texts_ || text_id == kInvalidText) return kInvalidMemberSymbol;
-    return member_symbol_ids_.find(text_id);
-  }
-
-  MemberSymbolId find(std::string_view text) const {
-    if (!texts_ || text.empty()) return kInvalidMemberSymbol;
-    return find(texts_->find(text));
-  }
-
-  MemberSymbolId intern(TextId text_id) {
-    if (!texts_ || text_id == kInvalidText) return kInvalidMemberSymbol;
-    return member_symbol_ids_.intern(text_id);
-  }
-
-  MemberSymbolId intern(std::string_view semantic_name) {
-    if (!texts_) return kInvalidMemberSymbol;
+  Id intern(std::string_view semantic_name) {
+    if (!texts_) return InvalidId;
     return intern(texts_->intern(semantic_name));
   }
 
-  TextId text_id(MemberSymbolId id) const {
-    const TextId* stored = member_symbol_ids_.lookup(id);
+  TextId text_id(Id id) const {
+    const TextId* stored = ids_.lookup(id);
     return stored ? *stored : kInvalidText;
   }
 
-  std::string_view spelling(MemberSymbolId id) const {
+  std::string_view spelling(Id id) const {
     if (!texts_) return {};
     return texts_->lookup(text_id(id));
   }
 
-  size_t size() const { return member_symbol_ids_.size(); }
+  size_t size() const { return ids_.size(); }
 
   TextTable* texts_ = nullptr;
-  KeyIdTable<MemberSymbolId, kInvalidMemberSymbol, TextId> member_symbol_ids_;
+  KeyIdTable<Id, InvalidId, TextId> ids_;
 };
+
+using LinkNameTable = SemanticNameTable<LinkNameId, kInvalidLinkName>;
+using MemberSymbolTable = SemanticNameTable<MemberSymbolId, kInvalidMemberSymbol>;
+using FunctionNameTable = SemanticNameTable<FunctionNameId, kInvalidFunctionName>;
+using BlockLabelTable = SemanticNameTable<BlockLabelId, kInvalidBlockLabel>;
+using ValueNameTable = SemanticNameTable<ValueNameId, kInvalidValueName>;
+using SlotNameTable = SemanticNameTable<SlotNameId, kInvalidSlotName>;
 
 }  // namespace c4c

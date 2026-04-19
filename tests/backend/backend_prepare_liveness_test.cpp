@@ -35,7 +35,7 @@ const prepare::PreparedLivenessFunction* find_liveness_function(
     const prepare::PreparedBirModule& prepared,
     std::string_view function_name) {
   for (const auto& function : prepared.liveness.functions) {
-    if (function.function_name == function_name) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) == function_name) {
       return &function;
     }
   }
@@ -46,7 +46,7 @@ const prepare::PreparedRegallocFunction* find_regalloc_function(
     const prepare::PreparedBirModule& prepared,
     std::string_view function_name) {
   for (const auto& function : prepared.regalloc.functions) {
-    if (function.function_name == function_name) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) == function_name) {
       return &function;
     }
   }
@@ -54,10 +54,11 @@ const prepare::PreparedRegallocFunction* find_regalloc_function(
 }
 
 const prepare::PreparedLivenessValue* find_liveness_value(
+    const prepare::PreparedBirModule& prepared,
     const prepare::PreparedLivenessFunction& function,
     std::string_view value_name) {
   for (const auto& value : function.values) {
-    if (value.value_name == value_name) {
+    if (prepare::prepared_value_name(prepared.names, value.value_name) == value_name) {
       return &value;
     }
   }
@@ -65,10 +66,11 @@ const prepare::PreparedLivenessValue* find_liveness_value(
 }
 
 const prepare::PreparedRegallocValue* find_regalloc_value(
+    const prepare::PreparedBirModule& prepared,
     const prepare::PreparedRegallocFunction& function,
     std::string_view value_name) {
   for (const auto& value : function.values) {
-    if (value.value_name == value_name) {
+    if (prepare::prepared_value_name(prepared.names, value.value_name) == value_name) {
       return &value;
     }
   }
@@ -1419,10 +1421,10 @@ int check_phi_predecessor_edge_liveness(const prepare::PreparedBirModule& prepar
     return fail("expected liveness to track named BIR values independently of stack-layout objects");
   }
 
-  const auto* left = find_liveness_value(*function, "left.v");
-  const auto* right = find_liveness_value(*function, "right.v");
-  const auto* phi = find_liveness_value(*function, "phi.v");
-  const auto* sum = find_liveness_value(*function, "sum");
+  const auto* left = find_liveness_value(prepared, *function, "left.v");
+  const auto* right = find_liveness_value(prepared, *function, "right.v");
+  const auto* phi = find_liveness_value(prepared, *function, "phi.v");
+  const auto* sum = find_liveness_value(prepared, *function, "sum");
   if (left == nullptr || right == nullptr || phi == nullptr || sum == nullptr) {
     return fail("expected left.v, right.v, phi.v, and sum in prepared liveness");
   }
@@ -1480,10 +1482,10 @@ int check_phi_regalloc_seed_activation(const prepare::PreparedBirModule& prepare
     return fail("expected regalloc to project value-level records from liveness");
   }
 
-  const auto* phi = find_regalloc_value(*function, "phi.v");
-  const auto* sum = find_regalloc_value(*function, "sum");
-  const auto* left = find_regalloc_value(*function, "left.v");
-  const auto* right = find_regalloc_value(*function, "right.v");
+  const auto* phi = find_regalloc_value(prepared, *function, "phi.v");
+  const auto* sum = find_regalloc_value(prepared, *function, "sum");
+  const auto* left = find_regalloc_value(prepared, *function, "left.v");
+  const auto* right = find_regalloc_value(prepared, *function, "right.v");
   if (phi == nullptr || sum == nullptr || left == nullptr || right == nullptr) {
     return fail("expected regalloc to seed left.v, right.v, phi.v, and sum from liveness");
   }
@@ -1538,8 +1540,8 @@ int check_byval_home_slot_regalloc(const prepare::PreparedBirModule& prepared) {
     return fail("expected regalloc output for byval_home_slot");
   }
 
-  const auto* byval = find_regalloc_value(*function, "p.byval");
-  const auto* cmp0 = find_regalloc_value(*function, "cmp0");
+  const auto* byval = find_regalloc_value(prepared, *function, "p.byval");
+  const auto* cmp0 = find_regalloc_value(prepared, *function, "cmp0");
   if (byval == nullptr || cmp0 == nullptr) {
     return fail("expected byval param and compare result to appear in regalloc output");
   }
@@ -1568,9 +1570,9 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
     return fail("expected regalloc output for phi_join_move_resolution");
   }
 
-  const auto* left_feed = find_regalloc_value(*function, "left.feed");
-  const auto* right_feed = find_regalloc_value(*function, "right.feed");
-  const auto* phi = find_regalloc_value(*function, "phi.move");
+  const auto* left_feed = find_regalloc_value(prepared, *function, "left.feed");
+  const auto* right_feed = find_regalloc_value(prepared, *function, "right.feed");
+  const auto* phi = find_regalloc_value(prepared, *function, "phi.move");
   if (left_feed == nullptr || right_feed == nullptr || phi == nullptr) {
     return fail("expected phi join values to appear in regalloc output");
   }
@@ -1615,9 +1617,9 @@ int check_call_crossing_regalloc_spillover(const prepare::PreparedBirModule& pre
     return fail("expected regalloc output for call_crossing_spillover");
   }
 
-  const auto* carry = find_regalloc_value(*function, "carry");
-  const auto* local0 = find_regalloc_value(*function, "local0");
-  const auto* local1 = find_regalloc_value(*function, "local1");
+  const auto* carry = find_regalloc_value(prepared, *function, "carry");
+  const auto* local0 = find_regalloc_value(prepared, *function, "local0");
+  const auto* local1 = find_regalloc_value(prepared, *function, "local1");
   if (carry == nullptr || local0 == nullptr || local1 == nullptr) {
     return fail("expected carry, local0, and local1 to appear in regalloc output");
   }
@@ -1656,10 +1658,10 @@ int check_weighted_post_call_regalloc(const prepare::PreparedBirModule& prepared
     return fail("expected regalloc output for weighted_post_call_pressure");
   }
 
-  const auto* carry = find_regalloc_value(*function, "carry");
-  const auto* low0 = find_regalloc_value(*function, "low0");
-  const auto* low1 = find_regalloc_value(*function, "low1");
-  const auto* hot = find_regalloc_value(*function, "hot");
+  const auto* carry = find_regalloc_value(prepared, *function, "carry");
+  const auto* low0 = find_regalloc_value(prepared, *function, "low0");
+  const auto* low1 = find_regalloc_value(prepared, *function, "low1");
+  const auto* hot = find_regalloc_value(prepared, *function, "hot");
   if (carry == nullptr || low0 == nullptr || low1 == nullptr || hot == nullptr) {
     return fail("expected carry, low0, low1, and hot to appear in regalloc output");
   }
@@ -1709,10 +1711,10 @@ int check_evicted_value_spill_ops(const prepare::PreparedBirModule& prepared) {
     return fail("expected regalloc output for evicted_value_spill_ops");
   }
 
-  const auto* carry0 = find_regalloc_value(*function, "carry0");
-  const auto* carry1 = find_regalloc_value(*function, "carry1");
-  const auto* local0 = find_regalloc_value(*function, "local0");
-  const auto* hot = find_regalloc_value(*function, "hot");
+  const auto* carry0 = find_regalloc_value(prepared, *function, "carry0");
+  const auto* carry1 = find_regalloc_value(prepared, *function, "carry1");
+  const auto* local0 = find_regalloc_value(prepared, *function, "local0");
+  const auto* hot = find_regalloc_value(prepared, *function, "hot");
   if (carry0 == nullptr || carry1 == nullptr || local0 == nullptr || hot == nullptr) {
     return fail("expected carry0, carry1, local0, and hot in evicted spill output");
   }
@@ -1742,10 +1744,10 @@ int check_call_arg_move_resolution(const prepare::PreparedBirModule& prepared) {
     return fail("expected regalloc output for call_arg_move_resolution");
   }
 
-  const auto* carry0 = find_regalloc_value(*function, "carry0");
-  const auto* carry1 = find_regalloc_value(*function, "carry1");
-  const auto* keep_arg = find_regalloc_value(*function, "keep.arg");
-  const auto* spill_arg = find_regalloc_value(*function, "spill.arg");
+  const auto* carry0 = find_regalloc_value(prepared, *function, "carry0");
+  const auto* carry1 = find_regalloc_value(prepared, *function, "carry1");
+  const auto* keep_arg = find_regalloc_value(prepared, *function, "keep.arg");
+  const auto* spill_arg = find_regalloc_value(prepared, *function, "spill.arg");
   if (carry0 == nullptr || carry1 == nullptr || keep_arg == nullptr || spill_arg == nullptr) {
     return fail("expected call_arg_move_resolution values to appear in regalloc output");
   }
@@ -1794,7 +1796,7 @@ int check_call_result_move_resolution(const prepare::PreparedBirModule& prepared
     return fail("expected regalloc output for call_result_move_resolution");
   }
 
-  const auto* call_result = find_regalloc_value(*function, "call.result");
+  const auto* call_result = find_regalloc_value(prepared, *function, "call.result");
   if (call_result == nullptr) {
     return fail("expected call.result to appear in regalloc output");
   }
@@ -1834,7 +1836,7 @@ int check_return_move_resolution(const prepare::PreparedBirModule& prepared) {
     return fail("expected regalloc output for return_move_resolution");
   }
 
-  const auto* ret_value = find_regalloc_value(*function, "ret.value");
+  const auto* ret_value = find_regalloc_value(prepared, *function, "ret.value");
   if (ret_value == nullptr) {
     return fail("expected ret.value to appear in regalloc output");
   }
@@ -1872,7 +1874,7 @@ int check_return_same_storage_resolution(const prepare::PreparedBirModule& prepa
     return fail("expected regalloc output for return_same_storage_resolution");
   }
 
-  const auto* ret_value = find_regalloc_value(*function, "ret.value");
+  const auto* ret_value = find_regalloc_value(prepared, *function, "ret.value");
   if (ret_value == nullptr) {
     return fail("expected ret.value to appear in regalloc output");
   }
@@ -1989,7 +1991,7 @@ int check_lowered_call_result_abi(const prepare::PreparedBirModule& prepared) {
     return fail("expected regalloc output for lowered_call_result_metadata");
   }
 
-  const auto* call_result = find_regalloc_value(*function, "%call.result");
+  const auto* call_result = find_regalloc_value(prepared, *function, "%call.result");
   if (call_result == nullptr) {
     return fail("expected lowered call result to appear in regalloc output");
   }
@@ -2040,7 +2042,7 @@ int check_lowered_helper_call_result_abi(const prepare::PreparedBirModule& prepa
     return fail("expected regalloc output for lowered_helper_call_result_metadata");
   }
 
-  const auto* call_arg = find_regalloc_value(*function, "%arg");
+  const auto* call_arg = find_regalloc_value(prepared, *function, "%arg");
   if (call_arg == nullptr) {
     return fail("expected helper-built fabs argument to appear in regalloc output");
   }
@@ -2053,7 +2055,7 @@ int check_lowered_helper_call_result_abi(const prepare::PreparedBirModule& prepa
     return fail("expected helper-built fabs argument to publish the concrete ABI argument destination");
   }
 
-  const auto* call_result = find_regalloc_value(*function, "%fabs.result");
+  const auto* call_result = find_regalloc_value(prepared, *function, "%fabs.result");
   if (call_result == nullptr) {
     return fail("expected helper-built fabs result to appear in regalloc output");
   }
@@ -2110,7 +2112,7 @@ int check_lowered_helper_call_result_soft_float_abi(const prepare::PreparedBirMo
     return fail("expected regalloc output for lowered_helper_call_result_soft_float_metadata");
   }
 
-  const auto* call_arg = find_regalloc_value(*function, "%arg");
+  const auto* call_arg = find_regalloc_value(prepared, *function, "%arg");
   if (call_arg == nullptr) {
     return fail("expected soft-float helper-built fabs argument to appear in regalloc output");
   }
@@ -2128,7 +2130,7 @@ int check_lowered_helper_call_result_soft_float_abi(const prepare::PreparedBirMo
     return fail("expected soft-float helper-built fabs argument to publish the concrete integer ABI destination");
   }
 
-  const auto* call_result = find_regalloc_value(*function, "%fabs.result");
+  const auto* call_result = find_regalloc_value(prepared, *function, "%fabs.result");
   if (call_result == nullptr) {
     return fail("expected soft-float helper-built fabs result to appear in regalloc output");
   }
@@ -2175,7 +2177,7 @@ int check_lowered_helper_stackrestore_arg_abi(const prepare::PreparedBirModule& 
     return fail("expected regalloc output for lowered_helper_stackrestore_arg_metadata");
   }
 
-  const auto* saved_ptr = find_regalloc_value(*function, "%saved.ptr");
+  const auto* saved_ptr = find_regalloc_value(prepared, *function, "%saved.ptr");
   if (saved_ptr == nullptr) {
     return fail("expected helper-built stacksave result to appear in regalloc output");
   }
@@ -2213,8 +2215,8 @@ int check_lowered_helper_va_copy_arg_abi(const prepare::PreparedBirModule& prepa
     return fail("expected regalloc output for lowered_helper_va_copy_arg_metadata");
   }
 
-  const auto* dst_ptr = find_regalloc_value(*function, "%dst");
-  const auto* src_ptr = find_regalloc_value(*function, "%src");
+  const auto* dst_ptr = find_regalloc_value(prepared, *function, "%dst");
+  const auto* src_ptr = find_regalloc_value(prepared, *function, "%src");
   if (dst_ptr == nullptr || src_ptr == nullptr) {
     return fail("expected helper-built va_copy arguments to appear in regalloc output");
   }
@@ -2268,8 +2270,8 @@ int check_lowered_helper_va_arg_aggregate_abi(const prepare::PreparedBirModule& 
     return fail("expected regalloc output for lowered_helper_va_arg_aggregate_metadata");
   }
 
-  const auto* pair_ptr = find_regalloc_value(*function, "%pair");
-  const auto* ap_ptr = find_regalloc_value(*function, "%ap");
+  const auto* pair_ptr = find_regalloc_value(prepared, *function, "%pair");
+  const auto* ap_ptr = find_regalloc_value(prepared, *function, "%ap");
   if (pair_ptr == nullptr || ap_ptr == nullptr) {
     return fail("expected helper-built aggregate va_arg values to appear in regalloc output");
   }
@@ -2307,8 +2309,8 @@ int check_loop_weighted_priority(const prepare::PreparedBirModule& prepared) {
     return fail("expected the loop block to publish nonzero loop depth");
   }
 
-  const auto* liveness_hot = find_liveness_value(*liveness, "loop.hot");
-  const auto* regalloc_hot = find_regalloc_value(*regalloc, "loop.hot");
+  const auto* liveness_hot = find_liveness_value(prepared, *liveness, "loop.hot");
+  const auto* regalloc_hot = find_regalloc_value(prepared, *regalloc, "loop.hot");
   if (liveness_hot == nullptr || regalloc_hot == nullptr || !liveness_hot->live_interval.has_value()) {
     return fail("expected loop.hot to appear in both liveness and regalloc output with a live interval");
   }
