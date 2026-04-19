@@ -2607,6 +2607,7 @@ std::string emit_prepared_module(
             if (!prepared_branch_plan.has_value()) {
               return std::nullopt;
             }
+            const auto* prepared_branch_condition = find_branch_condition(source_block.label);
 
             if (const auto prepared_render_plan =
                     build_prepared_compare_driven_entry_render_plan(
@@ -2617,6 +2618,9 @@ std::string emit_prepared_module(
                         });
                 prepared_render_plan.has_value()) {
               return prepared_render_plan;
+            }
+            if (prepared_branch_condition != nullptr) {
+              return std::nullopt;
             }
 
             const auto* compare =
