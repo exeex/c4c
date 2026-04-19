@@ -19,19 +19,22 @@ either the true lane or the false lane before the join.
 
 ## Suggested Next
 
-The next accepted packet should stay in Step 3 and keep shrinking residual
-compare-join topology sensitivity only where prepared ownership is already
-authoritative, most likely by extending the same passthrough-sensitive
-prepared return-context ownership proof to the next adjacent compare-join
-selected-value family that still lacks one-extra-bridge coverage before
-widening into broader CFG shapes, instruction-selection work, or Step 4 file
-organization.
+Before any more Step 3 compare-join passthrough-family execution, treat the
+accumulated shared-helper and x86-consumer churn as needing broader proof than
+`^backend_x86_handoff_boundary$`. After that broader proof checkpoint, the next
+accepted Step 3 packet should move to a materially different prepared
+control-flow consumer seam instead of another adjacent one-extra-bridge
+selected-value variant.
 
 ## Watchouts
 
 - Keep this family in Step 3 semantic consumer helpers; do not widen into Step
   4 file organization, idea 57, idea 59, idea 60, idea 61, or countdown-loop
   route changes.
+- A route review judged the route `drifting`, not because Step 3 failed, but
+  because packet selection and proof discipline narrowed too far around one
+  compare-join passthrough family. Do not queue another adjacent
+  passthrough-coverage packet until the broader proof gap is addressed.
 - Do not solve remaining compare-join gaps with x86-side CFG scans,
   testcase-shaped matcher growth, or broad multi-block rediscovery. This
   family should only allow one extra empty passthrough after an already-
@@ -44,17 +47,19 @@ organization.
   ownership are already authoritative; do not reintroduce source-label
   equality checks, local join bundle reconstruction, or emitter-local semantic
   recovery.
+- Treat the optional-empty-passthrough recognition in shared helpers as route
+  debt, not as a license to keep cloning more same-shape variants. Follow-on
+  work should either prove the broader route or strengthen prepared ownership
+  more generally.
 - When a test helper appends passthrough blocks to `function.blocks`, reacquire
   any cached block pointers before calling prepared-helper classifiers; this
   packet needed that harness-only fix to keep the proof scoped to the intended
   ownership contract.
-- `test_before.log` remains the narrow baseline for
-  `^backend_x86_handoff_boundary$`, and this packet refreshes `test_after.log`
-  with the same focused proof command after proving the compare-join
-  fixed-offset pointer-backed same-module global selected-value chain
-  return-context helper path and paired EdgeStoreSlot carrier also ignore one
-  extra empty true-lane or false-lane passthrough block when prepared
-  control-flow ownership is authoritative.
+- `test_before.log` remains the last narrow baseline for
+  `^backend_x86_handoff_boundary$`, but the review concluded that this is no
+  longer sufficient acceptance evidence for the current Step 3 blast radius.
+  The next supervisor-routed proof must broaden beyond that single named
+  subset before more same-family execution is accepted.
 
 ## Proof
 
@@ -65,5 +70,8 @@ The focused proof refreshes `test_after.log` with the
 same-module global selected-value chain true-lane and false-lane
 return-context passthrough ownership coverage, the paired EdgeStoreSlot
 carrier coverage, and the existing prepared branch/join ownership families
-that continue proving the same handoff contracts. The proof passed and
-`test_after.log` is the preserved proof log.
+that continue proving the same handoff contracts. The proof passed.
+
+Route review note: this narrow proof is no longer sufficient for continued
+acceptance of the current Step 3 route. No broader replacement proof has been
+run yet in this repair.
