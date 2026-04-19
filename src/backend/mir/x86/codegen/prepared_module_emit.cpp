@@ -2957,33 +2957,52 @@ std::string emit_prepared_module(
     std::string false_label = entry.terminator.false_label;
 
     if (prepared_branch_condition != nullptr) {
-      if (!prepared_branch_condition->predicate.has_value() ||
-          !prepared_branch_condition->compare_type.has_value() ||
-          !prepared_branch_condition->lhs.has_value() ||
-          !prepared_branch_condition->rhs.has_value() ||
-          *prepared_branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
-          prepared_branch_condition->condition_value.kind !=
-              c4c::backend::bir::Value::Kind::Named) {
+      const auto* matched_prepared_immediate_branch =
+          static_cast<const c4c::backend::prepare::PreparedBranchCondition*>(nullptr);
+      const auto* matched_prepared_compared_value =
+          static_cast<const c4c::backend::bir::Value*>(nullptr);
+      for (const auto& [value_name, _] : named_i32_exprs) {
+        const auto* candidate =
+            c4c::backend::prepare::find_prepared_i32_immediate_branch_condition(
+                *function_control_flow, entry.label, value_name);
+        if (candidate == nullptr) {
+          continue;
+        }
+
+        const auto* candidate_value =
+            candidate->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
+                    candidate->lhs->name == value_name
+                ? &*candidate->lhs
+                : &*candidate->rhs;
+        if (matched_prepared_immediate_branch != nullptr &&
+            candidate_value->name != matched_prepared_compared_value->name) {
+          return std::nullopt;
+        }
+        matched_prepared_immediate_branch = candidate;
+        matched_prepared_compared_value = candidate_value;
+      }
+      const auto* prepared_immediate_branch = matched_prepared_immediate_branch;
+      const auto* prepared_compared_value = matched_prepared_compared_value;
+      if (prepared_immediate_branch == nullptr || prepared_compared_value == nullptr) {
         return std::nullopt;
       }
 
       const bool lhs_is_value_rhs_is_imm =
-          prepared_branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-          prepared_branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32;
+          prepared_immediate_branch->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+          prepared_immediate_branch->rhs->type == c4c::backend::bir::TypeKind::I32;
       const bool rhs_is_value_lhs_is_imm =
-          prepared_branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-          prepared_branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32;
+          prepared_immediate_branch->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+          prepared_immediate_branch->lhs->type == c4c::backend::bir::TypeKind::I32;
       if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
         return std::nullopt;
       }
 
-      compared_value = lhs_is_value_rhs_is_imm ? *prepared_branch_condition->lhs
-                                               : *prepared_branch_condition->rhs;
-      compare_immediate = lhs_is_value_rhs_is_imm ? prepared_branch_condition->rhs->immediate
-                                                  : prepared_branch_condition->lhs->immediate;
-      compare_opcode = *prepared_branch_condition->predicate;
-      true_label = prepared_branch_condition->true_label;
-      false_label = prepared_branch_condition->false_label;
+      compared_value = *prepared_compared_value;
+      compare_immediate = lhs_is_value_rhs_is_imm ? prepared_immediate_branch->rhs->immediate
+                                                  : prepared_immediate_branch->lhs->immediate;
+      compare_opcode = *prepared_immediate_branch->predicate;
+      true_label = prepared_immediate_branch->true_label;
+      false_label = prepared_immediate_branch->false_label;
     } else {
       const auto* compare = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.back());
       if (compare == nullptr ||
@@ -2997,18 +3016,25 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
 
-      const bool lhs_is_value_rhs_is_imm =
-          compare->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-          compare->rhs.type == c4c::backend::bir::TypeKind::I32;
-      const bool rhs_is_value_lhs_is_imm =
-          compare->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-          compare->lhs.type == c4c::backend::bir::TypeKind::I32;
-      if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
+      const auto* raw_compared_value = [&]() -> const c4c::backend::bir::Value* {
+        const bool lhs_is_value_rhs_is_imm =
+            compare->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+            compare->rhs.type == c4c::backend::bir::TypeKind::I32;
+        const bool rhs_is_value_lhs_is_imm =
+            compare->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+            compare->lhs.type == c4c::backend::bir::TypeKind::I32;
+        if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
+          return static_cast<const c4c::backend::bir::Value*>(nullptr);
+        }
+        return &(lhs_is_value_rhs_is_imm ? compare->lhs : compare->rhs);
+      }();
+      if (raw_compared_value == nullptr) {
         return std::nullopt;
       }
 
-      compared_value = lhs_is_value_rhs_is_imm ? compare->lhs : compare->rhs;
-      compare_immediate = lhs_is_value_rhs_is_imm ? compare->rhs.immediate : compare->lhs.immediate;
+      compared_value = *raw_compared_value;
+      compare_immediate =
+          raw_compared_value == &compare->lhs ? compare->rhs.immediate : compare->lhs.immediate;
       compare_opcode = compare->opcode;
     }
 

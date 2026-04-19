@@ -13347,7 +13347,6 @@ int main() {
       status != 0) {
     return status;
   }
-
   if (const auto status =
           check_route_outputs(make_x86_local_i32_sub_guard_module(),
                               expected_minimal_local_i32_sub_guard_asm("main"),
