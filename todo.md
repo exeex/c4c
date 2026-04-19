@@ -5,28 +5,28 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Build An Authoritative Shared Prepared CFG Model
-Plan Review Counter: 7 / 10
+Plan Review Counter: 8 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another `plan.md` Step 2 slice for idea 62. The compare-driven
-local-slot guard lanes in
-`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` now treat an
-existing prepared control-flow block as authoritative ownership for the branch
-contract instead of reopening raw trailing-compare fallback when the prepared
-branch record disappears. The x86 handoff boundary local-slot guard-lane suite
-now proves both the add-chain and addressed-byte guard routes reject missing
-prepared branch records with the canonical prepared-module handoff instead of
-silently falling back to raw compare-driven carriers.
+Completed another `plan.md` Step 2 slice for idea 62. The continuation-driven
+local-slot short-circuit branch path in
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` now treats a
+prepared continuation handoff as authoritative ownership even when the local
+rhs compare carrier disappears, and it rejects raw target-recursion fallback
+with the canonical prepared-module handoff instead of reopening local
+topology. The x86 handoff boundary short-circuit suite now proves both the
+normal join-carried lane and the `EdgeStoreSlot` variant reject a missing rhs
+compare carrier when prepared continuation ownership remains authoritative.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 by pushing the remaining compare-driven local-slot
-fallbacks in `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` onto
-the same authoritative prepared CFG route, especially the continuation-driven
-short-circuit branch-carrier paths that can still reopen raw local topology
-when prepared continuation ownership already exists.
+Continue `plan.md` Step 2 by pushing the remaining authoritative
+continuation/control-flow consumers in the local-slot and countdown x86
+renderers onto the same strict prepared CFG route, especially any branch or
+countdown carrier path that can still recurse through raw local targets after
+the prepared handoff is already known.
 
 ## Watchouts
 
@@ -47,6 +47,10 @@ when prepared continuation ownership already exists.
   branch records for authoritative compare-driven blocks, but the
   continuation-shaped short-circuit branch paths still need the same
   strictness when prepared continuation ownership already exists.
+- The short-circuit local-slot renderer must now reject a missing rhs compare
+  carrier whenever a prepared continuation handoff is already active; avoid
+  reopening raw branch-target recursion for bridge or passthrough blocks in
+  either the normal join-carried or `EdgeStoreSlot` lane.
 - `prepared_countdown_render.cpp` now consumes prepared control-flow block
   successor labels even when a local countdown segment does not have a
   dedicated prepared branch-condition record; keep that route strict about
@@ -58,7 +62,7 @@ when prepared continuation ownership already exists.
 Ran the delegated proof command
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. `backend_x86_handoff_boundary`
-passed with the new local-slot guard-lane missing-branch-record coverage. The
+passed with the new short-circuit missing-rhs-compare-carrier coverage. The
 backend subset stayed at the expected baseline with the same four pre-existing
 route failures already present in `test_before.log`:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,

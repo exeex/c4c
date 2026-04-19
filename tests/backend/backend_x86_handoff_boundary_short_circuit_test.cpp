@@ -496,6 +496,138 @@ int check_short_circuit_route_ignores_rhs_compare_carrier_state_when_prepared_co
   return 0;
 }
 
+int check_short_circuit_route_requires_authoritative_rhs_continuation_compare_carrier_impl(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context,
+    bool use_edge_store_slot_carrier) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 3 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit continuation branch contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* rhs_block = find_block(function, "logic.rhs.7");
+  auto* join_block = find_block(function, "logic.end.10");
+  if (rhs_block == nullptr || rhs_block->insts.size() < 2 || join_block == nullptr ||
+      join_block->insts.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer has the expected rhs/join shape")
+                    .c_str());
+  }
+
+  auto& join_transfer = control_flow->join_transfers.front();
+  auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (block_label(prepared, branch_condition.block_label) == join_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  if (join_branch_condition == nullptr || !join_branch_condition->lhs.has_value() ||
+      !join_branch_condition->rhs.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the authoritative join compare contract")
+                    .c_str());
+  }
+
+  if (use_edge_store_slot_carrier) {
+    if (!join_transfer.source_true_transfer_index.has_value() ||
+        !join_transfer.source_false_transfer_index.has_value()) {
+      return fail((std::string(failure_context) +
+                   ": prepared short-circuit join transfer no longer exposes authoritative lane ownership")
+                      .c_str());
+    }
+    const auto true_transfer_index = *join_transfer.source_true_transfer_index;
+    const auto false_transfer_index = *join_transfer.source_false_transfer_index;
+    if (true_transfer_index >= join_transfer.edge_transfers.size() ||
+        false_transfer_index >= join_transfer.edge_transfers.size()) {
+      return fail((std::string(failure_context) +
+                   ": prepared short-circuit join transfer published invalid authoritative lane indices")
+                      .c_str());
+    }
+
+    join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
+    join_transfer.storage_name = intern_slot_name(prepared, "%contract.short_circuit.slot");
+    join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
+    join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
+    function.local_slots.push_back(bir::LocalSlot{
+        .name = std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
+        .type = bir::TypeKind::I32,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .is_address_taken = false,
+    });
+    const auto load_result =
+        bir::Value::named(bir::TypeKind::I32, "carrier.short_circuit.contract.join");
+    join_block->insts.front() = bir::LoadLocalInst{
+        .result = load_result,
+        .slot_name =
+            std::string(prepare::prepared_slot_name(prepared.names, *join_transfer.storage_name)),
+    };
+    if (join_branch_condition->lhs->kind == bir::Value::Kind::Named &&
+        join_branch_condition->lhs->name == join_transfer.result.name) {
+      *join_branch_condition->lhs = load_result;
+    }
+    if (join_branch_condition->rhs->kind == bir::Value::Kind::Named &&
+        join_branch_condition->rhs->name == join_transfer.result.name) {
+      *join_branch_condition->rhs = load_result;
+    }
+  }
+
+  const auto* rhs_branch_condition =
+      prepare::find_prepared_branch_condition(
+          *control_flow, find_block_label_id(prepared, rhs_block->label));
+  if (rhs_branch_condition == nullptr || !rhs_branch_condition->predicate.has_value() ||
+      !rhs_branch_condition->lhs.has_value() || !rhs_branch_condition->rhs.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer publishes authoritative rhs continuation compare metadata")
+                    .c_str());
+  }
+
+  rhs_block->insts.clear();
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a rhs branch carrier with authoritative continuation ownership but no compare carrier")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the missing rhs continuation compare carrier with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
+int check_short_circuit_route_requires_authoritative_rhs_continuation_compare_carrier(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_route_requires_authoritative_rhs_continuation_compare_carrier_impl(
+      module, function_name, failure_context, false);
+}
+
+int check_short_circuit_edge_store_slot_route_requires_authoritative_rhs_continuation_compare_carrier(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_route_requires_authoritative_rhs_continuation_compare_carrier_impl(
+      module, function_name, failure_context, true);
+}
+
 int check_short_circuit_route_consumes_prepared_control_flow_impl(const bir::Module& module,
                                                                   const char* function_name,
                                                                   const char* failure_context,
@@ -1950,6 +2082,14 @@ int run_backend_x86_handoff_boundary_short_circuit_tests() {
     return status;
   }
   if (const auto status =
+          check_short_circuit_route_requires_authoritative_rhs_continuation_compare_carrier(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit route rejects a missing rhs compare carrier when prepared continuation ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_short_circuit_context_publishes_prepared_continuation_labels(
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
@@ -2034,6 +2174,14 @@ int run_backend_x86_handoff_boundary_short_circuit_tests() {
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
               "minimal local-slot short-circuit EdgeStoreSlot prefers prepared rhs continuation metadata over join-branch label drift");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_edge_store_slot_route_requires_authoritative_rhs_continuation_compare_carrier(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit EdgeStoreSlot route rejects a missing rhs compare carrier when prepared continuation ownership is authoritative");
       status != 0) {
     return status;
   }

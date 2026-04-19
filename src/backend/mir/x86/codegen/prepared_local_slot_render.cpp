@@ -211,6 +211,17 @@ bool has_authoritative_prepared_control_flow_block(
                                                                  block_label_id) != nullptr;
 }
 
+bool has_authoritative_prepared_short_circuit_continuation(
+    const std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels>&
+        continuation) {
+  if (!continuation.has_value()) {
+    return false;
+  }
+  return continuation->incoming_label != c4c::kInvalidBlockLabel ||
+         continuation->true_label != c4c::kInvalidBlockLabel ||
+         continuation->false_label != c4c::kInvalidBlockLabel;
+}
+
 }  // namespace
 
 std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
@@ -821,8 +832,9 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
               find_block,
               render_block);
         }
-        if (compare_index != block.insts.size() &&
-            has_authoritative_prepared_control_flow_block(function_control_flow, block_label_id)) {
+        if (has_authoritative_prepared_short_circuit_continuation(continuation) ||
+            (compare_index != block.insts.size() &&
+             has_authoritative_prepared_control_flow_block(function_control_flow, block_label_id))) {
           throw std::invalid_argument(
               "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
         }
