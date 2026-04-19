@@ -1223,8 +1223,7 @@ int check_local_countdown_guard_route_consumes_authoritative_join_transfer(
       .function_name = intern_function_name(prepared, function_name),
       .join_block_label = intern_block_label(prepared, "loop1"),
       .result = bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
-      .kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot,
-      .storage_name = intern_slot_name(prepared, "%lv.counter"),
+      .kind = prepare::PreparedJoinTransferKind::PhiEdge,
       .edge_transfers =
           {
               prepare::PreparedEdgeValueTransfer{
@@ -1233,7 +1232,6 @@ int check_local_countdown_guard_route_consumes_authoritative_join_transfer(
                   .incoming_value = bir::Value::immediate_i32(2),
                   .destination_value =
                       bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
-                  .storage_name = intern_slot_name(prepared, "%lv.counter"),
               },
               prepare::PreparedEdgeValueTransfer{
                   .predecessor_label = intern_block_label(prepared, "body1"),
@@ -1241,7 +1239,6 @@ int check_local_countdown_guard_route_consumes_authoritative_join_transfer(
                   .incoming_value = bir::Value::named(bir::TypeKind::I32, "body1.next"),
                   .destination_value =
                       bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
-                  .storage_name = intern_slot_name(prepared, "%lv.counter"),
               },
           },
       .source_branch_block_label = intern_block_label(prepared, "loop1"),
@@ -1427,8 +1424,7 @@ int check_local_countdown_guard_route_prefers_authoritative_loop_targets_after_j
       .function_name = intern_function_name(prepared, function_name),
       .join_block_label = intern_block_label(prepared, "loop1"),
       .result = bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
-      .kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot,
-      .storage_name = intern_slot_name(prepared, "%lv.counter"),
+      .kind = prepare::PreparedJoinTransferKind::PhiEdge,
       .edge_transfers =
           {
               prepare::PreparedEdgeValueTransfer{
@@ -1437,7 +1433,6 @@ int check_local_countdown_guard_route_prefers_authoritative_loop_targets_after_j
                   .incoming_value = bir::Value::immediate_i32(2),
                   .destination_value =
                       bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
-                  .storage_name = intern_slot_name(prepared, "%lv.counter"),
               },
               prepare::PreparedEdgeValueTransfer{
                   .predecessor_label = intern_block_label(prepared, "body1"),
@@ -1445,7 +1440,6 @@ int check_local_countdown_guard_route_prefers_authoritative_loop_targets_after_j
                   .incoming_value = bir::Value::named(bir::TypeKind::I32, "body1.next"),
                   .destination_value =
                       bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
-                  .storage_name = intern_slot_name(prepared, "%lv.counter"),
               },
           },
       .source_branch_block_label = intern_block_label(prepared, "loop1"),

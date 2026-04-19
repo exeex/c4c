@@ -667,10 +667,9 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
       return nullptr;
     }
 
-    if (join_transfer->kind != c4c::backend::prepare::PreparedJoinTransferKind::EdgeStoreSlot ||
-        join_transfer->edge_transfers.size() != 2 || !join_transfer->storage_name.has_value() ||
-        c4c::backend::prepare::prepared_slot_name(*prepared_names, *join_transfer->storage_name) !=
-            segment.init_store->slot_name) {
+    if (join_transfer->kind == c4c::backend::prepare::PreparedJoinTransferKind::LoopCarry ||
+        join_transfer->edge_transfers.size() != 2 ||
+        !is_i32_named_value(join_transfer->result, segment.cond_load->result.name)) {
       throw std::invalid_argument(
           "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
     }
@@ -698,8 +697,9 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
 
     if (init_incoming == nullptr || body_incoming == nullptr ||
         !is_i32_immediate(init_incoming->incoming_value) ||
+        !is_i32_named_value(init_incoming->destination_value, segment.cond_load->result.name) ||
         !is_i32_named_value(body_incoming->incoming_value, segment.body_sub->result.name) ||
-        !is_i32_named_value(join_transfer->result, segment.cond_load->result.name)) {
+        !is_i32_named_value(body_incoming->destination_value, segment.cond_load->result.name)) {
       throw std::invalid_argument(
           "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
     }
