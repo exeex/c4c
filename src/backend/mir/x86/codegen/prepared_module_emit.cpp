@@ -4199,43 +4199,8 @@ std::string emit_prepared_module(
   const auto render_supported_immediate_binary =
       [&](const c4c::backend::prepare::PreparedSupportedImmediateBinary& binary)
       -> std::optional<std::string> {
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Add) {
-      return "    add " + *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(binary.immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Sub) {
-      return "    sub " + *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(binary.immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Mul) {
-      return "    imul " + *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(binary.immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::And) {
-      return "    and " + *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(binary.immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Or) {
-      return "    or " + *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(binary.immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Xor) {
-      return "    xor " + *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(binary.immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Shl) {
-      return "    shl " + *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(binary.immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::LShr) {
-      return "    shr " + *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(binary.immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::AShr) {
-      return "    sar " + *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(binary.immediate)) + "\n";
-    }
-    return std::nullopt;
+    return c4c::backend::x86::render_prepared_supported_immediate_binary(*return_register,
+                                                                         binary);
   };
   const auto render_param_derived_return_if_supported =
       [&](const c4c::backend::bir::Value& value,
@@ -4398,14 +4363,14 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
     if (!binary_plan->trailing_binary.has_value()) {
-      return *value_render + "    ret\n";
+      return c4c::backend::x86::render_prepared_return_body(*value_render);
     }
     const auto trailing_render =
         render_supported_immediate_binary(*binary_plan->trailing_binary);
     if (!trailing_render.has_value()) {
       return std::nullopt;
     }
-    return *value_render + *trailing_render + "    ret\n";
+    return c4c::backend::x86::render_prepared_return_body(*value_render, *trailing_render);
   };
   const auto to_prepared_param_zero_compare_shape =
       [&](c4c::backend::prepare::PreparedParamZeroBranchCondition::CompareShape compare_shape) {

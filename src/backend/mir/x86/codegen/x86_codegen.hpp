@@ -30,6 +30,7 @@ enum class BinaryOpcode : unsigned char;
 }
 namespace prepare {
 struct PreparedBirModule;
+struct PreparedSupportedImmediateBinary;
 }
 
 struct ParsedBackendExternCallArg;
@@ -254,6 +255,13 @@ std::optional<std::string> render_prepared_param_zero_branch_function(
     std::string_view true_body,
     std::string_view false_body,
     std::string_view trailing_data = {});
+
+std::optional<std::string> render_prepared_supported_immediate_binary(
+    std::string_view return_register,
+    const c4c::backend::prepare::PreparedSupportedImmediateBinary& binary);
+
+std::string render_prepared_return_body(std::string_view value_render,
+                                        std::string_view trailing_render = {});
 
 struct SlotAddr {
   enum class Kind : unsigned char {
