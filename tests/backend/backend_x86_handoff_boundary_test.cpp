@@ -524,27 +524,6 @@ std::string expected_minimal_param_ashr_immediate_asm(const char* function_name,
   return expected_minimal_param_binary_asm(function_name, "sar", immediate);
 }
 
-std::string expected_minimal_param_eq_zero_branch_asm(const char* function_name,
-                                                      const char* false_label,
-                                                      int true_returned_value,
-                                                      int false_returned_value) {
-  return expected_branch_prefix(function_name, false_label) + "    mov " +
-         minimal_i32_return_register() + ", " + std::to_string(true_returned_value) +
-         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
-         minimal_i32_return_register() + ", " +
-         std::to_string(false_returned_value) + "\n    ret\n";
-}
-
-std::string expected_minimal_param_eq_zero_branch_param_or_immediate_asm(
-    const char* function_name,
-    const char* false_label,
-    int true_returned_value) {
-  return expected_branch_prefix(function_name, false_label) + "    mov " +
-         minimal_i32_return_register() + ", " + std::to_string(true_returned_value) +
-         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
-         minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    ret\n";
-}
-
 std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_asm(
     const char* function_name,
     const char* false_label,
@@ -975,17 +954,6 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_ashr_as
          minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
-std::string expected_minimal_param_ne_zero_branch_asm(const char* function_name,
-                                                      const char* false_label,
-                                                      int true_returned_value,
-                                                      int false_returned_value) {
-  return expected_zero_branch_prefix(function_name, false_label, "je") + "    mov " +
-         minimal_i32_return_register() + ", " + std::to_string(true_returned_value) +
-         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
-         minimal_i32_return_register() + ", " +
-         std::to_string(false_returned_value) + "\n    ret\n";
-}
-
 std::string expected_minimal_param_ne_zero_branch_joined_add_or_sub_asm(
     const char* function_name,
     const char* false_label,
@@ -1325,150 +1293,6 @@ bir::Module make_x86_param_ashr_immediate_module() {
   };
 
   function.blocks.push_back(std::move(entry));
-  module.functions.push_back(std::move(function));
-  return module;
-}
-
-bir::Module make_x86_param_eq_zero_branch_module() {
-  bir::Module module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
-
-  bir::Function function;
-  function.name = "branch_on_zero";
-  function.return_type = bir::TypeKind::I32;
-  function.params.push_back(bir::Param{
-      .type = bir::TypeKind::I32,
-      .name = "p.x",
-      .size_bytes = 4,
-      .align_bytes = 4,
-  });
-
-  bir::Block entry;
-  entry.label = "entry";
-  entry.insts.push_back(bir::BinaryInst{
-      .opcode = bir::BinaryOpcode::Eq,
-      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
-      .operand_type = bir::TypeKind::I32,
-      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
-      .rhs = bir::Value::immediate_i32(0),
-  });
-  entry.terminator = bir::CondBranchTerminator{
-      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
-      .true_label = "is_zero",
-      .false_label = "is_nonzero",
-  };
-
-  bir::Block is_zero;
-  is_zero.label = "is_zero";
-  is_zero.terminator = bir::ReturnTerminator{
-      .value = bir::Value::immediate_i32(7),
-  };
-
-  bir::Block is_nonzero;
-  is_nonzero.label = "is_nonzero";
-  is_nonzero.terminator = bir::ReturnTerminator{
-      .value = bir::Value::immediate_i32(11),
-  };
-
-  function.blocks.push_back(std::move(entry));
-  function.blocks.push_back(std::move(is_zero));
-  function.blocks.push_back(std::move(is_nonzero));
-  module.functions.push_back(std::move(function));
-  return module;
-}
-
-bir::Module make_x86_param_eq_zero_branch_param_or_immediate_module() {
-  bir::Module module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
-
-  bir::Function function;
-  function.name = "branch_zero_or_passthrough";
-  function.return_type = bir::TypeKind::I32;
-  function.params.push_back(bir::Param{
-      .type = bir::TypeKind::I32,
-      .name = "p.x",
-      .size_bytes = 4,
-      .align_bytes = 4,
-  });
-
-  bir::Block entry;
-  entry.label = "entry";
-  entry.insts.push_back(bir::BinaryInst{
-      .opcode = bir::BinaryOpcode::Eq,
-      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
-      .operand_type = bir::TypeKind::I32,
-      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
-      .rhs = bir::Value::immediate_i32(0),
-  });
-  entry.terminator = bir::CondBranchTerminator{
-      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
-      .true_label = "is_zero",
-      .false_label = "is_nonzero",
-  };
-
-  bir::Block is_zero;
-  is_zero.label = "is_zero";
-  is_zero.terminator = bir::ReturnTerminator{
-      .value = bir::Value::immediate_i32(5),
-  };
-
-  bir::Block is_nonzero;
-  is_nonzero.label = "is_nonzero";
-  is_nonzero.terminator = bir::ReturnTerminator{
-      .value = bir::Value::named(bir::TypeKind::I32, "p.x"),
-  };
-
-  function.blocks.push_back(std::move(entry));
-  function.blocks.push_back(std::move(is_zero));
-  function.blocks.push_back(std::move(is_nonzero));
-  module.functions.push_back(std::move(function));
-  return module;
-}
-
-bir::Module make_x86_param_ne_zero_branch_module() {
-  bir::Module module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
-
-  bir::Function function;
-  function.name = "branch_on_nonzero";
-  function.return_type = bir::TypeKind::I32;
-  function.params.push_back(bir::Param{
-      .type = bir::TypeKind::I32,
-      .name = "p.x",
-      .size_bytes = 4,
-      .align_bytes = 4,
-  });
-
-  bir::Block entry;
-  entry.label = "entry";
-  entry.insts.push_back(bir::BinaryInst{
-      .opcode = bir::BinaryOpcode::Ne,
-      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
-      .operand_type = bir::TypeKind::I32,
-      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
-      .rhs = bir::Value::immediate_i32(0),
-  });
-  entry.terminator = bir::CondBranchTerminator{
-      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
-      .true_label = "is_nonzero",
-      .false_label = "is_zero",
-  };
-
-  bir::Block is_nonzero;
-  is_nonzero.label = "is_nonzero";
-  is_nonzero.terminator = bir::ReturnTerminator{
-      .value = bir::Value::immediate_i32(11),
-  };
-
-  bir::Block is_zero;
-  is_zero.label = "is_zero";
-  is_zero.terminator = bir::ReturnTerminator{
-      .value = bir::Value::immediate_i32(7),
-  };
-
-  function.blocks.push_back(std::move(entry));
-  function.blocks.push_back(std::move(is_nonzero));
-  function.blocks.push_back(std::move(is_zero));
   module.functions.push_back(std::move(function));
   return module;
 }
@@ -8711,89 +8535,6 @@ int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_of
       module, function_name, failure_context, true, true, true, true, false, true);
 }
 
-int check_minimal_compare_branch_consumes_prepared_control_flow_impl(
-    const bir::Module& module,
-    const std::string& expected_asm,
-    const char* function_name,
-    const char* failure_context,
-    bool add_unreachable_block);
-
-int check_minimal_compare_branch_consumes_prepared_control_flow(const bir::Module& module,
-                                                                const std::string& expected_asm,
-                                                                const char* function_name,
-                                                                const char* failure_context) {
-  return check_minimal_compare_branch_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, false);
-}
-
-int check_minimal_compare_branch_with_unreachable_block_consumes_prepared_control_flow(
-    const bir::Module& module,
-    const std::string& expected_asm,
-    const char* function_name,
-    const char* failure_context) {
-  return check_minimal_compare_branch_consumes_prepared_control_flow_impl(
-      module, expected_asm, function_name, failure_context, true);
-}
-
-int check_local_i32_guard_route_consumes_prepared_branch_contract(
-    const bir::Module& module,
-    const std::string& expected_asm,
-    const char* function_name,
-    const char* failure_context);
-
-int check_minimal_compare_branch_consumes_prepared_control_flow_impl(
-    const bir::Module& module,
-    const std::string& expected_asm,
-    const char* function_name,
-    const char* failure_context,
-    bool add_unreachable_block) {
-  c4c::TargetProfile target_profile;
-  auto prepared =
-      prepare::prepare_semantic_bir_module_with_options(
-          module, target_profile_from_module_triple(module.target_triple, target_profile));
-  const auto* control_flow = find_control_flow_function(prepared, function_name);
-  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
-      !control_flow->join_transfers.empty()) {
-    return fail((std::string(failure_context) +
-                 ": prepare no longer publishes the minimal compare branch control-flow contract")
-                    .c_str());
-  }
-
-  auto& function = prepared.module.functions.front();
-  auto* entry_block = find_block(function, "entry");
-  if (entry_block == nullptr || entry_block->insts.size() != 1) {
-    return fail((std::string(failure_context) +
-                 ": prepared minimal compare branch fixture no longer has the expected entry shape")
-                    .c_str());
-  }
-
-  auto* entry_compare = std::get_if<bir::BinaryInst>(&entry_block->insts.front());
-  if (entry_compare == nullptr) {
-    return fail((std::string(failure_context) +
-                 ": prepared minimal compare branch fixture no longer exposes the bounded compare carrier")
-                    .c_str());
-  }
-
-  entry_compare->opcode = bir::BinaryOpcode::Ne;
-  entry_compare->lhs = bir::Value::immediate_i32(9);
-  entry_compare->rhs = bir::Value::immediate_i32(3);
-  if (add_unreachable_block) {
-    function.blocks.push_back(bir::Block{
-        .label = "contract.dead.unreachable",
-        .terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(99)},
-    });
-  }
-
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
-  if (prepared_asm != expected_asm) {
-    return fail((std::string(failure_context) +
-                 ": x86 prepared-module consumer stopped following the authoritative prepared branch metadata")
-                    .c_str());
-  }
-
-  return 0;
-}
-
 int check_local_i32_guard_route_consumes_prepared_branch_contract(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -11403,6 +11144,8 @@ int check_lir_route_rejection(const lir::LirModule& module,
 
 }  // namespace
 
+int run_backend_x86_handoff_boundary_compare_branch_tests();
+
 int main() {
   if (const auto status =
           check_route_outputs(make_x86_return_constant_module(),
@@ -11504,67 +11247,9 @@ int main() {
   }
 
   // The first scalar-control-flow capability lane is still the bounded
-  // compare-against-zero branch family. The current c-testsuite cluster
-  // (00051, 00158, 00193, 00213, 00215) stays outside this handoff lane.
-  if (const auto status =
-          check_route_outputs(make_x86_param_eq_zero_branch_module(),
-                              expected_minimal_param_eq_zero_branch_asm("branch_on_zero",
-                                                                        "is_nonzero",
-                                                                        7,
-                                                                        11),
-                              "bir.func @branch_on_zero(i32 p.x) -> i32 {",
-                              "scalar-control-flow compare-against-zero branch lane");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_minimal_compare_branch_consumes_prepared_control_flow(
-              make_x86_param_eq_zero_branch_module(),
-              expected_minimal_param_eq_zero_branch_asm("branch_on_zero", "is_nonzero", 7, 11),
-              "branch_on_zero",
-              "scalar-control-flow compare-against-zero branch lane prepared-control-flow ownership");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_minimal_compare_branch_with_unreachable_block_consumes_prepared_control_flow(
-              make_x86_param_eq_zero_branch_module(),
-              expected_minimal_param_eq_zero_branch_asm("branch_on_zero", "is_nonzero", 7, 11),
-              "branch_on_zero",
-              "scalar-control-flow compare-against-zero branch lane ignores unrelated block count when prepared-control-flow ownership is authoritative");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_outputs(make_x86_param_ne_zero_branch_module(),
-                              expected_minimal_param_ne_zero_branch_asm("branch_on_nonzero",
-                                                                        "is_zero",
-                                                                        11,
-                                                                        7),
-                              "bir.func @branch_on_nonzero(i32 p.x) -> i32 {",
-                              "scalar-control-flow compare-against-zero nonzero branch lane");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_minimal_compare_branch_consumes_prepared_control_flow(
-              make_x86_param_ne_zero_branch_module(),
-              expected_minimal_param_ne_zero_branch_asm(
-                  "branch_on_nonzero", "is_zero", 11, 7),
-              "branch_on_nonzero",
-              "scalar-control-flow compare-against-zero nonzero branch lane prepared-control-flow ownership");
-      status != 0) {
-    return status;
-  }
-
-  if (const auto status =
-          check_route_outputs(
-              make_x86_param_eq_zero_branch_param_or_immediate_module(),
-              expected_minimal_param_eq_zero_branch_param_or_immediate_asm(
-                  "branch_zero_or_passthrough", "is_nonzero", 5),
-              "bir.func @branch_zero_or_passthrough(i32 p.x) -> i32 {",
-              "scalar-control-flow compare-against-zero branch lane with parameter leaf return");
-      status != 0) {
+  // compare-against-zero branch family. Keep it isolated from the larger
+  // handoff test so adjacent join-family splits can land independently.
+  if (const auto status = run_backend_x86_handoff_boundary_compare_branch_tests(); status != 0) {
     return status;
   }
 
