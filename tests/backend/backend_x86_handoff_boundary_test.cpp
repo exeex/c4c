@@ -7061,7 +7061,9 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
     bool use_fixed_offset_global_roots,
     bool use_pointer_backed_global_roots,
     bool add_true_lane_passthrough_block = false,
-    bool add_false_lane_passthrough_block = false) {
+    bool add_false_lane_passthrough_block = false,
+    bool rewrite_entry_compare_to_non_compare = false,
+    const std::string* expected_asm = nullptr) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -7081,6 +7083,21 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
     return fail((std::string(failure_context) +
                  ": prepared compare-join fixture no longer has the expected entry/join blocks and param")
                     .c_str());
+  }
+  if (rewrite_entry_compare_to_non_compare) {
+    auto* entry_compare = std::get_if<bir::BinaryInst>(&entry_block->insts.front());
+    if (entry_compare == nullptr) {
+      return fail((std::string(failure_context) +
+                   ": prepared compare-join fixture no longer exposes the expected entry compare carrier")
+                      .c_str());
+    }
+    *entry_compare = bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I32, "contract.entry.compare.carrier"),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::immediate_i32(4),
+        .rhs = bir::Value::immediate_i32(8),
+    };
   }
 
   auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
@@ -7459,8 +7476,20 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
       status != 0) {
     return status;
   }
-  return require_resolved_return_arm(
-      resolved_render_contract->false_return, false_global_name, global_byte_offset);
+  if (const auto status = require_resolved_return_arm(
+          resolved_render_contract->false_return, false_global_name, global_byte_offset);
+      status != 0) {
+    return status;
+  }
+  if (expected_asm != nullptr) {
+    const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    if (prepared_asm != *expected_asm) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer stopped preferring the prepared compare-join entry branch contract")
+                      .c_str());
+    }
+  }
+  return 0;
 }
 
 int check_materialized_compare_join_branches_publish_prepared_global_return_contexts(
@@ -7477,6 +7506,44 @@ int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_gl
     const char* failure_context) {
   return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
       module, function_name, failure_context, true, false, false, false);
+}
+
+int check_materialized_compare_join_global_route_ignores_non_compare_entry_carrier(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      &expected_asm);
+}
+
+int check_materialized_compare_join_edge_store_slot_global_route_ignores_non_compare_entry_carrier(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module,
+      function_name,
+      failure_context,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      &expected_asm);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_global_chain_return_contexts(
@@ -9626,10 +9693,38 @@ int main() {
     return status;
   }
   if (const auto status =
+          check_materialized_compare_join_global_route_ignores_non_compare_entry_carrier(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_globals_then_xor_asm(
+                  "branch_join_global_then_xor",
+                  "is_nonzero",
+                  "selected_zero",
+                  "selected_nonzero",
+                  3),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero same-module global compare-join route ignores non-compare entry carrier state when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_materialized_compare_join_branches_publish_prepared_edge_store_slot_global_return_contexts(
               make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
               "branch_join_global_then_xor",
               "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot same-module global return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_global_route_ignores_non_compare_entry_carrier(
+              make_x86_param_eq_zero_branch_joined_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_globals_then_xor_asm(
+                  "branch_join_global_then_xor",
+                  "is_nonzero",
+                  "selected_zero",
+                  "selected_nonzero",
+                  3),
+              "branch_join_global_then_xor",
+              "scalar-control-flow compare-against-zero same-module global EdgeStoreSlot compare-join route ignores non-compare entry carrier state when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }

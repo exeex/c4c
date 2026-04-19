@@ -11,18 +11,20 @@ Source Plan: plan.md
 Completed a Step 3 Consume Prepared Control-Flow In X86 proof packet by adding
 focused x86 handoff coverage in
 `tests/backend/backend_x86_handoff_boundary_test.cpp` that proves both the
-plain and `PreparedJoinTransferKind::EdgeStoreSlot` materialized compare-join
-routes still emit the authoritative prepared entry-branch contract even when
-the entry compare carrier is rewritten to unrelated non-compare state; the x86
-consumer path already matched the shared prepared-control-flow contract, so no
-emitter code change was required for this slice.
+plain and `PreparedJoinTransferKind::EdgeStoreSlot` same-module-global
+materialized compare-join routes still emit the authoritative prepared
+entry-branch contract even when the entry compare carrier is rewritten to
+unrelated non-compare state; the x86 consumer path already matched the shared
+prepared-control-flow contract, so no emitter code change was required for
+this slice.
 
 ## Suggested Next
 
-Stay in Step 3 and extend the same prepared-contract proof to another
-materialized compare-join consumer seam, especially a label-drift or rendered
-same-module-global path that could still fall back to raw CFG labels instead
-of the authoritative prepared branch plan.
+Stay in Step 3 and extend the same prepared-contract proof to a pointer-backed
+same-module-global materialized compare-join consumer seam, especially one
+that combines prepared branch ownership with resolved root-global emission so
+the x86 route cannot fall back to raw entry carriers or ad hoc global lookup
+shape.
 
 ## Watchouts
 
@@ -30,10 +32,12 @@ of the authoritative prepared branch plan.
   organization, idea 57, idea 59, idea 60, idea 61, or the unrelated
   `^backend_` semantic-lowering failures.
 - Materialized compare-join consumers should keep preferring prepared entry
-  branch metadata over mutated source compare carriers whenever both exist.
+  branch metadata over mutated source compare carriers whenever both exist,
+  including same-module-global return arms and `EdgeStoreSlot` join carriers.
 - This packet confirmed the x86 compare-join consumer was already aligned with
-  that shared branch-contract ownership; keep future work focused on missing
-  consumer proof or real capability gaps, not redundant emitter churn.
+  that shared branch-contract ownership for same-module-global return arms;
+  keep future work focused on missing consumer proof or real capability gaps,
+  not redundant emitter churn.
 - The broader `^backend_` checkpoint currently reproduces five known failures:
   `backend_prepare_phi_materialize`, `variadic_double_bytes`,
   `variadic_pair_second`, `local_direct_dynamic_member_array_store`, and
