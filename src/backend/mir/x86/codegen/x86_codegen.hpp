@@ -709,6 +709,16 @@ std::optional<std::string> render_compare_driven_branch_plan(
     const std::function<std::optional<std::string>(const ShortCircuitTarget&, bool)>&
         render_short_circuit_target);
 
+std::optional<std::string> render_compare_driven_branch_plan_with_block_renderer(
+    std::string_view function_name,
+    std::string_view rendered_body,
+    const CompareDrivenBranchRenderPlan& render_plan,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block,
+    const std::function<std::optional<std::string>(
+        const c4c::backend::bir::Block&,
+        const std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels>&)>&
+        render_block_target);
+
 std::optional<std::string> render_prepared_supported_immediate_binary(
     std::string_view return_register,
     const c4c::backend::prepare::PreparedSupportedImmediateBinary& binary);

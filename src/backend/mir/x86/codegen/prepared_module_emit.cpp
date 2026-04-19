@@ -895,20 +895,12 @@ std::string emit_prepared_module(
                             prepared_plan, find_block);
                       });
               if (compare_join_render_plan.has_value()) {
-                return c4c::backend::x86::render_compare_driven_branch_plan(
+                return c4c::backend::x86::render_compare_driven_branch_plan_with_block_renderer(
                     function.name,
                     body,
                     *compare_join_render_plan,
                     find_block,
-                    [&](const ShortCircuitTarget& target,
-                        bool omit_continuation) -> std::optional<std::string> {
-                      if (target.block == nullptr) {
-                        return std::nullopt;
-                      }
-                      return render_block(*target.block,
-                                          omit_continuation ? std::nullopt
-                                                            : target.continuation);
-                    });
+                    render_block);
               }
             }
             if (compare_index != block.insts.size()) {
@@ -960,20 +952,12 @@ std::string emit_prepared_module(
             if (!short_circuit_render_plan.has_value()) {
               return std::nullopt;
             }
-            return c4c::backend::x86::render_compare_driven_branch_plan(
+            return c4c::backend::x86::render_compare_driven_branch_plan_with_block_renderer(
                 function.name,
                 body,
                 *short_circuit_render_plan,
                 find_block,
-                [&](const ShortCircuitTarget& target,
-                    bool omit_continuation) -> std::optional<std::string> {
-                  if (target.block == nullptr) {
-                    return std::nullopt;
-                  }
-                  return render_block(*target.block,
-                                      omit_continuation ? std::nullopt
-                                                        : target.continuation);
-                });
+                render_block);
           };
           if (const auto rendered_short_circuit = try_render_short_circuit_plan();
               rendered_short_circuit.has_value()) {
@@ -998,20 +982,12 @@ std::string emit_prepared_module(
           if (!plain_cond_render_plan.has_value()) {
             return std::nullopt;
           }
-          return c4c::backend::x86::render_compare_driven_branch_plan(
+          return c4c::backend::x86::render_compare_driven_branch_plan_with_block_renderer(
               function.name,
               body,
               *plain_cond_render_plan,
               find_block,
-              [&](const ShortCircuitTarget& target,
-                  bool omit_continuation) -> std::optional<std::string> {
-                if (target.block == nullptr) {
-                  return std::nullopt;
-                }
-                return render_block(*target.block,
-                                    omit_continuation ? std::nullopt
-                                                      : target.continuation);
-              });
+              render_block);
         };
 
     auto asm_text = asm_prefix;
