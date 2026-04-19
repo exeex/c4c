@@ -7497,7 +7497,7 @@ int check_minimal_compare_branch_with_unreachable_block_consumes_prepared_contro
       module, expected_asm, function_name, failure_context, true);
 }
 
-int check_local_i32_guard_route_consumes_prepared_branch_targets(
+int check_local_i32_guard_route_consumes_prepared_branch_contract(
     const bir::Module& module,
     const std::string& expected_asm,
     const char* function_name,
@@ -7556,7 +7556,7 @@ int check_minimal_compare_branch_consumes_prepared_control_flow_impl(
   return 0;
 }
 
-int check_local_i32_guard_route_consumes_prepared_branch_targets(
+int check_local_i32_guard_route_consumes_prepared_branch_contract(
     const bir::Module& module,
     const std::string& expected_asm,
     const char* function_name,
@@ -7583,6 +7583,7 @@ int check_local_i32_guard_route_consumes_prepared_branch_targets(
 
   const std::string original_true_label = entry_block->terminator.true_label;
   const std::string original_false_label = entry_block->terminator.false_label;
+  entry_block->terminator.condition.name = "contract.guard.condition";
   entry_block->terminator.true_label = "contract.guard.true";
   entry_block->terminator.false_label = "contract.guard.false";
   function.blocks.push_back(bir::Block{
@@ -7597,7 +7598,7 @@ int check_local_i32_guard_route_consumes_prepared_branch_targets(
   const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
-                 ": x86 prepared-module consumer stopped following authoritative prepared branch targets over guard carrier labels")
+                 ": x86 prepared-module consumer stopped following the authoritative prepared branch contract over local guard carrier state")
                     .c_str());
   }
 
@@ -9968,11 +9969,11 @@ int main() {
     return status;
   }
   if (const auto status =
-          check_local_i32_guard_route_consumes_prepared_branch_targets(
+          check_local_i32_guard_route_consumes_prepared_branch_contract(
               make_x86_local_i32_immediate_guard_module(),
               expected_minimal_local_i32_immediate_guard_asm("main", 123),
               "main",
-              "minimal local-slot compare-against-immediate guard prepared branch-target ownership");
+              "minimal local-slot compare-against-immediate guard prepared branch-contract ownership");
       status != 0) {
     return status;
   }
