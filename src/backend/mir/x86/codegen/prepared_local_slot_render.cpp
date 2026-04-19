@@ -352,14 +352,15 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       }
 
       if (const auto* store = std::get_if<c4c::backend::bir::StoreGlobalInst>(&inst)) {
-        if (store->address.has_value() || store->byte_offset != 0 ||
-            store->value.type != c4c::backend::bir::TypeKind::I32) {
+        if (store->address.has_value() || store->value.type != c4c::backend::bir::TypeKind::I32) {
           return std::nullopt;
         }
         const auto* prepared_access =
             find_prepared_function_memory_access(function_addressing, block.label, inst_index);
         std::optional<std::string> memory;
         std::string_view resolved_global_name = store->global_name;
+        const auto global_byte_offset =
+            prepared_access != nullptr ? prepared_access->address.byte_offset : store->byte_offset;
         if (prepared_access != nullptr) {
           memory = render_prepared_symbol_memory_operand_if_supported(
               prepared_access->address, "DWORD", render_asm_symbol_name);
@@ -381,7 +382,9 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
           const std::string rendered_memory =
               memory.has_value()
                   ? *memory
-                  : "DWORD PTR [rip + " + render_asm_symbol_name(store->global_name) + "]";
+                  : "DWORD PTR [rip + " + render_asm_symbol_name(resolved_global_name) +
+                        (global_byte_offset != 0 ? " + " + std::to_string(global_byte_offset) : "") +
+                        "]";
           return "    mov " + rendered_memory + ", " +
                  std::to_string(static_cast<std::int32_t>(store->value.immediate)) + "\n";
         }
@@ -390,7 +393,9 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
           const std::string rendered_memory =
               memory.has_value()
                   ? *memory
-                  : "DWORD PTR [rip + " + render_asm_symbol_name(store->global_name) + "]";
+                  : "DWORD PTR [rip + " + render_asm_symbol_name(resolved_global_name) +
+                        (global_byte_offset != 0 ? " + " + std::to_string(global_byte_offset) : "") +
+                        "]";
           return "    mov " + rendered_memory + ", eax\n";
         }
         if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
@@ -398,7 +403,9 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
           const std::string rendered_memory =
               memory.has_value()
                   ? *memory
-                  : "DWORD PTR [rip + " + render_asm_symbol_name(store->global_name) + "]";
+                  : "DWORD PTR [rip + " + render_asm_symbol_name(resolved_global_name) +
+                        (global_byte_offset != 0 ? " + " + std::to_string(global_byte_offset) : "") +
+                        "]";
           return "    mov " + rendered_memory + ", ecx\n";
         }
         return std::nullopt;

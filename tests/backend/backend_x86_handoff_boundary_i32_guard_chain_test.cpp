@@ -92,6 +92,22 @@ std::string expected_minimal_same_module_global_i32_guard_chain_asm(const char* 
            "    .long 2\n";
 }
 
+std::string expected_minimal_same_module_global_i32_store_guard_chain_asm(const char* function_name) {
+  return asm_header(function_name)
+         + "    mov DWORD PTR [rip + s + 4], 7\n"
+           "    mov eax, DWORD PTR [rip + s + 4]\n"
+           "    cmp eax, 7\n"
+           "    je .L" + std::string(function_name) + "_block_2\n"
+           "    mov eax, 1\n"
+           "    ret\n"
+           ".L" + function_name + "_block_2:\n"
+           "    mov eax, 0\n"
+           "    ret\n"
+           ".data\n.globl s\n.type s, @object\n.p2align 2\ns:\n"
+           "    .long 1\n"
+           "    .long 2\n";
+}
+
 std::string expected_minimal_pointer_backed_same_module_global_guard_chain_asm(
     const char* function_name) {
   return asm_header(function_name)
@@ -280,6 +296,63 @@ bir::Module make_x86_same_module_global_i32_guard_chain_module() {
   function.blocks.push_back(std::move(block_2));
   function.blocks.push_back(std::move(block_3));
   function.blocks.push_back(std::move(block_4));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_x86_same_module_global_i32_store_guard_chain_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.globals.push_back(bir::Global{
+      .name = "s",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .initializer_elements = {bir::Value::immediate_i32(1), bir::Value::immediate_i32(2)},
+  });
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreGlobalInst{
+      .global_name = "s",
+      .value = bir::Value::immediate_i32(7),
+      .byte_offset = 4,
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded.second"),
+      .global_name = "s",
+      .byte_offset = 4,
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cmp.second"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "loaded.second"),
+      .rhs = bir::Value::immediate_i32(7),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cmp.second"),
+      .true_label = "block_1",
+      .false_label = "block_2",
+  };
+
+  bir::Block block_1;
+  block_1.label = "block_1";
+  block_1.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+
+  bir::Block block_2;
+  block_2.label = "block_2";
+  block_2.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
   module.functions.push_back(std::move(function));
   return module;
 }
@@ -641,6 +714,52 @@ int check_same_module_global_guard_chain_route_consumes_prepared_address_contrac
   return 0;
 }
 
+int check_same_module_global_store_guard_chain_route_consumes_prepared_address_contract(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  if (function_addressing == nullptr || function_addressing->accesses.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the same-module global store prepared accesses")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  if (entry_block == nullptr || entry_block->insts.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepared same-module global store fixture no longer exposes the expected carriers")
+                    .c_str());
+  }
+  auto* entry_store = std::get_if<bir::StoreGlobalInst>(&entry_block->insts.front());
+  auto* entry_load = std::get_if<bir::LoadGlobalInst>(&entry_block->insts[1]);
+  if (entry_store == nullptr || entry_load == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared same-module global store fixture no longer exposes the expected direct global store/load carriers")
+                    .c_str());
+  }
+
+  entry_store->global_name = "drifted_same_module_global";
+  entry_store->byte_offset = 0;
+  entry_load->global_name = "drifted_same_module_global";
+  entry_load->byte_offset = 0;
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following authoritative prepared same-module global store accesses over drifted raw global carriers")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_i32_guard_chain_tests() {
@@ -685,6 +804,23 @@ int run_backend_x86_handoff_boundary_i32_guard_chain_tests() {
               expected_minimal_same_module_global_i32_guard_chain_asm("main"),
               "main",
               "same-module defined-global equality-against-immediate guard route consumes authoritative prepared global accesses");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_route_outputs(make_x86_same_module_global_i32_store_guard_chain_module(),
+                              expected_minimal_same_module_global_i32_store_guard_chain_asm("main"),
+                              "bir.store_global @s, offset 4, i32 7",
+                              "same-module defined-global offset-store equality-against-immediate guard route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_same_module_global_store_guard_chain_route_consumes_prepared_address_contract(
+              make_x86_same_module_global_i32_store_guard_chain_module(),
+              expected_minimal_same_module_global_i32_store_guard_chain_asm("main"),
+              "main",
+              "same-module defined-global offset-store equality-against-immediate guard route consumes authoritative prepared global store accesses");
       status != 0) {
     return status;
   }
