@@ -6765,7 +6765,9 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
     bool use_edge_store_slot_carrier,
     bool use_selected_value_chain,
     bool use_fixed_offset_global_roots,
-    bool use_pointer_backed_global_roots) {
+    bool use_pointer_backed_global_roots,
+    bool add_true_lane_passthrough_block = false,
+    bool add_false_lane_passthrough_block = false) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -6820,7 +6822,18 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
       false_transfer_index >= join_transfer.edge_transfers.size() ||
       true_transfer_index == false_transfer_index) {
     return fail((std::string(failure_context) +
-                 ": prepared compare-join fixture published invalid true/false join ownership indices")
+                    ": prepared compare-join fixture published invalid true/false join ownership indices")
+                    .c_str());
+  }
+
+  auto* true_predecessor =
+      find_block(function, join_transfer.edge_transfers[true_transfer_index].predecessor_label.c_str());
+  auto* false_predecessor =
+      find_block(function, join_transfer.edge_transfers[false_transfer_index].predecessor_label.c_str());
+  if (true_predecessor == nullptr || false_predecessor == nullptr ||
+      true_predecessor == join_block || false_predecessor == join_block) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer exposes both authoritative join predecessors")
                     .c_str());
   }
 
@@ -6943,6 +6956,30 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
                join_transfer.edge_transfers[false_transfer_index].predecessor_label) {
       incoming.value = join_transfer.edge_transfers[false_transfer_index].incoming_value;
     }
+  }
+
+  if (add_true_lane_passthrough_block) {
+    true_predecessor->terminator = bir::BranchTerminator{.target_label = "contract.true.bridge"};
+    function.blocks.push_back(bir::Block{
+        .label = "contract.true.bridge",
+        .terminator = bir::BranchTerminator{.target_label = join_block->label},
+    });
+  }
+  if (add_false_lane_passthrough_block) {
+    false_predecessor->terminator =
+        bir::BranchTerminator{.target_label = "contract.false.bridge"};
+    function.blocks.push_back(bir::Block{
+        .label = "contract.false.bridge",
+        .terminator = bir::BranchTerminator{.target_label = join_block->label},
+    });
+  }
+
+  entry_block = find_block(function, "entry");
+  join_block = find_block(function, "join");
+  if (entry_block == nullptr || join_block == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer preserves entry/join blocks after passthrough rewrites")
+                    .c_str());
   }
 
   const auto compare_join_context = prepare::find_prepared_param_zero_materialized_compare_join_context(
@@ -7226,6 +7263,38 @@ int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_po
     const char* failure_context) {
   return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
       module, function_name, failure_context, true, true, false, true);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_pointer_backed_global_chain_return_contexts_with_true_lane_passthrough(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, false, true, false, true, true, false);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_pointer_backed_global_chain_return_contexts_with_true_lane_passthrough(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, true, true, false, true, true, false);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_pointer_backed_global_chain_return_contexts_with_false_lane_passthrough(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, false, true, false, true, false, true);
+}
+
+int check_materialized_compare_join_branches_publish_prepared_edge_store_slot_pointer_backed_global_chain_return_contexts_with_false_lane_passthrough(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module, function_name, failure_context, true, true, false, true, false, true);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_offset_pointer_backed_global_return_contexts(
@@ -8935,6 +9004,38 @@ int main() {
               make_x86_param_eq_zero_branch_joined_pointer_backed_globals_then_xor_module(),
               "branch_join_pointer_backed_global_then_xor",
               "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot pointer-backed same-module global selected-value chain return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_pointer_backed_global_chain_return_contexts_with_true_lane_passthrough(
+              make_x86_param_eq_zero_branch_joined_pointer_backed_globals_then_xor_module(),
+              "branch_join_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join pointer-backed same-module global selected-value chain return context ownership ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_edge_store_slot_pointer_backed_global_chain_return_contexts_with_true_lane_passthrough(
+              make_x86_param_eq_zero_branch_joined_pointer_backed_globals_then_xor_module(),
+              "branch_join_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot pointer-backed same-module global selected-value chain return context ownership ignores true-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_pointer_backed_global_chain_return_contexts_with_false_lane_passthrough(
+              make_x86_param_eq_zero_branch_joined_pointer_backed_globals_then_xor_module(),
+              "branch_join_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join pointer-backed same-module global selected-value chain return context ownership ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_branches_publish_prepared_edge_store_slot_pointer_backed_global_chain_return_contexts_with_false_lane_passthrough(
+              make_x86_param_eq_zero_branch_joined_pointer_backed_globals_then_xor_module(),
+              "branch_join_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot pointer-backed same-module global selected-value chain return context ownership ignores false-lane passthrough topology when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }

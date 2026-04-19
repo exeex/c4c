@@ -10,22 +10,21 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow packet in
 `tests/backend/backend_x86_handoff_boundary_test.cpp` and `todo.md` by
-extending the compare-join handoff-boundary fixture to the non-fixed-offset
-pointer-backed same-module global selected-value chain passthrough topology on
-both true and false lanes, keeping the same prepared branch/join ownership
-contract and proving both the plain prepared consumer and the
-`PreparedJoinTransferKind::EdgeStoreSlot` carrier still emit the same
-canonical asm when one extra empty authoritative bridge sits between the
-source branch lane and the join.
+extending the prepared compare-join return-context ownership checks for the
+non-fixed-offset pointer-backed same-module global selected-value chain family
+so both the plain prepared helper path and the paired
+`PreparedJoinTransferKind::EdgeStoreSlot` carrier keep publishing the same
+return-context contract when one extra empty authoritative bridge sits on
+either the true lane or the false lane before the join.
 
 ## Suggested Next
 
 The next accepted packet should stay in Step 3 and keep shrinking residual
 compare-join topology sensitivity only where prepared ownership is already
-authoritative, most likely by extending the same passthrough check to the
-adjacent prepared compare-join return-context ownership checks for the same
-pointer-backed selected-value chain family before widening into broader CFG
-shapes, instruction-selection work, or Step 4 file organization.
+authoritative, most likely by extending the same return-context passthrough
+ownership check to the adjacent fixed-offset pointer-backed same-module global
+selected-value chain family before widening into broader CFG shapes,
+instruction-selection work, or Step 4 file organization.
 
 ## Watchouts
 
@@ -37,18 +36,24 @@ shapes, instruction-selection work, or Step 4 file organization.
   family should only allow one extra empty passthrough after an already-
   authoritative compare lane when the prepared branch labels and join-transfer
   ownership already identify the real source edges, including the
-  pointer-backed selected-value chain variant that now has both true-lane and
-  false-lane passthrough proof without any x86 consumer change.
+  pointer-backed selected-value chain return-context variant that now has both
+  true-lane and false-lane passthrough proof for the plain helper path and the
+  paired EdgeStoreSlot carrier without any backend change.
 - Keep follow-on work focused on places where prepared branch labels and join
   ownership are already authoritative; do not reintroduce source-label
   equality checks, local join bundle reconstruction, or emitter-local semantic
   recovery.
+- When a test helper appends passthrough blocks to `function.blocks`, reacquire
+  any cached block pointers before calling prepared-helper classifiers; this
+  packet needed that harness-only fix to keep the proof scoped to the intended
+  ownership contract.
 - `test_before.log` remains the narrow baseline for
   `^backend_x86_handoff_boundary$`, and this packet refreshes `test_after.log`
   with the same focused proof command after proving the compare-join
-  pointer-backed same-module global selected-value chain consumer and paired
-  EdgeStoreSlot carrier also ignore one extra empty true-lane or false-lane
-  passthrough block when prepared control-flow ownership is authoritative.
+  pointer-backed same-module global selected-value chain return-context helper
+  path and paired EdgeStoreSlot carrier also ignore one extra empty true-lane
+  or false-lane passthrough block when prepared control-flow ownership is
+  authoritative.
 
 ## Proof
 
@@ -56,7 +61,8 @@ Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The focused proof refreshes `test_after.log` with the
 `backend_x86_handoff_boundary` subset for the new pointer-backed same-module
-global selected-value chain true-lane and false-lane passthrough coverage,
-the paired EdgeStoreSlot carrier coverage, and the existing prepared
-branch/join ownership families that continue proving the same handoff
-contracts. The proof passed and `test_after.log` is the preserved proof log.
+global selected-value chain true-lane and false-lane return-context
+passthrough ownership coverage, the paired EdgeStoreSlot carrier coverage, and
+the existing prepared branch/join ownership families that continue proving the
+same handoff contracts. The proof passed and `test_after.log` is the preserved
+proof log.
