@@ -1277,12 +1277,13 @@ find_prepared_param_zero_branch_return_context(const PreparedNameTables& names,
     const PreparedControlFlowFunction& function_cf,
     BlockLabelId join_block_label,
     std::string_view destination_value_name) {
-  const ValueNameId destination_value_name_id = names.value_names.find(destination_value_name);
-  if (destination_value_name_id == kInvalidValueName) {
+  const auto destination_value_name_id =
+      resolve_prepared_value_name_id(names, destination_value_name);
+  if (!destination_value_name_id.has_value()) {
     return nullptr;
   }
   return find_prepared_join_transfer(
-      names, function_cf, join_block_label, destination_value_name_id);
+      names, function_cf, join_block_label, *destination_value_name_id);
 }
 
 [[nodiscard]] inline const PreparedJoinTransfer* find_prepared_join_transfer(
@@ -1295,12 +1296,15 @@ find_prepared_param_zero_branch_return_context(const PreparedNameTables& names,
     const PreparedControlFlowFunction& function_cf,
     std::string_view join_block_label,
     std::string_view destination_value_name) {
-  const BlockLabelId join_block_label_id = names.block_labels.find(join_block_label);
-  if (join_block_label_id == kInvalidBlockLabel) {
+  const auto join_block_label_id =
+      resolve_prepared_block_label_id(names, join_block_label);
+  const auto destination_value_name_id =
+      resolve_prepared_value_name_id(names, destination_value_name);
+  if (!join_block_label_id.has_value() || !destination_value_name_id.has_value()) {
     return nullptr;
   }
   return find_prepared_join_transfer(
-      names, function_cf, join_block_label_id, destination_value_name);
+      names, function_cf, *join_block_label_id, *destination_value_name_id);
 }
 
 [[nodiscard]] inline std::optional<BlockLabelId> resolve_prepared_block_label_id(
@@ -2857,14 +2861,15 @@ find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
     const PreparedControlFlowFunction& function_cf,
     std::string_view join_block_label,
     std::string_view destination_value_name) {
-  const BlockLabelId join_block_label_id = names.block_labels.find(join_block_label);
-  const ValueNameId destination_value_name_id = names.value_names.find(destination_value_name);
-  if (join_block_label_id == kInvalidBlockLabel ||
-      destination_value_name_id == kInvalidValueName) {
+  const auto join_block_label_id =
+      resolve_prepared_block_label_id(names, join_block_label);
+  const auto destination_value_name_id =
+      resolve_prepared_value_name_id(names, destination_value_name);
+  if (!join_block_label_id.has_value() || !destination_value_name_id.has_value()) {
     return nullptr;
   }
   return incoming_transfers_for_join(
-      names, function_cf, join_block_label_id, destination_value_name_id);
+      names, function_cf, *join_block_label_id, *destination_value_name_id);
 }
 
 enum class PreparedBirInvariant {
