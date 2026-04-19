@@ -425,123 +425,17 @@ std::string emit_prepared_module(
         asm_prefix,
         find_block);
   };
-  const auto render_param_derived_value_if_supported =
-      [&](const c4c::backend::bir::Value& value,
-          const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>&
-              named_binaries,
-          const c4c::backend::bir::Param& param) -> std::optional<std::string> {
-    if (value.type != c4c::backend::bir::TypeKind::I32) {
-      return std::nullopt;
-    }
-    if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
-      return "    mov " + *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(value.immediate)) +
-             "\n";
-    }
-    if (value.kind != c4c::backend::bir::Value::Kind::Named) {
-      return std::nullopt;
-    }
-    if (value.name == param.name) {
-      if (const auto param_register = minimal_param_register(param); param_register.has_value()) {
-        return "    mov " + *return_register + ", " + *param_register + "\n";
-      }
-      return std::nullopt;
-    }
-
-    const auto binary_it = named_binaries.find(value.name);
-    if (binary_it == named_binaries.end()) {
-      return std::nullopt;
-    }
-
-    const auto& binary = *binary_it->second;
-    if (binary.operand_type != c4c::backend::bir::TypeKind::I32 ||
-        binary.result.type != c4c::backend::bir::TypeKind::I32) {
-      return std::nullopt;
-    }
-
-    const bool lhs_is_param_rhs_is_imm =
-        binary.lhs.kind == c4c::backend::bir::Value::Kind::Named &&
-        binary.lhs.name == param.name &&
-        binary.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-        binary.rhs.type == c4c::backend::bir::TypeKind::I32;
-    const bool rhs_is_param_lhs_is_imm =
-        binary.rhs.kind == c4c::backend::bir::Value::Kind::Named &&
-        binary.rhs.name == param.name &&
-        binary.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-        binary.lhs.type == c4c::backend::bir::TypeKind::I32;
-    if (!lhs_is_param_rhs_is_imm && !rhs_is_param_lhs_is_imm) {
-      return std::nullopt;
-    }
-
-    const auto immediate =
-        lhs_is_param_rhs_is_imm ? binary.rhs.immediate : binary.lhs.immediate;
-    const auto param_register = minimal_param_register(param);
-    if (!param_register.has_value()) {
-      return std::nullopt;
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Add) {
-      return "    mov " + *return_register + ", " + *param_register + "\n    add " +
-             *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Sub && lhs_is_param_rhs_is_imm) {
-      return "    mov " + *return_register + ", " + *param_register + "\n    sub " +
-             *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Mul) {
-      return "    mov " + *return_register + ", " + *param_register + "\n    imul " +
-             *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::And) {
-      return "    mov " + *return_register + ", " + *param_register + "\n    and " +
-             *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Or) {
-      return "    mov " + *return_register + ", " + *param_register + "\n    or " +
-             *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Xor) {
-      return "    mov " + *return_register + ", " + *param_register + "\n    xor " +
-             *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::Shl && lhs_is_param_rhs_is_imm) {
-      return "    mov " + *return_register + ", " + *param_register + "\n    shl " +
-             *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::LShr && lhs_is_param_rhs_is_imm) {
-      return "    mov " + *return_register + ", " + *param_register + "\n    shr " +
-             *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
-    }
-    if (binary.opcode == c4c::backend::bir::BinaryOpcode::AShr && lhs_is_param_rhs_is_imm) {
-      return "    mov " + *return_register + ", " + *param_register + "\n    sar " +
-             *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(binary.rhs.immediate)) + "\n";
-    }
-    return std::nullopt;
-  };
-  const auto render_supported_immediate_binary =
-      [&](const c4c::backend::prepare::PreparedSupportedImmediateBinary& binary)
-      -> std::optional<std::string> {
-    return c4c::backend::x86::render_prepared_supported_immediate_binary(*return_register,
-                                                                         binary);
-  };
   const auto render_param_derived_return_if_supported =
       [&](const c4c::backend::bir::Value& value,
           const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>&
               named_binaries,
           const c4c::backend::bir::Param& param) -> std::optional<std::string> {
-    const auto value_render = render_param_derived_value_if_supported(value, named_binaries, param);
+    const auto value_render = c4c::backend::x86::render_prepared_param_derived_i32_value_if_supported(
+        *return_register, value, named_binaries, param, minimal_param_register);
     if (!value_render.has_value()) {
       return std::nullopt;
     }
-    return *value_render + "    ret\n";
+    return c4c::backend::x86::render_prepared_return_body(*value_render);
   };
   const auto render_materialized_compare_join_return_if_supported =
       [&](const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&
@@ -632,129 +526,12 @@ std::string emit_prepared_module(
       rendered_local_i16_i64_return.has_value()) {
     return *rendered_local_i16_i64_return;
   }
-  if (entry.insts.empty()) {
-    if (returned.kind == c4c::backend::bir::Value::Kind::Immediate) {
-      if (!function.params.empty()) {
-        throw_multi_defined_contract_if_active();
-        throw std::invalid_argument(
-            "x86 backend emitter only supports parameter-free immediate i32 returns through the canonical prepared-module handoff");
-      }
-      return asm_prefix + "    mov " + *return_register + ", " +
-             std::to_string(static_cast<std::int32_t>(returned.immediate)) + "\n    ret\n";
-    }
-
-    if (function.params.size() == 1 && prepared_arch == c4c::TargetArch::X86_64) {
-      const auto& param = function.params.front();
-      if (param.type == c4c::backend::bir::TypeKind::I32 && !param.is_varargs &&
-          !param.is_sret && !param.is_byval && returned.name == param.name) {
-        if (const auto param_register = minimal_param_register(param); param_register.has_value()) {
-          return asm_prefix + "    mov " + *return_register + ", " + *param_register + "\n    ret\n";
-        }
-      }
-    }
-  }
-
-  if (entry.insts.size() == 1 && function.params.size() == 1 &&
-      returned.kind == c4c::backend::bir::Value::Kind::Named &&
-      prepared_arch == c4c::TargetArch::X86_64) {
-    const auto& param = function.params.front();
-    const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.front());
-    if (binary != nullptr && param.type == c4c::backend::bir::TypeKind::I32 && !param.is_varargs &&
-        !param.is_sret && !param.is_byval &&
-        binary->operand_type == c4c::backend::bir::TypeKind::I32 &&
-        binary->result.type == c4c::backend::bir::TypeKind::I32 &&
-        returned.name == binary->result.name) {
-      const bool lhs_is_param_rhs_is_imm =
-          binary->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
-          binary->lhs.name == param.name &&
-          binary->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-          binary->rhs.type == c4c::backend::bir::TypeKind::I32;
-      const bool rhs_is_param_lhs_is_imm =
-          binary->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
-          binary->rhs.name == param.name &&
-          binary->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-          binary->lhs.type == c4c::backend::bir::TypeKind::I32;
-      const auto param_register = minimal_param_register(param);
-      if (!param_register.has_value()) {
-        throw_multi_defined_contract_if_active();
-        throw std::invalid_argument(
-            "x86 backend emitter requires prepared parameter ABI metadata for the canonical prepared-module handoff");
-      }
-      if (binary->opcode == c4c::backend::bir::BinaryOpcode::Add &&
-          (lhs_is_param_rhs_is_imm || rhs_is_param_lhs_is_imm)) {
-        const auto immediate =
-            lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
-        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
-               "\n    add " + *return_register + ", " +
-               std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
-      }
-
-      if (binary->opcode == c4c::backend::bir::BinaryOpcode::Sub && lhs_is_param_rhs_is_imm) {
-        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
-               "\n    sub " + *return_register + ", " +
-               std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) + "\n    ret\n";
-      }
-
-      if (binary->opcode == c4c::backend::bir::BinaryOpcode::Mul &&
-          (lhs_is_param_rhs_is_imm || rhs_is_param_lhs_is_imm)) {
-        const auto immediate =
-            lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
-        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
-               "\n    imul " + *return_register + ", " +
-               std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
-      }
-
-      if (binary->opcode == c4c::backend::bir::BinaryOpcode::And &&
-          (lhs_is_param_rhs_is_imm || rhs_is_param_lhs_is_imm)) {
-        const auto immediate =
-            lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
-        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
-               "\n    and " + *return_register + ", " +
-               std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
-      }
-
-      if (binary->opcode == c4c::backend::bir::BinaryOpcode::Or &&
-          (lhs_is_param_rhs_is_imm || rhs_is_param_lhs_is_imm)) {
-        const auto immediate =
-            lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
-        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
-               "\n    or " + *return_register + ", " +
-               std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
-      }
-
-      if (binary->opcode == c4c::backend::bir::BinaryOpcode::Xor &&
-          (lhs_is_param_rhs_is_imm || rhs_is_param_lhs_is_imm)) {
-        const auto immediate =
-            lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
-        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
-               "\n    xor " + *return_register + ", " +
-               std::to_string(static_cast<std::int32_t>(immediate)) + "\n    ret\n";
-      }
-
-      if (binary->opcode == c4c::backend::bir::BinaryOpcode::Shl &&
-          lhs_is_param_rhs_is_imm) {
-        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
-               "\n    shl " + *return_register + ", " +
-               std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) +
-               "\n    ret\n";
-      }
-
-      if (binary->opcode == c4c::backend::bir::BinaryOpcode::LShr &&
-          lhs_is_param_rhs_is_imm) {
-        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
-               "\n    shr " + *return_register + ", " +
-               std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) +
-               "\n    ret\n";
-      }
-
-      if (binary->opcode == c4c::backend::bir::BinaryOpcode::AShr &&
-          lhs_is_param_rhs_is_imm) {
-        return asm_prefix + "    mov " + *return_register + ", " + *param_register +
-               "\n    sar " + *return_register + ", " +
-               std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) +
-               "\n    ret\n";
-      }
-    }
+  if (const auto rendered_minimal_return =
+          c4c::backend::x86::render_prepared_minimal_immediate_or_param_return_if_supported(
+              function, entry, prepared_arch, asm_prefix, *return_register,
+              minimal_param_register);
+      rendered_minimal_return.has_value()) {
+    return *rendered_minimal_return;
   }
 
   throw_multi_defined_contract_if_active();

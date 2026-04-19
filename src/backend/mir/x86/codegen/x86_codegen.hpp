@@ -336,6 +336,24 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
     std::string_view asm_prefix,
     std::string_view return_register);
 
+std::optional<std::string> render_prepared_param_derived_i32_value_if_supported(
+    std::string_view return_register,
+    const c4c::backend::bir::Value& value,
+    const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>&
+        named_binaries,
+    const c4c::backend::bir::Param& param,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
+        minimal_param_register);
+
+std::optional<std::string> render_prepared_minimal_immediate_or_param_return_if_supported(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    std::string_view return_register,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
+        minimal_param_register);
+
 std::optional<std::string> render_prepared_minimal_local_slot_return_if_supported(
     const c4c::backend::bir::Function& function,
     c4c::TargetArch prepared_arch,
