@@ -306,16 +306,15 @@ find_prepared_short_circuit_join_context_if_supported(
     const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
-    std::string_view source_block_label) {
-  const c4c::BlockLabelId source_block_label_id = prepared_names.block_labels.find(source_block_label);
-  if (source_block_label_id == c4c::kInvalidBlockLabel) {
+    c4c::BlockLabelId source_block_label) {
+  if (source_block_label == c4c::kInvalidBlockLabel) {
     return std::nullopt;
   }
   const auto prepared_join_context = c4c::backend::prepare::
       find_prepared_short_circuit_join_context(prepared_names,
                                                control_flow,
                                                function,
-                                               source_block_label_id);
+                                               source_block_label);
   if (!prepared_join_context.has_value() || prepared_join_context->join_transfer == nullptr ||
       prepared_join_context->true_transfer == nullptr ||
       prepared_join_context->false_transfer == nullptr ||

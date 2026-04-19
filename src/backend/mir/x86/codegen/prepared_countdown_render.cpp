@@ -109,12 +109,16 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
       continue;
     }
 
+    const c4c::ValueNameId carried_counter_id =
+        prepared_names.value_names.find(candidate_join_transfer.result.name);
+    if (carried_counter_id == c4c::kInvalidValueName) {
+      continue;
+    }
     const auto* candidate_join_edges = c4c::backend::prepare::incoming_transfers_for_join(
         prepared_names,
         function_control_flow,
-        c4c::backend::prepare::prepared_block_label(prepared_names,
-                                                    candidate_join_transfer.join_block_label),
-        candidate_join_transfer.result.name);
+        candidate_join_transfer.join_block_label,
+        carried_counter_id);
     if (candidate_join_edges == nullptr || candidate_join_edges->size() != 2) {
       continue;
     }

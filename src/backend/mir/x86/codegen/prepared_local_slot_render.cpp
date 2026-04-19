@@ -817,10 +817,14 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       if (function_control_flow == nullptr || prepared_names == nullptr) {
         return std::nullopt;
       }
+      const c4c::BlockLabelId block_label_id = prepared_names->block_labels.find(block.label);
+      if (block_label_id == c4c::kInvalidBlockLabel) {
+        return std::nullopt;
+      }
 
       const auto join_context =
           c4c::backend::x86::find_prepared_short_circuit_join_context_if_supported(
-              *prepared_names, *function_control_flow, function, block.label);
+              *prepared_names, *function_control_flow, function, block_label_id);
       if (!join_context.has_value()) {
         return std::nullopt;
       }

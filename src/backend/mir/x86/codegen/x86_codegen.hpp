@@ -868,7 +868,7 @@ find_prepared_short_circuit_join_context_if_supported(
     const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
-    std::string_view source_block_label);
+    c4c::BlockLabelId source_block_label);
 
 std::optional<ShortCircuitTarget> build_prepared_short_circuit_target(
     const c4c::backend::prepare::PreparedNameTables& prepared_names,

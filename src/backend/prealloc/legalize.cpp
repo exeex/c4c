@@ -1144,7 +1144,7 @@ void publish_short_circuit_continuation_branch_conditions(
       continue;
     }
 
-      const auto prepared_entry_targets =
+    const auto prepared_entry_targets =
         find_prepared_compare_branch_target_labels(names, entry_branch_condition, *entry_block);
     if (!prepared_entry_targets.has_value()) {
       continue;
@@ -1155,7 +1155,7 @@ void publish_short_circuit_continuation_branch_conditions(
             names,
             *function_control_flow,
             function,
-            prepared_block_label(names, entry_branch_condition.block_label));
+            entry_branch_condition.block_label);
     if (!short_circuit_join_context.has_value()) {
       continue;
     }
