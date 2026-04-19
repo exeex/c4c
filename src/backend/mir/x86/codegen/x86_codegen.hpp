@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "../assembler/mod.hpp"
 #include "../../../bir/lir_to_bir.hpp"
 #include "../../../prealloc/target_register_profile.hpp"
@@ -254,6 +256,12 @@ struct PreparedModuleLocalSlotLayout {
   std::size_t frame_size = 0;
 };
 
+struct PreparedBoundedMultiDefinedCallLaneRender {
+  std::string body;
+  std::vector<std::string> used_string_names;
+  std::vector<std::string> used_same_module_global_names;
+};
+
 std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
     const c4c::backend::bir::Function& function,
     c4c::TargetArch prepared_arch);
@@ -273,6 +281,176 @@ std::optional<std::string> render_prepared_local_slot_memory_operand_if_supporte
     std::string_view slot_name,
     std::size_t stack_byte_bias,
     std::string_view size_name);
+
+inline std::optional<PreparedBoundedMultiDefinedCallLaneRender>
+render_prepared_bounded_multi_defined_call_lane_body_if_supported(
+    const c4c::backend::bir::Function& candidate,
+    const std::vector<const c4c::backend::bir::Function*>& defined_functions,
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view return_register,
+    const std::function<bool(std::string_view)>& has_string_constant,
+    const std::function<bool(std::string_view)>& has_same_module_global,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name) {
+  static constexpr const char* kArgRegs64[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+  static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
+
+  PreparedBoundedMultiDefinedCallLaneRender rendered{
+      .body = "    sub rsp, " + std::to_string(local_layout.frame_size + 8) + "\n",
+  };
+  std::optional<std::string_view> current_i32_name;
+  const auto note_once = [](std::vector<std::string>* names, std::string_view name) {
+    const auto it = std::find(names->begin(), names->end(), std::string(name));
+    if (it == names->end()) {
+      names->push_back(std::string(name));
+    }
+  };
+
+  for (const auto& inst : candidate.blocks.front().insts) {
+    if (const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst)) {
+      if (call->args.size() != call->arg_types.size() || call->args.size() > 6 ||
+          (call->result.has_value() &&
+           call->result->type != c4c::backend::bir::TypeKind::I32 &&
+           call->result->type != c4c::backend::bir::TypeKind::Void)) {
+        return std::nullopt;
+      }
+      std::string callee_name;
+      if (!call->is_indirect) {
+        if (call->callee.empty() || call->callee_value.has_value()) {
+          return std::nullopt;
+        }
+        callee_name = call->callee;
+      } else {
+        if (!call->callee.empty() || !call->callee_value.has_value() ||
+            call->callee_value->kind != c4c::backend::bir::Value::Kind::Named ||
+            call->callee_value->type != c4c::backend::bir::TypeKind::Ptr ||
+            call->callee_value->name.empty() || call->callee_value->name.front() != '@') {
+          return std::nullopt;
+        }
+        callee_name = std::string(call->callee_value->name.substr(1));
+        bool found_same_module_function = false;
+        for (const auto* available_function : defined_functions) {
+          if (available_function->name == callee_name) {
+            found_same_module_function = true;
+            break;
+          }
+        }
+        if (!found_same_module_function) {
+          return std::nullopt;
+        }
+      }
+
+      for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
+        const auto& arg = call->args[arg_index];
+        if (call->arg_types[arg_index] == c4c::backend::bir::TypeKind::Ptr) {
+          if (arg.kind != c4c::backend::bir::Value::Kind::Named || arg.name.empty() ||
+              arg.name.front() != '@') {
+            return std::nullopt;
+          }
+          const std::string_view symbol_name(arg.name.data() + 1, arg.name.size() - 1);
+          if (has_string_constant(symbol_name)) {
+            note_once(&rendered.used_string_names, symbol_name);
+            rendered.body += "    lea ";
+            rendered.body += kArgRegs64[arg_index];
+            rendered.body += ", [rip + ";
+            rendered.body += render_private_data_label(symbol_name);
+            rendered.body += "]\n";
+            continue;
+          }
+          if (!has_same_module_global(symbol_name)) {
+            return std::nullopt;
+          }
+          note_once(&rendered.used_same_module_global_names, symbol_name);
+          rendered.body += "    lea ";
+          rendered.body += kArgRegs64[arg_index];
+          rendered.body += ", [rip + ";
+          rendered.body += render_asm_symbol_name(symbol_name);
+          rendered.body += "]\n";
+          continue;
+        }
+
+        if (call->arg_types[arg_index] != c4c::backend::bir::TypeKind::I32) {
+          return std::nullopt;
+        }
+        if (arg.kind == c4c::backend::bir::Value::Kind::Immediate) {
+          rendered.body += "    mov ";
+          rendered.body += kArgRegs32[arg_index];
+          rendered.body += ", ";
+          rendered.body += std::to_string(static_cast<std::int32_t>(arg.immediate));
+          rendered.body += "\n";
+          continue;
+        }
+        if (arg.kind != c4c::backend::bir::Value::Kind::Named || !current_i32_name.has_value() ||
+            arg.name != *current_i32_name) {
+          return std::nullopt;
+        }
+        rendered.body += "    mov ";
+        rendered.body += kArgRegs32[arg_index];
+        rendered.body += ", eax\n";
+      }
+
+      rendered.body += "    xor eax, eax\n";
+      rendered.body += "    call ";
+      rendered.body += render_asm_symbol_name(callee_name);
+      rendered.body += "\n";
+      current_i32_name =
+          call->result.has_value() && call->result->type == c4c::backend::bir::TypeKind::I32
+              ? std::optional<std::string_view>(call->result->name)
+              : std::nullopt;
+      continue;
+    }
+
+    if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
+      if (store->byte_offset != 0 || store->address.has_value() ||
+          store->value.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      const auto memory = render_prepared_local_slot_memory_operand_if_supported(
+          local_layout, store->slot_name, 8, "DWORD");
+      if (!memory.has_value()) {
+        return std::nullopt;
+      }
+      if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+        rendered.body += "    mov " + *memory + ", " +
+                         std::to_string(static_cast<std::int32_t>(store->value.immediate)) +
+                         "\n";
+        current_i32_name = std::nullopt;
+        continue;
+      }
+      if (store->value.kind != c4c::backend::bir::Value::Kind::Named ||
+          !current_i32_name.has_value() || store->value.name != *current_i32_name) {
+        return std::nullopt;
+      }
+      rendered.body += "    mov " + *memory + ", eax\n";
+      current_i32_name = std::nullopt;
+      continue;
+    }
+
+    const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+    if (load == nullptr || load->byte_offset != 0 || load->address.has_value() ||
+        load->result.type != c4c::backend::bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+    const auto memory =
+        render_prepared_local_slot_memory_operand_if_supported(local_layout, load->slot_name, 8,
+                                                               "DWORD");
+    if (!memory.has_value()) {
+      return std::nullopt;
+    }
+    rendered.body += "    mov eax, " + *memory + "\n";
+    current_i32_name = load->result.name;
+  }
+
+  const auto& returned = *candidate.blocks.front().terminator.value;
+  if (returned.kind != c4c::backend::bir::Value::Kind::Immediate ||
+      returned.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  rendered.body += "    mov " + std::string(return_register) + ", " +
+                   std::to_string(static_cast<std::int32_t>(returned.immediate)) +
+                   "\n    add rsp, " + std::to_string(local_layout.frame_size + 8) + "\n    ret\n";
+  return rendered;
+}
 
 std::optional<std::string> render_prepared_param_zero_branch_function(
     std::string_view asm_prefix,
