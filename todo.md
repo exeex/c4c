@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/63_complete_phi_legalization_and_parallel_copy_resolution.md
 Source Plan Path: plan.md
-Current Step ID: 3.2
-Current Step Title: Keep Downstream Phi Consumers Contract-Strict
-Plan Review Counter: 10 / 10
+Current Step ID: 3.2.1
+Current Step Title: Finish Bounded Compare-Join Immediate-Op Consumer Coverage
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
@@ -21,11 +21,9 @@ strict without widening into emitter changes.
 
 ## Suggested Next
 
-Before accepting another Step 3.2 packet on this same route, run plan-owner
-review for the current step because the next accepted commit should hit the
-displayed review limit; after that review, the next bounded compare-join
-consumer slice is likely `branch_join_adjust_then_shl` if the route stays in
-`backend_x86_handoff_boundary`.
+Start Step 3.2.1 by applying the same contract-strict compare-join coverage to
+the next bounded immediate-op family, with `branch_join_adjust_then_shl` as the
+current best-fit packet under `backend_x86_handoff_boundary`.
 
 ## Watchouts
 

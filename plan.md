@@ -238,6 +238,84 @@ Actions:
 - avoid reopening unrelated branch/join or generic instruction-selection work
 - stop once no consumer family still needs bespoke phi movement interpretation
 
+#### Step 3.2.1: Finish Bounded Compare-Join Immediate-Op Consumer Coverage
+
+Goal: finish the remaining joined-branch immediate-op compare-join families in
+`backend_x86_handoff_boundary` that still need contract-strict proof beyond
+passthrough ownership and render-contract checks.
+
+Primary targets:
+
+- `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
+- the narrow compare-join immediate-op fixture families already covered by the
+  authoritative prepared-control-flow handoff
+
+Actions:
+
+- extend one bounded immediate-op family at a time with branch-plan,
+  non-compare-entry rejection, and prepared branch condition/record checks
+- keep default-carrier and forced-`EdgeStoreSlot` proof paths aligned on the
+  same authoritative prepared compare-join contract
+- stop once the remaining immediate-op families in this test surface no longer
+  rely on weaker passthrough-only proof
+
+Completion check:
+
+- the remaining immediate-op compare-join families under
+  `backend_x86_handoff_boundary` prove contract-strict ownership without adding
+  emitter-local fallbacks or testcase-shaped route changes
+
+#### Step 3.2.2: Generalize Contract Checks Only Where Family Reuse Demands It
+
+Goal: keep compare-join helper coverage reusable across immediate-op families
+without accidentally widening the route into emitter rewrites or test-only
+special cases.
+
+Primary targets:
+
+- `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
+- any narrow shared helper assertions in the same test surface that are too
+  family-specific for the remaining immediate-op coverage
+
+Actions:
+
+- generalize helper expectations only when the remaining compare-join families
+  cannot be covered honestly with the current helper surface
+- preserve the authoritative prepared-control-flow contract as the checked
+  behavior rather than introducing family-specific escape hatches
+- keep helper changes limited to the minimum needed for contract-strict proof
+
+Completion check:
+
+- the immediate-op compare-join proof surface is reusable enough to cover the
+  remaining families without duplicating testcase-shaped assertions
+
+#### Step 3.2.3: Re-evaluate Remaining Downstream Consumers After The Immediate-Op Batch
+
+Goal: decide which downstream consumer family still needs Step 3.2 attention
+after the bounded immediate-op compare-join batch is complete.
+
+Primary targets:
+
+- `todo.md`
+- the narrowest downstream consumer families still named by active
+  `tests/backend/` proof once Step 3.2.1 is exhausted
+
+Actions:
+
+- inventory which downstream consumers still observe phi-transfer semantics
+  after the immediate-op compare-join batch is complete
+- decide whether the next packet stays in the current handoff-boundary surface
+  or moves to a different narrow consumer family
+- capture that next bounded route in `todo.md` without widening `plan.md`
+  beyond the active source idea
+
+Completion check:
+
+- the next Step 3.2 packet after the immediate-op batch is explicitly routed to
+  one bounded downstream consumer family instead of continuing as an unlabeled
+  catch-all step
+
 Completion check:
 
 - the remaining downstream phi consumers stay aligned with authoritative
