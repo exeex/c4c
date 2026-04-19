@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_control_flow.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate Consumers To The Authoritative Prepared Facts
-Plan Review Counter: 10 / 10
+Current Step ID: 3.3
+Current Step Title: Close Remaining Consumer Families And Shared Helper Gaps
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
@@ -18,11 +18,12 @@ or false-lane passthrough topology drifts before the join.
 
 ## Suggested Next
 
-Move to the next bounded `plan.md` Step 3 consumer family that still lacks an
-explicit prepared-contract drift or loss proof, preferably outside the
-joined-branch trailing-join `and`, trailing-join `or`, short-circuit,
-guard-chain, and local-slot passthrough lanes now that each of those routes
-has an explicit authoritative prepared-target or topology-drift check.
+Move to `plan.md` Step 3.3 and pick the next bounded consumer family that
+still lacks explicit prepared-contract drift or loss proof, preferably outside
+the joined-branch trailing-join `and`, trailing-join `or`, short-circuit,
+guard-chain, compare-branch, compare-join, and local-slot passthrough lanes
+now that those routes have explicit authoritative prepared-target,
+branch-condition, entry-label, or topology-drift checks.
 
 ## Watchouts
 

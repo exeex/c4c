@@ -193,9 +193,86 @@ Actions:
 
 Completion check:
 
-- the main consumers read prepared predecessor, successor, branch-condition,
-  and join facts directly enough that CFG shape recovery is no longer the
-  authoritative path
+- the Step 3 substeps together leave the main consumers reading prepared
+  predecessor, successor, branch-condition, and join facts directly enough
+  that CFG shape recovery is no longer the authoritative path
+
+### Step 3.1: Keep Branch-Target Handoff Consumers Contract-Strict
+
+Goal: finish and preserve the branch-target consumer families whose correctness
+depends on authoritative prepared branch-condition and prepared-target facts.
+
+Primary targets:
+
+- guard-chain and countdown-oriented paths under `src/backend/mir/x86/codegen/`
+- short-circuit and compare-branch consumers that still depend on exact branch
+  target ownership
+
+Actions:
+
+- keep branch-target handoff helpers consuming authoritative prepared metadata
+  instead of raw label recovery
+- add or maintain proof that prepared-target or branch-condition drift fails or
+  redirects according to the shared contract rather than local fallback shape
+- avoid reopening Step 2.3 fallback cleanup unless the contract itself is
+  still incomplete
+
+Completion check:
+
+- branch-target-sensitive consumers prove the prepared contract remains
+  authoritative across guard-chain, countdown, short-circuit, and
+  compare-branch drift cases
+
+### Step 3.2: Migrate Join-Carrying Consumers Without Topology Recovery
+
+Goal: keep compare-join and joined-branch consumer families reading
+authoritative prepared join and entry ownership instead of inferring meaning
+from passthrough topology.
+
+Primary targets:
+
+- joined-branch consumers under `src/backend/mir/x86/codegen/`
+- compare-join helpers and related join-carrying handoff paths
+
+Actions:
+
+- consume prepared join and entry-target facts directly where joined-branch or
+  compare-join lowering currently invites local topology reconstruction
+- prove that true-lane, false-lane, and entry-label drift still follow the
+  authoritative prepared contract when the carrier topology changes
+- keep joined-branch behavior aligned with prepared ownership rather than
+  testcase-shaped lane matchers
+
+Completion check:
+
+- joined-branch and compare-join consumers no longer rely on local passthrough
+  topology recovery as the authoritative source of control-flow meaning
+
+### Step 3.3: Close Remaining Consumer Families And Shared Helper Gaps
+
+Goal: finish the residual Step 3 consumer families that still lack explicit
+prepared-contract migration or proof, especially materialized-select and other
+passthrough-heavy helpers outside the already-covered branch and join lanes.
+
+Primary targets:
+
+- materialized-select and passthrough-oriented consumers under
+  `src/backend/mir/x86/codegen/`
+- shared helper surfaces that still permit consumer-local CFG interpretation
+
+Actions:
+
+- identify the remaining consumer families that are not already covered by the
+  Step 3.1 and Step 3.2 proof lanes
+- migrate those families to prepared predecessor, successor, branch-condition,
+  and join facts without widening into phi-completion or unrelated x86 rewrites
+- add focused proof that the remaining consumer helpers stay aligned with the
+  authoritative prepared contract under label or topology drift
+
+Completion check:
+
+- no Step 3 consumer family still depends on bespoke CFG interpretation once
+  authoritative prepared control-flow data exists
 
 ## Step 4: Validate The CFG Ownership Route
 
