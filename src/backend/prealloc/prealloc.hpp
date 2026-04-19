@@ -1106,6 +1106,14 @@ find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
     const bir::Param& param,
     bool require_label_match);
 
+[[nodiscard]] inline std::optional<BlockLabelId> resolve_prepared_block_label_id(
+    const PreparedNameTables& names,
+    std::string_view block_label);
+
+[[nodiscard]] inline std::optional<ValueNameId> resolve_prepared_value_name_id(
+    const PreparedNameTables& names,
+    std::string_view value_name);
+
 [[nodiscard]] inline std::optional<PreparedParamZeroBranchCondition>
 find_prepared_param_zero_branch_condition(const PreparedNameTables& names,
                                           const PreparedControlFlowFunction& function_cf,
@@ -1185,11 +1193,17 @@ find_prepared_param_zero_branch_condition(const PreparedNameTables& names,
                                           const bir::Block& source_block,
                                           const bir::Param& param,
                                           bool require_label_match) {
+  const auto source_block_label_id =
+      resolve_prepared_block_label_id(names, source_block.label);
+  const auto param_name_id = resolve_prepared_value_name_id(names, param.name);
+  if (!source_block_label_id.has_value() || !param_name_id.has_value()) {
+    return std::nullopt;
+  }
   return find_prepared_param_zero_branch_condition(names,
                                                    function_cf,
-                                                   names.block_labels.find(source_block.label),
+                                                   *source_block_label_id,
                                                    source_block,
-                                                   names.value_names.find(param.name),
+                                                   *param_name_id,
                                                    require_label_match);
 }
 
@@ -1297,6 +1311,16 @@ find_prepared_param_zero_branch_return_context(const PreparedNameTables& names,
     return std::nullopt;
   }
   return block_label_id;
+}
+
+[[nodiscard]] inline std::optional<ValueNameId> resolve_prepared_value_name_id(
+    const PreparedNameTables& names,
+    std::string_view value_name) {
+  const ValueNameId value_name_id = names.value_names.find(value_name);
+  if (value_name_id == kInvalidValueName) {
+    return std::nullopt;
+  }
+  return value_name_id;
 }
 
 [[nodiscard]] inline const PreparedJoinTransfer* find_branch_owned_join_transfer(
@@ -2557,13 +2581,19 @@ find_prepared_param_zero_materialized_compare_join_context(
     const bir::Block& source_block,
     const bir::Param& param,
     bool require_label_match) {
+  const auto source_block_label_id =
+      resolve_prepared_block_label_id(names, source_block.label);
+  const auto param_name_id = resolve_prepared_value_name_id(names, param.name);
+  if (!source_block_label_id.has_value() || !param_name_id.has_value()) {
+    return std::nullopt;
+  }
   return find_prepared_param_zero_materialized_compare_join_context(
       names,
       function_cf,
       function,
-      names.block_labels.find(source_block.label),
+      *source_block_label_id,
       source_block,
-      names.value_names.find(param.name),
+      *param_name_id,
       require_label_match);
 }
 

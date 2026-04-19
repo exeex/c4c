@@ -5,26 +5,27 @@ Source Idea Path: ideas/open/64_shared_text_identity_and_semantic_name_table_ref
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Migrate Remaining Prepared Lookup Helpers And Liveness Consumers
-Plan Review Counter: 7 / 10
+Plan Review Counter: 8 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3.2 packet in `src/backend/prealloc/prealloc.hpp`
-by migrating the compare-join entry compatibility wrappers around
-`find_prepared_compare_join_entry_target_labels(...)` and
-`resolve_prepared_compare_join_entry_target_labels(...)` so the
-`std::string_view` and `bir::Block` boundary overloads resolve
-`BlockLabelId` once through `resolve_prepared_block_label_id(...)` and then
-delegate only to the typed-id helper paths, falling back to the existing
-continuation-label default when the source label is absent.
+by migrating the param-zero compare-join compatibility wrappers around
+`find_prepared_param_zero_branch_condition(...)` and
+`find_prepared_param_zero_materialized_compare_join_context(...)` so the
+`bir::Block`/`bir::Param` boundary overloads resolve `BlockLabelId` and
+`ValueNameId` once through shared `resolve_prepared_block_label_id(...)` and
+`resolve_prepared_value_name_id(...)` helpers before delegating only to the
+typed-id helper paths.
 
 ## Suggested Next
 
 Continue `plan.md` Step 3.2 in `src/backend/prealloc/prealloc.hpp` by auditing
-the remaining compatibility wrappers and liveness-adjacent consumers that still
-translate block labels or value names inline, so the last prepared lookup
-helpers in this family also resolve semantic ids once at the boundary instead
+the remaining compatibility wrappers that still open-code
+`names.block_labels.find(...)` or `names.value_names.find(...)`, especially the
+adjacent string-view and join-transfer lookup entry points, so the rest of this
+prepared helper family also resolves semantic ids once at the boundary instead
 of reintroducing raw spelling lookups deeper in the helper graph.
 
 ## Watchouts
@@ -53,6 +54,10 @@ of reintroducing raw spelling lookups deeper in the helper graph.
   continuation-label fallback when source-label resolution fails; adjacent
   compatibility overloads should reuse that boundary helper instead of
   open-coding `names.block_labels.find(...)` in each wrapper.
+- The param-zero branch-condition and materialized-compare-join wrappers now
+  share both block-label and value-name boundary resolvers; follow-on packets
+  should reuse those helpers instead of open-coding `find(...)` calls inside
+  other compatibility overloads.
 - Keep the remaining string-view overloads in `prealloc.hpp` as compatibility
   wrappers only. Future packets should prefer typed-id entry paths and only
   translate BIR spellings once at the outer boundary.
@@ -68,10 +73,12 @@ of reintroducing raw spelling lookups deeper in the helper graph.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_' > test_after.log 2>&1` and captured the
-build/test output in `test_after.log`. The build completed, and the backend
-subset again reported the same four known failing tests already called out
-above, matching the current baseline after this packet’s compare-join entry
-wrapper migration:
+build/test output in `test_after.log`. The first build attempt failed inside
+`src/backend/prealloc/prealloc.hpp` because the new boundary resolvers were
+defined after their first use in the header; after adding forward declarations
+for those owned helpers, the rerun build completed and the backend subset again
+reported the same four known failing tests already called out above, matching
+the current baseline after this packet’s param-zero wrapper migration:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
 `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,
